@@ -148,6 +148,7 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
 #define V9X_DDSCAPS_VIDEOMEMORY      0x00004000ul
 #define V9X_DDSCAPS_ZBUFFER          0x00020000ul
 #define V9X_DDPF_ALPHAPIXELS         0x00000001ul
+#define V9X_DDPF_FOURCC              0x00000004ul
 #define V9X_DDPF_RGB                 0x00000040ul
 #define V9X_DDPF_PALETTEINDEXED8     0x00000020ul
 #define V9X_DDPF_ZBUFFER             0x00000400ul

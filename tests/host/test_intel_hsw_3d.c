@@ -168,6 +168,45 @@ static void test_miptree(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* BC1-3 trees: the same rule at i = j = 4 (Vol 2d: the alignment fields
+ * do not apply to compressed formats, which align to their 4x4 block),
+ * offsets and pitch counted in blocks, rows in rows of blocks. */
+static void test_miptree_bc(void)
+{
+    struct v9x_hsw_miptree tree;
+
+    /* 256x256 BC1, nine levels, in pixels: level 1 at y 256, level 2 at
+     * (128,256), then y 320, 352, 368, 376, 380, 384 (2 rows align to 4)
+     * and 388; 64 blocks of 8 bytes a row. */
+    CHECK(v9x_intel_hsw_miptree_bc(256u, 256u, 9u, 8u, &tree) ==
+          V9X_STATUS_OK);
+    CHECK(tree.pitch == 512ul && tree.rows == 97ul);
+    CHECK(tree.level_offset[1] == 32768ul);
+    CHECK(tree.level_offset[2] == 33024ul);
+    CHECK(tree.level_offset[3] == 41216ul);
+    CHECK(tree.level_offset[8] == 49408ul);
+
+    /* 1024x256 BC2, one level: 256 blocks of 16 bytes, 64 block rows. */
+    CHECK(v9x_intel_hsw_miptree_bc(1024u, 256u, 1u, 16u, &tree) ==
+          V9X_STATUS_OK);
+    CHECK(tree.pitch == 4096ul && tree.rows == 64ul);
+
+    /* 8x8 BC3, four levels: (0,0) (0,8) (4,8) (4,12); 2 blocks wide,
+     * pitch 64; the 2- and 1-pixel levels take a whole block. */
+    CHECK(v9x_intel_hsw_miptree_bc(8u, 8u, 4u, 16u, &tree) ==
+          V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.rows == 4ul);
+    CHECK(tree.level_offset[1] == 128ul && tree.level_offset[2] == 144ul &&
+          tree.level_offset[3] == 208ul);
+
+    /* A block is 8 or 16 bytes; the level rules are the uncompressed
+     * tree's. */
+    CHECK(v9x_intel_hsw_miptree_bc(8u, 8u, 1u, 4u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_miptree_bc(8u, 8u, 5u, 8u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* A whole minimal 3D batch: everything the builders emit must pass the
  * checker, and the checker must catch each kind of damage. */
 static void test_batch_and_check(void)
@@ -2189,6 +2228,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_headers();
     test_state();
     test_miptree();
+    test_miptree_bc();
     test_cubetree();
     test_batch_and_check();
     test_qword_rule();

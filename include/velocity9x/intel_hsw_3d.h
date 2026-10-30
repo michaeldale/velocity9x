@@ -381,6 +381,22 @@ v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
                                  v9x_u8 levels, v9x_u8 bytes_per_texel,
                                  struct v9x_hsw_miptree *tree);
 
+/*
+ * The same for a BC1-3 (DXT) surface: Vol 2d says the alignment fields do
+ * not apply to compressed formats, whose i and j are their 4 x 4 block,
+ * so the rule runs with 4 and 4 and the tree is counted in blocks:
+ * block_bytes 8 (BC1) or 16 (BC2, BC3) a block, pitch in bytes per row of
+ * blocks, rows in rows of blocks. A level smaller than a block takes one.
+ */
+/* BC1-3 SURFACE_FORMATs (Vol 2a, 186h-188h): DXT1, DXT3, DXT5. */
+#define V9X_HSW_FMT_BC1_UNORM ((v9x_u16)0x186u)
+#define V9X_HSW_FMT_BC2_UNORM ((v9x_u16)0x187u)
+#define V9X_HSW_FMT_BC3_UNORM ((v9x_u16)0x188u)
+
+v9x_status v9x_intel_hsw_miptree_bc(v9x_u16 width, v9x_u16 height,
+                                    v9x_u8 levels, v9x_u8 block_bytes,
+                                    struct v9x_hsw_miptree *tree);
+
 struct v9x_hsw_sampler {
     v9x_u8 mip_filter;  /* DW0 21:20 */
     v9x_u8 mag_filter;  /* DW0 19:17 */

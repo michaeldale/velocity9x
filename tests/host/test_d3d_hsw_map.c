@@ -319,6 +319,42 @@ static void test_signed_format(void)
     CHECK(format == 0x1234u && alpha == -1 && bytes == 7ul);
 }
 
+/* DXT1, DXT3 and DXT5 by FourCC (or D3DFORMAT, the same code) as BC1-3:
+ * block bytes 8, 16, 16; DXT1's punch-through alpha counts as alpha. */
+static void test_bc_format(void)
+{
+    v9x_u16 format = 0u;
+    int alpha = -1;
+    v9x_u32 block = 0ul;
+
+    CHECK(v9x_d3d_hsw_bc_format(V9X_D3D_HSW_DDPF_FOURCC,
+                                V9X_D3D_HSW_FOURCC_DXT1, &format, &alpha,
+                                &block));
+    CHECK(format == V9X_HSW_FMT_BC1_UNORM && alpha == 1 && block == 8ul);
+    CHECK(v9x_d3d_hsw_bc_format(V9X_D3D_HSW_DDPF_D3DFORMAT,
+                                V9X_D3D_HSW_FOURCC_DXT3, &format, &alpha,
+                                &block));
+    CHECK(format == V9X_HSW_FMT_BC2_UNORM && alpha == 1 && block == 16ul);
+    CHECK(v9x_d3d_hsw_bc_format(V9X_D3D_HSW_DDPF_FOURCC,
+                                V9X_D3D_HSW_FOURCC_DXT5, &format, &alpha,
+                                &block));
+    CHECK(format == V9X_HSW_FMT_BC3_UNORM && alpha == 1 && block == 16ul);
+
+    /* Refused, nothing written: no FourCC flag, a premultiplied DXT2,
+     * a signed format. */
+    format = 0x1234u;
+    alpha = -1;
+    block = 7ul;
+    CHECK(!v9x_d3d_hsw_bc_format(0x40ul, V9X_D3D_HSW_FOURCC_DXT1, &format,
+                                 &alpha, &block));
+    CHECK(!v9x_d3d_hsw_bc_format(V9X_D3D_HSW_DDPF_FOURCC, 0x32545844ul,
+                                 &format, &alpha, &block));
+    CHECK(!v9x_d3d_hsw_bc_format(V9X_D3D_HSW_DDPF_FOURCC,
+                                 V9X_D3D_HSW_D3DFMT_Q8W8V8U8, &format,
+                                 &alpha, &block));
+    CHECK(format == 0x1234u && alpha == -1 && block == 7ul);
+}
+
 /* A texture's layout as the sampler's format, its alpha and its texel
  * size: the three 16-bit layouts as before, and the two 32-bit ones. */
 static void test_texel_format(void)
@@ -379,6 +415,7 @@ unsigned int v9x_run_d3d_hsw_map_tests(void)
     failures = 0u;
     test_texel_format();
     test_signed_format();
+    test_bc_format();
     test_target();
     test_depth();
     test_accepted();

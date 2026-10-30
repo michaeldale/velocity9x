@@ -715,9 +715,20 @@ static v9x_u32 v9x_hsw_mip_align(v9x_u32 value, v9x_u32 unit)
     return (value + unit - 1ul) & ~(unit - 1ul);
 }
 
-v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
-                                 v9x_u8 levels, v9x_u8 bytes_per_texel,
-                                 struct v9x_hsw_miptree *tree)
+/* A compressed format's block edge, which is also its i and j. */
+#define V9X_HSW_BC_BLOCK 4ul
+
+/*
+ * The 2D layout in pixels, with alignments align_w and align_h, stored in
+ * block x block cells of unit bytes each: block 1 for an uncompressed
+ * surface, whose cell is a texel; 4 for BC1-3. Offsets, pitch and rows are
+ * in cells.
+ */
+static v9x_status v9x_hsw_mip_layout(v9x_u16 width, v9x_u16 height,
+                                     v9x_u8 levels, v9x_u32 align_w,
+                                     v9x_u32 align_h, v9x_u32 block,
+                                     v9x_u32 unit,
+                                     struct v9x_hsw_miptree *tree)
 {
     v9x_u32 w = (v9x_u32)width;
     v9x_u32 h = (v9x_u32)height;
@@ -727,10 +738,11 @@ v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
     v9x_u32 longest;
     v9x_u32 reachable = 1ul;
     v9x_u32 image_height;
+    v9x_u32 bottom = 0ul;
     v9x_u32 level;
 
     if (tree == 0 || width == 0u || height == 0u || levels == 0u ||
-        levels > V9X_HSW_MIP_LEVELS_MAX || bytes_per_texel == 0u) {
+        levels > V9X_HSW_MIP_LEVELS_MAX || unit == 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     longest = w > h ? w : h;
@@ -746,38 +758,60 @@ v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
     if (levels > 1u) {
         v9x_u32 w1 = w > 1ul ? w >> 1 : 1ul;
         v9x_u32 w2 = w1 > 1ul ? w1 >> 1 : 1ul;
-        v9x_u32 pair = v9x_hsw_mip_align(w1, V9X_HSW_MIP_ALIGN_W);
+        v9x_u32 pair = v9x_hsw_mip_align(w1, align_w);
 
         if (levels > 2u) {
-            pair += v9x_hsw_mip_align(w2, V9X_HSW_MIP_ALIGN_W);
+            pair += v9x_hsw_mip_align(w2, align_w);
         }
         if (pair > total_width) {
             total_width = pair;
         }
     }
-    tree->pitch = v9x_hsw_mip_align(total_width * bytes_per_texel,
-                                    V9X_HSW_MIP_PITCH_ALIGN);
-    tree->rows = 0ul;
+    tree->pitch = v9x_hsw_mip_align(
+        (total_width + block - 1ul) / block * unit, V9X_HSW_MIP_PITCH_ALIGN);
 
     /* The rule as Mesa's brw_miptree_layout_2d states it: after level 1
      * step right by its aligned width, after every other level step down
      * by its aligned height. The last level placed need not be the lowest,
      * so the rows are the deepest any level reaches. */
     for (level = 0ul; level < (v9x_u32)levels; ++level) {
-        tree->level_offset[level] = y * tree->pitch + x * bytes_per_texel;
-        image_height = v9x_hsw_mip_align(h, V9X_HSW_MIP_ALIGN_H);
-        if (y + image_height > tree->rows) {
-            tree->rows = y + image_height;
+        tree->level_offset[level] = y / block * tree->pitch +
+                                    x / block * unit;
+        image_height = v9x_hsw_mip_align(h, align_h);
+        if (y + image_height > bottom) {
+            bottom = y + image_height;
         }
         if (level == 1ul) {
-            x += v9x_hsw_mip_align(w, V9X_HSW_MIP_ALIGN_W);
+            x += v9x_hsw_mip_align(w, align_w);
         } else {
             y += image_height;
         }
         w = w > 1ul ? w >> 1 : 1ul;
         h = h > 1ul ? h >> 1 : 1ul;
     }
+    tree->rows = (bottom + block - 1ul) / block;
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_miptree(v9x_u16 width, v9x_u16 height,
+                                 v9x_u8 levels, v9x_u8 bytes_per_texel,
+                                 struct v9x_hsw_miptree *tree)
+{
+    return v9x_hsw_mip_layout(width, height, levels, V9X_HSW_MIP_ALIGN_W,
+                              V9X_HSW_MIP_ALIGN_H, 1ul,
+                              (v9x_u32)bytes_per_texel, tree);
+}
+
+v9x_status v9x_intel_hsw_miptree_bc(v9x_u16 width, v9x_u16 height,
+                                    v9x_u8 levels, v9x_u8 block_bytes,
+                                    struct v9x_hsw_miptree *tree)
+{
+    if (block_bytes != 8u && block_bytes != 16u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_hsw_mip_layout(width, height, levels, V9X_HSW_BC_BLOCK,
+                              V9X_HSW_BC_BLOCK, V9X_HSW_BC_BLOCK,
+                              (v9x_u32)block_bytes, tree);
 }
 
 v9x_u32 v9x_intel_hsw_cube_qpitch(v9x_u16 side, v9x_u8 levels)

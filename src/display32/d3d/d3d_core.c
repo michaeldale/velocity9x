@@ -6117,6 +6117,34 @@ static DWORD v9x_d3d_surface_pixel_bytes(const V9X_DD_SURFACE_LCL *lcl)
     return (bits + 7ul) / 8ul;
 }
 
+/*
+ * A surface's copy cell: a pixel of v9x_d3d_surface_pixel_bytes, or for a
+ * DXT FourCC its 4 x 4 block, 8 bytes for DXT1 and 16 for DXT2-5. A DXT
+ * surface has no bit count, so a copy by pixel bytes moves nothing.
+ */
+#define V9X_D3D_DXT_BLOCK 4ul
+
+static void v9x_d3d_surface_cell(const V9X_DD_SURFACE_LCL *lcl, DWORD *edge,
+                                 DWORD *bytes)
+{
+    const V9X_DDPIXELFORMAT *pf = &lcl->lpGbl->ddpfSurface;
+
+    *edge = 1ul;
+    *bytes = v9x_d3d_surface_pixel_bytes(lcl);
+    if ((lcl->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul ||
+        (pf->dwFlags & (V9X_DDPF_FOURCC | V9X_DDPF_D3DFORMAT)) == 0ul) {
+        return;
+    }
+    if (pf->dwFourCC == V9X_D3DFMT_DXT1) {
+        *edge = V9X_D3D_DXT_BLOCK;
+        *bytes = 8ul;
+    } else if (pf->dwFourCC >= 0x32545844ul &&
+               pf->dwFourCC <= V9X_D3DFMT_DXT5) {
+        *edge = V9X_D3D_DXT_BLOCK;
+        *bytes = 16ul;
+    }
+}
+
 /* The next mip level attached to `level`, or null. */
 static const V9X_DD_SURFACE_LCL *v9x_d3d_mip_next(
     const V9X_DD_SURFACE_LCL *level)
@@ -6183,18 +6211,28 @@ static int v9x_d3d_ddi7_texblt(V9X_D3D_CONTEXT *context,
          ++level) {
         const V9X_DD_SURFACE_GBL *dg = destination->lpGbl;
         const V9X_DD_SURFACE_GBL *sg = source->lpGbl;
-        DWORD bytes = v9x_d3d_surface_pixel_bytes(source);
+        DWORD edge;
+        DWORD bytes;
+        DWORD dest_edge;
+        DWORD dest_bytes;
         long x0 = left >> level;
         long y0 = top >> level;
         long x1 = right >> level;
         long y1 = bottom >> level;
         long dx = dest_x >> level;
         long dy = dest_y >> level;
+        long cells_w;
+        long cells_h;
         long row;
 
-        if (dg == 0 || sg == 0 || dg->fpVidMem == 0ul ||
-            sg->fpVidMem == 0ul ||
-            bytes != v9x_d3d_surface_pixel_bytes(destination)) {
+        if (dg == 0 || sg == 0) {
+            v9x_d3d_ddi7_log("texblt-refused", words[0], words[1], level, 0ul);
+            break;
+        }
+        v9x_d3d_surface_cell(source, &edge, &bytes);
+        v9x_d3d_surface_cell(destination, &dest_edge, &dest_bytes);
+        if (dg->fpVidMem == 0ul || sg->fpVidMem == 0ul || bytes == 0ul ||
+            bytes != dest_bytes || edge != dest_edge) {
             v9x_d3d_ddi7_log("texblt-refused", words[0], words[1], level,
                              bytes);
             break;
@@ -6205,18 +6243,29 @@ static int v9x_d3d_ddi7_texblt(V9X_D3D_CONTEXT *context,
         if (y1 <= y0) {
             y1 = y0 + 1l;
         }
+        /* In cells: pixels, or DXT blocks, a part block counting whole. */
+        x0 /= (long)edge;
+        y0 /= (long)edge;
+        x1 = (x1 + (long)edge - 1l) / (long)edge;
+        y1 = (y1 + (long)edge - 1l) / (long)edge;
+        dx /= (long)edge;
+        dy /= (long)edge;
         /* Clipped to both surfaces. */
-        if (x1 > (long)sg->wWidth) {
-            x1 = (long)sg->wWidth;
+        cells_w = ((long)sg->wWidth + (long)edge - 1l) / (long)edge;
+        cells_h = ((long)sg->wHeight + (long)edge - 1l) / (long)edge;
+        if (x1 > cells_w) {
+            x1 = cells_w;
         }
-        if (y1 > (long)sg->wHeight) {
-            y1 = (long)sg->wHeight;
+        if (y1 > cells_h) {
+            y1 = cells_h;
         }
-        if (dx + (x1 - x0) > (long)dg->wWidth) {
-            x1 = x0 + (long)dg->wWidth - dx;
+        cells_w = ((long)dg->wWidth + (long)edge - 1l) / (long)edge;
+        cells_h = ((long)dg->wHeight + (long)edge - 1l) / (long)edge;
+        if (dx + (x1 - x0) > cells_w) {
+            x1 = x0 + cells_w - dx;
         }
-        if (dy + (y1 - y0) > (long)dg->wHeight) {
-            y1 = y0 + (long)dg->wHeight - dy;
+        if (dy + (y1 - y0) > cells_h) {
+            y1 = y0 + cells_h - dy;
         }
         for (row = y0; row < y1 && x1 > x0; ++row) {
             const BYTE *from = (const BYTE *)sg->fpVidMem +
@@ -7816,7 +7865,7 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
 static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
-    DWORD textures[7];
+    DWORD textures[10];
     DWORD count = v9x_hal->d3d_global.dwNumTextureFormats;
     DWORD depths = v9x_hal->d3d_global.hwCaps.dwDeviceRenderBitDepth;
     DWORD renders = 0ul;
@@ -7840,6 +7889,13 @@ static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
     if (ops != 0 && ops->draw_shader != 0) {
         textures[count++] = V9X_D3DFMT_Q8W8V8U8;
         textures[count++] = V9X_D3DFMT_V8U8;
+    }
+    /* DXT where the engine places and samples it: 3DMark 2001 SE's Nature
+     * has its distant terrain and mountains only so (boot 154). */
+    if (ops != 0 && ops->limits != 0 && ops->limits->dxt_textures != 0ul) {
+        textures[count++] = V9X_D3DFMT_DXT1;
+        textures[count++] = V9X_D3DFMT_DXT3;
+        textures[count++] = V9X_D3DFMT_DXT5;
     }
     if ((depths & V9X_DDBD_16) != 0ul) {
         renders |= V9X_D3D_RENDERS_16;
@@ -7958,9 +8014,13 @@ static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
         format->dwRGBBitCount = 0ul;
         format->dwRBitMask = formats[answer->dwFormatIndex].operations;
         /* Every texture format a cube as well where cubes are claimed:
-         * the engine places any format it samples as a cube. */
+         * the engine places any format it samples as a cube - except DXT,
+         * whose cube layout nothing here has measured. */
         if (v9x_d3d_cubes_claimed() &&
-            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
+            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul &&
+            format->dwFourCC != V9X_D3DFMT_DXT1 &&
+            format->dwFourCC != V9X_D3DFMT_DXT3 &&
+            format->dwFourCC != V9X_D3DFMT_DXT5) {
             format->dwRBitMask |= V9X_D3DFORMAT_OP_CUBETEXTURE;
         }
         format->dwGBitMask = 0ul;

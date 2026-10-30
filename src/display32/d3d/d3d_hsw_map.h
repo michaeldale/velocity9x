@@ -88,6 +88,22 @@ int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
                               v9x_u32 *bytes);
 
 /*
+ * A DXT texture's pixel format (flags, FourCC) as the BC format the
+ * sampler reads, and its block's bytes: DXT1 BC1 (8), DXT3 BC2 (16), DXT5
+ * BC3 (16), named by FourCC or by D3DFORMAT, whose value is the same code.
+ * DXT1's punch-through alpha counts as alpha. The premultiplied DXT2 and
+ * DXT4 are not published and refused. 0 for any other format, nothing
+ * written. Nature in 3DMark 2001 SE draws its distant terrain and
+ * mountains with DXT1 and DXT3 (the 4570, boot 154).
+ */
+#define V9X_D3D_HSW_FOURCC_DXT1 0x31545844ul
+#define V9X_D3D_HSW_FOURCC_DXT3 0x33545844ul
+#define V9X_D3D_HSW_FOURCC_DXT5 0x35545844ul
+
+int v9x_d3d_hsw_bc_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u16 *format,
+                          int *has_alpha, v9x_u32 *block_bytes);
+
+/*
  * The Z buffer's 3DSTATE_DEPTH_BUFFER (and 3DSTATE_SF) format for its cell:
  * 2 bytes D16_UNORM, as F2b built it, or 4 bytes D24_UNORM_X8_UINT, 24 bits
  * of depth beside 16 (docs\plans\32bpp-acceleration-and-3d.md, decision 1).

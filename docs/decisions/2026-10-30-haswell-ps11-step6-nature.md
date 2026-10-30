@@ -112,16 +112,18 @@ Measurement builds, none kept:
   refused, boot 152); projected textures and texgen claimed (boot 149, no
   change); 16-bit textures, half the texture memory (boot 150, no
   change); a texture factor (never set).
-- **The cause.** DXT1, DXT3 and DXT5 published in the DDI 8 list
-  (boot 154): 3DMark creates 24 DXT textures, 18 DXT1 (128 to 1024
+- **Not the cause after all** (corrected the same day, see
+  [`2026-10-30-haswell-dxt-textures.md`](2026-10-30-haswell-dxt-textures.md)):
+  with DXT implemented the white is unchanged. The reading below rested
+  on a frame that came out black. DXT1, DXT3 and DXT5 published in the
+  DDI 8 list (boot 154): 3DMark creates 24 DXT textures, 18 DXT1 (128 to 1024
   square, one 256 x 128) and 6 DXT3 (256 x 64, 256 square, 1024 x 256) and binds them, and no white draw
   is left. The frame was black: the engine can neither place nor sample
   a block-compressed texture. Without DXT the renderer binds nothing for
   those maps and says nothing.
 
-So the sky needs DXT textures on the HD 4600: placed by the engine
-(FourCC, no bit count, as Q8W8V8U8) and sampled as BC1/BC2/BC3, by the
-fixed-function kernels as well as the PS ones.
+The black frame drew nothing, so "no white draw" proved nothing about
+binding; DXT was implemented anyway and the sky did not change.
 
 ## Ruled out
 
@@ -135,8 +137,8 @@ fixed-function kernels as well as the PS ones.
 ## Not done, not checked
 
 - **The sky is flat white**, 255 in every sampled pixel (42,500 of
-  42,500 in one block), unchanged by all three fixes: its terrain and
-  mountains want DXT textures (above). Not implemented.
+  42,500 in one block), unchanged by all three fixes and by DXT: 3DMark
+  binds no texture to its terrain and mountains, for a reason not found.
 - **Black captures**: with four coordinate sets, 2 of 8 Image Quality
   captures were all black, both on boot 138; 0 of 4 before, and none on
   boots 139-146. The black runs flipped 62 times

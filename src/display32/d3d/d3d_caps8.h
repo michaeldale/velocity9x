@@ -23,6 +23,10 @@
 #define V9X_D3DFMT_Q8W8V8U8 63ul
 #define V9X_D3DFMT_D16      80ul
 #define V9X_D3DFMT_D24X8    77ul
+/* MAKEFOURCC('D','X','T','1') and so on. */
+#define V9X_D3DFMT_DXT1     0x31545844ul
+#define V9X_D3DFMT_DXT3     0x33545844ul
+#define V9X_D3DFMT_DXT5     0x35545844ul
 
 /* D3DFORMAT_OP_*, the DDK's ddrawi.h. */
 #define V9X_D3DFORMAT_OP_TEXTURE                  0x00000001ul

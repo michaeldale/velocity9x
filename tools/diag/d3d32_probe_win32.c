@@ -2745,7 +2745,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 8ul
+#define D32_T19_PROGRAMS 10ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -2846,6 +2846,10 @@ typedef HRESULT (WINAPI *d32_d3d8_surf_unlock_fn)(D32_OBJECT *);
 #define D32_PT_V(n)              D32_PT_SRC(V9X_PS11_FILE_INPUT, n)
 #define D32_PT_C(n)              D32_PT_SRC(V9X_PS11_FILE_CONST, n)
 #define D32_PT_T(n)              D32_PT_SRC(V9X_PS11_FILE_TEXTURE, n)
+/* t(n).a, the alpha replicated (swizzle FFh). */
+#define D32_PT_T_A(n) \
+    (0x80000000ul | ((DWORD)V9X_PS11_FILE_TEXTURE << 28) | (0xfful << 16) | \
+     (DWORD)(n))
 #define D32_PT_TO_R(n)           D32_PT_DST(V9X_PS11_FILE_TEMP, n)
 #define D32_PT_TO_T(n)           D32_PT_DST(V9X_PS11_FILE_TEXTURE, n)
 #define D32_PT_MOV               1ul
@@ -2877,6 +2881,7 @@ typedef struct d32_t19_program {
     DWORD cube;         /* bit N: stage N samples the cube texture     */
     DWORD normal;       /* bit N: stage N samples the normal map       */
     DWORD tokens[24];
+    DWORD dxt;          /* 1 or 3: stage 0 samples that DXT texture    */
 } D32_T19_PROGRAM;
 
 /*
@@ -2899,6 +2904,26 @@ typedef HRESULT (WINAPI *d32_d3d8_check_format_fn)(D32_OBJECT *, UINT,
 static D32_OBJECT *d32_t19_normal;
 static D32_OBJECT *d32_t19_stage0;
 static DWORD d32_t19_normal_stages;
+
+/*
+ * DXT on the HD 4600: 8x8 DXT1 and DXT3 textures, managed, made where the
+ * HAL device takes the format, 2 x 2 blocks filled through LockRect a row
+ * of blocks a Pitch. Each block has its own two 565 colours, colour 0 the
+ * larger so DXT1 is in four-colour mode, and every texel its own index, so
+ * both end colours and both thirds are read; DXT3 adds a 4-bit alpha a
+ * texel. The judge decodes the blocks itself: 565 widened by repeating the
+ * top bits, the thirds (2a + b) / 3 rounded down. Without the format the
+ * program is skipped, not counted. Nature in 3DMark 2001 SE draws its
+ * distant terrain and mountains with DXT1 and DXT3.
+ */
+#define D32_D3DFMT_DXT1 0x31545844ul
+#define D32_D3DFMT_DXT3 0x33545844ul
+#define D32_T19_DXT_BLOCKS 2l
+
+static D32_OBJECT *d32_t19_dxt1;
+static D32_OBJECT *d32_t19_dxt3;
+/* The DXT kind (1 or 3) stage 0 holds while a program is judged, or 0. */
+static DWORD d32_t19_dxt_kind;
 
 /*
  * Step 5c's cube: 8x8, two levels, A8R8G8B8, managed, made with
@@ -2983,7 +3008,19 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0),
         D32_PT_MAD, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_C(0), D32_PT_C(0),
-        D32_PT_END } }
+        D32_PT_END } },
+    /* Dxt1: tex t0 from a DXT1 texture; mov r0, t0. */
+    { "Dxt1", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(0),
+        D32_PT_END }, 1ul },
+    /* Dxt3: its explicit alpha shown too: mul r0, t0, t0.a. */
+    { "Dxt3", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_T_A(0),
+        D32_PT_END }, 3ul }
 };
 
 /* The Cube program's set 1 per vertex: directions whose plane passes near
@@ -3222,6 +3259,65 @@ static DWORD d32_t19_normal_texel(long x, long y)
            ((DWORD)(w & 0xffl) << 16) | ((DWORD)(q & 0xffl) << 24);
 }
 
+/* A block's two 565 colours; colour 0's red is the larger, so it is the
+ * larger number and DXT1 decodes four colours. */
+static void d32_t19_dxt_ends(long bx, long by, DWORD *c0, DWORD *c1)
+{
+    *c0 = ((DWORD)(31l - bx * 10l) << 11) | ((DWORD)(10l + by * 30l) << 5) |
+          (DWORD)(5l + bx * 12l + by * 6l);
+    *c1 = ((DWORD)(2l + by * 9l) << 11) | ((DWORD)(60l - bx * 20l) << 5) |
+          (DWORD)(28l - by * 15l);
+}
+
+/* Texel (x, y)'s colour index in its block, and DXT3's 4-bit alpha. */
+static DWORD d32_t19_dxt_index(long x, long y)
+{
+    return (DWORD)((x + y + x / 4l + y / 4l) & 3l);
+}
+
+static DWORD d32_t19_dxt_alpha4(long x, long y)
+{
+    return (DWORD)((x * 3l + y * 5l + x / 4l * 7l + y / 4l) & 15l);
+}
+
+/* A 565 colour as 8-bit channels, the top bits repeated below. */
+static void d32_t19_565(DWORD c, DWORD rgb[3])
+{
+    DWORD r = (c >> 11) & 31ul;
+    DWORD g = (c >> 5) & 63ul;
+    DWORD b = c & 31ul;
+
+    rgb[0] = (r << 3) | (r >> 2);
+    rgb[1] = (g << 2) | (g >> 4);
+    rgb[2] = (b << 3) | (b >> 2);
+}
+
+/* Texel (x, y) of the DXT `kind` texture as A8R8G8B8, decoded. */
+static DWORD d32_t19_dxt_texel(DWORD kind, long x, long y)
+{
+    DWORD c0;
+    DWORD c1;
+    DWORD a[3];
+    DWORD b[3];
+    DWORD out[3];
+    DWORD index = d32_t19_dxt_index(x, y);
+    DWORD alpha = 255ul;
+    DWORD k;
+
+    d32_t19_dxt_ends(x / 4l, y / 4l, &c0, &c1);
+    d32_t19_565(c0, a);
+    d32_t19_565(c1, b);
+    for (k = 0ul; k < 3ul; ++k) {
+        out[k] = index == 0ul ? a[k] : index == 1ul ? b[k] :
+                 index == 2ul ? (2ul * a[k] + b[k]) / 3ul
+                              : (a[k] + 2ul * b[k]) / 3ul;
+    }
+    if (kind == 3ul) {
+        alpha = d32_t19_dxt_alpha4(x, y) * 17ul;
+    }
+    return (alpha << 24) | (out[0] << 16) | (out[1] << 8) | out[2];
+}
+
 /* A signed byte over 127. */
 static float d32_t19_snorm(DWORD byte)
 {
@@ -3242,6 +3338,16 @@ static void d32_t19_sample(void *user, v9x_u32 stage, v9x_u32 count,
     float s;
     float t;
 
+    if (d32_t19_dxt_kind != 0ul && stage == 0ul) {
+        texel = d32_t19_dxt_texel(d32_t19_dxt_kind,
+                                  d32_t19_index(coords[0], unjudged),
+                                  d32_t19_index(coords[1], unjudged));
+        rgba[0] = (float)((texel >> 16) & 0xfful) / 255.0f;
+        rgba[1] = (float)((texel >> 8) & 0xfful) / 255.0f;
+        rgba[2] = (float)(texel & 0xfful) / 255.0f;
+        rgba[3] = (float)(texel >> 24) / 255.0f;
+        return;
+    }
     if ((d32_t19_normal_stages & (1ul << stage)) != 0ul) {
         texel = d32_t19_normal_texel(d32_t19_index(coords[0], unjudged),
                                      d32_t19_index(coords[1], unjudged));
@@ -3654,6 +3760,76 @@ static HRESULT d32_t19_normal_texture(D32_OBJECT *device, D32_OBJECT **map)
         *map, 0u);
 }
 
+/* A DXT texture, one level, its blocks written through LockRect: for
+ * DXT3 eight bytes of 4-bit alphas, low nibble first, then the colour
+ * block - two 565 colours and 2-bit indices, texel 0 in the low bits. */
+static HRESULT d32_t19_dxt_texture(D32_OBJECT *device, DWORD kind,
+                                   D32_OBJECT **texture)
+{
+    D32_D3DLOCKED_RECT locked;
+    HRESULT hr;
+    long bx;
+    long by;
+    long x;
+    long y;
+
+    *texture = 0;
+    hr = ((d32_d3d8_create_texture_fn)device->vtbl[D3DDEV8_CREATE_TEXTURE])(
+        device, (UINT)D32_T19_TEXELS, (UINT)D32_T19_TEXELS, 1u, 0ul,
+        kind == 1ul ? D32_D3DFMT_DXT1 : D32_D3DFMT_DXT3, D32_D3DPOOL_MANAGED,
+        texture);
+    if (hr != 0 || *texture == 0) {
+        *texture = 0;
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    d32_zero(&locked, sizeof(locked));
+    hr = ((d32_d3d8_tex_lock_fn)(*texture)->vtbl[D3DTEX8_LOCK_RECT])(
+        *texture, 0u, &locked, 0, 0ul);
+    if (hr != 0 || locked.pBits == 0) {
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    d32_hx(kind == 1ul ? "T19Dxt1Pitch" : "T19Dxt3Pitch",
+           (DWORD)locked.Pitch);
+    for (by = 0l; by < D32_T19_DXT_BLOCKS; ++by) {
+        for (bx = 0l; bx < D32_T19_DXT_BLOCKS; ++bx) {
+            BYTE *block = (BYTE *)locked.pBits + by * locked.Pitch +
+                          bx * (kind == 1ul ? 8l : 16l);
+            DWORD c0;
+            DWORD c1;
+            DWORD indices = 0ul;
+
+            if (kind == 3ul) {
+                for (y = 0l; y < 4l; ++y) {
+                    for (x = 0l; x < 4l; x += 2l) {
+                        block[y * 2l + x / 2l] = (BYTE)(
+                            d32_t19_dxt_alpha4(bx * 4l + x, by * 4l + y) |
+                            (d32_t19_dxt_alpha4(bx * 4l + x + 1l,
+                                                by * 4l + y) << 4));
+                    }
+                }
+                block += 8;
+            }
+            d32_t19_dxt_ends(bx, by, &c0, &c1);
+            for (y = 0l; y < 4l; ++y) {
+                for (x = 0l; x < 4l; ++x) {
+                    indices |= d32_t19_dxt_index(bx * 4l + x, by * 4l + y)
+                               << (2l * (y * 4l + x));
+                }
+            }
+            block[0] = (BYTE)c0;
+            block[1] = (BYTE)(c0 >> 8);
+            block[2] = (BYTE)c1;
+            block[3] = (BYTE)(c1 >> 8);
+            block[4] = (BYTE)indices;
+            block[5] = (BYTE)(indices >> 8);
+            block[6] = (BYTE)(indices >> 16);
+            block[7] = (BYTE)(indices >> 24);
+        }
+    }
+    return ((d32_d3d8_tex_unlock_fn)(*texture)->vtbl[D3DTEX8_UNLOCK_RECT])(
+        *texture, 0u);
+}
+
 /* The cube: each face and level filled through LockRect. */
 static HRESULT d32_t19_cube_texture(D32_OBJECT *device, D32_OBJECT **cube)
 {
@@ -3740,8 +3916,14 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         d32_line(key, "skip-no-q8w8v8u8");
         return 1ul;
     }
+    if ((p->dxt == 1ul && d32_t19_dxt1 == 0) ||
+        (p->dxt == 3ul && d32_t19_dxt3 == 0)) {
+        d32_line(key, "skip-no-dxt");
+        return 1ul;
+    }
     d32_t19_cube_stages = p->cube;
     d32_t19_normal_stages = p->normal;
+    d32_t19_dxt_kind = p->dxt;
     dwords = 0ul;
     while (p->tokens[dwords] != D32_PT_END) {
         ++dwords;
@@ -3792,6 +3974,14 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                     (DWORD)((d32_set_texture_fn)
                             device->vtbl[D3DDEV8_SET_TEXTURE])(
                         device, 0ul, d32_t19_normal));
+    }
+    /* A DXT texture in stage 0 likewise. */
+    if (p->dxt != 0ul) {
+        d32_t19_key(p->name, "SetDxtHr",
+                    (DWORD)((d32_set_texture_fn)
+                            device->vtbl[D3DDEV8_SET_TEXTURE])(
+                        device, 0ul,
+                        p->dxt == 1ul ? d32_t19_dxt1 : d32_t19_dxt3));
     }
     create_hr = ((d32_d3d8_create_ps_fn)
                  device->vtbl[D3DDEV8_CREATE_PIXEL_SHADER])(
@@ -3851,12 +4041,13 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
             device, 1ul, d32_t19_stage1);
     }
-    if ((p->normal & 0x1ul) != 0ul) {
+    if ((p->normal & 0x1ul) != 0ul || p->dxt != 0ul) {
         ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
             device, 0ul, d32_t19_stage0);
     }
     d32_t19_cube_stages = 0ul;
     d32_t19_normal_stages = 0ul;
+    d32_t19_dxt_kind = 0ul;
     wsprintfA(key, "T19%sVerdict", p->name);
     d32_line(key, verdict);
     return lstrcmpA(verdict, "pass") == 0 ? 1ul : 0ul;
@@ -3996,6 +4187,30 @@ static DWORD d32_ps11(void)
             goto release;
         }
     }
+    hr = ((d32_d3d8_check_format_fn)d3d->vtbl[D3D8_CHECK_DEVICE_FORMAT])(
+        d3d, 0u, D32_D3DDEVTYPE_HAL, mode.Format, 0ul, D32_D3DRTYPE_TEXTURE,
+        D32_D3DFMT_DXT1);
+    d32_hx("T19Dxt1CheckHr", (DWORD)hr);
+    if (hr == 0) {
+        hr = d32_t19_dxt_texture(device, 1ul, &d32_t19_dxt1);
+        d32_hx("T19Dxt1Hr", (DWORD)hr);
+        if (hr != 0) {
+            reason = "no-dxt1";
+            goto release;
+        }
+    }
+    hr = ((d32_d3d8_check_format_fn)d3d->vtbl[D3D8_CHECK_DEVICE_FORMAT])(
+        d3d, 0u, D32_D3DDEVTYPE_HAL, mode.Format, 0ul, D32_D3DRTYPE_TEXTURE,
+        D32_D3DFMT_DXT3);
+    d32_hx("T19Dxt3CheckHr", (DWORD)hr);
+    if (hr == 0) {
+        hr = d32_t19_dxt_texture(device, 3ul, &d32_t19_dxt3);
+        d32_hx("T19Dxt3Hr", (DWORD)hr);
+        if (hr != 0) {
+            reason = "no-dxt3";
+            goto release;
+        }
+    }
     d32_hx("T19TextureCaps", caps[D32_D3DCAPS8_TEXTURE_CAPS]);
     if ((caps[D32_D3DCAPS8_TEXTURE_CAPS] & D32_D3DPTEXTURECAPS_CUBEMAP) !=
         0ul) {
@@ -4053,6 +4268,14 @@ release:
     if (d32_t19_normal != 0) {
         ((d32_release_fn)d32_t19_normal->vtbl[COM_RELEASE])(d32_t19_normal);
         d32_t19_normal = 0;
+    }
+    if (d32_t19_dxt1 != 0) {
+        ((d32_release_fn)d32_t19_dxt1->vtbl[COM_RELEASE])(d32_t19_dxt1);
+        d32_t19_dxt1 = 0;
+    }
+    if (d32_t19_dxt3 != 0) {
+        ((d32_release_fn)d32_t19_dxt3->vtbl[COM_RELEASE])(d32_t19_dxt3);
+        d32_t19_dxt3 = 0;
     }
     d32_t19_stage0 = 0;
     d32_t19_stage1 = 0;

@@ -287,3 +287,35 @@ int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
     }
     return 0;
 }
+
+int v9x_d3d_hsw_bc_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u16 *format,
+                          int *has_alpha, v9x_u32 *block_bytes)
+{
+    v9x_u16 bc;
+    v9x_u32 bytes;
+
+    if ((flags & (V9X_D3D_HSW_DDPF_D3DFORMAT | V9X_D3D_HSW_DDPF_FOURCC)) ==
+        0ul) {
+        return 0;
+    }
+    switch (fourcc) {
+    case V9X_D3D_HSW_FOURCC_DXT1:
+        bc = V9X_HSW_FMT_BC1_UNORM;
+        bytes = 8ul;
+        break;
+    case V9X_D3D_HSW_FOURCC_DXT3:
+        bc = V9X_HSW_FMT_BC2_UNORM;
+        bytes = 16ul;
+        break;
+    case V9X_D3D_HSW_FOURCC_DXT5:
+        bc = V9X_HSW_FMT_BC3_UNORM;
+        bytes = 16ul;
+        break;
+    default:
+        return 0;
+    }
+    *format = bc;
+    *has_alpha = 1;
+    *block_bytes = bytes;
+    return 1;
+}

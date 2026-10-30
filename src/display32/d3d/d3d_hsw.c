@@ -179,7 +179,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     2ul,            /* texture_stages */
     /* DDI 6 programs are told of the guard band: V9XD32 T10, 3DMark 2000
      * and Half-Life ran on the 4570 with it (boots 81-82). */
-    1ul             /* guard_band_ddi6 */
+    1ul,            /* guard_band_ddi6 */
+    /* DXT1/3/5 as BC1-3, placed in block trees (v9x_d3d_hsw_tree). */
+    1ul             /* dxt_textures */
 };
 
 /* One texture unit as the sampler reads it. */
@@ -583,13 +585,38 @@ static int v9x_d3d_hsw_texture_format_of(const V9X_DD_SURFACE_LCL *surface,
     } else if (!v9x_d3d_hsw_signed_format(pf->dwFlags, pf->dwFourCC,
                                           pf->dwRGBBitCount, pf->dwRBitMask,
                                           pf->dwGBitMask, pf->dwBBitMask,
-                                          format, has_alpha, &texel_bytes)) {
+                                          format, has_alpha, &texel_bytes) &&
+               !v9x_d3d_hsw_bc_format(pf->dwFlags, pf->dwFourCC, format,
+                                      has_alpha, &texel_bytes)) {
         return 0;
     }
     if (bytes != 0) {
         *bytes = texel_bytes;
     }
     return 1;
+}
+
+/* A BC1-3 (DXT) format, whose `bytes` from texture_format_of are a 4 x 4
+ * block's, not a texel's. */
+static int v9x_d3d_hsw_is_bc(v9x_u16 format)
+{
+    return format == V9X_HSW_FMT_BC1_UNORM ||
+           format == V9X_HSW_FMT_BC2_UNORM ||
+           format == V9X_HSW_FMT_BC3_UNORM;
+}
+
+/* The tree a texture of this format is placed and sampled in: in texels,
+ * or in blocks for BC1-3 (v9x_intel_hsw_miptree_bc). */
+static v9x_status v9x_d3d_hsw_tree(v9x_u16 format, DWORD width, DWORD height,
+                                   DWORD levels, DWORD bytes,
+                                   struct v9x_hsw_miptree *tree)
+{
+    if (v9x_d3d_hsw_is_bc(format)) {
+        return v9x_intel_hsw_miptree_bc((v9x_u16)width, (v9x_u16)height,
+                                        (v9x_u8)levels, (v9x_u8)bytes, tree);
+    }
+    return v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
+                                 (v9x_u8)levels, (v9x_u8)bytes, tree);
 }
 
 static int v9x_d3d_hsw_texture_format(const V9X_DD_SURFACE_LCL *surface,
@@ -782,8 +809,7 @@ static v9x_u8 v9x_d3d_hsw_mip_levels(const V9X_DD_SURFACE_LCL *top)
     }
     /* The tree is laid out in the texel size create_miptree placed it at. */
     if (!v9x_d3d_hsw_texture_format_of(top, &format, &has_alpha, &bytes) ||
-        v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
-                              (v9x_u8)count, (v9x_u8)bytes, &tree) !=
+        v9x_d3d_hsw_tree(format, width, height, count, bytes, &tree) !=
             V9X_STATUS_OK) {
         ++v9x_hal->d3d_diagnostics.mip_gap_shape;
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
@@ -932,7 +958,146 @@ static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
         unit->height > v9x_d3d_hsw_limits.texture_size_max) {
         return V9X_D3D_HSW_REFUSE_TEXTURE;
     }
+    /* A DXT texture DirectDraw placed (its heap is named: the engine's
+     * leave lpVidMemHeap, dwBlockSizeX, null) is laid out linearly, not in
+     * a block tree, and its lPitch is a linear size. */
+    if (v9x_d3d_hsw_is_bc(unit->format) &&
+        surface->lpGbl->dwBlockSizeX != 0ul) {
+        return V9X_D3D_HSW_REFUSE_TEXTURE;
+    }
     return V9X_D3D_HSW_REFUSE_NONE;
+}
+
+/*
+ * DXT levels and the CPU. DirectDraw keeps a DXT surface's lPitch as its
+ * linear size, and whatever writes one - the Direct3D 8 runtime uploading
+ * a managed texture, or DirectDraw's own Blt - writes its rows of blocks
+ * back to back from the address Lock hands out. The engine keeps the
+ * level in a block tree at the tree's pitch (v9x_d3d_hsw_tree), so on the
+ * 4570 an 8 x 8 DXT1 written so had its second row of blocks inside the
+ * first row's padding: V9XD32 T19 Dxt1 black on a quarter of its pixels
+ * (boot 156). So Lock points the level, for the lock's length, at a linear
+ * copy in the locking process's memory, filled from the tree; Unlock
+ * writes it back into the tree at the tree's pitch and points the level
+ * at the tree again. Locks come and go under the Win16 lock, a few at a
+ * time.
+ */
+#define V9X_D3D_HSW_BC_LOCKS 8u
+
+typedef struct v9x_d3d_hsw_bc_lock {
+    const V9X_DD_SURFACE_LCL *surface;
+    DWORD process;
+    DWORD tree;
+    BYTE *linear;
+} V9X_D3D_HSW_BC_LOCK;
+
+static V9X_D3D_HSW_BC_LOCK v9x_d3d_hsw_bc_locks[V9X_D3D_HSW_BC_LOCKS];
+
+/* An engine-placed DXT level: its rows of blocks and their bytes; 0 for
+ * any other surface. */
+static int v9x_d3d_hsw_bc_level(const V9X_DD_SURFACE_LCL *surface,
+                                DWORD *rows, DWORD *row_bytes)
+{
+    v9x_u16 format = 0u;
+    int has_alpha = 0;
+    v9x_u32 block = 0ul;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->fpVidMem == 0ul ||
+        surface->lpGbl->dwBlockSizeX != 0ul ||
+        surface->lpGbl->lPitch <= 0l ||
+        !v9x_d3d_hsw_texture_format_of(surface, &format, &has_alpha,
+                                       &block) ||
+        !v9x_d3d_hsw_is_bc(format)) {
+        return 0;
+    }
+    *rows = ((DWORD)surface->lpGbl->wHeight + 3ul) / 4ul;
+    *row_bytes = ((DWORD)surface->lpGbl->wWidth + 3ul) / 4ul * block;
+    return *rows != 0ul && *row_bytes <= (DWORD)surface->lpGbl->lPitch;
+}
+
+static void v9x_d3d_hsw_lock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_HSW_BC_LOCK *slot = 0;
+    const BYTE *from;
+    DWORD rows;
+    DWORD row_bytes;
+    DWORD pitch;
+    DWORD n;
+    DWORD row;
+    DWORD i;
+
+    if (!v9x_d3d_hsw_bc_level(surface, &rows, &row_bytes)) {
+        return;
+    }
+    for (n = 0ul; n < V9X_D3D_HSW_BC_LOCKS; ++n) {
+        if (v9x_d3d_hsw_bc_locks[n].surface == surface) {
+            return;     /* already pointed at its linear copy */
+        }
+        if (slot == 0 && v9x_d3d_hsw_bc_locks[n].surface == 0) {
+            slot = &v9x_d3d_hsw_bc_locks[n];
+        }
+    }
+    if (slot == 0) {
+        return;
+    }
+    slot->linear = (BYTE *)VirtualAlloc(0, rows * row_bytes,
+                                        MEM_COMMIT | MEM_RESERVE,
+                                        PAGE_READWRITE);
+    if (slot->linear == 0) {
+        return;
+    }
+    pitch = (DWORD)surface->lpGbl->lPitch;
+    from = (const BYTE *)surface->lpGbl->fpVidMem;
+    for (row = 0ul; row < rows; ++row) {
+        for (i = 0ul; i < row_bytes; ++i) {
+            slot->linear[row * row_bytes + i] = from[row * pitch + i];
+        }
+    }
+    slot->surface = surface;
+    slot->process = GetCurrentProcessId();
+    slot->tree = surface->lpGbl->fpVidMem;
+    surface->lpGbl->fpVidMem = (DWORD)slot->linear;
+}
+
+static void v9x_d3d_hsw_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_HSW_BC_LOCK *slot = 0;
+    BYTE *to;
+    DWORD rows;
+    DWORD row_bytes;
+    DWORD pitch;
+    DWORD n;
+    DWORD row;
+    DWORD i;
+
+    for (n = 0ul; n < V9X_D3D_HSW_BC_LOCKS; ++n) {
+        if (surface != 0 && v9x_d3d_hsw_bc_locks[n].surface == surface) {
+            slot = &v9x_d3d_hsw_bc_locks[n];
+            break;
+        }
+    }
+    if (slot == 0) {
+        return;
+    }
+    surface->lpGbl->fpVidMem = slot->tree;
+    /* The copy lives in the process that locked; from another one only
+     * the address can be put back. */
+    if (slot->process == GetCurrentProcessId() &&
+        v9x_d3d_hsw_bc_level(surface, &rows, &row_bytes)) {
+        pitch = (DWORD)surface->lpGbl->lPitch;
+        to = (BYTE *)slot->tree;
+        for (row = 0ul; row < rows; ++row) {
+            for (i = 0ul; i < row_bytes; ++i) {
+                to[row * pitch + i] = slot->linear[row * row_bytes + i];
+            }
+        }
+        (void)VirtualFree(slot->linear, 0ul, MEM_RELEASE);
+    }
+    slot->surface = 0;
+    slot->linear = 0;
 }
 
 /* Whether the fixed-function kernels can sample a unit: not a cube, and
@@ -3016,14 +3181,13 @@ static DWORD v9x_d3d_hsw_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
             return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
         }
     }
-    /* A layout the sampler takes (565, 1555, 4444, ARGB8888, XRGB8888),
-     * and its texel size, which the layout is computed in. No format of its
-     * own means the display's. */
+    /* A layout the sampler takes (565, 1555, 4444, ARGB8888, XRGB8888, the
+     * signed formats, BC1-3), and its texel or block size, which the
+     * layout is computed in. No format of its own means the display's. */
     if (!v9x_d3d_hsw_texture_format_of(top, &format, &has_alpha, &bytes)) {
         return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_FORMAT);
     }
-    if (v9x_intel_hsw_miptree((v9x_u16)width, (v9x_u16)height,
-                              (v9x_u8)data->dwSCnt, (v9x_u8)bytes, &tree) !=
+    if (v9x_d3d_hsw_tree(format, width, height, data->dwSCnt, bytes, &tree) !=
             V9X_STATUS_OK) {
         return v9x_d3d_hsw_miptree_decline(V9X_D3D_HSW_MIPTREE_SHAPE);
     }
@@ -3109,6 +3273,7 @@ static DWORD v9x_d3d_hsw_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
         side > v9x_d3d_hsw_limits.texture_size_max ||
         !v9x_d3d_hsw_texture_format_of(list[0], &format, &has_alpha,
                                        &bytes) ||
+        v9x_d3d_hsw_is_bc(format) ||
         v9x_intel_hsw_cubetree((v9x_u16)side, (v9x_u8)levels, (v9x_u8)bytes,
                                &tree) != V9X_STATUS_OK) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -3191,7 +3356,7 @@ static DWORD v9x_d3d_hsw_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     /* A signed format comes as a FourCC with no bit count, so DirectDraw
      * cannot size it: T19 Normal read every channel as U from a texture
      * it placed (the 4570, boot 133). The engine places it, one level or
-     * a chain, as a tree at its texel size. */
+     * a chain, as a tree at its texel size; DXT likewise, in blocks. */
     if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
         (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
         (surface->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) == 0ul) {
@@ -3874,7 +4039,7 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_draw_indexed,
     v9x_d3d_hsw_draw_tnl,
     v9x_d3d_hsw_tnl_available,
-    0,                                  /* lock_surface: linear surfaces */
-    0,
+    v9x_d3d_hsw_lock_surface,           /* lock_surface: DXT levels */
+    v9x_d3d_hsw_unlock_surface,
     v9x_d3d_hsw_draw_shader
 };

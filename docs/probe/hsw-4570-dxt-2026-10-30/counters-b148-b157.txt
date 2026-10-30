@@ -1,0 +1,8 @@
+[boot 157: Nature + Pixel Shader + Advanced Pixel Shader, before -> after]
+M64Policy03=0 -> 0
+Ps11TrianglesDropped=0 -> 0
+MipTreeDeclined=0 -> 0
+DrawsNoHandle=995 -> 33673
+WatchFaultCode=0x00000000 -> 0x00000000
+[boot 148: Nature alone, no DXT]
+MipTreeDeclined=2 -> 2136

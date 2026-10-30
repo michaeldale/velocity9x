@@ -451,9 +451,10 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
      a run), and shader triangles spanning 8K clipped rather than dropped.
      Default benchmark 1834, texture refusals and dropped shader
      triangles 0 (boot 146); V9XD32 and Half-Life D3D pass. The sky stays
-     flat white: its distant terrain and mountains are DXT1/DXT3
-     textures, which 3DMark creates and binds once DXT is published
-     (boot 154) and silently leaves unbound otherwise. 2 of 8 captures on
+     flat white: 3DMark binds no texture to its distant terrain and
+     mountains. DXT was suspected (boot 154) and implemented (boot 157,
+     [`../decisions/2026-10-30-haswell-dxt-textures.md`](../decisions/2026-10-30-haswell-dxt-textures.md)),
+     and the sky did not change; the cause is open. 2 of 8 captures on
      boot 138 were black.
      Record:
      [`../decisions/2026-10-30-haswell-ps11-step6-nature.md`](../decisions/2026-10-30-haswell-ps11-step6-nature.md).
