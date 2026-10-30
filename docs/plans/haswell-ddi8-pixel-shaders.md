@@ -59,7 +59,11 @@ Step 4 done 2026-10-30, host only
 - Kernels are 512 to 2,544 bytes, so shader kernels need their own region
   in step 5.
 
-Steps 5-7 are not started.
+Steps 5-7 done 2026-10-30 (boots 120-166): Nature, the Pixel Shader
+tests and the default benchmark run with nothing refused; Nature's
+distant terrain and mountains are untextured, which is parked. The
+closing record is
+[`../decisions/2026-10-30-haswell-ddi8-ps11-record.md`](../decisions/2026-10-30-haswell-ddi8-ps11-record.md).
 Claims about the tree cite files at `7a2a0504`. Claims about DirectX 8 and
 3DMark that are recalled rather than read or measured are marked so; step 1
 and step 3 exist to replace them with evidence.
@@ -462,6 +466,9 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
    held, the tolerance, what is refused and why. The PS path is the
    Haswell default from step 5's gate, with the `=7` override as the
    escape.
+   - **Status, 2026-10-30: done.** All four premises held, two with
+     additions found on hardware. Record:
+     [`../decisions/2026-10-30-haswell-ddi8-ps11-record.md`](../decisions/2026-10-30-haswell-ddi8-ps11-record.md).
 
 ## Risks
 
