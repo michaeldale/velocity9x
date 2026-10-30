@@ -92,6 +92,37 @@ cuts such a triangle to the target and draws its fan.
 The Nature frame (Image Quality, boot 146) is the boot 138 one: lake
 drawn, sky white.
 
+## The white sky is missing DXT textures (boots 147-154)
+
+Measurement builds, none kept:
+
+- **What the white is.** Three white batches a frame and the indexed
+  ones after them carry FVF 104h (XYZRHW + one coordinate set, no
+  diffuse), select D3DTA_TEXTURE in stage 0 (COLOROP SELECTARG1, arg1 2)
+  and have nothing bound in any stage (boot 150). Depth-tested, opaque,
+  z 0.9997-0.9999. Skipped (boot 153), the frame shows a dark sky with
+  the sun glare and black holes where the far shore and the mountains
+  are: they are the distant terrain and the mountain range of public
+  Nature screenshots, drawn without their texture.
+- **What 3DMark bound.** A ring of the last 48 stage states before the
+  first white draw (boot 151): the sky strips drawn first, each with its
+  own texture (handles 4Bh to 98h), then every stage set to 0 and the
+  terrain drawn.
+- **Not the cause:** ValidateDevice (216 questions in the run, none
+  refused, boot 152); projected textures and texgen claimed (boot 149, no
+  change); 16-bit textures, half the texture memory (boot 150, no
+  change); a texture factor (never set).
+- **The cause.** DXT1, DXT3 and DXT5 published in the DDI 8 list
+  (boot 154): 3DMark creates 24 DXT textures, 18 DXT1 (128 to 1024
+  square, one 256 x 128) and 6 DXT3 (256 x 64, 256 square, 1024 x 256) and binds them, and no white draw
+  is left. The frame was black: the engine can neither place nor sample
+  a block-compressed texture. Without DXT the renderer binds nothing for
+  those maps and says nothing.
+
+So the sky needs DXT textures on the HD 4600: placed by the engine
+(FourCC, no bit count, as Q8W8V8U8) and sampled as BC1/BC2/BC3, by the
+fixed-function kernels as well as the PS ones.
+
 ## Ruled out
 
 - **The ±8191 band itself** (boot 135): a HAL with a ±4096 limit, where
@@ -104,12 +135,8 @@ drawn, sky white.
 ## Not done, not checked
 
 - **The sky is flat white**, 255 in every sampled pixel (42,500 of
-  42,500 in one block), unchanged by all three fixes. The three white
-  draws per frame are untextured by 3DMark's own state: stage 0 selects
-  the vertex colour, stage 1 is disabled, no stage has a texture, yet the
-  vertices carry varying UVs. Whether a later pass should cover them, or
-  Nature's sky is meant to be that bright, was not settled: no reference
-  frame was compared.
+  42,500 in one block), unchanged by all three fixes: its terrain and
+  mountains want DXT textures (above). Not implemented.
 - **Black captures**: with four coordinate sets, 2 of 8 Image Quality
   captures were all black, both on boot 138; 0 of 4 before, and none on
   boots 139-146. The black runs flipped 62 times
