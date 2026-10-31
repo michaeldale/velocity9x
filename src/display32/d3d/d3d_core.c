@@ -9601,7 +9601,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         name = "Velocity9x Rage 128";
     } else if (ops == &v9x_d3d_engine_eg) {
         out->engine = V9X_R3D_ABI_ENGINE_EVERGREEN;
-        name = "Velocity9x Radeon HD 5450";
+        /* The same engine on Caicos, named by its identity bit; it read
+         * "HD 5450" there until 2026-11-01 (Quake 3 on M-D7TFW4). */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul) {
+            name = "Velocity9x Radeon HD 7470";
+        } else {
+            name = "Velocity9x Radeon HD 5450";
+        }
     } else if (ops == &v9x_d3d_engine_vi) {
         out->engine = V9X_R3D_ABI_ENGINE_VI;
         name = "Velocity9x Radeon R7E";
