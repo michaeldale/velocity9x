@@ -15,7 +15,11 @@ Phase 2 starts with 40-bit GPU addresses. Phase 2 done (2026-10-31,
 [record](../decisions/2026-10-31-caicos-dma-write-probe.md)): DMA packets
 and the driver carry bits 39:32; Caicos is a row in `cedar_hw16.c`
 (decision 1, Michael) claiming fill and copy, V9XDDP's blit checks pass on
-the engine at 16 bpp. Next: Phase 3, flips. Parent plans:
+the engine at 16 bpp. Phase 3 (2026-10-31,
+[record](../decisions/2026-10-31-caicos-page-flips.md)): flips handled
+and confirmed by the chip, vblank pacing unmeasured. **On the ati build
+Quake 3 does not start** (no software GL once an engine is claimed
+without D3D); it runs only on vbe until Phase 5. Parent plans:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md) (2D, flips, heap) and
 [ati-evergreen-cedar-3d.md](ati-evergreen-cedar-3d.md) (CP, Direct3D,
 OpenGL).
