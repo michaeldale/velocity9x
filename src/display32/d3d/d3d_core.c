@@ -4492,6 +4492,15 @@ static void v9x_d3d_apply_ddi_level(int ddi6)
     }
     lines = &v9x_hal->d3d_global.hwCaps.dpcLineCaps;
     if (ddi6) {
+        /* The DX6 filter bits beside each engine's DX5 words. A DX6 or DX7
+         * program reads MINF, MAGF and MIPF, not the DX5 words: told none,
+         * 3DMark 2000 point-sampled every texture on the HD 4600 at DDI 7
+         * (FilterMagSeen 0x2, NEAREST alone, the 4570 boot 169) and its sky
+         * drew in 16-pixel blocks. The same derivation DDI 8 publishes
+         * (v9x_d3d_caps8_filter), so no engine claims a filter it lacks. */
+        v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps =
+            v9x_d3d_caps8_filter(
+                v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwTextureFilterCaps);
         v9x_hal->d3d_global.hwCaps.dwDevCaps |= V9X_D3DDEVCAPS_DRAWPRIMITIVES2;
         *lines = v9x_hal->d3d_global.hwCaps.dpcTriCaps;
         v9x_hal->d3d_global.hwCaps.dwFlags |= V9X_D3DDD_LINECAPS;
@@ -6064,6 +6073,78 @@ static V9X_D3D_SURFACE_HANDLE *v9x_d3d_ddi7_surface(
     return entry;
 }
 
+/* Flip-chain targets whose handle had moved to another surface, logged up
+ * to this many times a boot. */
+#define V9X_D3D_SETRT_MOVED_LOGGED 8ul
+/* A flip chain's surfaces: front and two back buffers is three; the walk
+ * stops at this many links whatever the list says. */
+#define V9X_D3D_FLIP_CHAIN_LINKS 8u
+
+static DWORD v9x_d3d_setrt_moved_logged = 0ul;
+
+/*
+ * The flip-chain surface that holds handle now, starting from surface, the
+ * one the handle table recorded at CreateSurfaceEx.
+ *
+ * A flip rotates the chain's memory among its local objects, and moves the
+ * CreateSurfaceEx handles with it, so one handle keeps naming one page
+ * while the object the table recorded points at another after every flip.
+ * Read through that object, SETRENDERTARGET's handle drew into a page that
+ * turns the other way round the chain: on the 4570 (boot 169, 3DMark 2000
+ * Game 1, triple buffered) the first draw after each flip went to the page
+ * just put on screen one flip in three, and 21,358 draws went to the page
+ * being shown (docs\issues\2026-11-01-haswell-3dmark2000-flicker-and-
+ * blocky-sky.md). DDI 6 names the target by the application's own surface
+ * and never had this. A surface outside a flip chain, or a chain where no
+ * object holds the handle, is returned as it is.
+ */
+static V9X_DD_SURFACE_LCL *v9x_d3d_ddi7_chain_holder(
+    V9X_DD_SURFACE_LCL *surface, DWORD handle)
+{
+    const V9X_DD_ATTACH_NODE *node;
+    V9X_DD_SURFACE_LCL *at = surface;
+    unsigned int links;
+
+    if (surface == 0 || IsBadReadPtr(surface, sizeof(*surface)) ||
+        (surface->ddsCaps & V9X_DDSCAPS_FLIP) == 0ul ||
+        v9x_d3d_surface_handle_of(surface) == handle) {
+        return surface;
+    }
+
+    /* Each surface of the chain is attached to the one before it, and the
+     * last to the front: follow the attachment that is itself a flip
+     * surface. */
+    for (links = 0u; links < V9X_D3D_FLIP_CHAIN_LINKS; ++links) {
+        V9X_DD_SURFACE_LCL *next = 0;
+
+        node = IsBadReadPtr((const void *)at->lpAttachList,
+                            sizeof(V9X_DD_ATTACH_NODE))
+                   ? 0 : (const V9X_DD_ATTACH_NODE *)at->lpAttachList;
+        while (node != 0 && !IsBadReadPtr(node, sizeof(*node))) {
+            if (node->object != 0 && node->object != at &&
+                !IsBadReadPtr(node->object, sizeof(*node->object)) &&
+                (node->object->ddsCaps & V9X_DDSCAPS_FLIP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next == surface) {
+            break;
+        }
+        if (v9x_d3d_surface_handle_of(next) == handle) {
+            if (v9x_d3d_setrt_moved_logged < V9X_D3D_SETRT_MOVED_LOGGED) {
+                ++v9x_d3d_setrt_moved_logged;
+                v9x_d3d_ddi7_log("setrt-moved", handle, (DWORD)surface,
+                                 (DWORD)next, links);
+            }
+            return next;
+        }
+        at = next;
+    }
+    return surface;
+}
+
 /*
  * D3DTSS_TEXTUREMAP at DDI 7 names a surface by handle. The DDI 6 code
  * draws from a texture record (V9X_D3D_TEXTURE), so the handle is turned
@@ -6323,7 +6404,10 @@ static int v9x_d3d_dp2_dx7(void *opaque, v9x_u32 op, v9x_u32 count,
             v9x_d3d_dp2_draw_run();
             set = target != 0 &&
                   v9x_d3d_set_target_lcl(
-                      context, (V9X_DD_SURFACE_LCL *)target->surface,
+                      context,
+                      v9x_d3d_ddi7_chain_holder(
+                          (V9X_DD_SURFACE_LCL *)target->surface,
+                          words[i * 2ul]),
                       depth != 0 ? (V9X_DD_SURFACE_LCL *)depth->surface : 0,
                       words[i * 2ul + 1ul] != 0ul);
             /* Every frame of a flip chain sets one: logged only when it

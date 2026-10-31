@@ -50,6 +50,21 @@ build identifier so exact guest-tested binaries remain traceable.
   issue: Nature's distant terrain and mountains draw white
   ([record](docs/decisions/2026-10-30-haswell-ddi8-ps11-record.md),
   [record](docs/decisions/2026-10-30-haswell-dxt-textures.md)).
+- **Fixed: DirectX 7 games flickered on the HD 4600**, with frames shown
+  half drawn (3DMark 2000's helicopter missing, its HUD part drawn). A
+  DirectX 7 program names its render target by surface handle each
+  frame. A page flip moves those handles round the flip chain with the
+  memory, and the driver followed the wrong one, drawing into the page on
+  screen: 21,358 draws in one Game 1 run, now 0. Present in 0.33.0 too.
+  Any engine serving DirectX 7 programs at DDI 7 takes the fix
+  ([record](docs/issues/2026-11-01-haswell-3dmark2000-flicker-and-blocky-sky.md)).
+- **Fixed: DirectX 6 and 7 programs point-sampled every texture**, which
+  showed as a blocky sky in 3DMark 2000. The driver published the DX5
+  filter words but not the DX6 linear and mip filter bits these programs
+  test for, so they chose point sampling. Every engine now publishes
+  the DX6 bits for the filters it draws. Measured on the HD 4600; the
+  other engines take the same derivation unmeasured
+  ([record](docs/issues/2026-11-01-haswell-3dmark2000-flicker-and-blocky-sky.md)).
 - **No more floppy disk sets.** The shared HAL outgrew a 1.44 MB disk, and
   floppies are no longer a requirement (Michael, 2026-10-29 and
   2026-10-31). The packages and the gate no longer build them; use the

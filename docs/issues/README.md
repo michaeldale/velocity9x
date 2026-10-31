@@ -90,6 +90,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-11-01 Haswell, 3DMark 2000 Game 1: unfinished frames presented (flicker) and a point-sampled, blocky sky; both in 0.33.0 too; fixed and seen on the monitor at boot 171 (DDI 7 render target by handle after a flip; DX6 filter caps)](2026-11-01-haswell-3dmark2000-flicker-and-blocky-sky.md)
 - [2026-10-20 Haswell, 3DMark 2001 SE flicker on the i5-4570 (fixed 2026-10-20: draws and engine clears now wait for a pending flip; 20 half-built frames in 117 before, 0 in 32,310 after)](2026-10-20-haswell-3dmark2001se-flicker.md)
 - [2026-10-16 ATI: 16 bpp modes with no 15 bpp sibling stay 5:6:5 (fixed 2026-10-16: the twins were in the BIOS list under ATI's numbers; Wipeout's title draws, Assault Rigs' screen not yet looked at)](2026-10-16-ati-16bpp-modes-without-a-555-sibling.md)
 - [2026-10-14 GitHub issue 6: a reporter's embedded GMA 950 board hard-locked on 3D (fixed in 0.18.3: the live-counter read of a disabled pipe; confirmed by the reporter 2026-10-15)](2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)
