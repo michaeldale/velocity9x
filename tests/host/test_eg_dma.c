@@ -482,11 +482,22 @@ typedef char v9x_eg_pfp_size_matches[
     sizeof(v9x_eg_pfp_microcode) == 1120u * sizeof(v9x_u32) ? 1 : -1];
 typedef char v9x_eg_me_size_matches[
     sizeof(v9x_eg_me_microcode) == 1376u * sizeof(v9x_u32) ? 1 : -1];
+typedef char v9x_eg_caicos_pfp_size_matches[
+    sizeof(v9x_eg_caicos_pfp_microcode) == 1120u * sizeof(v9x_u32) ? 1 : -1];
+typedef char v9x_eg_caicos_me_size_matches[
+    sizeof(v9x_eg_caicos_me_microcode) == 1376u * sizeof(v9x_u32) ? 1 : -1];
 
 static void test_cp_microcode(void)
 {
     CHECK(v9x_eg_pfp_microcode[0] == 0x7c408000ul);
     CHECK(v9x_eg_me_microcode[0] == 0x7c408000ul);
+    /* Caicos's images, which V9XEGCP ran on M-D7TFW4
+     * (docs\decisions\2026-10-31-caicos-cp-microcode.md): the first dword
+     * as it read it, the last from the files. */
+    CHECK(v9x_eg_caicos_pfp_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_caicos_me_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_caicos_pfp_microcode[1119] == 0x00000005ul);
+    CHECK(v9x_eg_caicos_me_microcode[1375] == 0x000f0496ul);
 }
 
 unsigned int v9x_run_eg_dma_tests(void)

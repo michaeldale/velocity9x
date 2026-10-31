@@ -77,6 +77,13 @@
 /* 96 PS threads; ((192 - 96) / 6 / 8) * 8 = 16 for each other stage. */
 #define EG_SQ_THREAD_VALUE      0x10101060ul
 #define EG_SQ_THREAD_2_VALUE    0x00001010ul
+/* Caicos: 128 PS threads. evergreen_gpu_init gives each other stage
+ * ((192 - 128) / 6 / 8) * 8 = 8; Linux 3.9's set_default_state gives it
+ * 10 (evergreen_blit_kms.c, CHIP_CAICOS). */
+#define EG_SQ_THREAD_CAICOS_INIT     0x08080880ul
+#define EG_SQ_THREAD_2_CAICOS_INIT   0x00000808ul
+#define EG_SQ_THREAD_CAICOS_DEFAULT  0x0a0a0a80ul
+#define EG_SQ_THREAD_2_CAICOS_DEFAULT 0x00000a0aul
 /* 256 / 6 = 42 stack entries for every stage. */
 #define EG_SQ_STACK_VALUE       0x002a002aul
 /* FORCE_EOV_MAX_CLK_CNT(4095) | FORCE_EOV_MAX_REZ_CNT(255) */
@@ -135,6 +142,72 @@ const struct v9x_eg_reg_update
     { EG_HDP_MISC_CNTL, 0xfffffffful, EG_HDP_FLUSH_INVALIDATE },
     { EG_PA_CL_ENHANCE, 0ul, EG_PA_CL_ENHANCE_VALUE }
 };
+
+/*
+ * Caicos's numbers in evergreen_gpu_init are Cedar's (1 SE, 2 pipes, 2
+ * SIMDs, 1 backend, 256 GPRs, 192 threads, 256 stack entries, the same
+ * SX and FIFO sizes, no vertex cache, golden GB_ADDR_CONFIG 02010001), but
+ * Linux writes SMX_SAR_CTL0 only up to SUMO2 and gives Caicos 128 PS
+ * threads. Cedar's table otherwise, in its order.
+ */
+const struct v9x_eg_reg_update
+    v9x_eg_caicos_gpu_init[V9X_EG_CAICOS_GPU_INIT_COUNT] = {
+    { V9X_EG_GRBM_CNTL, 0ul, EG_GRBM_CNTL_VALUE },
+    { EG_GB_ADDR_CONFIG, 0ul, EG_CEDAR_GB_ADDR_CONFIG },
+    { EG_GB_BACKEND_MAP, 0ul, 0ul },
+    { EG_CGTS_SYS_TCC_DISABLE, 0ul, 0ul },
+    { EG_CGTS_TCC_DISABLE, 0ul, 0ul },
+    { EG_CGTS_USER_SYS_TCC, 0ul, 0ul },
+    { EG_CGTS_USER_TCC, 0ul, 0ul },
+    { EG_CP_QUEUE_THRESHOLDS, 0ul, EG_CP_QUEUE_VALUE },
+    { EG_CP_MEQ_THRESHOLDS, 0ul, EG_CP_MEQ_VALUE },
+    { EG_TA_CNTL_AUX, 0ul, EG_TA_CNTL_AUX_VALUE },
+    { EG_SX_DEBUG_1, 0xfffffffful, EG_ENABLE_NEW_SMX },
+    { EG_SMX_DC_CTL0, EG_SMX_SETS_KEEP, EG_SMX_SETS_CEDAR },
+    { EG_SX_EXPORT_SIZES, 0ul, EG_SX_EXPORT_VALUE },
+    { EG_PA_SC_FIFO_SIZE, 0ul, EG_PA_SC_FIFO_VALUE },
+    { EG_VGT_NUM_INSTANCES, 0ul, 1ul },
+    { EG_SPI_CONFIG_CNTL, 0ul, 0ul },
+    { EG_SPI_CONFIG_CNTL_1, 0ul, EG_SPI_CNTL_1_VALUE },
+    { EG_CP_PERFMON_CNTL, 0ul, 0ul },
+    { EG_SQ_MS_FIFO_SIZES, 0ul, EG_SQ_MS_FIFO_VALUE },
+    { V9X_EG_SQ_CONFIG, EG_SQ_CONFIG_KEEP, EG_SQ_CONFIG_SET },
+    { EG_SQ_GPR_MGMT_1, 0ul, EG_SQ_GPR_1_VALUE },
+    { EG_SQ_GPR_MGMT_2, 0ul, EG_SQ_GPR_2_VALUE },
+    { EG_SQ_GPR_MGMT_3, 0ul, EG_SQ_GPR_3_VALUE },
+    { EG_SQ_THREAD_MGMT, 0ul, EG_SQ_THREAD_CAICOS_INIT },
+    { EG_SQ_THREAD_MGMT_2, 0ul, EG_SQ_THREAD_2_CAICOS_INIT },
+    { EG_SQ_STACK_MGMT_1, 0ul, EG_SQ_STACK_VALUE },
+    { EG_SQ_STACK_MGMT_2, 0ul, EG_SQ_STACK_VALUE },
+    { EG_SQ_STACK_MGMT_3, 0ul, EG_SQ_STACK_VALUE },
+    { V9X_EG_SQ_DYN_GPR_FLUSH, 0ul, 0ul },
+    { EG_PA_SC_FORCE_EOV, 0ul, EG_PA_SC_EOV_VALUE },
+    { EG_VGT_CACHE_INVALIDATE, 0ul, EG_VGT_CACHE_VALUE },
+    { EG_VGT_GS_VERTEX_REUSE, 0ul, 16ul },
+    { EG_PA_SU_LINE_STIPPLE, 0ul, 0ul },
+    { EG_PA_SC_LINE_STIPPLE, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x00ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x04ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x08ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x0cul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x10ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x14ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x18ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x1cul, 0ul, 0ul },
+    { EG_HDP_MISC_CNTL, 0xfffffffful, EG_HDP_FLUSH_INVALIDATE },
+    { EG_PA_CL_ENHANCE, 0ul, EG_PA_CL_ENHANCE_VALUE }
+};
+
+/* A 256-byte-aligned GPU address field: the 40-bit address shifted right by
+ * 8, bits 39:32 landing in 31:24 (evergreen_cs.c reads every such base as
+ * value << 8). */
+#define EG_ADDRESS_HIGH_MASK  0xfful
+#define EG_ADDRESS_HIGH_SHIFT 24
+static v9x_u32 v9x_eg_3d_base256(v9x_u32 high, v9x_u32 low)
+{
+    return ((high & EG_ADDRESS_HIGH_MASK) << EG_ADDRESS_HIGH_SHIFT) |
+           (low >> 8);
+}
 
 /*
  * evergreen_blit_shaders.c (Linux v3.9; Copyright 2010 Advanced Micro
@@ -361,7 +434,8 @@ void v9x_eg_pm4_set_context1(struct v9x_eg_pm4 *stream, v9x_u32 offset,
 }
 
 void v9x_eg_pm4_surface_sync(struct v9x_eg_pm4 *stream, v9x_u32 actions,
-                             v9x_u32 size, v9x_u32 address)
+                             v9x_u32 size, v9x_u32 address_high,
+                             v9x_u32 address)
 {
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_SURFACE_SYNC, 4ul));
     v9x_eg_pm4_put(stream, actions);
@@ -370,7 +444,7 @@ void v9x_eg_pm4_surface_sync(struct v9x_eg_pm4 *stream, v9x_u32 actions,
         v9x_eg_pm4_put(stream, 0ul);
     } else {
         v9x_eg_pm4_put(stream, (size + EG_ALIGN_256) >> 8);
-        v9x_eg_pm4_put(stream, address >> 8);
+        v9x_eg_pm4_put(stream, v9x_eg_3d_base256(address_high, address));
     }
     v9x_eg_pm4_put(stream, EG_SYNC_POLL_INTERVAL);
 }
@@ -449,7 +523,7 @@ void v9x_eg_3d_preamble(struct v9x_eg_pm4 *stream)
 #define EG_SAMPLER_DEFAULT_WORD0  0x00000012ul
 #define EG_MODE_CONTROL_DX10      1ul
 
-void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream)
+void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip)
 {
     v9x_u32 sq[11];
     v9x_u32 index;
@@ -465,8 +539,10 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream)
     sq[3] = EG_SQ_GPR_3_VALUE;
     sq[4] = 0ul;
     sq[5] = 0ul;
-    sq[6] = EG_SQ_THREAD_VALUE;
-    sq[7] = EG_SQ_THREAD_2_VALUE;
+    sq[6] = chip == V9X_EG_CHIP_CAICOS ? EG_SQ_THREAD_CAICOS_DEFAULT
+                                       : EG_SQ_THREAD_VALUE;
+    sq[7] = chip == V9X_EG_CHIP_CAICOS ? EG_SQ_THREAD_2_CAICOS_DEFAULT
+                                       : EG_SQ_THREAD_2_VALUE;
     sq[8] = EG_SQ_STACK_VALUE;
     sq[9] = EG_SQ_STACK_VALUE;
     sq[10] = EG_SQ_STACK_VALUE;
@@ -685,16 +761,17 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
 
     /* set_shaders: NUM_GPRS, and the PS exporting one colour. The shader
      * cache is flushed over everything: the VS and PS may lie apart. */
-    words[0] = state->vs_gpu >> 8;
+    words[0] = v9x_eg_3d_base256(state->gpu_high, state->vs_gpu);
     words[1] = state->vs_gprs;
     words[2] = 0ul;
     v9x_eg_pm4_set_context(stream, EG_SQ_PGM_START_VS, words, 3ul);
-    words[0] = state->ps_gpu >> 8;
+    words[0] = v9x_eg_3d_base256(state->gpu_high, state->ps_gpu);
     words[1] = state->ps_gprs;
     words[2] = 0ul;
     words[3] = EG_PS_EXPORTS_COLOR;
     v9x_eg_pm4_set_context(stream, EG_SQ_PGM_START_PS, words, 4ul);
-    v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_SH_ACTION, EG_SYNC_ALL, 0ul);
+    v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_SH_ACTION, EG_SYNC_ALL, 0ul,
+                            0ul);
 
     /* The interpolants: export n carries semantic n and PS input n reads
      * it (input 0 keeps its reset value, semantic 0); linear or
@@ -729,7 +806,7 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
      * invalidated first: the CPU may have written the texels. */
     if (state->has_texture != 0ul) {
         v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_TC_ACTION, EG_SYNC_ALL,
-                                0ul);
+                                0ul, 0ul);
         v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_SET_RESOURCE, 9ul));
         v9x_eg_pm4_put(stream, 0ul);
         v9x_eg_pm4_put(stream, EG_TEX_DIM_2D |
@@ -744,10 +821,12 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
                          V9X_EG_ARRAY_LINEAR_ALIGNED :
                          V9X_EG_ARRAY_LINEAR_GENERAL) <<
                         EG_TEX_ARRAY_MODE_SHIFT));
-        v9x_eg_pm4_put(stream, state->texture_gpu >> 8);
-        v9x_eg_pm4_put(stream, (state->texture_levels > 1ul ?
-                                state->texture_mip_gpu :
-                                state->texture_gpu) >> 8);
+        v9x_eg_pm4_put(stream, v9x_eg_3d_base256(state->gpu_high,
+                                                 state->texture_gpu));
+        v9x_eg_pm4_put(stream, v9x_eg_3d_base256(state->gpu_high,
+                                                 state->texture_levels > 1ul ?
+                                                 state->texture_mip_gpu :
+                                                 state->texture_gpu));
         /* A 565 texture has no fourth component, which samples as 0: its
          * W is the constant 1, so it is opaque, as Direct3D reads a
          * texture without alpha (V9XDDP's untagged texture blended away
@@ -776,7 +855,7 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
      * every linear colour buffer needs. SLICE_TILE_MAX counts 64-pixel
      * tiles, rounded up for a height that is not a multiple of 8. */
     slices = (state->target_pitch * state->target_height + 63ul) / 64ul;
-    words[0] = state->target_gpu >> 8;
+    words[0] = v9x_eg_3d_base256(state->gpu_high, state->target_gpu);
     words[1] = (state->target_pitch >> 3) - 1ul;
     words[2] = slices - 1ul;
     words[3] = 0ul;
@@ -809,10 +888,10 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     if (state->has_depth != 0ul) {
         words[0] = EG_DB_FORMAT_Z_16 | (V9X_EG_ARRAY_1D_TILED_THIN1 << 4);
         words[1] = 0ul;
-        words[2] = state->depth_gpu >> 8;
-        words[3] = state->depth_gpu >> 8;
-        words[4] = state->depth_gpu >> 8;
-        words[5] = state->depth_gpu >> 8;
+        words[2] = v9x_eg_3d_base256(state->gpu_high, state->depth_gpu);
+        words[3] = words[2];
+        words[4] = words[2];
+        words[5] = words[2];
         words[6] = ((state->depth_pitch >> 3) - 1ul) |
                    (((state->depth_height >> 3) - 1ul) << 11);
         words[7] = ((state->depth_pitch * state->depth_height) >> 6) - 1ul;
@@ -843,14 +922,18 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     v9x_eg_pm4_put(stream, EG_VTX_RESOURCE_SLOT);
     v9x_eg_pm4_put(stream, state->vertex_gpu);
     v9x_eg_pm4_put(stream, state->vertex_bytes - 1ul);
-    v9x_eg_pm4_put(stream, state->vertex_stride << EG_VTX_STRIDE_SHIFT);
+    /* Word 2: BASE_ADDRESS_HI in bits 7:0 beside the stride
+     * (evergreen_cs.c's SET_RESOURCE vertex check). */
+    v9x_eg_pm4_put(stream, (state->vertex_stride << EG_VTX_STRIDE_SHIFT) |
+                           (state->gpu_high & EG_ADDRESS_HIGH_MASK));
     v9x_eg_pm4_put(stream, EG_VTX_SWIZZLE_XYZW);
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, EG_VTX_VALID_BUFFER);
     v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_TC_ACTION,
-                            state->vertex_bytes, state->vertex_gpu);
+                            state->vertex_bytes, state->gpu_high,
+                            state->vertex_gpu);
     return stream->overflow != 0ul ? V9X_STATUS_INSUFFICIENT_MEMORY
                                    : V9X_STATUS_OK;
 }
@@ -874,7 +957,7 @@ void v9x_eg_3d_flush(struct v9x_eg_pm4 *stream)
                             V9X_EG_SYNC_CB_ACTION | V9X_EG_SYNC_CB0_DEST_BASE |
                             V9X_EG_SYNC_DB_ACTION | V9X_EG_SYNC_DB_DEST_BASE |
                             V9X_EG_SYNC_TC_ACTION,
-                            EG_SYNC_ALL, 0ul);
+                            EG_SYNC_ALL, 0ul, 0ul);
 }
 
 void v9x_eg_3d_fence(struct v9x_eg_pm4 *stream, v9x_u32 value)

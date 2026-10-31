@@ -1,7 +1,12 @@
 /*
- * The AMD Evergreen (Cedar) command processor for V9XHAL.DLL: started for
- * the first Direct3D batch, left running, and drained by whatever needs
- * what it drew.
+ * The AMD Evergreen (Cedar, Caicos) command processor for V9XHAL.DLL:
+ * started for the first Direct3D batch, left running, and drained by
+ * whatever needs what it drew.
+ *
+ * Caicos (the engine stamped V9X_DD_ENGINE_CAP_EG_CAICOS) takes its own
+ * microcode and its evergreen_gpu_init table (eg_3d.c), and its VRAM sits
+ * at GPU F_00000000 on M-D7TFW4, so every address here carries bits 39:32
+ * (docs\decisions\2026-10-31-caicos-cp-microcode.md).
  *
  * Bring-up repeats V9XEG3D's sequence, which ran on M-BXMFA8's HD 5450
  * (docs\decisions\2026-10-26-cedar-cp-runs-amd-microcode.md and the 3D
@@ -65,6 +70,7 @@
  * process, which is what these need. The write pointer is in dwords. */
 static int v9x_eg_cp_state = V9X_EG_CP_NOT_TRIED;
 static DWORD v9x_eg_cp_wptr;
+static DWORD v9x_eg_cp_gpu_high;
 static DWORD v9x_eg_cp_window_gpu;
 static DWORD v9x_eg_cp_heap_gpu;
 static DWORD v9x_eg_cp_vertex_at;
@@ -332,15 +338,38 @@ static int v9x_eg_cp_poll_idle(DWORD reads)
     return 0;
 }
 
-/* evergreen_gpu_init for Cedar, read-modify-write where Linux reads. */
+/* Which Evergreen chip: the 16-bit side stamps Caicos's engine. */
+static v9x_u32 v9x_eg_cp_chip(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul
+        ? V9X_EG_CHIP_CAICOS : V9X_EG_CHIP_CEDAR;
+}
+
+/* A register that takes a 256-byte-aligned GPU address: bits 39:8, the
+ * high byte in 31:24 (evergreen_cp_resume's CP_RB_BASE and SCRATCH_ADDR). */
+static DWORD v9x_eg_cp_base256(DWORD low)
+{
+    return (v9x_eg_cp_gpu_high << 24) | (low >> 8);
+}
+
+/* evergreen_gpu_init for the chip, read-modify-write where Linux reads. */
 static void v9x_eg_cp_gpu_init(void)
 {
+    const struct v9x_eg_reg_update *table;
     const struct v9x_eg_reg_update *update;
+    DWORD count;
     DWORD index;
     DWORD value;
 
-    for (index = 0ul; index < V9X_EG_CEDAR_GPU_INIT_COUNT; ++index) {
-        update = &v9x_eg_cedar_gpu_init[index];
+    if (v9x_eg_cp_chip() == V9X_EG_CHIP_CAICOS) {
+        table = v9x_eg_caicos_gpu_init;
+        count = V9X_EG_CAICOS_GPU_INIT_COUNT;
+    } else {
+        table = v9x_eg_cedar_gpu_init;
+        count = V9X_EG_CEDAR_GPU_INIT_COUNT;
+    }
+    for (index = 0ul; index < count; ++index) {
+        update = &table[index];
         value = update->set;
         if (update->keep != 0ul) {
             value |= v9x_eg_cp_read32(update->offset) & update->keep;
@@ -352,20 +381,28 @@ static void v9x_eg_cp_gpu_init(void)
 /* r700_cp_stop, evergreen_cp_load_microcode and evergreen_cp_resume. */
 static void v9x_eg_cp_load(DWORD ring_gpu)
 {
+    const v9x_u32 *pfp;
+    const v9x_u32 *me;
     DWORD index;
 
+    if (v9x_eg_cp_chip() == V9X_EG_CHIP_CAICOS) {
+        pfp = v9x_eg_caicos_pfp_microcode;
+        me = v9x_eg_caicos_me_microcode;
+    } else {
+        pfp = v9x_eg_pfp_microcode;
+        me = v9x_eg_me_microcode;
+    }
     v9x_eg_cp_halt();
     v9x_eg_cp_write32(V9X_EG_SCRATCH_UMSK, 0ul);
     v9x_eg_cp_write32(V9X_EG_CP_RB_CNTL, V9X_EG_RB_CNTL_LOADING);
     v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
     for (index = 0ul; index < V9X_EG_PFP_MICROCODE_DWORDS; ++index) {
-        v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_DATA,
-                          v9x_eg_pfp_microcode[index]);
+        v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_DATA, pfp[index]);
     }
     v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
     v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_WADDR, 0ul);
     for (index = 0ul; index < V9X_EG_ME_MICROCODE_DWORDS; ++index) {
-        v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_DATA, v9x_eg_me_microcode[index]);
+        v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_DATA, me[index]);
     }
     v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
     v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_WADDR, 0ul);
@@ -388,15 +425,15 @@ static void v9x_eg_cp_load(DWORD ring_gpu)
     v9x_eg_cp_write32(V9X_EG_CP_RB_RPTR_ADDR,
                       (v9x_eg_cp_window_gpu + V9X_EG_WINDOW_CP_WRITEBACK) &
                       ~3ul);
-    v9x_eg_cp_write32(V9X_EG_CP_RB_RPTR_ADDR_HI, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_RB_RPTR_ADDR_HI, v9x_eg_cp_gpu_high);
     v9x_eg_cp_write32(V9X_EG_SCRATCH_ADDR,
-                      (v9x_eg_cp_window_gpu + V9X_EG_WINDOW_CP_WRITEBACK +
-                       0x100ul) >> 8);
+                      v9x_eg_cp_base256(v9x_eg_cp_window_gpu +
+                                        V9X_EG_WINDOW_CP_WRITEBACK + 0x100ul));
     v9x_eg_cp_write32(V9X_EG_SCRATCH_UMSK, 0ul);
     v9x_eg_cp_delay(V9X_EG_CP_SHORT_READS);
     v9x_eg_cp_write32(V9X_EG_CP_RB_CNTL,
                       V9X_EG_CP_RB_CNTL_VALUE | V9X_EG_RB_NO_UPDATE);
-    v9x_eg_cp_write32(V9X_EG_CP_RB_BASE, ring_gpu >> 8);
+    v9x_eg_cp_write32(V9X_EG_CP_RB_BASE, v9x_eg_cp_base256(ring_gpu));
     v9x_eg_cp_write32(V9X_EG_CP_DEBUG, V9X_EG_CP_DEBUG_VALUE);
     v9x_eg_cp_wptr = 0ul;
 }
@@ -450,9 +487,9 @@ static int v9x_eg_cp_run(struct v9x_eg_pm4 *stream)
  * pipeline (M-BXMFA8 boots 8-12, docs\decisions\2026-10-27-cedar-d3d-
  * hal-first-light.md). Non-zero once located.
  *
- * The streams carry 32-bit addresses only, so VRAM above 4 GiB (M-D7TFW4's
- * Caicos, at GPU F_00000000) is refused here and the CP stays halted; the
- * DMA engine carries the high byte (eng_eg.c).
+ * Bits 39:32 (0Fh on M-D7TFW4's Caicos) are kept apart: the window and
+ * heap below are the low halves, and every stream carries the high byte
+ * (eg_3d.h, gpu_high).
  */
 static int v9x_eg_cp_locate(void)
 {
@@ -466,10 +503,10 @@ static int v9x_eg_cp_locate(void)
         return 0;
     }
     if (v9x_eg_fb_start(v9x_eg_cp_read32(V9X_EG_MC_VM_FB_LOCATION), &fb_high,
-                        &fb_low) != V9X_STATUS_OK ||
-        fb_high != 0ul) {
+                        &fb_low) != V9X_STATUS_OK) {
         return 0;
     }
+    v9x_eg_cp_gpu_high = fb_high;
     v9x_eg_cp_heap_gpu = fb_low +
         (v9x_hal->fb.physical_base & V9X_EG_CP_BAR0_MASK);
     v9x_eg_cp_window_gpu = fb_low + V9X_EG_RING_WINDOW_OFFSET;
@@ -598,11 +635,12 @@ int v9x_eg_cp_vertex_space(DWORD bytes, volatile DWORD **linear,
     return 1;
 }
 
-int v9x_eg_cp_addresses(DWORD *heap_gpu)
+int v9x_eg_cp_addresses(DWORD *gpu_high, DWORD *heap_gpu)
 {
     if (!v9x_eg_cp_locate()) {
         return 0;
     }
+    *gpu_high = v9x_eg_cp_gpu_high;
     *heap_gpu = v9x_eg_cp_heap_gpu;
     return 1;
 }

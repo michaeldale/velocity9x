@@ -127,11 +127,19 @@ static void test_packets(void)
     CHECK(stream.overflow == 1ul && stream.count == 2ul);
     /* A full surface sync and one of 300 bytes at 1000h. */
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
-    v9x_eg_pm4_surface_sync(&stream, V9X_EG_SYNC_CB_ACTION, 0xfffffffful, 0ul);
-    v9x_eg_pm4_surface_sync(&stream, V9X_EG_SYNC_TC_ACTION, 300ul, 0x1000ul);
+    v9x_eg_pm4_surface_sync(&stream, V9X_EG_SYNC_CB_ACTION, 0xfffffffful,
+                            0ul, 0ul);
+    v9x_eg_pm4_surface_sync(&stream, V9X_EG_SYNC_TC_ACTION, 300ul, 0ul,
+                            0x1000ul);
     CHECK(buffer[0] == 0xc0034300ul && buffer[2] == 0xfffffffful &&
           buffer[3] == 0ul && buffer[4] == 10ul);
     CHECK(buffer[7] == 2ul && buffer[8] == 0x10ul);
+    /* M-D7TFW4's Caicos: CP_COHER_BASE is the 40-bit address >> 8, bits
+     * 39:32 in its top byte. */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_pm4_surface_sync(&stream, V9X_EG_SYNC_TC_ACTION, 300ul, 0x0ful,
+                            0x1000ul);
+    CHECK(buffer[2] == 2ul && buffer[3] == 0x0f000010ul);
 }
 
 static void test_cp_streams(void)
@@ -161,7 +169,7 @@ static void test_cp_streams(void)
 
     /* set_default_state: 35 dwords of packets, then the 227. */
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
-    v9x_eg_3d_default_state(&stream);
+    v9x_eg_3d_default_state(&stream, V9X_EG_CHIP_CEDAR);
     CHECK(stream.overflow == 0ul && walks(buffer, stream.count));
     CHECK(stream.count == 35ul + 227ul);
     CHECK(buffer[0] == 0xc0001200ul);
@@ -170,11 +178,20 @@ static void test_cp_streams(void)
           buffer[7] == 0x10001000ul);
     CHECK(buffer[8] == 0xc00b6800ul && buffer[9] == 0x300ul &&
           buffer[10] == 0xe4000002ul && buffer[11] == 0x402e005dul);
+    CHECK(buffer[16] == 0x10101060ul && buffer[17] == 0x00001010ul);
     CHECK(buffer[21] == 0xc0012800ul && buffer[22] == 0x80000000ul);
     CHECK(buffer[24] == 0xc0026f00ul);
     CHECK(buffer[28] == 0xc0036e00ul && buffer[30] == 0x12ul);
     CHECK(buffer[33] == 0xc0001800ul && buffer[34] == 1ul);
     CHECK(buffer[35] == 0xc0016900ul && buffer[36] == 0x23bul);
+
+    /* Caicos: Linux 3.9's set_default_state gives the PS 128 threads and
+     * every other stage 10; the rest is Cedar's. */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_default_state(&stream, V9X_EG_CHIP_CAICOS);
+    CHECK(stream.overflow == 0ul && stream.count == 35ul + 227ul);
+    CHECK(buffer[10] == 0xe4000002ul && buffer[11] == 0x402e005dul);
+    CHECK(buffer[16] == 0x0a0a0a80ul && buffer[17] == 0x00000a0aul);
 }
 
 static void test_gpu_init(void)
@@ -199,6 +216,87 @@ static void test_gpu_init(void)
             CHECK(table[index].offset != table[other].offset);
         }
     }
+}
+
+/* Caicos's evergreen_gpu_init: Cedar's writes, but no SMX_SAR_CTL0 (only
+ * parts up to SUMO2 take it) and 128 PS threads, each other stage
+ * ((192 - 128) / 6 / 8) * 8 = 8. */
+typedef char v9x_eg_caicos_init_one_shorter[
+    V9X_EG_CAICOS_GPU_INIT_COUNT + 1u == V9X_EG_CEDAR_GPU_INIT_COUNT ? 1 : -1];
+static void test_gpu_init_caicos(void)
+{
+    const struct v9x_eg_reg_update *cedar = v9x_eg_cedar_gpu_init;
+    const struct v9x_eg_reg_update *caicos = v9x_eg_caicos_gpu_init;
+    v9x_u32 index;
+    v9x_u32 at;
+
+    at = 0ul;
+    for (index = 0ul; index < V9X_EG_CEDAR_GPU_INIT_COUNT; ++index) {
+        if (cedar[index].offset == 0xa008ul) {
+            continue;
+        }
+        CHECK(at < V9X_EG_CAICOS_GPU_INIT_COUNT);
+        if (at >= V9X_EG_CAICOS_GPU_INIT_COUNT) {
+            return;
+        }
+        CHECK(caicos[at].offset == cedar[index].offset &&
+              caicos[at].keep == cedar[index].keep);
+        if (cedar[index].offset == 0x8c18ul) {
+            CHECK(caicos[at].set == 0x08080880ul);
+        } else if (cedar[index].offset == 0x8c1cul) {
+            CHECK(caicos[at].set == 0x00000808ul);
+        } else {
+            CHECK(caicos[at].set == cedar[index].set);
+        }
+        ++at;
+    }
+    CHECK(at == V9X_EG_CAICOS_GPU_INIT_COUNT);
+}
+
+/* Bits 39:32 of every address in a batch (M-D7TFW4's VRAM is at GPU
+ * F_00000000): each 256-byte address field takes them in its top byte,
+ * the vertex buffer in word 2 bits 7:0, and nothing else changes. */
+static v9x_u32 high_buffer[BUFFER_DWORDS];
+
+static void fill_state(struct v9x_eg_3d_state *state);
+
+static void test_state_high(void)
+{
+    struct v9x_eg_pm4 low_stream;
+    struct v9x_eg_pm4 high_stream;
+    struct v9x_eg_3d_state state;
+    v9x_u32 index;
+    v9x_u32 shifted;
+    v9x_u32 vertex;
+
+    fill_state(&state);
+    v9x_eg_pm4_begin(&low_stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &low_stream) == V9X_STATUS_OK);
+    state.gpu_high = 0x0ful;
+    v9x_eg_pm4_begin(&high_stream, high_buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &high_stream) == V9X_STATUS_OK);
+    CHECK(low_stream.count == high_stream.count);
+
+    shifted = 0ul;
+    vertex = 0ul;
+    for (index = 0ul; index < low_stream.count; ++index) {
+        if (high_buffer[index] == buffer[index]) {
+            continue;
+        }
+        if (high_buffer[index] == (buffer[index] | 0x0f000000ul) &&
+            (buffer[index] & 0xff000000ul) == 0ul) {
+            ++shifted;
+        } else if (high_buffer[index] == (buffer[index] | 0x0ful) &&
+                   buffer[index] == (state.vertex_stride << 8)) {
+            ++vertex;
+        } else {
+            CHECK(0);
+        }
+    }
+    /* VS and PS starts, texture base and mip base, the colour base, four
+     * depth bases, and the vertex cache sync's CP_COHER_BASE. */
+    CHECK(shifted == 10ul);
+    CHECK(vertex == 1ul);
 }
 
 static void test_words(void)
@@ -581,8 +679,10 @@ unsigned int v9x_run_eg_3d_tests(void)
     test_packets();
     test_cp_streams();
     test_gpu_init();
+    test_gpu_init_caicos();
     test_words();
     test_state();
+    test_state_high();
     test_mip();
     test_draw();
     return failures;

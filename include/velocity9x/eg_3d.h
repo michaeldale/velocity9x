@@ -180,9 +180,11 @@ void v9x_eg_pm4_set_config1(struct v9x_eg_pm4 *stream, v9x_u32 offset,
 void v9x_eg_pm4_set_context1(struct v9x_eg_pm4 *stream, v9x_u32 offset,
                              v9x_u32 value);
 /* cp_set_surface_sync, Evergreen form. size 0xffffffff syncs everything
- * (CP_COHER_SIZE all ones, base 0); otherwise size bytes from address. */
+ * (CP_COHER_SIZE all ones, base 0); otherwise size bytes from the 40-bit
+ * address whose bits 39:32 are address_high. */
 void v9x_eg_pm4_surface_sync(struct v9x_eg_pm4 *stream, v9x_u32 actions,
-                             v9x_u32 size, v9x_u32 address);
+                             v9x_u32 size, v9x_u32 address_high,
+                             v9x_u32 address);
 /* Type-2 padding to the next V9X_EG_CP_ALIGN_DWORDS boundary. */
 void v9x_eg_pm4_pad(struct v9x_eg_pm4 *stream);
 
@@ -201,16 +203,28 @@ struct v9x_eg_reg_update {
 #define V9X_EG_CEDAR_GPU_INIT_COUNT 45u
 extern const struct v9x_eg_reg_update
     v9x_eg_cedar_gpu_init[V9X_EG_CEDAR_GPU_INIT_COUNT];
+/* Caicos's: Cedar's writes in the same order without SMX_SAR_CTL0, which
+ * evergreen_gpu_init writes only up to SUMO2, and with 128 PS threads
+ * where Cedar has 96. Linux's numbers are otherwise Cedar's. */
+#define V9X_EG_CAICOS_GPU_INIT_COUNT 44u
+extern const struct v9x_eg_reg_update
+    v9x_eg_caicos_gpu_init[V9X_EG_CAICOS_GPU_INIT_COUNT];
+
+/* The Evergreen chips whose state differs: the HAL picks by the engine's
+ * V9X_DD_ENGINE_CAP_EG_CAICOS. */
+#define V9X_EG_CHIP_CEDAR  0ul
+#define V9X_EG_CHIP_CAICOS 1ul
 
 /* ME_INITIALIZE for four hardware contexts: 7 dwords. */
 #define V9X_EG_ME_INITIALIZE_DWORDS 7ul
 void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream);
 /* evergreen_cp_start after ME_INITIALIZE: the clear-state preamble. */
 void v9x_eg_3d_preamble(struct v9x_eg_pm4 *stream);
-/* Linux 3.9's set_default_state for Cedar, the default context state
- * inline: CLEAR_STATE, the SQ resource split, CONTEXT_CONTROL, sampler 0
- * and Evergreen's default context. */
-void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream);
+/* Linux 3.9's set_default_state for chip (V9X_EG_CHIP_*), the default
+ * context state inline: CLEAR_STATE, the SQ resource split, CONTEXT_CONTROL,
+ * sampler 0 and Evergreen's default context. Only the SQ thread split
+ * differs between the chips. */
+void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip);
 
 /*
  * One batch's state. GPU addresses are 256-byte aligned; pitches are in
@@ -218,7 +232,9 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream);
  * exclusive. has_depth and has_texture say whether there is a depth buffer
  * and a texture: zero is a valid GPU address, where the heap starts on
  * M-BXMFA8, so it cannot mean "none". The vertex buffer is resource 0 of
- * the fetch shader slots.
+ * the fetch shader slots. The *_gpu fields are bits 31:0 of each address;
+ * gpu_high is bits 39:32 of all of them, which share one 4 GiB span of
+ * VRAM: 0 on M-BXMFA8's Cedar, 0Fh on M-D7TFW4's Caicos.
  */
 #define V9X_EG_INTERPOLANTS_MAX     3ul
 /* CB_TARGET_MASK's target-0 bits: x, y and z are B, G and R in memory
@@ -274,6 +290,7 @@ struct v9x_eg_3d_state {
     v9x_u32 vertex_gpu;
     v9x_u32 vertex_stride;
     v9x_u32 vertex_bytes;
+    v9x_u32 gpu_high;
 };
 
 /* Register words. func is V9X_EG_FUNC_*; factors V9X_EG_BLEND_*. */

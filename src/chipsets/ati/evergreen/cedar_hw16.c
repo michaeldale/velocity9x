@@ -28,8 +28,10 @@
  * packets ran byte-exact there with that address's high byte
  * (docs\decisions\2026-10-31-caicos-dma-write-probe.md), so it claims fill
  * and copy, and flips through D1, whose address eg_scanout.c now takes with
- * its high byte from the DMA engine. Not Direct3D, whose streams carry
- * 32-bit addresses: eg_cp.c refuses VRAM above 4 GiB.
+ * its high byte from the DMA engine. Its CP ran Caicos's own microcode
+ * (docs\decisions\2026-10-31-caicos-cp-microcode.md), so it claims
+ * Direct3D too, stamped V9X_DD_ENGINE_CAP_EG_CAICOS so the HAL loads that
+ * microcode and Caicos's GPU configuration (eg_cp.c, eg_3d.c).
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -64,7 +66,9 @@ static unsigned long v9x_cedar_map_value;
                                  V9X_DD_ENGINE_CAP_D3D)
 #define V9X_CAICOS_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
-                                 V9X_DD_ENGINE_CAP_FLIP)
+                                 V9X_DD_ENGINE_CAP_FLIP | \
+                                 V9X_DD_ENGINE_CAP_D3D | \
+                                 V9X_DD_ENGINE_CAP_EG_CAICOS)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
                                       unsigned long *control_linear_base,
@@ -235,7 +239,7 @@ const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
     "ati-evergreen-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-evergreen-cp",
     0,
     v9x_caicos_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */

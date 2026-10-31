@@ -319,5 +319,13 @@
  * so no other chip's DirectX 8 changes.
  */
 #define V9X_DD_ENGINE_CAP_D3D_DDI8      0x00800000ul
+/*
+ * AMD Evergreen: this part is Caicos (HD 7470, Linux's BTC generation),
+ * not Cedar. Its CP takes CAICOS_pfp/me microcode, which differs from
+ * Cedar's, and its evergreen_gpu_init and default state give the PS 128
+ * threads (eg_3d.c). A chip identity bit, stamped by cedar_hw16.c's Caicos
+ * row only (docs\decisions\2026-10-31-caicos-cp-microcode.md).
+ */
+#define V9X_DD_ENGINE_CAP_EG_CAICOS     0x01000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

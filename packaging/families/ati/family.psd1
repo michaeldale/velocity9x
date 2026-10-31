@@ -389,12 +389,13 @@
             # this card with VRAM at GPU F_00000000
             # (docs\decisions\2026-10-31-caicos-dma-write-probe.md). Flips
             # through D1's surface address at the vertical blank
-            # (eg_scanout.c, shared with Cedar). No Direct3D yet
-            # (docs\plans\ati-evergreen-juniper-caicos.md).
+            # (eg_scanout.c, shared with Cedar). Direct3D on the CP with
+            # Caicos's own microcode
+            # (docs\decisions\2026-10-31-caicos-cp-microcode.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-evergreen-cp'
             EngineType = 'ATI_EVERGREEN'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What M-D7TFW4's VBE 4F00h reports; the board carries 2 GiB.
             VideoMemoryBytes = 16777216
 

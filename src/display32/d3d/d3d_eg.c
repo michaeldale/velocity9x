@@ -419,20 +419,26 @@ static v9x_u32 v9x_d3d_eg_map(const V9X_R3D_DRAW *draw,
                               V9X_D3D_EG_LIT *lit)
 {
     V9X_D3D_EG_TEXTURE texture;
+    DWORD gpu_high;
     DWORD heap_gpu;
+    v9x_u32 reason;
 
     /* Every address in the batch is the heap's or the window's: without
      * them located the batch would point at the wrong memory. */
-    if (!v9x_eg_cp_addresses(&heap_gpu)) {
+    if (!v9x_eg_cp_addresses(&gpu_high, &heap_gpu)) {
         return V9X_D3D_EG_REFUSE_ADDRESS;
     }
     texture.format = V9X_D3D_EG_TEXTURE_UNKNOWN;
     if (draw->texture.object != 0) {
         v9x_d3d_eg_resolve_texture(&draw->texture, &texture);
     }
-    return v9x_d3d_eg_map_draw(draw, &texture, heap_gpu,
-                               v9x_d3d_eg_depth_bytes(draw), state, vs_slot,
-                               ps_slot, lit);
+    reason = v9x_d3d_eg_map_draw(draw, &texture, heap_gpu,
+                                 v9x_d3d_eg_depth_bytes(draw), state, vs_slot,
+                                 ps_slot, lit);
+    /* The map clears the state; all of the batch's addresses share VRAM's
+     * bits 39:32 (0Fh on M-D7TFW4's Caicos). */
+    state->gpu_high = gpu_high;
+    return reason;
 }
 
 static int v9x_d3d_eg_accepts(const V9X_R3D_DRAW *draw)
@@ -529,7 +535,10 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
 
         v9x_eg_pm4_begin(&stream, v9x_d3d_eg_stream,
                          V9X_D3D_EG_STREAM_DWORDS);
-        v9x_eg_3d_default_state(&stream);
+        v9x_eg_3d_default_state(&stream,
+                                (v9x_hal->engine.engine_caps &
+                                 V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul ?
+                                V9X_EG_CHIP_CAICOS : V9X_EG_CHIP_CEDAR);
         if (v9x_eg_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
             /* The target the builder would not take, in the trace's
              * DrawsTargetLast, DrawsPitchLast and DrawsExtentLast. */

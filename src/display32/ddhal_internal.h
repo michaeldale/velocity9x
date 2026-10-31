@@ -591,9 +591,11 @@ int v9x_eg_cp_submit(const v9x_u32 *dwords, DWORD count);
 int v9x_eg_cp_drain(int wait);
 int v9x_eg_cp_vertex_space(DWORD bytes, volatile DWORD **linear, DWORD *gpu);
 /* Where the framebuffer mapping starts in the GPU's address space, read
- * from the chip without starting the CP; zero when it cannot be. After it
- * has answered, a shader slot's GPU address (eg_shader.h, V9X_EG_SLOT_*). */
-int v9x_eg_cp_addresses(DWORD *heap_gpu);
+ * from the chip without starting the CP: bits 39:32 of every address in
+ * gpu_high, the heap's bits 31:0 in heap_gpu; zero when it cannot be. After
+ * it has answered, a shader slot's GPU address, bits 31:0 (eg_shader.h,
+ * V9X_EG_SLOT_*). */
+int v9x_eg_cp_addresses(DWORD *gpu_high, DWORD *heap_gpu);
 DWORD v9x_eg_cp_shader_gpu(DWORD which);
 /* engines/eng_eg.c: waits for DMA work queued since the engine was last
  * idle, so a 3D batch never reads what a fill or copy has yet to write.

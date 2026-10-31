@@ -1,5 +1,5 @@
 /*
- * AMD Evergreen (Cedar) command processor microcode, generated into
+ * AMD Evergreen (Cedar and Caicos) command processor microcode, generated into
  * src\chipsets\ati\evergreen\eg_cp_microcode.c by
  * scripts\gen-evergreen-microcode.ps1 from linux-firmware, under AMD's
  * LICENSE.radeon (reproduced in that file).
@@ -15,5 +15,8 @@
 
 extern const v9x_u32 v9x_eg_pfp_microcode[V9X_EG_PFP_MICROCODE_DWORDS];
 extern const v9x_u32 v9x_eg_me_microcode[V9X_EG_ME_MICROCODE_DWORDS];
+/* Caicos's images: the same sizes (ni.c), different code. */
+extern const v9x_u32 v9x_eg_caicos_pfp_microcode[V9X_EG_PFP_MICROCODE_DWORDS];
+extern const v9x_u32 v9x_eg_caicos_me_microcode[V9X_EG_ME_MICROCODE_DWORDS];
 
 #endif

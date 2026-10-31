@@ -724,7 +724,7 @@ static void v9x_ring_preamble(void)
 /* Linux 3.9 set_default_state for Cedar, the default state inline. */
 static void v9x_ring_default_state(void)
 {
-    v9x_eg_3d_default_state(v9x_stage_begin());
+    v9x_eg_3d_default_state(v9x_stage_begin(), V9X_EG_CHIP_CEDAR);
     v9x_stage_end();
 }
 
@@ -1008,7 +1008,7 @@ static void v9x_ring_draw_d3d(DWORD g)
     /* /batches: the whole batch more than once, back to back, as the HAL
      * sends one batch after another without waiting. */
     for (batch = 0ul; batch < v9x_batches; ++batch) {
-        v9x_eg_3d_default_state(stream);
+        v9x_eg_3d_default_state(stream, V9X_EG_CHIP_CEDAR);
         if (v9x_eg_3d_build_state(&state, stream) != V9X_STATUS_OK) {
             stream->overflow = 1ul;
         }
