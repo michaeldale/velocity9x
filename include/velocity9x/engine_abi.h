@@ -327,5 +327,14 @@
  * row only (docs\decisions\2026-10-31-caicos-cp-microcode.md).
  */
 #define V9X_DD_ENGINE_CAP_EG_CAICOS     0x01000000ul
+/*
+ * AMD Evergreen: this part is Juniper (HD 5770), not Cedar. Its CP takes
+ * JUNIPER_pfp/me microcode and eight hardware contexts, its
+ * evergreen_gpu_init and default state are Juniper's (four backends, a
+ * vertex cache, eg_3d.c), and vertex buffers are synced through the vertex
+ * cache. A chip identity bit, stamped by cedar_hw16.c's Juniper row only
+ * (docs\decisions\2026-11-01-juniper-bring-up.md).
+ */
+#define V9X_DD_ENGINE_CAP_EG_JUNIPER    0x02000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

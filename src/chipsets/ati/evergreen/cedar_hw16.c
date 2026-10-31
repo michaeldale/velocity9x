@@ -32,6 +32,14 @@
  * (docs\decisions\2026-10-31-caicos-cp-microcode.md), so it claims
  * Direct3D too, stamped V9X_DD_ENGINE_CAP_EG_CAICOS so the HAL loads that
  * microcode and Caicos's GPU configuration (eg_cp.c, eg_3d.c).
+ *
+ * The HD 5770, PCI 1002:68B8 (Juniper), is the third row. Its target is
+ * M-BXMFA8, whose HD 5450 it replaced: subsystem 1002:2543, 1024 MiB of
+ * GDDR5 on 128 bits, BAR0 at D0000000, BAR2 FEAE0000, VRAM at GPU 0, ten
+ * SIMDs, its DMA engine and CP measured as Cedar's and Caicos's were
+ * (docs\decisions\2026-11-01-juniper-bring-up.md). Stamped
+ * V9X_DD_ENGINE_CAP_EG_JUNIPER for its microcode, contexts, GPU
+ * configuration and vertex cache.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -64,6 +72,11 @@ static unsigned long v9x_cedar_map_value;
                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
                                  V9X_DD_ENGINE_CAP_FLIP | \
                                  V9X_DD_ENGINE_CAP_D3D)
+#define V9X_JUNIPER_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                  V9X_DD_ENGINE_CAP_FLIP | \
+                                  V9X_DD_ENGINE_CAP_D3D | \
+                                  V9X_DD_ENGINE_CAP_EG_JUNIPER)
 #define V9X_CAICOS_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
                                  V9X_DD_ENGINE_CAP_FLIP | \
@@ -134,6 +147,22 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
 {
     (void)framebuffer_linear_base;
     v9x_evergreen_fill_engine(V9X_CEDAR_CLAIMED_CAPS, control_linear_base,
+                              mapped_aperture_bytes, engine_type,
+                              engine_caps, gtt_linear_base,
+                              ring_linear_base, ring_bytes);
+}
+
+static void v9x_juniper_fill_engine(unsigned long framebuffer_linear_base,
+                                    unsigned long *control_linear_base,
+                                    unsigned long *mapped_aperture_bytes,
+                                    unsigned long *engine_type,
+                                    unsigned long *engine_caps,
+                                    unsigned long *gtt_linear_base,
+                                    unsigned long *ring_linear_base,
+                                    unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_evergreen_fill_engine(V9X_JUNIPER_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -226,6 +255,22 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     "hardware-evergreen-cp",
     0,
     v9x_cedar_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    V9X_CEDAR_MAP_BYTES
+};
+
+/* Not static, for the same audit. */
+const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
+    0x1002u, 0x68B8u,
+    "AMD Radeon HD 5770 (Juniper)",
+    "1002", "68B8",
+    "ati-evergreen-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-evergreen-cp",
+    0,
+    v9x_juniper_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES

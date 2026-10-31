@@ -498,6 +498,11 @@ static void test_cp_microcode(void)
     CHECK(v9x_eg_caicos_me_microcode[0] == 0x7c408000ul);
     CHECK(v9x_eg_caicos_pfp_microcode[1119] == 0x00000005ul);
     CHECK(v9x_eg_caicos_me_microcode[1375] == 0x000f0496ul);
+    /* Juniper's, which V9XEGCP ran on M-BXMFA8's HD 5770. */
+    CHECK(v9x_eg_juniper_pfp_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_juniper_me_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_juniper_pfp_microcode[1119] == 0x00000005ul);
+    CHECK(v9x_eg_juniper_me_microcode[1375] == 0x000f04d3ul);
 }
 
 unsigned int v9x_run_eg_dma_tests(void)

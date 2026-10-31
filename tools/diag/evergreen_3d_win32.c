@@ -1273,7 +1273,7 @@ static void v9x_build_run(DWORD g)
 
     /* The ring: four submissions, each closed to 16 dwords. */
     v9x_ring_count = 0ul;
-    v9x_eg_3d_me_initialize(v9x_stage_begin());
+    v9x_eg_3d_me_initialize(v9x_stage_begin(), V9X_EG_CHIP_CEDAR);
     v9x_stage_end();
     v9x_wptr_init = v9x_ring_close();
     v9x_ring_preamble();

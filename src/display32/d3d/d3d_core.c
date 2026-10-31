@@ -9606,6 +9606,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         if ((v9x_hal->engine.engine_caps &
              V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul) {
             name = "Velocity9x Radeon HD 7470";
+        } else if ((v9x_hal->engine.engine_caps &
+                    V9X_DD_ENGINE_CAP_EG_JUNIPER) != 0ul) {
+            name = "Velocity9x Radeon HD 5770";
         } else {
             name = "Velocity9x Radeon HD 5450";
         }

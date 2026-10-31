@@ -147,10 +147,17 @@ static void test_cp_streams(void)
     struct v9x_eg_pm4 stream;
 
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
-    v9x_eg_3d_me_initialize(&stream);
+    v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_CEDAR);
     CHECK(stream.count == V9X_EG_ME_INITIALIZE_DWORDS);
     CHECK(buffer[0] == 0xc0054400ul && buffer[3] == 3ul &&
           buffer[4] == 0x10000ul);
+    /* Juniper has 8 hardware contexts (evergreen_gpu_init). */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_JUNIPER);
+    CHECK(stream.count == V9X_EG_ME_INITIALIZE_DWORDS && buffer[3] == 7ul);
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_CAICOS);
+    CHECK(buffer[3] == 3ul);
 
     /* The preamble as V9XEG3D sent it: the default context (227 dwords)
      * between BEGIN and END_CLEAR_STATE, then 18 more. */
@@ -192,6 +199,17 @@ static void test_cp_streams(void)
     CHECK(stream.overflow == 0ul && stream.count == 35ul + 227ul);
     CHECK(buffer[10] == 0xe4000002ul && buffer[11] == 0x402e005dul);
     CHECK(buffer[16] == 0x0a0a0a80ul && buffer[17] == 0x00000a0aul);
+
+    /* Juniper: the vertex cache on (SQ_CONFIG bit 0), 128 PS threads and 20
+     * for every other stage, 85 stack entries each (Linux 3.9's
+     * set_default_state, CHIP_JUNIPER); the GPR split is Cedar's. */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_default_state(&stream, V9X_EG_CHIP_JUNIPER);
+    CHECK(stream.overflow == 0ul && stream.count == 35ul + 227ul);
+    CHECK(buffer[10] == 0xe4000003ul && buffer[11] == 0x402e005dul);
+    CHECK(buffer[16] == 0x14141480ul && buffer[17] == 0x00001414ul);
+    CHECK(buffer[18] == 0x00550055ul && buffer[19] == 0x00550055ul &&
+          buffer[20] == 0x00550055ul);
 }
 
 static void test_gpu_init(void)
@@ -253,6 +271,41 @@ static void test_gpu_init_caicos(void)
     CHECK(at == V9X_EG_CAICOS_GPU_INIT_COUNT);
 }
 
+/* Juniper's evergreen_gpu_init: Cedar's writes in Cedar's order, with
+ * Juniper's numbers (4 pipes, 4 backends, 10 SIMDs, 248 threads, 512 stack
+ * entries, export sizes 256/64/192, primitive FIFO 100h, two CF
+ * instructions, a vertex cache) worked through evergreend.h's fields, and
+ * the backend map r6xx_remap_render_backend gives four enabled backends
+ * on four pipes. */
+static void test_gpu_init_juniper(void)
+{
+    const struct v9x_eg_reg_update *cedar = v9x_eg_cedar_gpu_init;
+    const struct v9x_eg_reg_update *juniper = v9x_eg_juniper_gpu_init;
+    v9x_u32 index;
+    v9x_u32 expected;
+
+    for (index = 0ul; index < V9X_EG_JUNIPER_GPU_INIT_COUNT; ++index) {
+        CHECK(juniper[index].offset == cedar[index].offset &&
+              juniper[index].keep == cedar[index].keep);
+        switch (cedar[index].offset) {
+        case 0x98f8ul: expected = 0x02010002ul; break; /* GB_ADDR_CONFIG */
+        case 0x98fcul: expected = 0x00003210ul; break; /* GB_BACKEND_MAP */
+        case 0x900cul: expected = 0x002f0f3ful; break; /* SX_EXPORT_SIZES */
+        case 0x8bccul: expected = 0x13030100ul; break; /* PA_SC_FIFO_SIZE */
+        case 0x8cf0ul: expected = 0x08e00420ul; break; /* SQ_MS_FIFO_SIZES */
+        case 0x8c00ul: expected = 0xe4000003ul; break; /* SQ_CONFIG, VC on */
+        case 0x8c18ul: expected = 0x10101080ul; break; /* 128 PS, 16 each */
+        case 0x8c1cul: expected = 0x00001010ul; break;
+        case 0x8c20ul:
+        case 0x8c24ul:
+        case 0x8c28ul: expected = 0x00550055ul; break; /* 85 entries */
+        case 0x88c4ul: expected = 0x000000c2ul; break; /* VC_AND_TC */
+        default: expected = cedar[index].set; break;
+        }
+        CHECK(juniper[index].set == expected);
+    }
+}
+
 /* Bits 39:32 of every address in a batch (M-D7TFW4's VRAM is at GPU
  * F_00000000): each 256-byte address field takes them in its top byte,
  * the vertex buffer in word 2 bits 7:0, and nothing else changes. */
@@ -297,6 +350,35 @@ static void test_state_high(void)
      * depth bases, and the vertex cache sync's CP_COHER_BASE. */
     CHECK(shifted == 10ul);
     CHECK(vertex == 1ul);
+}
+
+/* A part with a vertex cache (Juniper) syncs the vertices through it, as
+ * Linux 3.9's set_vtx_resource does: VC_ACTION, not TC_ACTION. Nothing
+ * else in the stream changes. */
+static void test_state_vertex_cache(void)
+{
+    struct v9x_eg_pm4 tc_stream;
+    struct v9x_eg_pm4 vc_stream;
+    struct v9x_eg_3d_state state;
+    v9x_u32 index;
+    v9x_u32 differ;
+
+    fill_state(&state);
+    v9x_eg_pm4_begin(&tc_stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &tc_stream) == V9X_STATUS_OK);
+    state.vertex_cache = 1ul;
+    v9x_eg_pm4_begin(&vc_stream, high_buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &vc_stream) == V9X_STATUS_OK);
+    CHECK(tc_stream.count == vc_stream.count);
+    differ = 0ul;
+    for (index = 0ul; index < tc_stream.count; ++index) {
+        if (high_buffer[index] != buffer[index]) {
+            CHECK(buffer[index] == V9X_EG_SYNC_TC_ACTION &&
+                  high_buffer[index] == V9X_EG_SYNC_VC_ACTION);
+            ++differ;
+        }
+    }
+    CHECK(differ == 1ul);
 }
 
 static void test_words(void)
@@ -680,9 +762,11 @@ unsigned int v9x_run_eg_3d_tests(void)
     test_cp_streams();
     test_gpu_init();
     test_gpu_init_caicos();
+    test_gpu_init_juniper();
     test_words();
     test_state();
     test_state_high();
+    test_state_vertex_cache();
     test_mip();
     test_draw();
     return failures;

@@ -84,6 +84,39 @@
 #define EG_SQ_THREAD_2_CAICOS_INIT   0x00000808ul
 #define EG_SQ_THREAD_CAICOS_DEFAULT  0x0a0a0a80ul
 #define EG_SQ_THREAD_2_CAICOS_DEFAULT 0x00000a0aul
+
+/*
+ * Juniper's numbers in evergreen_gpu_init (1 SE, 4 pipes, 4 tile pipes, 10
+ * SIMDs, 4 backends, 256 GPRs, 248 threads, 512 stack entries, 4 SX sets,
+ * export sizes 256/64/192, FIFOs 100h/30h/130h, 2 CF instructions, a vertex
+ * cache) through the same field macros.
+ */
+/* JUNIPER_GB_ADDR_CONFIG_GOLDEN */
+#define EG_JUNIPER_GB_ADDR_CONFIG 0x02010002ul
+/* r6xx_remap_render_backend for 1 << (GB_ADDR_CONFIG & 0Fh) = 4 pipes and
+ * 4 of 8 backends, none disabled: RB 3, 2, 1, 0 in 4-bit fields. The
+ * disable mask Linux takes from the RCU fuse straps is not read here (an
+ * index write); M-BXMFA8's CC_RB_BACKEND_DISABLE reads 0. */
+#define EG_JUNIPER_BACKEND_MAP    0x00003210ul
+/* COLOR (256/4-1) | POSITION (64/4-1) << 8 | SMX (192/4-1) << 16 */
+#define EG_SX_EXPORT_JUNIPER      0x002f0f3ful
+/* SC_PRIM 100h | SC_HIZ_TILE 30h << 12 | SC_EARLYZ_TILE 130h << 20 */
+#define EG_PA_SC_FIFO_JUNIPER     0x13030100ul
+/* CACHE_FIFO_SIZE(16 * 2), the other fields Cedar's. */
+#define EG_SQ_MS_FIFO_JUNIPER     0x08e00420ul
+/* Cedar's SQ_CONFIG with VC_ENABLE kept. */
+#define EG_SQ_CONFIG_SET_JUNIPER  0xe4000003ul
+/* 128 PS threads; ((248 - 128) / 6 / 8) * 8 = 16 for each other stage. */
+#define EG_SQ_THREAD_JUNIPER_INIT   0x10101080ul
+#define EG_SQ_THREAD_2_JUNIPER_INIT 0x00001010ul
+/* 512 / 6 = 85 stack entries for every stage. */
+#define EG_SQ_STACK_JUNIPER       0x00550055ul
+/* CACHE_INVALIDATION(VC_AND_TC) | AUTO_INVLD_EN(ES_AND_GS_AUTO) */
+#define EG_VGT_CACHE_JUNIPER      0x000000c2ul
+/* Linux 3.9's set_default_state for CHIP_JUNIPER: 128 PS threads, 20 for
+ * every other stage. */
+#define EG_SQ_THREAD_JUNIPER_DEFAULT   0x14141480ul
+#define EG_SQ_THREAD_2_JUNIPER_DEFAULT 0x00001414ul
 /* 256 / 6 = 42 stack entries for every stage. */
 #define EG_SQ_STACK_VALUE       0x002a002aul
 /* FORCE_EOV_MAX_CLK_CNT(4095) | FORCE_EOV_MAX_REZ_CNT(255) */
@@ -183,6 +216,56 @@ const struct v9x_eg_reg_update
     { V9X_EG_SQ_DYN_GPR_FLUSH, 0ul, 0ul },
     { EG_PA_SC_FORCE_EOV, 0ul, EG_PA_SC_EOV_VALUE },
     { EG_VGT_CACHE_INVALIDATE, 0ul, EG_VGT_CACHE_VALUE },
+    { EG_VGT_GS_VERTEX_REUSE, 0ul, 16ul },
+    { EG_PA_SU_LINE_STIPPLE, 0ul, 0ul },
+    { EG_PA_SC_LINE_STIPPLE, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x00ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x04ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x08ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x0cul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x10ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x14ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x18ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x1cul, 0ul, 0ul },
+    { EG_HDP_MISC_CNTL, 0xfffffffful, EG_HDP_FLUSH_INVALIDATE },
+    { EG_PA_CL_ENHANCE, 0ul, EG_PA_CL_ENHANCE_VALUE }
+};
+
+/* Juniper's: Cedar's table, entry for entry, with Juniper's numbers. */
+const struct v9x_eg_reg_update
+    v9x_eg_juniper_gpu_init[V9X_EG_JUNIPER_GPU_INIT_COUNT] = {
+    { V9X_EG_GRBM_CNTL, 0ul, EG_GRBM_CNTL_VALUE },
+    { EG_GB_ADDR_CONFIG, 0ul, EG_JUNIPER_GB_ADDR_CONFIG },
+    { EG_GB_BACKEND_MAP, 0ul, EG_JUNIPER_BACKEND_MAP },
+    { EG_CGTS_SYS_TCC_DISABLE, 0ul, 0ul },
+    { EG_CGTS_TCC_DISABLE, 0ul, 0ul },
+    { EG_CGTS_USER_SYS_TCC, 0ul, 0ul },
+    { EG_CGTS_USER_TCC, 0ul, 0ul },
+    { EG_CP_QUEUE_THRESHOLDS, 0ul, EG_CP_QUEUE_VALUE },
+    { EG_CP_MEQ_THRESHOLDS, 0ul, EG_CP_MEQ_VALUE },
+    { EG_TA_CNTL_AUX, 0ul, EG_TA_CNTL_AUX_VALUE },
+    { EG_SX_DEBUG_1, 0xfffffffful, EG_ENABLE_NEW_SMX },
+    { EG_SMX_DC_CTL0, EG_SMX_SETS_KEEP, EG_SMX_SETS_CEDAR },
+    { EG_SMX_SAR_CTL0, 0ul, EG_SMX_SAR_VALUE },
+    { EG_SX_EXPORT_SIZES, 0ul, EG_SX_EXPORT_JUNIPER },
+    { EG_PA_SC_FIFO_SIZE, 0ul, EG_PA_SC_FIFO_JUNIPER },
+    { EG_VGT_NUM_INSTANCES, 0ul, 1ul },
+    { EG_SPI_CONFIG_CNTL, 0ul, 0ul },
+    { EG_SPI_CONFIG_CNTL_1, 0ul, EG_SPI_CNTL_1_VALUE },
+    { EG_CP_PERFMON_CNTL, 0ul, 0ul },
+    { EG_SQ_MS_FIFO_SIZES, 0ul, EG_SQ_MS_FIFO_JUNIPER },
+    { V9X_EG_SQ_CONFIG, EG_SQ_CONFIG_KEEP, EG_SQ_CONFIG_SET_JUNIPER },
+    { EG_SQ_GPR_MGMT_1, 0ul, EG_SQ_GPR_1_VALUE },
+    { EG_SQ_GPR_MGMT_2, 0ul, EG_SQ_GPR_2_VALUE },
+    { EG_SQ_GPR_MGMT_3, 0ul, EG_SQ_GPR_3_VALUE },
+    { EG_SQ_THREAD_MGMT, 0ul, EG_SQ_THREAD_JUNIPER_INIT },
+    { EG_SQ_THREAD_MGMT_2, 0ul, EG_SQ_THREAD_2_JUNIPER_INIT },
+    { EG_SQ_STACK_MGMT_1, 0ul, EG_SQ_STACK_JUNIPER },
+    { EG_SQ_STACK_MGMT_2, 0ul, EG_SQ_STACK_JUNIPER },
+    { EG_SQ_STACK_MGMT_3, 0ul, EG_SQ_STACK_JUNIPER },
+    { V9X_EG_SQ_DYN_GPR_FLUSH, 0ul, 0ul },
+    { EG_PA_SC_FORCE_EOV, 0ul, EG_PA_SC_EOV_VALUE },
+    { EG_VGT_CACHE_INVALIDATE, 0ul, EG_VGT_CACHE_JUNIPER },
     { EG_VGT_GS_VERTEX_REUSE, 0ul, 16ul },
     { EG_PA_SU_LINE_STIPPLE, 0ul, 0ul },
     { EG_PA_SC_LINE_STIPPLE, 0ul, 0ul },
@@ -457,13 +540,14 @@ void v9x_eg_pm4_pad(struct v9x_eg_pm4 *stream)
     }
 }
 
-void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream)
+void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip)
 {
-    /* evergreen_cp_start: MAX_HW_CONTEXTS - 1 = 3, DEVICE_ID(1). */
+    /* evergreen_cp_start: MAX_HW_CONTEXTS - 1 (3; Juniper's 8 give 7),
+     * DEVICE_ID(1). */
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_ME_INITIALIZE, 6ul));
     v9x_eg_pm4_put(stream, 0x1ul);
     v9x_eg_pm4_put(stream, 0x0ul);
-    v9x_eg_pm4_put(stream, 3ul);
+    v9x_eg_pm4_put(stream, chip == V9X_EG_CHIP_JUNIPER ? 7ul : 3ul);
     v9x_eg_pm4_put(stream, 1ul << 16);
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, 0ul);
@@ -539,13 +623,22 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip)
     sq[3] = EG_SQ_GPR_3_VALUE;
     sq[4] = 0ul;
     sq[5] = 0ul;
-    sq[6] = chip == V9X_EG_CHIP_CAICOS ? EG_SQ_THREAD_CAICOS_DEFAULT
-                                       : EG_SQ_THREAD_VALUE;
-    sq[7] = chip == V9X_EG_CHIP_CAICOS ? EG_SQ_THREAD_2_CAICOS_DEFAULT
-                                       : EG_SQ_THREAD_2_VALUE;
+    sq[6] = EG_SQ_THREAD_VALUE;
+    sq[7] = EG_SQ_THREAD_2_VALUE;
     sq[8] = EG_SQ_STACK_VALUE;
     sq[9] = EG_SQ_STACK_VALUE;
     sq[10] = EG_SQ_STACK_VALUE;
+    if (chip == V9X_EG_CHIP_CAICOS) {
+        sq[6] = EG_SQ_THREAD_CAICOS_DEFAULT;
+        sq[7] = EG_SQ_THREAD_2_CAICOS_DEFAULT;
+    } else if (chip == V9X_EG_CHIP_JUNIPER) {
+        sq[0] = EG_SQ_CONFIG_SET_JUNIPER;
+        sq[6] = EG_SQ_THREAD_JUNIPER_DEFAULT;
+        sq[7] = EG_SQ_THREAD_2_JUNIPER_DEFAULT;
+        sq[8] = EG_SQ_STACK_JUNIPER;
+        sq[9] = EG_SQ_STACK_JUNIPER;
+        sq[10] = EG_SQ_STACK_JUNIPER;
+    }
     v9x_eg_pm4_set_config(stream, V9X_EG_SQ_CONFIG, sq, 11ul);
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_CONTEXT_CONTROL, 2ul));
     v9x_eg_pm4_put(stream, EG_CONTEXT_CONTROL_LOAD);
@@ -931,7 +1024,9 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, EG_VTX_VALID_BUFFER);
-    v9x_eg_pm4_surface_sync(stream, V9X_EG_SYNC_TC_ACTION,
+    v9x_eg_pm4_surface_sync(stream, state->vertex_cache != 0ul ?
+                                    V9X_EG_SYNC_VC_ACTION :
+                                    V9X_EG_SYNC_TC_ACTION,
                             state->vertex_bytes, state->gpu_high,
                             state->vertex_gpu);
     return stream->overflow != 0ul ? V9X_STATUS_INSUFFICIENT_MEMORY

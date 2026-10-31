@@ -115,6 +115,7 @@
 #define V9X_EG_SYNC_CB0_DEST_BASE   0x00000040ul
 #define V9X_EG_SYNC_DB_DEST_BASE    0x00004000ul
 #define V9X_EG_SYNC_TC_ACTION       0x00800000ul
+#define V9X_EG_SYNC_VC_ACTION       0x01000000ul
 #define V9X_EG_SYNC_CB_ACTION       0x02000000ul
 #define V9X_EG_SYNC_DB_ACTION       0x04000000ul
 #define V9X_EG_SYNC_SH_ACTION       0x08000000ul
@@ -210,20 +211,29 @@ extern const struct v9x_eg_reg_update
 extern const struct v9x_eg_reg_update
     v9x_eg_caicos_gpu_init[V9X_EG_CAICOS_GPU_INIT_COUNT];
 
-/* The Evergreen chips whose state differs: the HAL picks by the engine's
- * V9X_DD_ENGINE_CAP_EG_CAICOS. */
-#define V9X_EG_CHIP_CEDAR  0ul
-#define V9X_EG_CHIP_CAICOS 1ul
+/* Juniper's: Cedar's writes in Cedar's order with Juniper's numbers (4
+ * pipes, 4 backends, 10 SIMDs, 248 threads, 512 stack entries, a vertex
+ * cache, golden GB_ADDR_CONFIG 02010002) and the backend map for four
+ * enabled backends. */
+#define V9X_EG_JUNIPER_GPU_INIT_COUNT 45u
+extern const struct v9x_eg_reg_update
+    v9x_eg_juniper_gpu_init[V9X_EG_JUNIPER_GPU_INIT_COUNT];
 
-/* ME_INITIALIZE for four hardware contexts: 7 dwords. */
+/* The Evergreen chips whose state differs: the HAL picks by the engine's
+ * V9X_DD_ENGINE_CAP_EG_CAICOS and V9X_DD_ENGINE_CAP_EG_JUNIPER. */
+#define V9X_EG_CHIP_CEDAR   0ul
+#define V9X_EG_CHIP_CAICOS  1ul
+#define V9X_EG_CHIP_JUNIPER 2ul
+
+/* ME_INITIALIZE for the chip's hardware contexts (4, Juniper 8): 7 dwords. */
 #define V9X_EG_ME_INITIALIZE_DWORDS 7ul
-void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream);
+void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip);
 /* evergreen_cp_start after ME_INITIALIZE: the clear-state preamble. */
 void v9x_eg_3d_preamble(struct v9x_eg_pm4 *stream);
 /* Linux 3.9's set_default_state for chip (V9X_EG_CHIP_*), the default
  * context state inline: CLEAR_STATE, the SQ resource split, CONTEXT_CONTROL,
- * sampler 0 and Evergreen's default context. Only the SQ thread split
- * differs between the chips. */
+ * sampler 0 and Evergreen's default context. The SQ thread split differs
+ * between the chips, and Juniper's vertex cache and stack entries. */
 void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip);
 
 /*
@@ -291,6 +301,9 @@ struct v9x_eg_3d_state {
     v9x_u32 vertex_stride;
     v9x_u32 vertex_bytes;
     v9x_u32 gpu_high;
+    /* Nonzero on a part with a vertex cache (Juniper): the vertices are
+     * synced through it, as Linux 3.9's set_vtx_resource does. */
+    v9x_u32 vertex_cache;
 };
 
 /* Register words. func is V9X_EG_FUNC_*; factors V9X_EG_BLEND_*. */

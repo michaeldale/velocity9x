@@ -27,8 +27,11 @@ Cedar's, so decision 2 (9,984 bytes on the floppy set) is open. Decision
 2026-10-31). Phase 5 (2026-11-01,
 [record](../decisions/2026-11-01-caicos-direct3d-quake3.md)): Caicos
 microcode, GPU init and 40-bit CP streams; V9XD32 passes at 16 and 32 bpp,
-Quake 3 demo 34.6 fps with every batch on the engine. Next: Juniper.
-Parent plans:
+Quake 3 demo 34.6 fps with every batch on the engine. Juniper (2026-11-01,
+[record](../decisions/2026-11-01-juniper-bring-up.md)): phases 1-6 on
+M-BXMFA8's HD 5770, V9XD32 passes at 16 and 32 bpp, Quake 3 49.3 fps at
+1024x768x32. Open: the owner's HD 5450 reports, vblank pacing. Parent
+plans:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md) (2D, flips, heap) and
 [ati-evergreen-cedar-3d.md](ati-evergreen-cedar-3d.md) (CP, Direct3D,
 OpenGL).

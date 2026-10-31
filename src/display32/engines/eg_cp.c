@@ -1,11 +1,12 @@
 /*
- * The AMD Evergreen (Cedar, Caicos) command processor for V9XHAL.DLL:
- * started for the first Direct3D batch, left running, and drained by
- * whatever needs what it drew.
+ * The AMD Evergreen (Cedar, Caicos, Juniper) command processor for
+ * V9XHAL.DLL: started for the first Direct3D batch, left running, and
+ * drained by whatever needs what it drew.
  *
- * Caicos (the engine stamped V9X_DD_ENGINE_CAP_EG_CAICOS) takes its own
- * microcode and its evergreen_gpu_init table (eg_3d.c), and its VRAM sits
- * at GPU F_00000000 on M-D7TFW4, so every address here carries bits 39:32
+ * Caicos and Juniper (the engines stamped V9X_DD_ENGINE_CAP_EG_CAICOS and
+ * _EG_JUNIPER) take their own microcode, evergreen_gpu_init table and
+ * context count (eg_3d.c). Caicos's VRAM sits at GPU F_00000000 on
+ * M-D7TFW4, so every address here carries bits 39:32
  * (docs\decisions\2026-10-31-caicos-cp-microcode.md).
  *
  * Bring-up repeats V9XEG3D's sequence, which ran on M-BXMFA8's HD 5450
@@ -338,11 +339,17 @@ static int v9x_eg_cp_poll_idle(DWORD reads)
     return 0;
 }
 
-/* Which Evergreen chip: the 16-bit side stamps Caicos's engine. */
+/* Which Evergreen chip: the 16-bit side stamps Caicos's and Juniper's
+ * engines; Cedar's carries neither bit. */
 static v9x_u32 v9x_eg_cp_chip(void)
 {
-    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul
-        ? V9X_EG_CHIP_CAICOS : V9X_EG_CHIP_CEDAR;
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul) {
+        return V9X_EG_CHIP_CAICOS;
+    }
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_JUNIPER) != 0ul) {
+        return V9X_EG_CHIP_JUNIPER;
+    }
+    return V9X_EG_CHIP_CEDAR;
 }
 
 /* A register that takes a 256-byte-aligned GPU address: bits 39:8, the
@@ -364,6 +371,9 @@ static void v9x_eg_cp_gpu_init(void)
     if (v9x_eg_cp_chip() == V9X_EG_CHIP_CAICOS) {
         table = v9x_eg_caicos_gpu_init;
         count = V9X_EG_CAICOS_GPU_INIT_COUNT;
+    } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_JUNIPER) {
+        table = v9x_eg_juniper_gpu_init;
+        count = V9X_EG_JUNIPER_GPU_INIT_COUNT;
     } else {
         table = v9x_eg_cedar_gpu_init;
         count = V9X_EG_CEDAR_GPU_INIT_COUNT;
@@ -388,6 +398,9 @@ static void v9x_eg_cp_load(DWORD ring_gpu)
     if (v9x_eg_cp_chip() == V9X_EG_CHIP_CAICOS) {
         pfp = v9x_eg_caicos_pfp_microcode;
         me = v9x_eg_caicos_me_microcode;
+    } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_JUNIPER) {
+        pfp = v9x_eg_juniper_pfp_microcode;
+        me = v9x_eg_juniper_me_microcode;
     } else {
         pfp = v9x_eg_pfp_microcode;
         me = v9x_eg_me_microcode;
@@ -537,7 +550,7 @@ static int v9x_eg_cp_start(void)
     /* evergreen_cp_start: ME_INITIALIZE with the CP running, then the
      * preamble, each waited for. */
     v9x_eg_pm4_begin(&stream, buffer, sizeof(buffer) / sizeof(buffer[0]));
-    v9x_eg_3d_me_initialize(&stream);
+    v9x_eg_3d_me_initialize(&stream, v9x_eg_cp_chip());
     v9x_eg_pm4_pad(&stream);
     if (!v9x_eg_cp_put(stream.dwords, stream.count)) {
         v9x_eg_cp_quarantine(V9X_EG_CP_FAULT_START);

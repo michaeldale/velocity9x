@@ -413,6 +413,19 @@ static void v9x_d3d_eg_count_refusal(const V9X_R3D_DRAW *draw, v9x_u32 reason)
     }
 }
 
+/* Which Evergreen chip, from the identity bits the 16-bit side stamps;
+ * Cedar's engine carries neither. */
+static v9x_u32 v9x_d3d_eg_chip(void)
+{
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul) {
+        return V9X_EG_CHIP_CAICOS;
+    }
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_JUNIPER) != 0ul) {
+        return V9X_EG_CHIP_JUNIPER;
+    }
+    return V9X_EG_CHIP_CEDAR;
+}
+
 static v9x_u32 v9x_d3d_eg_map(const V9X_R3D_DRAW *draw,
                               struct v9x_eg_3d_state *state,
                               v9x_u32 *vs_slot, v9x_u32 *ps_slot,
@@ -507,6 +520,8 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
         state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
     }
     state.vertex_stride = V9X_EG_D3D_STRIDE;
+    /* Juniper has a vertex cache; Cedar and Caicos do not. */
+    state.vertex_cache = v9x_d3d_eg_chip() == V9X_EG_CHIP_JUNIPER ? 1ul : 0ul;
 
     while (triangle_count != 0ul) {
         if (ps_dwords != 0ul) {
@@ -535,10 +550,7 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
 
         v9x_eg_pm4_begin(&stream, v9x_d3d_eg_stream,
                          V9X_D3D_EG_STREAM_DWORDS);
-        v9x_eg_3d_default_state(&stream,
-                                (v9x_hal->engine.engine_caps &
-                                 V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul ?
-                                V9X_EG_CHIP_CAICOS : V9X_EG_CHIP_CEDAR);
+        v9x_eg_3d_default_state(&stream, v9x_d3d_eg_chip());
         if (v9x_eg_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
             /* The target the builder would not take, in the trace's
              * DrawsTargetLast, DrawsPitchLast and DrawsExtentLast. */

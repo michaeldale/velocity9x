@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470 and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770 and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -420,6 +420,48 @@
             MapSymbols = @('v9x_evergreen_caicos_device')
         }
         @{
+            Id = 'juniper'
+            Name = 'AMD Radeon HD 5770 (Juniper)'
+            VendorId = '1002'
+            DeviceId = '68B8'
+            # No SubsystemId: M-BXMFA8's card reads 2543:1002, and the bare
+            # id binds every board built on the chip.
+            DeviceDesc = 'Velocity9x AMD Radeon HD 5770 (Juniper)'
+            Adapter = 'AMD Radeon HD 5770 (Juniper)'
+            ClockDetector = 'ati-evergreen-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # A third row in Cedar's module. The DMA engine's packets and
+            # the CP's ring test ran on this card
+            # (docs\decisions\2026-11-01-juniper-bring-up.md); Direct3D on
+            # the CP with Juniper's microcode and configuration.
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'hardware-evergreen-cp'
+            EngineType = 'ATI_EVERGREEN'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            # What M-BXMFA8's VBE 4F00h reports; the board carries 1 GiB.
+            VideoMemoryBytes = 16777216
+
+            # The baseline numbers M-BXMFA8's BIOS lists with this card
+            # (V9XBOOT.INI, boot 48, docs\probe\m-bxmfa8-juniper-survey-
+            # 2026-10-31); the rest come from the runtime VBE scan.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_evergreen_juniper_device')
+        }
+        @{
             Id = 'carrizo'
             Name = 'AMD Radeon R7E (Carrizo)'
             VendorId = '1002'
@@ -548,6 +590,7 @@
         BackendSymbols = @('v9x_mach64_vt2_device', 'v9x_rage_mobility_device',
                            'v9x_rage_iic_device', 'v9x_rage128_device',
                            'v9x_evergreen_cedar_device', 'v9x_evergreen_caicos_device',
+                           'v9x_evergreen_juniper_device',
                            'v9x_vi_carrizo_device')
     }
 
@@ -570,7 +613,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -630,6 +673,10 @@
             }
             @{
                 ChipId = 'caicos'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'juniper'
                 Emulator = 'none'
             }
             @{
