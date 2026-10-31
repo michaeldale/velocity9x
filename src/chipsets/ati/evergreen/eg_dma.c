@@ -206,9 +206,16 @@ v9x_status v9x_eg_dma_plan_copy(const struct v9x_eg_dma_copy *copy,
         return V9X_STATUS_UNSUPPORTED;
     }
 
+    /* Contiguous rows are one run while it fits one packet; past that (a
+     * whole 1280x1024x32 surface is 5 MiB) the rows go one a packet, as a
+     * fill's do, rather than the copy being declined to the CPU. */
     contiguous = copy->height == 1ul ||
                  (copy->source_pitch_bytes == width_bytes &&
-                  copy->destination_pitch_bytes == width_bytes);
+                  copy->destination_pitch_bytes == width_bytes &&
+                  (plan->byte_copy != 0ul ?
+                   source_end - source_start :
+                   (source_end - source_start) / 4ul) <=
+                  V9X_EG_DMA_COUNT_MAX);
     if (contiguous) {
         plan->rows = 1ul;
         plan->row_bytes = source_end - source_start;

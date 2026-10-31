@@ -337,6 +337,50 @@ static void test_copy_overlap(void)
     CHECK(v9x_eg_dma_plan_copy(&copy, &plan) == V9X_STATUS_UNSUPPORTED);
 }
 
+/* A whole 1280x1024x32 surface is 5,242,880 contiguous bytes, past one
+ * packet's 0FFFFFh dwords: the copy goes a row a time, as a fill that size
+ * does, instead of being declined to the CPU. Declined, Quake 3's present
+ * at 1280x1024x32 read VRAM back through the CPU every frame: 1.3 fps on
+ * M-BXMFA8's HD 5770 against 49.3 at 1024x768x32, whose 3 MiB fit one
+ * packet (docs\decisions\2026-11-01-juniper-owner-reports.md). */
+static void test_copy_past_one_packet(void)
+{
+    struct v9x_eg_dma_copy copy;
+    struct v9x_eg_dma_plan plan;
+
+    memset(&copy, 0, sizeof(copy));
+    copy.gpu_base = EG_GPU_BASE;
+    copy.vram_bytes = 0x08000000ul;
+    copy.source_offset = 0x00100000ul;
+    copy.source_pitch_bytes = 5120ul;
+    copy.destination_offset = 0x00700000ul;
+    copy.destination_pitch_bytes = 5120ul;
+    copy.bytes_per_pixel = 4ul;
+    copy.width = 1280ul;
+    copy.height = 1024ul;
+    CHECK(v9x_eg_dma_plan_copy(&copy, &plan) == V9X_STATUS_OK);
+    CHECK(plan.rows == 1024ul && plan.row_bytes == 5120ul);
+    CHECK(plan.source_step == 5120ul && plan.destination_step == 5120ul);
+    CHECK(plan.source == EG_GPU_BASE + 0x00100000ul &&
+          plan.destination == EG_GPU_BASE + 0x00700000ul);
+    CHECK(plan.byte_copy == 0ul);
+
+    /* Overlapping, down a row: bottom-up, as a pitched overlap is. */
+    copy.destination_offset = copy.source_offset + 5120ul;
+    CHECK(v9x_eg_dma_plan_copy(&copy, &plan) == V9X_STATUS_OK);
+    CHECK(plan.rows == 1024ul && plan.destination_step == 0ul - 5120ul);
+    CHECK(plan.source == EG_GPU_BASE + 0x00100000ul + 1023ul * 5120ul);
+
+    /* One that fits stays one packet. */
+    copy.destination_offset = 0x00700000ul;
+    copy.height = 768ul;
+    copy.width = 1024ul;
+    copy.source_pitch_bytes = 4096ul;
+    copy.destination_pitch_bytes = 4096ul;
+    CHECK(v9x_eg_dma_plan_copy(&copy, &plan) == V9X_STATUS_OK);
+    CHECK(plan.rows == 1ul && plan.row_bytes == 4096ul * 768ul);
+}
+
 static void test_copy_refusals(void)
 {
     struct v9x_eg_dma_copy copy;
@@ -514,6 +558,7 @@ unsigned int v9x_run_eg_dma_tests(void)
     test_copy();
     test_copy_overlap();
     test_copy_refusals();
+    test_copy_past_one_packet();
     test_ring_helpers();
     test_probe_headers();
     test_high_addresses();
