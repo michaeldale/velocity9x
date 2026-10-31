@@ -15,7 +15,11 @@
  * offset's GPU address is that start, plus the desktop's offset into BAR0,
  * plus the offset; the ring's is the start plus 240 MiB. BAR0 is 256 MiB
  * aligned (checked by the 16-bit side), so the desktop's offset into it is
- * its physical address's low 28 bits.
+ * its physical address's low 28 bits. The start is a 40-bit address: 0 on
+ * M-BXMFA8's Cedar, F_00000000 on M-D7TFW4's Caicos
+ * (docs\decisions\2026-10-31-caicos-register-probe.md). Its bits 39:32
+ * ride in every packet and in DMA_RB_BASE; the low halves here never carry
+ * into them (v9x_eg_fb_start).
  *
  * Once per mode, validation stops the ring, pulses the DMA block's soft
  * reset and starts the ring as Linux r600_dma_resume does, without
@@ -70,6 +74,7 @@
 /* One engine, so one set of statics: V9XHAL's statics are shared by every
  * process, which is what this needs. The write pointer is in dwords. */
 static DWORD v9x_eg_wptr;
+static DWORD v9x_eg_gpu_high;
 static DWORD v9x_eg_heap_gpu;
 static DWORD v9x_eg_ring_gpu;
 static int v9x_eg_dirty;
@@ -211,17 +216,18 @@ static void v9x_eg_reset(void)
 }
 
 /*
- * Once per mode: the window must be this card's and its VRAM below 4 GiB;
- * the block is reset, the ring started, and a fence run through it. Any
- * refusal leaves the engine unclaimed and DirectDraw on the CPU.
+ * Once per mode: the window must be this card's and the window's address
+ * must not carry out of its low half; the block is reset, the ring started,
+ * and a fence run through it. Any refusal leaves the engine unclaimed and
+ * DirectDraw on the CPU.
  */
 static int v9x_eg_validate(void)
 {
     volatile DWORD *ring;
     v9x_u32 fence[V9X_EG_DMA_FENCE_DWORDS];
     DWORD memsize;
-    DWORD fb_start;
-    DWORD ok;
+    v9x_u32 fb_high;
+    v9x_u32 fb_low;
     DWORD spins;
 
     if (!v9x_eg_ready()) {
@@ -234,15 +240,14 @@ static int v9x_eg_validate(void)
     if (memsize < V9X_EG_MEMSIZE_MIN_MIB || memsize > V9X_EG_MEMSIZE_MAX_MIB) {
         return 0;
     }
-    fb_start = v9x_eg_fb_start(v9x_eg_read32(V9X_EG_MC_VM_FB_LOCATION), &ok);
-    if (ok == 0ul ||
-        fb_start > 0xfffffffful - V9X_EG_RING_WINDOW_OFFSET -
-                   V9X_EG_RING_WINDOW_BYTES) {
+    if (v9x_eg_fb_start(v9x_eg_read32(V9X_EG_MC_VM_FB_LOCATION), &fb_high,
+                        &fb_low) != V9X_STATUS_OK) {
         return 0;
     }
-    v9x_eg_heap_gpu = fb_start +
+    v9x_eg_gpu_high = fb_high;
+    v9x_eg_heap_gpu = fb_low +
         (v9x_hal->fb.physical_base & V9X_EG_BAR0_OFFSET_MASK);
-    v9x_eg_ring_gpu = fb_start + V9X_EG_RING_WINDOW_OFFSET;
+    v9x_eg_ring_gpu = fb_low + V9X_EG_RING_WINDOW_OFFSET;
 
     v9x_eg_reset();
 
@@ -257,7 +262,8 @@ static int v9x_eg_validate(void)
     v9x_eg_write32(V9X_EG_DMA_RB_WPTR, 0ul);
     v9x_eg_write32(V9X_EG_DMA_RB_RPTR_ADDR_HI, 0ul);
     v9x_eg_write32(V9X_EG_DMA_RB_RPTR_ADDR_LO, 0ul);
-    v9x_eg_write32(V9X_EG_DMA_RB_BASE, v9x_eg_ring_gpu >> 8);
+    v9x_eg_write32(V9X_EG_DMA_RB_BASE,
+                   v9x_eg_dma_ring_base(v9x_eg_gpu_high, v9x_eg_ring_gpu));
     v9x_eg_write32(V9X_EG_DMA_IB_CNTL, V9X_EG_DMA_IB_ENABLE);
     v9x_eg_write32(V9X_EG_DMA_CNTL,
                    v9x_eg_read32(V9X_EG_DMA_CNTL) &
@@ -272,7 +278,8 @@ static int v9x_eg_validate(void)
                    (V9X_EG_RING_LOG2_DWORDS << V9X_EG_DMA_RB_SIZE_SHIFT) |
                    V9X_EG_DMA_RB_ENABLE);
 
-    (void)v9x_eg_dma_fence(v9x_eg_ring_gpu + V9X_EG_RING_FENCE_OFFSET,
+    (void)v9x_eg_dma_fence(v9x_eg_gpu_high,
+                           v9x_eg_ring_gpu + V9X_EG_RING_FENCE_OFFSET,
                            V9X_EG_FENCE_VALUE, fence);
     if (!v9x_eg_submit(fence, V9X_EG_DMA_FENCE_DWORDS)) {
         return 0;
@@ -357,6 +364,7 @@ static void v9x_eg_write_record(void)
     v9x_eg_log_hex(file, "GRBM_STATUS=", v9x_eg_read32(V9X_EG_GRBM_STATUS));
     v9x_eg_log_hex(file, "CP_RB_RPTR=", v9x_eg_read32(V9X_EG_CP_RB_RPTR));
     v9x_eg_log_hex(file, "CP_RB_WPTR=", v9x_eg_read32(V9X_EG_CP_RB_WPTR));
+    v9x_eg_log_hex(file, "GpuHigh=", v9x_eg_gpu_high);
     v9x_eg_log_hex(file, "HeapGpu=", v9x_eg_heap_gpu);
     v9x_eg_log_hex(file, "RingGpu=", v9x_eg_ring_gpu);
     v9x_eg_log_text(file, "[Ring]\r\n");
@@ -443,7 +451,8 @@ static int v9x_eg_emit(const struct v9x_eg_dma_plan *plan)
             }
             used = 0ul;
         }
-        used += v9x_eg_dma_plan_row(plan, row, stage + used);
+        used += v9x_eg_dma_plan_row(plan, row, v9x_eg_gpu_high,
+                                    stage + used);
     }
     if (used != 0ul && !v9x_eg_submit(stage, used)) {
         return 0;

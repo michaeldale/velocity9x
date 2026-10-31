@@ -6,6 +6,14 @@
 
 #define V9X_EG_U32_MAX 0xfffffffful
 
+/* Bits 39:32 of a GPU address, where each packet and DMA_RB_BASE put them:
+ * a fill's dword 3 bits 23:16 (evergreen_cs.c), the ring base's 31:24 once
+ * the address is shifted right by 8. */
+#define V9X_EG_ADDRESS_HIGH_MASK    0xfful
+#define V9X_EG_FILL_HIGH_SHIFT      16
+#define V9X_EG_RING_BASE_SHIFT      8
+#define V9X_EG_RING_BASE_HIGH_SHIFT 24
+
 static v9x_u32 v9x_eg_packet(v9x_u32 command, v9x_u32 sub_command,
                              v9x_u32 count)
 {
@@ -38,7 +46,7 @@ static int v9x_eg_add(v9x_u32 a, v9x_u32 b, v9x_u32 *sum)
  * byte past its last, for a rectangle at (left, top) of width_bytes by
  * height rows on a surface at offset with the given pitch. Non-zero when
  * the rectangle lies inside its pitch and the whole run fits in vram_bytes
- * and, from gpu_base, below 4 GiB.
+ * and, from gpu_base, does not carry out of the address's low 32 bits.
  */
 static int v9x_eg_extent(v9x_u32 gpu_base, v9x_u32 vram_bytes,
                          v9x_u32 offset, v9x_u32 pitch, v9x_u32 left_bytes,
@@ -234,7 +242,8 @@ v9x_status v9x_eg_dma_plan_copy(const struct v9x_eg_dma_copy *copy,
 }
 
 v9x_u32 v9x_eg_dma_plan_row(const struct v9x_eg_dma_plan *plan,
-                            v9x_u32 index, v9x_u32 *out)
+                            v9x_u32 index, v9x_u32 address_high,
+                            v9x_u32 *out)
 {
     v9x_u32 destination;
     v9x_u32 source;
@@ -248,7 +257,8 @@ v9x_u32 v9x_eg_dma_plan_row(const struct v9x_eg_dma_plan *plan,
                                plan->row_bytes / 4ul);
         out[1] = destination;
         out[2] = plan->value;
-        out[3] = 0ul;
+        out[3] = (address_high & V9X_EG_ADDRESS_HIGH_MASK) <<
+                 V9X_EG_FILL_HIGH_SHIFT;
         return V9X_EG_DMA_FILL_DWORDS;
     }
     source = plan->source + index * plan->source_step;
@@ -261,18 +271,26 @@ v9x_u32 v9x_eg_dma_plan_row(const struct v9x_eg_dma_plan *plan,
     }
     out[1] = destination;
     out[2] = source;
-    out[3] = 0ul;
-    out[4] = 0ul;
+    out[3] = address_high & V9X_EG_ADDRESS_HIGH_MASK;
+    out[4] = address_high & V9X_EG_ADDRESS_HIGH_MASK;
     return V9X_EG_DMA_COPY_DWORDS;
 }
 
-v9x_u32 v9x_eg_dma_fence(v9x_u32 gpu_address, v9x_u32 value, v9x_u32 *out)
+v9x_u32 v9x_eg_dma_fence(v9x_u32 address_high, v9x_u32 gpu_address,
+                         v9x_u32 value, v9x_u32 *out)
 {
     out[0] = v9x_eg_packet(V9X_EG_DMA_CMD_FENCE, 0ul, 0ul);
     out[1] = gpu_address & ~3ul;
-    out[2] = 0ul;
+    out[2] = address_high & V9X_EG_ADDRESS_HIGH_MASK;
     out[3] = value;
     return V9X_EG_DMA_FENCE_DWORDS;
+}
+
+v9x_u32 v9x_eg_dma_ring_base(v9x_u32 address_high, v9x_u32 address_low)
+{
+    return ((address_high & V9X_EG_ADDRESS_HIGH_MASK) <<
+            V9X_EG_RING_BASE_HIGH_SHIFT) |
+           (address_low >> V9X_EG_RING_BASE_SHIFT);
 }
 
 v9x_u32 v9x_eg_dma_pad(v9x_u32 position)
@@ -300,15 +318,19 @@ v9x_u32 v9x_eg_dma_ring_advance(v9x_u32 wptr, v9x_u32 count)
            (V9X_EG_RING_DWORDS - 1ul);
 }
 
-v9x_u32 v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *ok)
+v9x_status v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *high,
+                           v9x_u32 *low)
 {
     v9x_u32 field = fb_location & V9X_EG_FB_START_MASK;
+    v9x_u32 start_low;
 
-    /* 16 MiB units of a 40-bit address: 256 and above is past 4 GiB. */
-    if (field >= 0x100ul) {
-        *ok = 0ul;
-        return 0ul;
+    /* 16 MiB units of a 40-bit address: the field's low byte is bits 31:24,
+     * its high byte bits 39:32. */
+    start_low = (field & 0xfful) << V9X_EG_FB_UNIT_SHIFT;
+    if (high == 0 || low == 0 || start_low > V9X_EG_FB_LOW_MAX) {
+        return V9X_STATUS_INVALID_ARGUMENT;
     }
-    *ok = 1ul;
-    return field << V9X_EG_FB_UNIT_SHIFT;
+    *high = field >> 8;
+    *low = start_low;
+    return V9X_STATUS_OK;
 }

@@ -18,6 +18,18 @@
  * per mode. The same window holds the command processor's ring, shaders
  * and vertices, so with it mapped Direct3D is offered through the CP
  * (d3d_eg.c, eg_cp.c). Without either window the chip stays tier-0.
+ *
+ * The HD 7470, PCI 1002:6778 (Caicos, Linux's BTC generation, which keeps
+ * Evergreen's DMA engine and display controllers), is a second row here
+ * (Michael, 2026-10-31: one Evergreen module, a row per chip). Its target
+ * is the remote-help machine M-D7TFW4: subsystem 174B:E145, 2048 MiB of
+ * DDR3, BAR0 at C0000000, BAR2 FEA20000, VRAM at GPU F_00000000
+ * (docs\decisions\2026-10-31-caicos-register-probe.md). The DMA engine's
+ * packets ran byte-exact there with that address's high byte
+ * (docs\decisions\2026-10-31-caicos-dma-write-probe.md), so it claims fill
+ * and copy. Not flips, whose path takes the heap's address from the CP, and
+ * not Direct3D, whose streams carry 32-bit addresses: eg_cp.c refuses VRAM
+ * above 4 GiB.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -45,14 +57,22 @@ static unsigned long v9x_cedar_bar2;
 static unsigned long v9x_cedar_map_reason;
 static unsigned long v9x_cedar_map_value;
 
-static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
-                                  unsigned long *control_linear_base,
-                                  unsigned long *mapped_aperture_bytes,
-                                  unsigned long *engine_type,
-                                  unsigned long *engine_caps,
-                                  unsigned long *gtt_linear_base,
-                                  unsigned long *ring_linear_base,
-                                  unsigned long *ring_bytes)
+/* What each chip claims once both windows are mapped. */
+#define V9X_CEDAR_CLAIMED_CAPS  (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                 V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                 V9X_DD_ENGINE_CAP_FLIP | \
+                                 V9X_DD_ENGINE_CAP_D3D)
+#define V9X_CAICOS_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                 V9X_DD_ENGINE_CAP_SCREEN_COPY)
+
+static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
+                                      unsigned long *control_linear_base,
+                                      unsigned long *mapped_aperture_bytes,
+                                      unsigned long *engine_type,
+                                      unsigned long *engine_caps,
+                                      unsigned long *gtt_linear_base,
+                                      unsigned long *ring_linear_base,
+                                      unsigned long *ring_bytes)
 {
     unsigned long bar0 = 0ul;
     unsigned long bar2 = 0ul;
@@ -60,7 +80,6 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
     unsigned long ring = 0ul;
     unsigned long bytes = 0ul;
 
-    (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
     *mapped_aperture_bytes = 0ul;
     *engine_type = V9X_DD_ENGINE_TYPE_NONE;
@@ -91,14 +110,44 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
     /* Flips through display controller D1's surface address, taken at
      * the vertical blank (eg_scanout.c, which also checks D1 is the
      * controller scanning). */
-    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_FLIP;
+    *engine_caps = claimed_caps & ~V9X_DD_ENGINE_CAP_D3D;
     if (bytes >= V9X_CEDAR_3D_WINDOW_BYTES) {
-        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+        *engine_caps |= claimed_caps & V9X_DD_ENGINE_CAP_D3D;
     }
     *ring_linear_base = ring;
     *ring_bytes = bytes;
+}
+
+static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_evergreen_fill_engine(V9X_CEDAR_CLAIMED_CAPS, control_linear_base,
+                              mapped_aperture_bytes, engine_type,
+                              engine_caps, gtt_linear_base,
+                              ring_linear_base, ring_bytes);
+}
+
+static void v9x_caicos_fill_engine(unsigned long framebuffer_linear_base,
+                                   unsigned long *control_linear_base,
+                                   unsigned long *mapped_aperture_bytes,
+                                   unsigned long *engine_type,
+                                   unsigned long *engine_caps,
+                                   unsigned long *gtt_linear_base,
+                                   unsigned long *ring_linear_base,
+                                   unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_evergreen_fill_engine(V9X_CAICOS_CLAIMED_CAPS, control_linear_base,
+                              mapped_aperture_bytes, engine_type,
+                              engine_caps, gtt_linear_base,
+                              ring_linear_base, ring_bytes);
 }
 
 static void v9x_cedar_hex(char *text, unsigned long value)
@@ -135,8 +184,8 @@ void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write)
 
 /*
  * The DirectDraw heap's mapping: 128 MiB of BAR0, not the 16 MiB the ati
- * family maps for its older chips. The VBE reports 16 MiB on M-BXMFA8's
- * 1 GiB card, and at Quake 3's maximum texture detail 801 textures did not
+ * family maps for its older chips, for both rows. The VBE reports 16 MiB on
+ * M-BXMFA8's 1 GiB card and on M-D7TFW4's 2 GiB one, and at Quake 3's maximum texture detail 801 textures did not
  * fit in that (docs\decisions\2026-10-27-cedar-page-flips.md). 128 MiB lies
  * inside the 256 MiB BAR0 this chip has, below the engine window at BAR0 +
  * 240 MiB, and inside the 256 MiB of VRAM the mini-VDD requires before it
@@ -172,6 +221,22 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     "hardware-evergreen-cp",
     0,
     v9x_cedar_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    V9X_CEDAR_MAP_BYTES
+};
+
+/* Not static, for the same audit. */
+const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
+    0x1002u, 0x6778u,
+    "AMD Radeon HD 7470 (Caicos)",
+    "1002", "6778",
+    "ati-evergreen-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    0,
+    0,
+    v9x_caicos_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES

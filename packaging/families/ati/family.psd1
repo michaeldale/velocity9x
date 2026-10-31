@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450 and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470 and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -374,6 +374,50 @@
             MapSymbols = @('v9x_evergreen_cedar_device')
         }
         @{
+            Id = 'caicos'
+            Name = 'AMD Radeon HD 7470 (Caicos)'
+            VendorId = '1002'
+            DeviceId = '6778'
+            # No SubsystemId: M-D7TFW4's card reads E145:174B, and the bare
+            # id binds every board built on the chip.
+            DeviceDesc = 'Velocity9x AMD Radeon HD 7470 (Caicos)'
+            Adapter = 'AMD Radeon HD 7470 (Caicos)'
+            ClockDetector = 'ati-evergreen-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # A row in Cedar's module (Michael, 2026-10-31). DirectDraw fill
+            # and copy on the DMA engine, its packets measured byte-exact on
+            # this card with VRAM at GPU F_00000000
+            # (docs\decisions\2026-10-31-caicos-dma-write-probe.md). No
+            # flips or Direct3D yet (docs\plans\ati-evergreen-juniper-
+            # caicos.md).
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'not-advertised'
+            EngineType = 'ATI_EVERGREEN'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # What M-D7TFW4's VBE 4F00h reports; the board carries 2 GiB.
+            VideoMemoryBytes = 16777216
+
+            # The baseline numbers M-D7TFW4's BIOS lists (V9XBOOT.INI,
+            # boot 3, docs\probe\m-d7tfw4-caicos-vbe-2026-10-31); the rest
+            # come from the runtime VBE scan.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_evergreen_caicos_device')
+        }
+        @{
             Id = 'carrizo'
             Name = 'AMD Radeon R7E (Carrizo)'
             VendorId = '1002'
@@ -501,7 +545,8 @@
         DispatchSymbol = 'v9x_hw16'
         BackendSymbols = @('v9x_mach64_vt2_device', 'v9x_rage_mobility_device',
                            'v9x_rage_iic_device', 'v9x_rage128_device',
-                           'v9x_evergreen_cedar_device', 'v9x_vi_carrizo_device')
+                           'v9x_evergreen_cedar_device', 'v9x_evergreen_caicos_device',
+                           'v9x_vi_carrizo_device')
     }
 
     Inf = @{
@@ -523,7 +568,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -579,6 +624,10 @@
             }
             @{
                 ChipId = 'cedar'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'caicos'
                 Emulator = 'none'
             }
             @{

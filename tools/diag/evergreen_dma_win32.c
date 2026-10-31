@@ -1,6 +1,7 @@
 /*
- * V9XEGDMA.EXE: the first writes to an AMD Evergreen (Radeon HD 5450,
- * Cedar): one async DMA ring, two submissions, checked byte for byte.
+ * V9XEGDMA.EXE: the first writes to an AMD Evergreen (Radeon HD 5450 Cedar,
+ * HD 7470 Caicos): one async DMA ring, two submissions, checked byte for
+ * byte.
  *
  * Phase 3 of docs\plans\ati-evergreen-cedar.md, first step. EGDMA.VXD
  * executes the op lists built here and refuses anything outside its
@@ -8,11 +9,16 @@
  *
  * Call 1 is read-only: the DMA block's registers, SRBM_STATUS2,
  * SRBM_SOFT_RESET and MC_VM_FB_LOCATION. The run goes ahead only if the ring
- * is disabled, the block neither busy nor in reset and VRAM starts below
- * 4 GiB, as
- * the register probe read them on M-BXMFA8
- * (docs\decisions\2026-10-26-cedar-register-probe.md). /readonly stops
+ * is disabled and the block neither busy nor in reset, as the register
+ * probe read them on M-BXMFA8 and M-D7TFW4
+ * (docs\decisions\2026-10-26-cedar-register-probe.md,
+ * docs\decisions\2026-10-31-caicos-register-probe.md). /readonly stops
  * there.
+ *
+ * VRAM's GPU address is 40 bits: 0 on M-BXMFA8's Cedar, F_00000000 on
+ * M-D7TFW4's Caicos. Every packet carries the scratch window's bits 39:32
+ * in its high field, and DMA_RB_BASE takes the address shifted right by 8,
+ * which holds all 40 bits (r600_dma_resume).
  *
  * Call 2 saves the scratch window (BAR0 + 240 MiB, 64 KiB), lays out
  * buffers and a ring in it, starts the ring as Linux r600_dma_resume does
@@ -111,6 +117,14 @@
  * and SRBM_STATUS2 clear, so it is reported but not tested. */
 #define V9X_EG_DMA_BUSY             0x00000020ul
 #define V9X_EG_FB_START_MASK        0x0000fffful
+/* FB_LOCATION's start field is 16 MiB units of the 40-bit address: its low
+ * byte is bits 31:24 and its high byte bits 39:32. The window must not
+ * carry out of the low 32 bits, so the low byte stays at EFh or below. */
+#define V9X_EG_FB_LOW_MASK          0x000000fful
+#define V9X_EG_FB_HIGH_SHIFT        8u
+#define V9X_EG_FB_LOW_MAX           0x000000eful
+#define V9X_RB_BASE_HIGH_SHIFT      24u
+#define V9X_FILL_HIGH_SHIFT         16u
 
 /* DMA packets, evergreend.h. */
 #define V9X_DMA_PACKET(cmd, sub, n) \
@@ -216,6 +230,8 @@ static struct v9x_egdma_result v9x_result;
 static DWORD v9x_saved[V9X_SAVED_COUNT];
 static DWORD v9x_ring[64];
 static DWORD v9x_ring_count;
+/* Bits 39:32 of the scratch window's GPU address, for every packet. */
+static DWORD v9x_gpu_high;
 
 /* Indices into v9x_result.op_results of the values the report needs. */
 static DWORD v9x_at_reset_status;
@@ -347,15 +363,15 @@ static void v9x_ring_copy(DWORD sub, DWORD count, DWORD dst, DWORD src)
     v9x_ring_put(V9X_DMA_PACKET(V9X_DMA_COPY, sub, count));
     v9x_ring_put(dst);
     v9x_ring_put(src);
-    v9x_ring_put(0ul);
-    v9x_ring_put(0ul);
+    v9x_ring_put(v9x_gpu_high);
+    v9x_ring_put(v9x_gpu_high);
 }
 
 static void v9x_ring_fence(DWORD address, DWORD value)
 {
     v9x_ring_put(V9X_DMA_PACKET(V9X_DMA_FENCE, 0ul, 0ul));
     v9x_ring_put(address);
-    v9x_ring_put(0ul);
+    v9x_ring_put(v9x_gpu_high);
     v9x_ring_put(value);
 }
 
@@ -364,7 +380,7 @@ static void v9x_ring_fill(DWORD count, DWORD dst, DWORD value)
     v9x_ring_put(V9X_DMA_PACKET(V9X_DMA_CONSTANT_FILL, 0ul, count));
     v9x_ring_put(dst);
     v9x_ring_put(value);
-    v9x_ring_put(0ul);
+    v9x_ring_put(v9x_gpu_high << V9X_FILL_HIGH_SHIFT);
 }
 
 /* evergreen_gpu_soft_reset for the DMA block alone: ring enable off, a
@@ -452,7 +468,9 @@ static void v9x_build_run(DWORD g)
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_WPTR, 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_RPTR_ADDR_HI, 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_RPTR_ADDR_LO, 0ul, 0ul);
-    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_BASE, (g + V9X_RING) >> 8, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_BASE,
+           (v9x_gpu_high << V9X_RB_BASE_HIGH_SHIFT) | ((g + V9X_RING) >> 8),
+           0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_IB_CNTL, V9X_EG_DMA_IB_ENABLE, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_CNTL,
            v9x_saved[7] & ~V9X_EG_CTXEMPTY_INT_ENABLE, 0ul);
@@ -712,14 +730,16 @@ void __stdcall V9xEvergreenDmaEntry(void)
         CloseHandle(device);
         v9x_finish("ENGINE-NOT-AS-READ", 3u);
     }
-    /* The start field is 16 MiB units of a 40-bit address; anything that
-     * puts the window above 4 GiB is refused rather than computed. */
+    /* The start field is 16 MiB units of a 40-bit address. A start whose
+     * window would carry into bit 32 is refused rather than computed. */
     fb = (r[at_fb] & V9X_EG_FB_START_MASK);
-    if (fb > 0xeful) {
+    if ((fb & V9X_EG_FB_LOW_MASK) > V9X_EG_FB_LOW_MAX) {
         CloseHandle(device);
         v9x_finish("FB-START-UNSUPPORTED", 4u);
     }
-    g = (fb << 24) + V9X_SCRATCH_GPU_OFFSET;
+    v9x_gpu_high = fb >> V9X_EG_FB_HIGH_SHIFT;
+    g = ((fb & V9X_EG_FB_LOW_MASK) << 24) + V9X_SCRATCH_GPU_OFFSET;
+    v9x_key("Run", "ScratchGpuHigh", v9x_gpu_high);
     v9x_key("Run", "ScratchGpu", g);
 
     if (v9x_switch_given("/readonly")) {

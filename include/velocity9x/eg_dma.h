@@ -86,8 +86,10 @@
 /*
  * A planned operation: rows packets, row i at first + i * step on each
  * side (step negative when the copy runs bottom-up). One row when the rows
- * are contiguous. GPU addresses below 4 GiB only; the packets' high bytes
- * are zero.
+ * are contiguous. Addresses here are bits 31:0 of the GPU address; bits
+ * 39:32 are the same for the whole heap and are passed to
+ * v9x_eg_dma_plan_row, which puts them in each packet's high field (0 on
+ * M-BXMFA8's Cedar, 0Fh on M-D7TFW4's Caicos).
  */
 struct v9x_eg_dma_plan {
     v9x_u32 kind;               /* V9X_EG_DMA_PLAN_FILL or _COPY */
@@ -143,13 +145,22 @@ v9x_status v9x_eg_dma_plan_copy(const struct v9x_eg_dma_copy *copy,
                                 struct v9x_eg_dma_plan *plan);
 
 /* Writes row index's packet to out (at least V9X_EG_DMA_PACKET_DWORDS_MAX
- * dwords) and returns its dword count; 0 for an index past the plan. */
+ * dwords) and returns its dword count; 0 for an index past the plan.
+ * address_high is bits 39:32 of both sides' GPU addresses: a copy carries
+ * it in dwords 3 and 4, a fill in dword 3 bits 23:16 (evergreen_cs.c). */
 v9x_u32 v9x_eg_dma_plan_row(const struct v9x_eg_dma_plan *plan,
-                            v9x_u32 index, v9x_u32 *out);
+                            v9x_u32 index, v9x_u32 address_high,
+                            v9x_u32 *out);
 
-/* A fence: writes value to the GPU address when the engine reaches it.
- * Returns V9X_EG_DMA_FENCE_DWORDS. */
-v9x_u32 v9x_eg_dma_fence(v9x_u32 gpu_address, v9x_u32 value, v9x_u32 *out);
+/* A fence: writes value to the GPU address (bits 39:32 in address_high,
+ * dword 2, as evergreen_dma_fence_ring_emit sends it) when the engine
+ * reaches it. Returns V9X_EG_DMA_FENCE_DWORDS. */
+v9x_u32 v9x_eg_dma_fence(v9x_u32 address_high, v9x_u32 gpu_address,
+                         v9x_u32 value, v9x_u32 *out);
+
+/* DMA_RB_BASE: the ring's 40-bit GPU address shifted right by 8, which
+ * fits the register whole (r600_dma_resume). */
+v9x_u32 v9x_eg_dma_ring_base(v9x_u32 address_high, v9x_u32 address_low);
 
 /* NOP dwords that take a write position, in dwords, to the next
  * V9X_EG_DMA_ALIGN_DWORDS boundary. */
@@ -170,8 +181,12 @@ v9x_u32 v9x_eg_dma_ring_advance(v9x_u32 wptr, v9x_u32 count);
 v9x_status v9x_eg_scanout_address(v9x_u32 heap_gpu, v9x_u32 offset,
                                   v9x_u32 vram_bytes, v9x_u32 *address);
 
-/* The GPU address of VRAM's first byte, from MC_VM_FB_LOCATION; 0 with
- * *ok clear when it lies at or above 4 GiB. */
-v9x_u32 v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *ok);
+/* The GPU address of VRAM's first byte, from MC_VM_FB_LOCATION: bits
+ * 39:32 in *high and 31:0 in *low. INVALID_ARGUMENT when the low half is
+ * above V9X_EG_FB_LOW_MAX, where the window at 240 MiB could carry into
+ * the high half. */
+#define V9X_EG_FB_LOW_MAX               0xef000000ul
+v9x_status v9x_eg_fb_start(v9x_u32 fb_location, v9x_u32 *high,
+                           v9x_u32 *low);
 
 #endif

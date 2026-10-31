@@ -76,7 +76,7 @@ static int run_plan(const struct v9x_eg_dma_plan *plan)
     v9x_u32 index;
 
     for (index = 0ul; index < plan->rows; ++index) {
-        if (v9x_eg_dma_plan_row(plan, index, packet) == 0ul ||
+        if (v9x_eg_dma_plan_row(plan, index, 0ul, packet) == 0ul ||
             !execute(packet)) {
             return 0;
         }
@@ -356,7 +356,8 @@ static void test_copy_refusals(void)
 static void test_ring_helpers(void)
 {
     v9x_u32 packet[V9X_EG_DMA_FENCE_DWORDS];
-    v9x_u32 ok;
+    v9x_u32 high;
+    v9x_u32 low;
 
     CHECK(v9x_eg_dma_pad(0ul) == 0ul);
     CHECK(v9x_eg_dma_pad(5ul) == 11ul);
@@ -396,16 +397,23 @@ static void test_ring_helpers(void)
     }
 
     /* The write probe's fence, byte for byte. */
-    CHECK(v9x_eg_dma_fence(0x0f001000ul, 0x11111111ul, packet) == 4ul);
+    CHECK(v9x_eg_dma_fence(0ul, 0x0f001000ul, 0x11111111ul, packet) == 4ul);
     CHECK(packet[0] == 0x60000000ul);
     CHECK(packet[1] == 0x0f001000ul);
     CHECK(packet[2] == 0ul);
     CHECK(packet[3] == 0x11111111ul);
 
-    /* M-BXMFA8's MC_VM_FB_LOCATION, then one past 4 GiB. */
-    CHECK(v9x_eg_fb_start(0x003f0000ul, &ok) == 0ul && ok == 1ul);
-    CHECK(v9x_eg_fb_start(0x00ff00f0ul, &ok) == 0xf0000000ul && ok == 1ul);
-    CHECK(v9x_eg_fb_start(0x01ff0100ul, &ok) == 0ul && ok == 0ul);
+    /* M-BXMFA8's MC_VM_FB_LOCATION; M-D7TFW4's, at GPU F_00000000; a start
+     * past 4 GiB with a low byte that leaves room for the window; and one
+     * whose window would carry into bit 32. */
+    CHECK(v9x_eg_fb_start(0x003f0000ul, &high, &low) == V9X_STATUS_OK &&
+          high == 0ul && low == 0ul);
+    CHECK(v9x_eg_fb_start(0x0f7f0f00ul, &high, &low) == V9X_STATUS_OK &&
+          high == 0x0ful && low == 0ul);
+    CHECK(v9x_eg_fb_start(0x01ff01eful, &high, &low) == V9X_STATUS_OK &&
+          high == 0x01ul && low == 0xef000000ul);
+    CHECK(v9x_eg_fb_start(0x00ff00f0ul, &high, &low) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 /* The write probe's packet headers, so the builder and the measured
@@ -419,17 +427,52 @@ static void test_probe_headers(void)
     plan.kind = V9X_EG_DMA_PLAN_COPY;
     plan.rows = 1ul;
     plan.row_bytes = 1024ul;
-    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, packet) == 5ul);
+    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, 0ul, packet) == 5ul);
     CHECK(packet[0] == 0x30000100ul);
+    CHECK(packet[3] == 0ul && packet[4] == 0ul);
     plan.byte_copy = 1ul;
     plan.row_bytes = 37ul;
-    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, packet) == 5ul);
+    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, 0ul, packet) == 5ul);
     CHECK(packet[0] == 0x34000025ul);
     plan.kind = V9X_EG_DMA_PLAN_FILL;
     plan.row_bytes = 1024ul;
-    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, packet) == 4ul);
+    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, 0ul, packet) == 4ul);
     CHECK(packet[0] == 0xd0000100ul);
-    CHECK(v9x_eg_dma_plan_row(&plan, 1ul, packet) == 0ul);
+    CHECK(packet[3] == 0ul);
+    CHECK(v9x_eg_dma_plan_row(&plan, 1ul, 0ul, packet) == 0ul);
+}
+
+/* M-D7TFW4's Caicos has VRAM at GPU F_00000000: the high byte rides in each
+ * packet's high field as V9XEGDMA sent it, five runs byte-exact
+ * (docs\decisions\2026-10-31-caicos-dma-write-probe.md). */
+static void test_high_addresses(void)
+{
+    struct v9x_eg_dma_plan plan;
+    v9x_u32 packet[V9X_EG_DMA_PACKET_DWORDS_MAX];
+
+    memset(&plan, 0, sizeof(plan));
+    plan.kind = V9X_EG_DMA_PLAN_COPY;
+    plan.rows = 1ul;
+    plan.row_bytes = 1024ul;
+    plan.destination = 0x0f003010ul;
+    plan.source = 0x0f002000ul;
+    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, 0x0ful, packet) == 5ul);
+    CHECK(packet[1] == 0x0f003010ul && packet[2] == 0x0f002000ul);
+    CHECK(packet[3] == 0x0000000ful && packet[4] == 0x0000000ful);
+
+    plan.kind = V9X_EG_DMA_PLAN_FILL;
+    plan.value = 0xc0ffee11ul;
+    CHECK(v9x_eg_dma_plan_row(&plan, 0ul, 0x0ful, packet) == 4ul);
+    CHECK(packet[1] == 0x0f003010ul && packet[2] == 0xc0ffee11ul);
+    CHECK(packet[3] == 0x000f0000ul);
+
+    CHECK(v9x_eg_dma_fence(0x0ful, 0x0f001000ul, 0x11111111ul, packet) ==
+          4ul);
+    CHECK(packet[1] == 0x0f001000ul && packet[2] == 0x0000000ful);
+
+    /* DMA_RB_BASE takes the 40-bit address shifted right by 8. */
+    CHECK(v9x_eg_dma_ring_base(0x0ful, 0x0f000000ul) == 0x0f0f0000ul);
+    CHECK(v9x_eg_dma_ring_base(0ul, 0x0f000000ul) == 0x000f0000ul);
 }
 
 /* The generated microcode: radeon_ucode.h's sizes, and the first and last
@@ -457,5 +500,6 @@ unsigned int v9x_run_eg_dma_tests(void)
     test_copy_refusals();
     test_ring_helpers();
     test_probe_headers();
+    test_high_addresses();
     return failures;
 }

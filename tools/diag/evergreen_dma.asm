@@ -1,11 +1,12 @@
-; AMD Evergreen (Radeon HD 5450, Cedar) async DMA write probe VxD.
+; AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos) async DMA write
+; probe VxD.
 ;
 ; Phase 3 of docs\plans\ati-evergreen-cedar.md, first step. Loaded
 ; dynamically by V9XEGDMA.EXE, which decides every access; this VxD only
 ; executes an op list against the card and refuses anything outside it.
 ; The Rage 128's R1282D.VXD (r128_2d.asm) is the model.
 ;
-; It finds the card with configuration mechanism 1 (1002:68F9 only), maps
+; It finds the card with configuration mechanism 1 (1002:68F9 or 6778), maps
 ; BAR2 (128 KiB of registers) and a 64 KiB scratch window of VRAM through
 ; BAR0, and runs:
 ;
@@ -28,7 +29,9 @@
 ; touches. It is mapped only when BAR0 is a 64-bit memory BAR below 4 GiB,
 ; aligned to 256 MiB, on a card whose CONFIG_MEMSIZE says 256 MiB or more:
 ; M-BXMFA8's BAR0 is D0000000-DFFFFFFF and its VRAM 1024 MiB
-; (docs\decisions\2026-10-26-cedar-register-probe.md).
+; (docs\decisions\2026-10-26-cedar-register-probe.md); M-D7TFW4's BAR0
+; starts at C0000000 and its VRAM is 2048 MiB
+; (docs\decisions\2026-10-31-caicos-register-probe.md).
 ;
 ; Offsets: Linux radeon's evergreend.h and r600d.h
 ; (build\external\evergreen\linux-radeon\).
@@ -47,6 +50,7 @@ ED_MAGIC                equ 414d4445h ; "EDMA"
 ED_DIOC_RUN             equ 1
 ED_VENDOR_ATI           equ 1002h
 ED_DEVICE_CEDAR         equ 68f9h
+ED_DEVICE_CAICOS        equ 6778h
 ED_OP_MAX               equ 512
 ED_BLOCK_DWORDS         equ 4096
 ED_TIMEOUT              equ 0ffffffffh
@@ -196,7 +200,7 @@ BeginProc ED_Pci_Read
     ret
 EndProc ED_Pci_Read
 
-; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9.
+; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9 or 6778.
 ; Returns CF clear and EAX = configuration address, or CF set.
 BeginProc ED_Find
     push    ebx
@@ -206,6 +210,8 @@ ED_Find_Next:
     mov     eax, ebx
     call    ED_Pci_Read
     cmp     eax, (ED_DEVICE_CEDAR shl 16) or ED_VENDOR_ATI
+    je      short ED_Find_Found
+    cmp     eax, (ED_DEVICE_CAICOS shl 16) or ED_VENDOR_ATI
     je      short ED_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h

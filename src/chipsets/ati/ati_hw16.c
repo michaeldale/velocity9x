@@ -23,7 +23,9 @@ extern const V9X_HW16_DEVICE v9x_rage_mobility_device;
 extern const V9X_HW16_DEVICE v9x_rage_iic_device;
 extern const V9X_HW16_DEVICE v9x_rage128_device;
 extern const V9X_HW16_DEVICE v9x_evergreen_cedar_device;
-/* cedar_hw16.c: the Evergreen engine hook's outcome, and its heap. */
+extern const V9X_HW16_DEVICE v9x_evergreen_caicos_device;
+/* cedar_hw16.c: the Evergreen engine hook's outcome, and its heap, for
+ * both of its rows. */
 void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write);
 unsigned long v9x_cedar_measure_video_memory(unsigned long mapped_bytes,
                                              unsigned long reported_bytes);
@@ -120,8 +122,9 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_rage_iic_device,
     /* Not a Mach64: tier-0 with no hook (rage128_hw16.c). */
     &v9x_rage128_device,
-    /* Evergreen: tier-0 with no hook (cedar_hw16.c). */
+    /* Evergreen: the DMA engine behind DirectDraw (cedar_hw16.c). */
     &v9x_evergreen_cedar_device,
+    &v9x_evergreen_caicos_device,
     /* GCN 3: SDMA0 behind DirectDraw (carrizo_hw16.c). */
     &v9x_vi_carrizo_device,
     /* The aliases, each declared in its chip's module: the VT2's, the
@@ -251,7 +254,8 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     } else {
         write("VbeVramBytes", "unavailable");
     }
-    if (device == &v9x_evergreen_cedar_device) {
+    if (device == &v9x_evergreen_cedar_device ||
+        device == &v9x_evergreen_caicos_device) {
         v9x_cedar_publish_diagnostics(write);
     }
     if (device == &v9x_vi_carrizo_device) {
@@ -259,12 +263,15 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
 }
 
-/* Only the HD 5450 answers: every other chip of the family keeps the
- * VBE's figure, which a zero leaves in place (enable16.c). */
+/* Only the Evergreen chips answer: every other chip of the family keeps
+ * the VBE's figure, which a zero leaves in place (enable16.c). */
 static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
                                                   unsigned long reported_bytes)
 {
-    if (v9x_hw16_active_device() == &v9x_evergreen_cedar_device) {
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+
+    if (device == &v9x_evergreen_cedar_device ||
+        device == &v9x_evergreen_caicos_device) {
         return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
     }
     return 0ul;
@@ -312,7 +319,7 @@ const V9X_HW16_OPS v9x_hw16 = {
      */
     0u,
     /* identify_without_pci, reserve_video_memory, unalias_pitch: none.
-     * measure_video_memory for the HD 5450's heap. place_desktop: none. */
+     * measure_video_memory for the Evergreen heap. place_desktop: none. */
     0, 0, 0u, v9x_ati_measure_video_memory, 0,
     /*
      * Gamma through the DAC table. ATI's own driver for this family

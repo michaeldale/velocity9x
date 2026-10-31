@@ -449,11 +449,15 @@ static int v9x_eg_cp_run(struct v9x_eg_pm4 *stream)
  * from zero: the GPU ran desktop pixels as its shaders and hung the
  * pipeline (M-BXMFA8 boots 8-12, docs\decisions\2026-10-27-cedar-d3d-
  * hal-first-light.md). Non-zero once located.
+ *
+ * The streams carry 32-bit addresses only, so VRAM above 4 GiB (M-D7TFW4's
+ * Caicos, at GPU F_00000000) is refused here and the CP stays halted; the
+ * DMA engine carries the high byte (eng_eg.c).
  */
 static int v9x_eg_cp_locate(void)
 {
-    DWORD fb_start;
-    DWORD ok;
+    v9x_u32 fb_high;
+    v9x_u32 fb_low;
 
     if (v9x_eg_cp_window_gpu != 0ul) {
         return 1;
@@ -461,15 +465,14 @@ static int v9x_eg_cp_locate(void)
     if (!v9x_eg_cp_mapped()) {
         return 0;
     }
-    fb_start = v9x_eg_fb_start(v9x_eg_cp_read32(V9X_EG_MC_VM_FB_LOCATION),
-                               &ok);
-    if (ok == 0ul || fb_start > 0xfffffffful - V9X_EG_RING_WINDOW_OFFSET -
-                                V9X_EG_WINDOW_BYTES) {
+    if (v9x_eg_fb_start(v9x_eg_cp_read32(V9X_EG_MC_VM_FB_LOCATION), &fb_high,
+                        &fb_low) != V9X_STATUS_OK ||
+        fb_high != 0ul) {
         return 0;
     }
-    v9x_eg_cp_heap_gpu = fb_start +
+    v9x_eg_cp_heap_gpu = fb_low +
         (v9x_hal->fb.physical_base & V9X_EG_CP_BAR0_MASK);
-    v9x_eg_cp_window_gpu = fb_start + V9X_EG_RING_WINDOW_OFFSET;
+    v9x_eg_cp_window_gpu = fb_low + V9X_EG_RING_WINDOW_OFFSET;
     return 1;
 }
 
