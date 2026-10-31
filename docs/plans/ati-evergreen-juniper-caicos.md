@@ -19,7 +19,11 @@ the engine at 16 bpp. Phase 3 (2026-10-31,
 [record](../decisions/2026-10-31-caicos-page-flips.md)): flips handled
 and confirmed by the chip, vblank pacing unmeasured. **On the ati build
 Quake 3 does not start** (no software GL once an engine is claimed
-without D3D); it runs only on vbe until Phase 5. Parent plans:
+without D3D); it runs only on vbe until Phase 5. Phase 4 (2026-10-31,
+[record](../decisions/2026-10-31-caicos-cp-microcode.md)): the CP runs
+`CAICOS_pfp/me.bin`, ring test three of three; the images differ from
+Cedar's, so decision 2 (9,984 bytes on the floppy set) is open. Parent
+plans:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md) (2D, flips, heap) and
 [ati-evergreen-cedar-3d.md](ati-evergreen-cedar-3d.md) (CP, Direct3D,
 OpenGL).

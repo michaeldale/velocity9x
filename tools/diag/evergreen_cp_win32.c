@@ -1,6 +1,7 @@
 /*
- * V9XEGCP.EXE: AMD Evergreen (Radeon HD 5450, Cedar) command processor
- * bring-up: AMD's microcode loaded, a ring started, and one packet run.
+ * V9XEGCP.EXE: AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos) command
+ * processor bring-up: AMD's microcode loaded, a ring started, and one packet
+ * run.
  *
  * Phase 1 of docs\plans\ati-evergreen-cedar-3d.md. EGCP.VXD executes the op
  * lists built here and refuses anything outside its allow-lists. Writes
@@ -8,12 +9,19 @@
  *
  * The microcode is read from PFP.BIN and ME.BIN in the current directory:
  * linux-firmware's radeon/CEDAR_pfp.bin (1120 dwords) and CEDAR_me.bin
- * (1376 dwords), big-endian as Linux's be32_to_cpup reads them.
+ * (1376 dwords), or CAICOS_pfp.bin and CAICOS_me.bin, the same sizes,
+ * big-endian as Linux's be32_to_cpup reads them.
  *
  * Call 1 is read-only: the CP's registers. The run goes ahead only if the
  * CP is halted (ME and PFP), as POST leaves it
- * (docs\decisions\2026-10-26-cedar-register-probe.md), and VRAM starts
- * below 4 GiB. /readonly stops there.
+ * (docs\decisions\2026-10-26-cedar-register-probe.md). /readonly stops
+ * there.
+ *
+ * VRAM's GPU address is 40 bits: 0 on Cedar, F_00000000 on M-D7TFW4's
+ * Caicos. CP_RB_BASE and SCRATCH_ADDR take the window's address shifted
+ * right by 8, which holds all 40 bits, and CP_RB_RPTR_ADDR_HI its bits
+ * 39:32 (evergreen_cp_resume). A start whose window would carry into bit
+ * 32 is refused.
  *
  * Call 2 follows Linux:
  *   r700_cp_stop                 - ME and PFP halted, SCRATCH_UMSK 0;
@@ -107,6 +115,11 @@
 #define V9X_EG_GRBM_RESET_CP_BLOCKS 0x00004721ul
 #define V9X_EG_CP_DEBUG_VALUE       0x18000000ul /* (1 << 27) | (1 << 28) */
 #define V9X_EG_FB_START_MASK        0x0000fffful
+/* FB_LOCATION's start field: low byte bits 31:24, high byte 39:32. */
+#define V9X_EG_FB_LOW_MASK          0x000000fful
+#define V9X_EG_FB_HIGH_SHIFT        8u
+#define V9X_EG_FB_LOW_MAX           0x000000eful
+#define V9X_ADDR_SHIFT_HIGH         24u
 
 /* evergreen_cp_load_microcode's CP_RB_CNTL: RB_NO_UPDATE, RB_BLKSZ(15),
  * RB_BUFSZ(3). */
@@ -201,6 +214,8 @@ static struct v9x_egcp_result v9x_result;
 static DWORD v9x_saved[V9X_SAVED_COUNT];
 static DWORD v9x_ring[64];
 static DWORD v9x_ring_count;
+/* Bits 39:32 of the window's GPU address. */
+static DWORD v9x_gpu_high;
 
 static DWORD v9x_at_wait_init;
 static DWORD v9x_at_wait_scratch;
@@ -387,12 +402,15 @@ static void v9x_build_run(DWORD g)
     v9x_write(V9X_EG_CP_RB_RPTR_WR, 0ul);
     v9x_write(V9X_EG_CP_RB_WPTR, 0ul);
     v9x_write(V9X_EG_CP_RB_RPTR_ADDR, (g + V9X_RPTR_WB) & ~3ul);
-    v9x_write(V9X_EG_CP_RB_RPTR_ADDR_HI, 0ul);
-    v9x_write(V9X_EG_SCRATCH_ADDR, (g + V9X_SCRATCH_WB) >> 8);
+    v9x_write(V9X_EG_CP_RB_RPTR_ADDR_HI, v9x_gpu_high);
+    v9x_write(V9X_EG_SCRATCH_ADDR,
+              (v9x_gpu_high << V9X_ADDR_SHIFT_HIGH) |
+              ((g + V9X_SCRATCH_WB) >> 8));
     v9x_write(V9X_EG_SCRATCH_UMSK, 0ul);
     v9x_op(V9X_OP_DELAY, V9X_SHORT_DELAY_READS, 0ul, 0ul);
     v9x_write(V9X_EG_CP_RB_CNTL, V9X_RB_CNTL | V9X_EG_RB_NO_UPDATE);
-    v9x_write(V9X_EG_CP_RB_BASE, g >> 8);
+    v9x_write(V9X_EG_CP_RB_BASE, (v9x_gpu_high << V9X_ADDR_SHIFT_HIGH) |
+                                 (g >> 8));
     v9x_write(V9X_EG_CP_DEBUG, V9X_EG_CP_DEBUG_VALUE);
 
     /* evergreen_cp_start: ME_INITIALIZE, then release the ME and PFP. */
@@ -517,11 +535,13 @@ void __stdcall V9xEvergreenCpEntry(void)
         v9x_finish("CP-NOT-HALTED", 3u);
     }
     fb = r[at_fb] & V9X_EG_FB_START_MASK;
-    if (fb > 0xeful) {
+    if ((fb & V9X_EG_FB_LOW_MASK) > V9X_EG_FB_LOW_MAX) {
         CloseHandle(device);
         v9x_finish("FB-START-UNSUPPORTED", 4u);
     }
-    g = (fb << 24) + V9X_SCRATCH_GPU_OFFSET;
+    v9x_gpu_high = fb >> V9X_EG_FB_HIGH_SHIFT;
+    g = ((fb & V9X_EG_FB_LOW_MASK) << 24) + V9X_SCRATCH_GPU_OFFSET;
+    v9x_key("Run", "WindowGpuHigh", v9x_gpu_high);
     v9x_key("Run", "WindowGpu", g);
     if (v9x_switch_given("/readonly")) {
         CloseHandle(device);
