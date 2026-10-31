@@ -6,7 +6,7 @@
 ; executes an op list against the card and refuses anything outside it.
 ; The Rage 128's R1282D.VXD (r128_2d.asm) is the model.
 ;
-; It finds the card with configuration mechanism 1 (1002:68F9 or 6778), maps
+; It finds the card with configuration mechanism 1 (1002:68F9, 6778 or 68B8), maps
 ; BAR2 (128 KiB of registers) and a 64 KiB scratch window of VRAM through
 ; BAR0, and runs:
 ;
@@ -51,6 +51,7 @@ ED_DIOC_RUN             equ 1
 ED_VENDOR_ATI           equ 1002h
 ED_DEVICE_CEDAR         equ 68f9h
 ED_DEVICE_CAICOS        equ 6778h
+ED_DEVICE_JUNIPER       equ 68b8h
 ED_OP_MAX               equ 512
 ED_BLOCK_DWORDS         equ 4096
 ED_TIMEOUT              equ 0ffffffffh
@@ -200,7 +201,8 @@ BeginProc ED_Pci_Read
     ret
 EndProc ED_Pci_Read
 
-; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9 or 6778.
+; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9, 6778 or
+; 68B8.
 ; Returns CF clear and EAX = configuration address, or CF set.
 BeginProc ED_Find
     push    ebx
@@ -212,6 +214,8 @@ ED_Find_Next:
     cmp     eax, (ED_DEVICE_CEDAR shl 16) or ED_VENDOR_ATI
     je      short ED_Find_Found
     cmp     eax, (ED_DEVICE_CAICOS shl 16) or ED_VENDOR_ATI
+    je      short ED_Find_Found
+    cmp     eax, (ED_DEVICE_JUNIPER shl 16) or ED_VENDOR_ATI
     je      short ED_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h

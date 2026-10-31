@@ -9,7 +9,7 @@
  *
  * The microcode is read from PFP.BIN and ME.BIN in the current directory:
  * linux-firmware's radeon/CEDAR_pfp.bin (1120 dwords) and CEDAR_me.bin
- * (1376 dwords), or CAICOS_pfp.bin and CAICOS_me.bin, the same sizes,
+ * (1376 dwords), or CAICOS_ or JUNIPER_pfp.bin and _me.bin, the same sizes,
  * big-endian as Linux's be32_to_cpup reads them.
  *
  * Call 1 is read-only: the CP's registers. The run goes ahead only if the
@@ -142,8 +142,11 @@
 #define V9X_P3_ME_INITIALIZE        0x44ul
 #define V9X_P3_SET_CONFIG_REG       0x68ul
 #define V9X_SET_CONFIG_REG_START    0x8000ul
-/* Cedar's max_hw_contexts, evergreen_gpu_init. */
+/* max_hw_contexts, evergreen_gpu_init: 4 on Cedar and Caicos, 8 on
+ * Juniper (1002:68B8, the id the VxD reads). */
 #define V9X_EG_MAX_HW_CONTEXTS      4ul
+#define V9X_EG_JUNIPER_HW_CONTEXTS  8ul
+#define V9X_EG_DEVICE_JUNIPER       0x68b8ul
 
 #define V9X_SCRATCH_SEED            0xcafedeadul
 #define V9X_SCRATCH_VALUE           0xdeadbeeful
@@ -355,7 +358,8 @@ static void v9x_build_run(DWORD g)
     v9x_ring_put(V9X_PACKET3(V9X_P3_ME_INITIALIZE, 5ul));
     v9x_ring_put(0x1ul);
     v9x_ring_put(0x0ul);
-    v9x_ring_put(V9X_EG_MAX_HW_CONTEXTS - 1ul);
+    v9x_ring_put(((v9x_result.id >> 16) == V9X_EG_DEVICE_JUNIPER ?
+                  V9X_EG_JUNIPER_HW_CONTEXTS : V9X_EG_MAX_HW_CONTEXTS) - 1ul);
     v9x_ring_put(1ul << 16); /* PACKET3_ME_INITIALIZE_DEVICE_ID(1) */
     v9x_ring_put(0ul);
     v9x_ring_put(0ul);

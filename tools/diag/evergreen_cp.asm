@@ -6,8 +6,9 @@
 ; (evergreen_dma.asm) is the model; this one differs in its allow-lists,
 ; its window, and a stream op that feeds microcode to a data port.
 ;
-; It finds the card with configuration mechanism 1 (1002:68F9, or 6778 for
-; the HD 7470 Caicos, docs\decisions\2026-10-31-caicos-register-probe.md), maps
+; It finds the card with configuration mechanism 1 (1002:68F9, 6778 for the
+; HD 7470 Caicos, docs\decisions\2026-10-31-caicos-register-probe.md, or
+; 68B8 for the HD 5770 Juniper), maps
 ; BAR2 (128 KiB of registers) and a 64 KiB scratch window of VRAM through
 ; BAR0, and runs:
 ;
@@ -59,6 +60,7 @@ EC_DIOC_RUN             equ 1
 EC_VENDOR_ATI           equ 1002h
 EC_DEVICE_CEDAR         equ 68f9h
 EC_DEVICE_CAICOS        equ 6778h
+EC_DEVICE_JUNIPER       equ 68b8h
 EC_OP_MAX               equ 512
 EC_BLOCK_DWORDS         equ 4096
 EC_DATA_DWORDS          equ 4096
@@ -318,7 +320,8 @@ BeginProc EC_Pci_Read
     ret
 EndProc EC_Pci_Read
 
-; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9 or 6778.
+; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9, 6778 or
+; 68B8.
 ; Returns CF clear and EAX = configuration address, or CF set.
 BeginProc EC_Find
     push    ebx
@@ -330,6 +333,8 @@ EC_Find_Next:
     cmp     eax, (EC_DEVICE_CEDAR shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
     cmp     eax, (EC_DEVICE_CAICOS shl 16) or EC_VENDOR_ATI
+    je      short EC_Find_Found
+    cmp     eax, (EC_DEVICE_JUNIPER shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h
