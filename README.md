@@ -9,7 +9,8 @@ cards**. One driver package per chip family gives the card:
 - ATI's 3DCIF for games written for ATI Rage cards.
 
 All of them draw through one shared render core. It runs the Intel GMA 950,
-GMA 3150, GMA X3100, HD 4600 and HD 4000, the AMD Radeon HD 5450 and R7E (Carrizo), the ATI Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
+GMA 3150, GMA X3100, HD 4600 and HD 4000, the AMD Radeon HD 5450, HD 7470,
+HD 5770 and R7E (Carrizo), the ATI Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS. The
@@ -19,6 +20,15 @@ yet run.
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
 Direct3D HAL and OpenGL ICD contracts, rather than derived from anyone's
 driver sources.
+
+**Coming in 0.34.0, on `main` and not yet released:** the AMD Radeon HD
+7470 (Caicos, `1002:6778`) and HD 5770 (Juniper, `1002:68B8`) on the
+`ati` package, with DirectDraw on the DMA engine, page flips, and
+Direct3D and OpenGL on the 3D engine; OpenGL at 1280x1024 and above at
+32 bpp on the Evergreen cards, which ran at 1-2 fps; and on the HD 4600,
+DirectX 8 with pixel shader 1.1, cube, signed and DXT textures. Until
+0.34.0 is released, the 0.33.0 download does not have these. See the
+[changelog](CHANGELOG.md).
 
 ![Quake 2 on the Intel GMA 950 through Velocity9x's OpenGL driver, at the
 first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
@@ -100,7 +110,9 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Claimed: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | Claimed: the GM965's path with G4x's encodings, built from two reporters' surveys. Nothing has run on one |
-| AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help; modes from the VBE |
+| AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
+| AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. Glide and 3DMark not run |
+| AMD Radeon HD 5770 (Juniper, `1002:68B8`), from 0.34.0 | `ati` | Evergreen, through AMD's Juniper CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 up to 1600x1200. One tester's machine through remote help; modes from the VBE. Glide not run |
 | AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips. 3DMark 2000 and Quake 3. One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only. Glide not run |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
@@ -142,7 +154,7 @@ from the records the [changelog](CHANGELOG.md) links.
 
 | Card | 2D on the engine | Direct3D | Direct3D 8 | OpenGL | Two texture units | Glide 2 and 3 | 3DCIF |
 |---|---|---|---|---|---|---|---|
-| Intel HD Graphics 4600 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | No (0.19.0) |
+| Intel HD Graphics 4600 | DirectDraw | Yes | Yes, with pixel shader 1.1 (0.34.0) | Yes | Yes | Probe only, no game | No (0.19.0) |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
 | Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
@@ -151,6 +163,8 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
 | Intel GMA X4500, GMA 4500 | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
+| AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
+| AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
@@ -170,8 +184,8 @@ from the records the [changelog](CHANGELOG.md) links.
 Measured limits:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
-  Graphics 4600 and the Millennium II (the Mystique, the HD 5450 and the
-  R7E: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  Graphics 4600 and the Millennium II (the Mystique, the HD 5450, HD 7470,
+  HD 5770 and the R7E: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
@@ -179,8 +193,11 @@ Measured limits:
   `GL_ARB_multitexture` and `GL_SGIS_multitexture`, and lightmaps in one
   pass.
 - **Write-combining:** the CPU writes video memory write-combined on the
-  Rage 128 Pro, the GMA 950/900/3150 and the Ironlake. The HD 4600's BIOS
-  leaves no memory-type range free for it. `V9X3D OFF` turns it off.
+  Rage 128 Pro, the GMA 950/900/3150 and the Ironlake, on the HD 4600
+  through the page attribute table (from 0.33.0, its BIOS leaving no
+  memory-type range free), and on the SiS 6326 (0.34.0, where
+  `C:\V9XDIAG\NOWC.TXT` turns it off). `V9X3D OFF` turns it off on the
+  others.
 - **When an engine can't draw something:** it refuses the draw rather
   than drawing it wrong. The GMA 950, the two Matrox 3D chips and the
   Rage 128 Pro then draw it on the CPU.
@@ -195,6 +212,8 @@ like-for-like comparison: the machines differ, and so do the versions.
 | Intel HD Graphics 4600 (i5-4570) | 77.3 fps (windowed) | not run; Half-Life `-gl` 95.9 fps (windowed); Quake 3 `demo001` 60.6 fps | 0.32.0 |
 | AMD Radeon HD 5450 | not run | not run; Quake 3 `demo001` 63.6 fps | 0.32.0 |
 | AMD Radeon R7E (Carrizo, GX-420GI) | not run | not run; Quake 3 `demo001` 21.3 fps | 0.33.0 |
+| AMD Radeon HD 7470 (A10-5700) | not run | not run; Quake 3 `demo001` 34.6 fps | 0.34.0 build, unreleased |
+| AMD Radeon HD 5770 (Core 2 Duo E7500) | not run | not run; Quake 3 `demo001` 49.3 fps at 1024x768x32, 50.6 at 1280x1024x32 | 0.34.0 build, unreleased |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
@@ -267,6 +286,17 @@ offered 16-bit colour only: 16-bit display modes, 16-bit textures and a
 16-bit depth buffer, with no stencil. A game that insists on 32-bit
 colour, compressed textures or stencil will not start or will drop the
 feature. Direct3D 9 needs a newer interface still and is not available.
+
+On the HD 4600, from 0.34.0 (not yet released), DirectX 8 and 9 programs
+get the DirectX 8 interface itself (DDI 8) with **pixel shader 1.1**,
+cube textures, the signed bump formats and DXT1, DXT3 and DXT5
+textures. 3DMark 2001 SE then runs every test, Nature and both pixel
+shader tests included, to a full score. A shader beyond 1.1, or one the
+driver cannot translate, fails to create rather than draw wrong. Known
+issue: Nature's distant terrain and mountains draw white. DirectX 7
+programs keep the older interface; `[Velocity9x.Direct3DDdi]
+<program>=7` sets one program back if it breaks
+([record](docs/decisions/2026-10-30-haswell-ddi8-ps11-record.md)).
 
 ## OpenGL
 
@@ -434,6 +464,12 @@ reports are decoded by
 [scripts/parse-vga-survey.ps1](scripts/parse-vga-survey.ps1).
 
 ## Transfer disks
+
+**From 0.34.0 the floppy build is not maintained:** the shared HAL
+outgrew a 1.44 MB disk, and the packages and the gate no longer build it.
+Copy the zip's contents by CD, USB or network instead. The script and its
+description below are kept for 0.33.0 and earlier, and may fail on a
+newer tree.
 
 For a machine with no network, each family that has a floppy build gets
 two 1.44 MB disks:

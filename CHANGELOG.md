@@ -6,6 +6,66 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.34.0 - not yet released
 
+- **AMD Radeon HD 7470 (Caicos, `1002:6778`) is claimed by the `ati`
+  package**, measured on one tester's machine through remote help. Modes
+  come from the VBE, up to 1400x1050 on its BIOS
+  ([record](docs/decisions/2026-10-31-caicos-juniper-tier0-survey.md)).
+  - Its 2 GiB of video memory sits above 4 GiB in the GPU's address
+    space, so the Evergreen engines now carry 40-bit addresses
+    ([record](docs/decisions/2026-10-31-caicos-register-probe.md)).
+  - DirectDraw fills and copies run on the DMA engine, and page flips go
+    through the display controller
+    ([record](docs/decisions/2026-10-31-caicos-dma-write-probe.md),
+    [record](docs/decisions/2026-10-31-caicos-page-flips.md)).
+  - Direct3D and OpenGL draw on the 3D engine, with AMD's Caicos
+    microcode (which differs from the HD 5450's) and Caicos's own GPU
+    configuration. V9XD32 passes at 16 and 32 bpp. The Quake 3 demo
+    timedemo runs at 34.6 fps at 640x480x16 with every batch in hardware
+    ([record](docs/decisions/2026-10-31-caicos-cp-microcode.md),
+    [record](docs/decisions/2026-11-01-caicos-direct3d-quake3.md)).
+- **AMD Radeon HD 5770 (Juniper, `1002:68B8`) is claimed by the `ati`
+  package**, measured on one tester's machine through remote help:
+  DirectDraw on the DMA engine, page flips, and Direct3D and OpenGL on the
+  3D engine with Juniper's microcode, eight hardware contexts, four
+  render backends and its vertex cache. V9XD32 passes at 16 and 32 bpp.
+  The Quake 3 demo runs at 49.3 fps at 1024x768x32 at maximum texture
+  detail, 50.6 fps at 1280x1024x32 and 49.0 fps at 1600x1200x32, every
+  batch in hardware
+  ([record](docs/decisions/2026-11-01-juniper-bring-up.md)).
+- **Fixed: OpenGL games ran at 1-2 fps at 1280x1024 and above at
+  32 bpp** on the Evergreen cards (HD 5450, HD 7470, HD 5770). A
+  DirectDraw copy larger than 4 MiB was declined to the CPU, which read
+  video memory back for every frame the OpenGL driver presented. Such
+  copies now go a row at a time on the DMA engine. The tester's report,
+  reproduced on the HD 5770 at 1.3 fps and fixed to 50.6 fps; the fix is
+  shared, and the other two cards were not run at those sizes
+  ([record](docs/decisions/2026-11-01-juniper-owner-reports.md)).
+- **Intel HD Graphics 4600: DirectX 8 and 9 programs get DDI 8 with
+  pixel shader 1.1.** Also new on it: cube textures, the signed bump
+  formats Q8W8V8U8 and V8U8, and DXT1, DXT3 and DXT5 textures. 3DMark
+  2001 SE's Nature, Pixel Shader and Advanced Pixel Shader tests now run,
+  and the full default benchmark completes with every test, 1834 3D marks
+  (recorded, not compared). A shader the parser does not accept fails to
+  create rather than draw wrong. DirectX 7 programs keep DDI 7. Known
+  issue: Nature's distant terrain and mountains draw white
+  ([record](docs/decisions/2026-10-30-haswell-ddi8-ps11-record.md),
+  [record](docs/decisions/2026-10-30-haswell-dxt-textures.md)).
+- **No more floppy disk sets.** The shared HAL outgrew a 1.44 MB disk, and
+  floppies are no longer a requirement (Michael, 2026-10-29 and
+  2026-10-31). The packages and the gate no longer build them; use the
+  zip.
+- Known issue, HD 5450: the tester's card is no longer installed, so
+  nothing in this release has run on one. Its code paths changed with
+  the HD 7470's and HD 5770's (the same engine code); its streams are
+  unchanged by construction and by the host tests.
+- Known issues reported on the HD 5450 and still open: sets of trees
+  vanish in 3DMark 2000's Helicopter test with the Pentium III
+  optimisation (not seen by the driver: it refuses no draws, and the
+  GPU's clipper is off), and 3DMark 2001's Lobby plants draw opaque (not
+  re-run). On the HD 5770, DirectDraw offers 640x480 to 1024x768 at
+  32 bpp from a 16 bpp desktop, but nothing larger: its BIOS lists more
+  modes than DirectDraw's 32 slots
+  ([record](docs/decisions/2026-11-01-juniper-owner-reports.md)).
 - **The SiS 6326's frame buffer is write-combined,** as the Rage 128's is.
   On A8U4I5 at 800x600x16, CPU writes to the card went from 49.9 to
   89.3 MB/s. Texture upload through Lock is 3.6x faster, and GDI's fills
@@ -16,9 +76,6 @@ build identifier so exact guest-tested binaries remain traceable.
   alike. The engine does not prestep U across a span, so the driver now
   corrects U for each triangle
   ([record](docs/decisions/2026-10-29-sis6326-u-prestep.md)).
-- The Matrox floppy set carries `GLIDE2X.DLL` on its third disk; the shared
-  HAL outgrew disk 1 again.
-
 ## 0.33.0 - 2026-10-29
 
 - **AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) is claimed by the `ati`
