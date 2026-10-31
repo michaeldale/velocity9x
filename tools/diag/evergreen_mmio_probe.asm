@@ -1,6 +1,8 @@
-; AMD Evergreen (Radeon HD 5450, Cedar) read-only register probe VxD.
+; AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos, HD 5770 Juniper)
+; read-only register probe VxD.
 ;
-; Phase 2 of docs\plans\ati-evergreen-cedar.md. Maps the 128 KiB register
+; Phase 2 of docs\plans\ati-evergreen-cedar.md and Phase 1 of
+; docs\plans\ati-evergreen-juniper-caicos.md. Maps the 128 KiB register
 ; BAR (BAR2, a 64-bit memory BAR) and reads a caller's list of offsets, each
 ; twice. The Rage 128 probe (r128_mmio_probe.asm) is the model.
 ;
@@ -9,8 +11,8 @@
 ; _MapPhysToLinear changes no device state.
 ;
 ; The caller names the device by its configuration address; the VxD reads
-; the id and BAR2 itself and refuses anything that is not 1002:68F9 with a
-; 128 KiB-aligned memory BAR2 below 4 GiB. A 64-bit BAR (type bits 2:1 =
+; the id and BAR2 itself and refuses anything that is not 1002:68F9, 6778 or
+; 68B8 with a 128 KiB-aligned memory BAR2 below 4 GiB. A 64-bit BAR (type bits 2:1 =
 ; 10b) must read 0 in its high half at 1Ch, or nothing is mapped: half of a
 ; BAR above 4 GiB would map some other physical range.
 ;
@@ -21,16 +23,19 @@
 ; window that decodes nothing reads FFFFFFFFh and fails it.
 ;
 ; Offsets are accepted only inside EGWindows below, and only for the four
-; display controllers Cedar has (Linux radeon_asic.c: num_crtc = 4 for
-; CHIP_CEDAR). Left out on purpose, because a read has a side effect or
+; display controllers Cedar and Caicos have (Linux radeon_asic.c: num_crtc
+; = 4 for CHIP_CEDAR and CHIP_CAICOS; Juniper's fifth and sixth are not
+; read yet). Left out on purpose, because a read has a side effect or
 ; reads through an index:
 ;   0000h-001Bh  MM_INDEX / MM_DATA, the PIF PHY index/data pairs, and
 ;                MM_INDEX_HI (evergreen_reg.h);
+;   0100h-0107h  RCU_IND_INDEX / RCU_IND_DATA, where Juniper's backend
+;                fuses are (evergreen_gpu_init reads them through it);
 ;   08F8h-08FFh  CG_IND_ADDR / CG_IND_DATA;
 ;   5480h        HDP_MEM_COHERENCY_FLUSH_CNTL, a flush trigger;
 ;   69E8h-69F3h  DC_LUT_SEQ_COLOR, DC_LUT_PWL_DATA, DC_LUT_30_COLOR: the
 ;                palette data ports, whose access advances the LUT index.
-; Offsets are Linux radeon's evergreend.h, evergreen_reg.h and r600d.h
+; Offsets are Linux radeon's evergreend.h, evergreen_reg.h, r600d.h and nid.h
 ; (build\external\evergreen\linux-radeon\), not checked against any AMD
 ; register guide: none for these blocks was found.
 
@@ -48,6 +53,8 @@ EG_MAGIC                equ 4d4d4745h ; "EGMM"
 EG_DIOC_CAPTURE         equ 1
 EG_VENDOR_ATI           equ 1002h
 EG_DEVICE_CEDAR         equ 68f9h
+EG_DEVICE_CAICOS        equ 6778h
+EG_DEVICE_JUNIPER       equ 68b8h
 EG_CFG_BAR2             equ 18h
 EG_CFG_BAR2_HIGH        equ 1ch
 EG_MMIO_BYTES           equ 00020000h
@@ -67,7 +74,7 @@ EG_ST_IDENTITY_MATCH    equ 00000008h
 EG_ST_OFFSETS_REFUSED   equ 00000010h
 EG_ST_SNAPSHOT_TAKEN    equ 00000020h
 EG_ST_BAR_64            equ 00000040h
-EG_ST_NOT_CEDAR         equ 00000080h
+EG_ST_NOT_ACCEPTED      equ 00000080h
 EG_ST_ADDRESS_INVALID   equ 00000100h
 EG_ST_BAR_ABOVE_4G      equ 00000200h
 
@@ -96,16 +103,24 @@ EGWindows label dword
     dd 2004h, 2008h     ; MC_SHARED_CHMAP
     dd 2024h, 2040h     ; MC_VM_FB_LOCATION, AGP_TOP/BOT/BASE, SYSTEM_APERTURE_*
     dd 2760h, 2764h     ; MC_ARB_RAMCFG
+    dd 28c8h, 28cch     ; MC_SEQ_SUP_CNTL (nid.h)
+    dd 29d0h, 29d4h     ; MC_IO_PAD_CNTL_D0 (nid.h)
+    dd 2a00h, 2a04h     ; MC_SEQ_MISC0 (nid.h)
     dd 2c04h, 2c10h     ; HDP_NONSURFACE_BASE/INFO/SIZE
     dd 2f48h, 2f4ch     ; HDP_ADDR_CONFIG
     dd 3f00h, 3f04h     ; RLC_CNTL
+    dd 3f88h, 3f8ch     ; CC_SYS_RB_BACKEND_DISABLE
+    dd 3fc4h, 3fc8h     ; RLC_GFX_INDEX (nid.h)
     dd 5420h, 542ch     ; BUS_CNTL, CONFIG_CNTL, CONFIG_MEMSIZE
     dd 5490h, 5494h     ; BIF_FB_EN
     dd 8010h, 8018h     ; GRBM_STATUS, GRBM_STATUS_SE0
     dd 8020h, 8024h     ; GRBM_SOFT_RESET
+    dd 802ch, 8030h     ; GRBM_GFX_INDEX (nid.h)
     dd 8680h, 8684h     ; CP_STAT
     dd 86d8h, 86dch     ; CP_ME_CNTL
-    dd 98f8h, 98fch     ; GB_ADDR_CONFIG
+    dd 8950h, 8958h     ; CC_GC_SHADER_PIPE_CONFIG, GC_USER_SHADER_PIPE_CONFIG
+    dd 98f4h, 98fch     ; CC_RB_BACKEND_DISABLE, GB_ADDR_CONFIG
+    dd 9b7ch, 9b80h     ; GC_USER_RB_BACKEND_DISABLE
     dd 0c100h, 0c118h   ; CP_RB_BASE, CP_RB_CNTL .. CP_RB_WPTR
     dd 0d000h, 0d038h   ; DMA_RB_CNTL .. DMA_STATUS_REG
     dd 0d044h, 0d04ch   ; DMA_SEM_*_TIMER_CNTL
@@ -158,7 +173,7 @@ EGWindows label dword
     dd 112a0h, 112a4h
     dd 112d4h, 112d8h
     dd 112f4h, 112fch
-EG_WINDOW_COUNT         equ 67
+EG_WINDOW_COUNT         equ 75
 
 EGResult label dword
     dd EG_MAGIC                 ; 00 magic
@@ -318,7 +333,11 @@ BeginProc EG_Capture
     shr     eax, 16
     cmp     ax, EG_DEVICE_CEDAR
     je      short EG_Capture_Check_Base
-    or      EGResult[4], EG_ST_NOT_CEDAR
+    cmp     ax, EG_DEVICE_CAICOS
+    je      short EG_Capture_Check_Base
+    cmp     ax, EG_DEVICE_JUNIPER
+    je      short EG_Capture_Check_Base
+    or      EGResult[4], EG_ST_NOT_ACCEPTED
     jmp     EG_Capture_Done
 
 EG_Capture_Check_Base:

@@ -7,7 +7,11 @@ Status: Phase 0 done (2026-10-31,
 owners had already installed 0.33.0 `vbe`, and both cards reach
 enable-ok. Ids measured: Caicos `1002:6778` (M-D7TFW4), Juniper
 `1002:68B8` (M-BXMFA8). Caicos passes the GDI, mode and DirectDraw tests.
-Next: Phase 1 on Caicos. Parent plans:
+Phase 1 read on Caicos (2026-10-31,
+[record](../decisions/2026-10-31-caicos-register-probe.md)): 2 GiB DDR3,
+so no MC microcode; one backend, two SIMDs; VRAM at GPU `F_00000000`,
+which the shipped Evergreen engine refuses (`v9x_eg_fb_start`), so
+Phase 2 starts with 40-bit GPU addresses. Parent plans:
 [ati-evergreen-cedar.md](ati-evergreen-cedar.md) (2D, flips, heap) and
 [ati-evergreen-cedar-3d.md](ati-evergreen-cedar-3d.md) (CP, Direct3D,
 OpenGL).

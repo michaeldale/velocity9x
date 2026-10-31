@@ -1,10 +1,11 @@
 /*
- * V9XEGMM.EXE: AMD Evergreen (Radeon HD 5450, Cedar) read-only register
- * snapshot.
+ * V9XEGMM.EXE: AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos, HD 5770
+ * Juniper) read-only register snapshot.
  *
- * Phase 2 of docs\plans\ati-evergreen-cedar.md. Finds 1002:68F9 by a PCI
- * scan (configuration mechanism #1, CF8h restored after each read), loads
- * EGMM.VXD, and asks it for register offsets through the 128 KiB register
+ * Phase 2 of docs\plans\ati-evergreen-cedar.md, Phase 1 of
+ * docs\plans\ati-evergreen-juniper-caicos.md. Finds 1002:68F9, 6778 or 68B8
+ * by a PCI scan (configuration mechanism #1, CF8h restored after each
+ * read), loads EGMM.VXD, and asks it for register offsets through the 128 KiB register
  * BAR, each read twice. Writes C:\V9XDIAG\V9XEGMM.INI:
  *
  *   [Report]  build, the device found, its BARs (both halves of the 64-bit
@@ -44,6 +45,8 @@
 #define V9X_PCI_DEVICES      32ul
 #define V9X_VENDOR_ATI       0x1002ul
 #define V9X_DEVICE_CEDAR     0x68f9ul
+#define V9X_DEVICE_CAICOS    0x6778ul
+#define V9X_DEVICE_JUNIPER   0x68b8ul
 
 #define V9X_ST_ATI             0x00000001ul
 #define V9X_ST_BASE_INVALID    0x00000002ul
@@ -52,7 +55,7 @@
 #define V9X_ST_OFFSETS_REFUSED 0x00000010ul
 #define V9X_ST_SNAPSHOT_TAKEN  0x00000020ul
 #define V9X_ST_BAR_64          0x00000040ul
-#define V9X_ST_NOT_CEDAR       0x00000080ul
+#define V9X_ST_NOT_ACCEPTED    0x00000080ul
 #define V9X_ST_ADDRESS_INVALID 0x00000100ul
 #define V9X_ST_BAR_ABOVE_4G    0x00000200ul
 
@@ -78,6 +81,11 @@
 #define V9X_EG_VIEWPORT_SIZE       0x6d74ul
 #define V9X_EG_CRTC_CONTROL        0x6e70ul
 #define V9X_EG_CRTC_STATUS         0x6e8cul
+/* nid.h (Linux ni.c's header, fetched 2026-10-31) and evergreend.h. */
+#define V9X_EG_MC_SEQ_SUP_CNTL     0x28c8ul
+#define V9X_EG_MC_SEQ_MISC0        0x2a00ul
+#define V9X_EG_CC_GC_SHADER_PIPE   0x8950ul
+#define V9X_EG_CC_RB_BACKEND       0x98f4ul
 
 /* Field layouts, same sources. SRBM_SOFT_RESET bit 20 SOFT_RESET_DMA.
  * VM_L2_CNTL and VM_CONTEXT0_CNTL bit 0 enable. MC_SHARED_CHMAP 13:12 the
@@ -109,6 +117,21 @@
 #define V9X_EG_UPDATE_PENDING      0x00000004ul
 #define V9X_EG_IN_VBLANK           0x00000001ul
 #define V9X_EG_VIEWPORT_MASK       0x3ffful
+
+/* ni_mc_load_microcode loads the MC sequencer's microcode on BTC (Caicos)
+ * only when MC_SEQ_MISC0 31:28 reads 5 (GDDR5) and MC_SEQ_SUP_CNTL bit 0
+ * (RUN) is clear, so the two say whether Caicos would need CAICOS_mc.bin.
+ * CC_RB_BACKEND_DISABLE 23:16 is the backend-disable mask Linux reads
+ * directly on BTC (evergreen_gpu_init; Cedar to Hemlock read the RCU fuses
+ * through an index register instead, which this probe does not write), and
+ * CC_GC_SHADER_PIPE_CONFIG 31:16 the SIMD-disable mask. */
+#define V9X_EG_SEQ_RUN             0x00000001ul
+#define V9X_EG_MEM_TYPE_SHIFT      28u
+#define V9X_EG_MEM_TYPE_GDDR5      5ul
+#define V9X_EG_RB_DISABLE_SHIFT    16u
+#define V9X_EG_RB_DISABLE_MASK     0xfful
+#define V9X_EG_SIMD_DISABLE_SHIFT  16u
+#define V9X_EG_SIMD_DISABLE_MASK   0xfffful
 
 /* Cedar's four display controllers (radeon_asic.c: num_crtc = 4), at
  * these offsets from the first (evergreen_reg.h). */
@@ -151,11 +174,16 @@ static const struct v9x_egmm_register v9x_global[] = {
     { 0x2038ul, "MC_VM_SYSTEM_APERTURE_HIGH_ADDR" },
     { 0x203cul, "MC_VM_SYSTEM_APERTURE_DEFAULT_ADDR" },
     { 0x2760ul, "MC_ARB_RAMCFG" },
+    { 0x28c8ul, "MC_SEQ_SUP_CNTL" },
+    { 0x29d0ul, "MC_IO_PAD_CNTL_D0" },
+    { 0x2a00ul, "MC_SEQ_MISC0" },
     { 0x2c04ul, "HDP_NONSURFACE_BASE" },
     { 0x2c08ul, "HDP_NONSURFACE_INFO" },
     { 0x2c0cul, "HDP_NONSURFACE_SIZE" },
     { 0x2f48ul, "HDP_ADDR_CONFIG" },
     { 0x3f00ul, "RLC_CNTL" },
+    { 0x3f88ul, "CC_SYS_RB_BACKEND_DISABLE" },
+    { 0x3fc4ul, "RLC_GFX_INDEX" },
     { 0x5420ul, "BUS_CNTL" },
     { 0x5424ul, "CONFIG_CNTL" },
     { 0x5428ul, "CONFIG_MEMSIZE" },
@@ -163,9 +191,14 @@ static const struct v9x_egmm_register v9x_global[] = {
     { 0x8010ul, "GRBM_STATUS" },
     { 0x8014ul, "GRBM_STATUS_SE0" },
     { 0x8020ul, "GRBM_SOFT_RESET" },
+    { 0x802cul, "GRBM_GFX_INDEX" },
     { 0x8680ul, "CP_STAT" },
     { 0x86d8ul, "CP_ME_CNTL" },
+    { 0x8950ul, "CC_GC_SHADER_PIPE_CONFIG" },
+    { 0x8954ul, "GC_USER_SHADER_PIPE_CONFIG" },
+    { 0x98f4ul, "CC_RB_BACKEND_DISABLE" },
     { 0x98f8ul, "GB_ADDR_CONFIG" },
+    { 0x9b7cul, "GC_USER_RB_BACKEND_DISABLE" },
     { 0xc100ul, "CP_RB_BASE" },
     { 0xc104ul, "CP_RB_CNTL" },
     { 0xc114ul, "CP_RB_WPTR" },
@@ -435,22 +468,28 @@ static DWORD v9x_value(DWORD offset)
     return v9x_values[offset >> 2];
 }
 
-/* The first 1002:68F9 on buses 0-15, function 0; 0 if none. A PCIe card
- * sits behind a root port, so the bus is rarely 0 (M-BXMFA8's Enum key
- * reads 000800). */
-static DWORD v9x_find_cedar(void)
+/* The first 1002:68F9, 6778 or 68B8 on buses 0-15, function 0; 0 if none.
+ * A PCIe card sits behind a root port, so the bus is rarely 0 (M-BXMFA8's
+ * Enum key reads 000800, M-D7TFW4's 001000). An APU's own graphics (the
+ * A10's 1002:9901 on M-D7TFW4) is on bus 0 and is skipped by its id. */
+static DWORD v9x_find_device(void)
 {
     DWORD bus;
     DWORD slot;
     DWORD config;
     DWORD id;
+    DWORD device;
 
     for (bus = 0ul; bus < V9X_PCI_BUSES; ++bus) {
         for (slot = 0ul; slot < V9X_PCI_DEVICES; ++slot) {
             config = V9X_PCI_ENABLE | (bus << 16) | (slot << 11);
             id = v9x_config_read(config, 0ul);
-            if ((id & 0xfffful) == V9X_VENDOR_ATI &&
-                (id >> 16) == V9X_DEVICE_CEDAR) {
+            if ((id & 0xfffful) != V9X_VENDOR_ATI) {
+                continue;
+            }
+            device = id >> 16;
+            if (device == V9X_DEVICE_CEDAR || device == V9X_DEVICE_CAICOS ||
+                device == V9X_DEVICE_JUNIPER) {
                 return config;
             }
         }
@@ -513,6 +552,18 @@ static void v9x_decode_global(void)
                (value >> V9X_EG_DMA_RB_SIZE_SHIFT) & V9X_EG_DMA_RB_SIZE_MASK);
     v9x_yes_no("Decode", "DmaIdle",
                (v9x_value(V9X_EG_DMA_STATUS_REG) & V9X_EG_DMA_IDLE) != 0ul);
+
+    v9x_yes_no("Decode", "McSeqRunning",
+               (v9x_value(V9X_EG_MC_SEQ_SUP_CNTL) & V9X_EG_SEQ_RUN) != 0ul);
+    v9x_yes_no("Decode", "MemoryGddr5",
+               (v9x_value(V9X_EG_MC_SEQ_MISC0) >> V9X_EG_MEM_TYPE_SHIFT) ==
+               V9X_EG_MEM_TYPE_GDDR5);
+    v9x_key("Decode", "RbDisableMask",
+            (v9x_value(V9X_EG_CC_RB_BACKEND) >> V9X_EG_RB_DISABLE_SHIFT) &
+            V9X_EG_RB_DISABLE_MASK);
+    v9x_key("Decode", "SimdDisableMask",
+            (v9x_value(V9X_EG_CC_GC_SHADER_PIPE) >> V9X_EG_SIMD_DISABLE_SHIFT) &
+            V9X_EG_SIMD_DISABLE_MASK);
 }
 
 /* Each display controller's scanout. LfbOffset is the primary surface
@@ -577,9 +628,9 @@ void __stdcall V9xEvergreenMmioEntry(void)
     v9x_text("Report", "Build", V9X_BUILD_ID);
     v9x_text("Report", "Access", "mmio-read-only");
 
-    config = v9x_find_cedar();
+    config = v9x_find_device();
     if (config == 0ul) {
-        v9x_text("Report", "Result", "NO-CEDAR");
+        v9x_text("Report", "Result", "NO-EVERGREEN");
         WritePrivateProfileStringA(0, 0, 0, V9X_EGMM_PATH);
         ExitProcess(1u);
     }
