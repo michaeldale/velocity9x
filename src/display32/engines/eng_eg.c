@@ -427,6 +427,20 @@ int v9x_eg_dma_settle(void)
     return v9x_eg_dma_idle(1);
 }
 
+/* The heap's GPU address, once the engine is validated, for the scanout
+ * controller (eg_scanout.c): the high byte the packets carry, and the low
+ * half. The CP's copy of the address refuses VRAM above 4 GiB, which the
+ * display controller takes whole. */
+int v9x_eg_heap_address(DWORD *high, DWORD *low)
+{
+    if (!v9x_eg_validate()) {
+        return 0;
+    }
+    *high = v9x_eg_gpu_high;
+    *low = v9x_eg_heap_gpu;
+    return 1;
+}
+
 /* Before a fill or copy, the CP's drawing finished: the DMA engine must
  * not read a surface the CP is still writing, or write one it still reads.
  * A CP that times out here is given up by eg_cp.c and its work dropped, so

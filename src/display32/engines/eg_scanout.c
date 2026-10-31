@@ -15,7 +15,9 @@
  *
  * D1 is the controller the VBE drove on M-BXMFA8 (its register probe read
  * D1 scanning GPU address 0, docs\decisions\2026-10-26-cedar-register-
- * probe.md). Flips are taken only while D1's CRTC and graphics plane are
+ * probe.md) and on M-D7TFW4's Caicos, whose DCE 5 Linux flips with the
+ * same evergreen_page_flip (its probe read D1 scanning GPU F_00000000,
+ * docs\decisions\2026-10-31-caicos-register-probe.md). Flips are taken only while D1's CRTC and graphics plane are
  * enabled; otherwise the scanout is not live and the core declines them as
  * before. Nothing here runs unless the 16-bit side stamped the Evergreen
  * engine with V9X_DD_ENGINE_CAP_FLIP. The address arithmetic is
@@ -89,16 +91,17 @@ int v9x_eg_in_vblank(void)
             V9X_EG_CRTC_V_BLANK) != 0ul;
 }
 
-/* The heap's GPU address and the frame finished before it is shown:
- * Evergreen's CP drawing and DMA engine's last fill or copy, below 4 GiB;
- * on Carrizo the SDMA engine's, with the high half. */
+/* The heap's GPU address and the frame finished before it is shown: on
+ * Evergreen the DMA engine's address with its high byte (0 on Cedar, 0Fh on
+ * Caicos), after the CP's drawing and the DMA engine's last fill or copy;
+ * on Carrizo the SDMA engine's. The CP's copy of the address served Cedar
+ * until Caicos, whose VRAM above 4 GiB the CP refuses. */
 static int v9x_eg_scanout_heap(DWORD *high, DWORD *low)
 {
     if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_VI) {
         return v9x_vi_heap_address(high, low) && v9x_vi_dma_settle();
     }
-    *high = 0ul;
-    return v9x_eg_cp_addresses(low) && v9x_eg_cp_drain(1) &&
+    return v9x_eg_heap_address(high, low) && v9x_eg_cp_drain(1) &&
            v9x_eg_dma_settle();
 }
 

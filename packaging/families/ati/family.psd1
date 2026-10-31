@@ -387,13 +387,14 @@
             # A row in Cedar's module (Michael, 2026-10-31). DirectDraw fill
             # and copy on the DMA engine, its packets measured byte-exact on
             # this card with VRAM at GPU F_00000000
-            # (docs\decisions\2026-10-31-caicos-dma-write-probe.md). No
-            # flips or Direct3D yet (docs\plans\ati-evergreen-juniper-
-            # caicos.md).
+            # (docs\decisions\2026-10-31-caicos-dma-write-probe.md). Flips
+            # through D1's surface address at the vertical blank
+            # (eg_scanout.c, shared with Cedar). No Direct3D yet
+            # (docs\plans\ati-evergreen-juniper-caicos.md).
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'ATI_EVERGREEN'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # What M-D7TFW4's VBE 4F00h reports; the board carries 2 GiB.
             VideoMemoryBytes = 16777216
 

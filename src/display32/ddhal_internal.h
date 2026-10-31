@@ -597,8 +597,11 @@ int v9x_eg_cp_addresses(DWORD *heap_gpu);
 DWORD v9x_eg_cp_shader_gpu(DWORD which);
 /* engines/eng_eg.c: waits for DMA work queued since the engine was last
  * idle, so a 3D batch never reads what a fill or copy has yet to write.
- * Non-zero when idle, or when the DMA engine is not running. */
+ * Non-zero when idle, or when the DMA engine is not running.
+ * heap_address, for eg_scanout.c: the heap's GPU address as bits 39:32 and
+ * 31:0, zero until the engine is validated. */
 int v9x_eg_dma_settle(void);
+int v9x_eg_heap_address(DWORD *high, DWORD *low);
 /* engines/eng_vi.c, for eg_scanout.c on Carrizo: dma_settle waits for the
  * SDMA work queued since the engine was last idle (non-zero when idle, or
  * when it is not running); heap_address gives the heap's GPU address as

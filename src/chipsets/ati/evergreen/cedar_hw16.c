@@ -27,9 +27,9 @@
  * (docs\decisions\2026-10-31-caicos-register-probe.md). The DMA engine's
  * packets ran byte-exact there with that address's high byte
  * (docs\decisions\2026-10-31-caicos-dma-write-probe.md), so it claims fill
- * and copy. Not flips, whose path takes the heap's address from the CP, and
- * not Direct3D, whose streams carry 32-bit addresses: eg_cp.c refuses VRAM
- * above 4 GiB.
+ * and copy, and flips through D1, whose address eg_scanout.c now takes with
+ * its high byte from the DMA engine. Not Direct3D, whose streams carry
+ * 32-bit addresses: eg_cp.c refuses VRAM above 4 GiB.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -63,7 +63,8 @@ static unsigned long v9x_cedar_map_value;
                                  V9X_DD_ENGINE_CAP_FLIP | \
                                  V9X_DD_ENGINE_CAP_D3D)
 #define V9X_CAICOS_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
-                                 V9X_DD_ENGINE_CAP_SCREEN_COPY)
+                                 V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                 V9X_DD_ENGINE_CAP_FLIP)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
                                       unsigned long *control_linear_base,
