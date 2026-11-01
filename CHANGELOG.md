@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.35.0 - not yet released
 
+- **S3 Trio64 and Trio64V+: the driver now asks the card's VBE 1.2 BIOS
+  which modes it has** and hides a mode the BIOS lacks, instead of offering
+  it and failing at 4F02h with the fallback to 640x480. On a 4 MiB
+  Diamond Stealth64 Graphics 2000 (Trio64, BIOS 2.05) that is 1024x768x32
+  and 1280x1024x16; on BARRY, 640x400x8. The mini-VDD's boot-time
+  collection accepts VBE 1.2; only a family that finds its aperture itself
+  (`s3`) uses a 1.2 scan
+  ([record](docs/decisions/2026-11-01-trio64-vbe12-mode-query.md)).
 - `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
   0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
   `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware

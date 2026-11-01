@@ -40,6 +40,7 @@ extern WORD v9x_minivdd_red;
 extern WORD v9x_minivdd_green;
 extern WORD v9x_minivdd_blue;
 extern WORD v9x_minivdd_rsvd;
+extern WORD v9x_minivdd_version;
 extern WORD v9x_minivdd_total64k;
 extern WORD v9x_minivdd_cached;
 extern WORD v9x_minivdd_status;
@@ -399,6 +400,20 @@ void v9x_modes16_init(void)
         v9x_runtime_scan_state = 3u;
         return;
     }
+
+    /* A family with its own aperture hook does not need the BIOS to say
+     * where the framebuffer is - see V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN. */
+    admit_flags = v9x_hw16.read_aperture != 0
+                      ? V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN
+                      : 0u;
+
+    /* The mini-VDD collects from VBE 1.2 on; a 1.x answer serves only a
+     * family that finds its aperture itself. */
+    if (v9x_vbe_controller_scan_usable(v9x_minivdd_version, admit_flags) !=
+        V9X_TRUE) {
+        v9x_runtime_scan_state = 3u;
+        return;
+    }
     vram = (DWORD)v9x_minivdd_total64k * 65536ul;
     v9x_runtime_vram_reported = vram;
 
@@ -416,12 +431,6 @@ void v9x_modes16_init(void)
             vram = chip_vram;
         }
     }
-
-    /* A family with its own aperture hook does not need the BIOS to say
-     * where the framebuffer is - see V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN. */
-    admit_flags = v9x_hw16.read_aperture != 0
-                      ? V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN
-                      : 0u;
 
     /* Step 3: at most V9X_VBE_CACHE_MAX records into bounded storage. */
     count = v9x_minivdd_cached;
@@ -455,13 +464,8 @@ void v9x_modes16_init(void)
      * anywhere - a full cache or a hit query limit means modes exist that
      * were never examined, and one of them could be the row's.
      */
-    trusted = ((v9x_minivdd_status & V9X_VBE_ST_LIST_TERM) != 0u &&
-               (v9x_minivdd_status &
-                (V9X_VBE_ST_LIST_OVERFLOW | V9X_VBE_ST_LIST_FLAGGED |
-                 V9X_VBE_ST_LIST_UNREACHED | V9X_VBE_ST_CACHE_FULL |
-                 V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_LIMIT)) == 0u)
-                  ? V9X_TRUE
-                  : V9X_FALSE;
+    trusted = v9x_vbe_scan_may_contradict_version(v9x_minivdd_status,
+                                                  v9x_minivdd_version);
     published = v9x_vbe_publish_rows(v9x_stage_modes, count,
                                      v9x_hw16.mode_count,
                                      v9x_scan_entries, v9x_scan_count, vram,
@@ -532,7 +536,6 @@ const V9X_HW16_MODE *v9x_modes16_edid_mode(WORD bits_per_pixel)
 #define V9X_MODE_INVENTORY_SECTION "Velocity9xModes"
 #define V9X_MODE_INVENTORY_SCHEMA "1"
 
-extern WORD v9x_minivdd_version;
 extern DWORD v9x_minivdd_capabilities;
 extern WORD v9x_minivdd_oem_revision;
 extern WORD v9x_minivdd_listed;

@@ -102,8 +102,10 @@ static const V9X_HW16_MODE v9x_s3_modes[] = {
      * Stage=fail-hardware-vbe-mode, a fall back to 640x480, and a modal Display
      * applet (2026-08-26-s3-physical-pipeline-inert.md §8). The row is kept
      * because removing it costs Doom95 its mode on every target whose BIOS does
-     * list it, which is every other S3 target measured; what to do about the
-     * older ROM is unresolved and tracked in that note. */
+     * list it, which is every other S3 target measured. Since 2026-11-01 the
+     * runtime scan reads BARRY's VBE 1.2 list and hides the row there, so it
+     * stays published only where the BIOS has the mode
+     * (2026-11-01-trio64-vbe12-mode-query.md). */
     {  640u, 400u,  8u,  640u, 0x0100u, 254, 127 },
     {  640u, 480u, 16u, 1280u, 0x0111u, 254, 127 },
     {  800u, 600u, 16u, 1600u, 0x0114u, 318, 159 },

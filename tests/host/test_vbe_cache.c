@@ -129,6 +129,37 @@ static void test_may_contradict(void)
            V9X_FALSE);
 }
 
+static void test_may_contradict_version(void)
+{
+    const v9x_u16 failed = (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_FAILED);
+
+    /* 2.0 and later: the rule of v9x_vbe_scan_may_contradict, unchanged. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(STATUS_GOOD, 0x0200u) ==
+           V9X_TRUE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0200u) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0300u) == V9X_FALSE);
+
+    /* 1.2: a refused 4F01h on a listed mode is "not available" (BARRY's
+     * 0x0118-0x011B), so it no longer withdraws the scan's authority. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(STATUS_GOOD, 0x0102u) ==
+           V9X_TRUE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0102u) == V9X_TRUE);
+
+    /* Every other completeness rule still holds for 1.2. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(failed | V9X_VBE_ST_QUERY_LIMIT), 0x0102u) ==
+           V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_LIST_OVERFLOW), 0x0102u) ==
+           V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(STATUS_GOOD & (v9x_u16)~V9X_VBE_ST_LIST_TERM),
+               0x0102u) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(failed | V9X_VBE_ST_CACHE_FULL), 0x0102u) ==
+           V9X_FALSE);
+}
+
 /*
  * The shape of the contract itself, asserted at compile time rather than run
  * time: every one of these is a constant expression, and a run-time check of a
@@ -172,5 +203,6 @@ unsigned int v9x_run_vbe_cache_tests(void)
 {
     test_usable_count();
     test_may_contradict();
+    test_may_contradict_version();
     return cache_failures;
 }

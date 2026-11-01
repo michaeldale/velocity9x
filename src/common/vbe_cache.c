@@ -69,3 +69,13 @@ v9x_u16 v9x_vbe_scan_may_contradict(v9x_u16 status)
     }
     return V9X_TRUE;
 }
+
+v9x_u16 v9x_vbe_scan_may_contradict_version(v9x_u16 status, v9x_u16 version)
+{
+    /* Below VBE 2.0 a refused 4F01h on a listed mode is the standard's own
+     * "not available", not a gap in the walk (see vbe_cache.h). */
+    if (version < (v9x_u16)0x0200u) {
+        status = (v9x_u16)(status & (v9x_u16)~V9X_VBE_ST_QUERY_FAILED);
+    }
+    return v9x_vbe_scan_may_contradict(status);
+}
