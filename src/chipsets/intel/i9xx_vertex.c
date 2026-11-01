@@ -444,6 +444,11 @@ void v9x_i9xx_vertex_set_band(v9x_u32 band)
 {
     v9x_i9xx_vertex_band = band;
 }
+
+v9x_u32 v9x_i9xx_vertex_get_band(void)
+{
+    return v9x_i9xx_vertex_band;
+}
 #define V9X_I9XX_VERTEX_BAND v9x_i9xx_vertex_band
 #define V9X_I9XX_IN_BAND(bits, upper, lower) \
     v9x_i9xx_float_in_span((bits), (upper), (lower))

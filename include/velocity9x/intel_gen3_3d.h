@@ -1503,6 +1503,8 @@ v9x_status v9x_i9xx_build_runtime_run(
  * pixels off the target on every side. Zero, the default and the shipped
  * rule, is on the target only. docs\plans\intel-gen3-guard-band.md. */
 void v9x_i9xx_vertex_set_band(v9x_u32 band);
+/* The same measurement band for the two-unit runtime run builder. */
+v9x_u32 v9x_i9xx_vertex_get_band(void);
 
 /*
  * Is this bit pattern a float the rasteriser can walk to, in [0, limit]?

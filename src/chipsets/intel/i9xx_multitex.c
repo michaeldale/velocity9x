@@ -402,6 +402,8 @@ v9x_status v9x_i9xx_build_two_unit_run(
 {
     v9x_u32 run_dwords =
         v9x_i9xx_two_unit_run_dwords(triangles, speculars != 0 ? 1ul : 0ul);
+    v9x_u32 band = v9x_i9xx_vertex_get_band();
+    v9x_u32 band_bits = 0ul;
     v9x_u32 width_bits = 0ul;
     v9x_u32 height_bits = 0ul;
     v9x_u32 one_bits = 0ul;
@@ -416,8 +418,12 @@ v9x_status v9x_i9xx_build_two_unit_run(
     if (run_dwords == 0ul || capacity < run_dwords) {
         return V9X_STATUS_INSUFFICIENT_MEMORY;
     }
-    if (v9x_i9xx_float_from_int(width, &width_bits) != V9X_I9XX_FLOAT_OK ||
-        v9x_i9xx_float_from_int(height, &height_bits) != V9X_I9XX_FLOAT_OK ||
+    if (v9x_i9xx_float_from_int(width + band, &width_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(height + band, &height_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        (band != 0ul &&
+         v9x_i9xx_float_from_int(band, &band_bits) != V9X_I9XX_FLOAT_OK) ||
         v9x_i9xx_float_from_int(1ul, &one_bits) != V9X_I9XX_FLOAT_OK) {
         return V9X_STATUS_INVALID_STATE;
     }
@@ -428,8 +434,9 @@ v9x_status v9x_i9xx_build_two_unit_run(
         v9x_u32 base = vertex * 4ul;
         v9x_u32 pair = vertex * 2ul;
 
-        if (v9x_i9xx_float_in_range(xyzw[base], width_bits) == V9X_FALSE ||
-            v9x_i9xx_float_in_range(xyzw[base + 1ul], height_bits) ==
+        if (v9x_i9xx_float_in_span(xyzw[base], width_bits, band_bits) ==
+                V9X_FALSE ||
+            v9x_i9xx_float_in_span(xyzw[base + 1ul], height_bits, band_bits) ==
                 V9X_FALSE ||
             v9x_i9xx_float_in_range(xyzw[base + 2ul], one_bits) ==
                 V9X_FALSE ||

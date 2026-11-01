@@ -1697,6 +1697,54 @@ static void test_decoder_stipple(void)
  * band they are given, the decoder takes the inset DRAW_RECT only when told
  * to expect it, and zero for both is the shipped rule.
  */
+static void test_two_unit_guard_band(void)
+{
+    v9x_u32 xyzw[12] = {
+        0xc2000000ul, 0x42f00000ul, 0ul, 0x3f800000ul,
+        0x43c80000ul, 0x42f00000ul, 0ul, 0x3f800000ul,
+        0x43a00000ul, 0x43480000ul, 0ul, 0x3f800000ul
+    };
+    v9x_u32 colors[3] = {0xfffffffful, 0xfffffffful, 0xfffffffful};
+    v9x_u32 uv[6] = {0ul, 0ul, 0ul, 0ul, 0ul, 0ul};
+    v9x_u32 stream[64];
+    v9x_u32 written;
+    v9x_u32 fog;
+
+    /* Both layouts must accept x = -32 only within the configured band. */
+    for (fog = 0ul; fog < 2ul; ++fog) {
+        const v9x_u32 *speculars = fog != 0ul ? colors : 0;
+
+        v9x_i9xx_vertex_set_band(0ul);
+        CHECK(v9x_i9xx_build_two_unit_run(xyzw, colors, speculars, uv, uv,
+                  1ul, 512ul, 384ul, stream, 64ul, &written) ==
+              V9X_STATUS_INVALID_ARGUMENT);
+        CHECK(written == 0ul);
+        v9x_i9xx_vertex_set_band(16ul);
+        CHECK(v9x_i9xx_build_two_unit_run(xyzw, colors, speculars, uv, uv,
+                  1ul, 512ul, 384ul, stream, 64ul, &written) ==
+              V9X_STATUS_INVALID_ARGUMENT);
+        v9x_i9xx_vertex_set_band(64ul);
+        CHECK(v9x_i9xx_build_two_unit_run(xyzw, colors, speculars, uv, uv,
+                  1ul, 512ul, 384ul, stream, 64ul, &written) ==
+              V9X_STATUS_OK);
+        CHECK(written == v9x_i9xx_two_unit_run_dwords(1ul, fog));
+        CHECK(stream[1] == xyzw[0]);
+
+        /* x = width + 65 and y = height + 65 exceed the 64-pixel band. */
+        xyzw[4] = 0x44104000ul;
+        CHECK(v9x_i9xx_build_two_unit_run(xyzw, colors, speculars, uv, uv,
+                  1ul, 512ul, 384ul, stream, 64ul, &written) ==
+              V9X_STATUS_INVALID_ARGUMENT);
+        xyzw[4] = 0x43c80000ul;
+        xyzw[5] = 0x43e08000ul;
+        CHECK(v9x_i9xx_build_two_unit_run(xyzw, colors, speculars, uv, uv,
+                  1ul, 512ul, 384ul, stream, 64ul, &written) ==
+              V9X_STATUS_INVALID_ARGUMENT);
+        xyzw[5] = 0x42f00000ul;
+    }
+    v9x_i9xx_vertex_set_band(0ul);
+}
+
 static void test_guard_band(void)
 {
     struct v9x_i9xx_decode_limits limits;
@@ -6439,6 +6487,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
 #if V9X_I9XX_TWO_UNITS
     test_decoder_stipple();
     test_guard_band();
+    test_two_unit_guard_band();
 #endif
     test_decoder_breadcrumb();
     test_probe_expectation_names();
