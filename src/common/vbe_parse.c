@@ -44,7 +44,11 @@
  * vbe_parse.h: v9x_vbe_scan_admit decomposes the drivability rules by field,
  * so the field constants are contract, not implementation detail. */
 
-#define V9X_VBE_MIN_VERSION ((v9x_u16)0x0200u)
+/* VBE 1.2: the first version whose ModeInfoBlock is complete. Whether a 1.x
+ * controller may serve a family is v9x_vbe_controller_scan_usable's call:
+ * only a family that finds its aperture itself, since 1.x has no linear
+ * framebuffer. */
+#define V9X_VBE_MIN_VERSION ((v9x_u16)0x0102u)
 
 static v9x_u16 v9x_vbe_read_u16(const v9x_u8 *data)
 {
@@ -159,8 +163,6 @@ v9x_u16 v9x_vbe_parse_controller_info(
         return V9X_FALSE;
     }
 
-    /* VBE 1.x had no linear framebuffer, so a 1.x controller cannot serve
-     * tier-0 even if every other field looks sane. */
     blocks_of_64k = v9x_vbe_read_u16(block + V9X_VBE_CI_TOTAL_MEMORY);
     if (blocks_of_64k == 0u) {
         return V9X_FALSE;

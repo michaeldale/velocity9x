@@ -5613,9 +5613,10 @@ BeginProc V9xMini_Vbe_Collect
     cmp     ax, 004Fh
     jne     V9xMini_Vbe_Collect_Done
 
-    ; Accept a VESA 1.2-or-later answer: 1.2 is the first version whose
-    ; ModeInfoBlock is complete. The 16-bit side decides per family whether a
-    ; 1.x controller may be used (v9x_vbe_controller_scan_usable).
+    ; Accept only a real VESA 1.2-or-later answer, matching vbe_parse.c: 1.2 is
+    ; the first version whose ModeInfoBlock is complete. The 16-bit side decides
+    ; per family whether a 1.x controller may be used
+    ; (v9x_vbe_controller_scan_usable).
     mov     ax, 0
     call    V9xMini_Vbe_Peek_Word
     cmp     ax, 4556h                   ; 'EV' - first half of "VESA"

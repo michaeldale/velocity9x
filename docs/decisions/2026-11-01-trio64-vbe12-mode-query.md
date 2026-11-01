@@ -52,7 +52,9 @@ they pass it and fail at 4F02h. No physical 4 MiB Diamond card ran this.
 1. `src\minivdd32\loader.asm`: the 4F00h check accepts VBE 1.2 and later
    (`cmp ax, 0102h`). 1.2 is the first version whose ModeInfoBlock is complete
    (VBE 1.2, section 6.3: "Version 1.2 of the VBE requires that all fields of
-   the ModeInfoBlock contain valid data").
+   the ModeInfoBlock contain valid data"). Its host-tested twin,
+   `v9x_vbe_parse_controller_info` in `src\common\vbe_parse.c`, moves to 1.2 with
+   it, so the two still match.
 2. `v9x_vbe_controller_scan_usable` (`src\common\vbe_modes.c`): 2.0 and later
    serve every family; 1.2 serves only a family with `APERTURE_KNOWN`; below 1.2
    nobody. `src\display16\modes16.c` treats a refused controller as scan state 3,

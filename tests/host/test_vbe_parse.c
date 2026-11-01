@@ -91,9 +91,17 @@ static void test_controller_info(void)
     VCHECK(summary.version == 0x0300u);
     VCHECK(summary.total_memory_bytes == 4ul * 1024ul * 1024ul);
 
-    /* VBE 1.2 has no linear framebuffer at all. */
+    /* VBE 1.2 is credible: its ModeInfoBlock is complete. That it has no
+     * linear framebuffer is v9x_vbe_controller_scan_usable's concern. */
     build_controller();
     put_u16(controller_block, 4u, 0x0102u);
+    VCHECK(v9x_vbe_parse_controller_info(controller_block, &summary) ==
+           V9X_TRUE);
+    VCHECK(summary.version == 0x0102u);
+
+    /* Below 1.2 the ModeInfoBlock need not be complete. */
+    build_controller();
+    put_u16(controller_block, 4u, 0x0101u);
     VCHECK(v9x_vbe_parse_controller_info(controller_block, &summary) ==
            V9X_FALSE);
     VCHECK(summary.version == 0u);
