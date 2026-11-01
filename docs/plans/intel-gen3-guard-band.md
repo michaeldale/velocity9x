@@ -7,7 +7,20 @@ left the drawing rectangle at any distance to 3,968 pixels; Gouraud
 colour holds to 2,048 and fails at 3,968, so the band is 1,024. Step 2
 in part ([record](../decisions/2026-11-01-gen3-guard-band-step2.md)):
 Half-Life and 3DMark 2000 clean under the band on fresh boots; one MPREXE
-fault on the first run did not reproduce; UT99 and 3DMark 2001 SE not run.
+fault on the first run did not reproduce; UT99 clean; 3DMark 2001 SE
+flickers with and without the band (a separate, filed defect: batches
+refused for their vertices on the shipped path), so the band adds no
+refusals in any of the four. Step 3, shipping, needs its own section.
+
+**Parked 2026-11-01** at Michael's word, on branch `park/gen3-batch-cost`
+(not merged). The branch also holds the census-per-flip change, the
+batch-cost records, the vertex-refusal counters and the 0.0 texture
+coordinate fix of the [3DMark 2001 SE
+issue](../issues/2026-11-01-gma950-3dmark2001se-flicker-refused-vertices.md).
+To resume: step 3 (`clip_in_core` 0 for Gen3 with a 1,024-pixel
+classifier that core-clips beyond it, as the HD 4600's), and the frames
+under the band in 3DMark 2000 and Half-Life still to be looked at. The
+netbook was left on this branch's build (boot 268, mask 0).
 
 Machine: the netbook (945GSE / GMA 950, Atom N280). Its `reset` verb
 recovers a wedged render engine; nothing else may run this.

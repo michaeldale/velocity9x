@@ -60,9 +60,38 @@ wait for the utility's window first.
   the HAL entry from 45.5 to 41.6-41.7, and the profiled demo from 47.7 to
   49.7-49.8 fps, on these fresh boots.
 
+## UT99 and 3DMark 2001 SE (boot 266, added the same day)
+
+Scripts `utrun.ps1`, `mark2001.ps1`; evidence `step2-ut99/`,
+`step2-3dmark2001/`, `step2-3dmark2001-mask0/`.
+
+| | mask 0 | band 1,024 |
+|---|---|---|
+| UT99 CityIntro flyby, ~70 s | 217,221 submissions, 209,547 list calls clipped, 15 batches refused | 194,426 submissions, 0 clipped, 12 refused |
+| 3DMark 2001 SE | whole run: 2,557 refused (6.4/s), 9,064,485 triangles clipped, score 678 | first 230 s, then aborted: 1,505 refused (6.5/s), 0 clipped |
+| either: timeouts, resets, draws into the displayed buffer, fault dialogs | 0 | 0 |
+
+- UT99's frames under the band show the flyby as at mask 0
+  (`flyby-60s.png` in each), and it quit cleanly both times. Two earlier
+  UT99 attempts are void: a guest-side 30 s input delay dropped the
+  agent's connection, and a killed run left UT99 starting in its
+  Recovery Mode dialog (`mask0-recovery-dialog` evidence overwritten;
+  the script now clicks through it and quits UT99 by its console).
+- **3DMark 2001 SE flickers in every test with the band and without it**
+  (Michael, on the panel: first in Dragothic). Both runs refuse batches at
+  the same rate with reason 6, the run builders refusing a vertex, which
+  the band does not cause. Filed as
+  [an issue](../issues/2026-11-01-gma950-3dmark2001se-flicker-refused-vertices.md).
+  An earlier reading in this session, that the band run's refusals were
+  the band's, was wrong: the rates are equal.
+- So on this machine the band adds no refusals in any of the four
+  programs: every vertex they send that the shipped path draws is within
+  1,024 pixels.
+
 ## Not established
 
-- UT99's intro (the DX5 off-target case of `0bdf0c1a`) and 3DMark 2001
-  SE (the Rage 128's failure) were not run; they are the rest of step 2.
-- Frames under the band were not inspected, in 3DMark or Half-Life.
+- 3DMark 2001 SE was not run to the end under the band; the band run was
+  aborted once its flicker was seen, before the shipped path was known to
+  flicker too.
+- Frames under the band were not inspected in 3DMark 2000 or Half-Life.
 - The cause of the MPREXE fault.

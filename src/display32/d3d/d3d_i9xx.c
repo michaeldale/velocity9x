@@ -1004,6 +1004,91 @@ static int v9x_d3d_i9xx_refuse(DWORD reason)
 }
 
 /*
+ * A batch refused for a vertex, with the check that refused it counted.
+ *
+ * The run builders say only that some vertex failed. This repeats their
+ * checks in their order (i9xx_vertex.c, v9x_i9xx_build_runtime_run_common)
+ * on the batch's vertices, after the refusal and only then, and records the
+ * first failure: which check, and the vertex's x, y, z and rhw bits. Reason
+ * 6 alone could not say why 3DMark 2001 SE loses batches on the shipped
+ * path (docs\issues\2026-11-01-gma950-3dmark2001se-flicker-refused-
+ * vertices.md).
+ */
+/* A texture coordinate's bits, or +0.0f, counted, when they are infinite
+ * or NaN (the draw path's loop below says why). */
+static DWORD v9x_d3d_i9xx_finite_uv(DWORD bits)
+{
+    if (v9x_i9xx_float_finite(bits) != V9X_FALSE) {
+        return bits;
+    }
+    if (v9x_hal != 0) {
+        ++v9x_hal->d3d_diagnostics.i9xx_uv_zeroed;
+    }
+    return 0ul;
+}
+
+#define V9X_D3D_I9XX_VERTEX_CHECK_XY  1ul
+#define V9X_D3D_I9XX_VERTEX_CHECK_Z   2ul
+#define V9X_D3D_I9XX_VERTEX_CHECK_RHW 3ul
+#define V9X_D3D_I9XX_VERTEX_CHECK_UV  4ul
+
+static int v9x_d3d_i9xx_refuse_vertices(const DWORD *xyzw, const DWORD *uv,
+                                        DWORD vertices, DWORD width,
+                                        DWORD height, DWORD band)
+{
+    V9X_D3D_DIAGNOSTICS *diag;
+    v9x_u32 width_bits = 0ul;
+    v9x_u32 height_bits = 0ul;
+    v9x_u32 band_bits = 0ul;
+    v9x_u32 one_bits = 0ul;
+    DWORD vertex;
+    DWORD check = 0ul;
+
+    if (v9x_hal == 0 ||
+        v9x_i9xx_float_from_int(width + band, &width_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(height + band, &height_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        (band != 0ul &&
+         v9x_i9xx_float_from_int(band, &band_bits) != V9X_I9XX_FLOAT_OK) ||
+        v9x_i9xx_float_from_int(1ul, &one_bits) != V9X_I9XX_FLOAT_OK) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+    }
+    diag = &v9x_hal->d3d_diagnostics;
+    for (vertex = 0ul; vertex < vertices && check == 0ul; ++vertex) {
+        const DWORD *v = &xyzw[vertex * 4ul];
+
+        if (v9x_i9xx_float_in_span(v[0], width_bits, band_bits) ==
+                V9X_FALSE ||
+            v9x_i9xx_float_in_span(v[1], height_bits, band_bits) ==
+                V9X_FALSE) {
+            check = V9X_D3D_I9XX_VERTEX_CHECK_XY;
+            ++diag->i9xx_vertex_refused_xy;
+        } else if (v9x_i9xx_float_in_range(v[2], one_bits) == V9X_FALSE) {
+            check = V9X_D3D_I9XX_VERTEX_CHECK_Z;
+            ++diag->i9xx_vertex_refused_z;
+        } else if (v9x_i9xx_float_positive_finite(v[3]) == V9X_FALSE) {
+            check = V9X_D3D_I9XX_VERTEX_CHECK_RHW;
+            ++diag->i9xx_vertex_refused_rhw;
+        } else if (uv != 0 &&
+                   (v9x_i9xx_float_finite(uv[vertex * 2ul]) == V9X_FALSE ||
+                    v9x_i9xx_float_finite(uv[vertex * 2ul + 1ul]) ==
+                        V9X_FALSE)) {
+            check = V9X_D3D_I9XX_VERTEX_CHECK_UV;
+            ++diag->i9xx_vertex_refused_uv;
+        }
+        if (check != 0ul) {
+            diag->i9xx_vertex_refused_check_last = check;
+            diag->i9xx_vertex_refused_last[0] = v[0];
+            diag->i9xx_vertex_refused_last[1] = v[1];
+            diag->i9xx_vertex_refused_last[2] = v[2];
+            diag->i9xx_vertex_refused_last[3] = v[3];
+        }
+    }
+    return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+}
+
+/*
  * Which of the three MAP_STATE formats a texture surface is, or none.
  *
  * RGB565, ARGB1555 and ARGB4444: the 16-bit types MS3 can name, and the
@@ -2651,18 +2736,28 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
          * and bits[7]. Copied only when something will sample them, so an
          * untextured draw does not depend on fields an application had no
          * reason to fill.
+         *
+         * A coordinate that is infinite or NaN is drawn as 0.0f rather than
+         * left for the builder to refuse with the whole batch: 3DMark 2001
+         * SE sends them, and the lost batches flickered in every test
+         * (docs\issues\2026-11-01-gma950-3dmark2001se-flicker-refused-
+         * vertices.md). The coordinate decides only where the sampler reads
+         * inside the bound map; where the engine writes is the position's,
+         * which is still checked.
          */
         if (textured != 0) {
-            uv[(vertex * 2ul) + 0ul] = bits[6];
-            uv[(vertex * 2ul) + 1ul] = bits[7];
+            uv[(vertex * 2ul) + 0ul] = v9x_d3d_i9xx_finite_uv(bits[6]);
+            uv[(vertex * 2ul) + 1ul] = v9x_d3d_i9xx_finite_uv(bits[7]);
         }
         /* Unit 1's pair, from beside the vertices, as bit patterns. */
         if (two_units) {
             const DWORD *pair =
                 (const DWORD *)&draw->texcoords1[vertex * 2ul];
 
-            v9x_d3d_i9xx_uv1[(vertex * 2ul) + 0ul] = pair[0];
-            v9x_d3d_i9xx_uv1[(vertex * 2ul) + 1ul] = pair[1];
+            v9x_d3d_i9xx_uv1[(vertex * 2ul) + 0ul] =
+                v9x_d3d_i9xx_finite_uv(pair[0]);
+            v9x_d3d_i9xx_uv1[(vertex * 2ul) + 1ul] =
+                v9x_d3d_i9xx_finite_uv(pair[1]);
         }
     }
 
@@ -2754,7 +2849,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                 v9x_d3d_i9xx_uv1, triangle_count, draw->target.width,
                 draw->target.height, stream + at,
                 V9X_I9XX_SUBMIT_DWORDS - at, &produced) != V9X_STATUS_OK) {
-            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+            return v9x_d3d_i9xx_refuse_vertices(xyzw, uv, count,
+                                                draw->target.width,
+                                                draw->target.height,
+                                                guard_band);
         }
         at += produced;
         prim_dwords = produced;
@@ -2834,7 +2932,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                 triangle_count, draw->target.width, draw->target.height,
                 stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
                 &produced) != V9X_STATUS_OK) {
-            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+            return v9x_d3d_i9xx_refuse_vertices(
+                xyzw, textured != 0 ? uv : 0, count, draw->target.width,
+                draw->target.height, guard_band);
         }
     } else if ((textured != 0
             ? v9x_i9xx_build_textured_runtime_run(
@@ -2846,7 +2946,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                   draw->target.width, draw->target.height, stream + at,
                   V9X_I9XX_SUBMIT_DWORDS - at, &produced))
             != V9X_STATUS_OK) {
-        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+        return v9x_d3d_i9xx_refuse_vertices(xyzw, textured != 0 ? uv : 0,
+                                            count, draw->target.width,
+                                            draw->target.height, guard_band);
     }
     at += produced;
     prim_dwords = produced;

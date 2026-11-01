@@ -2070,6 +2070,20 @@ void __stdcall V9xTraceDumpEntry(void)
         }
         v9x_write_uint("CensusOverflow", snapshot.d3d.census_overflow);
     }
+    v9x_write_uint("I9xxVertexRefusedXy", snapshot.d3d.i9xx_vertex_refused_xy);
+    v9x_write_uint("I9xxVertexRefusedZ", snapshot.d3d.i9xx_vertex_refused_z);
+    v9x_write_uint("I9xxVertexRefusedRhw",
+                   snapshot.d3d.i9xx_vertex_refused_rhw);
+    v9x_write_uint("I9xxVertexRefusedUv", snapshot.d3d.i9xx_vertex_refused_uv);
+    v9x_write_uint("I9xxVertexRefusedCheckLast",
+                   snapshot.d3d.i9xx_vertex_refused_check_last);
+    v9x_write_hex("I9xxVertexRefusedX", snapshot.d3d.i9xx_vertex_refused_last[0]);
+    v9x_write_hex("I9xxVertexRefusedY", snapshot.d3d.i9xx_vertex_refused_last[1]);
+    v9x_write_hex("I9xxVertexRefusedZBits",
+                  snapshot.d3d.i9xx_vertex_refused_last[2]);
+    v9x_write_hex("I9xxVertexRefusedRhwBits",
+                  snapshot.d3d.i9xx_vertex_refused_last[3]);
+    v9x_write_uint("I9xxUvZeroed", snapshot.d3d.i9xx_uv_zeroed);
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

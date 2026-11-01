@@ -4041,6 +4041,27 @@ typedef struct v9x_d3d_diagnostics {
      * largest red. */
     DWORD census_specular_max[V9X_D3D_STATE_CENSUS_SLOTS];
     DWORD census_specular_reddest[V9X_D3D_STATE_CENSUS_SLOTS];
+    /*
+     * Gen3 batches refused for a vertex (V9X_I9XX_REFUSE_VERTICES), split by
+     * the first check the batch's first bad vertex fails: x or y off the
+     * target, z outside [0, 1], rhw not positive and finite, a texture
+     * coordinate not finite. The last such vertex's x, y, z and rhw as bit
+     * patterns, and the check (1-4). Classified only when a batch is
+     * refused. docs\issues\2026-11-01-gma950-3dmark2001se-flicker-refused-
+     * vertices.md. Appended 2026-11-01 within ABI 2026102002.
+     */
+    DWORD i9xx_vertex_refused_xy;
+    DWORD i9xx_vertex_refused_z;
+    DWORD i9xx_vertex_refused_rhw;
+    DWORD i9xx_vertex_refused_uv;
+    DWORD i9xx_vertex_refused_check_last;
+    DWORD i9xx_vertex_refused_last[4];
+    /*
+     * Gen3 texture coordinates that were infinite or NaN, drawn as 0.0
+     * rather than refusing the batch (3DMark 2001 SE sends them; the same
+     * issue record). Appended 2026-11-01 within ABI 2026102002.
+     */
+    DWORD i9xx_uv_zeroed;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */
