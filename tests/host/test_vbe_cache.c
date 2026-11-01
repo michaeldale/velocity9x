@@ -139,8 +139,9 @@ static void test_may_contradict_version(void)
     CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0200u) == V9X_FALSE);
     CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0300u) == V9X_FALSE);
 
-    /* 1.2: a refused 4F01h on a listed mode is "not available" (BARRY's
-     * 0x0118-0x011B), so it no longer withdraws the scan's authority. */
+    /* 1.2: a refused 4F01h on a listed mode is "not available" (a Trio64
+     * BIOS that lists 0x0118-0x011B on 2 MiB), so it no longer withdraws the
+     * scan's authority. */
     CCHECK(v9x_vbe_scan_may_contradict_version(STATUS_GOOD, 0x0102u) ==
            V9X_TRUE);
     CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0102u) == V9X_TRUE);
