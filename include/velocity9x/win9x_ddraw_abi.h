@@ -2789,7 +2789,9 @@ typedef struct v9x_d3d_diagnostics {
      * as it reads at that moment: draws_to_front is the batch landing in
      * the displayed buffer, draws_to_back the hidden one. Near-zero front
      * says the buffers are right and the cause is elsewhere; a large front
-     * count is the fault, wherever it comes from.
+     * count is the fault, wherever it comes from. Since 2026-11-01 Gen3
+     * reads the plane base again only after a flip, on a new session and
+     * every 256 draws, not on every draw (d3d_i9xx.c).
      */
     DWORD draws_to_front;
     DWORD draws_to_back;

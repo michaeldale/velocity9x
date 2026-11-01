@@ -1,0 +1,112 @@
+﻿Samples 7343 of 39604 in [25000, 32500) ms
+
+By module:
+  53.2%      3907  V9XHAL.DLL
+  25.6%      1881  HL.EXE
+  11.4%       835  D3DIM.DLL
+   4.4%       324  CLIENT.DLL
+   4.1%       299  KERNEL32.DLL
+   0.3%        23  16-bit cs=17C7 base=8113A000
+   0.2%        15  DDRAW.DLL
+   0.2%        12  VGUI2.DLL
+   0.1%        11  VGUI.DLL
+   0.1%         9  USER32.DLL
+   0.1%         6  16-bit cs=016F base=000167A0
+   0.1%         5  GAMEUI.DLL
+   0.1%         4  16-bit cs=038F base=81105000
+   0.0%         3  16-bit cs=1777 base=00039EC0
+   0.0%         2  CORE.DLL
+   0.0%         2  16-bit cs=01C7 base=00099840
+   0.0%         1  16-bit cs=17BF base=81145000
+   0.0%         1  16-bit cs=034F base=810E4000
+   0.0%         1  DEMOEDITOR.DLL
+   0.0%         1  16-bit cs=17D7 base=81136000
+   0.0%         1  16-bit cs=2A67 base=810B7600
+
+V9XHAL.DLL by object (share of all samples):
+  18.7%      1375  d3d_i9xx
+  10.5%       772  r3d_clip
+   5.0%       364  d3d_core
+   4.1%       303  i9xx_3d_decode
+   3.5%       254  i9xx_scanout
+   2.5%       180  i9xx_float
+   2.0%       144  i9xx_vertex
+   1.6%       114  i9xx_ring
+   0.9%        68  r3d_cull
+   0.9%        64  r3d_records
+   0.7%        49  ddhal_core
+   0.7%        49  i9xx_3d
+   0.6%        43  d3d_i9xx_target
+   0.6%        42  i9xx_texture
+   0.2%        18  trace_fold
+   0.2%        14  hsw_scanout
+   0.2%        12  d3d_state
+   0.1%        10  d3d_select
+   0.1%         9  i9xx_fragprog
+   0.1%         8  i9xx_depth
+   0.1%         7  i9xx_flip
+   0.1%         5  win16lock
+   0.0%         2  drawnote
+   0.0%         1  d3d_fog
+
+V9XHAL.DLL by nearest public symbol:
+  10.9%       803  d3d_i9xx!v9x_d3d_i9xx_ring_submit_mode_
+   4.1%       300  i9xx_3d_decode!v9x_i9xx_decode_body_
+   3.5%       255  d3d_i9xx!v9x_d3d_i9xx_render_drain_
+   3.0%       221  r3d_clip!v9x_r3d_draw_list_
+   2.4%       178  r3d_clip!v9x_r3d_clip_triangle_
+   2.2%       165  i9xx_scanout!v9x_i9xx_scanout_pipe_
+   2.2%       160  r3d_clip!v9x_r3d_triangle_on_target_
+   1.9%       139  i9xx_vertex!v9x_i9xx_build_runtime_run_common_
+   1.8%       135  d3d_i9xx!v9x_d3d_i9xx_draw_triangles_body_
+   1.6%       119  d3d_core!v9x_d3d_draw_one_indexed_primitive_body_
+   1.1%        81  i9xx_float!v9x_i9xx_float_in_range_
+   1.1%        81  d3d_core!v9x_d3d_draw_primitives_body_
+   1.0%        72  r3d_clip!v9x_r3d_list_copy_triangle_
+   0.9%        67  r3d_cull!v9x_r3d_cull_triangle_
+   0.8%        62  d3d_i9xx!v9x_d3d_i9xx_note_make_up_
+   0.8%        57  i9xx_ring!v9x_i9xx_ring_plan_
+   0.7%        48  i9xx_float!v9x_i9xx_float_finite_
+   0.6%        42  r3d_clip!v9x_r3d_lerp_byte_
+   0.5%        39  r3d_records!v9x_r3d_records_put_
+   0.5%        38  d3d_i9xx!v9x_d3d_i9xx_allocate_sequence_
+   0.5%        38  i9xx_scanout!v9x_i9xx_in_vblank_
+   0.5%        36  d3d_core!v9x_d3d_list_culled_
+   0.4%        32  r3d_clip!v9x_r3d_coordinate_finite_
+   0.4%        32  i9xx_ring!v9x_i9xx_ring_free_space_
+   0.4%        31  i9xx_float!v9x_i9xx_float_positive_finite_
+   0.4%        26  r3d_clip!v9x_r3d_lerp_vertex_
+   0.3%        24  ddhal_core!v9x_trace_push_
+   0.3%        21  r3d_clip!v9x_r3d_lerp_color_
+   0.3%        20  r3d_records!v9x_r3d_records_append_fan_uv1_
+   0.3%        20  r3d_clip!v9x_r3d_list_append_
+   0.3%        20  i9xx_float!v9x_i9xx_float_from_int_
+   0.3%        19  d3d_i9xx!v9x_d3d_i9xx_mip_levels_
+   0.2%        18  d3d_core!v9x_d3d_context_same_
+   0.2%        18  i9xx_scanout!v9x_i9xx_plane_base_
+   0.2%        16  i9xx_texture!v9x_i9xx_build_map_state_
+   0.2%        15  d3d_i9xx!v9x_d3d_i9xx_bind_texture_
+   0.2%        14  hsw_scanout!v9x_hsw_scanout_active_
+   0.2%        14  i9xx_3d!v9x_i9xx_build_state_common_
+   0.2%        14  i9xx_ring!v9x_i9xx_sequence_reached_
+   0.2%        13  d3d_i9xx_target!v9x_d3d_i9xx_footprint_fits_
+   0.2%        13  d3d_core!v9x_d3d_draw_list_
+   0.2%        12  d3d_state!v9x_d3d_state_fill_
+   0.2%        12  i9xx_scanout!v9x_i9xx_scanout_reg_
+   0.1%        11  i9xx_texture!v9x_i9xx_build_sampler_state_
+   0.1%        11  i9xx_ring!v9x_i9xx_is_power_of_two_
+   0.1%        10  d3d_select!v9x_d3d_select_engine_
+   0.1%         9  d3d_core!v9x_d3d_describe_draw_
+   0.1%         9  d3d_core!_V9xD3dDrawPrimitives@4
+   0.1%         9  d3d_i9xx!v9x_d3d_i9xx_draw_
+   0.1%         9  trace_fold!v9x_trace_fold_same_
+   0.1%         9  i9xx_fragprog!v9x_i9xx_build_texture_program_
+   0.1%         8  i9xx_3d!v9x_i9xx_emit_invariant_
+   0.1%         8  i9xx_scanout!v9x_i9xx_scanout_active_
+   0.1%         8  d3d_i9xx_target!v9x_d3d_i9xx_level_edge_
+   0.1%         7  i9xx_flip!v9x_i9xx_build_breadcrumb_stream_
+   0.1%         7  d3d_core!v9x_d3d_dispatch_engine_
+   0.1%         7  d3d_core!v9x_d3d_engine_centre_
+   0.1%         7  i9xx_3d!v9x_i9xx_emit_target_
+   0.1%         7  i9xx_3d!v9x_i9xx_build_runtime_state_fog_
+   0.1%         7  ddhal_core!v9x_surface_offset_

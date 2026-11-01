@@ -378,6 +378,12 @@ static DWORD v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_UNTRIED;
  * measurement-only OMIT_STATE). Every ring submission clears it; the draw
  * path sets it again once its own submission was taken. */
 static int v9x_d3d_i9xx_state_sent_valid = 0;
+/* The displayed buffer as the census last read it from the plane base, and
+ * what the read is good for (v9x_d3d_i9xx_displayed_offset). */
+static DWORD v9x_d3d_i9xx_displayed = 0xfffffffful;
+static DWORD v9x_d3d_i9xx_displayed_sequence = 0ul;
+static DWORD v9x_d3d_i9xx_displayed_age = 0ul;
+static int v9x_d3d_i9xx_displayed_valid = 0;
 
 static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
                                          int force_sync);
@@ -654,6 +660,7 @@ void v9x_d3d_i9xx_reset(void)
     v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
     v9x_d3d_i9xx_drain_polls_spent = 0ul;
     v9x_d3d_i9xx_state_sent_valid = 0;
+    v9x_d3d_i9xx_displayed_valid = 0;
     if (v9x_hal != 0) {
         v9x_hal->d3d_diagnostics.async_enabled =
             v9x_d3d_i9xx_async_enabled() ? 1ul : 0ul;
@@ -2225,6 +2232,38 @@ static void v9x_d3d_i9xx_pair_add(DWORD *pair, DWORD delta)
     }
 }
 
+/*
+ * The displayed buffer for the front/back census, read from the plane base
+ * only when it may have moved.
+ *
+ * The read is the pipe's configuration and display registers, each an
+ * uncached MMIO read: 3.2 us of a Half-Life submission on the netbook,
+ * for a counter (docs\decisions\2026-11-01-gen3-core-front-end-profile.md).
+ * What the panel shows changes when a flip is taken, which advances the
+ * present sequence (any process's flip: the sequence is shared), or when
+ * this draw has just waited one out (`flip_taken`). It is read again on
+ * either, on a new session, and every V9X_D3D_I9XX_DISPLAYED_REREAD draws,
+ * which bounds how long a change this DLL does not see - a mode set, a DOS
+ * box, FlipToGDISurface - can go uncounted.
+ */
+#define V9X_D3D_I9XX_DISPLAYED_REREAD 256ul
+
+static DWORD v9x_d3d_i9xx_displayed_offset(int flip_taken)
+{
+    DWORD sequence = v9x_present_sequence();
+
+    if (!v9x_d3d_i9xx_displayed_valid || flip_taken ||
+        sequence != v9x_d3d_i9xx_displayed_sequence ||
+        v9x_d3d_i9xx_displayed_age >= V9X_D3D_I9XX_DISPLAYED_REREAD) {
+        v9x_d3d_i9xx_displayed = v9x_scanout_displayed_offset();
+        v9x_d3d_i9xx_displayed_sequence = sequence;
+        v9x_d3d_i9xx_displayed_age = 0ul;
+        v9x_d3d_i9xx_displayed_valid = 1;
+    }
+    ++v9x_d3d_i9xx_displayed_age;
+    return v9x_d3d_i9xx_displayed;
+}
+
 /* `sent_dwords` is what reached the ring: state_dwords unless an omit bit
  * cut some of it, so I9xxStateDwords counts sent state. */
 static void v9x_d3d_i9xx_note_make_up(const DWORD *state, DWORD state_dwords,
@@ -2384,6 +2423,7 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD omit = v9x_hal->hsw_flush_omit;
     DWORD region_begin;
     DWORD cut = 0ul;
+    int flip_waited;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -2426,20 +2466,18 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      * that runs out is a dead scanout, drawn anyway rather than refused
      * (the frame is lost either way; the game keeps running).
      */
-    {
-        int waited = v9x_flip_wait_done();
-
-        if (waited != V9X_FLIP_WAIT_NONE) {
-            ++v9x_hal->d3d_diagnostics.draws_flip_waited;
-            if (waited == V9X_FLIP_WAIT_TIMEOUT) {
-                ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
-            }
+    flip_waited = v9x_flip_wait_done();
+    if (flip_waited != V9X_FLIP_WAIT_NONE) {
+        ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+        if (flip_waited == V9X_FLIP_WAIT_TIMEOUT) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
         }
     }
     /* Front or back: is this batch about to land in the buffer the display
      * is scanning right now? See the diagnostics comment (intel74). */
     {
-        DWORD displayed = v9x_scanout_displayed_offset();
+        DWORD displayed = v9x_d3d_i9xx_displayed_offset(
+            flip_waited != V9X_FLIP_WAIT_NONE);
 
         /*
          * The set of targets, not just the last one. See the census comment
