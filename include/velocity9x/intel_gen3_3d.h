@@ -1499,6 +1499,10 @@ v9x_status v9x_i9xx_build_runtime_run(
     const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/* Measurement only: the runtime run builders accept a vertex up to `band`
+ * pixels off the target on every side. Zero, the default and the shipped
+ * rule, is on the target only. docs\plans\intel-gen3-guard-band.md. */
+void v9x_i9xx_vertex_set_band(v9x_u32 band);
 
 /*
  * Is this bit pattern a float the rasteriser can walk to, in [0, limit]?
@@ -1518,6 +1522,13 @@ v9x_u16 v9x_i9xx_float_positive_finite(v9x_u32 bits);
 v9x_u16 v9x_i9xx_float_finite(v9x_u32 bits);
 
 v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits);
+/* Finite and in [-lower, upper], both bounds given as the bit patterns of
+ * non-negative floats. lower_bits zero is v9x_i9xx_float_in_range: no
+ * negative accepted, negative zero included. For the measurement-only
+ * guard band (docs\plans\intel-gen3-guard-band.md), in the flat builds
+ * only (V9X_I9XX_TWO_UNITS, below); the 16-bit driver has no band. */
+v9x_u16 v9x_i9xx_float_in_span(v9x_u32 bits, v9x_u32 upper_bits,
+                               v9x_u32 lower_bits);
 /*
  * u_bits and v_bits are IEEE-754 bit patterns, one pair per vertex in
  * triangle-then-vertex order. Taken as bits because the integer converter
@@ -1950,7 +1961,24 @@ struct v9x_i9xx_decode_limits {
      * 16-bit decoder does not read it.
      */
     v9x_u32 target_format;
+    /*
+     * Measurement only (docs\plans\intel-gen3-guard-band.md): a runtime
+     * stream's vertices may lie up to this many pixels off the target on
+     * every side, and its DRAW_RECT must be the target less draw_inset
+     * pixels on every side. Zero - every scene, every caller that clears
+     * the limits - is the shipped rule: vertices on the target, the
+     * rectangle the whole target. Append-only, as above. The flat builds
+     * only: the 16-bit driver has no band, and the eight bytes on its
+     * callers' stacks were enough to push its code segment over budget.
+     */
+#if V9X_I9XX_TWO_UNITS
+    v9x_u32 guard_band;
+    v9x_u32 draw_inset;
+#endif
 };
+/* The largest guard_band the decoder accepts: the engine's coordinate
+ * limit, which the core already refuses vertices beyond. */
+#define V9X_I9XX_GUARD_BAND_MAX ((v9x_u32)4096ul)
 
 v9x_u16 v9x_i9xx_decode_phase5_stream(
     const v9x_u32 *stream, v9x_u32 dword_count,

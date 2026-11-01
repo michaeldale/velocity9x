@@ -14,6 +14,24 @@
 #include "velocity9x/intel_gen3_3d.h"
 #include "velocity9x/intel_gma.h"
 
+/*
+ * The measurement-only guard band and inset rectangle, read in the flat
+ * builds only. The 16-bit driver decodes its own scenes and never a band;
+ * there both are the constant zero, the checks fold to the old ones, and
+ * its code segment, which has no room, does not grow.
+ */
+#if V9X_I9XX_TWO_UNITS
+#define V9X_I9XX_DECODE_BAND(limits)  ((limits)->guard_band)
+#define V9X_I9XX_DECODE_INSET(limits) ((limits)->draw_inset)
+#define V9X_I9XX_DECODE_IN_BAND(bits, upper, lower) \
+    v9x_i9xx_float_in_span((bits), (upper), (lower))
+#else
+#define V9X_I9XX_DECODE_BAND(limits)  0ul
+#define V9X_I9XX_DECODE_INSET(limits) 0ul
+#define V9X_I9XX_DECODE_IN_BAND(bits, upper, lower) \
+    v9x_i9xx_float_in_range((bits), (upper))
+#endif
+
 #define V9X_I9XX_REJECT(reason_code, index_value) \
     do { \
         if (rejected_index != 0) { *rejected_index = (index_value); } \
@@ -447,6 +465,11 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u32 painted = 0ul;
     v9x_u32 width_bits = 0ul;
     v9x_u32 height_bits = 0ul;
+#if V9X_I9XX_TWO_UNITS
+    /* The measurement-only band's negative bound; zero refuses a negative
+     * coordinate, as always. */
+    v9x_u32 band_bits = 0ul;
+#endif
     v9x_u16 saw_buf_info_color = V9X_FALSE;
     v9x_u16 saw_dst_buf_vars = V9X_FALSE;
     v9x_u16 saw_draw_rect = V9X_FALSE;
@@ -540,15 +563,38 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
          * and it is exactly the value the removed Phase 5 binding carried. */
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
+#if V9X_I9XX_TWO_UNITS
+    /*
+     * The measurement-only guard band and inset rectangle
+     * (docs\plans\intel-gen3-guard-band.md) are a runtime stream's alone,
+     * bounded so the sums below cannot wrap, and the inset leaves a
+     * rectangle at least one pixel each way.
+     */
+    if ((limits->guard_band != 0ul || limits->draw_inset != 0ul) &&
+        (limits->kind != V9X_I9XX_SCENE_RUNTIME ||
+         limits->guard_band > V9X_I9XX_GUARD_BAND_MAX ||
+         limits->draw_inset + limits->draw_inset >= limits->target_width ||
+         limits->draw_inset + limits->draw_inset >=
+             limits->target_height)) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+    if (limits->guard_band != 0ul &&
+        v9x_i9xx_float_from_int(limits->guard_band, &band_bits) !=
+            V9X_I9XX_FLOAT_OK) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
+    }
+#endif
     /*
      * The rectangle as FLOATS, for the runtime coordinate checks. Converted
      * through the same helper the builder uses, so the decoder's edge and the
      * builder's edge are the same number rather than two derivations of it.
      */
-    if (v9x_i9xx_float_from_int(limits->target_width, &width_bits) !=
-            V9X_I9XX_FLOAT_OK ||
-        v9x_i9xx_float_from_int(limits->target_height, &height_bits) !=
-            V9X_I9XX_FLOAT_OK) {
+    if (v9x_i9xx_float_from_int(limits->target_width +
+                                    V9X_I9XX_DECODE_BAND(limits),
+                                &width_bits) != V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(limits->target_height +
+                                    V9X_I9XX_DECODE_BAND(limits),
+                                &height_bits) != V9X_I9XX_FLOAT_OK) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, 0ul);
     }
     target_end = target_offset + target_bytes;
@@ -686,14 +732,21 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
             if (dword_count - index < 5ul) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
             }
-            if (stream[index + 1ul] != 0ul || stream[index + 2ul] != 0ul ||
+            /* The minimum corner is the origin, or the measurement-only
+             * inset; the origin offset is always zero. */
+            if (stream[index + 1ul] != 0ul ||
+                stream[index + 2ul] != ((V9X_I9XX_DECODE_INSET(limits) << 16) |
+                                        V9X_I9XX_DECODE_INSET(limits)) ||
                 stream[index + 4ul] != 0ul) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_DRAW_RECT, index + 1ul);
             }
-            /* Inclusive bounds: exactly one less than the extent. */
+            /* Inclusive bounds: exactly one less than the extent, less the
+             * inset. */
             if (stream[index + 3ul] !=
-                    (((limits->target_height - 1ul) << 16) |
-                     (limits->target_width - 1ul))) {
+                    (((limits->target_height - 1ul -
+                       V9X_I9XX_DECODE_INSET(limits)) << 16) |
+                     (limits->target_width - 1ul -
+                      V9X_I9XX_DECODE_INSET(limits)))) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_DRAW_RECT, index + 3ul);
             }
             saw_draw_rect = V9X_TRUE;
@@ -1788,8 +1841,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                  *    nobody wrote it down in two forms.
                  */
                 if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
-                    if (v9x_i9xx_float_in_range(stream[base],
-                                                width_bits) == V9X_FALSE) {
+                    if (V9X_I9XX_DECODE_IN_BAND(stream[base], width_bits,
+                                                band_bits) == V9X_FALSE) {
                         V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base);
                     }
                 } else if (v9x_i9xx_float_to_int(stream[base], &decoded) !=
@@ -1814,8 +1867,9 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                  * only checks what the first one checks is not one.
                  */
                 if (limits->kind == V9X_I9XX_SCENE_RUNTIME) {
-                    if (v9x_i9xx_float_in_range(stream[base + 1ul],
-                                                height_bits) == V9X_FALSE) {
+                    if (V9X_I9XX_DECODE_IN_BAND(stream[base + 1ul],
+                                                height_bits,
+                                                band_bits) == V9X_FALSE) {
                         V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE, base + 1ul);
                     }
                 } else if (v9x_i9xx_float_to_int(stream[base + 1ul],

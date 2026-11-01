@@ -430,6 +430,29 @@ v9x_u32 v9x_i9xx_fogged_run_dwords(v9x_u32 triangles, v9x_u16 textured)
                            (v9x_u16)((v9x_u16)V9X_I9XX_VERTEX_COUNT * stride));
 }
 
+/*
+ * Measurement only (docs\plans\intel-gen3-guard-band.md): how far off the
+ * target, in pixels, the runtime run builders accept a vertex. Zero, the
+ * shipped rule, is on the target only; the HAL sets it before each run from
+ * the variant mask, and nothing else does. The flat builds only: in the
+ * 16-bit driver it is the constant zero and the checks are the old ones.
+ */
+#if V9X_I9XX_TWO_UNITS
+static v9x_u32 v9x_i9xx_vertex_band = 0ul;
+
+void v9x_i9xx_vertex_set_band(v9x_u32 band)
+{
+    v9x_i9xx_vertex_band = band;
+}
+#define V9X_I9XX_VERTEX_BAND v9x_i9xx_vertex_band
+#define V9X_I9XX_IN_BAND(bits, upper, lower) \
+    v9x_i9xx_float_in_span((bits), (upper), (lower))
+#else
+#define V9X_I9XX_VERTEX_BAND 0ul
+#define V9X_I9XX_IN_BAND(bits, upper, lower) \
+    v9x_i9xx_float_in_range((bits), (upper))
+#endif
+
 static v9x_status v9x_i9xx_build_runtime_run_common(
     const v9x_u32 *xyzw, const v9x_u32 *colors, const v9x_u32 *speculars,
     const v9x_u32 *uv,
@@ -442,6 +465,9 @@ static v9x_status v9x_i9xx_build_runtime_run_common(
     v9x_u32 run_dwords;
     v9x_u32 width_bits = 0ul;
     v9x_u32 height_bits = 0ul;
+#if V9X_I9XX_TWO_UNITS
+    v9x_u32 band_bits = 0ul;
+#endif
     v9x_u32 one_bits = 0ul;
 
     if (written != 0) { *written = 0ul; }
@@ -471,11 +497,20 @@ static v9x_status v9x_i9xx_build_runtime_run_common(
      * has one - and the rasteriser's own sample rule decides whether the last
      * column is covered.
      */
-    if (v9x_i9xx_float_from_int(width, &width_bits) != V9X_I9XX_FLOAT_OK ||
-        v9x_i9xx_float_from_int(height, &height_bits) != V9X_I9XX_FLOAT_OK ||
+    if (v9x_i9xx_float_from_int(width + V9X_I9XX_VERTEX_BAND,
+                                &width_bits) != V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(height + V9X_I9XX_VERTEX_BAND,
+                                &height_bits) != V9X_I9XX_FLOAT_OK ||
         v9x_i9xx_float_from_int(1ul, &one_bits) != V9X_I9XX_FLOAT_OK) {
         return V9X_STATUS_INVALID_STATE;
     }
+#if V9X_I9XX_TWO_UNITS
+    if (v9x_i9xx_vertex_band != 0ul &&
+        v9x_i9xx_float_from_int(v9x_i9xx_vertex_band, &band_bits) !=
+            V9X_I9XX_FLOAT_OK) {
+        return V9X_STATUS_INVALID_STATE;
+    }
+#endif
 
     vertices = (v9x_u32)((v9x_u16)V9X_I9XX_VERTEX_COUNT *
                          (v9x_u16)triangles);
@@ -499,10 +534,11 @@ static v9x_status v9x_i9xx_build_runtime_run_common(
          * consequence is not a wrong picture, it is a write outside the
          * surface. On this part that is a write to a page that may not be
          * ours, which is the failure everything else here is arranged to
-         * prevent.
+         * prevent. Under the measurement-only band, within it on every side.
          */
-        if (v9x_i9xx_float_in_range(xyzw[base], width_bits) == V9X_FALSE ||
-            v9x_i9xx_float_in_range(xyzw[base + 1ul], height_bits) ==
+        if (V9X_I9XX_IN_BAND(xyzw[base], width_bits, band_bits) ==
+                V9X_FALSE ||
+            V9X_I9XX_IN_BAND(xyzw[base + 1ul], height_bits, band_bits) ==
                 V9X_FALSE) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }

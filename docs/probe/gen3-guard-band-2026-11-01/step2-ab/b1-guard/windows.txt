@@ -1,0 +1,3 @@
+start :  [Shell_TrayWnd] | Program Manager [Progman]
+after-hl :  [Shell_TrayWnd] | Program Manager [Progman]
+after-3dmark :  [Shell_TrayWnd] | Program Manager [Progman]

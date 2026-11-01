@@ -86,7 +86,9 @@ typedef char v9x_assert_batch_fits_vertices[
  */
 #define V9X_D3D_I9XX_SAMPLER_SIZE_MIN 1ul
 
-static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
+/* Not const for one field: clip_in_core follows the measurement-only GUARD
+ * variant (v9x_d3d_i9xx_ready). Nothing else here changes at run time. */
+static V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     16ul,                       /* target_bits_per_pixel  */
     V9X_I9XX_BUF_3D_PITCH_MASK, /* target_pitch_max       */
     4ul,                        /* target_pitch_align     */
@@ -2219,6 +2221,34 @@ static DWORD v9x_d3d_i9xx_state_previous_dwords = 0ul;
 #define V9X_D3D_I9XX_OMIT_TEXTURE 0x40ul
 #define V9X_D3D_I9XX_OMIT_STATE   0x80ul
 
+/*
+ * GUARD, measurement only (docs\plans\intel-gen3-guard-band.md): the core
+ * does not clip, and a vertex up to the band in bits 16-27, in pixels, off
+ * the target on any side is drawn as given; one beyond it refuses the batch.
+ * INSET also shrinks DRAW_RECT by V9X_D3D_I9XX_GUARD_INSET pixels on every
+ * side, so a probe can read the frame between the rectangle and the
+ * surface's edge for writes the rectangle should have stopped.
+ */
+#define V9X_D3D_I9XX_OMIT_GUARD   0x100ul
+#define V9X_D3D_I9XX_OMIT_INSET   0x200ul
+#define V9X_D3D_I9XX_GUARD_SHIFT  16
+#define V9X_D3D_I9XX_GUARD_MASK   0xffful
+#define V9X_D3D_I9XX_GUARD_INSET  32ul
+
+/* The band the GUARD variant asks for, bounded as the decoder bounds it;
+ * zero when it is off. */
+static DWORD v9x_d3d_i9xx_guard_band(void)
+{
+    DWORD omit = v9x_hal->hsw_flush_omit;
+    DWORD band = (omit >> V9X_D3D_I9XX_GUARD_SHIFT) & V9X_D3D_I9XX_GUARD_MASK;
+
+    if ((omit & V9X_D3D_I9XX_OMIT_GUARD) == 0ul ||
+        band > V9X_I9XX_GUARD_BAND_MAX) {
+        return 0ul;
+    }
+    return band;
+}
+
 /* The state region the last draw submission sent, for OMIT_STATE; valid
  * while v9x_d3d_i9xx_state_sent_valid says so. */
 static DWORD v9x_d3d_i9xx_state_sent[V9X_D3D_I9XX_STATE_COMPARE_DWORDS];
@@ -2424,6 +2454,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD region_begin;
     DWORD cut = 0ul;
     int flip_waited;
+    DWORD guard_band = v9x_d3d_i9xx_guard_band();
+    DWORD draw_inset = (guard_band != 0ul &&
+                        (omit & V9X_D3D_I9XX_OMIT_INSET) != 0ul)
+                           ? V9X_D3D_I9XX_GUARD_INSET : 0ul;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -2440,6 +2474,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_BATCH);
     }
     count = triangle_count * 3ul;
+    /* The run builders' band: zero, on the target only, unless the
+     * measurement-only GUARD variant is set. */
+    v9x_i9xx_vertex_set_band(guard_band);
 
     /*
      * The surface, validated against the aperture BEFORE anything is built.
@@ -2738,6 +2775,22 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
                                  target_format) != V9X_STATUS_OK)) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
     }
+    /* The INSET variant's rectangle: DRAW_RECT follows DST_BUF_VARS in the
+     * block (v9x_i9xx_emit_target), and the decoder requires this one. */
+    if (draw_inset != 0ul) {
+        DWORD rect = at + V9X_I9XX_DST_BUF_VARS_AT + 2ul;
+
+        if (produced < V9X_I9XX_DST_BUF_VARS_AT + 7ul ||
+            stream[rect] != V9X_I9XX_3DSTATE_DRAW_RECT ||
+            draw_inset + draw_inset >= draw->target.width ||
+            draw_inset + draw_inset >= draw->target.height) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+        }
+        stream[rect + 2ul] = (draw_inset << 16) | draw_inset;
+        stream[rect + 3ul] =
+            ((draw->target.height - 1ul - draw_inset) << 16) |
+            (draw->target.width - 1ul - draw_inset);
+    }
     at += produced;
     /* The fog colour into C0, ahead of the program that reads it. */
     if (fog != 0ul) {
@@ -2900,6 +2953,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     limits.alpha_test = alpha_test;
     limits.fog = fog;
     limits.target_format = target_format;
+    /* The GUARD variant's band and, on the one-unit path that patches it,
+     * the INSET rectangle; both zero when it is off. */
+    limits.guard_band = guard_band;
+    limits.draw_inset = two_units ? 0ul : draw_inset;
     limits.kind = V9X_I9XX_SCENE_RUNTIME;
     limits.texture_cylinder = cylinder;
     limits.texture_mip_filter = textured != 0 ? map.mip_filter : 0ul;
@@ -3059,6 +3116,14 @@ static int v9x_d3d_i9xx_ready(void)
         v9x_hal->engine.ring_bytes == 0ul) {
         return 0;
     }
+    /*
+     * The measurement-only GUARD variant: the core hands triangles over
+     * unclipped and the vertex builders and decoder take the band. Set
+     * here because the core asks ready() before it reads the limits for a
+     * draw. docs\plans\intel-gen3-guard-band.md.
+     */
+    v9x_d3d_i9xx_limits.clip_in_core =
+        v9x_d3d_i9xx_guard_band() != 0ul ? 0ul : 1ul;
     return 1;
 }
 

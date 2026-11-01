@@ -1,0 +1,25 @@
+The sound hardware is in use by another app.
+Sound not available ( 2 ).
+WON initialized.
+Server module initialized.
+World module initialized.
+]echo V9X_b2-guard_READY1
+V9X_b2-guard_READY1 
+]echo V9X_b2-guard_WARM
+V9X_b2-guard_WARM 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 9.913 seconds 39.647 fps
+No demos listed with startdemos
+]echo V9X_b2-guard_RUN
+V9X_b2-guard_RUN 
+]timedemo mwd5
+Playing demo from C:\SIERRA\HALF-LIFE/valve/mwd5.dem.
+Couldn't open file overviews/c4a1b.txt. Using default values for overiew mode.
+393 frames 7.895 seconds 49.776 fps
+]quit
+World module shutdown.
+WON shutdown.
+Server module shutdown.

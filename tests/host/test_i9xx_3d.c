@@ -502,6 +502,8 @@ static void v9x_test_limits(struct v9x_i9xx_decode_limits *limits,
     limits->alpha_test = 0ul;
     limits->fog = 0ul;
     limits->target_format = 0ul;
+    limits->guard_band = 0ul;
+    limits->draw_inset = 0ul;
 }
 
 static void test_decoder_accepts_golden(void)
@@ -1687,6 +1689,140 @@ static void test_decoder_stipple(void)
     CHECK(v9x_i9xx_decode_phase5_stream(stream, 2ul, &limits, &index) !=
           V9X_I9XX_P5_OK);
     CHECK(index == 1ul);
+}
+
+/*
+ * The measurement-only guard band (docs\plans\intel-gen3-guard-band.md):
+ * the builder and the decoder take a vertex off the target only within the
+ * band they are given, the decoder takes the inset DRAW_RECT only when told
+ * to expect it, and zero for both is the shipped rule.
+ */
+static void test_guard_band(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_limits scene_limits;
+    v9x_u32 stream[200];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 rect;
+    v9x_u32 run;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 b64 = 0x42800000ul;   /* 64.0 */
+    const v9x_u32 w704 = 0x44300000ul;  /* 704.0 */
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    /* The span: zero for the lower bound is the old range. */
+    CHECK(v9x_i9xx_float_in_span(0x80000000ul, w704, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_span(0xbf800000ul, w704, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_span(w704, w704, 0ul) == V9X_TRUE);
+    CHECK(v9x_i9xx_float_in_span(0xc2800000ul, w704, b64) == V9X_TRUE);
+    CHECK(v9x_i9xx_float_in_span(0xc2810000ul, w704, b64) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_span(0x80000000ul, w704, b64) == V9X_TRUE);
+    CHECK(v9x_i9xx_float_in_span(w704 + 1ul, w704, b64) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_span(0xff800000ul, w704, b64) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_span(0xffc00000ul, w704, b64) == V9X_FALSE);
+    CHECK(v9x_i9xx_float_in_span(0x7fc00000ul, w704, b64) == V9X_FALSE);
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+
+    stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    stream[at++] = V9X_I9XX_3DSTATE_STIPPLE;
+    stream[at++] = V9X_I9XX_STIPPLE_OFF;
+    CHECK(v9x_i9xx_build_3d_state(surface, pitch, width, height,
+                                  stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    rect = at + V9X_I9XX_DST_BUF_VARS_AT + 2ul;
+    CHECK(stream[rect] == V9X_I9XX_3DSTATE_DRAW_RECT);
+    at += produced;
+    CHECK(v9x_i9xx_build_fragment_program(stream + at, 200ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    /* x = -32 for the first vertex, 32 pixels off the left edge. */
+    xyzw[0] = 0xc2000000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0x00c0ffeeul;
+    colors[1] = 0xdeadbeeful;
+    colors[2] = 0x12345678ul;
+
+    /* The builder: refused with no band, built inside a 64-pixel one, and
+     * refused again inside a 16-pixel one. */
+    run = at;
+    v9x_i9xx_vertex_set_band(0ul);
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_i9xx_vertex_set_band(16ul);
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    v9x_i9xx_vertex_set_band(64ul);
+    CHECK(v9x_i9xx_build_runtime_run(xyzw, colors, 1ul, width, height,
+                                     stream + at, 200ul - at, &produced) ==
+          V9X_STATUS_OK);
+    v9x_i9xx_vertex_set_band(0ul);
+    at += produced;
+
+    /* The decoder: the off-target vertex refused with no band and inside a
+     * 16-pixel one, accepted inside 64. */
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+    CHECK(index == run + 1ul);
+    limits.guard_band = 16ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+    limits.guard_band = 64ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    /* Past the band on the far side: x = 512 + 65. */
+    stream[run + 1ul + 5ul] = 0x44104000ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_VERTEX_RANGE);
+    stream[run + 1ul + 5ul] = 0x43c80000ul;
+
+    /* The inset rectangle: refused unless expected, accepted when it is,
+     * and the full rectangle then refused. */
+    stream[rect + 2ul] = (32ul << 16) | 32ul;
+    stream[rect + 3ul] = ((height - 33ul) << 16) | (width - 33ul);
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DRAW_RECT);
+    limits.draw_inset = 32ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    stream[rect + 2ul] = 0ul;
+    stream[rect + 3ul] = ((height - 1ul) << 16) | (width - 1ul);
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_DRAW_RECT);
+    stream[rect + 2ul] = (32ul << 16) | 32ul;
+    stream[rect + 3ul] = ((height - 33ul) << 16) | (width - 33ul);
+
+    /* Bounds on the limits themselves: an inset leaving no rectangle, a
+     * band past the coordinate limit, and either on a scene. */
+    limits.draw_inset = width / 2ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    limits.draw_inset = 32ul;
+    limits.guard_band = V9X_I9XX_GUARD_BAND_MAX + 1ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+    limits.guard_band = 64ul;
+    scene_limits = limits;
+    scene_limits.kind = V9X_I9XX_SCENE_ALPHA_TEST;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &scene_limits,
+                                        &index) != V9X_I9XX_P5_OK);
 }
 #endif
 
@@ -6302,6 +6438,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_flush_forms();
 #if V9X_I9XX_TWO_UNITS
     test_decoder_stipple();
+    test_guard_band();
 #endif
     test_decoder_breadcrumb();
     test_probe_expectation_names();

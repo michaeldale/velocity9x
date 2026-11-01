@@ -218,3 +218,21 @@ v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits)
     }
     return (bits <= limit_bits) ? V9X_TRUE : V9X_FALSE;
 }
+
+/* The flat builds only: the 16-bit driver never draws in a band, and its
+ * code segment has no room for it. */
+#if V9X_I9XX_TWO_UNITS
+v9x_u16 v9x_i9xx_float_in_span(v9x_u32 bits, v9x_u32 upper_bits,
+                               v9x_u32 lower_bits)
+{
+    if (lower_bits == 0ul) {
+        return v9x_i9xx_float_in_range(bits, upper_bits);
+    }
+    /* A negative float's magnitude orders as an integer once the sign is
+     * cleared; an infinity or NaN magnitude is above any finite bound. */
+    if ((bits & 0x80000000ul) != 0ul) {
+        return ((bits & 0x7ffffffful) <= lower_bits) ? V9X_TRUE : V9X_FALSE;
+    }
+    return (bits <= upper_bits) ? V9X_TRUE : V9X_FALSE;
+}
+#endif
