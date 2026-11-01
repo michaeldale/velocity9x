@@ -1,0 +1,2 @@
+Target=xx dx9 hal
+Problem=setup stopped: no-device

@@ -374,6 +374,10 @@ static DWORD v9x_d3d_i9xx_breadcrumb_expected = 0ul;
 static DWORD v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
 static DWORD v9x_d3d_i9xx_drain_polls_spent = 0ul;
 static DWORD v9x_d3d_i9xx_hws_state = V9X_I9XX_HWS_UNTRIED;
+/* Whether the engine holds the state region the last draw sent (the
+ * measurement-only OMIT_STATE). Every ring submission clears it; the draw
+ * path sets it again once its own submission was taken. */
+static int v9x_d3d_i9xx_state_sent_valid = 0;
 
 static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
                                          int force_sync);
@@ -649,6 +653,7 @@ void v9x_d3d_i9xx_reset(void)
     v9x_d3d_i9xx_breadcrumb_expected = 0ul;
     v9x_d3d_i9xx_breadcrumb_outstanding = 0ul;
     v9x_d3d_i9xx_drain_polls_spent = 0ul;
+    v9x_d3d_i9xx_state_sent_valid = 0;
     if (v9x_hal != 0) {
         v9x_hal->d3d_diagnostics.async_enabled =
             v9x_d3d_i9xx_async_enabled() ? 1ul : 0ul;
@@ -682,6 +687,9 @@ static int v9x_d3d_i9xx_ring_submit_mode(const DWORD *stream, DWORD dwords,
     volatile DWORD *ring;
 
     v9x_d3d_i9xx_last_head_cycles = 0ul;
+    /* Whatever this submits, the state region the last draw sent may no
+     * longer be what the engine holds. */
+    v9x_d3d_i9xx_state_sent_valid = 0;
     if (stream == 0 || dwords == 0ul || (dwords & 1ul) != 0ul ||
         dwords > 0x3ffffffful ||
         v9x_d3d_i9xx_ring_base(&ring_linear, &ring_bytes) == 0 ||
@@ -2184,6 +2192,31 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
 static DWORD v9x_d3d_i9xx_state_previous[V9X_D3D_I9XX_STATE_COMPARE_DWORDS];
 static DWORD v9x_d3d_i9xx_state_previous_dwords = 0ul;
 
+/*
+ * Measurement-only omit bits, in the mask V9XTRACE -omit:<mask> stores in
+ * the shared block (hsw_flush_omit, V9X_DDFLUSHVARIANT); zero at every boot,
+ * and zero is the shipped batch. Above the HD 4600's bits so a mask means
+ * one thing on any machine. docs\plans\intel-gen3-batch-cost.md, step 1.
+ *
+ * TEXTURE leaves out the leading MI_FLUSH_READ. It is wrong whenever the
+ * CPU wrote texels since the last batch, and exists only to price the
+ * flush.
+ *
+ * STATE leaves out the state region (stipple, state block, constants,
+ * program) when it equals the region the last submission sent, and no
+ * other submission has reached the ring since. The full stream is built
+ * and decoded first, so the allowlist sees what it always saw; the region
+ * is cut after. Whether the 3D state survives the breadcrumb's blit between
+ * batches is not documented for Gen3: V9XD32 under this bit is the test.
+ */
+#define V9X_D3D_I9XX_OMIT_TEXTURE 0x40ul
+#define V9X_D3D_I9XX_OMIT_STATE   0x80ul
+
+/* The state region the last draw submission sent, for OMIT_STATE; valid
+ * while v9x_d3d_i9xx_state_sent_valid says so. */
+static DWORD v9x_d3d_i9xx_state_sent[V9X_D3D_I9XX_STATE_COMPARE_DWORDS];
+static DWORD v9x_d3d_i9xx_state_sent_dwords = 0ul;
+
 static void v9x_d3d_i9xx_pair_add(DWORD *pair, DWORD delta)
 {
     pair[0] += delta;
@@ -2192,14 +2225,16 @@ static void v9x_d3d_i9xx_pair_add(DWORD *pair, DWORD delta)
     }
 }
 
+/* `sent_dwords` is what reached the ring: state_dwords unless an omit bit
+ * cut some of it, so I9xxStateDwords counts sent state. */
 static void v9x_d3d_i9xx_note_make_up(const DWORD *state, DWORD state_dwords,
-                                      DWORD prim_dwords)
+                                      DWORD sent_dwords, DWORD prim_dwords)
 {
     V9X_D3D_DIAGNOSTICS *diag = &v9x_hal->d3d_diagnostics;
     DWORD index;
     DWORD changed = 0ul;
 
-    v9x_d3d_i9xx_pair_add(diag->i9xx_state_dwords, state_dwords);
+    v9x_d3d_i9xx_pair_add(diag->i9xx_state_dwords, sent_dwords);
     v9x_d3d_i9xx_pair_add(diag->i9xx_prim_dwords, prim_dwords);
     if (state_dwords > V9X_D3D_I9XX_STATE_COMPARE_DWORDS) {
         v9x_d3d_i9xx_state_previous_dwords = 0ul;
@@ -2346,6 +2381,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD state_begin;
     DWORD state_end;
     DWORD prim_dwords;
+    DWORD omit = v9x_hal->hsw_flush_omit;
+    DWORD region_begin;
+    DWORD cut = 0ul;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
@@ -2575,7 +2613,10 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
     }
     state_begin = at;
-    stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    if ((omit & V9X_D3D_I9XX_OMIT_TEXTURE) == 0ul) {
+        stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    }
+    region_begin = at;
     /*
      * Polygon stipple OFF, in every batch. Neither reference driver's
      * invariant block carries it, so the state block this driver copied
@@ -2856,14 +2897,63 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         }
     }
 
+    /*
+     * OMIT_STATE, measurement only: the decoded stream less a state region
+     * equal to the one the engine was last sent. The primitives and the
+     * seal move down over it; the tail stays qword aligned by dropping the
+     * pad NOOP or adding one.
+     */
+    if ((omit & V9X_D3D_I9XX_OMIT_STATE) != 0ul &&
+        v9x_d3d_i9xx_state_sent_valid &&
+        state_end - region_begin == v9x_d3d_i9xx_state_sent_dwords) {
+        DWORD index;
+
+        for (index = 0ul; index < v9x_d3d_i9xx_state_sent_dwords; ++index) {
+            if (stream[region_begin + index] !=
+                    v9x_d3d_i9xx_state_sent[index]) {
+                break;
+            }
+        }
+        if (index == v9x_d3d_i9xx_state_sent_dwords) {
+            cut = v9x_d3d_i9xx_state_sent_dwords;
+        }
+    }
+    /* Counted on the whole stream, before the cut moves over it. */
     v9x_d3d_i9xx_note_make_up(stream + state_begin, state_end - state_begin,
-                              prim_dwords);
+                              state_end - state_begin - cut, prim_dwords);
+    if (cut != 0ul) {
+        DWORD index;
+
+        for (index = state_end; index < at; ++index) {
+            stream[index - cut] = stream[index];
+        }
+        at -= cut;
+        if ((at & 1ul) != 0ul) {
+            if (stream[at - 1ul] == V9X_I9XX_MI_NOOP) {
+                --at;
+            } else {
+                stream[at++] = V9X_I9XX_MI_NOOP;
+            }
+        }
+    }
     v9x_present_note_submission();
     if (!v9x_d3d_i9xx_ring_submit(stream, at)) {
         v9x_d3d_i9xx_breadcrumb_expected = 0ul;
         return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
     }
     v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    if ((omit & V9X_D3D_I9XX_OMIT_STATE) != 0ul &&
+        state_end - region_begin <= V9X_D3D_I9XX_STATE_COMPARE_DWORDS) {
+        if (cut == 0ul) {
+            DWORD index;
+
+            for (index = region_begin; index < state_end; ++index) {
+                v9x_d3d_i9xx_state_sent[index - region_begin] = stream[index];
+            }
+            v9x_d3d_i9xx_state_sent_dwords = state_end - region_begin;
+        }
+        v9x_d3d_i9xx_state_sent_valid = 1;
+    }
 #if V9X_I9XX_SCAN_WATCH
     if (v9x_hal->d3d_diagnostics.i9xx_draws_submitted == 0ul) {
         v9x_d3d_i9xx_watch_scanout();

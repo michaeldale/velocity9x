@@ -1,0 +1,18 @@
+ConfigId=w9qi2be2-gma950-v9x
+Environment=metal
+Endpoint=10.0.1.6:9869
+Guest=W9QI2BE2
+GuestUptimeMs=2328112
+GuestBootCounter=261
+Agent=0.13.0 v0.13.0
+Build=082ccfd
+Version=v0.12.0+6
+Mode=
+ToolOrder=DBCAPS,DB3D
+Arguments=/env:metal /config:w9qi2be2-gma950-v9x
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=per-program
+Tool.DBCAPS ok 3.5s 20261101-132756\DBCAPS.INI
+Tool.DB3D ok 54.9s 20261101-132756\DB3D.INI

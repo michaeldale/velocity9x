@@ -1,0 +1,10 @@
+; Velocity9x's Direct3D DDI selection on the guest when this run started:
+; SYSTEM.INI [Velocity9x] Direct3DDdi (absent = per program, 5 = never
+; DDI 6, 6 = always) and [Velocity9x.Direct3DDdi] (NAME.EXE=5|6), then
+; V9XHW.INI [Velocity9xHardware] Direct3DDdi as the driver last stamped it.
+[Velocity9x]
+; Direct3DDdi absent
+[Velocity9x.Direct3DDdi]
+V9XD32.EXE=6
+[Velocity9xHardware]
+; Direct3DDdi not stamped
