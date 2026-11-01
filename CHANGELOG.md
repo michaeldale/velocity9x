@@ -4,6 +4,13 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.35.0 - not yet released
+
+- `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
+  0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
+  `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware
+  radeon set under the same licence, were in it too.
+
 ## 0.34.0 - 2026-11-01
 
 - **AMD Radeon HD 7470 (Caicos, `1002:6778`) is claimed by the `ati`
