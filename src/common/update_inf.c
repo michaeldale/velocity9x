@@ -525,10 +525,13 @@ static v9x_u16 v9x_inf_copy_span(const char *text, v9x_u32 start,
 }
 
 /* In one models section, the install section of the first model whose ID
- * list names device_id: lines are "description"=section,id[,id...]. */
+ * list names device_id: lines are "description"=section,id[,id...]. The
+ * description goes to description too when that is not 0. */
 static v9x_u16 v9x_inf_model_for(const char *text, v9x_u32 length,
                                  const char *models, const char *device_id,
-                                 char *section, v9x_u32 capacity)
+                                 char *section, v9x_u32 capacity,
+                                 char *description,
+                                 v9x_u32 description_capacity)
 {
     struct v9x_inf_line line;
     v9x_u32 cursor = 0u;
@@ -575,10 +578,60 @@ static v9x_u16 v9x_inf_model_for(const char *text, v9x_u32 length,
                     ++id_length;
                 }
                 if (v9x_inf_span_equals(id, id_length, device_id)) {
+                    /* A %string% description would need [Strings], which
+                     * is outside the subset. */
+                    if (description != 0 &&
+                        (!v9x_inf_copy_span(line.start, 0u, equals,
+                                            description,
+                                            description_capacity) ||
+                         description[0] == '%')) {
+                        description[0] = '\0';
+                        return V9X_FALSE;
+                    }
                     return v9x_inf_copy_text(section, capacity, candidate);
                 }
             }
             start = position + 1u;
+        }
+    }
+    return V9X_FALSE;
+}
+
+/* The model listing device_id in any [Manufacturer] models section. */
+static v9x_u16 v9x_inf_find_model(const char *text, v9x_u32 length,
+                                  const char *device_id,
+                                  char *section, v9x_u32 capacity,
+                                  char *description,
+                                  v9x_u32 description_capacity)
+{
+    struct v9x_inf_line line;
+    v9x_u32 cursor = 0u;
+
+    if (device_id[0] == '\0') {
+        return V9X_FALSE;
+    }
+    /* [Manufacturer]: Name=ModelsSection, one line per maker. */
+    while (v9x_inf_next_line(text, length, "Manufacturer", &cursor, &line)) {
+        char models[V9X_INF_SECTION_NAME_MAX];
+        v9x_u32 equals = 0u;
+        v9x_u32 end;
+
+        while (equals < line.length && line.start[equals] != '=') {
+            ++equals;
+        }
+        if (equals == line.length) {
+            continue;
+        }
+        for (end = equals + 1u; end < line.length &&
+                                line.start[end] != ','; ++end) {
+        }
+        if (!v9x_inf_copy_span(line.start, equals + 1u, end, models,
+                               sizeof(models))) {
+            continue;
+        }
+        if (v9x_inf_model_for(text, length, models, device_id, section,
+                              capacity, description, description_capacity)) {
+            return V9X_TRUE;
         }
     }
     return V9X_FALSE;
@@ -592,41 +645,31 @@ v9x_u16 v9x_inf_find_section(const char *text, v9x_u32 length,
     struct v9x_inf_line line;
     v9x_u32 cursor = 0u;
 
-    if (device_id[0] != '\0') {
-        /* [Manufacturer]: Name=ModelsSection, one line per maker. */
-        while (v9x_inf_next_line(text, length, "Manufacturer", &cursor,
-                                 &line)) {
-            char models[V9X_INF_SECTION_NAME_MAX];
-            v9x_u32 equals = 0u;
-            v9x_u32 end;
-
-            while (equals < line.length && line.start[equals] != '=') {
-                ++equals;
-            }
-            if (equals == line.length) {
-                continue;
-            }
-            for (end = equals + 1u; end < line.length &&
-                                    line.start[end] != ','; ++end) {
-            }
-            if (!v9x_inf_copy_span(line.start, equals + 1u, end, models,
-                                   sizeof(models))) {
-                continue;
-            }
-            if (v9x_inf_model_for(text, length, models, device_id, section,
-                                  capacity)) {
-                return V9X_TRUE;
-            }
-        }
+    if (v9x_inf_find_model(text, length, device_id, section, capacity, 0,
+                           0u)) {
+        return V9X_TRUE;
     }
 
     /* No model names the device: the old section, if it is still here. */
-    cursor = 0u;
     if (old_section[0] != '\0' &&
         v9x_inf_next_line(text, length, old_section, &cursor, &line)) {
         return v9x_inf_copy_text(section, capacity, old_section);
     }
     return V9X_FALSE;
+}
+
+v9x_u16 v9x_inf_model_description(const char *text, v9x_u32 length,
+                                  const char *device_id, char *description,
+                                  v9x_u32 capacity)
+{
+    char section[V9X_INF_SECTION_NAME_MAX];
+
+    if (capacity == 0u) {
+        return V9X_FALSE;
+    }
+    description[0] = '\0';
+    return v9x_inf_find_model(text, length, device_id, section,
+                              sizeof(section), description, capacity);
 }
 
 v9x_u16 v9x_inf_plan(const char *text, v9x_u32 length,

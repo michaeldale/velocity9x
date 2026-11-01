@@ -1,0 +1,11 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002]
+"V9xFamily"="vbe"
+"InfSection"="Velocity9x.Install.Manual"
+"MatchingDeviceId"="PCI\\CC_0300"
+"DriverDesc"="Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)"
+
+[HKEY_LOCAL_MACHINE\Enum\PCI\VEN_1002&DEV_5654&SUBSYS_00000000&REV_40\BUS_00&DEV_0C&FUNC_00]
+"DeviceDesc"="Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)"
+

@@ -221,10 +221,129 @@ static void test_read(void)
     }
 }
 
+static void test_pci_id(void)
+{
+    char id[V9X_RELEASE_PCI_ID_MAX];
+
+    RLCHECK(v9x_release_pci_id("PCI\\VEN_1002&DEV_9874&SUBSYS_00000000&"
+                               "REV_C5\\BUS_00&DEV_01&FUNC_00", id));
+    RLCHECK(strcmp(id, "PCI\\VEN_1002&DEV_9874") == 0);
+    RLCHECK(v9x_release_pci_id("pci\\ven_10de&dev_002c\\BUS_01", id));
+    RLCHECK(strcmp(id, "PCI\\VEN_10DE&DEV_002C") == 0);
+    RLCHECK(v9x_release_pci_id("PCI\\VEN_5333&DEV_8811", id));
+    RLCHECK(strcmp(id, "PCI\\VEN_5333&DEV_8811") == 0);
+
+    RLCHECK(!v9x_release_pci_id("ROOT\\*PNP0900\\0000", id));
+    RLCHECK(!v9x_release_pci_id("PCI\\VEN_1002&DEV_98G4&SUBSYS_0", id));
+    RLCHECK(!v9x_release_pci_id("PCI\\VEN_1002&DEV_98745", id));
+    RLCHECK(!v9x_release_pci_id("PCI\\VEN_1002&DEV_987", id));
+    RLCHECK(!v9x_release_pci_id("PCI\\CC_0300", id));
+    RLCHECK(!v9x_release_pci_id("", id));
+}
+
+static void test_family_for(void)
+{
+    static const char ids_body[] =
+        "[Velocity9xRelease]\r\n"
+        "Schema=1\r\n"
+        "App=velocity9x\r\n"
+        "Version=0.35.0\r\n"
+        "\r\n"
+        "[Family.ati]\r\n"
+        "File=velocity9x-0.35.0-ati.zip\r\n"
+        "Size=1\r\n"
+        "HardwareIds=PCI\\VEN_1002&DEV_4742,PCI\\VEN_1002&DEV_98745,"
+        "PCI\\VEN_1002&DEV_9874\r\n"
+        "\r\n"
+        "[Family.s3]\r\n"
+        "HardwareIds=PCI\\VEN_5333&DEV_8811\r\n"
+        "\r\n"
+        "[Family.vbe]\r\n"
+        "HardwareIds=PCI\\VEN_1234&DEV_1111\r\n"
+        "\r\n";
+    char family[V9X_RELEASE_FAMILY_MAX];
+    v9x_u32 length = (v9x_u32)strlen(ids_body);
+
+    /* The R7E on vbe (V9X-AW3C75): the ati family lists it. */
+    RLCHECK(v9x_release_family_for(ids_body, length, "vbe",
+                                   "PCI\\VEN_1002&DEV_9874", family,
+                                   sizeof(family)));
+    RLCHECK(strcmp(family, "ati") == 0);
+    /* The ID compares without case, the first in a list matches too. */
+    RLCHECK(v9x_release_family_for(ids_body, length, "vbe",
+                                   "pci\\ven_1002&dev_4742", family,
+                                   sizeof(family)));
+    RLCHECK(strcmp(family, "ati") == 0);
+
+    /* No family lists it, or nothing is known about the card. */
+    RLCHECK(!v9x_release_family_for(ids_body, length, "vbe",
+                                    "PCI\\VEN_10DE&DEV_002C", family,
+                                    sizeof(family)));
+    RLCHECK(strcmp(family, "vbe") == 0);
+    RLCHECK(!v9x_release_family_for(ids_body, length, "vbe", "", family,
+                                    sizeof(family)));
+    RLCHECK(strcmp(family, "vbe") == 0);
+    /* A listed ID is a whole entry, not a prefix of one. */
+    RLCHECK(!v9x_release_family_for(ids_body, length, "vbe",
+                                    "PCI\\VEN_1002&DEV_987", family,
+                                    sizeof(family)));
+    /* vbe's own listing never moves a card to vbe. */
+    RLCHECK(!v9x_release_family_for(ids_body, length, "vbe",
+                                    "PCI\\VEN_1234&DEV_1111", family,
+                                    sizeof(family)));
+    RLCHECK(strcmp(family, "vbe") == 0);
+
+    /* A chip family stays, even where another family lists the card. */
+    RLCHECK(!v9x_release_family_for(ids_body, length, "ati",
+                                    "PCI\\VEN_5333&DEV_8811", family,
+                                    sizeof(family)));
+    RLCHECK(strcmp(family, "ati") == 0);
+
+    /* Only the covered length is read: cut before ati's HardwareIds. */
+    RLCHECK(!v9x_release_family_for(ids_body, 120u, "vbe",
+                                    "PCI\\VEN_1002&DEV_9874", family,
+                                    sizeof(family)));
+    RLCHECK(strcmp(family, "vbe") == 0);
+
+    /* Two families listing one ID: no move. */
+    {
+        static const char twice[] =
+            "[Family.ati]\r\nHardwareIds=PCI\\VEN_1002&DEV_9874\r\n"
+            "[Family.amd]\r\nHardwareIds=PCI\\VEN_1002&DEV_9874\r\n";
+
+        RLCHECK(!v9x_release_family_for(twice, (v9x_u32)strlen(twice), "vbe",
+                                        "PCI\\VEN_1002&DEV_9874", family,
+                                        sizeof(family)));
+        RLCHECK(strcmp(family, "vbe") == 0);
+    }
+    /* A family name that is not one plain name is never chosen. */
+    {
+        static const char odd[] =
+            "[Family.a/b]\r\nHardwareIds=PCI\\VEN_1002&DEV_9874\r\n";
+
+        RLCHECK(!v9x_release_family_for(odd, (v9x_u32)strlen(odd), "vbe",
+                                        "PCI\\VEN_1002&DEV_9874", family,
+                                        sizeof(family)));
+        RLCHECK(strcmp(family, "vbe") == 0);
+    }
+    /* A chosen name that does not fit leaves the installed one. */
+    {
+        static const char gma[] =
+            "[Family.intel-gma]\r\nHardwareIds=PCI\\VEN_8086&DEV_2772\r\n";
+
+        RLCHECK(!v9x_release_family_for(gma, (v9x_u32)strlen(gma), "vbe",
+                                        "PCI\\VEN_8086&DEV_2772", family,
+                                        4u));
+        RLCHECK(strcmp(family, "vbe") == 0);
+    }
+}
+
 unsigned int v9x_run_update_release_tests(void)
 {
     v9x_ed25519_public_key(test_seed, test_public);
     test_verify();
     test_read();
+    test_pci_id();
+    test_family_for();
     return release_failures;
 }

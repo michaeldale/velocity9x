@@ -216,10 +216,67 @@ static void test_find_section(void)
                                    "", section, sizeof(section)));
 }
 
+static void test_model_description(void)
+{
+    static char text[sizeof(inf_text) + 64];
+    static const char manual[] =
+        "\"Velocity9x, any VESA adapter\"=Velocity9x.Install.Manual\r\n";
+    char description[64];
+    v9x_u32 length = (v9x_u32)strlen(inf_text);
+    const char *at;
+
+    /* What SetupX writes to DriverDesc: the model's text, unquoted. */
+    INFCHECK(v9x_inf_model_description(inf_text, length,
+                                       "pci\\ven_102b&dev_0519", description,
+                                       sizeof(description)));
+    INFCHECK(strcmp(description,
+                    "Velocity9x Matrox Millennium MGA-2064W") == 0);
+
+    /* Not listed, or listed by no model (the manual one has no ID). */
+    INFCHECK(!v9x_inf_model_description(inf_text, length,
+                                        "PCI\\VEN_5333&DEV_8A01", description,
+                                        sizeof(description)));
+    INFCHECK(description[0] == '\0');
+    INFCHECK(!v9x_inf_model_description(inf_text, length, "", description,
+                                        sizeof(description)));
+
+    /* Too long for the buffer: refused, not cut short. */
+    INFCHECK(!v9x_inf_model_description(inf_text, length,
+                                        "PCI\\VEN_102B&DEV_0519", description,
+                                        8u));
+    INFCHECK(description[0] == '\0');
+
+    /* A comma inside the quotes is part of the text; a %string% token is
+     * outside the subset. */
+    at = strstr(inf_text, manual);
+    INFCHECK(at != 0);
+    if (at == 0) {
+        return;
+    }
+    memcpy(text, inf_text, (size_t)(at - inf_text));
+    text[at - inf_text] = '\0';
+    strcat(text, "\"Velocity9x, any VESA adapter\"=Velocity9x.Install.Manual,"
+                 "PCI\\CC_0300\r\n");
+    strcat(text, at + strlen(manual));
+    INFCHECK(v9x_inf_model_description(text, (v9x_u32)strlen(text),
+                                       "PCI\\CC_0300", description,
+                                       sizeof(description)));
+    INFCHECK(strcmp(description, "Velocity9x, any VESA adapter") == 0);
+
+    memcpy(text, inf_text, (size_t)(at - inf_text));
+    text[at - inf_text] = '\0';
+    strcat(text, "%ManualDesc%=Velocity9x.Install.Manual,PCI\\CC_0300\r\n");
+    strcat(text, at + strlen(manual));
+    INFCHECK(!v9x_inf_model_description(text, (v9x_u32)strlen(text),
+                                        "PCI\\CC_0300", description,
+                                        sizeof(description)));
+}
+
 unsigned int v9x_run_update_inf_tests(void)
 {
     test_plan();
     test_find_section();
+    test_model_description();
     test_refusals();
     return inf_failures;
 }
