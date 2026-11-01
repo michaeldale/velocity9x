@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.34.0 - not yet released
+## 0.34.0 - 2026-11-01
 
 - **AMD Radeon HD 7470 (Caicos, `1002:6778`) is claimed by the `ati`
   package**, measured on one tester's machine through remote help. Modes
