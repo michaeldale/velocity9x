@@ -108,6 +108,24 @@ before Phase 4 (decision 1).
   `eg_cp.c` or stays one CP module calling two policy modules is decided
   when Phase 5 reaches the HAL.
 
+Phase 5 progress (2026-11-03, host only, nothing on the machine yet):
+
+- `cm_shader.c` rebuilds Linux 3.9's `cayman_vs` and `cayman_ps` word for
+  word (`bd3253a2`).
+- `cm_3d.c` holds `cayman_gpu_init`'s 41 writes for `9901` (golden
+  `GB_ADDR_CONFIG` `12010001`, backend map `10h`, two texture caches, no
+  SQ thread, stack or GPR splits, dynamic GPRs, the six TMP ring bases
+  zeroed, `SQ_CONFIG` `43h`). Its `r6xx_remap_render_backend` port also
+  reproduces Juniper's `3210` and Cedar's `0`, the maps that drew. Not
+  in the table: `CGTS_SM_CTRL_REG`'s sixteen `OVERRIDE` writes and
+  restore, which V9XEG3D must do in its op list.
+- Still to write: the Cayman clear state (`cayman_default_state`,
+  `cayman_blit_shaders.c`) and the stream differences Linux 3.9's
+  `evergreen_blit_kms.c` applies from `CHIP_CAYMAN` on: no SQ
+  resource-split block after `CLEAR_STATE` in `set_default_state`,
+  `CP_COHER_CNTL2` (`85E8h`) set to 0 before each `SURFACE_SYNC` on the
+  ring, and a 1x1 scissor widened to 2x1.
+
 ## Phases
 
 Each ends in a decision record. Same order as Caicos.
