@@ -464,8 +464,28 @@ void v9x_modes16_init(void)
      * anywhere - a full cache or a hit query limit means modes exist that
      * were never examined, and one of them could be the row's.
      */
-    trusted = v9x_vbe_scan_may_contradict_version(v9x_minivdd_status,
-                                                  v9x_minivdd_version);
+    /*
+     * The completeness rule of v9x_vbe_scan_may_contradict_version
+     * (vbe_cache.c, where the host tests exercise it; step 2 above makes its
+     * own checks of the collection), written out here because no family's 16-bit
+     * driver links vbe_cache.c. Below VBE 2.0 a refused 4F01h on a listed mode
+     * is the standard's "not available", not a gap in the walk; every other
+     * completeness rule holds for every version. Keep the two in step.
+     */
+    {
+        WORD status = v9x_minivdd_status;
+
+        if (v9x_minivdd_version < 0x0200u) {
+            status = (WORD)(status & (WORD)~V9X_VBE_ST_QUERY_FAILED);
+        }
+        trusted = ((status & V9X_VBE_ST_LIST_TERM) != 0u &&
+                   (status &
+                    (V9X_VBE_ST_LIST_OVERFLOW | V9X_VBE_ST_LIST_FLAGGED |
+                     V9X_VBE_ST_LIST_UNREACHED | V9X_VBE_ST_CACHE_FULL |
+                     V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_LIMIT)) == 0u)
+                      ? V9X_TRUE
+                      : V9X_FALSE;
+    }
     published = v9x_vbe_publish_rows(v9x_stage_modes, count,
                                      v9x_hw16.mode_count,
                                      v9x_scan_entries, v9x_scan_count, vram,

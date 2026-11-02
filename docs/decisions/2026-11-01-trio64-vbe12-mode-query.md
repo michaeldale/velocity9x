@@ -68,8 +68,12 @@ they pass it and fail at 4F02h. No physical 4 MiB Diamond card ran this.
    as well (2026-08-26 record, section 7); before this, those four answers kept
    its scan from hiding 0x0100. For 2.0 and later the rule is unchanged, and
    every other completeness rule (terminated list, no overflow, no cache or query
-   limit) still applies. `modes16.c` now takes its trust decision from this
-   function instead of repeating the rule inline.
+   limit) still applies. `modes16.c` carries the same rule inline, as it did
+   before: no family's 16-bit driver links `vbe_cache.c`, so a call to the
+   function there does not link (found in review, PR 19), and the inline form
+   is the smaller one in a 16-bit code segment that is close to its budget
+   (intel-gma). The function and its host tests stay as the tested statement
+   of the rule; the comment in `modes16.c` names it as the twin.
 
 The risk this accepts: a 1.x BIOS that refuses 4F01h for a mode it would still
 set with 4F02h would lose that mode's row if no other record describes its
