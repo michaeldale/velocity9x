@@ -3272,6 +3272,99 @@ V9xMiniSisMmioMapDone:
 V9XMINISISMMIOMAP ENDP
 ENDIF
 
+IFDEF V9X_NVIDIA_FAMILY
+; WORD FAR PASCAL V9xPciReadNv3MmioBar(DWORD FAR *base)
+; The RIVA 128's BAR0, its 16 MiB register window (1F000000h on M-7V636C,
+; docs\decisions\2026-11-02-m-7v636c-riva128-first-look.md). A read-only
+; config access; a refusal changes no stage code, because a missing engine
+; must not fail Enable.
+PUBLIC V9XPCIREADNV3MMIOBAR
+V9XPCIREADNV3MMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadNv3MmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadNv3MmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadNv3MmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadNv3MmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadNv3MmioBarFailed
+    cmp     eax, 0ff000000h
+    jae     short V9xPciReadNv3MmioBarFailed
+    ; 16 MiB, so 16 MiB aligned.
+    test    eax, 00ffffffh
+    jnz     short V9xPciReadNv3MmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadNv3MmioBarDone
+V9xPciReadNv3MmioBarFailed:
+    xor     ax, ax
+V9xPciReadNv3MmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADNV3MMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniNv3MmioMap(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_NV3_MMIO_MAP: the mini-VDD maps BAR0, checks PMC_BOOT_0 names
+; chip 3, and returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMININV3MMIOMAP
+V9XMININV3MMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniNv3MmioMapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_NV3_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniNv3MmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniNv3MmioMapDone
+V9xMiniNv3MmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniNv3MmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMININV3MMIOMAP ENDP
+ENDIF
+
 IFDEF V9X_TDFX_FAMILY
 ; WORD FAR PASCAL V9xTdfxReadMemoryRegs(DWORD FAR *regs)
 ; The VSA-100's memory straps and linear/tiled boundary, through BAR2, the

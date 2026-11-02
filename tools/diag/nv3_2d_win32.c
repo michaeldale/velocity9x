@@ -140,10 +140,20 @@
 #define V9X_FILL_B_Y  2ul
 #define V9X_FILL_B_W  20ul
 #define V9X_FILL_B_H  5ul
-#define V9X_BLIT_SX   4ul
-#define V9X_BLIT_SY   1ul
-#define V9X_BLIT_DX   120ul
-#define V9X_BLIT_DY   1ul
+/* The blit's corners: apart by default; /overlap moves them so source
+ * and destination overlap, down-right and then up-left. */
+static DWORD v9x_blit_sx = 4ul;
+static DWORD v9x_blit_sy = 1ul;
+static DWORD v9x_blit_dx = 120ul;
+static DWORD v9x_blit_dy = 1ul;
+/*
+ * /surfaces: PGRAPH surface 0 this many lines below surfaces 1-3. rivafb's
+ * surface objects give the destination (class 58h, NV3_SURF_DST in
+ * envytools' graph intro) surface index 0 and the blit source (59h) index
+ * 1, so fills and the blit destination should move down and the blit
+ * source should not.
+ */
+static DWORD v9x_dst_shift = 0ul;
 #define V9X_BLIT_W    80ul
 #define V9X_BLIT_H    7ul
 
@@ -297,6 +307,7 @@ static const struct v9x_pair v9x_bindings[] = {
 static struct v9x_n32d_request v9x_request;
 static struct v9x_n32d_result v9x_result;
 static BYTE v9x_expected[V9X_N32D_BLOCK * 4u];
+static BYTE v9x_blit_source[V9X_BLIT_H * V9X_BLIT_W * 4ul];
 
 /* Op indexes the report reads back. */
 static DWORD v9x_at_ramht_before;
@@ -491,8 +502,11 @@ static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
         v9x_write(v9x_pgraph[index].offset, v9x_pgraph[index].value);
     }
     v9x_write(V9X_PGRAPH_SURF_CFG, surf_config);
+    /* Surface 0, the destination, v9x_dst_shift lines below the others. */
     for (index = 0ul; index < 4ul; ++index) {
-        v9x_write(V9X_PGRAPH_SURF_OFF + index * 4ul, V9X_SURFACE_OFFSET);
+        v9x_write(V9X_PGRAPH_SURF_OFF + index * 4ul,
+                  V9X_SURFACE_OFFSET +
+                  (index == 0ul ? v9x_dst_shift * pitch : 0ul));
         v9x_write(V9X_PGRAPH_SURF_PITCH + index * 4ul, pitch);
     }
 
@@ -530,9 +544,9 @@ static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
 
     /* rivafb_copyarea: y in the high half. */
     v9x_method(V9X_SUB_BLIT, V9X_M_BLIT_SRC,
-               (V9X_BLIT_SY << 16) | V9X_BLIT_SX);
+               (v9x_blit_sy << 16) | v9x_blit_sx);
     v9x_method(V9X_SUB_BLIT, V9X_M_BLIT_DST,
-               (V9X_BLIT_DY << 16) | V9X_BLIT_DX);
+               (v9x_blit_dy << 16) | v9x_blit_dx);
     v9x_method(V9X_SUB_BLIT, V9X_M_BLIT_SIZE,
                (V9X_BLIT_H << 16) | V9X_BLIT_W);
     v9x_at_idle_blit = v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
@@ -572,23 +586,30 @@ static void v9x_model(DWORD bytes, DWORD pitch, DWORD colour_a,
     }
     for (y = 0ul; y < V9X_FILL_A_H; ++y) {
         for (x = 0ul; x < V9X_FILL_A_W; ++x) {
-            v9x_put_pixel(bytes, pitch, V9X_FILL_A_X + x, V9X_FILL_A_Y + y,
-                          colour_a);
+            v9x_put_pixel(bytes, pitch, V9X_FILL_A_X + x,
+                          v9x_dst_shift + V9X_FILL_A_Y + y, colour_a);
         }
     }
     for (y = 0ul; y < V9X_FILL_B_H; ++y) {
         for (x = 0ul; x < V9X_FILL_B_W; ++x) {
-            v9x_put_pixel(bytes, pitch, V9X_FILL_B_X + x, V9X_FILL_B_Y + y,
-                          colour_b);
+            v9x_put_pixel(bytes, pitch, V9X_FILL_B_X + x,
+                          v9x_dst_shift + V9X_FILL_B_Y + y, colour_b);
         }
     }
-    /* Source and destination do not overlap, so a straight copy. */
+    /* Through a copy of the source, so an overlapping blit is modelled as
+     * a move: the result DirectDraw and GDI expect. */
     for (y = 0ul; y < V9X_BLIT_H; ++y) {
         for (x = 0ul; x < V9X_BLIT_W * bytes; ++x) {
-            byte = v9x_expected[(V9X_BLIT_SY + y) * pitch +
-                                V9X_BLIT_SX * bytes + x];
-            v9x_expected[(V9X_BLIT_DY + y) * pitch + V9X_BLIT_DX * bytes +
-                         x] = (BYTE)byte;
+            v9x_blit_source[y * V9X_BLIT_W * 4ul + x] =
+                v9x_expected[(v9x_blit_sy + y) * pitch +
+                             v9x_blit_sx * bytes + x];
+        }
+    }
+    for (y = 0ul; y < V9X_BLIT_H; ++y) {
+        for (x = 0ul; x < V9X_BLIT_W * bytes; ++x) {
+            byte = v9x_blit_source[y * V9X_BLIT_W * 4ul + x];
+            v9x_expected[(v9x_dst_shift + v9x_blit_dy + y) * pitch +
+                         v9x_blit_dx * bytes + x] = (BYTE)byte;
         }
     }
 }
@@ -603,15 +624,16 @@ static int v9x_inside(DWORD x, DWORD y, DWORD rx, DWORD ry, DWORD rw,
  * (the blit source outside the fills included). */
 static DWORD v9x_region(DWORD x, DWORD y)
 {
-    if (v9x_inside(x, y, V9X_BLIT_DX, V9X_BLIT_DY, V9X_BLIT_W, V9X_BLIT_H)) {
+    if (v9x_inside(x, y, v9x_blit_dx, v9x_dst_shift + v9x_blit_dy,
+                   V9X_BLIT_W, V9X_BLIT_H)) {
         return 2ul;
     }
-    if (v9x_inside(x, y, V9X_FILL_A_X, V9X_FILL_A_Y, V9X_FILL_A_W,
-                   V9X_FILL_A_H)) {
+    if (v9x_inside(x, y, V9X_FILL_A_X, v9x_dst_shift + V9X_FILL_A_Y,
+                   V9X_FILL_A_W, V9X_FILL_A_H)) {
         return 0ul;
     }
-    if (v9x_inside(x, y, V9X_FILL_B_X, V9X_FILL_B_Y, V9X_FILL_B_W,
-                   V9X_FILL_B_H)) {
+    if (v9x_inside(x, y, V9X_FILL_B_X, v9x_dst_shift + V9X_FILL_B_Y,
+                   V9X_FILL_B_W, V9X_FILL_B_H)) {
         return 1ul;
     }
     return 3ul;
@@ -728,9 +750,10 @@ static int v9x_compare(const char *section, DWORD bytes, DWORD pitch)
 }
 
 /* One depth: build, run, compare, report. Returns nonzero on a pass. */
-static int v9x_run_depth(HANDLE device, DWORD bits, int y16)
+static int v9x_run_depth(HANDLE device, DWORD bits, int y16,
+                         const char *suffix)
 {
-    char section[12];
+    char section[24];
     DWORD bytes;
     DWORD pitch;
     DWORD colour_a;
@@ -759,6 +782,7 @@ static int v9x_run_depth(HANDLE device, DWORD bits, int y16)
     if (y16) {
         lstrcatA(section, "Y16");
     }
+    lstrcatA(section, suffix);
 
     v9x_build(bytes, pitch, colour_a, colour_b, y16);
     v9x_number(section, "Ops", v9x_request.count);
@@ -903,9 +927,49 @@ void __stdcall V9xNv32dEntry(void)
         ExitProcess(2u);
     }
 
-    all_pass = v9x_run_depth(device, bits, 0);
-    if (bits == 16ul && !v9x_run_depth(device, bits, 1)) {
+    all_pass = v9x_run_depth(device, bits, 0, "");
+    if (bits == 16ul && !v9x_run_depth(device, bits, 1, "")) {
         all_pass = 0;
+    }
+    if (v9x_switch_given("/overlap")) {
+        /* Down-right: the destination 4 right and 2 down of the source. */
+        v9x_blit_sx = 4ul;
+        v9x_blit_sy = 1ul;
+        v9x_blit_dx = 8ul;
+        v9x_blit_dy = 3ul;
+        if (!v9x_run_depth(device, bits, 0, "OverlapDownRight")) {
+            all_pass = 0;
+        }
+        /* Up-left: the reverse. */
+        v9x_blit_sx = 8ul;
+        v9x_blit_sy = 3ul;
+        v9x_blit_dx = 4ul;
+        v9x_blit_dy = 1ul;
+        if (!v9x_run_depth(device, bits, 0, "OverlapUpLeft")) {
+            all_pass = 0;
+        }
+        /* Same row, right by 3: the scroll that most tests a left-to-
+         * right copier. */
+        v9x_blit_sx = 4ul;
+        v9x_blit_sy = 2ul;
+        v9x_blit_dx = 7ul;
+        v9x_blit_dy = 2ul;
+        if (!v9x_run_depth(device, bits, 0, "OverlapRight")) {
+            all_pass = 0;
+        }
+        v9x_blit_sx = 4ul;
+        v9x_blit_sy = 1ul;
+        v9x_blit_dx = 120ul;
+        v9x_blit_dy = 1ul;
+    }
+    if (v9x_switch_given("/surfaces")) {
+        /* Fills to y 4-8, the blit's destination to y 3-9: inside the
+         * ten lines read back. */
+        v9x_dst_shift = 2ul;
+        if (!v9x_run_depth(device, bits, 0, "DstSurfaceShifted")) {
+            all_pass = 0;
+        }
+        v9x_dst_shift = 0ul;
     }
     switched = 0;
     if (v9x_switch_given("/all")) {
@@ -919,7 +983,7 @@ void __stdcall V9xNv32dEntry(void)
                 continue;
             }
             switched = 1;
-            if (!v9x_run_depth(device, others[index], 0)) {
+            if (!v9x_run_depth(device, others[index], 0, "")) {
                 all_pass = 0;
             }
         }

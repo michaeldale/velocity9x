@@ -1,15 +1,17 @@
 # Velocity9x family manifest: NVIDIA.
 #
-# The RIVA 128 and 128ZX at tier-0: the VBE 4F02h mode set programs the card,
-# 4F01h reports where the framebuffer landed, and the CPU draws. No NVIDIA
-# register is written (docs\plans\nvidia-riva128.md, Phase 1).
+# The RIVA 128 and 128ZX: the VBE 4F02h mode set programs the card and 4F01h
+# reports where the framebuffer landed. DirectDraw fill and copy run on the
+# 2D engine (NV3) at 8 and 32 bpp, after Linux rivafb's bring-up, which the
+# HAL repeats after every mode set; everything else is drawn by the CPU
+# (docs\plans\nvidia-riva128.md, Phase 4).
 #
 # Physical-only: the local 86Box build has no NV3 model.
 @{
     SchemaVersion = 1
     Id = 'nvidia'
     DisplayName = 'NVIDIA RIVA 128'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018) at tier-0: VBE mode set, CPU drawing, no NVIDIA register writes.'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw fill and copy at 8 and 32 bpp, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -24,10 +26,14 @@
             Adapter = 'NVIDIA RIVA 128'
             ClockDetector = 'nvidia-riva128-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            Acceleration = 'none'
+            # The 2D engine through BAR0's USER area, measured right on the
+            # card at 8, 16 and 32 bpp (docs\decisions\2026-11-02-riva128-2d-engine-writes.md);
+            # the HAL uses it at 8 and 32 only, because at 16 bpp it sets
+            # bit 15 and this BIOS's 16 bpp modes are 5:6:5.
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'NV3'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # The measured 128ZX reports 8 MiB through 4F00h, the chip's
             # maximum. Every advertised mode lays out in 4 MiB, so the
             # original RIVA 128's 4 MiB holds them too.
@@ -99,7 +105,8 @@
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
         Defines = @()
-        RuntimeDefines = @()
+        # runtime.asm's BAR0 read and mini-VDD map for the 2D engine.
+        RuntimeDefines = @('V9X_NVIDIA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-nvidia'
         PackageOutput = 'build\win98se-nvidia'
         VmStageDirectory = 'build\vm-probe\NVIDIA'
@@ -125,7 +132,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + flip, CPU drawing)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy at 8 and 32 bpp)'
     }
 
     Floppy = @{

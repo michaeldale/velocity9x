@@ -78,6 +78,30 @@ Also measured:
 - PFB_CONFIG_0 as rivafb computes it, measured accepted: `1219` (800 wide,
   2 bytes), `1119` (1 byte), `1319` (4 bytes, field capped at 3).
 
+## Overlapping blits
+
+A fourth run, `V9XN32D /overlap` at 16 bpp (`V9XN32D-run4-overlap.INI`),
+repeated the test with the 80x7 blit moved so source and destination
+overlap: down-right (from 4,1 to 8,3), up-left (from 8,3 to 4,1) and along
+one row (from 4,2 to 7,2, the case a plain left-to-right copier gets
+wrong). The model treats each as a move, through a copy of the source.
+**All three are right in every colour bit** (`MaskedBad=0`; the unmasked
+counts are bit 15 again). The engine picks the copy direction itself, so
+the driver needs no direction logic for screen-to-screen copies.
+
+## Which surface is which
+
+The runs above set all four PGRAPH surfaces alike. A fifth,
+`V9XN32D /surfaces` at 16 bpp (`V9XN32D-run5-surfaces.INI`), put surface 0
+two lines below surfaces 1-3. rivafb's surface objects give the
+destination (class 58h, `NV3_SURF_DST` in envytools' graph intro) surface
+index 0 and the blit source (59h, `NV3_SURF_SRC`) index 1. Modelled that
+way, fills and the blit destination two lines down and the blit source
+where it was, **every colour bit matched** (`MaskedBad=0`). So PGRAPH
+surface 0 (offset 400630h, pitch 400650h) is the destination of fills and
+blits, and surface 1 (400634h, 400654h) the blit source. A copy between
+two DirectDraw surfaces sets the two apart.
+
 ## What this decides
 
 - **Option A of decision 1 is dead.** A 5:6:5 desktop cannot take the

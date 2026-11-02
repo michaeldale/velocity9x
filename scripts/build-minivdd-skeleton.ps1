@@ -130,6 +130,8 @@ $sisMmio = ($Family -eq 'sis')
 $mgaMmio = ($Family -eq 'matrox')
 # The VSA-100's 2D register block map for its 2D engine.
 $tdfxMmio = ($Family -eq '3dfx')
+# The RIVA 128's BAR0 map for its 2D engine.
+$nv3Mmio = ($Family -eq 'nvidia')
 
 $buildIncludeLines = @(
     "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
@@ -438,6 +440,9 @@ if ($mgaMmio) {
 }
 if ($tdfxMmio) {
     $assemblerArguments = @("-DV9X_TDFX_MMIO") + $assemblerArguments
+}
+if ($nv3Mmio) {
+    $assemblerArguments = @("-DV9X_NV3_MMIO") + $assemblerArguments
 }
 if ($NoVramSize) {
     $assemblerArguments = @("-DV9X_NO_VRAM_SIZE") + $assemblerArguments

@@ -94,6 +94,24 @@ static void v9x_nvidia_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
 }
 
+/*
+ * The DirectDraw heap ends below RAMIN, the top 32 KiB of video memory
+ * (docs\decisions\2026-11-02-riva128-register-probe.md), which the 2D
+ * engine's bring-up writes after every mode set. Kept off the heap at
+ * every depth, engine claimed or not, so a surface never sits where the
+ * engine's tables go.
+ */
+#define V9X_NVIDIA_RAMIN_BYTES 0x00008000ul
+
+static unsigned long v9x_nvidia_reserve_video_memory(
+    unsigned long usable_bytes, unsigned long visible_bytes)
+{
+    if (usable_bytes < visible_bytes + V9X_NVIDIA_RAMIN_BYTES) {
+        return usable_bytes;
+    }
+    return usable_bytes - V9X_NVIDIA_RAMIN_BYTES;
+}
+
 const V9X_HW16_OPS v9x_hw16 = {
     "nvidia",
     v9x_nvidia_devices,
@@ -124,5 +142,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     /* Strict, for the reason ati_hw16.c gives: a vendor package stays bound
      * to the hardware it names; "my card is not listed" is the vbe
      * package's job. */
-    0u
+    0u,
+    /* NULL: identify through PCI only. */
+    0,
+    v9x_nvidia_reserve_video_memory
 };

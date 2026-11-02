@@ -141,9 +141,20 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    rewritten; a VBE mode set wipes RAMIN and leaves PMC_ENABLE and
    PFB_CONFIG_0. Still owed: overlapping blits in both directions, and
    B's RAMDAC switch to 5:5:5 watched on the monitor.
-4. **DirectDraw on the engine.** Engine32 ops (`fill`, `copy`,
-   `wait_idle`) under a new engine type, with the FIFO method encoding in
-   pure, host-tested builders first.
+4. **DirectDraw on the engine (coded, gated, hung once).** Engine32 ops
+   (`fill`, `copy`, `wait_idle`) under engine type NV3 (13), at 8 and 32
+   bpp only: builders in `src\chipsets\nvidia\nv3_2d.c` (host-tested
+   against rivafb's tables and the probe's values), the HAL engine
+   `engines\eng_nv3.c` (bring-up repeated whenever RAMIN's mark or
+   PFB_CONFIG_0 shows a mode set wiped it, RAMIN written through the
+   framebuffer at the measured reversed layout), BAR0 mapped by a new
+   mini-VDD call (`V9XMINI_FN_NV3_MMIO_MAP`, 2Ah), the top 32 KiB kept off
+   the DirectDraw heap. run-checks passed. On M-7V636C boot 12 the engine
+   was claimed (EngineCaps 3); V9XDDP at 800x600x32 then stopped the
+   machine within seconds
+   ([issue](../issues/2026-11-02-riva128-hang-under-v9xddp-at-32bpp.md)).
+   Cause unknown; next is that machine's own record of how far V9XDDP got,
+   and a control run on the tier-0 HAL.
 5. **Flips and vblank** through the CRTC start address.
 6. **GDI** on the engine, under the existing conservative GDI path.
 7. **Direct3D**: its own plan, after the 16 bpp decision. The D3D0 object

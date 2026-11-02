@@ -109,6 +109,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\tdfx\tdfx_hwc.c',
         # VSA-100 3D: setup-unit and pipeline register values, no I/O.
         'src\chipsets\tdfx\tdfx_3d.c',
+        # RIVA 128 2D engine: bring-up, fill and copy writes, no I/O.
+        'src\chipsets\nvidia\nv3_2d.c',
         # Rage 128 2D engine: init, fill and copy register values, no I/O.
         'src\chipsets\ati\rage128\r128_2d.c',
         # Rage 128 3D: CCE state and primitive packet streams, no I/O.
@@ -341,6 +343,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_tdfx_2d.c',
         'tests\host\test_tdfx_hwc.c',
         'tests\host\test_tdfx_3d.c',
+        'tests\host\test_nv3_2d.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
         'tests\host\test_eg_dma.c',

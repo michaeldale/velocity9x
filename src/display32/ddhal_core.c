@@ -1969,6 +1969,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_eg;
     case V9X_DD_ENGINE_TYPE_ATI_VI:
         return &v9x_engine32_vi;
+    case V9X_DD_ENGINE_TYPE_NV3:
+        return &v9x_engine32_nv3;
     default:
         break;
     }
