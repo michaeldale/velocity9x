@@ -217,6 +217,9 @@ const V9X_HW16_DEVICE v9x_mystique_device = {
 const V9X_HW16_DEVICE v9x_vsa100_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_riva128_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)
@@ -308,6 +311,10 @@ unsigned short v9x_active_width = 0u;
 #include "../../src/chipsets/tdfx/tdfx_hw16.c"
 #undef v9x_hw16
 
+#define v9x_hw16 v9x_hw16_nvidia
+#include "../../src/chipsets/nvidia/nvidia_hw16.c"
+#undef v9x_hw16
+
 static const struct {
     const char *family_id;
     const V9X_HW16_OPS *ops;
@@ -317,7 +324,8 @@ static const struct {
     { "ati", &v9x_hw16_ati },
     { "sis", &v9x_hw16_sis },
     { "matrox", &v9x_hw16_matrox },
-    { "3dfx", &v9x_hw16_tdfx }
+    { "3dfx", &v9x_hw16_tdfx },
+    { "nvidia", &v9x_hw16_nvidia }
 };
 
 #define V9X_HW16_TABLE_COUNT \
