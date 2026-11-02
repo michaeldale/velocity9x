@@ -88,6 +88,26 @@ sits inside it:
 Recommended: the row in `cedar_hw16.c` for phases 2-3. Decide the 3D shape
 before Phase 4 (decision 1).
 
+**Decided (Michael, 2026-11-03): a separate Cayman module.** The shape:
+
+- `src\chipsets\ati\cayman\` with `include\velocity9x\cm_*.h`, pure policy
+  and host-tested, as `evergreen\` is:
+  - `cm_shader.c`: the Cayman (VLIW4) encoder. It calls `eg_shader.c`
+    for the words the two ISAs share (ALU slots, texture fetch, export
+    fields) and owns what differs: `CF_END` instead of the end-of-program
+    bit, vertex fetches in TC clauses (Cayman has no VC, Mesa
+    `r600_isa.c:399`), no mega-fetch fields, and later the VLIW4 ALU
+    groups (no T slot). First test: Linux 3.9's `cayman_vs` and
+    `cayman_ps` rebuilt word for word.
+  - `cm_3d.c`: `cayman_gpu_init`'s writes for `9901` as a table, the
+    clear state (`cayman_default_state`) and Cayman's packet differences.
+- The DMA engine, scanout, heap and engine hook stay shared
+  (`eg_dma.c`, `eg_scanout.c`, `cedar_hw16.c`'s row).
+- The HAL side (`eg_cp.c`, `d3d_eg.c`) chooses Cayman's tables by
+  `V9X_DD_ENGINE_CAP_EG_TRINITY`. Whether that becomes a `cm_cp.c` beside
+  `eg_cp.c` or stays one CP module calling two policy modules is decided
+  when Phase 5 reaches the HAL.
+
 ## Phases
 
 Each ends in a decision record. Same order as Caicos.
