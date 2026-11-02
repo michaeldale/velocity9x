@@ -21,7 +21,8 @@
  * enable bit is off "disappears from MMIO space" (envytools pmc.rst) and
  * what a read of it does is not documented; then the BAR1 samples.
  *
- * Nothing on the device is written.
+ * No register is ever written. Without switches nothing is written at all;
+ * /alias writes 32 dwords of video memory and puts them back (v9x_alias).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -37,6 +38,7 @@
 #define V9X_N3MM_VXD         "\\\\.\\N3MM.VXD"
 #define V9X_N3MM_MAGIC       0x4d4d334eul
 #define V9X_N3MM_CAPTURE     1u
+#define V9X_N3MM_ALIAS       2u
 #define V9X_N3MM_OFFSET_MAX  256u
 #define V9X_N3MM_HEADER      16u
 #define V9X_PCI_ADDRESS      ((WORD)0x0cf8u)
@@ -55,6 +57,7 @@
 #define V9X_ST_FB_MAPPED       0x00000040ul
 #define V9X_ST_NOT_RIVA128     0x00000080ul
 #define V9X_ST_ADDRESS_INVALID 0x00000100ul
+#define V9X_ST_ALIAS_DONE      0x00000200ul
 
 /* N3MM.VXD's BAR1 encoding: bit 31 set, then the BAR1 offset. */
 #define V9X_N3_BAR1            0x80000000ul
@@ -163,14 +166,15 @@ static const struct v9x_n3mm_register v9x_pfifo[] = {
     { 0x003244ul, "PFIFO_CACHE1_PULL1" },
     { 0x003250ul, "PFIFO_CACHE1_PULL_STATE" },
     { 0x003270ul, "PFIFO_CACHE1_GET" },
+    /* Eight contexts 10h apart: riva_tbl.h's word indexes 4A0h-4BCh. */
     { 0x003280ul, "PFIFO_CACHE1_CTX_0" },
-    { 0x003284ul, "PFIFO_CACHE1_CTX_1" },
-    { 0x003288ul, "PFIFO_CACHE1_CTX_2" },
-    { 0x00328cul, "PFIFO_CACHE1_CTX_3" },
-    { 0x003290ul, "PFIFO_CACHE1_CTX_4" },
-    { 0x003294ul, "PFIFO_CACHE1_CTX_5" },
-    { 0x003298ul, "PFIFO_CACHE1_CTX_6" },
-    { 0x00329cul, "PFIFO_CACHE1_CTX_7" },
+    { 0x003290ul, "PFIFO_CACHE1_CTX_1" },
+    { 0x0032a0ul, "PFIFO_CACHE1_CTX_2" },
+    { 0x0032b0ul, "PFIFO_CACHE1_CTX_3" },
+    { 0x0032c0ul, "PFIFO_CACHE1_CTX_4" },
+    { 0x0032d0ul, "PFIFO_CACHE1_CTX_5" },
+    { 0x0032e0ul, "PFIFO_CACHE1_CTX_6" },
+    { 0x0032f0ul, "PFIFO_CACHE1_CTX_7" },
     { 0x800010ul, "USER_CH0_FREE" }
 };
 
@@ -387,8 +391,8 @@ static int v9x_switch_given(const char *switch_text)
     return 0;
 }
 
-/* One DIOC capture of v9x_request. Returns nonzero on a snapshot. */
-static int v9x_capture(void)
+/* One DIOC call of v9x_request. Returns nonzero on a snapshot. */
+static int v9x_call(DWORD code)
 {
     HANDLE device;
     DWORD returned;
@@ -402,7 +406,7 @@ static int v9x_capture(void)
         return 0;
     }
     returned = 0ul;
-    ok = DeviceIoControl(device, V9X_N3MM_CAPTURE, &v9x_request,
+    ok = DeviceIoControl(device, code, &v9x_request,
                          sizeof(v9x_request), &v9x_result,
                          sizeof(v9x_result), &returned, 0);
     CloseHandle(device);
@@ -413,6 +417,43 @@ static int v9x_capture(void)
         return 0;
     }
     return (v9x_result.status & V9X_ST_SNAPSHOT_TAKEN) != 0ul;
+}
+
+static int v9x_capture(void)
+{
+    return v9x_call(V9X_N3MM_CAPTURE);
+}
+
+/*
+ * /alias: N3MM.VXD writes a pattern into the first and last 16 dwords of
+ * the top-of-VRAM window (A5000000h | window offset at the start,
+ * 5A000000h | window offset at the end), scans BAR1 + C00000h for non-zero
+ * words, restores the 32 words and reads each hit again. A hit carrying
+ * the pattern while it is in place, and not after, says where that
+ * window's video memory appears in RAMIN. Video memory only; no register.
+ */
+static void v9x_alias(void)
+{
+    char key[24];
+    char text[24];
+    DWORD index;
+
+    v9x_request.count = 0ul;
+    if (!v9x_call(V9X_N3MM_ALIAS) ||
+        (v9x_result.status & V9X_ST_ALIAS_DONE) == 0ul) {
+        v9x_key("Alias", "Status", v9x_result.status);
+        v9x_text("Alias", "Result", "NOT-RUN");
+        return;
+    }
+    v9x_number("Alias", "Hits", v9x_result.accepted);
+    for (index = 0ul; index < v9x_result.accepted; ++index) {
+        v9x_offset_key(key, "H", v9x_result.offsets[index]);
+        v9x_hex(text, v9x_result.first[index], 8);
+        text[8] = ',';
+        v9x_hex(text + 9, v9x_result.second[index], 8);
+        v9x_text("Alias", key, text);
+    }
+    v9x_text("Alias", "Result", "DONE");
 }
 
 static void v9x_remember(DWORD offset, DWORD value)
@@ -689,6 +730,9 @@ void __stdcall V9xNv3MmioEntry(void)
             v9x_publish_ramin("RaminDense", 1);
         }
         v9x_text("Report", "DenseCapture", "taken");
+    }
+    if (v9x_switch_given("/alias")) {
+        v9x_alias();
     }
     v9x_finish("COMPLETE", 0u);
 }

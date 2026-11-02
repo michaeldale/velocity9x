@@ -73,6 +73,24 @@ Files in `docs/probe/m7v636c-riva128-vbe-2026-11-02/`.
 - V9XGDI: PASS (display writes, BitBlt and readback coherent). Desktop
   screenshot correct.
 
+## Boot 11: the tier-0 nvidia family
+
+Phase 1. The `nvidia` package built from `37d04471` with docs uncommitted
+(`Build=37d04471-dirty`), installed the same way over the `vbe` install
+from `C:\V9XNVPKG`: one model offered, "Velocity9x NVIDIA RIVA 128". The
+restart prompt was declined; `WININIT.INI` held one rename (the new DRV
+over the one in use) and no `NUL=` line. `reset`: boot 10 to 11. Files in
+`docs/probe/m7v636c-riva128-tier0-2026-11-02/`.
+
+- `Stage=enable-ok`, 800x600x16, the same surface as boot 10.
+- `V9XHW.INI`: Adapter "NVIDIA RIVA 128", vendor/device `12D2`/`0018`,
+  clock detector `nvidia-riva128-unavailable-v1`, acceleration none.
+- `Family=nvidia`. The 42 published mode rows are identical, row for row,
+  to boot 10's under `vbe`.
+- `DpmiMap=00800000:ok`: the family's 8 MiB ceiling, where `vbe` mapped
+  16 MiB. `Aperture=m=0 bar=0 pci=1 b=21000000`.
+- V9XGDI `/auto`: PASS. Desktop screenshot correct.
+
 ## Not done
 
 - V9XMSW mode cycle.

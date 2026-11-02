@@ -1,12 +1,14 @@
-; NVIDIA RIVA 128 (NV3) read-only register probe VxD.
+; NVIDIA RIVA 128 (NV3) register probe VxD.
 ;
 ; Phase 2 of docs\plans\nvidia-riva128.md. Maps BAR0, the 16 MiB register
 ; window, and two 32 KiB windows of BAR1, the framebuffer, and reads a
 ; caller's list of offsets, each twice. The Rage 128 probe
 ; (r128_mmio_probe.asm) is the model.
 ;
-; Writes: none, to the device or to memory. 0CF8h is saved and restored
-; around each configuration read. Mapping a physical range with
+; Writes: no register, ever. The capture writes nothing at all. The alias
+; test (N3_DIOC_ALIAS, below) writes 32 dwords of video memory in the
+; top-of-VRAM window and puts the saved words back. 0CF8h is saved and
+; restored around each configuration read. Mapping a physical range with
 ; _MapPhysToLinear changes no device state.
 ;
 ; The caller names the device by its configuration address; the VxD reads
@@ -43,6 +45,9 @@ Declare_Virtual_Device N3MM, 1, 0, N3_Control, \
 
 N3_MAGIC                equ 4d4d334eh ; "N3MM"
 N3_DIOC_CAPTURE         equ 1
+N3_DIOC_ALIAS           equ 2
+N3_ALIAS_DWORDS         equ 16
+N3_ALIAS_END            equ 7fc0h     ; the window's last 16 dwords
 N3_ID                   equ 001812d2h ; device 0018h, vendor 12D2h
 N3_CFG_REVISION         equ 08h
 N3_CFG_BAR0             equ 10h
@@ -68,6 +73,7 @@ N3_ST_SNAPSHOT_TAKEN    equ 00000020h
 N3_ST_FB_MAPPED         equ 00000040h
 N3_ST_NOT_RIVA128       equ 00000080h
 N3_ST_ADDRESS_INVALID   equ 00000100h
+N3_ST_ALIAS_DONE        equ 00000200h
 
 ; Input from V9XN3MM.EXE.
 N3_IN_CONFIG            equ 0
@@ -97,7 +103,7 @@ N3Windows label dword
     dd 003200h, 003214h ; CACHE1_PUSH0, PUSH1, PUT
     dd 003240h, 003254h ; CACHE1_PULL0, PULL1, PULL_STATE
     dd 003270h, 003274h ; CACHE1_GET
-    dd 003280h, 0032a0h ; CACHE1 context
+    dd 003280h, 003300h ; CACHE1 context, 8 registers 10h apart
     dd 009100h, 009104h ; PTIMER_INTR_0
     dd 009140h, 009144h ; PTIMER_INTR_EN_0
     dd 009200h, 009214h ; PTIMER numerator, denominator
@@ -143,6 +149,8 @@ N3Config     dd 0
 N3Mmio       dd 0
 N3Top        dd 0
 N3Ramin      dd 0
+N3Request    dd 0
+N3Saved      dd N3_ALIAS_DWORDS * 2 dup (0)
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -401,6 +409,87 @@ N3_Capture_Done:
     ret
 EndProc N3_Capture
 
+; The alias test, N3_DIOC_ALIAS. Video memory only, never a register: 16
+; dwords at the start and 16 at the end of the top-of-VRAM window get a
+; pattern naming their own window offset (A5xxxxxxh at the start,
+; 5Axxxxxxh at the end), every dword of BAR1 + C00000h is scanned for
+; non-zero words, the 32 saved words are put back, and each hit is read
+; again. N3Offsets/N3First hold the hits with the pattern in place,
+; N3Second the same words after the restore; N3Result[16] the hit count.
+; The first run on M-7V636C (boot 10) read the whole of both windows as
+; zero, so a hit is the pattern or something that moved. Run with the
+; captures done, N3Top and N3Ramin mapped.
+BeginProc N3_Alias_Test
+    pushad
+    mov     esi, N3Top
+    mov     edi, OFFSET32 N3Saved
+    xor     ecx, ecx
+N3_Alias_Save:
+    mov     eax, [esi+ecx*4]
+    mov     [edi+ecx*4], eax
+    mov     eax, [esi+ecx*4+N3_ALIAS_END]
+    mov     [edi+ecx*4+N3_ALIAS_DWORDS*4], eax
+    mov     eax, ecx
+    shl     eax, 2
+    or      eax, 0a5000000h
+    mov     [esi+ecx*4], eax
+    mov     eax, ecx
+    shl     eax, 2
+    add     eax, N3_ALIAS_END
+    or      eax, 5a000000h
+    mov     [esi+ecx*4+N3_ALIAS_END], eax
+    inc     ecx
+    cmp     ecx, N3_ALIAS_DWORDS
+    jb      short N3_Alias_Save
+
+    ; Scan the RAMIN window, keeping the first N3_OFFSET_MAX hits.
+    mov     esi, N3Ramin
+    xor     ecx, ecx
+    xor     edx, edx
+N3_Alias_Scan:
+    mov     eax, [esi+ecx]
+    test    eax, eax
+    jz      short N3_Alias_Scan_Next
+    cmp     edx, N3_OFFSET_MAX
+    jae     short N3_Alias_Scan_Next
+    mov     N3Offsets[edx*4], ecx
+    mov     N3First[edx*4], eax
+    inc     edx
+N3_Alias_Scan_Next:
+    add     ecx, 4
+    cmp     ecx, N3_WINDOW_BYTES
+    jb      short N3_Alias_Scan
+    mov     N3Result[16], edx
+
+    ; Put the saved words back, then read each hit again.
+    mov     esi, N3Top
+    mov     edi, OFFSET32 N3Saved
+    xor     ecx, ecx
+N3_Alias_Restore:
+    mov     eax, [edi+ecx*4]
+    mov     [esi+ecx*4], eax
+    mov     eax, [edi+ecx*4+N3_ALIAS_DWORDS*4]
+    mov     [esi+ecx*4+N3_ALIAS_END], eax
+    inc     ecx
+    cmp     ecx, N3_ALIAS_DWORDS
+    jb      short N3_Alias_Restore
+
+    mov     esi, N3Ramin
+    xor     ecx, ecx
+N3_Alias_Reread:
+    cmp     ecx, edx
+    jae     short N3_Alias_Done
+    mov     eax, N3Offsets[ecx*4]
+    mov     eax, [esi+eax]
+    mov     N3Second[ecx*4], eax
+    inc     ecx
+    jmp     short N3_Alias_Reread
+N3_Alias_Done:
+    or      N3Result[4], N3_ST_ALIAS_DONE
+    popad
+    ret
+EndProc N3_Alias_Test
+
 BeginProc N3_Reset_Result
     pushad
     mov     edi, OFFSET32 N3Result + 4
@@ -421,21 +510,25 @@ BeginProc N3_W32_DeviceIoControl
     cmp     ecx, DIOC_CLOSEHANDLE
     je      N3_Dioc_Ok
     cmp     ecx, N3_DIOC_CAPTURE
+    je      short N3_Dioc_Known
+    cmp     ecx, N3_DIOC_ALIAS
     jne     N3_Dioc_Fail
+N3_Dioc_Known:
+    mov     N3Request, ecx
 
     pushad
     mov     ebx, esi
     mov     ebp, [ebx.lpvInBuffer]
     test    ebp, ebp
-    jz      short N3_Dioc_Copy_Fail
+    jz     N3_Dioc_Copy_Fail
     mov     ecx, [ebx.cbInBuffer]
     cmp     ecx, N3_IN_MIN_BYTES
-    jb      short N3_Dioc_Copy_Fail
+    jb     N3_Dioc_Copy_Fail
     mov     edi, [ebx.lpvOutBuffer]
     test    edi, edi
-    jz      short N3_Dioc_Copy_Fail
+    jz     N3_Dioc_Copy_Fail
     cmp     [ebx.cbOutBuffer], N3_RESULT_DWORDS * 4
-    jb      short N3_Dioc_Copy_Fail
+    jb     N3_Dioc_Copy_Fail
 
     call    N3_Reset_Result
     mov     eax, [ebp+N3_IN_CONFIG]
@@ -444,6 +537,13 @@ BeginProc N3_W32_DeviceIoControl
     test    N3Result[4], N3_ST_OFFSETS_REFUSED
     jnz     short N3_Dioc_Copy_Out
     call    N3_Capture
+    cmp     N3Request, N3_DIOC_ALIAS
+    jne     short N3_Dioc_Copy_Out
+    test    N3Result[4], N3_ST_IDENTITY_MATCH
+    jz      short N3_Dioc_Copy_Out
+    test    N3Result[4], N3_ST_FB_MAPPED
+    jz      short N3_Dioc_Copy_Out
+    call    N3_Alias_Test
 
 N3_Dioc_Copy_Out:
     mov     edi, [ebx.lpvOutBuffer]

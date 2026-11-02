@@ -4,15 +4,22 @@ Date: 2026-11-02
 
 Status: Phase 0 done. The signed 0.34.0 `vbe` package runs on the card on
 M-7V636C: `enable-ok` at 800x600x16, V9XGDI passes (boot 10). Phase 1
-coded and gated (the tier-0 `nvidia` family; run-checks passed), not
-installed. Phase 2's first reads done
+done: the tier-0 `nvidia` family runs there since boot 11, same modes,
+V9XGDI passes. Phase 2's reads done
 ([record](../decisions/2026-11-02-riva128-register-probe.md)): PMC_BOOT_0
 `00030122` as the sources say; under VBE, PGRAPH is off, PFB_CONFIG_0 is
-stale (640x8 after an 800x600x16 mode set), and RAMIN reads zero at BAR1 +
-C00000h. Next: the alias test, a pattern written into the top of VRAM and
-looked for at BAR1 + C00000h. Register facts below come from open-source
-and reverse-engineered sources unless a record says the card confirmed
-them.
+stale (640x8 after an 800x600x16 mode set), and RAMIN is the top 32 KiB of
+video memory, reversed by 16 bytes, seen at BAR1 + C00000h, and wiped of
+the BIOS's tables by the time Windows runs. Phase 3's write probe done
+([record](../decisions/2026-11-02-riva128-2d-engine-writes.md)): rivafb's
+bring-up runs clean; fills and blits are exact at 8 bpp and right in every
+colour bit at 16 (X1R5G5B5) and 32 bpp, but the engine sets bit 15 at
+16 bpp and rewrites the top byte at 32 bpp; a VBE mode set wipes RAMIN.
+Decision 1 taken (Michael: A, then B); A is now measured dead, so 16 bpp
+acceleration needs B. Next: B's display side, the RAMDAC switched to
+5:5:5 after the mode set, which needs the owner's eyes on the monitor.
+Register facts below come from open-source and reverse-engineered sources
+unless a record says the card confirmed them.
 
 Target: the RIVA 128ZX (NV3T), PCI `12D2:0018` revision 22, as a new
 `nvidia` family. NV3 shares nothing with the NV4 (TNT) and later below
@@ -69,7 +76,7 @@ confirm it before the driver relies on it.
 | | NV3 per the sources | Consequence |
 |---|---|---|
 | BAR0 | 16 MiB of registers: PMC 0, PFIFO 0x2000, PTIMER 0x9000, PFB 0x100000, PSTRAPS 0x101000, PGRAPH 0x400000, PRAMDAC 0x680000, USER channels 0x800000 (`mmio.rst`) | A new mini-VDD map of BAR0; the USER area is where commands go |
-| RAMIN | Not in BAR0. Linux maps it at BAR1 + 0xC00000, 32 KiB; the emulator places it at the top of VRAM (`fbdev.c` `rivafb_probe`, 86Box `nv3_pramin.c`) | The DirectDraw heap must stop short of the top of VRAM. Which of the two readings holds is a Phase 2 measurement |
+| RAMIN | Not in BAR0. Linux maps it at BAR1 + 0xC00000, 32 KiB; the emulator places it at the top of VRAM (`fbdev.c` `rivafb_probe`, 86Box `nv3_pramin.c`) | **Measured: both.** BAR1 + C00000h shows the top 32 KiB of video memory, reversed in 16-byte units ([record](../decisions/2026-11-02-riva128-register-probe.md)). The DirectDraw heap stops below 7F8000h on 8 MiB |
 | Identity | PMC_BOOT_0 at 0x0: revision, chip 3, foundry (`pmc.rst`) | The probe's first read |
 | VRAM size | PFB_BOOT_0 0x100000, decoded per `nv3GetConfig` (`riva_hw.c`) | A `read_video_memory` hook; VBE's 8 MiB agrees with the card already |
 | Command path | PIO into USER channel 0: subchannel *s* at 0x800000 + s·0x2000, free count at +0x10 in bytes (`riva_hw.h` `RIVA_FIFO_FREE`) | No DMA, no microcode; a CPU-written FIFO |
@@ -103,15 +110,23 @@ and 3D draw 5:5:5. There are three ways to go:
 
 The recommendation is A first, as a measurement, then B for 3D.
 
+**Taken and measured (2026-11-02).** Michael chose A, then B. A is dead:
+the engine sets bit 15 on every 16 bpp pixel it writes, fills and blits
+alike, and the one other 16-bit format (Y16) converts colour to luminance
+([record](../decisions/2026-11-02-riva128-2d-engine-writes.md)). So 16 bpp
+acceleration is B or nothing; 8 and 32 bpp need neither.
+
 ## Phases
 
 0. **Baseline (done).** `vbe` on M-7V636C: `enable-ok` 800x600x16, 42 of 46
-   modes cached, LFB `21000000`, V9XGDI PASS. Still owed: a V9XMSW mode
-   cycle, and the Phase 0 record.
-1. **Identity.** The `nvidia` family at tier-0, claiming `12D2:0018`
-   exactly, every hw16 hook NULL, as the `sis` and `3dfx` families began.
-   No NVIDIA register written. Install it over `vbe` and check nothing
-   changed but the name.
+   modes cached, LFB `21000000`, V9XGDI PASS
+   ([record](../decisions/2026-11-02-m-7v636c-riva128-first-look.md)).
+   Still owed: a V9XMSW mode cycle.
+1. **Identity (done).** The `nvidia` family at tier-0, claiming
+   `12D2:0018` exactly, every hw16 hook NULL, as the `sis` and `3dfx`
+   families began. No NVIDIA register written. Installed on boot 11: the
+   adapter is named, the 42 mode rows match `vbe`'s, the map is 8 MiB,
+   V9XGDI passes.
 2. **Read-only register probe**, a Win32 tool with a mini-VDD map of BAR0.
    Read PMC_BOOT_0, PMC_ENABLE, PFB_BOOT_0, PFB 0x100200, PSTRAPS, PFIFO
    (RAMHT/RAMFC/RAMRO pointers, CACHE1 push/pull, PUT/GET), PGRAPH STATUS,
@@ -119,12 +134,13 @@ The recommendation is A first, as a measurement, then B for 3D.
    free count, at each VBE depth. Find RAMIN: read BAR1 + 0xC00000 and the
    top of VRAM. The question it answers is what the BIOS left set up, and
    whether any of it survives a VBE mode set.
-3. **2D write probe.** Build RAMIN (RAMHT, RAMFC, the DMA object, ROP,
-   clip, GDI-rectangle, blit and surface objects) in an unused corner of
-   VRAM, reset PFIFO and PGRAPH as rivafb does, then one fill and one blit,
-   checked byte for byte at 8, 16 (5:6:5, option A) and 32 bpp. Measure
-   overlapping blits in both directions. Also: what the next VBE mode set
-   does to that state.
+3. **2D write probe (done, overlap owed).** RAMIN built in rivafb's layout
+   (in its own top-of-VRAM home), PFIFO and PGRAPH reset as rivafb does,
+   two fills and a blit checked byte for byte at 8, 16 and 32 bpp: exact at
+   8, right in every colour bit at 16 (X1R5G5B5) and 32, the unused bits
+   rewritten; a VBE mode set wipes RAMIN and leaves PMC_ENABLE and
+   PFB_CONFIG_0. Still owed: overlapping blits in both directions, and
+   B's RAMDAC switch to 5:5:5 watched on the monitor.
 4. **DirectDraw on the engine.** Engine32 ops (`fill`, `copy`,
    `wait_idle`) under a new engine type, with the FIFO method encoding in
    pure, host-tested builders first.
@@ -138,8 +154,9 @@ The recommendation is A first, as a measurement, then B for 3D.
 
 - Whether the BIOS leaves PFIFO and PGRAPH enabled and RAMIN anywhere
   usable, or whether a full rivafb-style reset is needed (and survives).
-- Where RAMIN is, and whether the page table rivafb writes overlaps its
-  RAMRO and RAMFC (the research brief's arithmetic says it does).
+- Whether the page table rivafb writes overlaps its RAMRO and RAMFC (the
+  research brief's arithmetic says it does). Where RAMIN is: answered.
+- Which event wipes RAMIN (a VBE mode set is the candidate).
 - Whether a raw 16 bpp fill and blit are correct at 5:6:5.
 - Whether the surface offset is limited to 4 MiB (an rnndb comment's mask).
 - Whether a new start address latches at vblank.
