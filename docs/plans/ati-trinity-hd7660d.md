@@ -15,7 +15,10 @@ boot 18, [record](../decisions/2026-11-03-trinity-directdraw-and-flips.md)):
 a fourth `cedar_hw16.c` row and `V9X_DD_ENGINE_CAP_EG_TRINITY` (Michael),
 32-bit BARs accepted, fill/copy pass and 69 of 69 flips are taken by the
 chip. No Direct3D, so Quake 3 is expected not to start on this build
-(untried).
+(untried). Phase 4 done (2026-11-03,
+[record](../decisions/2026-11-03-trinity-cp-microcode.md)): the CP runs
+`ARUBA_pfp/me.bin` (2,176 dwords each) through Cayman's three-ring
+bring-up, ring test three of three, **without the RLC microcode**.
 
 ## Why now
 
