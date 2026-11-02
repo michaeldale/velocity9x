@@ -1,20 +1,21 @@
-; AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos) async DMA write
-; probe VxD.
+; AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos) and Trinity
+; (HD 7660D) async DMA write probe VxD.
 ;
 ; Phase 3 of docs\plans\ati-evergreen-cedar.md, first step. Loaded
 ; dynamically by V9XEGDMA.EXE, which decides every access; this VxD only
 ; executes an op list against the card and refuses anything outside it.
 ; The Rage 128's R1282D.VXD (r128_2d.asm) is the model.
 ;
-; It finds the card with configuration mechanism 1 (1002:68F9, 6778 or 68B8), maps
+; It finds the card with configuration mechanism 1 (1002:68F9, 6778, 68B8 or
+; 9901), maps
 ; BAR2 (128 KiB of registers) and a 64 KiB scratch window of VRAM through
 ; BAR0, and runs:
 ;
 ;   MMIO read32    - SRBM_STATUS/SOFT_RESET/STATUS2, MC_VM_FB_LOCATION,
 ;                    CONFIG_MEMSIZE, GRBM_STATUS and the DMA ring block.
 ;   MMIO write32   - the DMA ring registers r600_dma_resume writes,
-;                    HDP_MEM_COHERENCY_FLUSH_CNTL, and SRBM_SOFT_RESET with
-;                    0 or the DMA bit alone (evergreen_gpu_soft_reset's
+;                    HDP_MEM_COHERENCY_FLUSH_CNTL, and SRBM_SOFT_RESET
+;                    changed in the DMA bit alone (evergreen_gpu_soft_reset's
 ;                    pulse, without the memory controller stop Linux puts
 ;                    round every reset). Nothing else.
 ;   delay          - a count of SRBM_STATUS reads, at most ED_DELAY_MAX.
@@ -26,12 +27,16 @@
 ;
 ; The scratch window is BAR0 + 0F000000h, 240 MiB in. The driver uses the
 ; first 16 MiB (what VBE 4F00h reports), so the window is VRAM nothing else
-; touches. It is mapped only when BAR0 is a 64-bit memory BAR below 4 GiB,
-; aligned to 256 MiB, on a card whose CONFIG_MEMSIZE says 256 MiB or more:
-; M-BXMFA8's BAR0 is D0000000-DFFFFFFF and its VRAM 1024 MiB
-; (docs\decisions\2026-10-26-cedar-register-probe.md); M-D7TFW4's BAR0
-; starts at C0000000 and its VRAM is 2048 MiB
-; (docs\decisions\2026-10-31-caicos-register-probe.md).
+; touches. It is mapped only when BAR0 is a memory BAR below 4 GiB (64-bit
+; with a zero high half, or 32-bit), aligned to 256 MiB, on a card whose
+; CONFIG_MEMSIZE says 256 MiB or more: M-BXMFA8's BAR0 is D0000000-DFFFFFFF
+; and its VRAM 1024 MiB (docs\decisions\2026-10-26-cedar-register-probe.md);
+; the HD 7470's BAR0 starts at C0000000 and its VRAM is 2048 MiB
+; (docs\decisions\2026-10-31-caicos-register-probe.md). The HD 7660D's
+; BARs are 32-bit: BAR0 C0000000-CFFFFFFF over its 256 MiB carve-out, by
+; Windows' allocation for the devnode
+; (docs\decisions\2026-11-03-trinity-dma-write-probe.md), so the window is
+; its last 16 MiB.
 ;
 ; Offsets: Linux radeon's evergreend.h and r600d.h
 ; (build\external\evergreen\linux-radeon\).
@@ -52,7 +57,8 @@ ED_VENDOR_ATI           equ 1002h
 ED_DEVICE_CEDAR         equ 68f9h
 ED_DEVICE_CAICOS        equ 6778h
 ED_DEVICE_JUNIPER       equ 68b8h
-ED_OP_MAX               equ 512
+ED_DEVICE_TRINITY       equ 9901h
+ED_OP_MAX              equ 512
 ED_BLOCK_DWORDS         equ 4096
 ED_TIMEOUT              equ 0ffffffffh
 
@@ -63,6 +69,7 @@ ED_CFG_BAR2_HIGH        equ 1ch
 ED_BAR_IO               equ 00000001h
 ED_BAR_TYPE_MASK        equ 00000006h
 ED_BAR_TYPE_64          equ 00000004h
+ED_BAR_TYPE_32          equ 00000000h
 ED_MMIO_BYTES           equ 00020000h
 ED_MMIO_ALIGN           equ 0001ffffh
 ED_LFB_ALIGN            equ 0fffffffh
@@ -201,8 +208,8 @@ BeginProc ED_Pci_Read
     ret
 EndProc ED_Pci_Read
 
-; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9, 6778 or
-; 68B8.
+; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9, 6778,
+; 68B8 or 9901.
 ; Returns CF clear and EAX = configuration address, or CF set.
 BeginProc ED_Find
     push    ebx
@@ -216,6 +223,8 @@ ED_Find_Next:
     cmp     eax, (ED_DEVICE_CAICOS shl 16) or ED_VENDOR_ATI
     je      short ED_Find_Found
     cmp     eax, (ED_DEVICE_JUNIPER shl 16) or ED_VENDOR_ATI
+    je      short ED_Find_Found
+    cmp     eax, (ED_DEVICE_TRINITY shl 16) or ED_VENDOR_ATI
     je      short ED_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h
@@ -246,7 +255,9 @@ BeginProc ED_Map
     mov     EDResult[44], eax
     or      EDResult[4], ED_ST_FOUND
 
-    ; BAR2: memory, 64-bit, high half zero, 128 KiB aligned.
+    ; BAR2: memory, 64-bit with the high half zero or 32-bit, 128 KiB
+    ; aligned. On a 32-bit BAR the next dword is another BAR, not a high
+    ; half, and is reported but not checked.
     mov     eax, EDConfig
     or      eax, ED_CFG_BAR2
     call    ED_Pci_Read
@@ -260,16 +271,20 @@ BeginProc ED_Map
     jnz     ED_Map_Bad_Bar
     mov     edx, esi
     and     edx, ED_BAR_TYPE_MASK
+    cmp     edx, ED_BAR_TYPE_32
+    je      short ED_Map_Bar2_Low
     cmp     edx, ED_BAR_TYPE_64
     jne     ED_Map_Bad_Bar
     test    eax, eax
     jnz     ED_Map_Bad_Bar
+ED_Map_Bar2_Low:
     and     esi, NOT 0fh
     jz      ED_Map_Bad_Bar
     test    esi, ED_MMIO_ALIGN
     jnz     ED_Map_Bad_Bar
 
-    ; BAR0: memory, 64-bit, high half zero, 256 MiB aligned.
+    ; BAR0: memory, 64-bit with the high half zero or 32-bit, 256 MiB
+    ; aligned.
     mov     eax, EDConfig
     or      eax, ED_CFG_BAR0
     call    ED_Pci_Read
@@ -283,10 +298,13 @@ BeginProc ED_Map
     jnz     ED_Map_Bad_Bar
     mov     edx, edi
     and     edx, ED_BAR_TYPE_MASK
+    cmp     edx, ED_BAR_TYPE_32
+    je      short ED_Map_Bar0_Low
     cmp     edx, ED_BAR_TYPE_64
     jne     ED_Map_Bad_Bar
     test    eax, eax
     jnz     ED_Map_Bad_Bar
+ED_Map_Bar0_Low:
     and     edi, NOT 0fh
     jz      ED_Map_Bad_Bar
     test    edi, ED_LFB_ALIGN
@@ -427,11 +445,19 @@ ED_Exec_Not_Read:
     call    ED_Write_Allowed
     jc      ED_Exec_Refused
     mov     eax, [esi+8]
-    ; SRBM_SOFT_RESET takes the DMA bit or nothing: no other block of the
-    ; card is ever reset from here.
+    ; SRBM_SOFT_RESET may change only in the DMA bit: no other block of the
+    ; card is reset or released from here. Every other bit must be written
+    ; as it reads now, as Linux's read-modify-write in cayman_gpu_soft_reset
+    ; keeps it. The HD 7660D's BIOS leaves bit 16 set, which Linux's headers
+    ; do not name; Cedar and Caicos read 0, so their writes are unchanged.
     cmp     edx, ED_SRBM_SOFT_RESET
     jne     short ED_Exec_Write_Value_Ok
-    test    eax, NOT ED_SOFT_RESET_DMA
+    push    ebx
+    mov     ebx, EDMmio
+    mov     ebx, [ebx+edx]
+    xor     ebx, eax
+    test    ebx, NOT ED_SOFT_RESET_DMA
+    pop     ebx
     jnz     ED_Exec_Refused
 ED_Exec_Write_Value_Ok:
     mov     ebx, EDMmio

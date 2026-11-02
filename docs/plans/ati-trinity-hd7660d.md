@@ -7,7 +7,10 @@ Status: Phases 0 and 1 (read) done on M-D7TFW4, boot 17
 owner made the APU's graphics the display and installed 0.34.0 `vbe`;
 GDI, mode and DirectDraw tests pass. The fuses read six SIMDs and two
 backends, as Linux's `9901` row says, with the 256 MiB carve-out at GPU
-`F_00000000`. Branch `ati-trinity`.
+`F_00000000`. Branch `ati-trinity`. Phase 2's write probe done
+(2026-11-03, [record](../decisions/2026-11-03-trinity-dma-write-probe.md)):
+DMA0 byte-exact five of five, with `SRBM_SOFT_RESET` bit 16 (set by the
+BIOS, unnamed in Linux) kept as found. The driver claim is next.
 
 ## Why now
 
