@@ -1,8 +1,10 @@
 ; AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos, HD 5770 Juniper)
-; read-only register probe VxD.
+; and Trinity (HD 7660D, the A10-5700's graphics) read-only register probe
+; VxD.
 ;
-; Phase 2 of docs\plans\ati-evergreen-cedar.md and Phase 1 of
-; docs\plans\ati-evergreen-juniper-caicos.md. Maps the 128 KiB register
+; Phase 2 of docs\plans\ati-evergreen-cedar.md, Phase 1 of
+; docs\plans\ati-evergreen-juniper-caicos.md and of
+; docs\plans\ati-trinity-hd7660d.md. Maps the 128 KiB register
 ; BAR (BAR2, a 64-bit memory BAR) and reads a caller's list of offsets, each
 ; twice. The Rage 128 probe (r128_mmio_probe.asm) is the model.
 ;
@@ -11,8 +13,10 @@
 ; _MapPhysToLinear changes no device state.
 ;
 ; The caller names the device by its configuration address; the VxD reads
-; the id and BAR2 itself and refuses anything that is not 1002:68F9, 6778 or
-; 68B8 with a 128 KiB-aligned memory BAR2 below 4 GiB. A 64-bit BAR (type bits 2:1 =
+; the id and BAR2 itself and refuses anything that is not 1002:68F9, 6778,
+; 68B8 or 9901 with a 128 KiB-aligned memory BAR2 below 4 GiB. Trinity
+; (Linux CHIP_ARUBA) keeps its registers in BAR2 as Evergreen does: Linux
+; radeon_device.c maps BAR5 only from Bonaire on. A 64-bit BAR (type bits 2:1 =
 ; 10b) must read 0 in its high half at 1Ch, or nothing is mapped: half of a
 ; BAR above 4 GiB would map some other physical range.
 ;
@@ -55,7 +59,8 @@ EG_VENDOR_ATI           equ 1002h
 EG_DEVICE_CEDAR         equ 68f9h
 EG_DEVICE_CAICOS        equ 6778h
 EG_DEVICE_JUNIPER       equ 68b8h
-EG_CFG_BAR2             equ 18h
+EG_DEVICE_TRINITY       equ 9901h
+EG_CFG_BAR2            equ 18h
 EG_CFG_BAR2_HIGH        equ 1ch
 EG_MMIO_BYTES           equ 00020000h
 EG_BASE_ALIGN           equ 0001ffffh
@@ -109,8 +114,11 @@ EGWindows label dword
     dd 2c04h, 2c10h     ; HDP_NONSURFACE_BASE/INFO/SIZE
     dd 2f48h, 2f4ch     ; HDP_ADDR_CONFIG
     dd 3f00h, 3f04h     ; RLC_CNTL
+    dd 3f10h, 3f1ch     ; TN_RLC_SAVE_AND_RESTORE_BASE, TN_RLC_LB_CNTR_MAX/INIT
+    dd 3f20h, 3f24h     ; TN_RLC_CLEAR_STATE_RESTORE_BASE
     dd 3f88h, 3f8ch     ; CC_SYS_RB_BACKEND_DISABLE
     dd 3fc4h, 3fc8h     ; RLC_GFX_INDEX (nid.h)
+    dd 3fe4h, 3ff0h     ; TN_RLC_LB_INIT_SIMD_MASK .. TN_RLC_LB_PARAMS
     dd 5420h, 542ch     ; BUS_CNTL, CONFIG_CNTL, CONFIG_MEMSIZE
     dd 5490h, 5494h     ; BIF_FB_EN
     dd 8010h, 8018h     ; GRBM_STATUS, GRBM_STATUS_SE0
@@ -118,11 +126,14 @@ EGWindows label dword
     dd 802ch, 8030h     ; GRBM_GFX_INDEX (nid.h)
     dd 8680h, 8684h     ; CP_STAT
     dd 86d8h, 86dch     ; CP_ME_CNTL
+    dd 86f8h, 8704h     ; CP_RB2_RPTR, CP_RB1_RPTR, CP_RB0_RPTR (nid.h)
     dd 8950h, 8958h     ; CC_GC_SHADER_PIPE_CONFIG, GC_USER_SHADER_PIPE_CONFIG
     dd 98f4h, 98fch     ; CC_RB_BACKEND_DISABLE, GB_ADDR_CONFIG
     dd 9b7ch, 9b80h     ; GC_USER_RB_BACKEND_DISABLE
     dd 0c100h, 0c118h   ; CP_RB_BASE, CP_RB_CNTL .. CP_RB_WPTR
+    dd 0c180h, 0c1a8h   ; CP_RB1_BASE .. CP_RB2_WPTR (nid.h)
     dd 0d000h, 0d038h   ; DMA_RB_CNTL .. DMA_STATUS_REG
+    dd 0d800h, 0d838h   ; the second DMA engine's (DMA1_REGISTER_OFFSET, nid.h)
     dd 0d044h, 0d04ch   ; DMA_SEM_*_TIMER_CNTL
     dd 0d0b8h, 0d0c0h   ; DMA_TILING_CONFIG, DMA_MODE
     ; CRTC0
@@ -173,7 +184,7 @@ EGWindows label dword
     dd 112a0h, 112a4h
     dd 112d4h, 112d8h
     dd 112f4h, 112fch
-EG_WINDOW_COUNT         equ 75
+EG_WINDOW_COUNT         equ 81
 
 EGResult label dword
     dd EG_MAGIC                 ; 00 magic
@@ -336,6 +347,8 @@ BeginProc EG_Capture
     cmp     ax, EG_DEVICE_CAICOS
     je      short EG_Capture_Check_Base
     cmp     ax, EG_DEVICE_JUNIPER
+    je      short EG_Capture_Check_Base
+    cmp     ax, EG_DEVICE_TRINITY
     je      short EG_Capture_Check_Base
     or      EGResult[4], EG_ST_NOT_ACCEPTED
     jmp     EG_Capture_Done
