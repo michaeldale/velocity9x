@@ -46,6 +46,9 @@
 #define V9X_PCI_DEVICE_CAICOS_6778      ((v9x_u16)0x6778u)
 /* A Radeon HD 5770 (Juniper): another row in cedar_hw16.c. */
 #define V9X_PCI_DEVICE_JUNIPER_68B8     ((v9x_u16)0x68B8u)
+/* The A10-5700's Radeon HD 7660D (Trinity, Linux's CHIP_ARUBA): Evergreen's
+ * DMA engine and display controller, a row in cedar_hw16.c. */
+#define V9X_PCI_DEVICE_TRINITY_9901     ((v9x_u16)0x9901u)
 /* AMD Carrizo (Radeon R7E, GCN 3), the GX-420GI's GPU: tier-0 with no
  * hook; see carrizo_hw16.c. */
 #define V9X_PCI_DEVICE_CARRIZO_9874     ((v9x_u16)0x9874u)

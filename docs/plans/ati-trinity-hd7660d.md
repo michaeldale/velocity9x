@@ -10,7 +10,12 @@ backends, as Linux's `9901` row says, with the 256 MiB carve-out at GPU
 `F_00000000`. Branch `ati-trinity`. Phase 2's write probe done
 (2026-11-03, [record](../decisions/2026-11-03-trinity-dma-write-probe.md)):
 DMA0 byte-exact five of five, with `SRBM_SOFT_RESET` bit 16 (set by the
-BIOS, unnamed in Linux) kept as found. The driver claim is next.
+BIOS, unnamed in Linux) kept as found. Phases 2 and 3 done (2026-11-03,
+boot 18, [record](../decisions/2026-11-03-trinity-directdraw-and-flips.md)):
+a fourth `cedar_hw16.c` row and `V9X_DD_ENGINE_CAP_EG_TRINITY` (Michael),
+32-bit BARs accepted, fill/copy pass and 69 of 69 flips are taken by the
+chip. No Direct3D, so Quake 3 is expected not to start on this build
+(untried).
 
 ## Why now
 

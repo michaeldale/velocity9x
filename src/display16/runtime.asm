@@ -2802,12 +2802,15 @@ V9xMiniAtiMmioMapDone:
 V9XMINIATIMMIOMAP ENDP
 
 ; WORD FAR PASCAL V9xPciReadEgBars(DWORD FAR *bar0, DWORD FAR *bar2)
-; AMD Evergreen (Cedar): BAR0, the framebuffer, and BAR2, the 128 KiB
-; register window. Both are 64-bit memory BARs (types 10b), read here with
-; their high halves (14h, 1Ch), which must be zero: half of a BAR above
-; 4 GiB names some other physical range. BAR0 must be 256 MiB aligned, BAR2
-; 128 KiB aligned. A read-only config access; a refusal changes no stage
-; code, because a missing engine must not fail Enable.
+; AMD Evergreen (Cedar): BAR0, the framebuffer, and BAR2, the register
+; window. On the discrete cards both are 64-bit memory BARs (type 10b),
+; whose high halves (14h, 1Ch) must be zero: half of a BAR above 4 GiB
+; names some other physical range. On Trinity (HD 7660D) both are 32-bit
+; (type 00b), and 14h and 1Ch are other BARs, not read here
+; (docs\decisions\2026-11-03-trinity-dma-write-probe.md). Any other type
+; is refused. BAR0 must be 256 MiB aligned, BAR2 128 KiB aligned. A
+; read-only config access; a refusal changes no stage code, because a
+; missing engine must not fail Enable.
 PUBLIC V9XPCIREADEGBARS
 V9XPCIREADEGBARS PROC FAR
     push    bp
@@ -2822,7 +2825,19 @@ V9XPCIREADEGBARS PROC FAR
     or      ax, ax
     jz      V9xPciReadEgBarsFailed
 
-    ; BAR0 high half, then low half.
+    ; BAR0 low half; then, for a 64-bit BAR, its high half.
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadEgBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadEgBarsFailed
+    mov     edx, ecx
+    mov     eax, ecx
+    and     eax, 00000007h
+    jz      short V9xPciReadEgBar0Low
+    cmp     eax, 00000004h
+    jne     V9xPciReadEgBarsFailed
     mov     di, 0014h
     mov     ax, 0b10ah
     int     1ah
@@ -2831,42 +2846,35 @@ V9XPCIREADEGBARS PROC FAR
     jnz     V9xPciReadEgBarsFailed
     or      ecx, ecx
     jnz     V9xPciReadEgBarsFailed
-    mov     di, 0010h
-    mov     ax, 0b10ah
-    int     1ah
-    jc      V9xPciReadEgBarsFailed
-    or      ah, ah
-    jnz     V9xPciReadEgBarsFailed
-    mov     edx, ecx
-    and     edx, 00000007h
-    cmp     edx, 00000004h
-    jne     V9xPciReadEgBarsFailed
-    mov     edx, ecx
+V9xPciReadEgBar0Low:
     and     edx, 0fffffff0h
     jz      V9xPciReadEgBarsFailed
     test    edx, 0fffffffh
     jnz     V9xPciReadEgBarsFailed
 
-    ; BAR2 high half, then low half.
-    mov     di, 001ch
-    mov     ax, 0b10ah
-    int     1ah
-    jc      V9xPciReadEgBarsFailed
-    or      ah, ah
-    jnz     V9xPciReadEgBarsFailed
-    or      ecx, ecx
-    jnz     V9xPciReadEgBarsFailed
+    ; BAR2 low half; then, for a 64-bit BAR, its high half. EDX holds
+    ; BAR0 across these calls, as the PCI BIOS returns only in ECX and AX.
     mov     di, 0018h
     mov     ax, 0b10ah
     int     1ah
     jc      V9xPciReadEgBarsFailed
     or      ah, ah
     jnz     V9xPciReadEgBarsFailed
-    mov     eax, ecx
-    and     eax, 00000007h
-    cmp     eax, 00000004h
-    jne     V9xPciReadEgBarsFailed
-    mov     eax, ecx
+    push    ecx
+    and     ecx, 00000007h
+    jz      short V9xPciReadEgBar2Low
+    cmp     ecx, 00000004h
+    jne     short V9xPciReadEgBar2Bad
+    mov     di, 001ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadEgBar2Bad
+    or      ah, ah
+    jnz     short V9xPciReadEgBar2Bad
+    or      ecx, ecx
+    jnz     short V9xPciReadEgBar2Bad
+V9xPciReadEgBar2Low:
+    pop     eax
     and     eax, 0fffffff0h
     cmp     eax, 01000000h
     jb      V9xPciReadEgBarsFailed
@@ -2880,6 +2888,9 @@ V9XPCIREADEGBARS PROC FAR
     mov     es:[bx], edx
     mov     ax, 1
     jmp     short V9xPciReadEgBarsDone
+V9xPciReadEgBar2Bad:
+    ; BAR2's low half, pushed above; ECX is restored on the way out.
+    pop     ecx
 V9xPciReadEgBarsFailed:
     xor     ax, ax
 V9xPciReadEgBarsDone:
