@@ -104,6 +104,9 @@ the DMA object's flag bits; 86Box draws no 3D.
      213 of 227. **"Z with perspective" was never a failure
      ([record](../decisions/2026-11-04-riva128-zprivate.md)):** the D3DZP
      keys run only under V9XDDP `/zprivate`, where both pass (boot 32).
+     **Nor mixed 2D/3D ([record](../decisions/2026-11-04-riva128-mixed.md)):**
+     the four Mixed keys run only under `/mixed`, where all pass, 217 of
+     227 in that run.
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and
