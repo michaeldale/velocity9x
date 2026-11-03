@@ -19,6 +19,16 @@ chip. No Direct3D, so Quake 3 is expected not to start on this build
 [record](../decisions/2026-11-03-trinity-cp-microcode.md)): the CP runs
 `ARUBA_pfp/me.bin` (2,176 dwords each) through Cayman's three-ring
 bring-up, ring test three of three, **without the RLC microcode**.
+Phase 5 done (2026-11-03, `bd3253a2` to `7517eac2`): the Cayman module,
+`cayman_gpu_init` as a table and V9XCM3D's textured copy byte-exact six
+of six. Phase 6 done (2026-11-04,
+[record](../decisions/2026-11-04-trinity-direct3d-opengl-gates.md)):
+V9XD32 passes at 32 and 16 bpp once the relocator's end-of-program bug
+was fixed ([record](../decisions/2026-11-03-trinity-hal-direct3d-hang.md)),
+V9XDDP completes, 3DMark 2000 completes and the Quake 3 demo runs with
+every batch on the engine. The same build passes on the HD 7470 (now in
+M-BXMFA8). Not done: Gouraud, Z16 and modulate as separate V9XCM3D
+probes (V9XD32 covers them through the HAL), and the zero flip counts.
 
 ## Why now
 
@@ -160,12 +170,16 @@ Each ends in a decision record. Same order as Caicos.
 ## Decisions for Michael
 
 1. Trinity's 3D: a Cayman engine module beside Evergreen's, or more chip
-   bits on `ATI_EVERGREEN` (before Phase 4).
+   bits on `ATI_EVERGREEN` (before Phase 4). **Decided:** a separate
+   Cayman module (2026-11-03).
 2. Shipping `ARUBA_rlc.bin` (6 KiB) as well as the CP images, if the CP
-   needs it. The licence is the same `LICENSE.radeon` already in the tree.
-3. Whether to ask the owner where the HD 7470 went, and whether it can go
-   back in a slot for Caicos regression runs while the APU is primary.
+   needs it. **Moot:** the CP runs without the RLC.
+3. Whether to ask the owner where the HD 7470 went. **Answered by the
+   machines:** it is in M-BXMFA8 (found at boot 60, 2026-11-04; the
+   owner's msg 83 of 2026-11-01 already calls it "newly added"), in place
+   of the HD 5770, so Caicos has a tester again and Juniper does not.
 
 ## Owed replies in remote-help chat
 
 - M-D7TFW4: msg 82 (Quake 3 input complaint, 2026-10-31) and msg 87.
+- M-BXMFA8: msg 83 (the HD 7470's 3DMark 2000 score, 2026-11-01).
