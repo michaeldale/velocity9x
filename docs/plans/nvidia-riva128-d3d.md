@@ -84,8 +84,10 @@ the DMA object's flag bits; 86Box draws no 3D.
    [record](../decisions/2026-11-03-riva128-d3d-hal-first-light.md)).**
    V9XDDP's triangles and textured checks draw, in X1R5G5B5 on a 5:6:5
    desktop. Z works, all eight comparisons and the write mask (V9XDDP's
-   step log, not its INI, which dropped keys). Open:
-   - Some draws are refused at the state build.
+   step log, not its INI, which dropped keys). Opaque A4R4G4B4 draws from
+   an alpha-free copy (boot 25). Open:
+   - Opaque A4R4G4B4 under the alpha test is refused.
+   - DECALALPHA is refused.
    - Colours need step 3.
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,

@@ -411,6 +411,19 @@ static void test_swizzle(void)
     CHECK(v9x_nv3_3d_swizzle(9ul, 0ul, 3ul) == 1ul);
 }
 
+/* A4R4G4B4 to X1R5G5B5 for the opaque copy: alpha gone, each nibble
+ * widened by repeating its top bit. */
+static void test_opaque_texel(void)
+{
+    CHECK(v9x_nv3_3d_opaque_texel(0xf000u) == 0x0000u);
+    CHECK(v9x_nv3_3d_opaque_texel(0x0fffu) == 0x7fffu);
+    CHECK(v9x_nv3_3d_opaque_texel(0x0f00u) == 0x7c00u);
+    CHECK(v9x_nv3_3d_opaque_texel(0x00f0u) == 0x03e0u);
+    CHECK(v9x_nv3_3d_opaque_texel(0x000fu) == 0x001fu);
+    CHECK(v9x_nv3_3d_opaque_texel(0x8888u) == 0x4631u);
+    CHECK(v9x_nv3_3d_opaque_texel(0x7777u) == 0x39ceu);
+}
+
 unsigned int v9x_run_nv3_3d_tests(void)
 {
     failures = 0u;
@@ -419,5 +432,6 @@ unsigned int v9x_run_nv3_3d_tests(void)
     test_state();
     test_vertex();
     test_swizzle();
+    test_opaque_texel();
     return failures;
 }

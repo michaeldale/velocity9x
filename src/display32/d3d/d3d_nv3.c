@@ -76,6 +76,10 @@ typedef struct v9x_d3d_nv3_texture {
     DWORD format;
     int has_alpha;
     int dirty;
+    /* A4R4G4B4 only: a second copy as X1R5G5B5 for opaque draws, which
+     * the blend cannot draw from partial alphas (nv3_3d.h). */
+    DWORD opaque;
+    int opaque_dirty;
 } V9X_D3D_NV3_TEXTURE;
 
 static V9X_D3D_NV3_TEXTURE v9x_d3d_nv3_textures[V9X_D3D_NV3_TEXTURES];
@@ -381,7 +385,7 @@ static V9X_D3D_NV3_TEXTURE *v9x_d3d_nv3_find_surface(
  * narrower texture repeats across it. The engine is idle (the caller has
  * begun the batch), so nothing reads the copy meanwhile.
  */
-static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture)
+static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture, int opaque)
 {
     v9x_u16 row[V9X_D3D_NV3_TEXTURE_MAX];
     const v9x_u16 *source;
@@ -391,7 +395,8 @@ static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture)
     DWORD v;
 
     side = 1ul << texture->log2_side;
-    copy = (v9x_u16 *)(v9x_hal->fb.linear_base + texture->swizzled);
+    copy = (v9x_u16 *)(v9x_hal->fb.linear_base +
+                       (opaque ? texture->opaque : texture->swizzled));
     for (v = 0ul; v < side; ++v) {
         /* A row is read once into the buffer: video memory reads are
          * slow, and each texel is written side / width times. */
@@ -399,7 +404,7 @@ static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture)
                                    texture->linear +
                                    (v % texture->height) * texture->pitch);
         for (u = 0ul; u < texture->width; ++u) {
-            row[u] = source[u];
+            row[u] = opaque ? v9x_nv3_3d_opaque_texel(source[u]) : source[u];
         }
         for (u = 0ul; u < side; ++u) {
             copy[v9x_nv3_3d_swizzle(u, v, texture->log2_side)] =
@@ -407,7 +412,11 @@ static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture)
         }
     }
     v9x_wc_drain();
-    texture->dirty = 0;
+    if (opaque) {
+        texture->opaque_dirty = 0;
+    } else {
+        texture->dirty = 0;
+    }
 }
 
 static void v9x_d3d_nv3_count_refusal(const V9X_R3D_DRAW *draw,
@@ -425,6 +434,56 @@ static void v9x_d3d_nv3_count_refusal(const V9X_R3D_DRAW *draw,
     if (reason == V9X_D3D_NV3_REFUSE_BLEND) {
         diagnostics->blend_last_pair =
             (draw->src_blend << 16) | (draw->dst_blend & 0xfffful);
+    }
+}
+
+/*
+ * Why the builder refused a state, by the checks it makes, in policy
+ * slots 11-16 beside reason 8 (V9XTRACE M64PolicyNN). For the last one
+ * of no named cause, its texture in M64Degenerate (format, side, u and v
+ * shifts, a byte each) and M64FogDraws (offset). Boot 23 refused 96.
+ */
+#define V9X_D3D_NV3_STATE_OPAQUE_4444  11ul
+#define V9X_D3D_NV3_STATE_TEXTURE      12ul
+#define V9X_D3D_NV3_STATE_Z_FUNC       13ul
+#define V9X_D3D_NV3_STATE_ALPHA        14ul
+#define V9X_D3D_NV3_STATE_SHIFT        15ul
+#define V9X_D3D_NV3_STATE_OTHER        16ul
+
+static void v9x_d3d_nv3_count_state_refusal(
+    const struct v9x_nv3_3d_state *state)
+{
+    V9X_D3D_DIAGNOSTICS *diagnostics = &v9x_hal->d3d_diagnostics;
+    DWORD cause = V9X_D3D_NV3_STATE_OTHER;
+    DWORD bytes;
+
+    bytes = state->texture_log2 <= V9X_NV3_TEX_LOG2_MAX ?
+            2ul << (2u * (unsigned int)state->texture_log2) : 0ul;
+    if (state->blend == V9X_NV3_BLEND_OPAQUE &&
+        state->texture_format == V9X_NV3_TEX_A4R4G4B4) {
+        cause = V9X_D3D_NV3_STATE_OPAQUE_4444;
+    } else if (bytes == 0ul || state->texture_offset >= state->vram_bytes ||
+               bytes > state->vram_bytes - state->texture_offset) {
+        cause = V9X_D3D_NV3_STATE_TEXTURE;
+    } else if (state->z_enable &&
+               (state->z_func < V9X_NV3_CMP_NEVER ||
+                state->z_func > V9X_NV3_CMP_ALWAYS)) {
+        cause = V9X_D3D_NV3_STATE_Z_FUNC;
+    } else if (state->alpha_test &&
+               (state->alpha_func < V9X_NV3_CMP_NEVER ||
+                state->alpha_func > V9X_NV3_CMP_ALWAYS)) {
+        cause = V9X_D3D_NV3_STATE_ALPHA;
+    } else if (state->u_shift > state->texture_log2 ||
+               state->v_shift > state->texture_log2) {
+        cause = V9X_D3D_NV3_STATE_SHIFT;
+    }
+    ++diagnostics->m64_policy_counts[cause];
+    if (cause == V9X_D3D_NV3_STATE_OTHER) {
+        diagnostics->m64_degenerate = (state->texture_format << 24) |
+                                      (state->texture_log2 << 16) |
+                                      (state->u_shift << 8) |
+                                      state->v_shift;
+        diagnostics->m64_fog_draws = state->texture_offset;
     }
 }
 
@@ -462,7 +521,8 @@ static int v9x_d3d_nv3_blend(const V9X_R3D_DRAW *draw, v9x_u32 *blend)
 static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
                              struct v9x_nv3_3d_target *target,
                              struct v9x_nv3_3d_state *state,
-                             V9X_D3D_NV3_TEXTURE **sampled)
+                             V9X_D3D_NV3_TEXTURE **sampled,
+                             int *use_opaque)
 {
     const V9X_DD_SURFACE_LCL *surface;
     V9X_D3D_NV3_TEXTURE *texture;
@@ -470,6 +530,7 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     DWORD side;
 
     *sampled = 0;
+    *use_opaque = 0;
     if (draw->explicit_state != 0ul || draw->texcoords1 != 0) {
         return V9X_D3D_NV3_REFUSE_EXPLICIT;
     }
@@ -572,6 +633,15 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     side = 1ul << texture->log2_side;
     state->texture_offset = texture->swizzled;
     state->texture_format = texture->format;
+    /* Opaque from A4R4G4B4: the alpha-free copy. Under the alpha test the
+     * alpha is needed, and the builder refuses the draw. */
+    *use_opaque = 0;
+    if (blend == V9X_NV3_BLEND_OPAQUE && texture->opaque != 0ul &&
+        !state->alpha_test) {
+        state->texture_offset = texture->opaque;
+        state->texture_format = V9X_NV3_TEX_X1R5G5B5;
+        *use_opaque = 1;
+    }
     state->texture_log2 = texture->log2_side;
     state->u_shift = v9x_d3d_nv3_log2(side / texture->width);
     state->v_shift = v9x_d3d_nv3_log2(side / texture->height);
@@ -654,11 +724,12 @@ static int v9x_d3d_nv3_accepts(const V9X_R3D_DRAW *draw)
     struct v9x_nv3_3d_words words;
     struct v9x_nv3_op op;
     V9X_D3D_NV3_TEXTURE *texture;
+    int opaque;
 
     if (draw == 0 || !v9x_d3d_nv3_ready()) {
         return 0;
     }
-    return v9x_d3d_nv3_map(draw, &target, &state, &texture) ==
+    return v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque) ==
                V9X_D3D_NV3_REFUSE_NONE &&
            v9x_nv3_3d_build_target(&target, &op) == V9X_STATUS_OK &&
            v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK;
@@ -682,6 +753,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
     struct v9x_nv3_write methods[V9X_NV3_D3D_VERTEX_METHODS];
     struct v9x_nv3_op op;
     V9X_D3D_NV3_TEXTURE *texture;
+    int opaque;
     const V9X_R3D_VERTEX *corner;
     const V9X_R3D_VERTEX *flat;
     DWORD triangle;
@@ -698,7 +770,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
         }
         return 0;
     }
-    reason = v9x_d3d_nv3_map(draw, &target, &state, &texture);
+    reason = v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque);
     if (reason == V9X_D3D_NV3_REFUSE_NONE &&
         v9x_nv3_3d_build_target(&target, &op) != V9X_STATUS_OK) {
         /* The refused target's place, for the record: offset in
@@ -711,6 +783,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
     if (reason == V9X_D3D_NV3_REFUSE_NONE &&
         v9x_nv3_3d_build_state(&state, &words) != V9X_STATUS_OK) {
         reason = V9X_D3D_NV3_REFUSE_STATE;
+        v9x_d3d_nv3_count_state_refusal(&state);
     }
     if (reason != V9X_D3D_NV3_REFUSE_NONE) {
         ++v9x_hal->d3d_diagnostics.m64_refused;
@@ -733,8 +806,10 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
     if (state.blend != V9X_NV3_BLEND_OPAQUE) {
         ++v9x_hal->d3d_diagnostics.m64_blend_draws;
     }
-    if (texture != 0 && texture->dirty) {
-        v9x_d3d_nv3_swizzle(texture);
+    if (texture != 0 && opaque && texture->opaque_dirty) {
+        v9x_d3d_nv3_swizzle(texture, 1);
+    } else if (texture != 0 && !opaque && texture->dirty) {
+        v9x_d3d_nv3_swizzle(texture, 0);
     }
     /* The target, depth buffer and textures may hold CPU writes still in
      * the write-combining buffers. */
@@ -822,6 +897,7 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD height;
     DWORD log2_side;
     DWORD copy;
+    DWORD opaque;
     DWORD bytes = 0ul;
     DWORD level;
     DWORD base;
@@ -886,6 +962,11 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     log2_side = v9x_d3d_nv3_log2(width > height ? width : height);
     copy = (bytes + align - 1ul) & ~(align - 1ul);
     bytes = copy + (2ul << (2ul * log2_side));
+    opaque = 0ul;
+    if (format == V9X_NV3_TEX_A4R4G4B4) {
+        opaque = (bytes + align - 1ul) & ~(align - 1ul);
+        bytes = opaque + (2ul << (2ul * log2_side));
+    }
     if (v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
                             &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -893,6 +974,8 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 
     record->linear = base + offsets[0];
     record->swizzled = base + copy;
+    record->opaque = opaque != 0ul ? base + opaque : 0ul;
+    record->opaque_dirty = 1;
     record->pitch = pitches[0];
     record->width = width;
     record->height = height;
@@ -919,6 +1002,8 @@ static void v9x_d3d_nv3_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
         record != 0) {
         record->linear = 0ul;
         record->dirty = 0;
+        record->opaque = 0ul;
+        record->opaque_dirty = 0;
     }
 }
 
@@ -933,6 +1018,7 @@ static void v9x_d3d_nv3_surface_written(const V9X_DD_SURFACE_LCL *surface)
     record = v9x_d3d_nv3_find_surface(surface);
     if (record != 0) {
         record->dirty = 1;
+        record->opaque_dirty = 1;
     }
 }
 

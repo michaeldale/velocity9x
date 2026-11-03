@@ -405,6 +405,21 @@ v9x_status v9x_nv3_3d_build_vertex(const struct v9x_nv3_3d_vertex *vertex,
     return V9X_STATUS_OK;
 }
 
+v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444)
+{
+    v9x_u16 red;
+    v9x_u16 green;
+    v9x_u16 blue;
+
+    red = (v9x_u16)((argb4444 >> 8) & 0x0fu);
+    green = (v9x_u16)((argb4444 >> 4) & 0x0fu);
+    blue = (v9x_u16)(argb4444 & 0x0fu);
+    red = (v9x_u16)((red << 1) | (red >> 3));
+    green = (v9x_u16)((green << 1) | (green >> 3));
+    blue = (v9x_u16)((blue << 1) | (blue >> 3));
+    return (v9x_u16)((red << 10) | (green << 5) | blue);
+}
+
 /* Morton order, u in the even bits and v in the odd, measured for every
  * texel of an 8x8 texture; coordinates wrap inside the side. */
 v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size)

@@ -262,4 +262,12 @@ v9x_status v9x_nv3_3d_build_vertex(const struct v9x_nv3_3d_vertex *vertex,
                                        methods[V9X_NV3_D3D_VERTEX_METHODS]);
 v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size);
 
+/*
+ * An A4R4G4B4 texel as X1R5G5B5, for the opaque copy the HAL keeps of
+ * such a texture: build_state refuses an opaque draw from A4R4G4B4, since
+ * the blend cannot ignore its partial alphas, and X1R5G5B5 reads alpha 1
+ * (/d3dstate X1AlphaZero, boot 20).
+ */
+v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444);
+
 #endif

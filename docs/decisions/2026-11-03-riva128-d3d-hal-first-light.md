@@ -87,8 +87,20 @@ later textured test, which is why its words looked right.
 
   The ladders' Ok keys read 0 only because they compare with 5:6:5
   colours.
-- **96 draws refused at the state build.** Opaque A4R4G4B4 is the expected
-  part of that; the rest are not identified.
+- **96 draws refused at the state build.** Boot 24 counted the causes: all
+  96 were opaque A4R4G4B4. The blend cannot ignore partial alphas, so the
+  builder refuses that state. Boot 25's HAL keeps a second swizzled copy of
+  each A4R4G4B4 texture as X1R5G5B5 (`v9x_nv3_3d_opaque_texel`, which drops
+  alpha and widens each nibble) and samples it for opaque draws without the
+  alpha test. Results:
+  - 592 batches drawn, 7 refused.
+  - Tex4444 and the Tex8A4444 halves now read 3E0h and 1Fh (they read 0,
+    refused).
+  - The blended A4R4G4B4 checks are unchanged.
+  - The 7 left are 5 textures the HAL did not place, and 2 DECALALPHA draws,
+    a combine the chip does not have.
+  - Opaque A4R4G4B4 under the alpha test is still refused: it needs the
+    alpha for the test and alpha 1 for the blend.
 - No hang, no engine timeout, desktop intact through every run.
 
 ## Not done
