@@ -301,6 +301,10 @@ unsigned int v9x_run_tdfx_2d_tests(void);
  * against rivafb's tables and the Phase 3 probe's measurements. */
 unsigned int v9x_run_nv3_2d_tests(void);
 
+/* tests\host\test_nv3_3d.c: RIVA 128 D3D object, state, vertex and
+ * swizzle words against what /d3d and /d3dstate drew. */
+unsigned int v9x_run_nv3_3d_tests(void);
+
 /* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
  * 3dfx driver builds for them. */
 unsigned int v9x_run_tdfx_hwc_tests(void);
@@ -1468,6 +1472,7 @@ int main(int argc, char **argv)
     failures += v9x_run_tdfx_hwc_tests();
     failures += v9x_run_tdfx_3d_tests();
     failures += v9x_run_nv3_2d_tests();
+    failures += v9x_run_nv3_3d_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_eg_dma_tests();

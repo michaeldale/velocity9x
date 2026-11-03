@@ -62,9 +62,24 @@ the DMA object's flag bits; 86Box draws no 3D.
    render 5:6:5, so 16 bpp modes run 5:5:5: the VBE mode, then PRAMDAC
    general control's colour bit, then a 5:5:5 mode to Windows. The driver
    already reports 5:5:5 (`is555`). Needs the owner at the monitor once.
-4. **The builder.** `nv3_3d.c`: render-state words from Direct3D state,
-   the vertex words (the fog byte inverted), triangle batches as slot
-   triples, swizzled texture uploads. Host tests from steps 1-2's numbers.
+4. **The builder (done 2026-11-03).** `src/chipsets/nvidia/nv3_3d.c`,
+   `include/velocity9x/nv3_3d.h`, `tests/host/test_nv3_3d.c`. It builds:
+   - the object's RAMIN writes, the whole-memory DMA object and its
+     page entries;
+   - the target (surfaces 2 and 3 and the clip);
+   - the six state methods from Direct3D state;
+   - vertex methods with slot triples and the fog byte inverted;
+   - the swizzle.
+
+   The expected values are the probes' own CONFIG and specular words. Some
+   choices come from the chip's blend. It has no alpha-free blend, so an
+   opaque draw forces vertex alpha FFh and reads A1R5G5B5 texels as
+   X1R5G5B5, and opaque A4R4G4B4 is refused. Of Direct3D's blend pairs only
+   ONE/ZERO, SRCALPHA/INVSRCALPHA, ONE/ONE and DESTCOLOR/ZERO map. The last
+   is envytools' model, not drawn. Textures are square: TEXTURE_FORMAT has
+   one size for u and v, so the HAL pads non-square textures. Culling is
+   left to the HAL (CONFIG culling NONE). The texel-centre correction for
+   bilinear is not in the builder.
 5. **The HAL.** `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and
    swizzle into the DirectDraw heap, DrawPrimitive and DrawPrimitive2 over
