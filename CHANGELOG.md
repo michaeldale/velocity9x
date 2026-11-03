@@ -6,10 +6,33 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.35.0 - not yet released
 
+- **AMD Radeon HD 7660D (Trinity, the A10-5700's graphics, `1002:9901`)
+  is claimed by the `ati` package**, measured on one tester's machine
+  through remote help. Modes come from the VBE
+  ([record](docs/decisions/2026-11-03-trinity-tier0-and-registers.md)).
+  - DirectDraw fills and copies run on the DMA engine, and page flips go
+    through the display controller
+    ([record](docs/decisions/2026-11-03-trinity-directdraw-and-flips.md)).
+  - Trinity is Cayman's generation, not Evergreen's: its command
+    processor runs AMD's `ARUBA` microcode through Cayman's three-ring
+    start, and its shaders are Cayman's VLIW4 form. A Cayman module
+    converts the Evergreen shaders the HAL already builds
+    ([record](docs/decisions/2026-11-03-trinity-cp-microcode.md),
+    [record](docs/decisions/2026-11-03-trinity-first-3d-draw.md)).
+  - Direct3D and OpenGL draw on the 3D engine. V9XD32 passes at 16 and
+    32 bpp, V9XDDP completes, 3DMark 2000's default run completes, and
+    the Quake 3 demo runs at 33.4 fps at 1280x1024x32 with every batch in
+    hardware
+    ([record](docs/decisions/2026-11-03-trinity-hal-direct3d-hang.md),
+    [record](docs/decisions/2026-11-04-trinity-direct3d-opengl-gates.md)).
+  - The HD 7470 was re-run on this build in another machine: V9XD32,
+    V9XDDP and Quake 3 pass as before. The HD 5450 and HD 5770, which
+    share the changed engine code, were not.
 - `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
   0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
   `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware
-  radeon set under the same licence, were in it too.
+  radeon set under the same licence, were in it too. The HD 7660D's
+  `ARUBA` files are named with them.
 
 ## 0.34.0 - 2026-11-01
 

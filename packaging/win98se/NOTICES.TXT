@@ -37,10 +37,10 @@ AMD Evergreen command processor microcode
 -----------------------------------------
 
 The microcode V9XHAL.DLL loads into the command processor of the AMD
-Radeon HD 5450, HD 7470 and HD 5770 is linux-firmware's
+Radeon HD 5450, HD 7470, HD 5770 and HD 7660D is linux-firmware's
 radeon/CEDAR_pfp.bin, radeon/CEDAR_me.bin, radeon/CAICOS_pfp.bin,
-radeon/CAICOS_me.bin, radeon/JUNIPER_pfp.bin and radeon/JUNIPER_me.bin,
-carried unchanged as data. linux-firmware's WHENCE: "Licence:
+radeon/CAICOS_me.bin, radeon/JUNIPER_pfp.bin, radeon/JUNIPER_me.bin,
+radeon/ARUBA_pfp.bin and radeon/ARUBA_me.bin, carried unchanged as data. linux-firmware's WHENCE: "Licence:
 Redistributable. See LICENSE.radeon for details." LICENSE.radeon follows.
 
 Copyright (C) 2009-2017  Advanced Micro Devices, Inc. All rights reserved.
