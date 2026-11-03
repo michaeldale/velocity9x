@@ -277,6 +277,45 @@ unsigned short __far __pascal V9xTdfxIoWrite(unsigned short offset,
     return 0u;
 }
 
+/* runtime.asm's BAR0 access for the nvidia DAC switch; one register, no
+ * decision to test here. */
+unsigned short __far __pascal V9xNv3Selector(unsigned long linear)
+{
+    (void)linear;
+    return 0u;
+}
+
+unsigned long __far __pascal V9xNv3Read(unsigned long offset)
+{
+    (void)offset;
+    return 0ul;
+}
+
+void __far __pascal V9xNv3Write(unsigned long offset, unsigned long value)
+{
+    (void)offset;
+    (void)value;
+}
+
+/* ddi.c's selected mode and modes16.c's layout, which that switch reads;
+ * no mode is selected here. */
+unsigned short v9x_selected_mode_geometry(unsigned short *width,
+                                          unsigned short *height,
+                                          unsigned short *bpp,
+                                          unsigned short *pitch)
+{
+    (void)width;
+    (void)height;
+    (void)bpp;
+    (void)pitch;
+    return 0u;
+}
+
+unsigned short v9x_modes16_highcolor(void)
+{
+    return 0u;
+}
+
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
 unsigned long v9x_pci_display_ids = 0ul;

@@ -58,10 +58,12 @@ the DMA object's flag bits; 86Box draws no 3D.
    - Mipmaps.
    - Wrap modes.
    - The dither switch.
-3. **5:5:5 desktops (decision B, already taken).** The D3D object cannot
-   render 5:6:5, so 16 bpp modes run 5:5:5: the VBE mode, then PRAMDAC
-   general control's colour bit, then a 5:5:5 mode to Windows. The driver
-   already reports 5:5:5 (`is555`). Needs the owner at the monitor once.
+3. **5:5:5 desktops (done 2026-11-03, boot 26,
+   [record](../decisions/2026-11-03-riva128-555-desktop.md)).** The VBE
+   5:6:5 mode, then PRAMDAC general control bit 12 cleared by the family's
+   `place_desktop` hook, then 5:5:5 to Windows. V9XDDP went from 35 to 200
+   of 227 checks; V9XGDI passes at 16, 32 and 8 bpp. Still owed: the owner
+   looks at the monitor once.
 4. **The builder (done 2026-11-03).** `src/chipsets/nvidia/nv3_3d.c`,
    `include/velocity9x/nv3_3d.h`, `tests/host/test_nv3_3d.c`. It builds:
    - the object's RAMIN writes, the whole-memory DMA object and its
@@ -88,7 +90,9 @@ the DMA object's flag bits; 86Box draws no 3D.
    an alpha-free copy (boot 25). Open:
    - Opaque A4R4G4B4 under the alpha test is refused.
    - DECALALPHA is refused.
-   - Colours need step 3.
+   - After step 3, V9XDDP's 27 failing checks: mipmap level choice, colour
+     key, specular, Z with perspective, mixed 2D/3D, 32-bit textures,
+     bilinear's half texel, FlipPixelOk.
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and

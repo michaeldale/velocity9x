@@ -16,8 +16,10 @@ bring-up runs clean; fills and blits are exact at 8 bpp and right in every
 colour bit at 16 (X1R5G5B5) and 32 bpp, but the engine sets bit 15 at
 16 bpp and rewrites the top byte at 32 bpp; a VBE mode set wipes RAMIN.
 Decision 1 taken (Michael: A, then B); A is now measured dead, so 16 bpp
-acceleration needs B. Next: B's display side, the RAMDAC switched to
-5:5:5 after the mode set, which needs the owner's eyes on the monitor.
+acceleration needs B. B's display side is done: the RAMDAC is switched to
+5:5:5 after the mode set (boot 26,
+[record](../decisions/2026-11-03-riva128-555-desktop.md)); the owner's eyes
+on the monitor are still owed.
 Register facts below come from open-source and reverse-engineered sources
 unless a record says the card confirmed them.
 

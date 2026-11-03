@@ -105,6 +105,8 @@ later textured test, which is why its words looked right.
 
 ## Not done
 
-- Step 3: 5:5:5 desktops, which needs the owner at the monitor.
+- Step 3: 5:5:5 desktops. Done on boot 26
+  ([record](2026-11-03-riva128-555-desktop.md)); the owner's look at the
+  monitor is still owed.
 - The remaining state refusals.
 - Games (step 6).

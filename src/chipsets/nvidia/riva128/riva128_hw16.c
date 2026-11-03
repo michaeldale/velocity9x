@@ -29,12 +29,29 @@ extern unsigned short __far __pascal V9xMiniNv3MmioMap(
 
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
 extern unsigned long v9x_vbe_vram_reported;
+/* enable16.c and runtime.asm: the same 4F00h figure from the mini-VDD's
+ * cache, which the first Enable's layout decision needs before stage 3. */
+extern unsigned short __far __pascal V9xMiniVbeController(void);
+extern unsigned short v9x_minivdd_total64k;
 
 /* V9X_NV3_MMIO_BYTES in the mini-VDD: all of BAR0. */
 #define V9X_RIVA128_MMIO_BYTES  0x01000000ul
 /* The one memory size RAMIN's place was measured on, and RAMIN's size. */
 #define V9X_RIVA128_VRAM_BYTES  0x00800000ul
 #define V9X_RIVA128_RAMIN_BYTES 0x00008000ul
+
+/* The VBE's memory figure: stage 3's once it has run, the mini-VDD's
+ * before, when the first Enable decides the 16 bpp layout. */
+static unsigned long v9x_riva128_vram_bytes(void)
+{
+    if (v9x_vbe_vram_reported != 0ul) {
+        return v9x_vbe_vram_reported;
+    }
+    if (V9xMiniVbeController() == 0u) {
+        return 0ul;
+    }
+    return (unsigned long)v9x_minivdd_total64k * 65536ul;
+}
 
 static void v9x_riva128_fill_engine(unsigned long framebuffer_linear_base,
                                     unsigned long *control_linear_base,
@@ -57,7 +74,7 @@ static void v9x_riva128_fill_engine(unsigned long framebuffer_linear_base,
     *ring_linear_base = 0ul;
     *ring_bytes = 0ul;
 
-    if (v9x_vbe_vram_reported != V9X_RIVA128_VRAM_BYTES) {
+    if (v9x_riva128_vram_bytes() != V9X_RIVA128_VRAM_BYTES) {
         return;
     }
     if (V9xPciReadNv3MmioBar(&bar0) == 0u) {
@@ -82,7 +99,7 @@ static void v9x_riva128_fill_engine(unsigned long framebuffer_linear_base,
  * size, which leaves the HAL without an engine. */
 static unsigned long v9x_riva128_ramin_offset(void)
 {
-    if (v9x_vbe_vram_reported != V9X_RIVA128_VRAM_BYTES) {
+    if (v9x_riva128_vram_bytes() != V9X_RIVA128_VRAM_BYTES) {
         return 0ul;
     }
     return V9X_RIVA128_VRAM_BYTES - V9X_RIVA128_RAMIN_BYTES;
