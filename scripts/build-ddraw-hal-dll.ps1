@@ -128,6 +128,8 @@ $sources = @(
     # host-tested builder.
     "src\display32\engines\eng_nv3.c",
     "src\chipsets\nvidia\nv3_2d.c",
+    # Its D3D object's words, for the bring-up and d3d_nv3.c.
+    "src\chipsets\nvidia\nv3_3d.c",
     # The Rage 128 2D engine: fill and copy through the host-tested builder.
     "src\display32\engines\eng_r128.c",
     "src\chipsets\ati\rage128\r128_2d.c",
@@ -241,6 +243,8 @@ $sources = @(
     "src\chipsets\ati\rage128\r128_cce_microcode.c",
     "src\display32\d3d\d3d_r128_map.c",
     "src\display32\d3d\d3d_r128.c",
+    # The RIVA 128 D3D object: swizzled texture copies and PIO methods.
+    "src\display32\d3d\d3d_nv3.c",
     "src\display32\d3d\d3d_hsw.c",
     "src\display32\d3d\d3d_g4.c",
     # Engine-placed surface blocks, shared by the Mach64 and Gen3.

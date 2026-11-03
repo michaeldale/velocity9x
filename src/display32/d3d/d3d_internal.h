@@ -690,6 +690,17 @@ typedef struct v9x_d3d_engine_ops {
     int (*draw_shader)(const V9X_R3D_DRAW *draw,
                        const V9X_R3D_SHADER *shader, const float *vertices,
                        DWORD triangle_count);
+
+    /*
+     * A surface's pixels changed outside the engine, APPENDED 2026-11-03
+     * under the same rule: an Unlock, or the destination of a Blt (called
+     * as the Blt starts, for the engine's next draw to see). Null for an
+     * engine that samples surfaces as they are, which the positional
+     * initialisers get by omission. The RIVA 128 is the first: it samples
+     * swizzled square copies of its textures, rebuilt from the linear
+     * surface when it changed (d3d_nv3.c).
+     */
+    void (*surface_written)(const V9X_DD_SURFACE_LCL *surface);
 } V9X_D3D_ENGINE_OPS;
 
 /* The engine for the chip this HAL was handed, or null when it has none. */
@@ -778,6 +789,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_g4;
 
 /* ATI Rage 128, through the CCE, in d3d_r128.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r128;
+
+/* NVIDIA RIVA 128, its D3D object, in d3d_nv3.c. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv3;
 
 
 /*

@@ -80,7 +80,15 @@ the DMA object's flag bits; 86Box draws no 3D.
    one size for u and v, so the HAL pads non-square textures. Culling is
    left to the HAL (CONFIG culling NONE). The texel-centre correction for
    bilinear is not in the builder.
-5. **The HAL.** `d3d_nv3.c` on the core: context create and destroy,
+5. **The HAL (first light 2026-11-03,
+   [record](../decisions/2026-11-03-riva128-d3d-hal-first-light.md)).**
+   V9XDDP's triangles and textured checks draw, in X1R5G5B5 on a 5:6:5
+   desktop. Open:
+   - Z buffer creation fails.
+   - Some draws are refused at the state build.
+   - Colours need step 3.
+
+   The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and
    swizzle into the DirectDraw heap, DrawPrimitive and DrawPrimitive2 over
    TLVERTEX, the D3D caps the hardware has and no more. Shares the engine

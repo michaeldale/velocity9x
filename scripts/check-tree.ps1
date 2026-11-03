@@ -107,6 +107,7 @@ $required = @(
     "tests\host\test_nv3_2d.c",
     "src\chipsets\nvidia\nv3_3d.c",
     "tests\host\test_nv3_3d.c",
+    "src\display32\d3d\d3d_nv3.c",
     "src\chipsets\sis\sis_backend.c",
     "src\chipsets\sis\sis_hw16.c",
     "src\chipsets\sis\sis6326\sis6326_hw16.c",

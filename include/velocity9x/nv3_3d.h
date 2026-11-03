@@ -51,6 +51,16 @@
 #define V9X_NV3_D3D_DMA_PRESENT_RW  0x00000003ul
 #define V9X_NV3_D3D_DMA_ENTRIES_MAX 0x800ul
 
+/*
+ * The texture an untextured draw samples: 8x8 A1R5G5B5 white, the size
+ * the probes drew, in the lowest 128 bytes of RAMIN's video memory (RAMIN
+ * 7F80h-7FFFh, which nothing else uses). Every texel is FFFFh, so RAMIN's
+ * 16-byte reversal does not matter and it is written straight through the
+ * framebuffer at RAMIN's start.
+ */
+#define V9X_NV3_D3D_WHITE_BYTES     0x80ul
+#define V9X_NV3_D3D_WHITE_LOG2      3ul
+
 /* Methods (nv3_3d.xml). */
 #define V9X_NV3_M_D3D_TEX_OFFSET    0x304ul
 #define V9X_NV3_M_D3D_TEX_FORMAT    0x308ul
@@ -166,17 +176,33 @@ struct v9x_nv3_3d_state {
     v9x_u32 blend;             /* V9X_NV3_BLEND_* */
     int fog;
     v9x_u32 fog_colour;        /* 0x00RRGGBB */
+    /*
+     * A Direct3D texture narrower or shorter than the square the chip
+     * samples is stored repeated across it (the HAL's swizzle), and its
+     * coordinates scaled by width / side and height / side, powers of two
+     * given here as shifts: u 0 to 1 then spans one copy, and wrapping
+     * past it lands in the next copy, which holds the same texels. Zero
+     * for a square texture.
+     */
+    v9x_u32 u_shift;
+    v9x_u32 v_shift;
+    /* Direct3D's DECAL and COPY: the texture alone, so every vertex colour
+     * is made white and opaque, which the modulation then ignores. */
+    int vertex_white;
 };
 
 /*
  * The six state methods, in the order they go, plus what each vertex of
- * the draw needs: an alpha forced to FFh (opaque draws, whose blend is
- * source alpha with alpha made 1) and whether its fog byte is used.
+ * the draw needs: bits ORed into its colour (alpha FFh for an opaque draw,
+ * whose blend is source alpha with alpha made 1; all of it for
+ * vertex_white), whether its fog byte is used, and the coordinate shifts.
  */
 struct v9x_nv3_3d_words {
     struct v9x_nv3_write methods[6];
     v9x_u32 colour_or;
     int fog;
+    v9x_u32 u_shift;
+    v9x_u32 v_shift;
 };
 
 struct v9x_nv3_3d_vertex {

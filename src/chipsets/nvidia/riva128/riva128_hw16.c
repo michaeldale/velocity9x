@@ -70,10 +70,12 @@ static void v9x_riva128_fill_engine(unsigned long framebuffer_linear_base,
     *mapped_aperture_bytes = V9X_RIVA128_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_NV3;
     /* FLIP: the HAL writes the CRTC start (eng_nv3.c); no BAR0 register is
-     * involved, but it rides with the engine's claim on the measured card. */
+     * involved, but it rides with the engine's claim on the measured card.
+     * D3D: the D3D object (d3d_nv3.c), at 16 bpp, its only depth. */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_FLIP;
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_D3D;
 }
 
 /* Where RAMIN starts in video memory, for the HAL; 0 off the measured
@@ -94,7 +96,7 @@ const V9X_HW16_DEVICE v9x_riva128_device = {
     "nvidia-riva128-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,
+    "hardware-nv3",
     0,
     v9x_riva128_fill_engine,
     /* framebuffer_bar: BAR1. A record only: with no read_aperture hook the

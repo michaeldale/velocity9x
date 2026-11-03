@@ -131,12 +131,14 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_VI, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* The RIVA 128: a 2D engine only, so nothing, whatever the caps;
-         * software still wins. */
+        /* The RIVA 128: the 2D engine alone selects nothing; CAP_D3D
+         * selects the D3D object's engine; software still wins. */
         { 1, V9X_DD_ENGINE_TYPE_NV3,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_NV3, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_NV3 },
+        { 0, V9X_DD_ENGINE_TYPE_NV3, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_NV3, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },

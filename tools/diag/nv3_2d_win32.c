@@ -160,6 +160,10 @@ static DWORD v9x_blit_dy = 1ul;
  * source should not.
  */
 static DWORD v9x_dst_shift = 0ul;
+/* /d3dstate: lines each surface sits below the window's start, to tell
+ * which one the D3D object draws into (the probes before boot 21 put all
+ * four in one place). */
+static DWORD v9x_surface_shift[4];
 #define V9X_BLIT_W    80ul
 #define V9X_BLIT_H    7ul
 
@@ -574,6 +578,7 @@ static void v9x_bring_up(DWORD bytes, DWORD pitch, int y16)
         v9x_write(V9X_PGRAPH_SURF_OFF + index * 4ul,
                   V9X_SURFACE_OFFSET +
                   (index == 0ul ? v9x_dst_shift * pitch : 0ul) +
+                  v9x_surface_shift[index] * pitch +
                   (v9x_d3d && index == 3ul ? V9X_D3D_ZETA : 0ul));
         v9x_write(V9X_PGRAPH_SURF_PITCH + index * 4ul, pitch);
     }
@@ -1275,6 +1280,8 @@ static int v9x_run_d3d(HANDLE device, int textured, const char *section)
 #define V9X_WREN_Z             3ul
 #define V9X_WREN_ALWAYS        4ul
 #define V9X_D3D_KEY_ENABLE     0x00010000ul
+#define V9X_D3D_TEX_X1         0x00100000ul /* TEXTURE_FORMAT colour 1 */
+#define V9X_D3D_SOURCE_MASK    0x00000f00ul
 #define V9X_D3D_CFG_OPAQUE     (V9X_D3D_CFG_BASE | \
                                 (V9X_CMP_ALWAYS << V9X_D3D_ZFUNC_SHIFT) | \
                                 (V9X_WREN_ALWAYS << V9X_D3D_CWRITE_SHIFT))
@@ -1321,7 +1328,10 @@ struct v9x_d3d_case {
     DWORD fill;
     DWORD zeta_fill;
     int big_dma;
+    DWORD shift_surface;    /* surface index + 1 moved 8 lines; 0 none */
+    DWORD texture_at;       /* window offset of the texture; 0 F000h */
 };
+#define V9X_D3D_SHIFT_LINES    8ul
 
 static const struct v9x_d3d_case v9x_d3d_cases[] = {
     { "TexelZohCorner", V9X_TEX_ID, V9X_SHAPE_QUAD,
@@ -1365,7 +1375,57 @@ static const struct v9x_d3d_case v9x_d3d_cases[] = {
       0xffff0000ul, 0ul, 0ul, 0 },
     { "Edge3Quarters", V9X_TEX_WHITE, V9X_SHAPE_3QUARTERS,
       V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
-      0xffff0000ul, 0ul, 0ul, 0 }
+      0xffff0000ul, 0ul, 0ul, 0 },
+    /*
+     * Boot 20's HAL drew nothing it could be seen to: its opaque draws read
+     * A1R5G5B5 texels as X1R5G5B5 under the source-alpha blend, on the
+     * guess that X1 reads alpha 1. These measure that, then CONFIG's
+     * SOURCE_COLOR values inside hwtest's mask (bits 8, 10 and 11; the
+     * xml's ALPHA_ONE, 6, needs bit 9, which the mask refuses).
+     */
+    { "X1Opaque", V9X_TEX_ID, V9X_SHAPE_QUAD, V9X_D3D_CFG_OPAQUE,
+      V9X_D3D_ALPHA, V9X_D3D_TEX_X1, 0xfffffffful, 0x7fff7ffful, 0ul, 0 },
+    { "X1AlphaZero", V9X_TEX_ID_ALPHA, V9X_SHAPE_QUAD, V9X_D3D_CFG_OPAQUE,
+      V9X_D3D_ALPHA, V9X_D3D_TEX_X1, 0xfffffffful, 0x7fff7ffful, 0ul, 0 },
+    { "Source4AlphaZero", V9X_TEX_ID_ALPHA, V9X_SHAPE_QUAD,
+      (V9X_D3D_CFG_OPAQUE & ~V9X_D3D_SOURCE_MASK) | 0x00000400ul,
+      V9X_D3D_ALPHA, 0ul, 0xfffffffful, 0x7fff7ffful, 0ul, 0 },
+    { "Source5AlphaZero", V9X_TEX_ID_ALPHA, V9X_SHAPE_QUAD,
+      (V9X_D3D_CFG_OPAQUE & ~V9X_D3D_SOURCE_MASK) | 0x00000500ul,
+      V9X_D3D_ALPHA, 0ul, 0xfffffffful, 0x7fff7ffful, 0ul, 0 },
+    { "Source8AlphaZero", V9X_TEX_ID_ALPHA, V9X_SHAPE_QUAD,
+      (V9X_D3D_CFG_OPAQUE & ~V9X_D3D_SOURCE_MASK) | 0x00000800ul,
+      V9X_D3D_ALPHA, 0ul, 0xfffffffful, 0x7fff7ffful, 0ul, 0 },
+    { "VertexAlphaZero", V9X_TEX_ID, V9X_SHAPE_QUAD, V9X_D3D_CFG_OPAQUE,
+      V9X_D3D_ALPHA, 0ul, 0x00fffffful, 0x7fff7ffful, 0ul, 0 },
+    /* Boot 21: the HAL's 425 batches all ran and left nothing in their
+     * targets. Which surface does the object draw into, and which holds
+     * zeta? Each case moves one surface 8 lines down. */
+    { "Surface0Moved", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 1ul },
+    { "Surface1Moved", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 2ul },
+    { "Surface2Moved", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 3ul },
+    /* Zeta: surface 3 cannot move without leaving the 64 KiB window, so
+     * surface 1 moves under the Z pair instead. */
+    { "ZLessSurface1Moved", V9X_TEX_WHITE, V9X_SHAPE_ZPAIR,
+      V9X_D3D_CFG_ZTEST(V9X_CMP_LESS) | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA,
+      0ul, 0ul, 0ul, 0ul, 0, 2ul },
+    /* The texture offset's alignment: the HAL placed its copies on 256
+     * bytes; every texture drawn before sat on 4 KiB. */
+    { "TexAtF100", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0xf100ul },
+    { "TexAtF800", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0xf800ul },
+    { "TexAtF010", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0xf010ul }
 };
 #define V9X_D3D_CASE_COUNT \
     (sizeof(v9x_d3d_cases) / sizeof(v9x_d3d_cases[0]))
@@ -1463,7 +1523,9 @@ static void v9x_build_d3d_case(const struct v9x_d3d_case *one, DWORD pitch)
     DWORD y;
     DWORD a_config;
     DWORD quarters;
+    DWORD texture_at;
 
+    texture_at = one->texture_at != 0ul ? one->texture_at : V9X_D3D_TEXTURE;
     v9x_request.count = 0ul;
     v9x_bring_up(2ul, pitch, 0);
 
@@ -1476,15 +1538,14 @@ static void v9x_build_d3d_case(const struct v9x_d3d_case *one, DWORD pitch)
                     (v9x_texel_id(index + 1ul,
                                   one->texture == V9X_TEX_ID_ALPHA) << 16);
         }
-        v9x_op(V9X_OP_VRAM_WRITE, V9X_D3D_TEXTURE + index * 2ul, texel, 0ul);
+        v9x_op(V9X_OP_VRAM_WRITE, texture_at + index * 2ul, texel, 0ul);
     }
     v9x_op(V9X_OP_VRAM_FILL, V9X_D3D_ZETA, (V9X_D3D_LINES * pitch) / 4ul,
            one->zeta_fill);
     v9x_op(V9X_OP_VRAM_FILL, 0ul, (V9X_D3D_LINES * pitch) / 4ul, one->fill);
 
     v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_OFFSET,
-               one->big_dma ? V9X_SURFACE_OFFSET + V9X_D3D_TEXTURE :
-                              V9X_D3D_TEXTURE);
+               one->big_dma ? V9X_SURFACE_OFFSET + texture_at : texture_at);
     v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_FORMAT,
                V9X_D3D_TEX_FORMAT | one->format_extra);
     v9x_method(V9X_SUB_D3D, V9X_M_D3D_FILTER, 0ul);
@@ -1579,7 +1640,14 @@ static int v9x_run_d3d_case(HANDLE device, DWORD number,
         }
         v9x_d3d_dma_word = V9X_D3D_BIG_DMA_WORD;
     }
+    for (index = 0ul; index < 4ul; ++index) {
+        v9x_surface_shift[index] = one->shift_surface == index + 1ul ?
+                                   V9X_D3D_SHIFT_LINES : 0ul;
+    }
     v9x_build_d3d_case(one, pitch);
+    for (index = 0ul; index < 4ul; ++index) {
+        v9x_surface_shift[index] = 0ul;
+    }
     v9x_number(one->name, "Ops", v9x_request.count);
     v9x_key(one->name, "Config", one->config);
 

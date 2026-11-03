@@ -1571,6 +1571,8 @@ DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
      * only flags. */
     v9x_d3d_color_key_touch(data->lpDDSurface);
     v9x_d3d_alpha_mask_touch(data->lpDDSurface);
+    v9x_d3d_surface_written(
+        (const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_UNLOCK, data->ddRVal);
     return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -2305,6 +2307,8 @@ DWORD __stdcall V9xHalBlt(V9X_DDHAL_BLTDATA *data)
     if (data != 0) {
         v9x_d3d_color_key_touch(data->lpDDDestSurface);
         v9x_d3d_alpha_mask_touch(data->lpDDDestSurface);
+        v9x_d3d_surface_written(
+            (const V9X_DD_SURFACE_LCL *)data->lpDDDestSurface);
         /* The clipped-blit tail is read and counted, never acted on: the
          * blit below still uses rDest alone, which is the behaviour this
          * measurement exists to judge (OpenGL plan Phase 0.3). */

@@ -183,10 +183,32 @@ static v9x_status v9x_nv3_3d_check_state(const struct v9x_nv3_3d_state *state)
          state->alpha_reference > 0xfful)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* A narrower texture's copies tile the side exactly. */
+    if (state->u_shift > state->texture_log2 ||
+        state->v_shift > state->texture_log2) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     if (state->blend > V9X_NV3_BLEND_MODULATE) {
         return V9X_STATUS_UNSUPPORTED;
     }
     return V9X_STATUS_OK;
+}
+
+/* An IEEE single divided by 2^shift through its exponent; what would
+ * leave the normal range becomes zero of the same sign, far below a
+ * texel at any texture size. */
+static v9x_u32 v9x_nv3_3d_scale_down(v9x_u32 bits, v9x_u32 shift)
+{
+    v9x_u32 exponent;
+
+    exponent = (bits >> 23) & 0xfful;
+    if (shift == 0ul || exponent == 0ul) {
+        return bits;
+    }
+    if (exponent <= shift) {
+        return bits & 0x80000000ul;
+    }
+    return bits - (shift << 23);
 }
 
 v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
@@ -230,6 +252,11 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
         }
         words->colour_or = V9X_NV3_3D_ALPHA_MASK;
     }
+    if (state->vertex_white) {
+        words->colour_or = 0xfffffffful;
+    }
+    words->u_shift = state->u_shift;
+    words->v_shift = state->v_shift;
     format = (colour << V9X_NV3_TEX_COLOUR_SHIFT) |
              (state->texture_log2 << V9X_NV3_TEX_SIZE_MIN_SHIFT) |
              (state->texture_log2 << V9X_NV3_TEX_SIZE_MAX_SHIFT);
@@ -367,8 +394,8 @@ v9x_status v9x_nv3_3d_build_vertex(const struct v9x_nv3_3d_vertex *vertex,
     values[3] = vertex->sy;
     values[4] = vertex->sz;
     values[5] = vertex->rhw;
-    values[6] = vertex->tu;
-    values[7] = vertex->tv;
+    values[6] = v9x_nv3_3d_scale_down(vertex->tu, words->u_shift);
+    values[7] = v9x_nv3_3d_scale_down(vertex->tv, words->v_shift);
     for (index = 0ul; index < V9X_NV3_D3D_VERTEX_METHODS; ++index) {
         methods[index].offset =
             v9x_nv3_3d_method(V9X_NV3_SUB_D3D,

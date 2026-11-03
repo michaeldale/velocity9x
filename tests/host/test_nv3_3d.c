@@ -348,6 +348,43 @@ static void test_vertex(void)
     CHECK(methods[6].value == 0x3f800000ul);
     CHECK(methods[7].value == 0ul);
 
+    /* A 64 x 16 texture in a 64 x 64 square: v scaled by 1/4 through the
+     * exponent, u unchanged; zero and tiny values go to zero. */
+    base_state(&state);
+    state.v_shift = 2ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(words.u_shift == 0ul && words.v_shift == 2ul);
+    vertex.tu = 0x3f800000ul;   /* 1.0 */
+    vertex.tv = 0x3f800000ul;
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[6].value == 0x3f800000ul);
+    CHECK(methods[7].value == 0x3e800000ul);    /* 0.25 */
+    vertex.tv = 0xc0000000ul;   /* -2.0 */
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[7].value == 0xbf000000ul);    /* -0.5 */
+    vertex.tv = 0ul;
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[7].value == 0ul);
+    vertex.tv = 0x00800000ul;   /* the smallest normal */
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[7].value == 0ul);
+    state.v_shift = 12ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.v_shift = 4ul;        /* 1/16 of an 8-texel side */
+    CHECK(v9x_nv3_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* DECAL and COPY: every vertex white and opaque. */
+    base_state(&state);
+    state.vertex_white = 1;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(words.colour_or == 0xfffffffful);
+
     /* Slots past 15, and triangles that would not draw. */
     CHECK(v9x_nv3_3d_build_vertex(&vertex, 16ul, 0, &words, methods) ==
           V9X_STATUS_INVALID_ARGUMENT);

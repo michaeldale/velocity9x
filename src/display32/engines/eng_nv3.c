@@ -36,6 +36,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/nv3_2d.h"
+#include "velocity9x/nv3_3d.h"
 
 /* Bounded busy-wait. The probe measured 0-5 status reads per small
  * operation; a full 1600x1200x32 fill is far longer, and this bound only
@@ -121,16 +122,60 @@ static int v9x_nv3_wait_pgraph(void)
  * DirectDraw heap ends below RAMIN (riva128_hw16.c's reserve), so nothing
  * else lives where this writes.
  */
+/*
+ * The D3D object's pieces, which the 2D bring-up leaves out: its RAMIN
+ * entries, the whole-memory DMA object and the white texture untextured
+ * draws sample (nv3_3d.h). Written at every depth, since RAMIN is shared
+ * and a mode set clears it; only the 16 bpp D3D engine (d3d\d3d_nv3.c)
+ * uses them.
+ */
+/* All of video memory, RAMIN included: fb.vram_bytes stops below RAMIN
+ * (the heap's end, nvidia_hw16.c), and the white texture sits in it. */
+DWORD v9x_nv3_3d_vram_bytes(void)
+{
+    return v9x_hal->engine.reserve_offset + V9X_NV3_RAMIN_BYTES;
+}
+
+static int v9x_nv3_write_3d_ramin(void)
+{
+    struct v9x_nv3_3d_object object;
+    struct v9x_nv3_write entry;
+    volatile DWORD *white;
+    DWORD index;
+
+    if (v9x_nv3_3d_build_object(v9x_nv3_3d_vram_bytes(), &object) !=
+        V9X_STATUS_OK) {
+        return 0;
+    }
+    for (index = 0ul; index < object.ramin_count; ++index) {
+        *(volatile DWORD *)v9x_nv3_ramin_address(object.ramin[index].offset) =
+            object.ramin[index].value;
+    }
+    for (index = 0ul; index < object.entry_count; ++index) {
+        entry = v9x_nv3_3d_dma_entry(index);
+        *(volatile DWORD *)v9x_nv3_ramin_address(entry.offset) = entry.value;
+    }
+    white = (volatile DWORD *)(v9x_hal->fb.linear_base +
+                               v9x_hal->engine.reserve_offset);
+    for (index = 0ul; index < V9X_NV3_D3D_WHITE_BYTES / 4ul; ++index) {
+        white[index] = 0xfffffffful;
+    }
+    return 1;
+}
+
 static int v9x_nv3_bring_up(void)
 {
     struct v9x_nv3_setup setup;
+    struct v9x_nv3_3d_object object;
     DWORD bytes_per_pixel;
     DWORD index;
 
     bytes_per_pixel = v9x_hal->fb.bits_per_pixel / 8ul;
     if (v9x_nv3_build_setup(bytes_per_pixel, v9x_hal->fb.width,
                             v9x_hal->fb.height, v9x_hal->fb.pitch,
-                            &setup) != V9X_STATUS_OK) {
+                            &setup) != V9X_STATUS_OK ||
+        v9x_nv3_3d_build_object(v9x_nv3_3d_vram_bytes(), &object) !=
+            V9X_STATUS_OK) {
         return 0;
     }
     v9x_wc_drain();
@@ -142,6 +187,9 @@ static int v9x_nv3_bring_up(void)
         *(volatile DWORD *)v9x_nv3_ramin_address(setup.ramin[index].offset) =
             setup.ramin[index].value;
     }
+    if (!v9x_nv3_write_3d_ramin()) {
+        return 0;
+    }
     v9x_wc_drain();
     for (index = 0ul; index < setup.after_count; ++index) {
         v9x_nv3_write32(setup.after[index].offset, setup.after[index].value);
@@ -149,6 +197,7 @@ static int v9x_nv3_bring_up(void)
     for (index = 0ul; index < setup.bind_count; ++index) {
         v9x_nv3_write32(setup.bind[index].offset, setup.bind[index].value);
     }
+    v9x_nv3_write32(object.bind.offset, object.bind.value);
     if (!v9x_nv3_wait_pgraph()) {
         return 0;
     }
@@ -162,22 +211,30 @@ static int v9x_nv3_bring_up(void)
     return 1;
 }
 
-/* What the last bring-up wrote, still there: RAMIN's mark and PFB. */
+/* What the last bring-up wrote, still there: RAMIN's 2D mark, the D3D
+ * object's RAMHT entry and its DMA object's flags (the 16-bit side's
+ * bring-up writes the first and not the others), and PFB. */
 static int v9x_nv3_state_holds(void)
 {
     return *(volatile DWORD *)v9x_nv3_ramin_address(
                V9X_NV3_RAMIN_MARK_OFFSET) == V9X_NV3_RAMIN_MARK_VALUE &&
+           *(volatile DWORD *)v9x_nv3_ramin_address(V9X_NV3_D3D_RAMHT) ==
+               V9X_NV3_D3D_HANDLE &&
+           *(volatile DWORD *)v9x_nv3_ramin_address(V9X_NV3_D3D_DMA) ==
+               V9X_NV3_D3D_DMA_FLAGS &&
            v9x_nv3_read32(V9X_NV3_PFB_CONFIG_0) == v9x_nv3_pfb_expected;
 }
 
-static int v9x_nv3_validate(void)
+/* any_depth: the D3D engine's call, which draws at 16 bpp, where the 2D
+ * side issues nothing. */
+static int v9x_nv3_validate_at(int any_depth)
 {
     if (!v9x_nv3_ready()) {
         return 0;
     }
     /* Nothing is issued at this depth, so there is nothing to bring up and
      * nothing for a CPU access to wait on. */
-    if (!v9x_nv3_depth_ok()) {
+    if (!any_depth && !v9x_nv3_depth_ok()) {
         return 1;
     }
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul &&
@@ -195,6 +252,11 @@ static int v9x_nv3_validate(void)
     ++v9x_hal->engine.reset_count;
     v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
     return 1;
+}
+
+static int v9x_nv3_validate(void)
+{
+    return v9x_nv3_validate_at(0);
 }
 
 static int v9x_nv3_validated(void)
@@ -402,6 +464,33 @@ int v9x_nv3_set_display_start(DWORD byte_offset)
         v9x_outp(V9X_NV3_SEQ_DATA, V9X_NV3_LOCK);
     }
     return result;
+}
+
+/*
+ * For the D3D engine (d3d\d3d_nv3.c), which draws at 16 bpp, where every
+ * 2D entry above declines and its idle wait returns at once: the engine
+ * brought up whatever the depth, and a wait that is real at every depth.
+ * Its batches end idle, so a CPU Lock never meets 3D work in flight.
+ */
+int v9x_nv3_3d_idle(void)
+{
+    DWORD spins = V9X_NV3_WAIT_SPINS;
+
+    while (spins-- != 0ul) {
+        if (v9x_nv3_idle_now()) {
+            return 1;
+        }
+    }
+    if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+        v9x_trace_flush_fault(0x4e333344ul, V9X_NV3_PGRAPH_STATUS);
+    }
+    v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
+    return 0;
+}
+
+int v9x_nv3_3d_begin(void)
+{
+    return v9x_nv3_validate_at(1) && v9x_nv3_3d_idle();
 }
 
 const V9X_ENGINE32_OPS v9x_engine32_nv3 = {

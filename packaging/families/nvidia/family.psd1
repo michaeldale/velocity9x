@@ -32,9 +32,11 @@
             # the HAL uses it at 8 and 32 only, because at 16 bpp it sets
             # bit 15 and this BIOS's 16 bpp modes are 5:6:5.
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            # The D3D object (class 17h) at 16 bpp, its only depth
+            # (docs\plans\nvidia-riva128-d3d.md, step 5).
+            Direct3D = 'hardware-nv3'
             EngineType = 'NV3'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # The measured 128ZX reports 8 MiB through 4F00h, the chip's
             # maximum. Every advertised mode lays out in 4 MiB, so the
             # original RIVA 128's 4 MiB holds them too.

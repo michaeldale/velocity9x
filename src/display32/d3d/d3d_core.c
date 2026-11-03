@@ -544,6 +544,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_eg;
     case V9X_D3D_SELECT_VI:
         return &v9x_d3d_engine_vi;
+    case V9X_D3D_SELECT_NV3:
+        return &v9x_d3d_engine_nv3;
     default:
         return 0;
     }
@@ -1451,6 +1453,16 @@ void v9x_d3d_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
         return;
     }
     ops->unlock_surface(surface);
+}
+
+void v9x_d3d_surface_written(const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (surface == 0 || ops == 0 || ops->surface_written == 0) {
+        return;
+    }
+    ops->surface_written(surface);
 }
 
 /*
