@@ -23,6 +23,9 @@
  *
  * No register is ever written. Without switches nothing is written at all;
  * /alias writes 32 dwords of video memory and puts them back (v9x_alias).
+ * /crtc reads the VGA and NV3 extended CRTC through the VGA ports, writes
+ * SR06 and moves the start address for two frames (v9x_crtc_probe), and
+ * does nothing else.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -115,6 +118,24 @@ static DWORD v9x_inpd(WORD port);
 #pragma aux v9x_inpd = "in eax,dx" parm [dx] value [eax] modify exact [eax]
 static void v9x_outpd(WORD port, DWORD value);
 #pragma aux v9x_outpd = "out dx,eax" parm [dx] [eax] modify exact []
+static BYTE v9x_inpb(WORD port);
+#pragma aux v9x_inpb = "in al,dx" parm [dx] value [al] modify exact [al]
+static void v9x_outpb(WORD port, BYTE value);
+#pragma aux v9x_outpb = "out dx,al" parm [dx] [al] modify exact []
+
+/* /crtc: VGA ports, and the NV3 extended-register lock (riva_hw.c
+ * nv3LockUnlock: SR06 = 57h unlocks, 99h locks). */
+#define V9X_VGA_SEQ_INDEX     ((WORD)0x03c4u)
+#define V9X_VGA_SEQ_DATA      ((WORD)0x03c5u)
+#define V9X_VGA_MISC_READ     ((WORD)0x03ccu)
+#define V9X_VGA_CRTC_INDEX    ((WORD)0x03d4u)
+#define V9X_VGA_CRTC_DATA     ((WORD)0x03d5u)
+#define V9X_VGA_STATUS_1      ((WORD)0x03dau)
+#define V9X_VGA_STATUS_VBLANK 0x08u
+#define V9X_NV3_SR_LOCK       0x06u
+#define V9X_NV3_UNLOCK        0x57u
+#define V9X_NV3_LOCK          0x99u
+#define V9X_CRTC_SAMPLE_MS    500ul
 
 struct v9x_n3mm_register {
     DWORD offset;
@@ -642,6 +663,177 @@ static void v9x_finish(const char *result, UINT code)
     ExitProcess(code);
 }
 
+static BYTE v9x_crtc_read(BYTE index)
+{
+    v9x_outpb(V9X_VGA_CRTC_INDEX, index);
+    return v9x_inpb(V9X_VGA_CRTC_DATA);
+}
+
+static void v9x_crtc_write(BYTE index, BYTE value)
+{
+    v9x_outpb(V9X_VGA_CRTC_INDEX, index);
+    v9x_outpb(V9X_VGA_CRTC_DATA, value);
+}
+
+static BYTE v9x_seq_read(BYTE index)
+{
+    v9x_outpb(V9X_VGA_SEQ_INDEX, index);
+    return v9x_inpb(V9X_VGA_SEQ_DATA);
+}
+
+static void v9x_seq_write(BYTE index, BYTE value)
+{
+    v9x_outpb(V9X_VGA_SEQ_INDEX, index);
+    v9x_outpb(V9X_VGA_SEQ_DATA, value);
+}
+
+/* The CRTC registers the start address and the mode touch, under a key
+ * prefix: the VGA start (0C/0D), the offset (13), NV3's REPAINT_0/1 (19,
+ * 1A), the extended vertical bits (25), the pixel format (28) and
+ * EXTENDED_HORZ (2D) (envytools nv3 pcrtc.rst, riva_hw.c). */
+static void v9x_crtc_snapshot(const char *prefix)
+{
+    static const BYTE indexes[] = {
+        0x0cu, 0x0du, 0x13u, 0x19u, 0x1au, 0x25u, 0x28u, 0x2du
+    };
+    char key[24];
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(indexes); ++index) {
+        lstrcpyA(key, prefix);
+        v9x_hex(key + lstrlenA(key), indexes[index], 2);
+        v9x_key("Crtc", key, v9x_crtc_read(indexes[index]));
+    }
+}
+
+/* The start address as the CRTC holds it: CR0D bits 7-0, CR0C 15-8, CR19
+ * bits 4-0 20-16, in dwords (riva_hw.c SetStartAddress3). */
+static DWORD v9x_crtc_start(void)
+{
+    return (DWORD)v9x_crtc_read(0x0du) |
+           ((DWORD)v9x_crtc_read(0x0cu) << 8) |
+           (((DWORD)v9x_crtc_read(0x19u) & 0x1ful) << 16);
+}
+
+static void v9x_crtc_set_start(DWORD start)
+{
+    BYTE cr19;
+
+    v9x_crtc_write(0x0du, (BYTE)(start & 0xfful));
+    v9x_crtc_write(0x0cu, (BYTE)((start >> 8) & 0xfful));
+    cr19 = v9x_crtc_read(0x19u);
+    v9x_crtc_write(0x19u,
+                   (BYTE)((cr19 & 0xe0u) | (BYTE)((start >> 16) & 0x1ful)));
+}
+
+/* Wait for the next vertical blank to begin, bounded by time. */
+static int v9x_wait_blank_start(void)
+{
+    DWORD started = GetTickCount();
+
+    while ((v9x_inpb(V9X_VGA_STATUS_1) & V9X_VGA_STATUS_VBLANK) != 0u) {
+        if (GetTickCount() - started > 100ul) {
+            return 0;
+        }
+    }
+    while ((v9x_inpb(V9X_VGA_STATUS_1) & V9X_VGA_STATUS_VBLANK) == 0u) {
+        if (GetTickCount() - started > 100ul) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
+ * /crtc: what the scanout registers hold and whether they take a write,
+ * for Phase 5. Reads SR06 and the CRTC set locked, unlocks with SR06 =
+ * 57h and reads them again; counts vertical blanks on input status 1 for
+ * half a second (polls in blank against total gives the blank's share of
+ * a frame); then moves the start address down one row of the current
+ * pitch, reads it back, waits two blanks and puts the original back, and
+ * restores the lock if it was locked. The move is visible for about two
+ * frames. Nothing in BAR0 is touched.
+ */
+static void v9x_crtc_probe(void)
+{
+    BYTE misc;
+    BYTE lock_before;
+    BYTE lock_unlocked;
+    BYTE status;
+    BYTE last;
+    DWORD started;
+    DWORD polls = 0ul;
+    DWORD in_blank = 0ul;
+    DWORD blanks = 0ul;
+    DWORD original;
+    DWORD row_dwords;
+    DWORD moved;
+
+    misc = v9x_inpb(V9X_VGA_MISC_READ);
+    v9x_key("Crtc", "Misc", misc);
+    if ((misc & 0x01u) == 0u) {
+        v9x_text("Crtc", "Result", "mono-crtc-not-probed");
+        return;
+    }
+    lock_before = v9x_seq_read(V9X_NV3_SR_LOCK);
+    v9x_key("Crtc", "Sr06Before", lock_before);
+    v9x_crtc_snapshot("Locked");
+
+    v9x_seq_write(V9X_NV3_SR_LOCK, V9X_NV3_UNLOCK);
+    lock_unlocked = v9x_seq_read(V9X_NV3_SR_LOCK);
+    v9x_key("Crtc", "Sr06Unlocked", lock_unlocked);
+    v9x_crtc_snapshot("Unlocked");
+
+    last = (BYTE)(v9x_inpb(V9X_VGA_STATUS_1) & V9X_VGA_STATUS_VBLANK);
+    started = GetTickCount();
+    while (GetTickCount() - started < V9X_CRTC_SAMPLE_MS) {
+        status = (BYTE)(v9x_inpb(V9X_VGA_STATUS_1) & V9X_VGA_STATUS_VBLANK);
+        ++polls;
+        if (status != 0u) {
+            ++in_blank;
+        }
+        if (status != 0u && last == 0u) {
+            ++blanks;
+        }
+        last = status;
+    }
+    v9x_number("Crtc", "SampleMs", V9X_CRTC_SAMPLE_MS);
+    v9x_number("Crtc", "BlankStarts", blanks);
+    v9x_number("Crtc", "Polls", polls);
+    v9x_number("Crtc", "PollsInBlank", in_blank);
+
+    original = v9x_crtc_start();
+    v9x_key("Crtc", "StartDwords", original);
+    /* CR13 is the row offset in units of 8 bytes on VGA; NV3 extends it
+     * with CR19 bits 7-5 (bits 10-8). One row in dwords is twice it. */
+    row_dwords = ((DWORD)v9x_crtc_read(0x13u) |
+                  (((DWORD)v9x_crtc_read(0x19u) & 0xe0ul) << 3)) * 2ul;
+    v9x_key("Crtc", "RowDwords", row_dwords);
+    if (row_dwords == 0ul) {
+        v9x_text("Crtc", "MoveTest", "skipped-no-row");
+    } else {
+        v9x_wait_blank_start();
+        v9x_crtc_set_start(original + row_dwords);
+        moved = v9x_crtc_start();
+        v9x_key("Crtc", "StartAfterMove", moved);
+        v9x_wait_blank_start();
+        v9x_wait_blank_start();
+        v9x_crtc_set_start(original);
+        v9x_key("Crtc", "StartRestored", v9x_crtc_start());
+        v9x_text("Crtc", "MoveTest",
+                 moved == original + row_dwords ? "read-back-ok" :
+                                                  "read-back-differs");
+    }
+
+    /* Relock only if it was locked: whatever SR06 read before, a value
+     * other than the unlocked read means the write changed something. */
+    if (lock_before != lock_unlocked) {
+        v9x_seq_write(V9X_NV3_SR_LOCK, V9X_NV3_LOCK);
+    }
+    v9x_key("Crtc", "Sr06After", v9x_seq_read(V9X_NV3_SR_LOCK));
+    v9x_text("Crtc", "Result", "taken");
+}
+
 void __stdcall V9xNv3MmioEntry(void)
 {
     DWORD config;
@@ -668,6 +860,12 @@ void __stdcall V9xNv3MmioEntry(void)
     v9x_key("Report", "Bar1", v9x_config_read(config, 0x14ul));
     v9x_key("Report", "Subsystem", v9x_config_read(config, 0x2cul));
     v9x_key("Report", "RomBase", v9x_config_read(config, 0x30ul));
+
+    if (v9x_switch_given("/crtc")) {
+        v9x_text("Report", "Access", "vga-crtc-start-write");
+        v9x_crtc_probe();
+        v9x_finish("CRTC", 0u);
+    }
 
     v9x_request.config = config;
     v9x_request_list(v9x_global, sizeof(v9x_global) / sizeof(v9x_global[0]));

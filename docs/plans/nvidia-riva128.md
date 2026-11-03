@@ -141,7 +141,7 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    rewritten; a VBE mode set wipes RAMIN and leaves PMC_ENABLE and
    PFB_CONFIG_0. Still owed: overlapping blits in both directions, and
    B's RAMDAC switch to 5:5:5 watched on the monitor.
-4. **DirectDraw on the engine (seen working at 32 and 16 bpp, 8 owed).** Engine32 ops
+4. **DirectDraw on the engine (done, seen at 8, 16 and 32 bpp).** Engine32 ops
    (`fill`, `copy`, `wait_idle`) under engine type NV3 (13), at 8 and 32
    bpp only: builders in `src\chipsets\nvidia\nv3_2d.c` (host-tested
    against rivafb's tables and the probe's values), the HAL engine
@@ -157,8 +157,15 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    CPU fill and Lock waited on it without end; the engine never drew. Now
    it validates as idle at 16 bpp and declines per operation. Boot 15:
    V9XDDP `COMPLETE` from 16 and 32 bpp desktops, V9XDDF PASS at both
-   (engine at 32, CPU at 16). Still owed: an 8 bpp run.
-5. **Flips and vblank** through the CRTC start address.
+   (engine at 32, CPU at 16). 8 bpp: V9XDDF and V9XDDP pass on boot 15
+   ([record](../decisions/2026-11-03-riva128-crtc-start.md)).
+5. **Flips and vblank (done, not watched on the monitor).** CR0D, CR0C and
+   CR19 bits 4-0 behind SR06, measured by V9XN3MM `/crtc`; vblank from
+   input status 1, as every VGA-path chip. Boot 16: 69 flips handled,
+   none declined, the start seen at the back buffer during V9XDDP and at 0
+   after ([record](../decisions/2026-11-03-riva128-crtc-start.md)). Open:
+   whether the start latches at the retrace or applies at once (tearing),
+   which only the monitor shows.
 6. **GDI** on the engine, under the existing conservative GDI path.
 7. **Direct3D**: its own plan, after the 16 bpp decision. The D3D0 object
    is DX5-level, so this is the S3 ViRGE and Rage Pro class of HAL, not the

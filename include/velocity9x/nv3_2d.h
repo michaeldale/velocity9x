@@ -170,6 +170,21 @@ struct v9x_nv3_copy {
     v9x_u32 height;
 };
 
+/*
+ * The scanout start address, for page flips: CR0D bits 7-0, CR0C bits
+ * 15-8, CR19 bits 4-0 bits 20-16, in dwords (riva_hw.c SetStartAddress3;
+ * 86Box vid_nv3.h). CR19 bits 7-5 are the row offset's bits 10-8 (86Box;
+ * measured by V9XN3MM /crtc, where CR13 90h and CR19 20h gave the 3200-byte
+ * pitch at 800x600x32) and are kept. rivafb's CR2D bits 5-6 carry start
+ * bits 21-22, beyond 8 MiB, and are not written. CR19 reads 0 while SR06
+ * holds the extended registers locked, so it is read unlocked.
+ */
+struct v9x_nv3_crtc_start {
+    v9x_u8 cr0d;
+    v9x_u8 cr0c;
+    v9x_u8 cr19;
+};
+
 v9x_status v9x_nv3_build_setup(v9x_u32 bytes_per_pixel, v9x_u32 width,
                                v9x_u32 height, v9x_u32 pitch_bytes,
                                struct v9x_nv3_setup *setup);
@@ -180,5 +195,8 @@ v9x_status v9x_nv3_build_fill(const struct v9x_nv3_fill *fill,
 v9x_status v9x_nv3_build_copy(const struct v9x_nv3_copy *copy,
                               struct v9x_nv3_op *op);
 v9x_u16 v9x_nv3_depth_drawn(v9x_u32 bytes_per_pixel);
+v9x_status v9x_nv3_build_crtc_start(v9x_u32 byte_offset, v9x_u32 vram_bytes,
+                                    v9x_u8 cr19,
+                                    struct v9x_nv3_crtc_start *start);
 
 #endif

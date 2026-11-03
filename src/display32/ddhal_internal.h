@@ -526,6 +526,11 @@ int v9x_sis_set_display_start(DWORD byte_offset);
  * blank. */
 int v9x_mga_scanout_active(void);
 int v9x_mga_set_display_start(DWORD byte_offset);
+/* The RIVA 128's start address (CR0D, CR0C, CR19<4:0> behind SR06), in
+ * engines/eng_nv3.c: active only for NV3 stamped with
+ * V9X_DD_ENGINE_CAP_FLIP. */
+int v9x_nv3_scanout_active(void);
+int v9x_nv3_set_display_start(DWORD byte_offset);
 /* Haswell's plane A, in engines/hsw_scanout.c: active only for
  * INTEL_GEN75 stamped with V9X_DD_ENGINE_CAP_FLIP. A flip is written at
  * any line and pending until DSPASURFLIVE reads the base written. */

@@ -69,8 +69,11 @@ static void v9x_riva128_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_RIVA128_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_NV3;
+    /* FLIP: the HAL writes the CRTC start (eng_nv3.c); no BAR0 register is
+     * involved, but it rides with the engine's claim on the measured card. */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
 }
 
 /* Where RAMIN starts in video memory, for the HAL; 0 off the measured

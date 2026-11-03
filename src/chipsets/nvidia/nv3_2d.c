@@ -138,6 +138,35 @@ v9x_u16 v9x_nv3_depth_drawn(v9x_u32 bytes_per_pixel)
            V9X_TRUE : V9X_FALSE;
 }
 
+/* Start bits the CRTC holds: 21 bits of dwords (CR19 bits 4-0 the top
+ * five), 8 MiB. */
+#define V9X_NV3_CRTC_START_LIMIT  0x00200000ul
+#define V9X_NV3_CR19_START_MASK   0x1fu
+
+/*
+ * A start the registers cannot express is refused, not rounded: a byte
+ * offset that is not a whole dword would need the attribute controller's
+ * pan register, which rivafb writes and this does not, and rounding shifts
+ * every pixel of the frame.
+ */
+v9x_status v9x_nv3_build_crtc_start(v9x_u32 byte_offset, v9x_u32 vram_bytes,
+                                    v9x_u8 cr19,
+                                    struct v9x_nv3_crtc_start *start)
+{
+    v9x_u32 dwords = byte_offset >> 2;
+
+    if (start == 0 || (byte_offset & 3ul) != 0ul ||
+        byte_offset >= vram_bytes || dwords >= V9X_NV3_CRTC_START_LIMIT) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    start->cr0d = (v9x_u8)(dwords & 0xfful);
+    start->cr0c = (v9x_u8)((dwords >> 8) & 0xfful);
+    start->cr19 = (v9x_u8)((cr19 & (v9x_u8)~V9X_NV3_CR19_START_MASK) |
+                           (v9x_u8)((dwords >> 16) &
+                                    V9X_NV3_CR19_START_MASK));
+    return V9X_STATUS_OK;
+}
+
 v9x_u32 v9x_nv3_ramin_vram_offset(v9x_u32 vram_top, v9x_u32 ramin_offset)
 {
     return vram_top - V9X_NV3_RAMIN_UNIT -

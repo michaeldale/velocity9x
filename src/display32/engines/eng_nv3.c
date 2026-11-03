@@ -341,6 +341,69 @@ static int v9x_nv3_can_blt(void)
     return v9x_nv3_wait_idle(0);
 }
 
+/*
+ * The display start, for page flips, at every depth: the CRTC does not
+ * involve the drawing engine.
+ *
+ * The VGA fallback cannot serve: its high bits go to S3's CR69. The
+ * encoding is v9x_nv3_build_crtc_start, host-tested. CR19 is behind the
+ * SR06 lock (57h unlocks, 99h locks, riva_hw.c nv3LockUnlock), and while
+ * locked it reads 0, so the lock is opened around the write and closed
+ * again only if it was closed: V9XN3MM /crtc read SR06 0 locked and 1
+ * unlocked, on every depth (docs\decisions\2026-11-03-riva128-crtc-start.md).
+ *
+ * Written straight to the CRTC with the core's default timing, as the
+ * S3 parts are: done at the next retrace start. Whether NV3 latches the
+ * start at the retrace, as VGA does, or applies it at once is not
+ * measured; under the second this tears, and does not release a buffer
+ * still on screen.
+ */
+#define V9X_NV3_SEQ_INDEX  0x03c4u
+#define V9X_NV3_SEQ_DATA   0x03c5u
+#define V9X_NV3_SR_LOCK    0x06u
+#define V9X_NV3_UNLOCK     0x57u
+#define V9X_NV3_LOCK       0x99u
+#define V9X_NV3_SR06_OPEN  0x01u
+
+int v9x_nv3_scanout_active(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
+        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_NV3) {
+        return 0;
+    }
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
+}
+
+int v9x_nv3_set_display_start(DWORD byte_offset)
+{
+    struct v9x_nv3_crtc_start start;
+    unsigned char lock;
+    int result = 0;
+
+    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul) {
+        return 0;
+    }
+    v9x_outp(V9X_NV3_SEQ_INDEX, V9X_NV3_SR_LOCK);
+    lock = v9x_inp(V9X_NV3_SEQ_DATA);
+    if (lock != V9X_NV3_SR06_OPEN) {
+        v9x_outp(V9X_NV3_SEQ_DATA, V9X_NV3_UNLOCK);
+    }
+    if (v9x_nv3_build_crtc_start(byte_offset, v9x_hal->fb.vram_bytes,
+                                 v9x_read_crtc(0x19u), &start) ==
+            V9X_STATUS_OK) {
+        v9x_write_crtc(0x0du, start.cr0d);
+        v9x_write_crtc(0x0cu, start.cr0c);
+        v9x_write_crtc(0x19u, start.cr19);
+        result = 1;
+    }
+    if (lock != V9X_NV3_SR06_OPEN) {
+        v9x_outp(V9X_NV3_SEQ_INDEX, V9X_NV3_SR_LOCK);
+        v9x_outp(V9X_NV3_SEQ_DATA, V9X_NV3_LOCK);
+    }
+    return result;
+}
+
 const V9X_ENGINE32_OPS v9x_engine32_nv3 = {
     v9x_nv3_ready,
     v9x_nv3_validate,

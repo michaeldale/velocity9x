@@ -274,6 +274,41 @@ static void test_depth_drawn(void)
     CHECK(v9x_nv3_depth_drawn(0ul) == V9X_FALSE);
 }
 
+/*
+ * The scanout start: CR0D, CR0C and CR19 bits 4-0, in dwords, CR19 bits
+ * 7-5 (the row offset's bits 10-8) kept. Values from the /crtc probe on
+ * M-7V636C: at 800x600x32 CR19 read 20h unlocked and a start one row down
+ * (3200 bytes, 320h dwords) read back as written.
+ */
+static void test_crtc_start(void)
+{
+    struct v9x_nv3_crtc_start start;
+
+    CHECK(v9x_nv3_build_crtc_start(3200ul, 0x00800000ul, 0x20u, &start) ==
+          V9X_STATUS_OK);
+    CHECK(start.cr0d == 0x20u && start.cr0c == 0x03u && start.cr19 == 0x20u);
+
+    /* The top bits: 7F7FFCh bytes is 1FDFFFh dwords, CR19 bits 4-0 1Fh,
+     * the row bits kept. */
+    CHECK(v9x_nv3_build_crtc_start(0x007f7ffcul, 0x00800000ul, 0xe5u,
+                                   &start) == V9X_STATUS_OK);
+    CHECK(start.cr0d == 0xffu && start.cr0c == 0xdfu && start.cr19 == 0xffu);
+
+    /* Zero clears the start bits only. */
+    CHECK(v9x_nv3_build_crtc_start(0ul, 0x00800000ul, 0x3fu, &start) ==
+          V9X_STATUS_OK);
+    CHECK(start.cr0d == 0u && start.cr0c == 0u && start.cr19 == 0x20u);
+
+    /* Refused: not a whole dword (the pan register is not used), past the
+     * memory, and past 21 bits of dwords on a larger card. */
+    CHECK(v9x_nv3_build_crtc_start(3202ul, 0x00800000ul, 0u, &start) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_nv3_build_crtc_start(0x00800000ul, 0x00800000ul, 0u, &start) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_nv3_build_crtc_start(0x00800000ul, 0x01000000ul, 0u, &start) !=
+          V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_nv3_2d_tests(void)
 {
     failures = 0u;
@@ -285,5 +320,6 @@ unsigned int v9x_run_nv3_2d_tests(void)
     test_fill_placement();
     test_copy();
     test_depth_drawn();
+    test_crtc_start();
     return failures;
 }
