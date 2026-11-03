@@ -101,7 +101,9 @@ the DMA object's flag bits; 86Box draws no 3D.
      **Specular done, boot 32
      ([record](../decisions/2026-11-04-riva128-specular.md)):** folded
      into untextured colours, a second add pass after textured triangles;
-     213 of 227.
+     213 of 227. **"Z with perspective" was never a failure
+     ([record](../decisions/2026-11-04-riva128-zprivate.md)):** the D3DZP
+     keys run only under V9XDDP `/zprivate`, where both pass (boot 32).
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and
