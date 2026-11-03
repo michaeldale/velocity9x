@@ -15,6 +15,8 @@
  * 1400h (only the D3D object refers to them, and the page table overlaps
  * RAMRO and RAMFC), the D3D, surface and pixmap RAMHT entries' use, and
  * every mode-setting register (CRTC, PRAMDAC): the VBE has set the mode.
+ * /d3d adds the D3D object and a short DMA object and draws one triangle
+ * instead (Phase 7; see v9x_run_d3d).
  *
  * /all also runs at 800x600x8 and 800x600x32, switching with
  * ChangeDisplaySettings and back afterwards; before each run's own
@@ -50,6 +52,8 @@
 
 #define V9X_OP_MMIO_READ     1ul
 #define V9X_OP_MMIO_WRITE    2ul
+#define V9X_OP_VRAM_WRITE    3ul
+#define V9X_OP_VRAM_FILL     5ul
 #define V9X_OP_VRAM_BLOCK    6ul
 #define V9X_OP_WAIT_MMIO     7ul
 #define V9X_OP_WAIT_IDLE     8ul
@@ -427,17 +431,53 @@ static DWORD v9x_pattern_byte(DWORD byte_index)
 #define V9X_COLOR_FORMAT_MASK   0x00000007ul
 #define V9X_COLOR_FORMAT_Y16    0x00000004ul
 
-/* The bring-up and the test for one depth, as one op list. */
-static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
-                      DWORD colour_b, int y16)
+/*
+ * /d3d: rivafb's D3D pieces, which the 2D runs leave out. RAMHT entry
+ * 80000013h with context 00D70347h (type 17h, the D3D textured triangle;
+ * instance 347h), its instance words 10419208h (X1R5G5B5, zeta enabled,
+ * destination surface mask 4: surface 2, zeta surface 3, per
+ * nv3_pgraph.xml's grobj options) and 140h (the DMA object at RAMIN 1400h),
+ * and the binding to subchannel 7 (RivaTableFIFO; riva_hw.c's Tri03 at
+ * USER + E000h). rivafb's DMA object maps all 8 MiB with 800h page entries,
+ * which run over RAMRO and RAMFC at 2000h; this one maps only the scratch
+ * window's 16 pages, so texture offsets are from the window's start.
+ */
+#define V9X_SUB_D3D            7ul
+#define V9X_D3D_HANDLE         0x80000013ul
+#define V9X_D3D_RAMHT          0x0930ul
+#define V9X_D3D_CONTEXT        0x00d70347ul
+#define V9X_D3D_INSTANCE       0x3470ul
+#define V9X_D3D_OPTIONS        0x10419208ul
+#define V9X_D3D_DMA_INSTANCE   0x0140ul
+#define V9X_D3D_DMA            0x1400ul
+#define V9X_D3D_DMA_FLAGS      0x00010000ul
+#define V9X_D3D_DMA_PAGES      16ul
+#define V9X_D3D_PAGE           0x1000ul
+#define V9X_D3D_PTE_PRESENT_RW 0x00000003ul
+/* Within the scratch window: the zeta surface (16 lines of 1600 bytes, to
+ * E400h) and the texture after it. Runs one to six put the texture at
+ * C000h, inside the zeta surface, whose clear zeroed it: every video
+ * memory texel read 0 and the bug looked like the DMA object's. */
+#define V9X_D3D_ZETA           0x8000ul
+#define V9X_D3D_TEXTURE        0xf000ul
+#define V9X_D3D_LINES          16ul
+static int v9x_d3d;
+/* The DMA object's flags word and its first page entry's address, varied
+ * by the fourth /d3d run (see v9x_d3d_fog below). */
+static DWORD v9x_d3d_dma_flags = V9X_D3D_DMA_FLAGS;
+static DWORD v9x_d3d_pte_base = V9X_SURFACE_OFFSET;
+
+/* The bring-up for one depth, appended to the op list. */
+static void v9x_bring_up(DWORD bytes, DWORD pitch, int y16)
 {
     const DWORD *instance;
     DWORD surf_config;
     DWORD depth_field;
     DWORD index;
     DWORD word;
+    DWORD lines;
 
-    v9x_request.count = 0ul;
+    lines = v9x_d3d ? V9X_D3D_LINES : V9X_LINES;
     if (bytes == 1ul) {
         instance = v9x_instance_8;
         surf_config = 0x00001111ul;
@@ -459,7 +499,7 @@ static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
     v9x_at_pfb_before = v9x_read(V9X_PFB_CONFIG_0);
 
     v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
-    v9x_op(V9X_OP_VRAM_PATTERN, 0ul, (V9X_LINES * pitch) / 4ul, V9X_SEED);
+    v9x_op(V9X_OP_VRAM_PATTERN, 0ul, (lines * pitch) / 4ul, V9X_SEED);
 
     /* RivaTablePMC, RivaTablePTIMER. */
     v9x_write(V9X_PMC_INTR_EN, 0x00000000ul);
@@ -496,17 +536,40 @@ static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
         }
         v9x_op(V9X_OP_RAMIN_WRITE, v9x_instances[index], word, 0ul);
     }
+    if (v9x_d3d) {
+        v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_RAMHT, V9X_D3D_HANDLE, 0ul);
+        v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_RAMHT + 4ul, V9X_D3D_CONTEXT,
+               0ul);
+        v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_INSTANCE, V9X_D3D_OPTIONS, 0ul);
+        v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_INSTANCE + 4ul,
+               V9X_D3D_DMA_INSTANCE, 0ul);
+        /* nv3TablePRAMIN's DMA object: flags, limit, then page entries
+         * (riva_hw.c writes (i << 12) | 3), here the scratch window's. */
+        v9x_op(V9X_OP_RAMIN_FILL, V9X_D3D_DMA,
+               (8ul + V9X_D3D_DMA_PAGES * 4ul) / 4ul, 0ul);
+        v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_DMA, v9x_d3d_dma_flags, 0ul);
+        v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_DMA + 4ul,
+               V9X_D3D_DMA_PAGES * V9X_D3D_PAGE - 1ul, 0ul);
+        for (index = 0ul; index < V9X_D3D_DMA_PAGES; ++index) {
+            v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_DMA + 8ul + index * 4ul,
+                   (v9x_d3d_pte_base + index * V9X_D3D_PAGE) |
+                   V9X_D3D_PTE_PRESENT_RW, 0ul);
+        }
+    }
 
     for (index = 0ul; index < sizeof(v9x_pgraph) / sizeof(v9x_pgraph[0]);
          ++index) {
         v9x_write(v9x_pgraph[index].offset, v9x_pgraph[index].value);
     }
     v9x_write(V9X_PGRAPH_SURF_CFG, surf_config);
-    /* Surface 0, the destination, v9x_dst_shift lines below the others. */
+    /* Surface 0, the destination, v9x_dst_shift lines below the others;
+     * for /d3d, surface 3, the zeta surface, in its own part of the
+     * window. */
     for (index = 0ul; index < 4ul; ++index) {
         v9x_write(V9X_PGRAPH_SURF_OFF + index * 4ul,
                   V9X_SURFACE_OFFSET +
-                  (index == 0ul ? v9x_dst_shift * pitch : 0ul));
+                  (index == 0ul ? v9x_dst_shift * pitch : 0ul) +
+                  (v9x_d3d && index == 3ul ? V9X_D3D_ZETA : 0ul));
         v9x_write(V9X_PGRAPH_SURF_PITCH + index * 4ul, pitch);
     }
 
@@ -515,6 +578,9 @@ static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
         v9x_method(v9x_bindings[index].offset, 0ul,
                    v9x_bindings[index].value);
     }
+    if (v9x_d3d) {
+        v9x_method(V9X_SUB_D3D, 0ul, V9X_D3D_HANDLE);
+    }
     v9x_op(V9X_OP_WAIT_MMIO, V9X_PGRAPH_STATUS, 1ul, 0ul);
     v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
     v9x_op(V9X_OP_LATCH_FREE, 0ul, 0ul, 0ul);
@@ -522,12 +588,22 @@ static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
 
     /* rivafb riva_setup_accel and riva_set_rop_solid. */
     v9x_method(V9X_SUB_CLIP, V9X_M_CLIP_POINT, 0ul);
-    v9x_method(V9X_SUB_CLIP, V9X_M_CLIP_SIZE, V9X_WIDTH | (V9X_LINES << 16));
+    v9x_method(V9X_SUB_CLIP, V9X_M_CLIP_SIZE, V9X_WIDTH | (lines << 16));
     v9x_method(V9X_SUB_PATTERN, V9X_M_PATTERN_COLOR0, 0xfffffffful);
     v9x_method(V9X_SUB_PATTERN, V9X_M_PATTERN_COLOR1, 0xfffffffful);
     v9x_method(V9X_SUB_PATTERN, V9X_M_PATTERN_MONO0, 0xfffffffful);
     v9x_method(V9X_SUB_PATTERN, V9X_M_PATTERN_MONO1, 0xfffffffful);
     v9x_method(V9X_SUB_ROP, V9X_M_ROP3, V9X_ROP_SRCCOPY);
+}
+
+/* The bring-up and the 2D test for one depth, as one op list. */
+static void v9x_build(DWORD bytes, DWORD pitch, DWORD colour_a,
+                      DWORD colour_b, int y16)
+{
+    DWORD index;
+
+    v9x_request.count = 0ul;
+    v9x_bring_up(bytes, pitch, y16);
 
     /* rivafb_fillrect: x in the high half of the point. */
     v9x_method(V9X_SUB_BITMAP, V9X_M_RECT_COLOR, colour_a);
@@ -837,6 +913,331 @@ static int v9x_run_depth(HANDLE device, DWORD bits, int y16,
     return pass;
 }
 
+/*
+ * /d3d, Phase 7's first question: does the D3D object draw a triangle, and
+ * what does it write. One right triangle, (8,2) (72,2) (8,14), on a 16 bpp
+ * surface (X1R5G5B5, as rivafb draws 3D) in the scratch window, read back
+ * and compared with the pattern under it. The video mode is irrelevant:
+ * nothing here is on screen.
+ *
+ * The triangle trigger is envytools' (nvhw/pgraph.c pgraph_prep_draw,
+ * class 17h): each vertex is stored into the slot its specular word's low
+ * nibble names when its V coordinate arrives, and then each of the
+ * nibble triples 0-2 and 3-5 that holds three distinct slots draws that
+ * triangle. So v0 and v1 carry one repeated slot number and draw nothing,
+ * and v2 carries slots 2, 0, 1 in the first triple. The draw also needs
+ * the texture offset, format, filter, config and fog colour all set (the
+ * same function's valid bits 23-27). Coordinates are IEEE floats,
+ * converted by the engine (nvhw/pgraph_d3d_nv3.c).
+ *
+ * Two runs: "Flat", a white texture under a red vertex colour, and
+ * "Textured", a red and blue 4x4-block checker under white. Between them
+ * they show whether the texture modulates or replaces the vertex colour.
+ */
+#define V9X_M_D3D_TEX_OFFSET   0x304ul
+#define V9X_M_D3D_TEX_FORMAT   0x308ul
+#define V9X_M_D3D_FILTER       0x30cul
+#define V9X_M_D3D_FOG_COLOR    0x310ul
+#define V9X_M_D3D_CONFIG       0x314ul
+#define V9X_M_D3D_ALPHA        0x318ul
+#define V9X_M_D3D_VERTEX       0x1000ul
+/* nv3_3d.xml: A1R5G5B5, 8x8 (log2 3 for both sizes). */
+#define V9X_D3D_TEX_FORMAT     0x33000000ul
+/* nv3_3d.xml CONFIG: wrap U and V (1), source colour NORMAL (1), no
+ * culling (1), Z ALWAYS (8), zeta writes NEVER, colour writes ALWAYS (4),
+ * blend with source alpha. Inside hwtest's valid mask F77FBDF3h. */
+#define V9X_D3D_CONFIG         0x04081150ul
+/* ALPHA: function ALWAYS (8), reference 0. */
+#define V9X_D3D_ALPHA          0x00000800ul
+#define V9X_D3D_TEX_SIZE       8ul
+#define V9X_FLOAT_ONE          0x3f800000ul
+#define V9X_FLOAT_HALF         0x3f000000ul
+/* Specular words: fog 255 (none, as Direct3D's specular alpha), slots. */
+#define V9X_D3D_SPEC_V0        0x00000000ul
+#define V9X_D3D_SPEC_V1        0x00111111ul
+#define V9X_D3D_SPEC_V2        0x00222102ul
+#define V9X_D3D_FOG_SHIFT      24u
+/*
+ * The second run (boot 18) drew black with ROP ADD over a cleared surface:
+ * the source colour itself is 0. The third varies what could make it so:
+ * the fog factor in the specular word's top byte and the fog colour (a
+ * factor read the other way from Direct3D's fogs everything to the fog
+ * colour). nv3_3d.xml's other source colours need CONFIG bit 9, which
+ * hwtest's valid mask treats as reserved, so they are not tried.
+ */
+static DWORD v9x_d3d_fog = 0xfful;
+static DWORD v9x_d3d_fog_color;
+/*
+ * The third run (boot 18): fog 255 with a white fog colour drew white
+ * everywhere, so the NV3 reads that byte as the fog amount, the reverse of
+ * Direct3D's specular alpha; fog 0 still drew black under a white texture,
+ * so the texel fetch returns 0. rivafb's DMA object never drew a texture
+ * (its Tri03 is a pointer nothing uses), so the fourth run varies it: the
+ * flags word's bits 24-25 (nv3_pgraph.xml DMA_FLAGS UNK24, a target by
+ * the look of NV4's objects) and page entries holding the framebuffer's bus
+ * address in place of video memory offsets. A target that reads system
+ * memory reads it, nothing more: the texture is only read. The two
+ * variables are declared with v9x_d3d, which the bring-up reads.
+ */
+#define V9X_D3D_SAMPLES        5u
+/*
+ * The first run on M-7V636C (boot 18) rasterised the triangle and wrote
+ * the destination back unchanged but for bit 15, cleared, in both runs: a
+ * blend whose source factor was zero. The variants after it clear the
+ * surface to 0 first and change CONFIG's blend: ROP ADD (bit 28) shows the
+ * source whatever its alpha; DST_BLEND ZERO (bit 30) shows the source
+ * scaled by its factor.
+ */
+#define V9X_D3D_ROP_ADD        0x10000000ul
+#define V9X_D3D_DST_ZERO       0x40000000ul
+static DWORD v9x_d3d_config = V9X_D3D_CONFIG;
+static int v9x_d3d_clear;
+
+static const DWORD v9x_d3d_sample_x[V9X_D3D_SAMPLES] = { 12ul, 30ul, 9ul, 60ul, 100ul };
+static const DWORD v9x_d3d_sample_y[V9X_D3D_SAMPLES] = { 3ul, 4ul, 12ul, 2ul, 5ul };
+static DWORD v9x_at_d3d_after;
+
+/* A whole number below 2^23 as IEEE single bits; no floating point here,
+ * so no C runtime. */
+static DWORD v9x_float_of(DWORD value)
+{
+    DWORD exponent;
+
+    if (value == 0ul) {
+        return 0ul;
+    }
+    exponent = 0ul;
+    while ((value >> (exponent + 1ul)) != 0ul) {
+        ++exponent;
+    }
+    return ((127ul + exponent) << 23) |
+           ((value << (23ul - exponent)) & 0x007ffffful);
+}
+
+static void v9x_d3d_vertex(DWORD specular, DWORD colour, DWORD x, DWORD y,
+                           DWORD u, DWORD v)
+{
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x00ul, specular);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x04ul, colour);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x08ul, v9x_float_of(x));
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x0cul, v9x_float_of(y));
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x10ul, V9X_FLOAT_HALF);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x14ul, V9X_FLOAT_ONE);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x18ul, u);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x1cul, v);
+}
+
+static const DWORD v9x_d3d_after_offsets[] = {
+    0x400100ul, 0x400104ul, 0x4006b0ul, 0x4006b4ul, 0x4006b8ul, 0x4006bcul,
+    0x400644ul, 0x4006c8ul, 0x002100ul, 0x800010ul,
+    0x401100ul, 0x401210ul, 0x401220ul, 0x401230ul, 0x401240ul,
+    0x401250ul, 0x401270ul, 0x401280ul, 0x401800ul
+};
+static const char * const v9x_d3d_after_names[] = {
+    "PGRAPH_INTR_0", "PGRAPH_INTR_1", "PGRAPH_STATUS", "TRAPPED_ADDR",
+    "TRAPPED_DATA", "TRAPPED_GINST", "D3D_CONFIG", "D3D_ALPHA",
+    "PFIFO_INTR_0", "USER_FREE",
+    "DMA_INTR", "DMA_FLAGS", "DMA_LIMIT", "DMA_PTE", "DMA_PTE_TAG",
+    "DMA_ADDR_VIRT_ADJ", "DMA_BYTES", "DMA_INST", "DMA_OFFSET_0"
+};
+#define V9X_D3D_AFTER_COUNT \
+    (sizeof(v9x_d3d_after_offsets) / sizeof(v9x_d3d_after_offsets[0]))
+
+static void v9x_build_d3d(DWORD pitch, int textured)
+{
+    DWORD texel;
+    DWORD row;
+    DWORD column;
+    DWORD index;
+    DWORD colour;
+
+    v9x_request.count = 0ul;
+    v9x_bring_up(2ul, pitch, 0);
+
+    /* The texture, two texels a dword; the zeta surface cleared. */
+    for (row = 0ul; row < V9X_D3D_TEX_SIZE; ++row) {
+        for (column = 0ul; column < V9X_D3D_TEX_SIZE; column += 2ul) {
+            if (!textured) {
+                texel = 0xfffffffful;
+            } else if (((row / 4ul) ^ (column / 4ul)) & 1ul) {
+                texel = 0x801f801ful;  /* blue, alpha 1 */
+            } else {
+                texel = 0xfc00fc00ul;  /* red, alpha 1 */
+            }
+            v9x_op(V9X_OP_VRAM_WRITE, V9X_D3D_TEXTURE +
+                   (row * V9X_D3D_TEX_SIZE + column) * 2ul, texel, 0ul);
+        }
+    }
+    v9x_op(V9X_OP_VRAM_FILL, V9X_D3D_ZETA, (V9X_D3D_LINES * pitch) / 4ul,
+           0ul);
+    if (v9x_d3d_clear) {
+        v9x_op(V9X_OP_VRAM_FILL, 0ul, (V9X_D3D_LINES * pitch) / 4ul, 0ul);
+    }
+
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_OFFSET, V9X_D3D_TEXTURE);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_FORMAT, V9X_D3D_TEX_FORMAT);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_FILTER, 0ul);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_FOG_COLOR, v9x_d3d_fog_color);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_CONFIG, v9x_d3d_config);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_ALPHA, V9X_D3D_ALPHA);
+    v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+
+    colour = textured ? 0xfffffffful : 0xffff0000ul;
+    v9x_d3d_vertex(V9X_D3D_SPEC_V0 | (v9x_d3d_fog << V9X_D3D_FOG_SHIFT),
+                   colour, 8ul, 2ul, 0ul, 0ul);
+    v9x_d3d_vertex(V9X_D3D_SPEC_V1 | (v9x_d3d_fog << V9X_D3D_FOG_SHIFT),
+                   colour, 72ul, 2ul, V9X_FLOAT_ONE, 0ul);
+    v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+    v9x_d3d_vertex(V9X_D3D_SPEC_V2 | (v9x_d3d_fog << V9X_D3D_FOG_SHIFT),
+                   colour, 8ul, 14ul, 0ul, V9X_FLOAT_ONE);
+    v9x_at_idle_fill = v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+
+    v9x_op(V9X_OP_VRAM_BLOCK, 0ul, (V9X_D3D_LINES * pitch) / 4ul, 0ul);
+    v9x_at_d3d_after = v9x_request.count;
+    for (index = 0ul; index < V9X_D3D_AFTER_COUNT; ++index) {
+        v9x_read(v9x_d3d_after_offsets[index]);
+    }
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+}
+
+/* Pixel centres inside (8,2) (72,2) (8,14), doubled to stay integral:
+ * (2x+1-16)*12 + (2y+1-4)*64 <= 1536. */
+static int v9x_d3d_inside(DWORD x, DWORD y)
+{
+    long dx = 2l * (long)x + 1l - 16l;
+    long dy = 2l * (long)y + 1l - 4l;
+
+    return dx >= 0l && dy >= 0l && dx * 12l + dy * 64l <= 1536l;
+}
+
+static int v9x_run_d3d(HANDLE device, int textured, const char *section)
+{
+    const BYTE *got;
+    DWORD pitch;
+    DWORD returned;
+    DWORD x;
+    DWORD y;
+    DWORD have;
+    DWORD want;
+    DWORD changed_in;
+    DWORD changed_out;
+    DWORD unchanged_in;
+    DWORD min_x;
+    DWORD min_y;
+    DWORD max_x;
+    DWORD max_y;
+    DWORD values[8];
+    DWORD counts[8];
+    DWORD distinct;
+    DWORD index;
+    char key[24];
+    BOOL ok;
+
+    pitch = V9X_WIDTH * 2ul;
+    v9x_build_d3d(pitch, textured);
+    v9x_number(section, "Ops", v9x_request.count);
+    v9x_key(section, "Config", v9x_d3d_config);
+
+    returned = 0ul;
+    ok = DeviceIoControl(device, V9X_N32D_RUN, &v9x_request,
+                         sizeof(v9x_request), &v9x_result,
+                         sizeof(v9x_result), &returned, 0);
+    if (!ok || returned != sizeof(v9x_result) ||
+        v9x_result.magic != V9X_N32D_MAGIC) {
+        v9x_text(section, "Result", "DIOC-FAILED");
+        return 0;
+    }
+    v9x_key(section, "Status", v9x_result.status);
+    v9x_number(section, "Executed", v9x_result.executed);
+    if ((v9x_result.status & V9X_ST_COMPLETE) == 0ul) {
+        v9x_number(section, "RefusedIndex", v9x_result.refused_index);
+        v9x_text(section, "Result", "REFUSED-OR-UNMAPPED");
+        return 0;
+    }
+    if ((v9x_result.status & V9X_ST_TIMEOUT) != 0ul) {
+        v9x_text(section, "Timeout", "yes");
+    }
+    v9x_key(section, "FreeLatched", v9x_result.empty);
+    v9x_key(section, "IdleDrawReads",
+            v9x_result.op_results[v9x_at_idle_fill]);
+    for (index = 0ul; index < V9X_D3D_AFTER_COUNT; ++index) {
+        v9x_key(section, v9x_d3d_after_names[index],
+                v9x_result.op_results[v9x_at_d3d_after + index]);
+    }
+
+    got = (const BYTE *)v9x_result.block;
+    changed_in = 0ul;
+    changed_out = 0ul;
+    unchanged_in = 0ul;
+    min_x = 0xfffffffful;
+    min_y = 0xfffffffful;
+    max_x = 0ul;
+    max_y = 0ul;
+    distinct = 0ul;
+    for (y = 0ul; y < V9X_D3D_LINES; ++y) {
+        for (x = 0ul; x < V9X_WIDTH; ++x) {
+            want = v9x_d3d_clear ? 0ul :
+                   v9x_pattern_byte(y * pitch + x * 2ul) |
+                   (v9x_pattern_byte(y * pitch + x * 2ul + 1ul) << 8);
+            have = v9x_pixel(got, 2ul, pitch, x, y);
+            if (have == want) {
+                if (v9x_d3d_inside(x, y)) {
+                    ++unchanged_in;
+                }
+                continue;
+            }
+            if (v9x_d3d_inside(x, y)) {
+                ++changed_in;
+            } else {
+                ++changed_out;
+            }
+            min_x = x < min_x ? x : min_x;
+            min_y = y < min_y ? y : min_y;
+            max_x = x > max_x ? x : max_x;
+            max_y = y > max_y ? y : max_y;
+            for (index = 0ul; index < distinct; ++index) {
+                if (values[index] == have) {
+                    break;
+                }
+            }
+            if (index < distinct) {
+                ++counts[index];
+            } else if (distinct < 8ul) {
+                values[distinct] = have;
+                counts[distinct] = 1ul;
+                ++distinct;
+            }
+        }
+    }
+    v9x_number(section, "ChangedInside", changed_in);
+    v9x_number(section, "ChangedOutside", changed_out);
+    v9x_number(section, "UnchangedInside", unchanged_in);
+    if (changed_in + changed_out != 0ul) {
+        v9x_key(section, "BoxMinYX", (min_y << 16) | min_x);
+        v9x_key(section, "BoxMaxYX", (max_y << 16) | max_x);
+    }
+    for (index = 0ul; index < distinct; ++index) {
+        lstrcpyA(key, "Value");
+        v9x_decimal(key + 5, index);
+        v9x_key(section, key, (values[index] << 16) | counts[index]);
+    }
+    for (index = 0ul; index < V9X_D3D_SAMPLES; ++index) {
+        lstrcpyA(key, "Sample");
+        v9x_decimal(key + 6, index);
+        v9x_key(section, key,
+                (v9x_d3d_sample_y[index] << 24) |
+                (v9x_d3d_sample_x[index] << 16) |
+                v9x_pixel(got, 2ul, pitch, v9x_d3d_sample_x[index],
+                          v9x_d3d_sample_y[index]));
+    }
+    /* A draw that touched nothing outside the triangle and most of the
+     * inside; the edges' rule is what this run measures, not assumes. */
+    ok = changed_in != 0ul && changed_out <= 64ul &&
+         unchanged_in <= changed_in / 4ul;
+    v9x_text(section, "Result", ok ? "PASS" : "FAIL");
+    return ok ? 1 : 0;
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -925,6 +1326,54 @@ void __stdcall V9xNv32dEntry(void)
         v9x_key("Report", "LoadError", GetLastError());
         WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
         ExitProcess(2u);
+    }
+
+    if (v9x_switch_given("/d3d")) {
+        /* The engine's depth field is the desktop's (PFB_CONFIG_0); the
+         * 3D object draws 16 bpp, so the desktop has to be 16. */
+        if (bits != 16ul) {
+            v9x_text("Report", "Result", "D3D-NEEDS-16BPP");
+            CloseHandle(device);
+            WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
+            ExitProcess(1u);
+        }
+        v9x_d3d = 1;
+        v9x_d3d_clear = 1;
+        v9x_d3d_config = V9X_D3D_CONFIG | V9X_D3D_ROP_ADD;
+        /* The control: fog 255 to a white fog colour draws white. */
+        v9x_d3d_fog_color = 0x00fffffful;
+        all_pass = v9x_run_d3d(device, 0, "D3DFogWhite");
+        v9x_key("Report", "Bar1", v9x_result.bar1);
+        v9x_d3d_fog_color = 0ul;
+        v9x_d3d_fog = 0ul;
+        /*
+         * The fourth run (boot 18): target 0 (rivafb's) drew black with
+         * video memory offsets and with the bus address; flags 0 timed
+         * out; targets 1, 2 and 3 drew identical varying reds, texels from
+         * system memory at the entries' addresses. So the fifth points
+         * targets 1 and 2 at the framebuffer's bus address, where the
+         * texture is.
+         */
+        /* The fifth (boot 18): targets 1 and 2 at the bus address drew
+         * black too. The sixth reads PGRAPH's DMA state after each draw:
+         * the video memory target as rivafb has it, and PCI for
+         * comparison. */
+        if (!v9x_run_d3d(device, 0, "D3DTargetVram")) {
+            all_pass = 0;
+        }
+        if (!v9x_run_d3d(device, 1, "D3DTargetVramTextured")) {
+            all_pass = 0;
+        }
+        /* Fog 255 to white over the checker: the fog amount scales. */
+        v9x_d3d_fog = 0x80ul;
+        v9x_d3d_fog_color = 0x00fffffful;
+        if (!v9x_run_d3d(device, 0, "D3DFogHalfWhite")) {
+            all_pass = 0;
+        }
+        CloseHandle(device);
+        v9x_text("Report", "Result", all_pass ? "PASS" : "FAIL");
+        WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
+        ExitProcess(all_pass ? 0u : 3u);
     }
 
     all_pass = v9x_run_depth(device, bits, 0, "");

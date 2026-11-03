@@ -19,7 +19,8 @@
 ;                    channel 0's object methods in the USER area: method 0
 ;                    (bind) and 300h-31Ch and 3FCh-404h of each subchannel,
 ;                    the methods rivafb's ROP, clip, pattern, blit and GDI
-;                    rectangle use. Nothing else.
+;                    rectangle use, and 1000h-1FFCh, the D3D object's
+;                    vertices (nv3_3d.xml). Nothing else.
 ;   RAMIN ops      - write, read and fill inside the RAMIN window, which is
 ;                    the top 32 KiB of video memory (docs\decisions\
 ;                    2026-11-02-riva128-register-probe.md).
@@ -147,6 +148,12 @@ N2ReadWindows label dword
     dd 400630h, 400640h ; PGRAPH surface offsets 0-3
     dd 400650h, 400660h ; PGRAPH surface pitches 0-3
     dd 4006a0h, 4006b4h ; PGRAPH FIFO enable, SURF_CONFIG, STATUS
+    dd 4006b4h, 4006c0h ; PGRAPH TRAPPED_ADDR, DATA, GINST (nv3_pgraph.xml)
+    dd 400644h, 400648h ; PGRAPH D3D_CONFIG
+    dd 4006c8h, 4006cch ; PGRAPH D3D_ALPHA
+    dd 401100h, 401104h ; PGRAPH DMA_INTR (nv3_pgraph.xml)
+    dd 401200h, 401290h ; PGRAPH DMA state: flags, limit, PTE, tag, inst
+    dd 401800h, 401834h ; PGRAPH DMA_OFFSET_0-2, DMA_PITCH
     dd 680500h, 680510h ; PRAMDAC NVPLL, MPLL, VPLL, PLL select
     dd 680600h, 680604h ; PRAMDAC general control
     dd 800010h, 800014h ; USER channel 0, subchannel 0 free count
@@ -421,6 +428,10 @@ BeginProc N2_Write_Allowed
     jb      short N2_Write_Refused
     cmp     ecx, 404h
     jbe     short N2_Write_Accepted
+    ; The D3D object's vertex array, 1000h-1FFCh (nv3_3d.xml TLVERTEX_*,
+    ; 128 slots of 20h), for V9XN32D /d3d.
+    cmp     ecx, 1000h
+    jae     short N2_Write_Accepted
     jmp     short N2_Write_Refused
 N2_Write_Table:
     mov     esi, OFFSET32 N2WriteOffsets

@@ -173,9 +173,11 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    V9XDDP and GDI each fine after the other
    ([record](../decisions/2026-11-03-riva128-gdi-on-the-engine.md)). 16
    bpp waits for B.
-7. **Direct3D**: its own plan, after the 16 bpp decision. The D3D0 object
-   is DX5-level, so this is the S3 ViRGE and Rage Pro class of HAL, not the
-   Evergreen one.
+7. **Direct3D**: its own plan, [nvidia-riva128-d3d.md](nvidia-riva128-d3d.md).
+   The D3D0 object is DX5-level, so this is the S3 ViRGE and Rage Pro class
+   of HAL, not the Evergreen one. Step 1 done: a textured, fogged triangle
+   drawn off screen
+   ([record](../decisions/2026-11-03-riva128-first-triangle.md)).
 
 ## Unknowns that need a measurement
 
