@@ -152,6 +152,20 @@ v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
     return V9X_STATUS_OK;
 }
 
+v9x_u32 v9x_nv3_3d_add_specular(v9x_u32 colour, v9x_u32 specular)
+{
+    v9x_u32 result;
+    v9x_u32 sum;
+    v9x_u32 shift;
+
+    result = colour & V9X_NV3_3D_ALPHA_MASK;
+    for (shift = 0u; shift < 24u; shift += 8u) {
+        sum = ((colour >> shift) & 0xfful) + ((specular >> shift) & 0xfful);
+        result |= (sum > 0xfful ? 0xfful : sum) << shift;
+    }
+    return result;
+}
+
 v9x_u32 v9x_nv3_3d_chain_bytes(v9x_u32 log2_side, v9x_u32 levels)
 {
     v9x_u32 bytes = 0ul;

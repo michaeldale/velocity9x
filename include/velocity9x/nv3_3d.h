@@ -296,6 +296,15 @@ v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size);
  */
 v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444);
 
+/*
+ * Direct3D's specular, which the object has no input for: colour's R, G
+ * and B plus specular's, each saturating at FFh, colour's alpha kept. An
+ * untextured draw takes it in its vertex colours; the interpolation is
+ * linear, so the sum interpolates as the two would apart, short of a
+ * vertex whose sum saturates.
+ */
+v9x_u32 v9x_nv3_3d_add_specular(v9x_u32 colour, v9x_u32 specular);
+
 /* Bytes of a swizzled chain: `levels` squares from 2^log2_side halving
  * (0 counts as 1). Level n starts where the ones before it end. */
 v9x_u32 v9x_nv3_3d_chain_bytes(v9x_u32 log2_side, v9x_u32 levels);

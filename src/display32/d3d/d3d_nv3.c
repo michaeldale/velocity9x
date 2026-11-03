@@ -230,7 +230,8 @@ static int v9x_d3d_nv3_texture_format(const V9X_DD_SURFACE_LCL *surface,
 }
 
 /*
- * What the object does, by the state record. No specular colour; vertex
+ * What the object does, by the state record. No specular colour (the HAL
+ * adds it, v9x_d3d_nv3_specular_pass, but does not claim it); vertex
  * fog only (table fog is emulated per vertex in the core); one texture
  * level; the blend pairs nv3_3d.h maps. The core culls.
  */
@@ -870,6 +871,108 @@ static int v9x_d3d_nv3_accepts(const V9X_R3D_DRAW *draw)
            v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK;
 }
 
+/* D3DCMP_EQUAL, which the chip compares in Direct3D's sense (nv3_3d.h). */
+#define V9X_D3D_NV3_CMP_EQUAL 3ul
+
+/* What a triangle's vertex colours are (v9x_d3d_nv3_triangle). */
+#define V9X_D3D_NV3_COLOUR_DIFFUSE     0
+#define V9X_D3D_NV3_COLOUR_PLUS_SPEC   1 /* untextured: specular folded */
+#define V9X_D3D_NV3_COLOUR_SPECULAR    2 /* the specular pass */
+
+/* One triangle's three vertices into slots 0, 1 and 2, the third drawing;
+ * 0 when the FIFO has no room. */
+static int v9x_d3d_nv3_triangle(const V9X_R3D_DRAW *draw,
+                                const V9X_R3D_VERTEX *first,
+                                const struct v9x_nv3_3d_words *words,
+                                int colours, DWORD *record_at)
+{
+    static const v9x_u32 v9x_d3d_nv3_others[2] = { 0ul, 1ul };
+    struct v9x_nv3_3d_vertex vertex;
+    struct v9x_nv3_write methods[V9X_NV3_D3D_VERTEX_METHODS];
+    const V9X_R3D_VERTEX *corner;
+    DWORD slot;
+
+    for (slot = 0ul; slot < 3ul; ++slot) {
+        corner = &first[slot];
+        v9x_d3d_nv3_vertex_of(corner,
+                              draw->shade_mode == V9X_R3D_SHADE_FLAT ?
+                              first : corner, &vertex);
+        if (colours == V9X_D3D_NV3_COLOUR_PLUS_SPEC) {
+            vertex.colour = v9x_nv3_3d_add_specular(vertex.colour,
+                                                    vertex.specular);
+        } else if (colours == V9X_D3D_NV3_COLOUR_SPECULAR) {
+            /* Its alpha byte is the fog factor, and the add ignores it. */
+            vertex.colour = (vertex.specular & 0x00fffffful) | 0xff000000ul;
+        }
+        if (v9x_nv3_3d_build_vertex(&vertex, slot,
+                                    slot == 2ul ? v9x_d3d_nv3_others : 0,
+                                    words, methods) != V9X_STATUS_OK ||
+            !v9x_d3d_nv3_room(V9X_D3D_NV3_VERTEX_BYTES)) {
+            return 0;
+        }
+        v9x_d3d_nv3_emit(methods, V9X_NV3_D3D_VERTEX_METHODS);
+        if (record_at != 0 && slot == 0ul) {
+            v9x_d3d_nv3_record(methods, V9X_NV3_D3D_VERTEX_METHODS,
+                               record_at);
+        }
+    }
+    return 1;
+}
+
+/*
+ * Direct3D adds the specular after the texture; the object has no input
+ * for it. A textured batch gets a second pass per triangle: the white
+ * texture, the specular as the vertex colour, the saturating add, over
+ * the pixels the first pass drew (Z as it compared, EQUAL where it wrote
+ * zeta). That sum is Direct3D's only where the first pass replaced the
+ * pixel or added to it, drew every pixel of the triangle (no alpha test,
+ * no key) and was not fogged (fog comes after the specular). Elsewhere
+ * the specular is left out, as it always was here; refusing the batch
+ * would lose the whole draw. 1 and `pass` built when it applies.
+ */
+static int v9x_d3d_nv3_specular_pass(const V9X_R3D_DRAW *draw,
+                                     const V9X_R3D_VERTEX *vertices,
+                                     DWORD triangle_count,
+                                     const struct v9x_nv3_3d_state *state,
+                                     struct v9x_nv3_3d_words *pass)
+{
+    struct v9x_nv3_3d_state second;
+    DWORD index;
+
+    if (draw->specular_enable == 0ul ||
+        (state->blend != V9X_NV3_BLEND_OPAQUE &&
+         state->blend != V9X_NV3_BLEND_ADD) ||
+        state->alpha_test || state->colour_key || state->fog) {
+        return 0;
+    }
+    for (index = 0ul; index < triangle_count * 3ul; ++index) {
+        if ((vertices[index].specular & 0x00fffffful) != 0ul) {
+            break;
+        }
+    }
+    if (index == triangle_count * 3ul) {
+        return 0;
+    }
+
+    second = *state;
+    second.texture_offset = v9x_hal->engine.reserve_offset;
+    second.texture_format = V9X_NV3_TEX_A1R5G5B5;
+    second.texture_log2 = V9X_NV3_D3D_WHITE_LOG2;
+    second.texture_levels = 1ul;
+    second.filter = V9X_NV3_FILTER_POINT;
+    second.wrap_u = V9X_NV3_WRAP;
+    second.wrap_v = V9X_NV3_WRAP;
+    second.u_shift = 0ul;
+    second.v_shift = 0ul;
+    second.vertex_white = 0;
+    second.blend = V9X_NV3_BLEND_ADD;
+    second.z_write = 0;
+    if (state->z_enable && state->z_write) {
+        second.z_func = V9X_D3D_NV3_CMP_EQUAL;
+    }
+    return v9x_nv3_3d_build_state(&second, pass) == V9X_STATUS_OK;
+}
+
 /*
  * One batch: every word built before the first is written, so a refused
  * draw writes nothing; then the target, the clip, the binding (a bring-up
@@ -880,19 +983,16 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
                             const V9X_R3D_VERTEX *vertices,
                             DWORD triangle_count)
 {
-    static const v9x_u32 v9x_d3d_nv3_others[2] = { 0ul, 1ul };
     struct v9x_nv3_3d_target target;
     struct v9x_nv3_3d_state state;
     struct v9x_nv3_3d_words words;
-    struct v9x_nv3_3d_vertex vertex;
-    struct v9x_nv3_write methods[V9X_NV3_D3D_VERTEX_METHODS];
+    struct v9x_nv3_3d_words pass;
     struct v9x_nv3_op op;
     V9X_D3D_NV3_TEXTURE *texture;
     int opaque;
-    const V9X_R3D_VERTEX *corner;
-    const V9X_R3D_VERTEX *flat;
+    int colours;
+    int two_pass;
     DWORD triangle;
-    DWORD slot;
     DWORD reason;
     DWORD record_at;
 
@@ -969,26 +1069,47 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
         v9x_hal->d3d_diagnostics.scan_sample_offset = target.colour_offset;
     }
 
+    /* Untextured, the specular goes into the colours; textured, into a
+     * second pass after each triangle, so a later triangle covers an
+     * earlier one's specular as it covers the rest of it. */
+    colours = V9X_D3D_NV3_COLOUR_DIFFUSE;
+    if (texture == 0 && draw->specular_enable != 0ul) {
+        colours = V9X_D3D_NV3_COLOUR_PLUS_SPEC;
+    }
+    two_pass = texture != 0 &&
+               v9x_d3d_nv3_specular_pass(draw, vertices, triangle_count,
+                                         &state, &pass);
     for (triangle = 0ul; triangle < triangle_count; ++triangle) {
-        flat = &vertices[triangle * 3ul];
-        for (slot = 0ul; slot < 3ul; ++slot) {
-            corner = &vertices[triangle * 3ul + slot];
-            v9x_d3d_nv3_vertex_of(corner,
-                                  draw->shade_mode == V9X_R3D_SHADE_FLAT ?
-                                  flat : corner, &vertex);
-            if (v9x_nv3_3d_build_vertex(&vertex, slot,
-                                        slot == 2ul ? v9x_d3d_nv3_others : 0,
-                                        &words, methods) != V9X_STATUS_OK ||
-                !v9x_d3d_nv3_room(V9X_D3D_NV3_VERTEX_BYTES)) {
+        if (two_pass && triangle != 0ul) {
+            if (!v9x_d3d_nv3_room(V9X_D3D_NV3_STATE_BYTES)) {
                 v9x_hal->d3d_diagnostics.m64_refuse_last =
-                    V9X_D3D_NV3_STOP_ROOM_VERTEX;
+                    V9X_D3D_NV3_STOP_ROOM_STATE;
                 return 0;
             }
-            v9x_d3d_nv3_emit(methods, V9X_NV3_D3D_VERTEX_METHODS);
-            if (!v9x_d3d_nv3_recorded && triangle == 0ul && slot == 0ul) {
-                v9x_d3d_nv3_record(methods, V9X_NV3_D3D_VERTEX_METHODS,
-                                   &record_at);
-            }
+            v9x_d3d_nv3_emit(words.methods, 6ul);
+        }
+        if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], &words,
+                                  colours,
+                                  !v9x_d3d_nv3_recorded && triangle == 0ul ?
+                                  &record_at : 0)) {
+            v9x_hal->d3d_diagnostics.m64_refuse_last =
+                V9X_D3D_NV3_STOP_ROOM_VERTEX;
+            return 0;
+        }
+        if (!two_pass) {
+            continue;
+        }
+        if (!v9x_d3d_nv3_room(V9X_D3D_NV3_STATE_BYTES)) {
+            v9x_hal->d3d_diagnostics.m64_refuse_last =
+                V9X_D3D_NV3_STOP_ROOM_STATE;
+            return 0;
+        }
+        v9x_d3d_nv3_emit(pass.methods, 6ul);
+        if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], &pass,
+                                  V9X_D3D_NV3_COLOUR_SPECULAR, 0)) {
+            v9x_hal->d3d_diagnostics.m64_refuse_last =
+                V9X_D3D_NV3_STOP_ROOM_VERTEX;
+            return 0;
         }
     }
     if (!v9x_nv3_3d_idle()) {

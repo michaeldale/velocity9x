@@ -279,6 +279,14 @@ static void test_state(void)
     CHECK(v9x_nv3_3d_chain_bytes(3ul, 0ul) == 128ul);
     CHECK(v9x_nv3_3d_chain_bytes(3ul, 1ul) == 128ul);
 
+    /* Specular into the colour: RGB saturating, alpha the colour's. */
+    CHECK(v9x_nv3_3d_add_specular(0xff000000ul, 0xff00ff00ul) ==
+          0xff00ff00ul);
+    CHECK(v9x_nv3_3d_add_specular(0x80c01020ul, 0x12804030ul) ==
+          0x80ff5050ul);
+    CHECK(v9x_nv3_3d_add_specular(0x00fffffful, 0xfffffffful) ==
+          0x00fffffful);
+
     base_state(&state);
     state.filter = V9X_NV3_FILTER_LINEAR;
     state.wrap_v = V9X_NV3_CLAMP;

@@ -98,6 +98,10 @@ the DMA object's flag bits; 86Box draws no 3D.
      failed (no blend between levels). **Colour key done, boot 31
      ([record](../decisions/2026-11-04-riva128-colour-key.md)):** the chip
      compares the alpha bit, so the key takes the texels' own; 211 of 227.
+     **Specular done, boot 32
+     ([record](../decisions/2026-11-04-riva128-specular.md)):** folded
+     into untextured colours, a second add pass after textured triangles;
+     213 of 227.
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and
