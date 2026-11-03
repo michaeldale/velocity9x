@@ -180,6 +180,8 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    of HAL, not the Evergreen one. Step 1 done: a textured, fogged triangle
    drawn off screen
    ([record](../decisions/2026-11-03-riva128-first-triangle.md)).
+   Half-Life draws on the HAL, windowed
+   ([record](../decisions/2026-11-04-riva128-half-life-d3d.md)).
 
 ## Unknowns that need a measurement
 

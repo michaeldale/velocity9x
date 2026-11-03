@@ -235,7 +235,19 @@ static void test_state(void)
     state.blend = V9X_NV3_BLEND_MODULATE;
     CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(method(&words, V9X_NV3_M_D3D_CONFIG) == 0x64081150ul);
-    state.blend = 4ul;
+    CHECK(words.premultiply == 0);
+
+    /* SRCALPHA, ONE: the add, A1R5G5B5 read as X1R5G5B5, the vertex
+     * colour scaled by its alpha; refused with fog. */
+    state.blend = V9X_NV3_BLEND_ADD_SRC_ALPHA;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(method(&words, V9X_NV3_M_D3D_CONFIG) == 0x14081150ul);
+    CHECK(method(&words, V9X_NV3_M_D3D_TEX_FORMAT) == 0x33100000ul);
+    CHECK(words.premultiply == 1 && words.colour_or == 0ul);
+    state.fog = 1;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
+    state.fog = 0;
+    state.blend = 5ul;
     CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
 
     base_state(&state);
@@ -384,6 +396,23 @@ static void test_vertex(void)
     state.vertex_white = 1;
     CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
     CHECK(words.colour_or == 0xfffffffful);
+
+    /* SRCALPHA, ONE: RGB x A / 255, rounded, A kept. */
+    base_state(&state);
+    state.blend = V9X_NV3_BLEND_ADD_SRC_ALPHA;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    vertex.colour = 0x80ff4001ul;
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[1].value == 0x80802001ul);
+    vertex.colour = 0xffff8001ul;
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[1].value == 0xffff8001ul);
+    vertex.colour = 0x00fffffful;
+    CHECK(v9x_nv3_3d_build_vertex(&vertex, 0ul, 0, &words, methods) ==
+          V9X_STATUS_OK);
+    CHECK(methods[1].value == 0ul);
 
     /* Slots past 15, and triangles that would not draw. */
     CHECK(v9x_nv3_3d_build_vertex(&vertex, 16ul, 0, &words, methods) ==

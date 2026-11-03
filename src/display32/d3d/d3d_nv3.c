@@ -80,7 +80,14 @@ typedef struct v9x_d3d_nv3_texture {
      * the blend cannot draw from partial alphas (nv3_3d.h). */
     DWORD opaque;
     int opaque_dirty;
+    /* Whether every texel's alpha is 1, for SRCALPHA/ONE (nv3_3d.h):
+     * read from the linear level when first asked after a write. */
+    DWORD alpha_full;
 } V9X_D3D_NV3_TEXTURE;
+
+#define V9X_D3D_NV3_ALPHA_UNKNOWN 0ul
+#define V9X_D3D_NV3_ALPHA_ALL_ONE 1ul
+#define V9X_D3D_NV3_ALPHA_PARTIAL 2ul
 
 static V9X_D3D_NV3_TEXTURE v9x_d3d_nv3_textures[V9X_D3D_NV3_TEXTURES];
 
@@ -260,8 +267,8 @@ static void v9x_d3d_nv3_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPCMPCAPS_GREATER | V9X_D3DPCMPCAPS_NOTEQUAL |
         V9X_D3DPCMPCAPS_GREATEREQUAL | V9X_D3DPCMPCAPS_ALWAYS;
     tri->dwAlphaCmpCaps = tri->dwZCmpCaps;
-    /* ONE/ZERO, SRCALPHA/INVSRCALPHA, ONE/ONE, DESTCOLOR/ZERO and
-     * ZERO/SRCCOLOR (v9x_d3d_nv3_blend). */
+    /* ONE/ZERO, SRCALPHA/INVSRCALPHA, ONE/ONE, SRCALPHA/ONE, DESTCOLOR/ZERO
+     * and ZERO/SRCCOLOR (v9x_d3d_nv3_blend). */
     tri->dwSrcBlendCaps =
         V9X_D3DPBLENDCAPS_ZERO | V9X_D3DPBLENDCAPS_ONE |
         V9X_D3DPBLENDCAPS_SRCALPHA | V9X_D3DPBLENDCAPS_DESTCOLOR;
@@ -419,6 +426,36 @@ static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture, int opaque)
     }
 }
 
+/*
+ * Whether every texel of level 0 has alpha 1, read once after each write
+ * (Unlock, Blt) and kept. SRCALPHA/ONE folds only the vertex alpha into
+ * the colour, so a texel alpha below 1 would add too much.
+ */
+static int v9x_d3d_nv3_alpha_all_one(V9X_D3D_NV3_TEXTURE *texture)
+{
+    const v9x_u16 *row;
+    v9x_u16 mask;
+    DWORD u;
+    DWORD v;
+
+    if (texture->alpha_full == V9X_D3D_NV3_ALPHA_UNKNOWN) {
+        mask = texture->format == V9X_NV3_TEX_A4R4G4B4 ? 0xf000u : 0x8000u;
+        texture->alpha_full = V9X_D3D_NV3_ALPHA_ALL_ONE;
+        for (v = 0ul; v < texture->height &&
+             texture->alpha_full == V9X_D3D_NV3_ALPHA_ALL_ONE; ++v) {
+            row = (const v9x_u16 *)(v9x_hal->fb.linear_base +
+                                    texture->linear + v * texture->pitch);
+            for (u = 0ul; u < texture->width; ++u) {
+                if ((row[u] & mask) != mask) {
+                    texture->alpha_full = V9X_D3D_NV3_ALPHA_PARTIAL;
+                    break;
+                }
+            }
+        }
+    }
+    return texture->alpha_full == V9X_D3D_NV3_ALPHA_ALL_ONE;
+}
+
 static void v9x_d3d_nv3_count_refusal(const V9X_R3D_DRAW *draw,
                                       DWORD reason)
 {
@@ -504,6 +541,11 @@ static int v9x_d3d_nv3_blend(const V9X_R3D_DRAW *draw, v9x_u32 *blend)
     }
     if (src == V9X_D3DBLEND_ONE && dst == V9X_D3DBLEND_ONE) {
         *blend = V9X_NV3_BLEND_ADD;
+        return 1;
+    }
+    /* Half-Life's glows and sprites; v9x_d3d_nv3_map checks the texture. */
+    if (src == V9X_D3DBLEND_SRCALPHA && dst == V9X_D3DBLEND_ONE) {
+        *blend = V9X_NV3_BLEND_ADD_SRC_ALPHA;
         return 1;
     }
     if ((src == V9X_D3DBLEND_DESTCOLOR && dst == V9X_D3DBLEND_ZERO) ||
@@ -629,6 +671,10 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
         (surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         state->colour_key = 1;
         state->colour_key_texel = surface->ddckCKSrcBltLow & 0xfffful;
+    }
+    if (blend == V9X_NV3_BLEND_ADD_SRC_ALPHA && texture->has_alpha &&
+        !v9x_d3d_nv3_alpha_all_one(texture)) {
+        return V9X_D3D_NV3_REFUSE_BLEND;
     }
     side = 1ul << texture->log2_side;
     state->texture_offset = texture->swizzled;
@@ -984,6 +1030,7 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     record->has_alpha = format == V9X_NV3_TEX_A1R5G5B5 ||
                         format == V9X_NV3_TEX_A4R4G4B4;
     record->dirty = 1;
+    record->alpha_full = V9X_D3D_NV3_ALPHA_UNKNOWN;
     ++v9x_hal->d3d_diagnostics.texture_placed;
     v9x_hal->d3d_diagnostics.texture_placed_bytes += bytes;
     data->ddRVal = V9X_DD_OK;
@@ -1019,6 +1066,7 @@ static void v9x_d3d_nv3_surface_written(const V9X_DD_SURFACE_LCL *surface)
     if (record != 0) {
         record->dirty = 1;
         record->opaque_dirty = 1;
+        record->alpha_full = V9X_D3D_NV3_ALPHA_UNKNOWN;
     }
 }
 

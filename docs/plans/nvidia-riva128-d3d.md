@@ -101,7 +101,14 @@ the DMA object's flag bits; 86Box draws no 3D.
    with eng_nv3.c's 2D and GDI through the same bring-up, which gains the
    D3D object, the DMA object and subchannel 7.
 6. **Games.** The DX5-era set already used on other machines, on M-7V636C
-   at 640x480x16 (5:5:5).
+   at 640x480x16 (5:5:5). **Half-Life (2026-11-04, boot 27,
+   [record](../decisions/2026-11-04-riva128-half-life-d3d.md))** draws
+   `c1a0` windowed on the HAL. SRCALPHA/ONE, a fifth of its batches, now
+   goes to the chip's add with the vertex colour premultiplied (texels of
+   alpha 1, no fog); 0.3% of batches are still refused (opaque A4R4G4B4
+   under the alpha test). Left: fullscreen (the owner looks), and the
+   guest's other D3D games (Thief, Final Fantasy VII, Homeworld,
+   3DMark 99 Max).
 
 ## Unknowns
 

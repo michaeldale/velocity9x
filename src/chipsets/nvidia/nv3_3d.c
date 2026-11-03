@@ -188,7 +188,8 @@ static v9x_status v9x_nv3_3d_check_state(const struct v9x_nv3_3d_state *state)
         state->v_shift > state->texture_log2) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    if (state->blend > V9X_NV3_BLEND_MODULATE) {
+    if (state->blend > V9X_NV3_BLEND_ADD_SRC_ALPHA ||
+        (state->blend == V9X_NV3_BLEND_ADD_SRC_ALPHA && state->fog)) {
         return V9X_STATUS_UNSUPPORTED;
     }
     return V9X_STATUS_OK;
@@ -252,6 +253,15 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
         }
         words->colour_or = V9X_NV3_3D_ALPHA_MASK;
     }
+    /* The add takes the texel x vertex colour whole; with the vertex
+     * colour already x alpha that is Direct3D's SRCALPHA, ONE. */
+    words->premultiply = 0;
+    if (state->blend == V9X_NV3_BLEND_ADD_SRC_ALPHA) {
+        if (colour == V9X_NV3_TEX_A1R5G5B5) {
+            colour = V9X_NV3_TEX_X1R5G5B5;
+        }
+        words->premultiply = 1;
+    }
     if (state->vertex_white) {
         words->colour_or = 0xfffffffful;
     }
@@ -301,7 +311,8 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
     /* ADD is the saturating sum, measured over the Z case's red. MODULATE,
      * beta the destination colour and the destination's own term zeroed,
      * is src x dst by envytools' model of the blend; not drawn. */
-    if (state->blend == V9X_NV3_BLEND_ADD) {
+    if (state->blend == V9X_NV3_BLEND_ADD ||
+        state->blend == V9X_NV3_BLEND_ADD_SRC_ALPHA) {
         config |= V9X_NV3_CFG_ROP_ADD;
     } else if (state->blend == V9X_NV3_BLEND_MODULATE) {
         config |= V9X_NV3_CFG_BETA_DSTCOLOUR | V9X_NV3_CFG_DST_ZERO;
@@ -367,6 +378,22 @@ v9x_u32 v9x_nv3_3d_specular(v9x_u32 slot, const v9x_u32 *others,
            (fog << V9X_NV3_FOG_SHIFT);
 }
 
+/* An A8R8G8B8 colour with each of R, G and B x A / 255, rounded; A kept. */
+static v9x_u32 v9x_nv3_3d_premultiply(v9x_u32 colour)
+{
+    v9x_u32 alpha;
+    v9x_u32 result;
+    v9x_u32 shift;
+
+    alpha = colour >> 24;
+    result = colour & V9X_NV3_3D_ALPHA_MASK;
+    for (shift = 0u; shift < 24u; shift += 8u) {
+        result |= ((((colour >> shift) & 0xfful) * alpha + 127ul) / 255ul)
+                  << shift;
+    }
+    return result;
+}
+
 v9x_status v9x_nv3_3d_build_vertex(const struct v9x_nv3_3d_vertex *vertex,
                                    v9x_u32 slot, const v9x_u32 *others,
                                    const struct v9x_nv3_3d_words *words,
@@ -390,6 +417,9 @@ v9x_status v9x_nv3_3d_build_vertex(const struct v9x_nv3_3d_vertex *vertex,
      * and draws. */
     values[0] = v9x_nv3_3d_specular(slot, others, words, vertex->specular);
     values[1] = vertex->colour | words->colour_or;
+    if (words->premultiply) {
+        values[1] = v9x_nv3_3d_premultiply(values[1]);
+    }
     values[2] = vertex->sx;
     values[3] = vertex->sy;
     values[4] = vertex->sz;

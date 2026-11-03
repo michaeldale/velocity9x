@@ -151,6 +151,11 @@
 #define V9X_NV3_BLEND_SRC_ALPHA     1ul /* SRCALPHA, INVSRCALPHA */
 #define V9X_NV3_BLEND_ADD           2ul /* ONE, ONE */
 #define V9X_NV3_BLEND_MODULATE      3ul /* DESTCOLOR, ZERO */
+/* SRCALPHA, ONE: the saturating add, each vertex colour scaled by its own
+ * alpha first. Exact only where every texel's alpha is 1 (the caller's
+ * promise; A1R5G5B5 is then read as X1R5G5B5) and without fog, whose
+ * colour the chip mixes in after the vertex colour and so unscaled. */
+#define V9X_NV3_BLEND_ADD_SRC_ALPHA 4ul
 
 #define V9X_NV3_FILTER_POINT        0ul
 #define V9X_NV3_FILTER_LINEAR       1ul
@@ -200,6 +205,7 @@ struct v9x_nv3_3d_state {
 struct v9x_nv3_3d_words {
     struct v9x_nv3_write methods[6];
     v9x_u32 colour_or;
+    int premultiply;   /* each vertex's RGB x its alpha (ADD_SRC_ALPHA) */
     int fog;
     v9x_u32 u_shift;
     v9x_u32 v_shift;
