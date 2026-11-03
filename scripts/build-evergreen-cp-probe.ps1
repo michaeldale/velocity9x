@@ -98,6 +98,14 @@ $publishers = @(
        Description = 'Velocity9x Evergreen first 3D draw probe'
        Extra = @('src\chipsets\ati\evergreen\eg_shader.c',
                  'src\chipsets\ati\evergreen\eg_3d.c') }
+    # V9XCM3D, Trinity's first draw: the Cayman module's tables, streams
+    # and shaders, over Evergreen's shared encoder and PM4 helpers.
+    @{ Source = 'cayman_3d_win32.c'; Name = 'v9xcm3d'; Entry = '_V9xCayman3dEntry@0'
+       Description = 'Velocity9x Cayman (Trinity) first 3D draw probe'
+       Extra = @('src\chipsets\ati\cayman\cm_shader.c',
+                 'src\chipsets\ati\cayman\cm_3d.c',
+                 'src\chipsets\ati\evergreen\eg_shader.c',
+                 'src\chipsets\ati\evergreen\eg_3d.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

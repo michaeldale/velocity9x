@@ -1,9 +1,10 @@
 /*
  * V9XEGMM.EXE: AMD Evergreen (Radeon HD 5450 Cedar, HD 7470 Caicos, HD 5770
- * Juniper) read-only register snapshot.
+ * Juniper) and Trinity (HD 7660D) read-only register snapshot.
  *
  * Phase 2 of docs\plans\ati-evergreen-cedar.md, Phase 1 of
- * docs\plans\ati-evergreen-juniper-caicos.md. Finds 1002:68F9, 6778 or 68B8
+ * docs\plans\ati-evergreen-juniper-caicos.md and of
+ * docs\plans\ati-trinity-hd7660d.md. Finds 1002:68F9, 6778, 68B8 or 9901
  * by a PCI scan (configuration mechanism #1, CF8h restored after each
  * read), loads EGMM.VXD, and asks it for register offsets through the 128 KiB register
  * BAR, each read twice. Writes C:\V9XDIAG\V9XEGMM.INI:
@@ -47,6 +48,7 @@
 #define V9X_DEVICE_CEDAR     0x68f9ul
 #define V9X_DEVICE_CAICOS    0x6778ul
 #define V9X_DEVICE_JUNIPER   0x68b8ul
+#define V9X_DEVICE_TRINITY   0x9901ul
 
 #define V9X_ST_ATI             0x00000001ul
 #define V9X_ST_BASE_INVALID    0x00000002ul
@@ -86,6 +88,9 @@
 #define V9X_EG_MC_SEQ_MISC0        0x2a00ul
 #define V9X_EG_CC_GC_SHADER_PIPE   0x8950ul
 #define V9X_EG_CC_RB_BACKEND       0x98f4ul
+#define V9X_EG_RLC_CNTL            0x3f00ul
+#define V9X_CM_DMA1_RB_CNTL        0xd800ul
+#define V9X_CM_DMA1_STATUS_REG     0xd834ul
 
 /* Field layouts, same sources. SRBM_SOFT_RESET bit 20 SOFT_RESET_DMA.
  * VM_L2_CNTL and VM_CONTEXT0_CNTL bit 0 enable. MC_SHARED_CHMAP 13:12 the
@@ -174,9 +179,6 @@ static const struct v9x_egmm_register v9x_global[] = {
     { 0x2038ul, "MC_VM_SYSTEM_APERTURE_HIGH_ADDR" },
     { 0x203cul, "MC_VM_SYSTEM_APERTURE_DEFAULT_ADDR" },
     { 0x2760ul, "MC_ARB_RAMCFG" },
-    { 0x28c8ul, "MC_SEQ_SUP_CNTL" },
-    { 0x29d0ul, "MC_IO_PAD_CNTL_D0" },
-    { 0x2a00ul, "MC_SEQ_MISC0" },
     { 0x2c04ul, "HDP_NONSURFACE_BASE" },
     { 0x2c08ul, "HDP_NONSURFACE_INFO" },
     { 0x2c0cul, "HDP_NONSURFACE_SIZE" },
@@ -216,6 +218,42 @@ static const struct v9x_egmm_register v9x_global[] = {
     { 0xd048ul, "DMA_SEM_WAIT_FAIL_TIMER_CNTL" },
     { 0xd0b8ul, "DMA_TILING_CONFIG" },
     { 0xd0bcul, "DMA_MODE" }
+};
+
+/* The memory sequencer a discrete card's own DRAM has. Trinity's memory is
+ * the system's, behind the CPU's controller (Linux skips the MC microcode
+ * on RADEON_IS_IGP), so these are not read there. */
+static const struct v9x_egmm_register v9x_discrete[] = {
+    { 0x28c8ul, "MC_SEQ_SUP_CNTL" },
+    { 0x29d0ul, "MC_IO_PAD_CNTL_D0" },
+    { 0x2a00ul, "MC_SEQ_MISC0" }
+};
+
+/* Cayman-generation blocks Trinity adds (Linux ni.c, nid.h, evergreend.h):
+ * the CP's second and third rings, the second DMA engine, and the RLC
+ * load-balancing registers evergreen_rlc_resume programs on CHIP_ARUBA. */
+static const struct v9x_egmm_register v9x_trinity[] = {
+    { 0x3f10ul, "TN_RLC_SAVE_AND_RESTORE_BASE" },
+    { 0x3f14ul, "TN_RLC_LB_CNTR_MAX" },
+    { 0x3f18ul, "TN_RLC_LB_CNTR_INIT" },
+    { 0x3f20ul, "TN_RLC_CLEAR_STATE_RESTORE_BASE" },
+    { 0x3fe4ul, "TN_RLC_LB_INIT_SIMD_MASK" },
+    { 0x3fe8ul, "TN_RLC_LB_ALWAYS_ACTIVE_SIMD_MASK" },
+    { 0x3fecul, "TN_RLC_LB_PARAMS" },
+    { 0x86f8ul, "CP_RB2_RPTR" },
+    { 0x86fcul, "CP_RB1_RPTR" },
+    { 0x8700ul, "CP_RB0_RPTR" },
+    { 0xc180ul, "CP_RB1_BASE" },
+    { 0xc184ul, "CP_RB1_CNTL" },
+    { 0xc190ul, "CP_RB1_WPTR" },
+    { 0xc194ul, "CP_RB2_BASE" },
+    { 0xc198ul, "CP_RB2_CNTL" },
+    { 0xc1a4ul, "CP_RB2_WPTR" },
+    { 0xd800ul, "DMA1_RB_CNTL" },
+    { 0xd804ul, "DMA1_RB_BASE" },
+    { 0xd808ul, "DMA1_RB_RPTR" },
+    { 0xd80cul, "DMA1_RB_WPTR" },
+    { 0xd834ul, "DMA1_STATUS_REG" }
 };
 
 /* One display controller's block, at the first controller's offsets. */
@@ -265,12 +303,18 @@ static const struct v9x_egmm_register v9x_crtc[] = {
 };
 
 #define V9X_GLOBAL_COUNT (sizeof(v9x_global) / sizeof(v9x_global[0]))
+#define V9X_DISCRETE_COUNT (sizeof(v9x_discrete) / sizeof(v9x_discrete[0]))
+#define V9X_TRINITY_COUNT (sizeof(v9x_trinity) / sizeof(v9x_trinity[0]))
 #define V9X_CRTC_REG_COUNT (sizeof(v9x_crtc) / sizeof(v9x_crtc[0]))
 
-/* Every offset fits one request: the VxD takes 256. */
+/* Every offset fits one request: the VxD takes 256. Trinity's list is the
+ * longer of the two chip-specific ones. */
 typedef char v9x_egmm_list_fits[
-    V9X_GLOBAL_COUNT + V9X_CRTC_REG_COUNT * V9X_EG_CRTC_COUNT <=
+    V9X_GLOBAL_COUNT + V9X_TRINITY_COUNT +
+    V9X_CRTC_REG_COUNT * V9X_EG_CRTC_COUNT <=
     V9X_EGMM_OFFSET_MAX ? 1 : -1];
+typedef char v9x_egmm_trinity_longer[
+    V9X_TRINITY_COUNT >= V9X_DISCRETE_COUNT ? 1 : -1];
 
 static const char * const v9x_grph_depths[4] = { "8", "16", "32", "64" };
 
@@ -395,7 +439,7 @@ static void v9x_request_add(DWORD offset, const char *prefix,
     v9x_text("Mmio", key, label);
 }
 
-static void v9x_request_build(void)
+static void v9x_request_build(int trinity)
 {
     static const char * const prefixes[V9X_EG_CRTC_COUNT] = {
         "D1.", "D2.", "D3.", "D4."
@@ -406,6 +450,17 @@ static void v9x_request_build(void)
     v9x_request.count = 0ul;
     for (index = 0ul; index < V9X_GLOBAL_COUNT; ++index) {
         v9x_request_add(v9x_global[index].offset, "", v9x_global[index].name);
+    }
+    if (trinity) {
+        for (index = 0ul; index < V9X_TRINITY_COUNT; ++index) {
+            v9x_request_add(v9x_trinity[index].offset, "",
+                            v9x_trinity[index].name);
+        }
+    } else {
+        for (index = 0ul; index < V9X_DISCRETE_COUNT; ++index) {
+            v9x_request_add(v9x_discrete[index].offset, "",
+                            v9x_discrete[index].name);
+        }
     }
     for (crtc = 0ul; crtc < V9X_EG_CRTC_COUNT; ++crtc) {
         for (index = 0ul; index < V9X_CRTC_REG_COUNT; ++index) {
@@ -468,10 +523,10 @@ static DWORD v9x_value(DWORD offset)
     return v9x_values[offset >> 2];
 }
 
-/* The first 1002:68F9, 6778 or 68B8 on buses 0-15, function 0; 0 if none.
- * A PCIe card sits behind a root port, so the bus is rarely 0 (M-BXMFA8's
- * Enum key reads 000800, M-D7TFW4's 001000). An APU's own graphics (the
- * A10's 1002:9901 on M-D7TFW4) is on bus 0 and is skipped by its id. */
+/* The first 1002:68F9, 6778, 68B8 or 9901 on buses 0-15, function 0; 0 if
+ * none. A PCIe card sits behind a root port, so the bus is rarely 0
+ * (M-BXMFA8's Enum key reads 000800); the A10's own graphics, 1002:9901, is
+ * at 00:01.0. On a machine with both, the APU's is found first. */
 static DWORD v9x_find_device(void)
 {
     DWORD bus;
@@ -489,7 +544,7 @@ static DWORD v9x_find_device(void)
             }
             device = id >> 16;
             if (device == V9X_DEVICE_CEDAR || device == V9X_DEVICE_CAICOS ||
-                device == V9X_DEVICE_JUNIPER) {
+                device == V9X_DEVICE_JUNIPER || device == V9X_DEVICE_TRINITY) {
                 return config;
             }
         }
@@ -500,7 +555,7 @@ static DWORD v9x_find_device(void)
 /* The memory controller, the GART and the engines. FB_LOCATION's fields
  * are 16 MiB units of a 40-bit address, so the low 32 bits of the start
  * are the field's low byte shifted up and bits 39:32 are its high byte. */
-static void v9x_decode_global(void)
+static void v9x_decode_global(int trinity)
 {
     DWORD value;
     DWORD channels;
@@ -553,11 +608,27 @@ static void v9x_decode_global(void)
     v9x_yes_no("Decode", "DmaIdle",
                (v9x_value(V9X_EG_DMA_STATUS_REG) & V9X_EG_DMA_IDLE) != 0ul);
 
-    v9x_yes_no("Decode", "McSeqRunning",
-               (v9x_value(V9X_EG_MC_SEQ_SUP_CNTL) & V9X_EG_SEQ_RUN) != 0ul);
-    v9x_yes_no("Decode", "MemoryGddr5",
-               (v9x_value(V9X_EG_MC_SEQ_MISC0) >> V9X_EG_MEM_TYPE_SHIFT) ==
-               V9X_EG_MEM_TYPE_GDDR5);
+    /* RLC_CNTL bit 0 RLC_ENABLE; DMA1 has DMA0's field layout. */
+    if (trinity) {
+        v9x_yes_no("Decode", "RlcEnabled",
+                   (v9x_value(V9X_EG_RLC_CNTL) & V9X_EG_ENABLE_BIT) != 0ul);
+        value = v9x_value(V9X_CM_DMA1_RB_CNTL);
+        v9x_yes_no("Decode", "Dma1RingEnabled",
+                   (value & V9X_EG_ENABLE_BIT) != 0ul);
+        v9x_number("Decode", "Dma1RingLog2Dwords",
+                   (value >> V9X_EG_DMA_RB_SIZE_SHIFT) &
+                   V9X_EG_DMA_RB_SIZE_MASK);
+        v9x_yes_no("Decode", "Dma1Idle",
+                   (v9x_value(V9X_CM_DMA1_STATUS_REG) &
+                    V9X_EG_DMA_IDLE) != 0ul);
+    } else {
+        v9x_yes_no("Decode", "McSeqRunning",
+                   (v9x_value(V9X_EG_MC_SEQ_SUP_CNTL) &
+                    V9X_EG_SEQ_RUN) != 0ul);
+        v9x_yes_no("Decode", "MemoryGddr5",
+                   (v9x_value(V9X_EG_MC_SEQ_MISC0) >>
+                    V9X_EG_MEM_TYPE_SHIFT) == V9X_EG_MEM_TYPE_GDDR5);
+    }
     v9x_key("Decode", "RbDisableMask",
             (v9x_value(V9X_EG_CC_RB_BACKEND) >> V9X_EG_RB_DISABLE_SHIFT) &
             V9X_EG_RB_DISABLE_MASK);
@@ -621,6 +692,7 @@ void __stdcall V9xEvergreenMmioEntry(void)
 {
     DWORD config;
     DWORD crtc;
+    int trinity;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     DeleteFileA(V9X_EGMM_PATH);
@@ -646,8 +718,9 @@ void __stdcall V9xEvergreenMmioEntry(void)
     v9x_key("Report", "Subsystem", v9x_config_read(config, 0x2cul));
     v9x_key("Report", "RomBase", v9x_config_read(config, 0x30ul));
 
+    trinity = (v9x_config_read(config, 0x00ul) >> 16) == V9X_DEVICE_TRINITY;
     v9x_request.config = config;
-    v9x_request_build();
+    v9x_request_build(trinity);
     if (!v9x_capture()) {
         v9x_key("Report", "Status", v9x_result.status);
         v9x_key("Report", "MemSize", v9x_result.memsize);
@@ -659,7 +732,7 @@ void __stdcall V9xEvergreenMmioEntry(void)
     v9x_key("Report", "MemSize", v9x_result.memsize);
     v9x_number("Report", "Accepted", v9x_result.accepted);
     v9x_publish_mmio();
-    v9x_decode_global();
+    v9x_decode_global(trinity);
     for (crtc = 0ul; crtc < V9X_EG_CRTC_COUNT; ++crtc) {
         v9x_decode_crtc(crtc);
     }

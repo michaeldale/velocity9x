@@ -25,6 +25,7 @@ extern const V9X_HW16_DEVICE v9x_rage128_device;
 extern const V9X_HW16_DEVICE v9x_evergreen_cedar_device;
 extern const V9X_HW16_DEVICE v9x_evergreen_caicos_device;
 extern const V9X_HW16_DEVICE v9x_evergreen_juniper_device;
+extern const V9X_HW16_DEVICE v9x_evergreen_trinity_device;
 /* cedar_hw16.c: the Evergreen engine hook's outcome, and its heap, for
  * both of its rows. */
 void v9x_cedar_publish_diagnostics(v9x_hw16_write_fn write);
@@ -127,6 +128,7 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_evergreen_cedar_device,
     &v9x_evergreen_caicos_device,
     &v9x_evergreen_juniper_device,
+    &v9x_evergreen_trinity_device,
     /* GCN 3: SDMA0 behind DirectDraw (carrizo_hw16.c). */
     &v9x_vi_carrizo_device,
     /* The aliases, each declared in its chip's module: the VT2's, the
@@ -258,7 +260,8 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     if (device == &v9x_evergreen_cedar_device ||
         device == &v9x_evergreen_caicos_device ||
-        device == &v9x_evergreen_juniper_device) {
+        device == &v9x_evergreen_juniper_device ||
+        device == &v9x_evergreen_trinity_device) {
         v9x_cedar_publish_diagnostics(write);
     }
     if (device == &v9x_vi_carrizo_device) {
@@ -275,7 +278,8 @@ static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
 
     if (device == &v9x_evergreen_cedar_device ||
         device == &v9x_evergreen_caicos_device ||
-        device == &v9x_evergreen_juniper_device) {
+        device == &v9x_evergreen_juniper_device ||
+        device == &v9x_evergreen_trinity_device) {
         return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
     }
     return 0ul;

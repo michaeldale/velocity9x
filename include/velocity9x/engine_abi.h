@@ -336,5 +336,14 @@
  * (docs\decisions\2026-11-01-juniper-bring-up.md).
  */
 #define V9X_DD_ENGINE_CAP_EG_JUNIPER    0x02000000ul
+/*
+ * AMD Evergreen engine on Trinity (HD 7660D, Linux's CHIP_ARUBA, Cayman's
+ * generation), not an Evergreen part. Its DMA engine runs Evergreen's
+ * packets at Evergreen's registers, but Linux's cayman_dma_resume does not
+ * write DMA_MODE, so eng_eg.c does not either. A chip identity bit,
+ * stamped by cedar_hw16.c's Trinity row only
+ * (docs\decisions\2026-11-03-trinity-dma-write-probe.md).
+ */
+#define V9X_DD_ENGINE_CAP_EG_TRINITY    0x04000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

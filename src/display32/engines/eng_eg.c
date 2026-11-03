@@ -268,7 +268,11 @@ static int v9x_eg_validate(void)
     v9x_eg_write32(V9X_EG_DMA_CNTL,
                    v9x_eg_read32(V9X_EG_DMA_CNTL) &
                    ~V9X_EG_CTXEMPTY_INT_ENABLE);
-    v9x_eg_write32(V9X_EG_DMA_MODE, 1ul);
+    /* Trinity runs Cayman's bring-up, cayman_dma_resume, which leaves
+     * DMA_MODE alone; r600_dma_resume writes it from RV770 on. */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_TRINITY) == 0ul) {
+        v9x_eg_write32(V9X_EG_DMA_MODE, 1ul);
+    }
     v9x_eg_wptr = 0ul;
 
     ring = v9x_eg_ring();

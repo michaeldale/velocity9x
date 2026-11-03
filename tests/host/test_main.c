@@ -328,6 +328,14 @@ unsigned int v9x_run_vi_3d_tests(void);
  * blit shaders bit for bit, and the Gouraud shaders' fields. */
 unsigned int v9x_run_eg_shader_tests(void);
 
+/* tests\host\test_cm_shader.c: Cayman (Trinity) shader words, held to Linux
+ * 3.9's Cayman blit shaders bit for bit. */
+unsigned int v9x_run_cm_shader_tests(void);
+
+/* tests\host\test_cm_3d.c: Trinity's cayman_gpu_init writes and the render
+ * backend map, the latter also against the Evergreen maps that drew. */
+unsigned int v9x_run_cm_3d_tests(void);
+
 /* tests\host\test_eg_3d.c: Evergreen PM4 streams, each packet's count
  * walked, against the words V9XEG3D sent. */
 unsigned int v9x_run_eg_3d_tests(void);
@@ -1469,6 +1477,8 @@ int main(int argc, char **argv)
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_vi_3d_tests();
     failures += v9x_run_eg_shader_tests();
+    failures += v9x_run_cm_shader_tests();
+    failures += v9x_run_cm_3d_tests();
     failures += v9x_run_eg_3d_tests();
     failures += v9x_run_d3d_eg_map_tests();
     failures += v9x_run_d3d_vi_map_tests();

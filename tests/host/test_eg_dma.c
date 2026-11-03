@@ -530,6 +530,10 @@ typedef char v9x_eg_caicos_pfp_size_matches[
     sizeof(v9x_eg_caicos_pfp_microcode) == 1120u * sizeof(v9x_u32) ? 1 : -1];
 typedef char v9x_eg_caicos_me_size_matches[
     sizeof(v9x_eg_caicos_me_microcode) == 1376u * sizeof(v9x_u32) ? 1 : -1];
+typedef char v9x_cm_aruba_pfp_size_matches[
+    sizeof(v9x_cm_aruba_pfp_microcode) == 2176u * sizeof(v9x_u32) ? 1 : -1];
+typedef char v9x_cm_aruba_me_size_matches[
+    sizeof(v9x_cm_aruba_me_microcode) == 2176u * sizeof(v9x_u32) ? 1 : -1];
 
 static void test_cp_microcode(void)
 {
@@ -547,6 +551,12 @@ static void test_cp_microcode(void)
     CHECK(v9x_eg_juniper_me_microcode[0] == 0x7c408000ul);
     CHECK(v9x_eg_juniper_pfp_microcode[1119] == 0x00000005ul);
     CHECK(v9x_eg_juniper_me_microcode[1375] == 0x000f04d3ul);
+    /* Trinity's Aruba pair, which V9XEGCP and V9XCM3D ran on M-D7TFW4's
+     * HD 7660D (PfpFirst 7C408001, MeFirst C4080031). */
+    CHECK(v9x_cm_aruba_pfp_microcode[0] == 0x7c408001ul);
+    CHECK(v9x_cm_aruba_me_microcode[0] == 0xc4080031ul);
+    CHECK(v9x_cm_aruba_pfp_microcode[2175] == 0x00000002ul);
+    CHECK(v9x_cm_aruba_me_microcode[2175] == 0x000f05a0ul);
 }
 
 unsigned int v9x_run_eg_dma_tests(void)

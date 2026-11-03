@@ -18,11 +18,18 @@
  *
  * Emission order is the refusal contract: the mapping and the state are
  * built first, and a batch the map refuses writes nothing.
+ *
+ * Trinity (V9X_DD_ENGINE_CAP_EG_TRINITY) takes Cayman's set_default_state
+ * (cm_3d.c) with CP_COHER_CNTL2 = 0 after it, and its lit PS relocated to
+ * Cayman's control flow (cm_shader.c), as eg_cp.c relocates the slot
+ * shaders; the batch state is Evergreen's, which V9XCM3D drew with.
  */
 #include "d3d_internal.h"
 #include "d3d_eg_map.h"
 #include "velocity9x/eg_3d.h"
 #include "velocity9x/eg_shader.h"
+#include "velocity9x/cm_3d.h"
+#include "velocity9x/cm_shader.h"
 
 /* Triangles a batch takes from one call: the arena holds 2 MiB, this is
  * 48 KiB of vertices. */
@@ -426,6 +433,12 @@ static v9x_u32 v9x_d3d_eg_chip(void)
     return V9X_EG_CHIP_CEDAR;
 }
 
+/* Trinity, whose streams and shaders are Cayman's. */
+static int v9x_d3d_eg_trinity(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_TRINITY) != 0ul;
+}
+
 static v9x_u32 v9x_d3d_eg_map(const V9X_R3D_DRAW *draw,
                               struct v9x_eg_3d_state *state,
                               v9x_u32 *vs_slot, v9x_u32 *ps_slot,
@@ -472,8 +485,10 @@ static int v9x_d3d_eg_accepts(const V9X_R3D_DRAW *draw)
     return reason == V9X_D3D_EG_REFUSE_NONE;
 }
 
-/* The lit PS of the draw in hand (eg_shader.h, v9x_eg_shader_d3d_ps_lit). */
+/* The lit PS of the draw in hand (eg_shader.h, v9x_eg_shader_d3d_ps_lit),
+ * and on Trinity the Evergreen one it is relocated from. */
 static v9x_u32 v9x_d3d_eg_lit_ps[V9X_EG_SHADER_DWORDS_MAX];
+static v9x_u32 v9x_d3d_eg_lit_ps_eg[V9X_EG_SHADER_DWORDS_MAX];
 
 /*
  * A run of triangles, in batches of at most V9X_D3D_EG_CHUNK_TRIANGLES:
@@ -514,7 +529,17 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     state.vs_gpu = v9x_eg_cp_shader_gpu(vs_slot);
-    if (ps_slot == V9X_D3D_EG_PS_LIT) {
+    if (ps_slot == V9X_D3D_EG_PS_LIT && v9x_d3d_eg_trinity()) {
+        ps_dwords = v9x_cm_shader_from_eg(
+            v9x_d3d_eg_lit_ps_eg,
+            v9x_eg_shader_d3d_ps_built(&lit, v9x_d3d_eg_lit_ps_eg),
+            v9x_d3d_eg_lit_ps);
+        if (ps_dwords == 0ul) {
+            v9x_d3d_eg_count_refusal(draw, V9X_D3D_EG_REFUSE_STATE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+    } else if (ps_slot == V9X_D3D_EG_PS_LIT) {
         ps_dwords = v9x_eg_shader_d3d_ps_built(&lit, v9x_d3d_eg_lit_ps);
     } else {
         state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
@@ -550,7 +575,12 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
 
         v9x_eg_pm4_begin(&stream, v9x_d3d_eg_stream,
                          V9X_D3D_EG_STREAM_DWORDS);
-        v9x_eg_3d_default_state(&stream, v9x_d3d_eg_chip());
+        if (v9x_d3d_eg_trinity()) {
+            v9x_cm_3d_default_state(&stream);
+            v9x_cm_3d_coher_cntl2(&stream);
+        } else {
+            v9x_eg_3d_default_state(&stream, v9x_d3d_eg_chip());
+        }
         if (v9x_eg_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
             /* The target the builder would not take, in the trace's
              * DrawsTargetLast, DrawsPitchLast and DrawsExtentLast. */

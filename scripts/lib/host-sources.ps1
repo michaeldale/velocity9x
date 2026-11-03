@@ -121,6 +121,10 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\evergreen\eg_shader.c',
         # Evergreen PM4 streams: CP bring-up, default state, a batch.
         'src\chipsets\ati\evergreen\eg_3d.c',
+        # Cayman (Trinity) shader words and the bring-up shaders, no I/O.
+        'src\chipsets\ati\cayman\cm_shader.c',
+        # Cayman (Trinity) engine configuration: gpu_init's writes, no I/O.
+        'src\chipsets\ati\cayman\cm_3d.c',
         # Carrizo SDMA: Evergreen's DMA plans as SDMA packets, no I/O.
         'src\chipsets\ati\vi\vi_sdma.c',
         # Carrizo SDMA microcode (generated from linux-firmware), data only.
@@ -346,6 +350,8 @@ function Get-V9xHostSourceNames {
         'tests\host\test_eg_dma.c',
         'tests\host\test_eg_shader.c',
         'tests\host\test_eg_3d.c',
+        'tests\host\test_cm_shader.c',
+        'tests\host\test_cm_3d.c',
         'tests\host\test_vi_sdma.c',
         'tests\host\test_vi_3d.c',
         'tests\host\test_main.c'

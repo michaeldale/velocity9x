@@ -39,6 +39,28 @@
  * Clear state is not sent: this proves only that the CP runs packets.
  * Then the CP is halted again, every register written is put back as call
  * 1 read it, and the scratch window (BAR0 + 241 MiB) is restored.
+ *
+ * On Trinity (1002:9901, the HD 7660D, Linux's CHIP_ARUBA) the CP is
+ * Cayman's, and call 2 follows ni.c instead. PFP.BIN and ME.BIN are
+ * ARUBA_pfp.bin and ARUBA_me.bin, 2176 dwords each (radeon_ucode.h
+ * CAYMAN_PFP/PM4_UCODE_SIZE):
+ *   cayman_cp_load_microcode     - no CP_RB_CNTL write before the load;
+ *   cayman_cp_resume             - the same GRBM_SOFT_RESET pulse, CP_DEBUG
+ *                                  bit 27 alone, and all three rings: each
+ *                                  one's size and read-pointer address,
+ *                                  then all three bases (writing one resets
+ *                                  every ring), then each read pointer
+ *                                  reset through CP_RB0/1/2_RPTR with
+ *                                  RB_RPTR_WR_ENA. RB1 and RB2 get idle
+ *                                  16 KiB rings of their own in the window
+ *                                  instead of the values the BIOS left;
+ *   cayman_cp_start              - ME_INITIALIZE with 8 contexts
+ *                                  (cayman_gpu_init's max_hw_contexts for
+ *                                  9901), then CP_ME_CNTL 0
+ *                                  (cayman_cp_enable).
+ * The RLC microcode Linux loads on every IGP (ARUBA_rlc.bin) is not: this
+ * run asks whether the CP runs packets without it. The id comes from a
+ * first read-only call, before the microcode is read.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -56,7 +78,7 @@
 #define V9X_EGCP_RUN         1u
 #define V9X_EGCP_OP_MAX      512u
 #define V9X_EGCP_BLOCK       4096u
-#define V9X_EGCP_DATA        4096u
+#define V9X_EGCP_DATA        8192u
 #define V9X_EGCP_HEADER      16u
 #define V9X_EGCP_TIMEOUT     0xfffffffful
 
@@ -75,6 +97,33 @@
 /* Microcode sizes, radeon_ucode.h. */
 #define V9X_EG_PFP_DWORDS   1120ul
 #define V9X_EG_ME_DWORDS    1376ul
+#define V9X_CM_PFP_DWORDS   2176ul
+#define V9X_CM_ME_DWORDS    2176ul
+
+/* Trinity, whose CP is Cayman's (nid.h). CP_RB0_RPTR is V9X_EG_CP_RB_RPTR;
+ * Cayman writes it, and its siblings, to reset the read pointers. */
+#define V9X_CM_DEVICE_TRINITY       0x9901ul
+#define V9X_CM_CP_RB2_RPTR          0x86f8ul
+#define V9X_CM_CP_RB1_RPTR          0x86fcul
+#define V9X_CM_CP_RB1_BASE          0xc180ul
+#define V9X_CM_CP_RB1_CNTL          0xc184ul
+#define V9X_CM_CP_RB1_RPTR_ADDR     0xc188ul
+#define V9X_CM_CP_RB1_RPTR_ADDR_HI  0xc18cul
+#define V9X_CM_CP_RB1_WPTR          0xc190ul
+#define V9X_CM_CP_RB2_BASE          0xc194ul
+#define V9X_CM_CP_RB2_CNTL          0xc198ul
+#define V9X_CM_CP_RB2_RPTR_ADDR     0xc19cul
+#define V9X_CM_CP_RB2_RPTR_ADDR_HI  0xc1a0ul
+#define V9X_CM_CP_RB2_WPTR          0xc1a4ul
+/* cayman_cp_resume's CP_DEBUG, (1 << 27); cayman_cp_enable's run value. */
+#define V9X_CM_CP_DEBUG_VALUE       0x08000000ul
+#define V9X_CM_CP_RUN               0x00000000ul
+/* cayman_gpu_init: max_hw_contexts 8 on 9901. */
+#define V9X_CM_HW_CONTEXTS          8ul
+/* RB1's and RB2's idle rings in the window, behind RB0's and the
+ * write-back words. */
+#define V9X_CM_RING1                0x8000ul
+#define V9X_CM_RING2                0xc000ul
 
 /* Registers, evergreend.h. */
 #define V9X_EG_MC_VM_FB_LOCATION    0x2024ul
@@ -203,18 +252,43 @@ static const DWORD v9x_saved_offsets[] = {
     V9X_EG_SCRATCH_ADDR, V9X_EG_CP_SEM_WAIT_TIMER, V9X_EG_CP_SEM_INCOMPLETE,
     V9X_EG_CP_RB_WPTR_DELAY
 };
-#define V9X_SAVED_COUNT (sizeof(v9x_saved_offsets) / sizeof(v9x_saved_offsets[0]))
+#define V9X_BASE_SAVED_COUNT (sizeof(v9x_saved_offsets) / sizeof(v9x_saved_offsets[0]))
 
-static const char * const v9x_saved_names[V9X_SAVED_COUNT] = {
+static const char * const v9x_saved_names[V9X_BASE_SAVED_COUNT] = {
     "CP_ME_CNTL", "CP_RB_CNTL", "CP_RB_BASE", "CP_RB_RPTR_ADDR",
     "CP_RB_RPTR_ADDR_HI", "CP_RB_WPTR", "CP_DEBUG", "SCRATCH_REG0",
     "SCRATCH_UMSK", "SCRATCH_ADDR", "CP_SEM_WAIT_TIMER",
     "CP_SEM_INCOMPLETE_TIMER_CNTL", "CP_RB_WPTR_DELAY"
 };
 
+/* Trinity's other two rings, read and put back after the list above. */
+static const DWORD v9x_trinity_saved_offsets[] = {
+    V9X_CM_CP_RB1_BASE, V9X_CM_CP_RB1_CNTL, V9X_CM_CP_RB1_RPTR_ADDR,
+    V9X_CM_CP_RB1_RPTR_ADDR_HI, V9X_CM_CP_RB1_WPTR,
+    V9X_CM_CP_RB2_BASE, V9X_CM_CP_RB2_CNTL, V9X_CM_CP_RB2_RPTR_ADDR,
+    V9X_CM_CP_RB2_RPTR_ADDR_HI, V9X_CM_CP_RB2_WPTR
+};
+#define V9X_TRINITY_SAVED_COUNT \
+    (sizeof(v9x_trinity_saved_offsets) / sizeof(v9x_trinity_saved_offsets[0]))
+
+static const char * const v9x_trinity_saved_names[V9X_TRINITY_SAVED_COUNT] = {
+    "CP_RB1_BASE", "CP_RB1_CNTL", "CP_RB1_RPTR_ADDR", "CP_RB1_RPTR_ADDR_HI",
+    "CP_RB1_WPTR", "CP_RB2_BASE", "CP_RB2_CNTL", "CP_RB2_RPTR_ADDR",
+    "CP_RB2_RPTR_ADDR_HI", "CP_RB2_WPTR"
+};
+
+#define V9X_SAVED_MAX (V9X_BASE_SAVED_COUNT + V9X_TRINITY_SAVED_COUNT)
+
 static struct v9x_egcp_request v9x_request;
 static struct v9x_egcp_result v9x_result;
-static DWORD v9x_saved[V9X_SAVED_COUNT];
+static DWORD v9x_saved[V9X_SAVED_MAX];
+/* The run's saved list: the base list, then Trinity's rings on 9901. */
+static DWORD v9x_saved_list[V9X_SAVED_MAX];
+static const char *v9x_saved_list_names[V9X_SAVED_MAX];
+static DWORD v9x_saved_count;
+/* Nonzero on 1002:9901, whose CP is Cayman's. */
+static int v9x_trinity;
+static BYTE v9x_microcode_bytes[V9X_CM_ME_DWORDS * 4ul];
 static DWORD v9x_ring[64];
 static DWORD v9x_ring_count;
 /* Bits 39:32 of the window's GPU address. */
@@ -305,7 +379,7 @@ static int v9x_dioc(HANDLE device)
 static int v9x_load_microcode(const char *path, DWORD first, DWORD count)
 {
     HANDLE file;
-    BYTE bytes[V9X_EG_ME_DWORDS * 4ul];
+    BYTE *bytes = v9x_microcode_bytes;
     DWORD read;
     DWORD size;
     DWORD index;
@@ -317,7 +391,7 @@ static int v9x_load_microcode(const char *path, DWORD first, DWORD count)
     }
     size = GetFileSize(file, 0);
     read = 0ul;
-    if (size != count * 4ul || size > sizeof(bytes) ||
+    if (size != count * 4ul || size > sizeof(v9x_microcode_bytes) ||
         !ReadFile(file, bytes, size, &read, 0) || read != size) {
         CloseHandle(file);
         return 0;
@@ -346,6 +420,23 @@ static DWORD v9x_ring_close(void)
         v9x_ring_put(V9X_PACKET2);
     }
     return v9x_ring_count;
+}
+
+/* Halt again, then put back what call 1 read: CP_ME_CNTL is first in the
+ * list and written last, the rest before it. */
+static void v9x_build_teardown(void)
+{
+    DWORD index;
+
+    v9x_write(V9X_EG_CP_ME_CNTL, V9X_EG_CP_HALT);
+    v9x_op(V9X_OP_DELAY, V9X_SHORT_DELAY_READS, 0ul, 0ul);
+    for (index = 1ul; index < v9x_saved_count; ++index) {
+        v9x_write(v9x_saved_list[index], v9x_saved[index]);
+    }
+    v9x_write(V9X_EG_CP_ME_CNTL, v9x_saved[0]);
+    v9x_at_after_me_cntl = v9x_read(V9X_EG_CP_ME_CNTL);
+    v9x_at_after_grbm = v9x_read(V9X_EG_GRBM_STATUS);
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 }
 
 static void v9x_build_run(DWORD g)
@@ -435,17 +526,137 @@ static void v9x_build_run(DWORD g)
     v9x_at_grbm = v9x_read(V9X_EG_GRBM_STATUS);
     v9x_at_me_cntl = v9x_read(V9X_EG_CP_ME_CNTL);
 
-    /* Halt again, then put back what call 1 read: CP_ME_CNTL is first in
-     * the list and written here, the rest after. */
-    v9x_write(V9X_EG_CP_ME_CNTL, V9X_EG_CP_HALT);
-    v9x_op(V9X_OP_DELAY, V9X_SHORT_DELAY_READS, 0ul, 0ul);
-    for (index = 1ul; index < V9X_SAVED_COUNT; ++index) {
-        v9x_write(v9x_saved_offsets[index], v9x_saved[index]);
+    v9x_build_teardown();
+
+    v9x_key("Run", "WptrInit", wptr_init);
+    v9x_key("Run", "WptrTest", wptr_test);
+}
+
+/* Cayman's bring-up (ni.c), for Trinity: see the header. Both builders
+ * lay out the same ring, ME_INITIALIZE then SET_CONFIG_REG, apart from the
+ * context count. */
+static void v9x_build_run_trinity(DWORD g)
+{
+    static const DWORD cntl[3] = {
+        V9X_EG_CP_RB_CNTL, V9X_CM_CP_RB1_CNTL, V9X_CM_CP_RB2_CNTL
+    };
+    static const DWORD rptr_addr[3] = {
+        V9X_EG_CP_RB_RPTR_ADDR, V9X_CM_CP_RB1_RPTR_ADDR,
+        V9X_CM_CP_RB2_RPTR_ADDR
+    };
+    static const DWORD rptr_addr_hi[3] = {
+        V9X_EG_CP_RB_RPTR_ADDR_HI, V9X_CM_CP_RB1_RPTR_ADDR_HI,
+        V9X_CM_CP_RB2_RPTR_ADDR_HI
+    };
+    static const DWORD base[3] = {
+        V9X_EG_CP_RB_BASE, V9X_CM_CP_RB1_BASE, V9X_CM_CP_RB2_BASE
+    };
+    static const DWORD rptr[3] = {
+        V9X_EG_CP_RB_RPTR, V9X_CM_CP_RB1_RPTR, V9X_CM_CP_RB2_RPTR
+    };
+    static const DWORD wptr[3] = {
+        V9X_EG_CP_RB_WPTR, V9X_CM_CP_RB1_WPTR, V9X_CM_CP_RB2_WPTR
+    };
+    static const DWORD ring_offset[3] = {
+        0ul, V9X_CM_RING1, V9X_CM_RING2
+    };
+    DWORD wptr_init;
+    DWORD wptr_test;
+    DWORD index;
+    DWORD ring;
+
+    v9x_ring_count = 0ul;
+    v9x_ring_put(V9X_PACKET3(V9X_P3_ME_INITIALIZE, 5ul));
+    v9x_ring_put(0x1ul);
+    v9x_ring_put(0x0ul);
+    v9x_ring_put(V9X_CM_HW_CONTEXTS - 1ul);
+    v9x_ring_put(1ul << 16); /* PACKET3_ME_INITIALIZE_DEVICE_ID(1) */
+    v9x_ring_put(0ul);
+    v9x_ring_put(0ul);
+    wptr_init = v9x_ring_close();
+    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONFIG_REG, 1ul));
+    v9x_ring_put((V9X_EG_SCRATCH_REG0 - V9X_SET_CONFIG_REG_START) >> 2);
+    v9x_ring_put(V9X_SCRATCH_VALUE);
+    wptr_test = v9x_ring_close();
+
+    v9x_request.count = 0ul;
+    v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
+    v9x_op(V9X_OP_VRAM_FILL, 0ul, V9X_WINDOW_DWORDS, 0ul);
+    for (index = 0ul; index < v9x_ring_count; ++index) {
+        v9x_op(V9X_OP_VRAM_WRITE, index * 4ul, v9x_ring[index], 0ul);
     }
-    v9x_write(V9X_EG_CP_ME_CNTL, v9x_saved[0]);
-    v9x_at_after_me_cntl = v9x_read(V9X_EG_CP_ME_CNTL);
-    v9x_at_after_grbm = v9x_read(V9X_EG_GRBM_STATUS);
-    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+
+    /* cayman_cp_enable(false). */
+    v9x_write(V9X_EG_CP_ME_CNTL, V9X_EG_CP_HALT);
+    v9x_write(V9X_EG_SCRATCH_UMSK, 0ul);
+
+    /* cayman_cp_load_microcode. */
+    v9x_write(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_op(V9X_OP_STREAM, V9X_EG_CP_PFP_UCODE_DATA, 0ul, V9X_CM_PFP_DWORDS);
+    v9x_write(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_write(V9X_EG_CP_ME_RAM_WADDR, 0ul);
+    v9x_op(V9X_OP_STREAM, V9X_EG_CP_ME_RAM_DATA, V9X_CM_PFP_DWORDS,
+           V9X_CM_ME_DWORDS);
+    v9x_write(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_write(V9X_EG_CP_ME_RAM_WADDR, 0ul);
+    v9x_write(V9X_EG_CP_ME_RAM_RADDR, 0ul);
+
+    /* cayman_cp_resume: the reset pulse, timers and CP_DEBUG. */
+    v9x_write(V9X_EG_GRBM_SOFT_RESET, V9X_EG_GRBM_RESET_CP_BLOCKS);
+    v9x_at_reset_read = v9x_read(V9X_EG_GRBM_SOFT_RESET);
+    v9x_op(V9X_OP_DELAY, V9X_RESET_DELAY_READS, 0ul, 0ul);
+    v9x_write(V9X_EG_GRBM_SOFT_RESET, 0ul);
+    v9x_read(V9X_EG_GRBM_SOFT_RESET);
+    v9x_write(V9X_EG_CP_SEM_WAIT_TIMER, 0ul);
+    v9x_write(V9X_EG_CP_SEM_INCOMPLETE, 0ul);
+    v9x_write(V9X_EG_CP_RB_WPTR_DELAY, 0ul);
+    v9x_write(V9X_EG_CP_DEBUG, V9X_CM_CP_DEBUG_VALUE);
+    v9x_write(V9X_EG_SCRATCH_ADDR,
+              (v9x_gpu_high << V9X_ADDR_SHIFT_HIGH) |
+              ((g + V9X_SCRATCH_WB) >> 8));
+    v9x_write(V9X_EG_SCRATCH_UMSK, 0ul);
+
+    /* Each ring's size and read-pointer address. With writeback off, as
+     * on Evergreen here, RB_NO_UPDATE keeps the CP from writing it. */
+    for (ring = 0ul; ring < 3ul; ++ring) {
+        v9x_write(cntl[ring], V9X_RB_CNTL | V9X_EG_RB_NO_UPDATE);
+        v9x_write(rptr_addr[ring], (g + V9X_RPTR_WB) & ~3ul);
+        v9x_write(rptr_addr_hi[ring], v9x_gpu_high);
+    }
+    /* Every base: writing one resets all the rings. */
+    for (ring = 0ul; ring < 3ul; ++ring) {
+        v9x_write(base[ring], (v9x_gpu_high << V9X_ADDR_SHIFT_HIGH) |
+                              ((g + ring_offset[ring]) >> 8));
+    }
+    /* Read and write pointers to 0 under RB_RPTR_WR_ENA. */
+    for (ring = 0ul; ring < 3ul; ++ring) {
+        v9x_write(cntl[ring], V9X_RB_CNTL | V9X_EG_RB_NO_UPDATE |
+                              V9X_EG_RB_RPTR_WR_ENA);
+        v9x_write(rptr[ring], 0ul);
+        v9x_write(wptr[ring], 0ul);
+        v9x_op(V9X_OP_DELAY, V9X_SHORT_DELAY_READS, 0ul, 0ul);
+        v9x_write(cntl[ring], V9X_RB_CNTL | V9X_EG_RB_NO_UPDATE);
+    }
+
+    /* cayman_cp_start: ME_INITIALIZE, then cayman_cp_enable(true). */
+    v9x_write(V9X_EG_HDP_MEM_FLUSH, 1ul);
+    v9x_write(V9X_EG_CP_RB_WPTR, wptr_init);
+    v9x_write(V9X_EG_CP_ME_CNTL, V9X_CM_CP_RUN);
+    v9x_at_wait_init = v9x_op(V9X_OP_WAIT_MMIO, V9X_EG_CP_RB_RPTR,
+                              0xfffffffful, wptr_init);
+
+    /* r600_ring_test, on ring 0. */
+    v9x_write(V9X_EG_SCRATCH_REG0, V9X_SCRATCH_SEED);
+    v9x_write(V9X_EG_CP_RB_WPTR, wptr_test);
+    v9x_at_wait_scratch = v9x_op(V9X_OP_WAIT_MMIO, V9X_EG_SCRATCH_REG0,
+                                 0xfffffffful, V9X_SCRATCH_VALUE);
+    v9x_at_scratch = v9x_read(V9X_EG_SCRATCH_REG0);
+    v9x_at_rptr = v9x_read(V9X_EG_CP_RB_RPTR);
+    v9x_at_cp_stat = v9x_read(V9X_EG_CP_STAT);
+    v9x_at_grbm = v9x_read(V9X_EG_GRBM_STATUS);
+    v9x_at_me_cntl = v9x_read(V9X_EG_CP_ME_CNTL);
+
+    v9x_build_teardown();
 
     v9x_key("Run", "WptrInit", wptr_init);
     v9x_key("Run", "WptrTest", wptr_test);
@@ -492,14 +703,6 @@ void __stdcall V9xEvergreenCpEntry(void)
     v9x_text("Report", "Tool", "V9XEGCP");
     v9x_text("Report", "Build", V9X_BUILD_ID);
 
-    if (!v9x_load_microcode("PFP.BIN", 0ul, V9X_EG_PFP_DWORDS) ||
-        !v9x_load_microcode("ME.BIN", V9X_EG_PFP_DWORDS, V9X_EG_ME_DWORDS)) {
-        v9x_finish("MICROCODE-MISSING", 1u);
-    }
-    v9x_request.data_count = V9X_EG_PFP_DWORDS + V9X_EG_ME_DWORDS;
-    v9x_key("Report", "PfpFirst", v9x_request.data[0]);
-    v9x_key("Report", "MeFirst", v9x_request.data[V9X_EG_PFP_DWORDS]);
-
     device = CreateFileA(V9X_EGCP_VXD, 0, 0, 0, CREATE_NEW,
                          FILE_FLAG_DELETE_ON_CLOSE, 0);
     if (device == INVALID_HANDLE_VALUE) {
@@ -507,10 +710,60 @@ void __stdcall V9xEvergreenCpEntry(void)
         v9x_finish("VXD-LOAD-FAILED", 1u);
     }
 
+    /* Call 0: one status read, for the chip's id, which sets the microcode
+     * sizes and the registers saved. */
+    v9x_request.count = 0ul;
+    v9x_request.data_count = 0ul;
+    v9x_read(V9X_EG_GRBM_STATUS);
+    if (!v9x_dioc(device)) {
+        CloseHandle(device);
+        v9x_finish("REFUSED", 2u);
+    }
+    /* The VxD reports the card only on the call that maps it. */
+    v9x_key("Report", "Id", v9x_result.id);
+    v9x_key("Report", "Bar0", v9x_result.bar0);
+    v9x_key("Report", "Bar2", v9x_result.bar2);
+    v9x_trinity = (v9x_result.id >> 16) == V9X_CM_DEVICE_TRINITY;
+    v9x_text("Report", "Trinity", v9x_trinity ? "yes" : "no");
+    v9x_saved_count = 0ul;
+    for (index = 0ul; index < V9X_BASE_SAVED_COUNT; ++index) {
+        v9x_saved_list[v9x_saved_count] = v9x_saved_offsets[index];
+        v9x_saved_list_names[v9x_saved_count++] = v9x_saved_names[index];
+    }
+    if (v9x_trinity) {
+        for (index = 0ul; index < V9X_TRINITY_SAVED_COUNT; ++index) {
+            v9x_saved_list[v9x_saved_count] = v9x_trinity_saved_offsets[index];
+            v9x_saved_list_names[v9x_saved_count++] =
+                v9x_trinity_saved_names[index];
+        }
+    }
+
+    if (v9x_trinity) {
+        if (!v9x_load_microcode("PFP.BIN", 0ul, V9X_CM_PFP_DWORDS) ||
+            !v9x_load_microcode("ME.BIN", V9X_CM_PFP_DWORDS,
+                                V9X_CM_ME_DWORDS)) {
+            CloseHandle(device);
+            v9x_finish("MICROCODE-MISSING", 1u);
+        }
+        v9x_request.data_count = V9X_CM_PFP_DWORDS + V9X_CM_ME_DWORDS;
+    } else {
+        if (!v9x_load_microcode("PFP.BIN", 0ul, V9X_EG_PFP_DWORDS) ||
+            !v9x_load_microcode("ME.BIN", V9X_EG_PFP_DWORDS,
+                                V9X_EG_ME_DWORDS)) {
+            CloseHandle(device);
+            v9x_finish("MICROCODE-MISSING", 1u);
+        }
+        v9x_request.data_count = V9X_EG_PFP_DWORDS + V9X_EG_ME_DWORDS;
+    }
+    v9x_key("Report", "PfpFirst", v9x_request.data[0]);
+    v9x_key("Report", "MeFirst", v9x_request.data[v9x_trinity ?
+                                                  V9X_CM_PFP_DWORDS :
+                                                  V9X_EG_PFP_DWORDS]);
+
     /* Call 1: read-only. */
     v9x_request.count = 0ul;
-    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
-        v9x_read(v9x_saved_offsets[index]);
+    for (index = 0ul; index < v9x_saved_count; ++index) {
+        v9x_read(v9x_saved_list[index]);
     }
     at_grbm = v9x_read(V9X_EG_GRBM_STATUS);
     at_cp_stat = v9x_read(V9X_EG_CP_STAT);
@@ -520,13 +773,10 @@ void __stdcall V9xEvergreenCpEntry(void)
         CloseHandle(device);
         v9x_finish("REFUSED", 2u);
     }
-    v9x_key("Report", "Id", v9x_result.id);
-    v9x_key("Report", "Bar0", v9x_result.bar0);
-    v9x_key("Report", "Bar2", v9x_result.bar2);
     r = v9x_result.op_results;
-    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+    for (index = 0ul; index < v9x_saved_count; ++index) {
         v9x_saved[index] = r[index];
-        v9x_key("Before", v9x_saved_names[index], r[index]);
+        v9x_key("Before", v9x_saved_list_names[index], r[index]);
     }
     v9x_key("Before", "GRBM_STATUS", r[at_grbm]);
     v9x_key("Before", "CP_STAT", r[at_cp_stat]);
@@ -553,7 +803,11 @@ void __stdcall V9xEvergreenCpEntry(void)
     }
 
     /* Call 2: the run. */
-    v9x_build_run(g);
+    if (v9x_trinity) {
+        v9x_build_run_trinity(g);
+    } else {
+        v9x_build_run(g);
+    }
     if (!v9x_dioc(device)) {
         CloseHandle(device);
         v9x_key("Report", "Executed", v9x_result.executed);

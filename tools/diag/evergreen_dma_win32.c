@@ -1,7 +1,13 @@
 /*
  * V9XEGDMA.EXE: the first writes to an AMD Evergreen (Radeon HD 5450 Cedar,
- * HD 7470 Caicos): one async DMA ring, two submissions, checked byte for
- * byte.
+ * HD 7470 Caicos) or Trinity (HD 7660D): one async DMA ring, two
+ * submissions, checked byte for byte.
+ *
+ * Trinity's first DMA engine is Evergreen's block at the same offsets, run
+ * with Evergreen's packets and fence (Linux radeon_asic.c cayman_dma_ring,
+ * trinity_asic's evergreen_copy_dma). Its bring-up, cayman_dma_resume in
+ * ni_dma.c, is r600_dma_resume's without the DMA_MODE write, so on 9901
+ * this probe neither writes DMA_MODE nor puts it back.
  *
  * Phase 3 of docs\plans\ati-evergreen-cedar.md, first step. EGDMA.VXD
  * executes the op lists built here and refuses anything outside its
@@ -232,6 +238,12 @@ static DWORD v9x_ring[64];
 static DWORD v9x_ring_count;
 /* Bits 39:32 of the scratch window's GPU address, for every packet. */
 static DWORD v9x_gpu_high;
+/* Nonzero on Trinity (1002:9901), whose resume leaves DMA_MODE alone. */
+static int v9x_trinity;
+/* SRBM_SOFT_RESET as call 1 read it; its DMA bit is clear or the run stops. */
+static DWORD v9x_srbm_reset;
+
+#define V9X_DEVICE_TRINITY      0x9901ul
 
 /* Indices into v9x_result.op_results of the values the report needs. */
 static DWORD v9x_at_reset_status;
@@ -386,17 +398,19 @@ static void v9x_ring_fill(DWORD count, DWORD dst, DWORD value)
 /* evergreen_gpu_soft_reset for the DMA block alone: ring enable off, a
  * wait, SRBM_SOFT_RESET's DMA bit set and read back, a wait, cleared and
  * read back, a wait. Linux also stops the memory controller around it; this
- * does not. Returns the op index of the status read that follows. */
+ * does not. The other bits are written as call 1 read them, as Linux's
+ * read-modify-write keeps them (the HD 7660D's BIOS leaves bit 16 set).
+ * Returns the op index of the status read that follows. */
 static DWORD v9x_dma_reset(void)
 {
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_CNTL,
            v9x_saved[0] & ~V9X_EG_DMA_RB_ENABLE, 0ul);
     v9x_op(V9X_OP_DELAY, V9X_RESET_DELAY_READS, 0ul, 0ul);
-    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_SRBM_SOFT_RESET, V9X_EG_SOFT_RESET_DMA,
-           0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_SRBM_SOFT_RESET,
+           v9x_srbm_reset | V9X_EG_SOFT_RESET_DMA, 0ul);
     v9x_op(V9X_OP_MMIO_READ, V9X_EG_SRBM_SOFT_RESET, 0ul, 0ul);
     v9x_op(V9X_OP_DELAY, V9X_RESET_DELAY_READS, 0ul, 0ul);
-    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_SRBM_SOFT_RESET, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_SRBM_SOFT_RESET, v9x_srbm_reset, 0ul);
     v9x_op(V9X_OP_MMIO_READ, V9X_EG_SRBM_SOFT_RESET, 0ul, 0ul);
     v9x_op(V9X_OP_DELAY, V9X_RESET_DELAY_READS, 0ul, 0ul);
     return v9x_op(V9X_OP_MMIO_READ, V9X_EG_DMA_STATUS_REG, 0ul, 0ul);
@@ -474,7 +488,9 @@ static void v9x_build_run(DWORD g)
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_IB_CNTL, V9X_EG_DMA_IB_ENABLE, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_CNTL,
            v9x_saved[7] & ~V9X_EG_CTXEMPTY_INT_ENABLE, 0ul);
-    v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_MODE, 1ul, 0ul);
+    if (!v9x_trinity) {
+        v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_MODE, 1ul, 0ul);
+    }
     v9x_op(V9X_OP_MMIO_WRITE, V9X_EG_DMA_RB_WPTR, 0ul, 0ul);
     /* The CPU wrote the ring and buffers through BAR0: flush HDP before the
      * engine reads them (Linux flushes it after every CPU write it hands to
@@ -504,6 +520,9 @@ static void v9x_build_run(DWORD g)
      * a reset leaves; then put back what call 1 read. */
     v9x_at_teardown_status = v9x_dma_reset();
     for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        if (v9x_trinity && v9x_saved_offsets[index] == V9X_EG_DMA_MODE) {
+            continue;
+        }
         v9x_op(V9X_OP_MMIO_WRITE, v9x_saved_offsets[index], v9x_saved[index],
                0ul);
     }
@@ -709,6 +728,8 @@ void __stdcall V9xEvergreenDmaEntry(void)
         v9x_finish("REFUSED", 2u);
     }
     v9x_key("Report", "Id", v9x_result.id);
+    v9x_trinity = (v9x_result.id >> 16) == V9X_DEVICE_TRINITY;
+    v9x_text("Report", "Trinity", v9x_trinity ? "yes" : "no");
     v9x_key("Report", "Bar0", v9x_result.bar0);
     v9x_key("Report", "Bar0High", v9x_result.bar0_high);
     v9x_key("Report", "Bar2", v9x_result.bar2);
@@ -730,6 +751,7 @@ void __stdcall V9xEvergreenDmaEntry(void)
         CloseHandle(device);
         v9x_finish("ENGINE-NOT-AS-READ", 3u);
     }
+    v9x_srbm_reset = r[at_reset];
     /* The start field is 16 MiB units of a 40-bit address. A start whose
      * window would carry into bit 32 is refused rather than computed. */
     fb = (r[at_fb] & V9X_EG_FB_START_MASK);
