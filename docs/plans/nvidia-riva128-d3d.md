@@ -83,8 +83,8 @@ the DMA object's flag bits; 86Box draws no 3D.
 5. **The HAL (first light 2026-11-03,
    [record](../decisions/2026-11-03-riva128-d3d-hal-first-light.md)).**
    V9XDDP's triangles and textured checks draw, in X1R5G5B5 on a 5:6:5
-   desktop. Open:
-   - Z buffer creation fails.
+   desktop. Z works, all eight comparisons and the write mask (V9XDDP's
+   step log, not its INI, which dropped keys). Open:
    - Some draws are refused at the state build.
    - Colours need step 3.
 

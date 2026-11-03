@@ -69,8 +69,24 @@ later textured test, which is why its words looked right.
   and 1Fh, green and blue in 5:5:5. Modulate reads 200h and 10h.
 - **Passed:** D3DTriangleShapeOk, D3DDepthFogOk, D3DSlotPermutationsOk and
   D3DSlotPartialOk.
-- **Z buffer creation fails** in V9XDDP's Z tests (`D3DZSurfaceHr=88760231h`),
-  as it did on boot 19 with Direct3D off. Not investigated.
+- **Z works.** This record first said Z buffer creation failed
+  (`D3DZSurfaceHr=88760231h`). That was a misreading. 88760231h
+  (DDERR_UNSUPPORTED) is V9XDDP's seed for "not run". On boot 23 the INI
+  silently kept seeds for keys written later (the file is 23 KiB; why
+  Windows dropped those writes is not known). V9XDDP's step log,
+  `hal/b23-V9XDDT.TXT`, has every key and is authoritative:
+  - The Z buffer was created in video memory at pitch 128 (D3DZSurfaceHr
+    0), and depth fills read back 1234h and ABCDh (ZDepthFillOk 1).
+  - The first ladder reads Init red, Reject red, Accept blue, Update blue:
+    LESS rejects and accepts as Direct3D does.
+  - The write-mask ladder reads white, green with the write off, then red
+    at 0.1875, accepted, so the masked draw left zeta alone.
+  - Red, then blue at equal depth under each comparison 1-8, reads red,
+    red, blue, blue, red, red, blue, blue: NEVER, LESS, EQUAL, LEQUAL,
+    GREATER, NOTEQUAL, GEQUAL and ALWAYS all as Direct3D defines them.
+
+  The ladders' Ok keys read 0 only because they compare with 5:6:5
+  colours.
 - **96 draws refused at the state build.** Opaque A4R4G4B4 is the expected
   part of that; the rest are not identified.
 - No hang, no engine timeout, desktop intact through every run.
@@ -78,6 +94,5 @@ later textured test, which is why its words looked right.
 ## Not done
 
 - Step 3: 5:5:5 desktops, which needs the owner at the monitor.
-- The Z buffer failure.
 - The remaining state refusals.
 - Games (step 6).
