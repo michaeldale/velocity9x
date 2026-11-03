@@ -16,7 +16,9 @@
  * RAMRO and RAMFC), the D3D, surface and pixmap RAMHT entries' use, and
  * every mode-setting register (CRTC, PRAMDAC): the VBE has set the mode.
  * /d3d adds the D3D object and a short DMA object and draws one triangle
- * instead (Phase 7; see v9x_run_d3d).
+ * instead (Phase 7; see v9x_run_d3d). /d3dstate draws one case per piece
+ * of 3D state and writes the raw pixels to C:\V9XDIAG\N3Dnn.BIN (see
+ * v9x_d3d_cases).
  *
  * /all also runs at 800x600x8 and 800x600x32, switching with
  * ChangeDisplaySettings and back afterwards; before each run's own
@@ -466,6 +468,9 @@ static int v9x_d3d;
  * by the fourth /d3d run (see v9x_d3d_fog below). */
 static DWORD v9x_d3d_dma_flags = V9X_D3D_DMA_FLAGS;
 static DWORD v9x_d3d_pte_base = V9X_SURFACE_OFFSET;
+/* The D3D object's DMA instance word; /d3dstate's last case points it at
+ * the whole-memory object it writes at RAMIN 4000h. */
+static DWORD v9x_d3d_dma_word = V9X_D3D_DMA_INSTANCE;
 
 /* The bring-up for one depth, appended to the op list. */
 static void v9x_bring_up(DWORD bytes, DWORD pitch, int y16)
@@ -542,7 +547,7 @@ static void v9x_bring_up(DWORD bytes, DWORD pitch, int y16)
                0ul);
         v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_INSTANCE, V9X_D3D_OPTIONS, 0ul);
         v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_INSTANCE + 4ul,
-               V9X_D3D_DMA_INSTANCE, 0ul);
+               v9x_d3d_dma_word, 0ul);
         /* nv3TablePRAMIN's DMA object: flags, limit, then page entries
          * (riva_hw.c writes (i << 12) | 3), here the scratch window's. */
         v9x_op(V9X_OP_RAMIN_FILL, V9X_D3D_DMA,
@@ -1238,6 +1243,393 @@ static int v9x_run_d3d(HANDLE device, int textured, const char *section)
     return ok ? 1 : 0;
 }
 
+/*
+ * /d3dstate, step 2 of docs/plans/nvidia-riva128-d3d.md: the 3D state the
+ * first triangle left unmeasured. Each case is one bring-up and one draw.
+ * The readback is raw: the first 128 pixels of each of the 16 lines, colour
+ * then zeta, 4096 bytes each, written to C:\V9XDIAG\N3Dnn.BIN and judged on
+ * the host, where the models are easier to vary than here.
+ *
+ * The values are envytools': CONFIG's interpolator (bits 0-1, ZOH corner,
+ * ZOH centre, FOH centre; hwtest allows 0-2), the write enables (0 never,
+ * 1 alpha, 2 alpha and Z, 3 Z, 4 always), the comparisons (2 LESS, 5
+ * GREATER, 8 ALWAYS), TEXTURE_FORMAT's colour key (the key in bits 0-15,
+ * enable bit 16; hwtest's mask FF31FFFFh). nvhw/pgraph_d3d_nv3.c converts
+ * x and y to 1/16 pixel, z to 24 bits inverted, and blends with a 4-bit
+ * factor; the edge, Z and blend cases test those.
+ *
+ * The texture that tells texels apart stores, at storage index s (its
+ * offset / 2), red 4 * (s & 7) and green 4 * (s >> 3): a pixel names the
+ * storage texel it fetched, whatever the layout, with room for rounding.
+ */
+#define V9X_D3D_CFG_BASE       0x00001150ul /* wrap U, V; NORMAL; no cull */
+#define V9X_D3D_INTERP_CENTER  0x00000001ul
+#define V9X_D3D_INTERP_FOH     0x00000002ul
+#define V9X_D3D_ZFUNC_SHIFT    16u
+#define V9X_D3D_ZWRITE_SHIFT   20u
+#define V9X_D3D_CWRITE_SHIFT   24u
+#define V9X_CMP_LESS           2ul
+#define V9X_CMP_GREATER        5ul
+#define V9X_CMP_ALWAYS         8ul
+#define V9X_WREN_ALPHA         1ul
+#define V9X_WREN_Z             3ul
+#define V9X_WREN_ALWAYS        4ul
+#define V9X_D3D_KEY_ENABLE     0x00010000ul
+#define V9X_D3D_CFG_OPAQUE     (V9X_D3D_CFG_BASE | \
+                                (V9X_CMP_ALWAYS << V9X_D3D_ZFUNC_SHIFT) | \
+                                (V9X_WREN_ALWAYS << V9X_D3D_CWRITE_SHIFT))
+#define V9X_D3D_CFG_ZTEST(f)   (V9X_D3D_CFG_BASE | \
+                                ((f) << V9X_D3D_ZFUNC_SHIFT) | \
+                                (V9X_WREN_Z << V9X_D3D_ZWRITE_SHIFT) | \
+                                (V9X_WREN_Z << V9X_D3D_CWRITE_SHIFT))
+#define V9X_D3D_ALPHA_GREATER  ((V9X_CMP_GREATER << 8) | 0x7ful)
+#define V9X_FLOAT_QUARTER      0x3e800000ul
+#define V9X_FLOAT_3QUARTERS    0x3f400000ul
+/* The quad's second triangle: v3 into slot 3, then slots 3, 1, 2. */
+#define V9X_D3D_SPEC_V3        0x00333213ul
+#define V9X_D3D_KEPT_X         128ul
+#define V9X_D3D_KEPT_BYTES     (V9X_D3D_KEPT_X * 2ul * V9X_D3D_LINES)
+
+#define V9X_TEX_WHITE          0ul
+#define V9X_TEX_ID             1ul
+#define V9X_TEX_ID_ALPHA       2ul /* alpha = s & 1 */
+
+#define V9X_SHAPE_QUAD         0ul /* (8,0)-(72,16), u and v 0 to 1 */
+#define V9X_SHAPE_PERSPECTIVE  1ul /* the same, rhw 1/4 on the right */
+#define V9X_SHAPE_HALF         2ul /* edges through pixel centres */
+#define V9X_SHAPE_ZPAIR        3ul /* A z 1/2, then B z 1/4 and 3/4 */
+#define V9X_SHAPE_QUARTER      4ul /* HALF's triangle at + 1/4 */
+#define V9X_SHAPE_3QUARTERS    5ul /* and at + 3/4 */
+
+/* The whole-memory DMA object: 800h page entries at RAMIN 4000h, clear of
+ * RAMHT (0), the small object (1400h), RAMRO (2000h), RAMFC (2200h) and
+ * the instances (3400h); the texture is then addressed by its video memory
+ * offset. */
+#define V9X_D3D_BIG_DMA        0x4000ul
+#define V9X_D3D_BIG_DMA_WORD   0x0400ul
+#define V9X_D3D_BIG_PAGES      0x800ul
+#define V9X_D3D_BIG_BATCH      480ul
+
+struct v9x_d3d_case {
+    const char *name;
+    DWORD texture;
+    DWORD shape;
+    DWORD config;
+    DWORD alpha;
+    DWORD format_extra;
+    DWORD colour;
+    DWORD fill;
+    DWORD zeta_fill;
+    int big_dma;
+};
+
+static const struct v9x_d3d_case v9x_d3d_cases[] = {
+    { "TexelZohCorner", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0 },
+    { "TexelZohCenter", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD | V9X_D3D_INTERP_CENTER,
+      V9X_D3D_ALPHA, 0ul, 0xfffffffful, 0ul, 0ul, 0 },
+    { "TexelFoh", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD | V9X_D3D_INTERP_FOH,
+      V9X_D3D_ALPHA, 0ul, 0xfffffffful, 0ul, 0ul, 0 },
+    { "Perspective", V9X_TEX_ID, V9X_SHAPE_PERSPECTIVE,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0 },
+    { "EdgeHalf", V9X_TEX_WHITE, V9X_SHAPE_HALF,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xffff0000ul, 0ul, 0ul, 0 },
+    { "ZLess", V9X_TEX_WHITE, V9X_SHAPE_ZPAIR,
+      V9X_D3D_CFG_ZTEST(V9X_CMP_LESS) | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA,
+      0ul, 0ul, 0ul, 0ul, 0 },
+    { "ZGreater", V9X_TEX_WHITE, V9X_SHAPE_ZPAIR,
+      V9X_D3D_CFG_ZTEST(V9X_CMP_GREATER) | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA,
+      0ul, 0ul, 0ul, 0ul, 0 },
+    { "ZLessFillFfff", V9X_TEX_WHITE, V9X_SHAPE_ZPAIR,
+      V9X_D3D_CFG_ZTEST(V9X_CMP_LESS) | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA,
+      0ul, 0ul, 0ul, 0xfffffffful, 0 },
+    { "AlphaTest", V9X_TEX_ID_ALPHA, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_BASE | (V9X_CMP_ALWAYS << V9X_D3D_ZFUNC_SHIFT) |
+      (V9X_WREN_ALPHA << V9X_D3D_CWRITE_SHIFT), V9X_D3D_ALPHA_GREATER, 0ul,
+      0xfffffffful, 0x7fff7ffful, 0ul, 0 },
+    { "BlendHalf", V9X_TEX_WHITE, V9X_SHAPE_QUAD, V9X_D3D_CFG_OPAQUE,
+      V9X_D3D_ALPHA, 0ul, 0x80ff0000ul, 0x001f001ful, 0ul, 0 },
+    { "ColourKey", V9X_TEX_ID, V9X_SHAPE_QUAD, V9X_D3D_CFG_OPAQUE,
+      V9X_D3D_ALPHA, V9X_D3D_KEY_ENABLE | 0x9080ul, 0xfffffffful,
+      0x7fff7ffful, 0ul, 0 },
+    { "BigDma", V9X_TEX_ID, V9X_SHAPE_QUAD,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 1 },
+    { "EdgeQuarter", V9X_TEX_WHITE, V9X_SHAPE_QUARTER,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xffff0000ul, 0ul, 0ul, 0 },
+    { "Edge3Quarters", V9X_TEX_WHITE, V9X_SHAPE_3QUARTERS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xffff0000ul, 0ul, 0ul, 0 }
+};
+#define V9X_D3D_CASE_COUNT \
+    (sizeof(v9x_d3d_cases) / sizeof(v9x_d3d_cases[0]))
+
+static DWORD v9x_at_d3d_kept;
+
+/* value + quarters / 4 as IEEE single bits: 4 * value + quarters, divided
+ * by four through its exponent. */
+static DWORD v9x_float_quarters_of(DWORD value, DWORD quarters)
+{
+    return v9x_float_of(4ul * value + quarters) - (2ul << 23);
+}
+
+static DWORD v9x_texel_id(DWORD s, int alpha_from_s)
+{
+    DWORD alpha;
+
+    alpha = alpha_from_s ? (s & 1ul) : 1ul;
+    return (alpha << 15) | (((s & 7ul) * 4ul) << 10) |
+           (((s >> 3) * 4ul) << 5);
+}
+
+/* One vertex, every coordinate already IEEE bits, then a wait: these
+ * writes do not check the FIFO's free count, and a vertex is 32 bytes. */
+static void v9x_d3d_vertex_at(DWORD specular, DWORD colour, DWORD x,
+                              DWORD y, DWORD z, DWORD rhw, DWORD u, DWORD v)
+{
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x00ul, specular);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x04ul, colour);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x08ul, x);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x0cul, y);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x10ul, z);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x14ul, rhw);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x18ul, u);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_VERTEX + 0x1cul, v);
+    v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+}
+
+/* Two triangles, (x0,y0) (x1,y0) (x0,y1) and (x1,y0) (x1,y1) (x0,y1),
+ * texture coordinates 0 to 1 across; fog byte 0 (none). */
+static void v9x_d3d_quad(DWORD colour, DWORD x0, DWORD y0, DWORD x1,
+                         DWORD y1, DWORD z, DWORD rhw_right)
+{
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V0, colour, v9x_float_of(x0),
+                      v9x_float_of(y0), z, V9X_FLOAT_ONE, 0ul, 0ul);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V1, colour, v9x_float_of(x1),
+                      v9x_float_of(y0), z, rhw_right, V9X_FLOAT_ONE, 0ul);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V2, colour, v9x_float_of(x0),
+                      v9x_float_of(y1), z, V9X_FLOAT_ONE, 0ul,
+                      V9X_FLOAT_ONE);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V3, colour, v9x_float_of(x1),
+                      v9x_float_of(y1), z, rhw_right, V9X_FLOAT_ONE,
+                      V9X_FLOAT_ONE);
+}
+
+/* The whole-memory DMA object, written ahead of its case in requests of
+ * RAMIN writes alone; the bring-up leaves RAMIN 4000h alone. */
+static int v9x_write_big_dma(HANDLE device)
+{
+    DWORD page;
+    DWORD returned;
+    BOOL ok;
+
+    page = 0ul;
+    while (page < V9X_D3D_BIG_PAGES) {
+        v9x_request.count = 0ul;
+        if (page == 0ul) {
+            v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_BIG_DMA, V9X_D3D_DMA_FLAGS,
+                   0ul);
+            v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_BIG_DMA + 4ul,
+                   V9X_D3D_BIG_PAGES * V9X_D3D_PAGE - 1ul, 0ul);
+        }
+        while (page < V9X_D3D_BIG_PAGES &&
+               v9x_request.count < V9X_D3D_BIG_BATCH) {
+            v9x_op(V9X_OP_RAMIN_WRITE, V9X_D3D_BIG_DMA + 8ul + page * 4ul,
+                   (page * V9X_D3D_PAGE) | V9X_D3D_PTE_PRESENT_RW, 0ul);
+            ++page;
+        }
+        returned = 0ul;
+        ok = DeviceIoControl(device, V9X_N32D_RUN, &v9x_request,
+                             sizeof(v9x_request), &v9x_result,
+                             sizeof(v9x_result), &returned, 0);
+        if (!ok || returned != sizeof(v9x_result) ||
+            (v9x_result.status & V9X_ST_COMPLETE) == 0ul) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void v9x_build_d3d_case(const struct v9x_d3d_case *one, DWORD pitch)
+{
+    DWORD index;
+    DWORD texel;
+    DWORD y;
+    DWORD a_config;
+    DWORD quarters;
+
+    v9x_request.count = 0ul;
+    v9x_bring_up(2ul, pitch, 0);
+
+    for (index = 0ul; index < V9X_D3D_TEX_SIZE * V9X_D3D_TEX_SIZE;
+         index += 2ul) {
+        if (one->texture == V9X_TEX_WHITE) {
+            texel = 0xfffffffful;
+        } else {
+            texel = v9x_texel_id(index, one->texture == V9X_TEX_ID_ALPHA) |
+                    (v9x_texel_id(index + 1ul,
+                                  one->texture == V9X_TEX_ID_ALPHA) << 16);
+        }
+        v9x_op(V9X_OP_VRAM_WRITE, V9X_D3D_TEXTURE + index * 2ul, texel, 0ul);
+    }
+    v9x_op(V9X_OP_VRAM_FILL, V9X_D3D_ZETA, (V9X_D3D_LINES * pitch) / 4ul,
+           one->zeta_fill);
+    v9x_op(V9X_OP_VRAM_FILL, 0ul, (V9X_D3D_LINES * pitch) / 4ul, one->fill);
+
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_OFFSET,
+               one->big_dma ? V9X_SURFACE_OFFSET + V9X_D3D_TEXTURE :
+                              V9X_D3D_TEXTURE);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_FORMAT,
+               V9X_D3D_TEX_FORMAT | one->format_extra);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_FILTER, 0ul);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_FOG_COLOR, 0ul);
+    /* The Z pair draws A unconditionally, then B under the case's test. */
+    a_config = one->shape == V9X_SHAPE_ZPAIR ?
+               (V9X_D3D_CFG_BASE | (V9X_CMP_ALWAYS << V9X_D3D_ZFUNC_SHIFT) |
+                (V9X_WREN_ALWAYS << V9X_D3D_ZWRITE_SHIFT) |
+                (V9X_WREN_ALWAYS << V9X_D3D_CWRITE_SHIFT) |
+                V9X_D3D_ROP_ADD) :
+               one->config;
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_CONFIG, a_config);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_ALPHA, one->alpha);
+    v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+
+    if (one->shape == V9X_SHAPE_QUAD) {
+        v9x_d3d_quad(one->colour, 8ul, 0ul, 72ul, 16ul, V9X_FLOAT_HALF,
+                     V9X_FLOAT_ONE);
+    } else if (one->shape == V9X_SHAPE_PERSPECTIVE) {
+        v9x_d3d_quad(one->colour, 8ul, 0ul, 72ul, 16ul, V9X_FLOAT_HALF,
+                     V9X_FLOAT_QUARTER);
+    } else if (one->shape == V9X_SHAPE_HALF ||
+               one->shape == V9X_SHAPE_QUARTER ||
+               one->shape == V9X_SHAPE_3QUARTERS) {
+        /* The first triangle moved by a fraction of a pixel: at a half its
+         * top and left edges run through pixel centres, so the edge rule
+         * decides them; a quarter and three quarters tell whether the
+         * fraction is kept, rounded or dropped. */
+        quarters = one->shape == V9X_SHAPE_HALF ? 2ul :
+                   one->shape == V9X_SHAPE_QUARTER ? 1ul : 3ul;
+        v9x_d3d_vertex_at(V9X_D3D_SPEC_V0, one->colour,
+                          v9x_float_quarters_of(8ul, quarters),
+                          v9x_float_quarters_of(2ul, quarters),
+                          V9X_FLOAT_HALF, V9X_FLOAT_ONE, 0ul, 0ul);
+        v9x_d3d_vertex_at(V9X_D3D_SPEC_V1, one->colour,
+                          v9x_float_quarters_of(72ul, quarters),
+                          v9x_float_quarters_of(2ul, quarters),
+                          V9X_FLOAT_HALF, V9X_FLOAT_ONE, V9X_FLOAT_ONE, 0ul);
+        v9x_d3d_vertex_at(V9X_D3D_SPEC_V2, one->colour,
+                          v9x_float_quarters_of(8ul, quarters),
+                          v9x_float_quarters_of(14ul, quarters),
+                          V9X_FLOAT_HALF, V9X_FLOAT_ONE, 0ul, V9X_FLOAT_ONE);
+    } else {
+        /* A red over x 8-72 at z 1/2; B blue over x 40-104, z 1/4 in the
+         * top eight lines and 3/4 in the bottom eight. Where B overlaps
+         * A, the case's comparison picks; right of A, zeta's fill does. */
+        v9x_d3d_quad(0xffff0000ul, 8ul, 0ul, 72ul, 16ul, V9X_FLOAT_HALF,
+                     V9X_FLOAT_ONE);
+        v9x_method(V9X_SUB_D3D, V9X_M_D3D_CONFIG, one->config);
+        v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+        v9x_d3d_quad(0xff0000fful, 40ul, 0ul, 104ul, 8ul,
+                     V9X_FLOAT_QUARTER, V9X_FLOAT_ONE);
+        v9x_d3d_quad(0xff0000fful, 40ul, 8ul, 104ul, 16ul,
+                     V9X_FLOAT_3QUARTERS, V9X_FLOAT_ONE);
+    }
+    v9x_at_idle_fill = v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+
+    /* Colour, then zeta, each line's first V9X_D3D_KEPT_X pixels. */
+    v9x_at_d3d_kept = v9x_request.count;
+    for (y = 0ul; y < V9X_D3D_LINES; ++y) {
+        v9x_op(V9X_OP_VRAM_BLOCK, y * pitch, V9X_D3D_KEPT_X / 2ul, 0ul);
+    }
+    for (y = 0ul; y < V9X_D3D_LINES; ++y) {
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_D3D_ZETA + y * pitch,
+               V9X_D3D_KEPT_X / 2ul, 0ul);
+    }
+    v9x_at_d3d_after = v9x_request.count;
+    for (index = 0ul; index < V9X_D3D_AFTER_COUNT; ++index) {
+        v9x_read(v9x_d3d_after_offsets[index]);
+    }
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+}
+
+static int v9x_run_d3d_case(HANDLE device, DWORD number,
+                            const struct v9x_d3d_case *one)
+{
+    char path[40];
+    HANDLE file;
+    DWORD pitch;
+    DWORD returned;
+    DWORD written;
+    DWORD index;
+    int length;
+    BOOL ok;
+
+    pitch = V9X_WIDTH * 2ul;
+    v9x_d3d_dma_word = V9X_D3D_DMA_INSTANCE;
+    if (one->big_dma) {
+        if (!v9x_write_big_dma(device)) {
+            v9x_text(one->name, "Result", "BIG-DMA-WRITE-FAILED");
+            return 0;
+        }
+        v9x_d3d_dma_word = V9X_D3D_BIG_DMA_WORD;
+    }
+    v9x_build_d3d_case(one, pitch);
+    v9x_number(one->name, "Ops", v9x_request.count);
+    v9x_key(one->name, "Config", one->config);
+
+    returned = 0ul;
+    ok = DeviceIoControl(device, V9X_N32D_RUN, &v9x_request,
+                         sizeof(v9x_request), &v9x_result,
+                         sizeof(v9x_result), &returned, 0);
+    if (!ok || returned != sizeof(v9x_result) ||
+        v9x_result.magic != V9X_N32D_MAGIC) {
+        v9x_text(one->name, "Result", "DIOC-FAILED");
+        return 0;
+    }
+    v9x_key(one->name, "Status", v9x_result.status);
+    if ((v9x_result.status & V9X_ST_COMPLETE) == 0ul) {
+        v9x_number(one->name, "RefusedIndex", v9x_result.refused_index);
+        v9x_text(one->name, "Result", "REFUSED-OR-UNMAPPED");
+        return 0;
+    }
+    if ((v9x_result.status & V9X_ST_TIMEOUT) != 0ul) {
+        v9x_text(one->name, "Timeout", "yes");
+    }
+    v9x_key(one->name, "IdleDrawReads",
+            v9x_result.op_results[v9x_at_idle_fill]);
+    for (index = 0ul; index < V9X_D3D_AFTER_COUNT; ++index) {
+        v9x_key(one->name, v9x_d3d_after_names[index],
+                v9x_result.op_results[v9x_at_d3d_after + index]);
+    }
+
+    /* The block holds only the kept lines, colour then zeta, in order. */
+    lstrcpyA(path, V9X_DIAG_PATH("N3D00.BIN"));
+    length = lstrlenA(path);
+    path[length - 6] = (char)('0' + (int)(number / 10ul));
+    path[length - 5] = (char)('0' + (int)(number % 10ul));
+    file = CreateFileA(path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        v9x_text(one->name, "Result", "BIN-WRITE-FAILED");
+        return 0;
+    }
+    written = 0ul;
+    ok = WriteFile(file, v9x_result.block, 2ul * V9X_D3D_KEPT_BYTES,
+                   &written, 0);
+    CloseHandle(file);
+    v9x_text(one->name, "File", path);
+    v9x_text(one->name, "Result",
+             ok && written == 2ul * V9X_D3D_KEPT_BYTES &&
+             (v9x_result.status & V9X_ST_TIMEOUT) == 0ul ? "DONE" : "FAIL");
+    return ok && (v9x_result.status & V9X_ST_TIMEOUT) == 0ul;
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -1326,6 +1718,28 @@ void __stdcall V9xNv32dEntry(void)
         v9x_key("Report", "LoadError", GetLastError());
         WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
         ExitProcess(2u);
+    }
+
+    /* Ahead of /d3d, which its name contains. */
+    if (v9x_switch_given("/d3dstate")) {
+        if (bits != 16ul) {
+            v9x_text("Report", "Result", "D3D-NEEDS-16BPP");
+            CloseHandle(device);
+            WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
+            ExitProcess(1u);
+        }
+        v9x_d3d = 1;
+        all_pass = 1;
+        for (index = 0ul; index < V9X_D3D_CASE_COUNT; ++index) {
+            if (!v9x_run_d3d_case(device, index + 1ul,
+                                  &v9x_d3d_cases[index])) {
+                all_pass = 0;
+            }
+        }
+        CloseHandle(device);
+        v9x_text("Report", "Result", all_pass ? "DONE" : "FAIL");
+        WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
+        ExitProcess(all_pass ? 0u : 3u);
     }
 
     if (v9x_switch_given("/d3d")) {

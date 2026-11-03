@@ -37,13 +37,27 @@ the DMA object's flag bits; 86Box draws no 3D.
    ([record](../decisions/2026-11-03-riva128-first-triangle.md)): the
    trigger, modulation, the fog byte's sense, video memory texturing,
    swizzled textures.
-2. **The rest of the state, by probe.** Z (LESS and LEQUAL, writes on, the
-   value written for a given z), the edge rule against the probe's 36 extra
-   pixels, perspective with two rhw values, a texture that tells every
-   texel apart (to prove the swizzle and the texel centre), the blend
-   factors, alpha test, colour key, the bilinear filter's SPREAD and
-   SIZE_ADJUST fields, and the 8 MiB DMA object placed clear of RAMRO and
-   RAMFC (RAMIN 4000h has 16 KiB free).
+2. **The rest of the state, by probe (done 2026-11-03).** `V9XN32D
+   /d3dstate`, 14 cases
+   ([record](../decisions/2026-11-03-riva128-d3d-state.md)):
+   - Every texel swizzled.
+   - Point sampling on interpolator 0, bilinear on interpolator 2 (half a
+     texel off Direct3D).
+   - Perspective done by the engine.
+   - Zeta = z · 65536, comparisons in Direct3D's sense.
+   - Alpha test, source alpha blend and colour key work.
+   - The edge rule is the top-left rule at integer points with the vertex
+     fraction dropped.
+   - The whole-memory DMA object at RAMIN 4000h works.
+
+   Left for step 5, against games:
+   - LEQUAL and the other comparisons.
+   - Z_PERSPECTIVE.
+   - The DSTCOLOR and ZERO blends.
+   - FILTER's fields.
+   - Mipmaps.
+   - Wrap modes.
+   - The dither switch.
 3. **5:5:5 desktops (decision B, already taken).** The D3D object cannot
    render 5:6:5, so 16 bpp modes run 5:5:5: the VBE mode, then PRAMDAC
    general control's colour bit, then a 5:5:5 mode to Windows. The driver
@@ -66,5 +80,6 @@ the DMA object's flag bits; 86Box draws no 3D.
   the surface registers take any pitch up to 1FF0h, so probably freely.
 - Whether the zeta surface has to share the colour surface's pitch.
 - What clears zeta: the 2D engine's fill into surface 3 is the likely way.
+  The value is FFFFh (step 2); the probe cleared it with the CPU.
 - Whether the texture cache needs flushing after a texture changes in
   place.
