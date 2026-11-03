@@ -89,8 +89,10 @@ static void test_from_eg_blit(void)
 }
 
 /* A relocated shader's control flow: no end-of-program bit, no VC, CF_END
- * last; every clause's words equal the Evergreen clause's (fetches apart
- * from the two fields Cayman drops); fetch clauses 16-byte aligned. */
+ * last; every Evergreen CF entry kept, in order; every clause's words equal
+ * the Evergreen clause's (fetches apart from the two fields Cayman drops);
+ * fetch clauses 16-byte aligned. A CF_ALU word has no end-of-program bit:
+ * its bit 21 is part of the count, set for clauses of 9 to 16 slots. */
 static void check_relocated(const v9x_u32 *eg, v9x_u32 eg_count)
 {
     v9x_u32 count;
@@ -98,6 +100,7 @@ static void check_relocated(const v9x_u32 *eg, v9x_u32 eg_count)
     v9x_u32 w1;
     v9x_u32 cf_inst;
     v9x_u32 eg_slot = 0ul;
+    v9x_u32 eg_cf = 0ul;
     v9x_u32 eg_w1;
     v9x_u32 addr;
     v9x_u32 eg_addr;
@@ -105,12 +108,19 @@ static void check_relocated(const v9x_u32 *eg, v9x_u32 eg_count)
     v9x_u32 index;
     v9x_u32 ended = 0ul;
 
+    for (slot = 0ul; slot < 16ul && slot * 2ul + 1ul < eg_count; ++slot) {
+        eg_w1 = eg[slot * 2ul + 1ul];
+        if ((eg_w1 & 0x20000000ul) == 0ul && (eg_w1 & 0x00200000ul) != 0ul) {
+            eg_cf = slot + 1ul;
+            break;
+        }
+    }
+    CHECK(eg_cf != 0ul);
     reset();
     count = v9x_cm_shader_from_eg(eg, eg_count, shader);
     CHECK(count != 0ul && count <= V9X_CM_SHADER_DWORDS_MAX);
     for (slot = 0ul; slot < 16ul && count != 0ul; ++slot) {
         w1 = shader[slot * 2ul + 1ul];
-        CHECK((w1 & 0x00200000ul) == 0ul);
         if ((w1 & 0x20000000ul) == 0ul &&
             ((w1 >> 22) & 0xfful) == V9X_CM_CF_END) {
             ended = 1ul;
@@ -121,13 +131,16 @@ static void check_relocated(const v9x_u32 *eg, v9x_u32 eg_count)
         addr = shader[slot * 2ul] * 2ul;
         eg_addr = eg[(eg_slot - 1ul) * 2ul] * 2ul;
         if ((w1 & 0x20000000ul) != 0ul) {
-            /* ALU: count is slots, two dwords each. */
+            /* ALU: the word is the Evergreen one; count is slots, two
+             * dwords each. */
+            CHECK(w1 == eg_w1);
             dwords = (((w1 >> 18) & 0x7ful) + 1ul) * 2ul;
             for (index = 0ul; index < dwords; ++index) {
                 CHECK(shader[addr + index] == eg[eg_addr + index]);
             }
             continue;
         }
+        CHECK((w1 & 0x00200000ul) == 0ul);
         cf_inst = (w1 >> 22) & 0xfful;
         CHECK(cf_inst != V9X_EG_CF_VC);
         if (cf_inst == V9X_EG_CF_TC) {
@@ -149,6 +162,7 @@ static void check_relocated(const v9x_u32 *eg, v9x_u32 eg_count)
         }
     }
     CHECK(ended == 1ul);
+    CHECK(eg_slot == eg_cf);
 }
 
 static void test_from_eg_d3d(void)

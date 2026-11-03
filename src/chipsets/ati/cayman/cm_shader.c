@@ -157,7 +157,12 @@ v9x_u32 v9x_cm_shader_from_eg(const v9x_u32 *eg, v9x_u32 eg_count,
             start[slot] + dwords[slot] > eg_count) {
             return 0ul;
         }
-        if ((w1 & CM_CF_EOP) != 0ul) {
+        /* Only a non-ALU word has END_OF_PROGRAM. A CF_ALU word's bit 21
+         * is its count's bit 3, set for clauses of 9 to 16 slots; reading
+         * it as EOP cut the lit PSs after their first clause, with no
+         * export, and the shader never finished (M-D7TFW4 boot 19,
+         * docs\decisions\2026-11-03-trinity-hal-direct3d-hang.md). */
+        if (kind[slot] != CM_KIND_ALU && (w1 & CM_CF_EOP) != 0ul) {
             cf_count = slot + 1ul;
             break;
         }
@@ -217,7 +222,10 @@ v9x_u32 v9x_cm_shader_from_eg(const v9x_u32 *eg, v9x_u32 eg_count,
      * end of program left to CF_END. */
     for (slot = 0ul; slot < cf_count; ++slot) {
         w0 = eg[slot * 2ul];
-        w1 = eg[slot * 2ul + 1ul] & ~CM_CF_EOP;
+        w1 = eg[slot * 2ul + 1ul];
+        if (kind[slot] != CM_KIND_ALU) {
+            w1 &= ~CM_CF_EOP;
+        }
         if (kind[slot] == CM_KIND_ALU) {
             w0 = (w0 & ~CM_CF_ALU_ADDR_MASK) | (start[slot] / 2ul);
         } else if (kind[slot] != CM_KIND_EXPORT) {
