@@ -196,7 +196,18 @@ ECReadWindows label dword
     dd 9a20h, 9a40h     ; CB_PERF_CTR0-3_SEL_0/1
     dd 0a008h, 0a00ch   ; SMX_SAR_CTL0
     dd 0a020h, 0a024h   ; SMX_DC_CTL0
-EC_READ_WINDOW_COUNT    equ 50
+    ; cayman_gpu_init's registers Evergreen's lacks (V9XCM3D, Trinity
+    ; only; nid.h), and CP_COHER_CNTL2, which its ring sets.
+    dd 85e8h, 85ech     ; CP_COHER_CNTL2
+    dd 89b4h, 89b8h     ; VGT_OFFCHIP_LDS_BASE
+    dd 8c50h, 8c54h     ; SQ_ESTMP_RING_BASE
+    dd 8c58h, 8c5ch     ; SQ_GSTMP_RING_BASE
+    dd 8c60h, 8c64h     ; SQ_VSTMP_RING_BASE
+    dd 8c68h, 8c6ch     ; SQ_PSTMP_RING_BASE
+    dd 8e10h, 8e14h     ; SQ_LSTMP_RING_BASE
+    dd 8e18h, 8e1ch     ; SQ_HSTMP_RING_BASE
+    dd 9150h, 9154h     ; CGTS_SM_CTRL_REG
+EC_READ_WINDOW_COUNT    equ 59
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.
@@ -288,7 +299,18 @@ ECWriteOffsets label dword
     ; afterwards.
     dd 8958h            ; VGT_PRIMITIVE_TYPE
     dd 8e2ch            ; SQ_LDS_RESOURCE_MGMT
-EC_WRITE_OFFSET_COUNT   equ 79
+    ; cayman_gpu_init's writes Evergreen's lacks, and CP_COHER_CNTL2 put
+    ; back after V9XCM3D's ring set it (Trinity only; nid.h).
+    dd 85e8h            ; CP_COHER_CNTL2
+    dd 89b4h            ; VGT_OFFCHIP_LDS_BASE
+    dd 8c50h            ; SQ_ESTMP_RING_BASE
+    dd 8c58h            ; SQ_GSTMP_RING_BASE
+    dd 8c60h            ; SQ_VSTMP_RING_BASE
+    dd 8c68h            ; SQ_PSTMP_RING_BASE
+    dd 8e10h            ; SQ_LSTMP_RING_BASE
+    dd 8e18h            ; SQ_HSTMP_RING_BASE
+    dd 9150h            ; CGTS_SM_CTRL_REG (OVERRIDE, then its value back)
+EC_WRITE_OFFSET_COUNT   equ 88
 
 ECResult label dword
     dd EC_MAGIC                 ; 00 magic

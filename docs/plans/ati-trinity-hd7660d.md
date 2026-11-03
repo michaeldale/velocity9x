@@ -119,12 +119,15 @@ Phase 5 progress (2026-11-03, host only, nothing on the machine yet):
   reproduces Juniper's `3210` and Cedar's `0`, the maps that drew. Not
   in the table: `CGTS_SM_CTRL_REG`'s sixteen `OVERRIDE` writes and
   restore, which V9XEG3D must do in its op list.
-- Still to write: the Cayman clear state (`cayman_default_state`,
-  `cayman_blit_shaders.c`) and the stream differences Linux 3.9's
-  `evergreen_blit_kms.c` applies from `CHIP_CAYMAN` on: no SQ
-  resource-split block after `CLEAR_STATE` in `set_default_state`,
-  `CP_COHER_CNTL2` (`85E8h`) set to 0 before each `SURFACE_SYNC` on the
-  ring, and a 1x1 scissor widened to 2x1.
+- `cm_3d.c` also holds the Cayman clear state and stream differences
+  (`053405e0`): `cayman_default_state`, `ME_INITIALIZE` with eight
+  contexts, `set_default_state` without the SQ split block, and
+  `CP_COHER_CNTL2` before each ring `SURFACE_SYNC`. The 2x1 scissor floor
+  is still to add, when a draw can be that small.
+- **First draw on the chip** (2026-11-03,
+  [record](../decisions/2026-11-03-trinity-first-3d-draw.md)): V9XCM3D,
+  the blit on Cayman's path with 40-bit addresses, byte-exact six of six,
+  linear and 1D tiled. Next: the Direct3D shaders in VLIW4, then the HAL.
 
 ## Phases
 
