@@ -5,7 +5,8 @@ Status: **closed.** M-D7TFW4's HD 7660D (`1002:9901`, Trinity). The
 Direct3D build from `d3aee6b7` hung the machine on its first V9XD32 run
 (boot 19). The relocator `v9x_cm_shader_from_eg` read bit 21 of a CF_ALU
 word as END_OF_PROGRAM; it is the count's bit 3. With that fixed, V9XD32
-passes at 32 and 16 bpp on boot 22.
+passes at 32 and 16 bpp on boot 22, and the Quake 3 demo runs on
+the hardware ICD on boot 23.
 Plan: [ati-trinity-hd7660d.md](../plans/ati-trinity-hd7660d.md).
 Capture: [`docs/probe/m-d7tfw4-trinity-d3d-2026-11-03/`](../probe/m-d7tfw4-trinity-d3d-2026-11-03/).
 
@@ -95,7 +96,32 @@ T12 (one texture stage), T18 (no T&L device) and T19 (no pixel shaders)
 are skipped by design, as on the HD 7470. `V9XEGCP.TXT` is unchanged
 from boot 19's: no quarantine in either run.
 
+## Quake 3 on boot 23
+
+The machine had restarted to boot 23 (not by us) with the same HAL
+(`ead9d8f0...` read back). Its files report `d3aee6b7-dirty`: the fixed
+build was made from the working tree before `7bc6cae6` was committed.
+
+The owner's `q3config.cfg` had changed since the HD 7470 run: `r_mode 8`
+(1280x1024), 32-bit colour, 24-bit Z requested, and
+`r_lastValidRenderer "Velocity9x Radeon HD 7660D"`, so Quake 3 had
+already run on this build. The run used those settings and the
+config was left as found; `C:\V9XDIAG\Q3CFG.BAK` is older (640x480,
+"Velocity9x Software") and was not restored over it.
+
+| | Result |
+|---|---|
+| `+timedemo 1 +demo demo001`, 1280x1024 fullscreen | **1346 frames, 40.3 s: 33.4 fps**; `GL_RENDERER` "Velocity9x Radeon HD 7660D"; PIXELFORMAT 32-bit colour, 16-bit Z (the 24-bit Z request failed `GLW_ChoosePFD`, 16-bit was taken) |
+| ICD paths (`boot23-V9XGL.LOG`) | hw 215,731 batches / 5,532,281 triangles; cpu 0; hw-refused 0; 355 textures, 6,286 KB, no failures or evictions |
+| V9XTRACE after (`boot23-V9XSNA5.INI`) | `Ok=1`, `BuildsAgree=1`, `EngineFlags=9` |
+| `V9XEGCP.TXT` | unchanged from boot 19's: no quarantine |
+
+The 33.4 fps is recorded, not compared. The texture count and size match
+the HD 7470's run of the same demo; the batch count differs with the
+resolution.
+
 ## Not measured
 
-- OpenGL (the ICD) and Quake 3 on this build.
+- What the monitor showed during Quake 3; the flip counters in
+  V9XTRACE read 0 for this run and were not looked into.
 - What hung the machine after the quarantine.
