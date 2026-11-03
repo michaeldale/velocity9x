@@ -81,7 +81,8 @@ the DMA object's flag bits; 86Box draws no 3D.
    is envytools' model, not drawn. Textures are square: TEXTURE_FORMAT has
    one size for u and v, so the HAL pads non-square textures. Culling is
    left to the HAL (CONFIG culling NONE). The texel-centre correction for
-   bilinear is not in the builder.
+   bilinear is not in the builder; the HAL applies it to the float
+   coordinates (2026-11-04).
 5. **The HAL (first light 2026-11-03,
    [record](../decisions/2026-11-03-riva128-d3d-hal-first-light.md)).**
    V9XDDP's triangles and textured checks draw, in X1R5G5B5 on a 5:6:5
@@ -111,6 +112,9 @@ the DMA object's flag bits; 86Box draws no 3D.
      32-bit texture format, as on Gen3. **DECALALPHA done, boot 33
      ([record](../decisions/2026-11-04-riva128-decal-alpha.md)):** DECAL
      where the texture has no partial alpha, else two passes; 215 of 227.
+     **Bilinear's half texel done, boot 34
+     ([record](../decisions/2026-11-04-riva128-bilinear-centre.md)):** 216
+     of 227. Left: the trilinear blend pair, the 8888 pair, FlipPixelOk.
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and

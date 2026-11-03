@@ -825,8 +825,11 @@ static v9x_u32 v9x_d3d_nv3_bits(float value)
     return pun.u;
 }
 
+/* `centre` is taken off u and v: half a texel under bilinear, else 0
+ * (v9x_d3d_nv3_draw). */
 static void v9x_d3d_nv3_vertex_of(const V9X_R3D_VERTEX *from,
                                   const V9X_R3D_VERTEX *flat,
+                                  const float *centre,
                                   struct v9x_nv3_3d_vertex *to)
 {
     to->sx = v9x_d3d_nv3_bits(from->sx);
@@ -835,8 +838,8 @@ static void v9x_d3d_nv3_vertex_of(const V9X_R3D_VERTEX *from,
     to->rhw = v9x_d3d_nv3_bits(from->rhw);
     to->colour = flat->color;
     to->specular = flat->specular;
-    to->tu = v9x_d3d_nv3_bits(from->tu);
-    to->tv = v9x_d3d_nv3_bits(from->tv);
+    to->tu = v9x_d3d_nv3_bits(from->tu - centre[0]);
+    to->tv = v9x_d3d_nv3_bits(from->tv - centre[1]);
 }
 
 /*
@@ -914,7 +917,8 @@ static int v9x_d3d_nv3_accepts(const V9X_R3D_DRAW *draw)
 static int v9x_d3d_nv3_triangle(const V9X_R3D_DRAW *draw,
                                 const V9X_R3D_VERTEX *first,
                                 const struct v9x_nv3_3d_words *words,
-                                int colours, DWORD *record_at)
+                                int colours, const float *centre,
+                                DWORD *record_at)
 {
     static const v9x_u32 v9x_d3d_nv3_others[2] = { 0ul, 1ul };
     struct v9x_nv3_3d_vertex vertex;
@@ -926,7 +930,7 @@ static int v9x_d3d_nv3_triangle(const V9X_R3D_DRAW *draw,
         corner = &first[slot];
         v9x_d3d_nv3_vertex_of(corner,
                               draw->shade_mode == V9X_R3D_SHADE_FLAT ?
-                              first : corner, &vertex);
+                              first : corner, centre, &vertex);
         if (colours == V9X_D3D_NV3_COLOUR_PLUS_SPEC) {
             vertex.colour = v9x_nv3_3d_add_specular(vertex.colour,
                                                     vertex.specular);
@@ -1059,6 +1063,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
     int decal_alpha;
     int colours;
     int follow_colours;
+    float centre[2];
     DWORD triangle;
     DWORD reason;
     DWORD record_at;
@@ -1162,6 +1167,19 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
         follow = &pass;
         follow_colours = V9X_D3D_NV3_COLOUR_SPECULAR;
     }
+    /*
+     * Bilinear centres a texel at u = i / W, half a texel left (and up) of
+     * Direct3D's (i + 0.5) / W (/d3dstate TexelFoh, 2026-11-03), so a
+     * bilinear draw's coordinates move half of level 0's texel back. Under
+     * a mip chain a smaller level is left a fraction off. The white
+     * texture of the other passes is one colour, so it does not mind.
+     */
+    centre[0] = 0.0f;
+    centre[1] = 0.0f;
+    if (texture != 0 && state.filter == V9X_NV3_FILTER_LINEAR) {
+        centre[0] = 0.5f / (float)texture->width;
+        centre[1] = 0.5f / (float)texture->height;
+    }
     for (triangle = 0ul; triangle < triangle_count; ++triangle) {
         if (follow != 0 && triangle != 0ul) {
             if (!v9x_d3d_nv3_room(V9X_D3D_NV3_STATE_BYTES)) {
@@ -1172,7 +1190,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
             v9x_d3d_nv3_emit(lead->methods, 6ul);
         }
         if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], lead,
-                                  colours,
+                                  colours, centre,
                                   !v9x_d3d_nv3_recorded && triangle == 0ul ?
                                   &record_at : 0)) {
             v9x_hal->d3d_diagnostics.m64_refuse_last =
@@ -1189,7 +1207,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
         }
         v9x_d3d_nv3_emit(follow->methods, 6ul);
         if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], follow,
-                                  follow_colours, 0)) {
+                                  follow_colours, centre, 0)) {
             v9x_hal->d3d_diagnostics.m64_refuse_last =
                 V9X_D3D_NV3_STOP_ROOM_VERTEX;
             return 0;
