@@ -3,8 +3,9 @@
 # The RIVA 128 and 128ZX: the VBE 4F02h mode set programs the card and 4F01h
 # reports where the framebuffer landed. DirectDraw fill and copy run on the
 # 2D engine (NV3) at 8 and 32 bpp, after Linux rivafb's bring-up, which the
-# HAL repeats after every mode set; everything else is drawn by the CPU
-# (docs\plans\nvidia-riva128.md, Phase 4).
+# HAL repeats after every mode set; GDI fill and copy run on it too, with
+# the same bring-up on the 16-bit side; everything else is drawn by the CPU
+# (docs\plans\nvidia-riva128.md, Phases 4 and 6).
 #
 # Physical-only: the local 86Box build has no NV3 model.
 @{
@@ -100,11 +101,13 @@
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
-            # Ordinal 1, last so it links after the runtime symbols it calls;
-            # this family takes its decline branch on every blit.
+            # The HAL's 2D builder, for gdi_accel.c's NV3 arm.
+            @{ Name = 'nv3_2d'; Path = 'src\chipsets\nvidia\nv3_2d.c' }
+            # Ordinal 1, last so it links after the runtime symbols it calls.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @()
+        # gdi_accel.c's NV3 fill and copy, compiled into this family only.
+        Defines = @('V9X_NVIDIA_FAMILY')
         # runtime.asm's BAR0 read and mini-VDD map for the 2D engine.
         RuntimeDefines = @('V9X_NVIDIA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-nvidia'

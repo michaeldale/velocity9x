@@ -166,7 +166,13 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    after ([record](../decisions/2026-11-03-riva128-crtc-start.md)). Open:
    whether the start latches at the retrace or applies at once (tearing),
    which only the monitor shows.
-6. **GDI** on the engine, under the existing conservative GDI path.
+6. **GDI on the engine (done at 8 and 32 bpp).** gdi_accel.c's NV3 arm,
+   with the HAL's builder and its own bring-up after each Enable; BAR0
+   reached through a 16 MiB selector. Boot 18: V9XGDI `/accel` PASS at 32
+   and 8 bpp with the engine drawing, 16 bpp PASS with acceleration off,
+   V9XDDP and GDI each fine after the other
+   ([record](../decisions/2026-11-03-riva128-gdi-on-the-engine.md)). 16
+   bpp waits for B.
 7. **Direct3D**: its own plan, after the 16 bpp decision. The D3D0 object
    is DX5-level, so this is the S3 ViRGE and Rage Pro class of HAL, not the
    Evergreen one.

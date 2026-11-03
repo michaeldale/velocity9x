@@ -3363,6 +3363,167 @@ V9xMiniNv3MmioMapDone:
     pop     bp
     retf    8
 V9XMININV3MMIOMAP ENDP
+
+; WORD FAR PASCAL V9xNv3Selector(DWORD linear)
+; Describe V9xEngineSel over all 16 MiB of BAR0, the window the mini-VDD
+; mapped: NV3's registers span PMC at 0 to the USER area at 800000h, past
+; anything V9xEngineSelector's WORD limit can describe. The low twelve bits
+; of the limit are set, as DPMI 0008h needs for a page-granular one. AX is
+; the selector, 0 on failure. Only this family calls it.
+PUBLIC V9XNV3SELECTOR
+V9XNV3SELECTOR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     dword ptr [bp+6], 0
+    je      short V9xNv3SelectorFailed
+
+    mov     ax, V9xEngineSel
+    cmp     ax, 0
+    jne     short V9xNv3SelectorDescribe
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xNv3SelectorFailed
+    mov     V9xEngineSel, ax
+
+V9xNv3SelectorDescribe:
+    mov     bx, V9xEngineSel
+    mov     dx, word ptr [bp+6]
+    mov     cx, word ptr [bp+8]
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xNv3SelectorFree
+
+    mov     bx, V9xEngineSel
+    mov     cx, 00ffh
+    mov     dx, 0ffffh
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xNv3SelectorFree
+
+    mov     ax, V9xEngineSel
+    jmp     short V9xNv3SelectorDone
+
+V9xNv3SelectorFree:
+    mov     bx, V9xEngineSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xEngineSel, 0
+V9xNv3SelectorFailed:
+    xor     ax, ax
+V9xNv3SelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XNV3SELECTOR ENDP
+
+; DWORD FAR PASCAL V9xNv3Read(DWORD offset)
+; One BAR0 dword through V9xNv3Selector's window, 0 with no selector. The C
+; caller keeps the offset inside 16 MiB.
+PUBLIC V9XNV3READ
+V9XNV3READ PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xNv3ReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xNv3ReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    4
+V9XNV3READ ENDP
+
+; void FAR PASCAL V9xNv3Write(DWORD offset, DWORD value)
+; One BAR0 dword store, or nothing with no selector. value is at [bp+6],
+; offset above it at [bp+10].
+PUBLIC V9XNV3WRITE
+V9XNV3WRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xNv3WriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+V9xNv3WriteDone:
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    8
+V9XNV3WRITE ENDP
+
+; DWORD FAR PASCAL V9xNv3FbRead(DWORD offset)
+; void FAR PASCAL V9xNv3FbWrite(DWORD offset, DWORD value)
+; One dword of video memory through the framebuffer selector, for RAMIN at
+; the top of it. The C caller keeps the offset inside the map's limit.
+PUBLIC V9XNV3FBREAD
+V9XNV3FBREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xNv3FbReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xNv3FbReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    4
+V9XNV3FBREAD ENDP
+
+PUBLIC V9XNV3FBWRITE
+V9XNV3FBWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xNv3FbWriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+V9xNv3FbWriteDone:
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    8
+V9XNV3FBWRITE ENDP
 ENDIF
 
 IFDEF V9X_TDFX_FAMILY
