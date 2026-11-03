@@ -93,10 +93,127 @@ static void test_gpu_init(void)
     }
 }
 
+#define STREAM_MAX 600u
+static v9x_u32 cm_words[STREAM_MAX];
+static v9x_u32 eg_words[STREAM_MAX];
+
+static v9x_u32 header_values(v9x_u32 header)
+{
+    return ((header >> 16) & 0x3ffful) + 1ul;
+}
+
+static void test_default_context(void)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 packets = 0ul;
+
+    /* Whole type-3 packets, end to end: each header's count is the words
+     * that follow it. */
+    while (at < V9X_CM_DEFAULT_CONTEXT_DWORDS) {
+        CHECK((v9x_cm_default_context[at] >> 30) == 3ul);
+        at += 1ul + header_values(v9x_cm_default_context[at]);
+        ++packets;
+    }
+    CHECK(at == V9X_CM_DEFAULT_CONTEXT_DWORDS);
+    CHECK(packets > 10ul);
+    /* Linux 3.9's first packet, SET_CONTEXT_REG of six from 0 with
+     * DB_RENDER_CONTROL 60h, and its last, VGT_VERTEX_REUSE_BLOCK_CNTL. */
+    CHECK(v9x_cm_default_context[0] == 0xc0066900ul);
+    CHECK(v9x_cm_default_context[1] == 0ul);
+    CHECK(v9x_cm_default_context[2] == 0x00000060ul);
+    CHECK(v9x_cm_default_context[241] == 0xc0026900ul);
+    CHECK(v9x_cm_default_context[242] == 0x00000316ul);
+    CHECK(v9x_cm_default_context[243] == 0x0000000eul);
+    CHECK(v9x_cm_default_context[244] == 0x00000010ul);
+}
+
+static void test_me_initialize(void)
+{
+    struct v9x_eg_pm4 stream;
+
+    v9x_eg_pm4_begin(&stream, cm_words, STREAM_MAX);
+    v9x_cm_3d_me_initialize(&stream);
+    CHECK(stream.count == 7ul);
+    /* PACKET3(ME_INITIALIZE, 5), 1, 0, 8 contexts - 1, DEVICE_ID(1), 0, 0. */
+    CHECK(cm_words[0] == 0xc0054400ul);
+    CHECK(cm_words[1] == 1ul && cm_words[2] == 0ul);
+    CHECK(cm_words[3] == 7ul);
+    CHECK(cm_words[4] == 0x00010000ul);
+    CHECK(cm_words[5] == 0ul && cm_words[6] == 0ul);
+}
+
+static void test_preamble(void)
+{
+    struct v9x_eg_pm4 cm;
+    struct v9x_eg_pm4 eg;
+    v9x_u32 index;
+    /* After the context: PREAMBLE_CNTL end (2), CLEAR_STATE (2), the
+     * vertex base (4), the constant clear (5), the reuse block (4). */
+    const v9x_u32 tail = 17ul;
+
+    v9x_eg_pm4_begin(&cm, cm_words, STREAM_MAX);
+    v9x_cm_3d_preamble(&cm);
+    v9x_eg_pm4_begin(&eg, eg_words, STREAM_MAX);
+    v9x_eg_3d_preamble(&eg);
+    CHECK(cm.overflow == 0ul && eg.overflow == 0ul);
+    CHECK(cm.count == 2ul + V9X_CM_DEFAULT_CONTEXT_DWORDS + tail);
+    /* PREAMBLE_CNTL begin, as Evergreen's. */
+    CHECK(cm_words[0] == eg_words[0] && cm_words[1] == eg_words[1]);
+    for (index = 0ul; index < V9X_CM_DEFAULT_CONTEXT_DWORDS; ++index) {
+        CHECK(cm_words[2ul + index] == v9x_cm_default_context[index]);
+    }
+    /* cayman_cp_start's packets after the clear state are
+     * evergreen_cp_start's. */
+    for (index = 0ul; index < tail; ++index) {
+        CHECK(cm_words[cm.count - tail + index] ==
+              eg_words[eg.count - tail + index]);
+    }
+}
+
+static void test_default_state(void)
+{
+    struct v9x_eg_pm4 cm;
+    struct v9x_eg_pm4 eg;
+    v9x_u32 index;
+
+    v9x_eg_pm4_begin(&cm, cm_words, STREAM_MAX);
+    v9x_cm_3d_default_state(&cm);
+    v9x_eg_pm4_begin(&eg, eg_words, STREAM_MAX);
+    v9x_eg_3d_default_state_tail(&eg, v9x_cm_default_context,
+                                 V9X_CM_DEFAULT_CONTEXT_DWORDS);
+    CHECK(cm.overflow == 0ul && eg.overflow == 0ul);
+    /* CLEAR_STATE, then straight into the tail: no SET_CONFIG_REG of the
+     * SQ registers between. */
+    CHECK(cm_words[0] == 0xc0001200ul && cm_words[1] == 0ul);
+    CHECK(cm.count == 2ul + eg.count);
+    for (index = 0ul; index < eg.count; ++index) {
+        CHECK(cm_words[2ul + index] == eg_words[index]);
+    }
+    CHECK((cm_words[2] & 0x0000ff00ul) == 0x00002800ul); /* CONTEXT_CONTROL */
+}
+
+static void test_coher_cntl2(void)
+{
+    struct v9x_eg_pm4 stream;
+
+    v9x_eg_pm4_begin(&stream, cm_words, STREAM_MAX);
+    v9x_cm_3d_coher_cntl2(&stream);
+    /* Linux: PACKET3(SET_CONFIG_REG, 1), (0x85e8 - 0x8000) >> 2, 0. */
+    CHECK(stream.count == 3ul);
+    CHECK(cm_words[0] == 0xc0016800ul);
+    CHECK(cm_words[1] == 0x0000017aul);
+    CHECK(cm_words[2] == 0ul);
+}
+
 unsigned int v9x_run_cm_3d_tests(void)
 {
     failures = 0u;
     test_backend_map();
     test_gpu_init();
+    test_default_context();
+    test_me_initialize();
+    test_preamble();
+    test_default_state();
+    test_coher_cntl2();
     return failures;
 }

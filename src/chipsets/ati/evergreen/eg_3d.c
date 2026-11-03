@@ -566,13 +566,20 @@ void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip)
 
 void v9x_eg_3d_preamble(struct v9x_eg_pm4 *stream)
 {
+    v9x_eg_3d_preamble_context(stream, v9x_eg_default_context,
+                               EG_DEFAULT_CONTEXT_DWORDS);
+}
+
+void v9x_eg_3d_preamble_context(struct v9x_eg_pm4 *stream,
+                                const v9x_u32 *context, v9x_u32 dwords)
+{
     v9x_u32 index;
     v9x_u32 values[2];
 
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_PREAMBLE_CNTL, 1ul));
     v9x_eg_pm4_put(stream, EG_PREAMBLE_BEGIN_CLEAR);
-    for (index = 0ul; index < EG_DEFAULT_CONTEXT_DWORDS; ++index) {
-        v9x_eg_pm4_put(stream, v9x_eg_default_context[index]);
+    for (index = 0ul; index < dwords; ++index) {
+        v9x_eg_pm4_put(stream, context[index]);
     }
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_PREAMBLE_CNTL, 1ul));
     v9x_eg_pm4_put(stream, EG_PREAMBLE_END_CLEAR);
@@ -610,7 +617,6 @@ void v9x_eg_3d_preamble(struct v9x_eg_pm4 *stream)
 void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip)
 {
     v9x_u32 sq[11];
-    v9x_u32 index;
 
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_CLEAR_STATE, 1ul));
     v9x_eg_pm4_put(stream, 0ul);
@@ -640,6 +646,15 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip)
         sq[10] = EG_SQ_STACK_JUNIPER;
     }
     v9x_eg_pm4_set_config(stream, V9X_EG_SQ_CONFIG, sq, 11ul);
+    v9x_eg_3d_default_state_tail(stream, v9x_eg_default_context,
+                                 EG_DEFAULT_CONTEXT_DWORDS);
+}
+
+void v9x_eg_3d_default_state_tail(struct v9x_eg_pm4 *stream,
+                                  const v9x_u32 *context, v9x_u32 dwords)
+{
+    v9x_u32 index;
+
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_CONTEXT_CONTROL, 2ul));
     v9x_eg_pm4_put(stream, EG_CONTEXT_CONTROL_LOAD);
     v9x_eg_pm4_put(stream, EG_CONTEXT_CONTROL_SHADOW);
@@ -654,8 +669,8 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip)
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_MODE_CONTROL, 1ul));
     v9x_eg_pm4_put(stream, EG_MODE_CONTROL_DX10);
-    for (index = 0ul; index < EG_DEFAULT_CONTEXT_DWORDS; ++index) {
-        v9x_eg_pm4_put(stream, v9x_eg_default_context[index]);
+    for (index = 0ul; index < dwords; ++index) {
+        v9x_eg_pm4_put(stream, context[index]);
     }
 }
 

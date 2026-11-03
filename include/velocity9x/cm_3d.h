@@ -51,4 +51,28 @@ extern const struct v9x_eg_reg_update
 #define V9X_CM_CGTS_SM_OVERRIDE     0x00200000ul
 #define V9X_CM_CGTS_SM_OVERRIDE_WRITES 16ul
 
+/*
+ * The CP's streams. Cayman's packets are Evergreen's (eg_3d.h's pm4
+ * helpers); what differs is below. Sources: Linux ni.c cayman_cp_start,
+ * and Linux 3.9's cayman_blit_shaders.c and evergreen_blit_kms.c (the
+ * CHIP_CAYMAN branches), build\external\evergreen\linux-radeon\v3.9\.
+ */
+/* cayman_default_state: the clear state, as PM4 (Linux 3.9). */
+#define V9X_CM_DEFAULT_CONTEXT_DWORDS 245u
+extern const v9x_u32 v9x_cm_default_context[V9X_CM_DEFAULT_CONTEXT_DWORDS];
+
+/* ME_INITIALIZE with max_hw_contexts - 1 = 7 (cayman_cp_start): 7 dwords. */
+void v9x_cm_3d_me_initialize(struct v9x_eg_pm4 *stream);
+/* cayman_cp_start after ME_INITIALIZE: Evergreen's preamble around
+ * cayman_default_state. */
+void v9x_cm_3d_preamble(struct v9x_eg_pm4 *stream);
+/* Linux 3.9 set_default_state on Cayman: CLEAR_STATE, no SQ block (the
+ * GPR, thread and stack splits are Evergreen's), then Evergreen's tail
+ * with cayman_default_state. */
+void v9x_cm_3d_default_state(struct v9x_eg_pm4 *stream);
+/* CP_COHER_CNTL2 = 0, which Cayman needs before each SURFACE_SYNC sent
+ * on the ring rather than from an IB (cp_set_surface_sync): 3 dwords. */
+#define V9X_CM_CP_COHER_CNTL2       0x85e8ul
+void v9x_cm_3d_coher_cntl2(struct v9x_eg_pm4 *stream);
+
 #endif

@@ -230,6 +230,17 @@ extern const struct v9x_eg_reg_update
 void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip);
 /* evergreen_cp_start after ME_INITIALIZE: the clear-state preamble. */
 void v9x_eg_3d_preamble(struct v9x_eg_pm4 *stream);
+/* The same preamble around another default context (dwords of PM4), for
+ * a chip whose clear state is not Evergreen's: cayman_cp_start sends the
+ * same packets around cayman_default_state (cm_3d.c). */
+void v9x_eg_3d_preamble_context(struct v9x_eg_pm4 *stream,
+                                const v9x_u32 *context, v9x_u32 dwords);
+/* Linux 3.9 set_default_state after its SQ block: CONTEXT_CONTROL, the
+ * vertex base, sampler 0, MODE_CONTROL and the default context inline.
+ * v9x_eg_3d_default_state ends with this; Cayman's has no SQ block and
+ * its own context (cm_3d.c). */
+void v9x_eg_3d_default_state_tail(struct v9x_eg_pm4 *stream,
+                                  const v9x_u32 *context, v9x_u32 dwords);
 /* Linux 3.9's set_default_state for chip (V9X_EG_CHIP_*), the default
  * context state inline: CLEAR_STATE, the SQ resource split, CONTEXT_CONTROL,
  * sampler 0 and Evergreen's default context. The SQ thread split differs

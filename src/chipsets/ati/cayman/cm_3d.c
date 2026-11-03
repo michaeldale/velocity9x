@@ -202,3 +202,328 @@ const struct v9x_eg_reg_update
     { CM_HDP_MISC_CNTL, 0xfffffffful, CM_HDP_FLUSH_INVALIDATE },
     { CM_PA_CL_ENHANCE, 0ul, CM_PA_CL_ENHANCE_VALUE }
 };
+
+/*
+ * Linux 3.9's cayman_default_state (cayman_blit_shaders.c, AMD, MIT
+ * licence), word for word with its register names. Evergreen's differs
+ * throughout: no SQ_LDS_ALLOC_PS before the DB packets, DB_DEPTH_INFO,
+ * CP_RINGID and CP_VMID, the SPI compute and wave-management registers,
+ * DB_EQAA, and the AA sample locations.
+ */
+const v9x_u32 v9x_cm_default_context[V9X_CM_DEFAULT_CONTEXT_DWORDS] = {
+    0xc0066900ul,
+    0x00000000ul,
+    0x00000060ul, /* DB_RENDER_CONTROL */
+    0x00000000ul, /* DB_COUNT_CONTROL */
+    0x00000000ul, /* DB_DEPTH_VIEW */
+    0x0000002aul, /* DB_RENDER_OVERRIDE */
+    0x00000000ul, /* DB_RENDER_OVERRIDE2 */
+    0x00000000ul, /* DB_HTILE_DATA_BASE */
+
+    0xc0026900ul,
+    0x0000000aul,
+    0x00000000ul, /* DB_STENCIL_CLEAR */
+    0x00000000ul, /* DB_DEPTH_CLEAR */
+
+    0xc0036900ul,
+    0x0000000ful,
+    0x00000000ul, /* DB_DEPTH_INFO */
+    0x00000000ul, /* DB_Z_INFO */
+    0x00000000ul, /* DB_STENCIL_INFO */
+
+    0xc0016900ul,
+    0x00000080ul,
+    0x00000000ul, /* PA_SC_WINDOW_OFFSET */
+
+    0xc00d6900ul,
+    0x00000083ul,
+    0x0000fffful, /* PA_SC_CLIPRECT_RULE */
+    0x00000000ul, /* PA_SC_CLIPRECT_0_TL */
+    0x20002000ul, /* PA_SC_CLIPRECT_0_BR */
+    0x00000000ul,
+    0x20002000ul,
+    0x00000000ul,
+    0x20002000ul,
+    0x00000000ul,
+    0x20002000ul,
+    0xaaaaaaaaul, /* PA_SC_EDGERULE */
+    0x00000000ul, /* PA_SU_HARDWARE_SCREEN_OFFSET */
+    0x0000000ful, /* CB_TARGET_MASK */
+    0x0000000ful, /* CB_SHADER_MASK */
+
+    0xc0226900ul,
+    0x00000094ul,
+    0x80000000ul, /* PA_SC_VPORT_SCISSOR_0_TL */
+    0x20002000ul, /* PA_SC_VPORT_SCISSOR_0_BR */
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x80000000ul,
+    0x20002000ul,
+    0x00000000ul, /* PA_SC_VPORT_ZMIN_0 */
+    0x3f800000ul, /* PA_SC_VPORT_ZMAX_0 */
+
+    0xc0016900ul,
+    0x000000d4ul,
+    0x00000000ul, /* SX_MISC */
+
+    0xc0026900ul,
+    0x000000d9ul,
+    0x00000000ul, /* CP_RINGID */
+    0x00000000ul, /* CP_VMID */
+
+    0xc0096900ul,
+    0x00000100ul,
+    0x00fffffful, /* VGT_MAX_VTX_INDX */
+    0x00000000ul, /* VGT_MIN_VTX_INDX */
+    0x00000000ul, /* VGT_INDX_OFFSET */
+    0x00000000ul, /* VGT_MULTI_PRIM_IB_RESET_INDX */
+    0x00000000ul, /* SX_ALPHA_TEST_CONTROL */
+    0x00000000ul, /* CB_BLEND_RED */
+    0x00000000ul, /* CB_BLEND_GREEN */
+    0x00000000ul, /* CB_BLEND_BLUE */
+    0x00000000ul, /* CB_BLEND_ALPHA */
+
+    0xc0016900ul,
+    0x00000187ul,
+    0x00000100ul, /* SPI_VS_OUT_ID_0 */
+
+    0xc0026900ul,
+    0x00000191ul,
+    0x00000100ul, /* SPI_PS_INPUT_CNTL_0 */
+    0x00000101ul, /* SPI_PS_INPUT_CNTL_1 */
+
+    0xc0016900ul,
+    0x000001b1ul,
+    0x00000000ul, /* SPI_VS_OUT_CONFIG */
+
+    0xc0106900ul,
+    0x000001b3ul,
+    0x20000001ul, /* SPI_PS_IN_CONTROL_0 */
+    0x00000000ul, /* SPI_PS_IN_CONTROL_1 */
+    0x00000000ul, /* SPI_INTERP_CONTROL_0 */
+    0x00000000ul, /* SPI_INPUT_Z */
+    0x00000000ul, /* SPI_FOG_CNTL */
+    0x00100000ul, /* SPI_BARYC_CNTL */
+    0x00000000ul, /* SPI_PS_IN_CONTROL_2 */
+    0x00000000ul, /* SPI_COMPUTE_INPUT_CNTL */
+    0x00000000ul, /* SPI_COMPUTE_NUM_THREAD_X */
+    0x00000000ul, /* SPI_COMPUTE_NUM_THREAD_Y */
+    0x00000000ul, /* SPI_COMPUTE_NUM_THREAD_Z */
+    0x00000000ul, /* SPI_GPR_MGMT */
+    0x00000000ul, /* SPI_LDS_MGMT */
+    0x00000000ul, /* SPI_STACK_MGMT */
+    0x00000000ul, /* SPI_WAVE_MGMT_1 */
+    0x00000000ul, /* SPI_WAVE_MGMT_2 */
+
+    0xc0016900ul,
+    0x000001e0ul,
+    0x00000000ul, /* CB_BLEND0_CONTROL */
+
+    0xc00e6900ul,
+    0x00000200ul,
+    0x00000000ul, /* DB_DEPTH_CONTROL */
+    0x00000000ul, /* DB_EQAA */
+    0x00cc0010ul, /* CB_COLOR_CONTROL */
+    0x00000210ul, /* DB_SHADER_CONTROL */
+    0x00010000ul, /* PA_CL_CLIP_CNTL */
+    0x00000004ul, /* PA_SU_SC_MODE_CNTL */
+    0x00000100ul, /* PA_CL_VTE_CNTL */
+    0x00000000ul, /* PA_CL_VS_OUT_CNTL */
+    0x00000000ul, /* PA_CL_NANINF_CNTL */
+    0x00000000ul, /* PA_SU_LINE_STIPPLE_CNTL */
+    0x00000000ul, /* PA_SU_LINE_STIPPLE_SCALE */
+    0x00000000ul, /* PA_SU_PRIM_FILTER_CNTL */
+    0x00000000ul,
+    0x00000000ul,
+
+    0xc0026900ul,
+    0x00000229ul,
+    0x00000000ul, /* SQ_PGM_START_FS */
+    0x00000000ul,
+
+    0xc0016900ul,
+    0x0000023bul,
+    0x00000000ul, /* SQ_LDS_ALLOC_PS */
+
+    0xc0066900ul,
+    0x00000240ul,
+    0x00000000ul, /* SQ_ESGS_RING_ITEMSIZE */
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+
+    0xc0046900ul,
+    0x00000247ul,
+    0x00000000ul, /* SQ_GS_VERT_ITEMSIZE */
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+
+    0xc0116900ul,
+    0x00000280ul,
+    0x00000000ul, /* PA_SU_POINT_SIZE */
+    0x00000000ul, /* PA_SU_POINT_MINMAX */
+    0x00000008ul, /* PA_SU_LINE_CNTL */
+    0x00000000ul, /* PA_SC_LINE_STIPPLE */
+    0x00000000ul, /* VGT_OUTPUT_PATH_CNTL */
+    0x00000000ul, /* VGT_HOS_CNTL */
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul, /* VGT_GS_MODE */
+
+    0xc0026900ul,
+    0x00000292ul,
+    0x00000000ul, /* PA_SC_MODE_CNTL_0 */
+    0x00000000ul, /* PA_SC_MODE_CNTL_1 */
+
+    0xc0016900ul,
+    0x000002a1ul,
+    0x00000000ul, /* VGT_PRIMITIVEID_EN */
+
+    0xc0016900ul,
+    0x000002a5ul,
+    0x00000000ul, /* VGT_MULTI_PRIM_IB_RESET_EN */
+
+    0xc0026900ul,
+    0x000002a8ul,
+    0x00000000ul, /* VGT_INSTANCE_STEP_RATE_0 */
+    0x00000000ul,
+
+    0xc0026900ul,
+    0x000002adul,
+    0x00000000ul, /* VGT_REUSE_OFF */
+    0x00000000ul,
+
+    0xc0016900ul,
+    0x000002d5ul,
+    0x00000000ul, /* VGT_SHADER_STAGES_EN */
+
+    0xc0016900ul,
+    0x000002dcul,
+    0x0000aa00ul, /* DB_ALPHA_TO_MASK */
+
+    0xc0066900ul,
+    0x000002deul,
+    0x00000000ul, /* PA_SU_POLY_OFFSET_DB_FMT_CNTL */
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+
+    0xc0026900ul,
+    0x000002e5ul,
+    0x00000000ul, /* VGT_STRMOUT_CONFIG */
+    0x00000000ul,
+
+    0xc01b6900ul,
+    0x000002f5ul,
+    0x76543210ul, /* PA_SC_CENTROID_PRIORITY_0 */
+    0xfedcba98ul, /* PA_SC_CENTROID_PRIORITY_1 */
+    0x00000000ul, /* PA_SC_LINE_CNTL */
+    0x00000000ul, /* PA_SC_AA_CONFIG */
+    0x00000005ul, /* PA_SU_VTX_CNTL */
+    0x3f800000ul, /* PA_CL_GB_VERT_CLIP_ADJ */
+    0x3f800000ul, /* PA_CL_GB_VERT_DISC_ADJ */
+    0x3f800000ul, /* PA_CL_GB_HORZ_CLIP_ADJ */
+    0x3f800000ul, /* PA_CL_GB_HORZ_DISC_ADJ */
+    0x00000000ul, /* PA_SC_AA_SAMPLE_LOCS_PIXEL_X0Y0_0 */
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0x00000000ul,
+    0xfffffffful, /* PA_SC_AA_MASK_X0Y0_X1Y0 */
+    0xfffffffful,
+
+    0xc0026900ul,
+    0x00000316ul,
+    0x0000000eul, /* VGT_VERTEX_REUSE_BLOCK_CNTL */
+    0x00000010ul
+};
+
+/* PM4 type 3, Linux's PACKET3(op, count): count is the values less one. */
+#define CM_PACKET3(op, values) \
+    (0xc0000000ul | (((v9x_u32)(values) - 1ul) << 16) | \
+     (((v9x_u32)(op) & 0xfful) << 8))
+#define CM_P3_CLEAR_STATE           0x12ul
+/* cayman_gpu_init's max_hw_contexts for 9901 (ni.c:923). */
+#define CM_HW_CONTEXTS              8ul
+#define CM_ME_INIT_DEVICE_ID_1      0x00010000ul
+
+void v9x_cm_3d_me_initialize(struct v9x_eg_pm4 *stream)
+{
+    /* cayman_cp_start: 1, 0, max_hw_contexts - 1, DEVICE_ID(1), 0, 0. */
+    v9x_eg_pm4_put(stream, CM_PACKET3(V9X_EG_P3_ME_INITIALIZE, 6ul));
+    v9x_eg_pm4_put(stream, 0x1ul);
+    v9x_eg_pm4_put(stream, 0x0ul);
+    v9x_eg_pm4_put(stream, CM_HW_CONTEXTS - 1ul);
+    v9x_eg_pm4_put(stream, CM_ME_INIT_DEVICE_ID_1);
+    v9x_eg_pm4_put(stream, 0ul);
+    v9x_eg_pm4_put(stream, 0ul);
+}
+
+void v9x_cm_3d_preamble(struct v9x_eg_pm4 *stream)
+{
+    v9x_eg_3d_preamble_context(stream, v9x_cm_default_context,
+                               V9X_CM_DEFAULT_CONTEXT_DWORDS);
+}
+
+void v9x_cm_3d_default_state(struct v9x_eg_pm4 *stream)
+{
+    v9x_eg_pm4_put(stream, CM_PACKET3(CM_P3_CLEAR_STATE, 1ul));
+    v9x_eg_pm4_put(stream, 0ul);
+    v9x_eg_3d_default_state_tail(stream, v9x_cm_default_context,
+                                 V9X_CM_DEFAULT_CONTEXT_DWORDS);
+}
+
+void v9x_cm_3d_coher_cntl2(struct v9x_eg_pm4 *stream)
+{
+    v9x_eg_pm4_set_config1(stream, V9X_CM_CP_COHER_CNTL2, 0ul);
+}
