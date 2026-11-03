@@ -75,4 +75,29 @@ void v9x_cm_3d_default_state(struct v9x_eg_pm4 *stream);
 #define V9X_CM_CP_COHER_CNTL2       0x85e8ul
 void v9x_cm_3d_coher_cntl2(struct v9x_eg_pm4 *stream);
 
+/*
+ * The CP's other two rings, which cayman_cp_resume programs with the gfx
+ * ring because writing any ring's base resets them all: idle (both
+ * pointers 0, nothing submitted), 16 KiB each, in the driver's window
+ * (eg_3d.h, V9X_EG_WINDOW_*) after the shader slots and below the probes'
+ * scratch at 1 MiB. Their registers (nid.h) and CP_DEBUG and CP_ME_CNTL
+ * as Cayman writes them.
+ */
+#define V9X_CM_WINDOW_CP_RING1      0x00018000ul
+#define V9X_CM_WINDOW_CP_RING2      0x0001c000ul
+#define V9X_CM_CP_RB2_RPTR          0x86f8ul
+#define V9X_CM_CP_RB1_RPTR          0x86fcul
+#define V9X_CM_CP_RB1_BASE          0xc180ul
+#define V9X_CM_CP_RB1_CNTL          0xc184ul
+#define V9X_CM_CP_RB1_RPTR_ADDR     0xc188ul
+#define V9X_CM_CP_RB1_RPTR_ADDR_HI  0xc18cul
+#define V9X_CM_CP_RB1_WPTR          0xc190ul
+#define V9X_CM_CP_RB2_BASE          0xc194ul
+#define V9X_CM_CP_RB2_CNTL          0xc198ul
+#define V9X_CM_CP_RB2_RPTR_ADDR     0xc19cul
+#define V9X_CM_CP_RB2_RPTR_ADDR_HI  0xc1a0ul
+#define V9X_CM_CP_RB2_WPTR          0xc1a4ul
+#define V9X_CM_CP_DEBUG_VALUE       0x08000000ul /* (1 << 27) */
+#define V9X_CM_CP_RUN               0x00000000ul /* cayman_cp_enable */
+
 #endif

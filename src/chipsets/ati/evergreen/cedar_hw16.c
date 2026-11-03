@@ -49,10 +49,13 @@
  * (docs\decisions\2026-11-03-trinity-tier0-and-registers.md). Its first DMA
  * engine is Evergreen's and ran byte-exact
  * (docs\decisions\2026-11-03-trinity-dma-write-probe.md), so it claims
- * fill, copy and flips through D1. Not Direct3D: its CP takes Cayman-sized
- * microcode and its shaders are VLIW4, neither of which the HAL has.
- * Stamped V9X_DD_ENGINE_CAP_EG_TRINITY, so eng_eg.c leaves DMA_MODE alone
- * as Linux's cayman_dma_resume does.
+ * fill, copy and flips through D1. Its CP ran AMD's Aruba microcode and
+ * drew Linux's textured copy through the Cayman module
+ * (docs\decisions\2026-11-03-trinity-first-3d-draw.md), so it claims
+ * Direct3D too. Stamped V9X_DD_ENGINE_CAP_EG_TRINITY: eng_eg.c leaves
+ * DMA_MODE alone as Linux's cayman_dma_resume does, and the HAL takes
+ * Cayman's CP bring-up, streams and shader control flow (eg_cp.c,
+ * d3d_eg.c).
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -98,6 +101,7 @@ static unsigned long v9x_cedar_map_value;
 #define V9X_TRINITY_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
                                   V9X_DD_ENGINE_CAP_SCREEN_COPY | \
                                   V9X_DD_ENGINE_CAP_FLIP | \
+                                  V9X_DD_ENGINE_CAP_D3D | \
                                   V9X_DD_ENGINE_CAP_EG_TRINITY)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
@@ -334,7 +338,7 @@ const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
     "ati-evergreen-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    "not-advertised",
+    "hardware-evergreen-cp",
     0,
     v9x_trinity_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */

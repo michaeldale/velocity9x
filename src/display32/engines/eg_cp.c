@@ -9,6 +9,17 @@
  * M-D7TFW4, so every address here carries bits 39:32
  * (docs\decisions\2026-10-31-caicos-cp-microcode.md).
  *
+ * Trinity (V9X_DD_ENGINE_CAP_EG_TRINITY, the HD 7660D) runs Cayman's
+ * bring-up from the Cayman module (cm_3d.c, cm_shader.c), as V9XCM3D drew
+ * with it (docs\decisions\2026-11-03-trinity-first-3d-draw.md):
+ * cayman_gpu_init's table with its CGTS_SM_CTRL_REG sequence, the Aruba
+ * microcode at Cayman's length, all three rings with the two spare ones
+ * idle, CP_DEBUG and CP_ME_CNTL as Cayman writes them, ME_INITIALIZE with
+ * eight contexts, the Cayman preamble, and the slot shaders relocated
+ * from Evergreen's (v9x_cm_shader_from_eg). CP_COHER_CNTL2 is set to 0
+ * once here; Linux writes it before every ring SURFACE_SYNC because only
+ * an IB's sync programs it, and this HAL submits no IBs, so it stays 0.
+ *
  * Bring-up repeats V9XEG3D's sequence, which ran on M-BXMFA8's HD 5450
  * (docs\decisions\2026-10-26-cedar-cp-runs-amd-microcode.md and the 3D
  * records after it): evergreen_gpu_init's writes for Cedar (eg_3d.c's
@@ -38,6 +49,8 @@
 #include "velocity9x/eg_3d.h"
 #include "velocity9x/eg_cp_microcode.h"
 #include "velocity9x/eg_shader.h"
+#include "velocity9x/cm_3d.h"
+#include "velocity9x/cm_shader.h"
 
 /* Bounded waits, as eng_eg.c's: the probe's waits landed within a few
  * thousand reads. */
@@ -352,6 +365,13 @@ static v9x_u32 v9x_eg_cp_chip(void)
     return V9X_EG_CHIP_CEDAR;
 }
 
+/* Trinity, whose CP is Cayman's: nonzero for the engine cedar_hw16.c's
+ * Trinity row stamps. */
+static int v9x_eg_cp_trinity(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_TRINITY) != 0ul;
+}
+
 /* A register that takes a 256-byte-aligned GPU address: bits 39:8, the
  * high byte in 31:24 (evergreen_cp_resume's CP_RB_BASE and SCRATCH_ADDR). */
 static DWORD v9x_eg_cp_base256(DWORD low)
@@ -367,8 +387,13 @@ static void v9x_eg_cp_gpu_init(void)
     DWORD count;
     DWORD index;
     DWORD value;
+    DWORD sm_ctrl;
+    DWORD repeat;
 
-    if (v9x_eg_cp_chip() == V9X_EG_CHIP_CAICOS) {
+    if (v9x_eg_cp_trinity()) {
+        table = v9x_cm_trinity_gpu_init;
+        count = V9X_CM_TRINITY_GPU_INIT_COUNT;
+    } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_CAICOS) {
         table = v9x_eg_caicos_gpu_init;
         count = V9X_EG_CAICOS_GPU_INIT_COUNT;
     } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_JUNIPER) {
@@ -385,7 +410,108 @@ static void v9x_eg_cp_gpu_init(void)
             value |= v9x_eg_cp_read32(update->offset) & update->keep;
         }
         v9x_eg_cp_write32(update->offset, value);
+        /* cayman_gpu_init reprograms the shader complex after the four
+         * texture-cache disables: sixteen OVERRIDE writes, then the value
+         * it read (cm_3d.h). */
+        if (v9x_eg_cp_trinity() && update->offset == 0x914cul) {
+            sm_ctrl = v9x_eg_cp_read32(V9X_CM_CGTS_SM_CTRL_REG);
+            for (repeat = 0ul; repeat < V9X_CM_CGTS_SM_OVERRIDE_WRITES;
+                 ++repeat) {
+                v9x_eg_cp_write32(V9X_CM_CGTS_SM_CTRL_REG,
+                                  V9X_CM_CGTS_SM_OVERRIDE);
+            }
+            v9x_eg_cp_write32(V9X_CM_CGTS_SM_CTRL_REG, sm_ctrl);
+        }
     }
+}
+
+/* cayman_cp_enable(false), cayman_cp_load_microcode and cayman_cp_resume,
+ * as V9XEGCP and V9XCM3D ran them: three rings, the spare two idle. */
+static void v9x_eg_cp_load_cayman(DWORD ring_gpu)
+{
+    static const DWORD cntl[3] = {
+        V9X_EG_CP_RB_CNTL, V9X_CM_CP_RB1_CNTL, V9X_CM_CP_RB2_CNTL
+    };
+    static const DWORD rptr_addr[3] = {
+        V9X_EG_CP_RB_RPTR_ADDR, V9X_CM_CP_RB1_RPTR_ADDR,
+        V9X_CM_CP_RB2_RPTR_ADDR
+    };
+    static const DWORD rptr_addr_hi[3] = {
+        V9X_EG_CP_RB_RPTR_ADDR_HI, V9X_CM_CP_RB1_RPTR_ADDR_HI,
+        V9X_CM_CP_RB2_RPTR_ADDR_HI
+    };
+    static const DWORD base[3] = {
+        V9X_EG_CP_RB_BASE, V9X_CM_CP_RB1_BASE, V9X_CM_CP_RB2_BASE
+    };
+    static const DWORD rptr[3] = {
+        V9X_EG_CP_RB_RPTR, V9X_CM_CP_RB1_RPTR, V9X_CM_CP_RB2_RPTR
+    };
+    static const DWORD wptr[3] = {
+        V9X_EG_CP_RB_WPTR, V9X_CM_CP_RB1_WPTR, V9X_CM_CP_RB2_WPTR
+    };
+    DWORD ring_base[3];
+    DWORD index;
+    DWORD ring;
+
+    ring_base[0] = ring_gpu;
+    ring_base[1] = v9x_eg_cp_window_gpu + V9X_CM_WINDOW_CP_RING1;
+    ring_base[2] = v9x_eg_cp_window_gpu + V9X_CM_WINDOW_CP_RING2;
+
+    v9x_eg_cp_halt();
+    v9x_eg_cp_write32(V9X_EG_SCRATCH_UMSK, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    for (index = 0ul; index < V9X_CM_PFP_MICROCODE_DWORDS; ++index) {
+        v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_DATA,
+                          v9x_cm_aruba_pfp_microcode[index]);
+    }
+    v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_WADDR, 0ul);
+    for (index = 0ul; index < V9X_CM_ME_MICROCODE_DWORDS; ++index) {
+        v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_DATA,
+                          v9x_cm_aruba_me_microcode[index]);
+    }
+    v9x_eg_cp_write32(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_WADDR, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_ME_RAM_RADDR, 0ul);
+
+    v9x_eg_cp_write32(V9X_EG_GRBM_SOFT_RESET, V9X_EG_GRBM_RESET_CP_BLOCKS);
+    (void)v9x_eg_cp_read32(V9X_EG_GRBM_SOFT_RESET);
+    v9x_eg_cp_delay(V9X_EG_CP_RESET_READS);
+    v9x_eg_cp_write32(V9X_EG_GRBM_SOFT_RESET, 0ul);
+    (void)v9x_eg_cp_read32(V9X_EG_GRBM_SOFT_RESET);
+
+    v9x_eg_cp_write32(V9X_EG_CP_SEM_WAIT_TIMER, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_SEM_INCOMPLETE, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_RB_WPTR_DELAY, 0ul);
+    v9x_eg_cp_write32(V9X_EG_CP_DEBUG, V9X_CM_CP_DEBUG_VALUE);
+    v9x_eg_cp_write32(V9X_EG_SCRATCH_ADDR,
+                      v9x_eg_cp_base256(v9x_eg_cp_window_gpu +
+                                        V9X_EG_WINDOW_CP_WRITEBACK + 0x100ul));
+    v9x_eg_cp_write32(V9X_EG_SCRATCH_UMSK, 0ul);
+
+    for (ring = 0ul; ring < 3ul; ++ring) {
+        v9x_eg_cp_write32(cntl[ring],
+                          V9X_EG_CP_RB_CNTL_VALUE | V9X_EG_RB_NO_UPDATE);
+        v9x_eg_cp_write32(rptr_addr[ring],
+                          (v9x_eg_cp_window_gpu + V9X_EG_WINDOW_CP_WRITEBACK) &
+                          ~3ul);
+        v9x_eg_cp_write32(rptr_addr_hi[ring], v9x_eg_cp_gpu_high);
+    }
+    /* Writing one base resets every ring. */
+    for (ring = 0ul; ring < 3ul; ++ring) {
+        v9x_eg_cp_write32(base[ring], v9x_eg_cp_base256(ring_base[ring]));
+    }
+    for (ring = 0ul; ring < 3ul; ++ring) {
+        v9x_eg_cp_write32(cntl[ring], V9X_EG_CP_RB_CNTL_VALUE |
+                                      V9X_EG_RB_NO_UPDATE |
+                                      V9X_EG_RB_RPTR_WR_ENA);
+        v9x_eg_cp_write32(rptr[ring], 0ul);
+        v9x_eg_cp_write32(wptr[ring], 0ul);
+        v9x_eg_cp_delay(V9X_EG_CP_SHORT_READS);
+        v9x_eg_cp_write32(cntl[ring],
+                          V9X_EG_CP_RB_CNTL_VALUE | V9X_EG_RB_NO_UPDATE);
+    }
+    v9x_eg_cp_wptr = 0ul;
 }
 
 /* r700_cp_stop, evergreen_cp_load_microcode and evergreen_cp_resume. */
@@ -451,10 +577,12 @@ static void v9x_eg_cp_load(DWORD ring_gpu)
     v9x_eg_cp_wptr = 0ul;
 }
 
-/* The Direct3D shaders into their slots (eg_shader.h, V9X_EG_SLOT_*). */
-static void v9x_eg_cp_upload_shaders(void)
+/* The Direct3D shaders into their slots (eg_shader.h, V9X_EG_SLOT_*).
+ * Zero if one could not be made, which leaves Direct3D refused. */
+static int v9x_eg_cp_upload_shaders(void)
 {
     v9x_u32 words[V9X_EG_SHADER_DWORDS_MAX];
+    v9x_u32 cayman[V9X_CM_SHADER_DWORDS_MAX];
     volatile DWORD *slot;
     DWORD count;
     DWORD which;
@@ -472,12 +600,25 @@ static void v9x_eg_cp_upload_shaders(void)
         } else {
             count = v9x_eg_shader_d3d_ps(which - V9X_EG_SLOT_PS_FIRST, words);
         }
+        /* Trinity runs the same shaders in Cayman's control flow. A slot
+         * holds V9X_EG_WINDOW_SHADER_BYTES; the largest relocated slot
+         * shader, the modulate PS, takes 48 dwords of its 64. */
+        if (v9x_eg_cp_trinity()) {
+            count = v9x_cm_shader_from_eg(words, count, cayman);
+            if (count == 0ul || count > V9X_EG_WINDOW_SHADER_BYTES / 4ul) {
+                return 0;
+            }
+            for (index = 0ul; index < count; ++index) {
+                words[index] = cayman[index];
+            }
+        }
         slot = v9x_eg_cp_window(V9X_EG_WINDOW_SHADERS +
                                 which * V9X_EG_WINDOW_SHADER_BYTES);
         for (index = 0ul; index < count; ++index) {
             slot[index] = words[index];
         }
     }
+    return 1;
 }
 
 /* One stream through the ring, padded, and waited for. */
@@ -544,25 +685,41 @@ static int v9x_eg_cp_start(void)
     }
 
     v9x_eg_cp_gpu_init();
-    v9x_eg_cp_load(v9x_eg_cp_window_gpu + V9X_EG_WINDOW_CP_RING);
-    v9x_eg_cp_upload_shaders();
+    if (v9x_eg_cp_trinity()) {
+        v9x_eg_cp_load_cayman(v9x_eg_cp_window_gpu + V9X_EG_WINDOW_CP_RING);
+    } else {
+        v9x_eg_cp_load(v9x_eg_cp_window_gpu + V9X_EG_WINDOW_CP_RING);
+    }
+    if (!v9x_eg_cp_upload_shaders()) {
+        return 0;
+    }
 
-    /* evergreen_cp_start: ME_INITIALIZE with the CP running, then the
-     * preamble, each waited for. */
+    /* evergreen_cp_start (cayman_cp_start on Trinity): ME_INITIALIZE with
+     * the CP running, then the preamble, each waited for. */
     v9x_eg_pm4_begin(&stream, buffer, sizeof(buffer) / sizeof(buffer[0]));
-    v9x_eg_3d_me_initialize(&stream, v9x_eg_cp_chip());
+    if (v9x_eg_cp_trinity()) {
+        v9x_cm_3d_me_initialize(&stream);
+    } else {
+        v9x_eg_3d_me_initialize(&stream, v9x_eg_cp_chip());
+    }
     v9x_eg_pm4_pad(&stream);
     if (!v9x_eg_cp_put(stream.dwords, stream.count)) {
         v9x_eg_cp_quarantine(V9X_EG_CP_FAULT_START);
         return 0;
     }
-    v9x_eg_cp_write32(V9X_EG_CP_ME_CNTL, V9X_EG_CP_RUN);
+    v9x_eg_cp_write32(V9X_EG_CP_ME_CNTL, v9x_eg_cp_trinity() ?
+                                         V9X_CM_CP_RUN : V9X_EG_CP_RUN);
     if (!v9x_eg_cp_poll_idle(V9X_EG_CP_SPINS)) {
         v9x_eg_cp_quarantine(V9X_EG_CP_FAULT_START);
         return 0;
     }
     v9x_eg_pm4_begin(&stream, buffer, sizeof(buffer) / sizeof(buffer[0]));
-    v9x_eg_3d_preamble(&stream);
+    if (v9x_eg_cp_trinity()) {
+        v9x_cm_3d_preamble(&stream);
+        v9x_cm_3d_coher_cntl2(&stream);
+    } else {
+        v9x_eg_3d_preamble(&stream);
+    }
     if (!v9x_eg_cp_run(&stream)) {
         v9x_eg_cp_quarantine(V9X_EG_CP_FAULT_START);
         return 0;

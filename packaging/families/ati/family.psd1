@@ -476,12 +476,13 @@
             # A10-5700's graphics: DirectDraw fill and copy on its first DMA
             # engine, measured byte-exact with the carve-out at GPU
             # F_00000000 (docs\decisions\2026-11-03-trinity-dma-write-
-            # probe.md), and flips through D1. No Direct3D yet: Cayman's CP
-            # microcode and VLIW4 shaders (docs\plans\ati-trinity-hd7660d.md).
+            # probe.md), and flips through D1. Direct3D on the CP with the
+            # Aruba microcode through the Cayman module
+            # (docs\decisions\2026-11-03-trinity-first-3d-draw.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-evergreen-cp'
             EngineType = 'ATI_EVERGREEN'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What M-D7TFW4's VBE 4F00h reports; the carve-out is 256 MiB.
             VideoMemoryBytes = 16777216
 

@@ -45,4 +45,25 @@ v9x_u32 v9x_cm_vtx_fetch(v9x_u32 dst_gpr, v9x_u32 offset,
 v9x_u32 v9x_cm_shader_blit_vs(v9x_u32 *out);
 v9x_u32 v9x_cm_shader_blit_ps(v9x_u32 *out);
 
+/*
+ * An Evergreen shader from eg_shader.c, rewritten for Cayman: its control
+ * flow up to the end-of-program bit, that bit dropped, vertex-fetch
+ * clauses made texture clauses and CF_END appended; then its clauses laid
+ * out again in their order after the longer CF list, ALU clauses on an
+ * 8-byte and fetch clauses on a 16-byte boundary, each CF address fixed;
+ * vertex fetches in Cayman's form (v9x_cm_vtx_fetch's word 0 and 2). The
+ * ALU and texture words are copied as they are: the shaders this is for
+ * use at most four ALU slots in a group, one per channel, and no
+ * transcendental, so none needs the T slot Cayman lacks, and their
+ * opcodes are Cayman's too (Mesa r600_isa.c). Linux 3.9's Cayman blit is
+ * this of Evergreen's blit, word for word.
+ *
+ * Returns the dwords written, at most V9X_CM_SHADER_DWORDS_MAX, or 0 for
+ * a shader it cannot read: no end of program in the first 16 CF slots, a
+ * CF instruction other than ALU, TC, VC and the exports, or a clause past
+ * eg_count.
+ */
+v9x_u32 v9x_cm_shader_from_eg(const v9x_u32 *eg, v9x_u32 eg_count,
+                              v9x_u32 *out);
+
 #endif

@@ -138,6 +138,9 @@ $sources = @(
     "src\chipsets\ati\evergreen\eg_cp_microcode.c",
     "src\chipsets\ati\evergreen\eg_3d.c",
     "src\chipsets\ati\evergreen\eg_shader.c",
+    # Trinity's Cayman tables, streams and shader relocation.
+    "src\chipsets\ati\cayman\cm_3d.c",
+    "src\chipsets\ati\cayman\cm_shader.c",
     "src\display32\d3d\d3d_eg_map.c",
     "src\display32\d3d\d3d_eg.c",
     # The Carrizo SDMA engine: Evergreen's DMA plans as SDMA packets
