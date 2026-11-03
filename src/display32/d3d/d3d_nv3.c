@@ -63,13 +63,18 @@
 #define V9X_D3D_NV3_STOP_ROOM_VERTEX   3ul
 #define V9X_D3D_NV3_STOP_IDLE          4ul
 
-/* One placed texture: its linear level 0 and its swizzled square copy,
- * both video memory offsets. A table, since HAL statics are shared by
- * every process (they are global to the DLL). */
+/* One placed texture: its linear levels and its swizzled square copy,
+ * all video memory offsets. A table, since HAL statics are shared by
+ * every process (they are global to the DLL). The copy holds `levels`
+ * squares back to back, the chain down to 8x8 at most
+ * (V9X_NV3_MIP_LOG2_MIN); a texture with no chain has one. */
 typedef struct v9x_d3d_nv3_texture {
     DWORD linear;
     DWORD swizzled;
     DWORD pitch;
+    DWORD levels;
+    DWORD level_linear[V9X_D3D_NV3_TEXTURE_LEVELS];
+    DWORD level_pitch[V9X_D3D_NV3_TEXTURE_LEVELS];
     DWORD width;
     DWORD height;
     DWORD log2_side;
@@ -283,8 +288,11 @@ static void v9x_d3d_nv3_describe_caps(V9X_DD_SHARED *shared)
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
                          V9X_D3DPTEXTURECAPS_ALPHA;
+    /* Mipmaps to 8x8, the nearest level; no blend between levels. */
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEAR;
+                               V9X_D3DPTFILTERCAPS_LINEAR |
+                               V9X_D3DPTFILTERCAPS_MIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
@@ -387,36 +395,48 @@ static V9X_D3D_NV3_TEXTURE *v9x_d3d_nv3_find_surface(
 }
 
 /*
- * The swizzled square copy, rebuilt from the linear level 0: every texel
- * of the square, (u, v) taken from (u mod width, v mod height), so a
- * narrower texture repeats across it. The engine is idle (the caller has
- * begun the batch), so nothing reads the copy meanwhile.
+ * The swizzled square copy, rebuilt from the linear levels: every texel
+ * of each level's square, (u, v) taken from (u mod width, v mod height),
+ * so a narrower texture repeats across it, the levels one after another.
+ * The engine is idle (the caller has begun the batch), so nothing reads
+ * the copy meanwhile.
  */
 static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture, int opaque)
 {
     v9x_u16 row[V9X_D3D_NV3_TEXTURE_MAX];
     const v9x_u16 *source;
     v9x_u16 *copy;
+    DWORD level;
+    DWORD log2_side;
     DWORD side;
+    DWORD width;
+    DWORD height;
     DWORD u;
     DWORD v;
 
-    side = 1ul << texture->log2_side;
     copy = (v9x_u16 *)(v9x_hal->fb.linear_base +
                        (opaque ? texture->opaque : texture->swizzled));
-    for (v = 0ul; v < side; ++v) {
-        /* A row is read once into the buffer: video memory reads are
-         * slow, and each texel is written side / width times. */
-        source = (const v9x_u16 *)(v9x_hal->fb.linear_base +
-                                   texture->linear +
-                                   (v % texture->height) * texture->pitch);
-        for (u = 0ul; u < texture->width; ++u) {
-            row[u] = opaque ? v9x_nv3_3d_opaque_texel(source[u]) : source[u];
+    for (level = 0ul; level < texture->levels; ++level) {
+        log2_side = texture->log2_side - level;
+        side = 1ul << log2_side;
+        width = texture->width >> level;
+        height = texture->height >> level;
+        for (v = 0ul; v < side; ++v) {
+            /* A row is read once into the buffer: video memory reads are
+             * slow, and each texel is written side / width times. */
+            source = (const v9x_u16 *)(v9x_hal->fb.linear_base +
+                                       texture->level_linear[level] +
+                                       (v % height) *
+                                       texture->level_pitch[level]);
+            for (u = 0ul; u < width; ++u) {
+                row[u] = opaque ? v9x_nv3_3d_opaque_texel(source[u]) :
+                                  source[u];
+            }
+            for (u = 0ul; u < side; ++u) {
+                copy[v9x_nv3_3d_swizzle(u, v, log2_side)] = row[u % width];
+            }
         }
-        for (u = 0ul; u < side; ++u) {
-            copy[v9x_nv3_3d_swizzle(u, v, texture->log2_side)] =
-                row[u % texture->width];
-        }
+        copy += side * side;
     }
     v9x_wc_drain();
     if (opaque) {
@@ -495,7 +515,8 @@ static void v9x_d3d_nv3_count_state_refusal(
     DWORD bytes;
 
     bytes = state->texture_log2 <= V9X_NV3_TEX_LOG2_MAX ?
-            2ul << (2u * (unsigned int)state->texture_log2) : 0ul;
+            v9x_nv3_3d_chain_bytes(state->texture_log2,
+                                   state->texture_levels) : 0ul;
     if (state->blend == V9X_NV3_BLEND_OPAQUE &&
         state->texture_format == V9X_NV3_TEX_A4R4G4B4) {
         cause = V9X_D3D_NV3_STATE_OPAQUE_4444;
@@ -621,6 +642,7 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     state->u_shift = 0ul;
     state->v_shift = 0ul;
     state->vertex_white = 0;
+    state->texture_levels = 1ul;
 
     surface = (const V9X_DD_SURFACE_LCL *)draw->texture.object;
     if (surface == 0) {
@@ -689,6 +711,13 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
         *use_opaque = 1;
     }
     state->texture_log2 = texture->log2_side;
+    /* A mip filter samples the chain, the level nearest the footprint;
+     * the chip has no blend between two levels, so LINEARMIP* take the
+     * nearest one too (V9XDDP's MipTriDegraded accepts that). */
+    if (draw->texture.min_filter >= V9X_R3D_FILTER_MIPNEAREST &&
+        draw->texture.min_filter <= V9X_R3D_FILTER_LINEARMIPLINEAR) {
+        state->texture_levels = texture->levels;
+    }
     state->u_shift = v9x_d3d_nv3_log2(side / texture->width);
     state->v_shift = v9x_d3d_nv3_log2(side / texture->height);
     *sampled = texture;
@@ -928,7 +957,8 @@ static DWORD v9x_d3d_nv3_pitch(DWORD edge)
 /*
  * A video-memory texture of a format and size this engine samples: its
  * levels linear, as DirectDraw would place them, each on the alignment,
- * and the swizzled square copy of level 0 after them, in one block.
+ * and the swizzled copy of the levels the chip samples after them, in one
+ * block.
  */
 static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
@@ -946,6 +976,7 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD opaque;
     DWORD bytes = 0ul;
     DWORD level;
+    DWORD levels;
     DWORD base;
 
     if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
@@ -1006,12 +1037,22 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         bytes = offsets[level] + pitches[level] * rows;
     }
     log2_side = v9x_d3d_nv3_log2(width > height ? width : height);
+
+    /* The levels the chip can sample: each one both edges halved (an edge
+     * stopped at 1 would change the copies' scale), and none under 8x8,
+     * whose offsets the chip rounds onto the level before (nv3_3d.h). */
+    levels = 1ul;
+    while (levels < data->dwSCnt &&
+           (width >> levels) != 0ul && (height >> levels) != 0ul &&
+           log2_side - levels >= V9X_NV3_MIP_LOG2_MIN) {
+        ++levels;
+    }
     copy = (bytes + align - 1ul) & ~(align - 1ul);
-    bytes = copy + (2ul << (2ul * log2_side));
+    bytes = copy + v9x_nv3_3d_chain_bytes(log2_side, levels);
     opaque = 0ul;
     if (format == V9X_NV3_TEX_A4R4G4B4) {
         opaque = (bytes + align - 1ul) & ~(align - 1ul);
-        bytes = opaque + (2ul << (2ul * log2_side));
+        bytes = opaque + v9x_nv3_3d_chain_bytes(log2_side, levels);
     }
     if (v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
                             &base) != 0ul) {
@@ -1023,6 +1064,11 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     record->opaque = opaque != 0ul ? base + opaque : 0ul;
     record->opaque_dirty = 1;
     record->pitch = pitches[0];
+    record->levels = levels;
+    for (level = 0ul; level < levels; ++level) {
+        record->level_linear[level] = base + offsets[level];
+        record->level_pitch[level] = pitches[level];
+    }
     record->width = width;
     record->height = height;
     record->log2_side = log2_side;
@@ -1054,15 +1100,39 @@ static void v9x_d3d_nv3_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     }
 }
 
-/* An Unlock or a Blt into a placed texture: its copy is stale. */
+/* The placed texture one of whose sampled levels is at `linear`, or 0. */
+static V9X_D3D_NV3_TEXTURE *v9x_d3d_nv3_find_level(DWORD linear)
+{
+    DWORD index;
+    DWORD level;
+
+    for (index = 0ul; index < V9X_D3D_NV3_TEXTURES; ++index) {
+        if (v9x_d3d_nv3_textures[index].linear == 0ul) {
+            continue;
+        }
+        for (level = 0ul; level < v9x_d3d_nv3_textures[index].levels;
+             ++level) {
+            if (v9x_d3d_nv3_textures[index].level_linear[level] == linear) {
+                return &v9x_d3d_nv3_textures[index];
+            }
+        }
+    }
+    return 0;
+}
+
+/* An Unlock or a Blt into a placed texture, any level of it: its copy is
+ * stale. */
 static void v9x_d3d_nv3_surface_written(const V9X_DD_SURFACE_LCL *surface)
 {
     V9X_D3D_NV3_TEXTURE *record;
+    DWORD offset;
 
-    if (v9x_hal == 0) {
+    if (v9x_hal == 0 || surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul) {
         return;
     }
-    record = v9x_d3d_nv3_find_surface(surface);
+    offset = v9x_surface_offset(surface);
+    record = offset != 0xfffffffful ? v9x_d3d_nv3_find_level(offset) : 0;
     if (record != 0) {
         record->dirty = 1;
         record->opaque_dirty = 1;

@@ -18,7 +18,8 @@
  * /d3d adds the D3D object and a short DMA object and draws one triangle
  * instead (Phase 7; see v9x_run_d3d). /d3dstate draws one case per piece
  * of 3D state and writes the raw pixels to C:\V9XDIAG\N3Dnn.BIN (see
- * v9x_d3d_cases).
+ * v9x_d3d_cases). /d3dmip does the same for mipmap chains, files
+ * N3D41.BIN on (v9x_d3d_mip_cases).
  *
  * /all also runs at 800x600x8 and 800x600x32, switching with
  * ChangeDisplaySettings and back afterwards; before each run's own
@@ -1300,6 +1301,7 @@ static int v9x_run_d3d(HANDLE device, int textured, const char *section)
 #define V9X_TEX_WHITE          0ul
 #define V9X_TEX_ID             1ul
 #define V9X_TEX_ID_ALPHA       2ul /* alpha = s & 1 */
+#define V9X_TEX_INDEX          3ul /* /d3dmip: s up to 191, see below */
 
 #define V9X_SHAPE_QUAD         0ul /* (8,0)-(72,16), u and v 0 to 1 */
 #define V9X_SHAPE_PERSPECTIVE  1ul /* the same, rhw 1/4 on the right */
@@ -1307,6 +1309,11 @@ static int v9x_run_d3d(HANDLE device, int textured, const char *section)
 #define V9X_SHAPE_ZPAIR        3ul /* A z 1/2, then B z 1/4 and 3/4 */
 #define V9X_SHAPE_QUARTER      4ul /* HALF's triangle at + 1/4 */
 #define V9X_SHAPE_3QUARTERS    5ul /* and at + 3/4 */
+#define V9X_SHAPE_MIPS         6ul /* four 32x16 quads, 1/2 to 8 texels/px */
+#define V9X_SHAPE_MIPS_FAR     7ul /* the same at 16 to 128 */
+#define V9X_SHAPE_MIPS_U       8ul /* u 1/2 to 8, v 1/2 */
+#define V9X_SHAPE_MIPS_V       9ul /* v 1/2 to 8, u 1/2 */
+#define V9X_SHAPE_MIPS_BIAS    10ul /* all at 1/2; SIZE_ADJUST per quad */
 
 /* The whole-memory DMA object: 800h page entries at RAMIN 4000h, clear of
  * RAMHT (0), the small object (1400h), RAMRO (2000h), RAMFC (2200h) and
@@ -1330,6 +1337,8 @@ struct v9x_d3d_case {
     int big_dma;
     DWORD shift_surface;    /* surface index + 1 moved 8 lines; 0 none */
     DWORD texture_at;       /* window offset of the texture; 0 F000h */
+    DWORD format;           /* TEXTURE_FORMAT in place of the 8x8 one; 0 */
+    DWORD filter;           /* FILTER (spread, size adjust) */
 };
 #define V9X_D3D_SHIFT_LINES    8ul
 
@@ -1430,6 +1439,105 @@ static const struct v9x_d3d_case v9x_d3d_cases[] = {
 #define V9X_D3D_CASE_COUNT \
     (sizeof(v9x_d3d_cases) / sizeof(v9x_d3d_cases[0]))
 
+/*
+ * /d3dmip: where the levels of a chain sit and how the chip picks one.
+ * TEXTURE_FORMAT's SIZE_MIN (bits 24-27) and SIZE_MAX (28-31) are log2
+ * sides, and FILTER has SPREAD_X (0-4), SPREAD_Y (8-12) and SIZE_ADJUST
+ * (16-23) (envytools' nv3_3d.xml; nothing says what they do). The texture
+ * is 192 texels from F000h, each naming its storage index s: red 2 x
+ * (s & 15), green 2 x (s >> 4), blue 31 as a marker. An 8x8 level 0 is
+ * s 0-63; if the smaller levels follow it, 4x4 is 64-79, 2x2 80-83 and
+ * 1x1 84. The four quads sample 1/2, 2, 4 and 8 texels a pixel, point
+ * sampled, so a level per quad if the chip chooses by the footprint.
+ * Files N3D41.BIN on.
+ */
+#define V9X_D3D_MIP_TEXELS     192ul
+#define V9X_D3D_FORMAT_ONE     0x33000000ul /* 8x8, one level */
+#define V9X_D3D_FORMAT_CHAIN   0x30000000ul /* 8x8 down to 1x1 */
+#define V9X_D3D_MIP_FIRST      41ul
+#define V9X_D3D_FORMAT_MIN1    0x31000000ul /* 8x8 down to 2x2 */
+#define V9X_D3D_FORMAT_4X4     0x20000000ul /* 4x4 down to 1x1 */
+
+/* u_max and v_max of each quad, by shape: ratios 1/2, 2, 4, 8 both ways;
+ * 16 to 128 both ways; u alone with v 1/2; v alone with u 1/2. */
+static const DWORD v9x_d3d_mip_spans[4][4][2] = {
+    { { 2ul, 1ul }, { 8ul, 4ul }, { 16ul, 8ul }, { 32ul, 16ul } },
+    { { 64ul, 32ul }, { 128ul, 64ul }, { 256ul, 128ul }, { 512ul, 256ul } },
+    { { 2ul, 1ul }, { 8ul, 1ul }, { 16ul, 1ul }, { 32ul, 1ul } },
+    { { 2ul, 1ul }, { 2ul, 4ul }, { 2ul, 8ul }, { 2ul, 16ul } }
+};
+
+static const struct v9x_d3d_case v9x_d3d_mip_cases[] = {
+    { "MipOneLevel", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_ONE, 0ul },
+    { "MipChain", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN, 0ul },
+    { "MipChainAdjust10", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0x00100000ul },
+    { "MipChainAdjustF0", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0x00f00000ul },
+    { "MipChainSpread04", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0x00000404ul },
+    { "MipChainSpread1F", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0x00001f1ful },
+    { "MipChainFoh", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD | V9X_D3D_INTERP_FOH,
+      V9X_D3D_ALPHA, 0ul, 0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul,
+      V9X_D3D_FORMAT_CHAIN, 0ul },
+    /* Run 1 never fetched below level 1. Further ratios, a shorter chain,
+     * one from 4x4, and each axis alone. */
+    { "MipChainFar", V9X_TEX_INDEX, V9X_SHAPE_MIPS_FAR,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN, 0ul },
+    { "MipChainMin1", V9X_TEX_INDEX, V9X_SHAPE_MIPS_FAR,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_MIN1, 0ul },
+    { "MipChain4x4", V9X_TEX_INDEX, V9X_SHAPE_MIPS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_4X4, 0ul },
+    { "MipChainU", V9X_TEX_INDEX, V9X_SHAPE_MIPS_U,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN, 0ul },
+    { "MipChainV", V9X_TEX_INDEX, V9X_SHAPE_MIPS_V,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN, 0ul },
+    { "MipChainFarAdjustF0", V9X_TEX_INDEX, V9X_SHAPE_MIPS_FAR,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0x00f00000ul },
+    /* Run 2: no footprint fetched below level 1, and F0h at 4 texels a
+     * pixel read a 2x2 at s 64. Magnified, SIZE_ADJUST alone picks the
+     * level: one value per quad, low byte first. */
+    { "MipBiasF0toC0", V9X_TEX_INDEX, V9X_SHAPE_MIPS_BIAS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0xc0d0e0f0ul },
+    { "MipBiasB0to80", V9X_TEX_INDEX, V9X_SHAPE_MIPS_BIAS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0x8090a0b0ul },
+    { "MipBiasFine", V9X_TEX_INDEX, V9X_SHAPE_MIPS_BIAS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_CHAIN,
+      0xf8fcfefful },
+    { "MipBias4x4", V9X_TEX_INDEX, V9X_SHAPE_MIPS_BIAS,
+      V9X_D3D_CFG_OPAQUE | V9X_D3D_ROP_ADD, V9X_D3D_ALPHA, 0ul,
+      0xfffffffful, 0ul, 0ul, 0, 0ul, 0ul, V9X_D3D_FORMAT_4X4,
+      0xc0d0e0f0ul }
+};
+#define V9X_D3D_MIP_COUNT \
+    (sizeof(v9x_d3d_mip_cases) / sizeof(v9x_d3d_mip_cases[0]))
+
 static DWORD v9x_at_d3d_kept;
 
 /* value + quarters / 4 as IEEE single bits: 4 * value + quarters, divided
@@ -1446,6 +1554,14 @@ static DWORD v9x_texel_id(DWORD s, int alpha_from_s)
     alpha = alpha_from_s ? (s & 1ul) : 1ul;
     return (alpha << 15) | (((s & 7ul) * 4ul) << 10) |
            (((s >> 3) * 4ul) << 5);
+}
+
+/* /d3dmip's texel: its storage index, in steps of two so modulation's
+ * rounding cannot move it to a neighbour. */
+static DWORD v9x_texel_index(DWORD s)
+{
+    return 0x8000ul | (((s & 15ul) * 2ul) << 10) | (((s >> 4) * 2ul) << 5) |
+           0x1ful;
 }
 
 /* One vertex, every coordinate already IEEE bits, then a wait: these
@@ -1479,6 +1595,26 @@ static void v9x_d3d_quad(DWORD colour, DWORD x0, DWORD y0, DWORD x1,
     v9x_d3d_vertex_at(V9X_D3D_SPEC_V3, colour, v9x_float_of(x1),
                       v9x_float_of(y1), z, rhw_right, V9X_FLOAT_ONE,
                       V9X_FLOAT_ONE);
+}
+
+/* /d3dmip's quad: u 0 to u_max, v 0 to v_max (whole numbers), rhw 1. */
+static void v9x_d3d_quad_uv(DWORD colour, DWORD x0, DWORD y0, DWORD x1,
+                            DWORD y1, DWORD u_max, DWORD v_max)
+{
+    DWORD u;
+    DWORD v;
+
+    u = v9x_float_of(u_max);
+    v = v9x_float_of(v_max);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V0, colour, v9x_float_of(x0),
+                      v9x_float_of(y0), V9X_FLOAT_HALF, V9X_FLOAT_ONE, 0ul,
+                      0ul);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V1, colour, v9x_float_of(x1),
+                      v9x_float_of(y0), V9X_FLOAT_HALF, V9X_FLOAT_ONE, u, 0ul);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V2, colour, v9x_float_of(x0),
+                      v9x_float_of(y1), V9X_FLOAT_HALF, V9X_FLOAT_ONE, 0ul, v);
+    v9x_d3d_vertex_at(V9X_D3D_SPEC_V3, colour, v9x_float_of(x1),
+                      v9x_float_of(y1), V9X_FLOAT_HALF, V9X_FLOAT_ONE, u, v);
 }
 
 /* The whole-memory DMA object, written ahead of its case in requests of
@@ -1524,14 +1660,21 @@ static void v9x_build_d3d_case(const struct v9x_d3d_case *one, DWORD pitch)
     DWORD a_config;
     DWORD quarters;
     DWORD texture_at;
+    DWORD texels;
+    DWORD ratio;
+    DWORD left;
 
     texture_at = one->texture_at != 0ul ? one->texture_at : V9X_D3D_TEXTURE;
     v9x_request.count = 0ul;
     v9x_bring_up(2ul, pitch, 0);
 
-    for (index = 0ul; index < V9X_D3D_TEX_SIZE * V9X_D3D_TEX_SIZE;
-         index += 2ul) {
-        if (one->texture == V9X_TEX_WHITE) {
+    texels = one->texture == V9X_TEX_INDEX ? V9X_D3D_MIP_TEXELS :
+             V9X_D3D_TEX_SIZE * V9X_D3D_TEX_SIZE;
+    for (index = 0ul; index < texels; index += 2ul) {
+        if (one->texture == V9X_TEX_INDEX) {
+            texel = v9x_texel_index(index) |
+                    (v9x_texel_index(index + 1ul) << 16);
+        } else if (one->texture == V9X_TEX_WHITE) {
             texel = 0xfffffffful;
         } else {
             texel = v9x_texel_id(index, one->texture == V9X_TEX_ID_ALPHA) |
@@ -1547,8 +1690,9 @@ static void v9x_build_d3d_case(const struct v9x_d3d_case *one, DWORD pitch)
     v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_OFFSET,
                one->big_dma ? V9X_SURFACE_OFFSET + texture_at : texture_at);
     v9x_method(V9X_SUB_D3D, V9X_M_D3D_TEX_FORMAT,
-               V9X_D3D_TEX_FORMAT | one->format_extra);
-    v9x_method(V9X_SUB_D3D, V9X_M_D3D_FILTER, 0ul);
+               (one->format != 0ul ? one->format : V9X_D3D_TEX_FORMAT) |
+               one->format_extra);
+    v9x_method(V9X_SUB_D3D, V9X_M_D3D_FILTER, one->filter);
     v9x_method(V9X_SUB_D3D, V9X_M_D3D_FOG_COLOR, 0ul);
     /* The Z pair draws A unconditionally, then B under the case's test. */
     a_config = one->shape == V9X_SHAPE_ZPAIR ?
@@ -1564,6 +1708,30 @@ static void v9x_build_d3d_case(const struct v9x_d3d_case *one, DWORD pitch)
     if (one->shape == V9X_SHAPE_QUAD) {
         v9x_d3d_quad(one->colour, 8ul, 0ul, 72ul, 16ul, V9X_FLOAT_HALF,
                      V9X_FLOAT_ONE);
+    } else if (one->shape == V9X_SHAPE_MIPS_BIAS) {
+        /* Magnified, so every texel of the level shows and none aliases;
+         * byte q of the case's filter is quad q's SIZE_ADJUST. */
+        left = 0ul;
+        for (ratio = 0ul; ratio < 4ul; ++ratio) {
+            v9x_method(V9X_SUB_D3D, V9X_M_D3D_FILTER,
+                       ((one->filter >> (8u * (unsigned int)ratio)) & 0xfful)
+                       << 16);
+            v9x_op(V9X_OP_WAIT_IDLE, 0ul, 0ul, 0ul);
+            v9x_d3d_quad_uv(one->colour, left, 0ul, left + 32ul, 16ul, 2ul,
+                            1ul);
+            left += 32ul;
+        }
+    } else if (one->shape >= V9X_SHAPE_MIPS &&
+               one->shape <= V9X_SHAPE_MIPS_V) {
+        /* Each 32x16 quad spans u 0 to 4 ru and v 0 to 2 rv of the 8x8
+         * level: ru texels a pixel across, rv down (v9x_d3d_mip_spans). */
+        left = 0ul;
+        for (ratio = 0ul; ratio < 4ul; ++ratio) {
+            v9x_d3d_quad_uv(one->colour, left, 0ul, left + 32ul, 16ul,
+                v9x_d3d_mip_spans[one->shape - V9X_SHAPE_MIPS][ratio][0],
+                v9x_d3d_mip_spans[one->shape - V9X_SHAPE_MIPS][ratio][1]);
+            left += 32ul;
+        }
     } else if (one->shape == V9X_SHAPE_PERSPECTIVE) {
         v9x_d3d_quad(one->colour, 8ul, 0ul, 72ul, 16ul, V9X_FLOAT_HALF,
                      V9X_FLOAT_QUARTER);
@@ -1789,6 +1957,27 @@ void __stdcall V9xNv32dEntry(void)
     }
 
     /* Ahead of /d3d, which its name contains. */
+    if (v9x_switch_given("/d3dmip")) {
+        if (bits != 16ul) {
+            v9x_text("Report", "Result", "D3D-NEEDS-16BPP");
+            CloseHandle(device);
+            WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
+            ExitProcess(1u);
+        }
+        v9x_d3d = 1;
+        all_pass = 1;
+        for (index = 0ul; index < V9X_D3D_MIP_COUNT; ++index) {
+            if (!v9x_run_d3d_case(device, V9X_D3D_MIP_FIRST + index,
+                                  &v9x_d3d_mip_cases[index])) {
+                all_pass = 0;
+            }
+        }
+        CloseHandle(device);
+        v9x_text("Report", "Result", all_pass ? "DONE" : "FAIL");
+        WritePrivateProfileStringA(0, 0, 0, V9X_N32D_PATH);
+        ExitProcess(all_pass ? 0u : 3u);
+    }
+
     if (v9x_switch_given("/d3dstate")) {
         if (bits != 16ul) {
             v9x_text("Report", "Result", "D3D-NEEDS-16BPP");

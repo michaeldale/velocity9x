@@ -92,7 +92,10 @@ the DMA object's flag bits; 86Box draws no 3D.
    - DECALALPHA is refused.
    - After step 3, V9XDDP's 27 failing checks: mipmap level choice, colour
      key, specular, Z with perspective, mixed 2D/3D, 32-bit textures,
-     bilinear's half texel, FlipPixelOk.
+     bilinear's half texel, FlipPixelOk. **Mipmaps done 2026-11-04, boot
+     30 ([record](../decisions/2026-11-04-riva128-mipmaps.md)):** chains
+     to 8x8, bias F4h, 209 of 227; the two trilinear blend checks stay
+     failed (no blend between levels).
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and

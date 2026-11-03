@@ -75,8 +75,11 @@
  * TEXTURE_FORMAT: colour key in 15:0 and its enable in bit 16, the texel
  * format in 21:20, then log2 sizes in 27:24 and 31:28. Textures are square:
  * envytools converts both u and v with the 31:28 size (convert_uv), and
- * hwtest allows 0-11 (up to 2048). 27:24 is taken as the smallest mipmap
- * level; only equal sizes, one level, were drawn.
+ * hwtest allows 0-11 (up to 2048). 27:24 is the smallest mipmap level
+ * (V9XN32D /d3dmip, 2026-11-04): the levels follow level 0 swizzled, each
+ * at the previous one's end, but the chip rounds a level's offset down to
+ * 128 bytes, so a level under 8x8 reads the bytes of the one before it.
+ * A chain therefore stops at 8x8. Equal sizes are one level.
  */
 #define V9X_NV3_TEX_KEY_MASK        0x0000fffful
 #define V9X_NV3_TEX_KEY_ENABLE      0x00010000ul
@@ -84,6 +87,20 @@
 #define V9X_NV3_TEX_SIZE_MIN_SHIFT  24u
 #define V9X_NV3_TEX_SIZE_MAX_SHIFT  28u
 #define V9X_NV3_TEX_LOG2_MAX        11ul
+#define V9X_NV3_MIP_LOG2_MIN        3ul
+
+/*
+ * FILTER's SIZE_ADJUST (23:16) biases the level the chip picks, signed,
+ * a level per 10h, larger values toward level 0. Unbiased, a footprint of
+ * 2^k texels a pixel reads level k - 1 (/d3dmip's bias cases). F0h, a
+ * whole level, read level 2 at 2.7 texels a pixel (V9XDDP ChainB and C,
+ * boot 28), where Direct3D's nearest level is 1; F8h, half a level, read
+ * level 0 at 1.7 (ChainRows, boot 29), where it is 1. So the low nibble
+ * is a fraction, and both hold only for a bias of 0.66 to 0.84 of a
+ * level: F4h, three quarters, on the reading that it is sixteenths.
+ * SPREAD_X and SPREAD_Y changed nothing.
+ */
+#define V9X_NV3_FILTER_MIP_BIAS     0x00f40000ul
 /* Texel formats. Only A1R5G5B5 was drawn; X1R5G5B5 is the same bits read
  * with alpha 1, which is how an opaque draw keeps A1R5G5B5 texels opaque. */
 #define V9X_NV3_TEX_A1R5G5B5        0ul
@@ -167,6 +184,9 @@ struct v9x_nv3_3d_state {
     v9x_u32 texture_offset;    /* video memory offset, swizzled texels */
     v9x_u32 texture_format;    /* V9X_NV3_TEX_* */
     v9x_u32 texture_log2;      /* the square texture's side, 0-11 */
+    /* Levels sampled, level 0 included: 0 or 1 for one, or a chain down
+     * to no less than 8x8 (V9X_NV3_MIP_LOG2_MIN), stored back to back. */
+    v9x_u32 texture_levels;
     int colour_key;
     v9x_u32 colour_key_texel;  /* in the texture's own format */
     v9x_u32 filter;            /* V9X_NV3_FILTER_* */
@@ -275,5 +295,9 @@ v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size);
  * (/d3dstate X1AlphaZero, boot 20).
  */
 v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444);
+
+/* Bytes of a swizzled chain: `levels` squares from 2^log2_side halving
+ * (0 counts as 1). Level n starts where the ones before it end. */
+v9x_u32 v9x_nv3_3d_chain_bytes(v9x_u32 log2_side, v9x_u32 levels);
 
 #endif

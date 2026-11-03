@@ -152,6 +152,21 @@ v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
     return V9X_STATUS_OK;
 }
 
+v9x_u32 v9x_nv3_3d_chain_bytes(v9x_u32 log2_side, v9x_u32 levels)
+{
+    v9x_u32 bytes = 0ul;
+    v9x_u32 level;
+
+    if (levels == 0ul) {
+        levels = 1ul;
+    }
+    for (level = 0ul; level < levels && level <= log2_side; ++level) {
+        bytes += V9X_NV3_3D_TEXEL_BYTES <<
+                 (2u * (unsigned int)(log2_side - level));
+    }
+    return bytes;
+}
+
 /* Checks the fields that have to hold a value whatever is enabled, and
  * the texture's place in video memory. */
 static v9x_status v9x_nv3_3d_check_state(const struct v9x_nv3_3d_state *state)
@@ -163,8 +178,15 @@ static v9x_status v9x_nv3_3d_check_state(const struct v9x_nv3_3d_state *state)
         (state->texture_offset & (V9X_NV3_3D_TEXEL_BYTES - 1ul)) != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    /* At most 2048 x 2048 x 2, 8 MiB: no overflow. */
-    bytes = V9X_NV3_3D_TEXEL_BYTES << (2u * (unsigned int)state->texture_log2);
+    if (state->texture_levels > 1ul &&
+        (state->texture_levels - 1ul > state->texture_log2 ||
+         state->texture_log2 - (state->texture_levels - 1ul) <
+             V9X_NV3_MIP_LOG2_MIN)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* At most 2048 x 2048 x 2 x 4/3, under 12 MiB: no overflow. */
+    bytes = v9x_nv3_3d_chain_bytes(state->texture_log2,
+                                   state->texture_levels);
     if (state->texture_offset >= state->vram_bytes ||
         bytes > state->vram_bytes - state->texture_offset) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -223,6 +245,8 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
     v9x_u32 z_write;
     v9x_u32 colour_write;
     v9x_u32 alpha;
+    v9x_u32 smallest;
+    v9x_u32 filter;
     v9x_status status;
 
     if (state == 0 || words == 0) {
@@ -267,8 +291,14 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
     }
     words->u_shift = state->u_shift;
     words->v_shift = state->v_shift;
+    smallest = state->texture_log2;
+    filter = 0ul;
+    if (state->texture_levels > 1ul) {
+        smallest -= state->texture_levels - 1ul;
+        filter = V9X_NV3_FILTER_MIP_BIAS;
+    }
     format = (colour << V9X_NV3_TEX_COLOUR_SHIFT) |
-             (state->texture_log2 << V9X_NV3_TEX_SIZE_MIN_SHIFT) |
+             (smallest << V9X_NV3_TEX_SIZE_MIN_SHIFT) |
              (state->texture_log2 << V9X_NV3_TEX_SIZE_MAX_SHIFT);
     if (state->colour_key) {
         format |= V9X_NV3_TEX_KEY_ENABLE | state->colour_key_texel;
@@ -324,8 +354,9 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
                 state->alpha_reference;
     }
 
-    /* The filter word stays 0, as in every drawn case; the draw needs all
-     * five of offset, format, filter, fog colour and config sent. */
+    /* The filter word is 0 for one level, as in every state case, and the
+     * level bias for a chain; the draw needs all five of offset, format,
+     * filter, fog colour and config sent. */
     count = 0ul;
     v9x_nv3_3d_put(words->methods, &count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_D3D,
@@ -337,7 +368,7 @@ v9x_status v9x_nv3_3d_build_state(const struct v9x_nv3_3d_state *state,
                    format);
     v9x_nv3_3d_put(words->methods, &count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_D3D, V9X_NV3_M_D3D_FILTER),
-                   0ul);
+                   filter);
     v9x_nv3_3d_put(words->methods, &count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_D3D,
                                      V9X_NV3_M_D3D_FOG_COLOUR),

@@ -250,6 +250,35 @@ static void test_state(void)
     state.blend = 5ul;
     CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_UNSUPPORTED);
 
+    /* A chain, 128x128 down to 8x8: SIZE_MIN 3, the level bias; one level
+     * of 0 or 1 sends neither. Below 8x8 the chip's levels overlap. */
+    base_state(&state);
+    state.texture_log2 = 7ul;
+    state.texture_levels = 5ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(method(&words, V9X_NV3_M_D3D_TEX_FORMAT) == 0x73000000ul);
+    CHECK(method(&words, V9X_NV3_M_D3D_FILTER) == 0x00f40000ul);
+    state.texture_levels = 1ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK);
+    CHECK(method(&words, V9X_NV3_M_D3D_TEX_FORMAT) == 0x77000000ul);
+    CHECK(method(&words, V9X_NV3_M_D3D_FILTER) == 0ul);
+    state.texture_levels = 6ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.texture_log2 = 3ul;
+    state.texture_levels = 2ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* The chain has to fit in video memory, all of it. */
+    state.texture_log2 = 7ul;
+    state.texture_levels = 5ul;
+    state.texture_offset = 0x800000ul - 0x8000ul;
+    CHECK(v9x_nv3_3d_build_state(&state, &words) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_nv3_3d_chain_bytes(7ul, 5ul) == 43648ul);
+    CHECK(v9x_nv3_3d_chain_bytes(3ul, 0ul) == 128ul);
+    CHECK(v9x_nv3_3d_chain_bytes(3ul, 1ul) == 128ul);
+
     base_state(&state);
     state.filter = V9X_NV3_FILTER_LINEAR;
     state.wrap_v = V9X_NV3_CLAMP;
