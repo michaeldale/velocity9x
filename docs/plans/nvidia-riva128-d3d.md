@@ -95,7 +95,9 @@ the DMA object's flag bits; 86Box draws no 3D.
      bilinear's half texel, FlipPixelOk. **Mipmaps done 2026-11-04, boot
      30 ([record](../decisions/2026-11-04-riva128-mipmaps.md)):** chains
      to 8x8, bias F4h, 209 of 227; the two trilinear blend checks stay
-     failed (no blend between levels).
+     failed (no blend between levels). **Colour key done, boot 31
+     ([record](../decisions/2026-11-04-riva128-colour-key.md)):** the chip
+     compares the alpha bit, so the key takes the texels' own; 211 of 227.
 
    The original scope: `d3d_nv3.c` on the core: context create and destroy,
    render target and zeta at surfaces 2 and 3, texture create, load and

@@ -55,6 +55,8 @@
 #define V9X_D3D_NV3_REFUSE_STATE       8ul
 #define V9X_D3D_NV3_REFUSE_SHADE       9ul
 #define V9X_D3D_NV3_REFUSE_SURFACE     10ul
+/* 11-16 are the state refusals' causes (v9x_d3d_nv3_count_state_refusal). */
+#define V9X_D3D_NV3_REFUSE_KEY         17ul
 
 /* Where an accepted batch stopped, in M64RefuseLast (V9XTRACE): the
  * Mach64's counters again, since only V9XTRACE reads them. */
@@ -85,14 +87,16 @@ typedef struct v9x_d3d_nv3_texture {
      * the blend cannot draw from partial alphas (nv3_3d.h). */
     DWORD opaque;
     int opaque_dirty;
-    /* Whether every texel's alpha is 1, for SRCALPHA/ONE (nv3_3d.h):
-     * read from the linear level when first asked after a write. */
+    /* Whether level 0's alphas (A1R5G5B5's or X1R5G5B5's top bit) are
+     * all 1, all 0 or mixed, for SRCALPHA/ONE (nv3_3d.h) and the colour
+     * key: read from the linear level when first asked after a write. */
     DWORD alpha_full;
 } V9X_D3D_NV3_TEXTURE;
 
 #define V9X_D3D_NV3_ALPHA_UNKNOWN 0ul
 #define V9X_D3D_NV3_ALPHA_ALL_ONE 1ul
 #define V9X_D3D_NV3_ALPHA_PARTIAL 2ul
+#define V9X_D3D_NV3_ALPHA_ALL_ZERO 3ul
 
 static V9X_D3D_NV3_TEXTURE v9x_d3d_nv3_textures[V9X_D3D_NV3_TEXTURES];
 
@@ -451,29 +455,81 @@ static void v9x_d3d_nv3_swizzle(V9X_D3D_NV3_TEXTURE *texture, int opaque)
  * (Unlock, Blt) and kept. SRCALPHA/ONE folds only the vertex alpha into
  * the colour, so a texel alpha below 1 would add too much.
  */
-static int v9x_d3d_nv3_alpha_all_one(V9X_D3D_NV3_TEXTURE *texture)
+static DWORD v9x_d3d_nv3_alpha_state(V9X_D3D_NV3_TEXTURE *texture)
 {
     const v9x_u16 *row;
     v9x_u16 mask;
+    v9x_u16 bits;
+    v9x_u16 first;
     DWORD u;
     DWORD v;
 
     if (texture->alpha_full == V9X_D3D_NV3_ALPHA_UNKNOWN) {
         mask = texture->format == V9X_NV3_TEX_A4R4G4B4 ? 0xf000u : 0x8000u;
-        texture->alpha_full = V9X_D3D_NV3_ALPHA_ALL_ONE;
+        first = (v9x_u16)(*(const v9x_u16 *)(v9x_hal->fb.linear_base +
+                                             texture->linear) & mask);
+        texture->alpha_full = first == mask ? V9X_D3D_NV3_ALPHA_ALL_ONE :
+                              first == 0u ? V9X_D3D_NV3_ALPHA_ALL_ZERO :
+                              V9X_D3D_NV3_ALPHA_PARTIAL;
         for (v = 0ul; v < texture->height &&
-             texture->alpha_full == V9X_D3D_NV3_ALPHA_ALL_ONE; ++v) {
+             texture->alpha_full != V9X_D3D_NV3_ALPHA_PARTIAL; ++v) {
             row = (const v9x_u16 *)(v9x_hal->fb.linear_base +
                                     texture->linear + v * texture->pitch);
             for (u = 0ul; u < texture->width; ++u) {
-                if ((row[u] & mask) != mask) {
+                bits = (v9x_u16)(row[u] & mask);
+                if (bits != first) {
                     texture->alpha_full = V9X_D3D_NV3_ALPHA_PARTIAL;
                     break;
                 }
             }
         }
     }
-    return texture->alpha_full == V9X_D3D_NV3_ALPHA_ALL_ONE;
+    return texture->alpha_full;
+}
+
+static int v9x_d3d_nv3_alpha_all_one(V9X_D3D_NV3_TEXTURE *texture)
+{
+    return v9x_d3d_nv3_alpha_state(texture) == V9X_D3D_NV3_ALPHA_ALL_ONE;
+}
+
+/*
+ * Direct3D's source colour key in the texel the chip compares, or 0 when
+ * no one value keys exactly what Direct3D would. The chip compares all 16
+ * bits of the texel it reads, alpha included (V9XDDP ColorKey, boot 30:
+ * key 7C1Fh left FC1Fh texels drawn); Direct3D compares the colour alone.
+ * - The A4R4G4B4 opaque copy: the key converted as its texels were.
+ * - R5G6B5: the key as given.
+ * - A1R5G5B5 and X1R5G5B5: the colour with the top bit the texels all
+ *   share. Under the source alpha blend alpha-0 texels draw nothing, so
+ *   keying only the alpha-1 ones is exact there whatever the mix.
+ * - A4R4G4B4 blended: the colour with alpha F, exact when all alphas are.
+ */
+static int v9x_d3d_nv3_key(V9X_D3D_NV3_TEXTURE *texture, int opaque,
+                           v9x_u32 blend, DWORD key, v9x_u32 *texel)
+{
+    DWORD alpha;
+
+    if (opaque) {
+        *texel = v9x_nv3_3d_opaque_texel((v9x_u16)(key & 0xfffful));
+        return 1;
+    }
+    if (texture->format == V9X_NV3_TEX_R5G6B5) {
+        *texel = key & 0xfffful;
+        return 1;
+    }
+    alpha = v9x_d3d_nv3_alpha_state(texture);
+    if (texture->format == V9X_NV3_TEX_A4R4G4B4) {
+        *texel = (key & 0x0ffful) | 0xf000ul;
+        return alpha == V9X_D3D_NV3_ALPHA_ALL_ONE;
+    }
+    if (alpha == V9X_D3D_NV3_ALPHA_ALL_ZERO) {
+        *texel = key & 0x7ffful;
+        return 1;
+    }
+    *texel = (key & 0x7ffful) | 0x8000ul;
+    return alpha == V9X_D3D_NV3_ALPHA_ALL_ONE ||
+           (blend == V9X_NV3_BLEND_SRC_ALPHA &&
+            texture->format == V9X_NV3_TEX_A1R5G5B5);
 }
 
 static void v9x_d3d_nv3_count_refusal(const V9X_R3D_DRAW *draw,
@@ -689,11 +745,6 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     default:
         return V9X_D3D_NV3_REFUSE_FILTER;
     }
-    if (draw->color_key_enable != 0ul &&
-        (surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
-        state->colour_key = 1;
-        state->colour_key_texel = surface->ddckCKSrcBltLow & 0xfffful;
-    }
     if (blend == V9X_NV3_BLEND_ADD_SRC_ALPHA && texture->has_alpha &&
         !v9x_d3d_nv3_alpha_all_one(texture)) {
         return V9X_D3D_NV3_REFUSE_BLEND;
@@ -709,6 +760,15 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
         state->texture_offset = texture->opaque;
         state->texture_format = V9X_NV3_TEX_X1R5G5B5;
         *use_opaque = 1;
+    }
+    if (draw->color_key_enable != 0ul &&
+        (surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
+        state->colour_key = 1;
+        if (!v9x_d3d_nv3_key(texture, *use_opaque, blend,
+                             surface->ddckCKSrcBltLow,
+                             &state->colour_key_texel)) {
+            return V9X_D3D_NV3_REFUSE_KEY;
+        }
     }
     state->texture_log2 = texture->log2_side;
     /* A mip filter samples the chain, the level nearest the footprint;
