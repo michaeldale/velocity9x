@@ -298,7 +298,9 @@ static void v9x_d3d_nv3_describe_caps(V9X_DD_SHARED *shared)
                                V9X_D3DPTFILTERCAPS_LINEAR |
                                V9X_D3DPTFILTERCAPS_MIPNEAREST |
                                V9X_D3DPTFILTERCAPS_MIPLINEAR;
+    /* DECALALPHA in two passes where it has to be (v9x_d3d_nv3_map). */
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
+                              V9X_D3DPTBLENDCAPS_DECALALPHA |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
                               V9X_D3DPTBLENDCAPS_COPY;
@@ -642,15 +644,17 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
                              struct v9x_nv3_3d_target *target,
                              struct v9x_nv3_3d_state *state,
                              V9X_D3D_NV3_TEXTURE **sampled,
-                             int *use_opaque)
+                             int *use_opaque, int *decal_alpha)
 {
     const V9X_DD_SURFACE_LCL *surface;
     V9X_D3D_NV3_TEXTURE *texture;
     v9x_u32 blend;
     DWORD side;
+    int decal_alpha_op = 0;
 
     *sampled = 0;
     *use_opaque = 0;
+    *decal_alpha = 0;
     if (draw->explicit_state != 0ul || draw->texcoords1 != 0) {
         return V9X_D3D_NV3_REFUSE_EXPLICIT;
     }
@@ -721,6 +725,10 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     case V9X_R3D_TEXOP_COPY:
         state->vertex_white = 1;
         break;
+    case V9X_R3D_TEXOP_DECALALPHA:
+        state->vertex_white = 1;
+        decal_alpha_op = 1;
+        break;
     default:
         return V9X_D3D_NV3_REFUSE_TEXTURE_OP;
     }
@@ -749,6 +757,27 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     if (blend == V9X_NV3_BLEND_ADD_SRC_ALPHA && texture->has_alpha &&
         !v9x_d3d_nv3_alpha_all_one(texture)) {
         return V9X_D3D_NV3_REFUSE_BLEND;
+    }
+    /*
+     * DECALALPHA: vertex x (1 - At) + texel x At, alpha the vertex's. A
+     * texture whose alphas are all 1, or that has none, makes it DECAL.
+     * Otherwise it is two passes a triangle (v9x_d3d_nv3_draw): the vertex
+     * colour opaque, then the texel over it by the source alpha blend with
+     * the vertex white - this state. Only where the draw replaces the
+     * pixel and covers every pixel the first pass did: no blend, no alpha
+     * test, no key. Fog is linear, so the two fogged passes sum to the
+     * fogged combine.
+     */
+    if (decal_alpha_op && texture->has_alpha &&
+        !v9x_d3d_nv3_alpha_all_one(texture)) {
+        if (blend != V9X_NV3_BLEND_OPAQUE || state->alpha_test ||
+            (draw->color_key_enable != 0ul &&
+             (surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul)) {
+            return V9X_D3D_NV3_REFUSE_TEXTURE_OP;
+        }
+        blend = V9X_NV3_BLEND_SRC_ALPHA;
+        state->blend = blend;
+        *decal_alpha = 1;
     }
     side = 1ul << texture->log2_side;
     state->texture_offset = texture->swizzled;
@@ -861,12 +890,13 @@ static int v9x_d3d_nv3_accepts(const V9X_R3D_DRAW *draw)
     struct v9x_nv3_op op;
     V9X_D3D_NV3_TEXTURE *texture;
     int opaque;
+    int decal_alpha;
 
     if (draw == 0 || !v9x_d3d_nv3_ready()) {
         return 0;
     }
-    return v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque) ==
-               V9X_D3D_NV3_REFUSE_NONE &&
+    return v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque,
+                           &decal_alpha) == V9X_D3D_NV3_REFUSE_NONE &&
            v9x_nv3_3d_build_target(&target, &op) == V9X_STATUS_OK &&
            v9x_nv3_3d_build_state(&state, &words) == V9X_STATUS_OK;
 }
@@ -919,6 +949,32 @@ static int v9x_d3d_nv3_triangle(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/* A state's texture made the white one, sampled plainly. */
+static void v9x_d3d_nv3_untextured(struct v9x_nv3_3d_state *state)
+{
+    state->texture_offset = v9x_hal->engine.reserve_offset;
+    state->texture_format = V9X_NV3_TEX_A1R5G5B5;
+    state->texture_log2 = V9X_NV3_D3D_WHITE_LOG2;
+    state->texture_levels = 1ul;
+    state->filter = V9X_NV3_FILTER_POINT;
+    state->wrap_u = V9X_NV3_WRAP;
+    state->wrap_v = V9X_NV3_WRAP;
+    state->u_shift = 0ul;
+    state->v_shift = 0ul;
+    state->vertex_white = 0;
+}
+
+/* A second pass over the pixels `first` drew: Z compared as it was, or
+ * EQUAL where `first` wrote zeta, and zeta left alone. */
+static void v9x_d3d_nv3_follow_z(struct v9x_nv3_3d_state *second,
+                                 const struct v9x_nv3_3d_state *first)
+{
+    second->z_write = 0;
+    if (first->z_enable && first->z_write) {
+        second->z_func = V9X_D3D_NV3_CMP_EQUAL;
+    }
+}
+
 /*
  * Direct3D adds the specular after the texture; the object has no input
  * for it. A textured batch gets a second pass per triangle: the white
@@ -955,22 +1011,29 @@ static int v9x_d3d_nv3_specular_pass(const V9X_R3D_DRAW *draw,
     }
 
     second = *state;
-    second.texture_offset = v9x_hal->engine.reserve_offset;
-    second.texture_format = V9X_NV3_TEX_A1R5G5B5;
-    second.texture_log2 = V9X_NV3_D3D_WHITE_LOG2;
-    second.texture_levels = 1ul;
-    second.filter = V9X_NV3_FILTER_POINT;
-    second.wrap_u = V9X_NV3_WRAP;
-    second.wrap_v = V9X_NV3_WRAP;
-    second.u_shift = 0ul;
-    second.v_shift = 0ul;
-    second.vertex_white = 0;
+    v9x_d3d_nv3_untextured(&second);
     second.blend = V9X_NV3_BLEND_ADD;
-    second.z_write = 0;
-    if (state->z_enable && state->z_write) {
-        second.z_func = V9X_D3D_NV3_CMP_EQUAL;
-    }
+    v9x_d3d_nv3_follow_z(&second, state);
     return v9x_nv3_3d_build_state(&second, pass) == V9X_STATUS_OK;
+}
+
+/*
+ * DECALALPHA's first pass (v9x_d3d_nv3_map): the vertex colour alone,
+ * opaque, as the state the batch starts with; `state` becomes the second,
+ * the texel over it, testing Z after the first. 1 and `first` built.
+ */
+static int v9x_d3d_nv3_decal_alpha_first(struct v9x_nv3_3d_state *state,
+                                         struct v9x_nv3_3d_words *first)
+{
+    struct v9x_nv3_3d_state colour;
+
+    colour = *state;
+    v9x_d3d_nv3_untextured(&colour);
+    colour.blend = V9X_NV3_BLEND_OPAQUE;
+    colour.colour_key = 0;
+    colour.colour_key_texel = 0ul;
+    v9x_d3d_nv3_follow_z(state, &colour);
+    return v9x_nv3_3d_build_state(&colour, first) == V9X_STATUS_OK;
 }
 
 /*
@@ -987,11 +1050,15 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
     struct v9x_nv3_3d_state state;
     struct v9x_nv3_3d_words words;
     struct v9x_nv3_3d_words pass;
+    struct v9x_nv3_3d_words first;
+    const struct v9x_nv3_3d_words *lead;
+    const struct v9x_nv3_3d_words *follow;
     struct v9x_nv3_op op;
     V9X_D3D_NV3_TEXTURE *texture;
     int opaque;
+    int decal_alpha;
     int colours;
-    int two_pass;
+    int follow_colours;
     DWORD triangle;
     DWORD reason;
     DWORD record_at;
@@ -1005,7 +1072,8 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
         }
         return 0;
     }
-    reason = v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque);
+    reason = v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque,
+                             &decal_alpha);
     if (reason == V9X_D3D_NV3_REFUSE_NONE &&
         v9x_nv3_3d_build_target(&target, &op) != V9X_STATUS_OK) {
         /* The refused target's place, for the record: offset in
@@ -1014,6 +1082,12 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
         v9x_hal->d3d_diagnostics.m64_fog_decal =
             (target.colour_pitch_bytes << 16) | (target.width & 0xfffful);
         reason = V9X_D3D_NV3_REFUSE_SURFACE;
+    }
+    /* Ahead of the state, which it turns into DECALALPHA's second pass. */
+    if (reason == V9X_D3D_NV3_REFUSE_NONE && decal_alpha &&
+        !v9x_d3d_nv3_decal_alpha_first(&state, &first)) {
+        reason = V9X_D3D_NV3_REFUSE_STATE;
+        v9x_d3d_nv3_count_state_refusal(&state);
     }
     if (reason == V9X_D3D_NV3_REFUSE_NONE &&
         v9x_nv3_3d_build_state(&state, &words) != V9X_STATUS_OK) {
@@ -1059,36 +1133,45 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
     v9x_d3d_nv3_write(V9X_NV3_USER +
                       V9X_NV3_SUB_D3D * V9X_NV3_SUBCHANNEL_STEP,
                       V9X_NV3_D3D_HANDLE);
-    v9x_d3d_nv3_emit(words.methods, 6ul);
+    lead = decal_alpha ? &first : &words;
+    v9x_d3d_nv3_emit(lead->methods, 6ul);
     v9x_present_note_submission();
     record_at = 0ul;
     if (!v9x_d3d_nv3_recorded) {
         v9x_d3d_nv3_record(op.surface, op.surface_count, &record_at);
         v9x_d3d_nv3_record(op.methods, op.method_count, &record_at);
-        v9x_d3d_nv3_record(words.methods, 6ul, &record_at);
+        v9x_d3d_nv3_record(lead->methods, 6ul, &record_at);
         v9x_hal->d3d_diagnostics.scan_sample_offset = target.colour_offset;
     }
 
     /* Untextured, the specular goes into the colours; textured, into a
      * second pass after each triangle, so a later triangle covers an
-     * earlier one's specular as it covers the rest of it. */
+     * earlier one's specular as it covers the rest of it. DECALALPHA's
+     * two passes go the same way, the vertex colour leading. */
     colours = V9X_D3D_NV3_COLOUR_DIFFUSE;
+    follow = 0;
+    follow_colours = V9X_D3D_NV3_COLOUR_DIFFUSE;
     if (texture == 0 && draw->specular_enable != 0ul) {
         colours = V9X_D3D_NV3_COLOUR_PLUS_SPEC;
     }
-    two_pass = texture != 0 &&
+    if (decal_alpha) {
+        follow = &words;
+    } else if (texture != 0 &&
                v9x_d3d_nv3_specular_pass(draw, vertices, triangle_count,
-                                         &state, &pass);
+                                         &state, &pass)) {
+        follow = &pass;
+        follow_colours = V9X_D3D_NV3_COLOUR_SPECULAR;
+    }
     for (triangle = 0ul; triangle < triangle_count; ++triangle) {
-        if (two_pass && triangle != 0ul) {
+        if (follow != 0 && triangle != 0ul) {
             if (!v9x_d3d_nv3_room(V9X_D3D_NV3_STATE_BYTES)) {
                 v9x_hal->d3d_diagnostics.m64_refuse_last =
                     V9X_D3D_NV3_STOP_ROOM_STATE;
                 return 0;
             }
-            v9x_d3d_nv3_emit(words.methods, 6ul);
+            v9x_d3d_nv3_emit(lead->methods, 6ul);
         }
-        if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], &words,
+        if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], lead,
                                   colours,
                                   !v9x_d3d_nv3_recorded && triangle == 0ul ?
                                   &record_at : 0)) {
@@ -1096,7 +1179,7 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
                 V9X_D3D_NV3_STOP_ROOM_VERTEX;
             return 0;
         }
-        if (!two_pass) {
+        if (follow == 0) {
             continue;
         }
         if (!v9x_d3d_nv3_room(V9X_D3D_NV3_STATE_BYTES)) {
@@ -1104,9 +1187,9 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
                 V9X_D3D_NV3_STOP_ROOM_STATE;
             return 0;
         }
-        v9x_d3d_nv3_emit(pass.methods, 6ul);
-        if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], &pass,
-                                  V9X_D3D_NV3_COLOUR_SPECULAR, 0)) {
+        v9x_d3d_nv3_emit(follow->methods, 6ul);
+        if (!v9x_d3d_nv3_triangle(draw, &vertices[triangle * 3ul], follow,
+                                  follow_colours, 0)) {
             v9x_hal->d3d_diagnostics.m64_refuse_last =
                 V9X_D3D_NV3_STOP_ROOM_VERTEX;
             return 0;
