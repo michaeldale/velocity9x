@@ -4,7 +4,9 @@ Date: 2026-11-03
 
 Status: **tier-0 passed** on the first boot with the driver, restarted by
 `reset`. One finding: `V9XDDP /pal8` stops at 320x200x8, a mode this BIOS
-does not list. Whether the monitor shows what GDI reads back is not known.
+does not list. The 3D probes, run later the same day, pass except for
+V9XD32's seven cull checks, which the software engine declines by design.
+Whether the monitor shows what GDI reads back is not known.
 Captures: [`../probe/m-gb8kre-rs690-vbe-2026-11-03/`](../probe/m-gb8kre-rs690-vbe-2026-11-03/).
 `boot6-*` files are from the first boot with the driver.
 
@@ -112,12 +114,60 @@ DirectDraw set is not one of ours: most likely DirectDraw's own VGA mode
 13h / Mode X path. That is a hypothesis; nothing here shows which code
 the probe died in.
 
+The Cedar's `/pal8` was `INCOMPLETE` too, but only for want of Direct3D
+in 8 bpp: it locked and read back at all four sizes. No other `vbe` first
+look has a BIOS without 320x200x8, so whether the stop follows the missing
+mode or this machine is not known.
+
+## 3D probes, 2026-11-03 21:50Z
+
+The machine went offline at 20:32Z and came back at 21:42Z, restarted by
+the owner. The driver reported `enable-ok` again, desktop 1024x768x32 (the
+owner's choice). The boot counter was not read.
+
+The release package carries no 3D probes, so the four the 0.34.0 release
+checks use were built from `main` at `4d53ab07` (build id
+`gb8kre-4d53ab07`; the four probes' sources are unchanged since the
+package's `d9d7aeb9`), pushed to `C:\V9XPKG` and hash-checked (4 of 4).
+The driver under test stayed the installed 0.34.0 package. Each ran after `V9XMSW /set:1024x768x16` and again
+after `/set:1280x1024x32`; captures are the `p3d-*` files.
+
+| Probe | 1024x768x16 desktop | 1280x1024x32 desktop |
+|---|---|---|
+| `V9XD32` (default) | `Result=FAIL`, `Failures=7`; see below | the same, key for key |
+| `V9XGLP` | `Result=PASS`, `LitResult=differ` | the same |
+| `V9XGLIDP` | `Result=PASS failures=0` | the same |
+| `V9XR3DP` | `Result=COMPLETE`, every call 0 | the same |
+
+- **V9XD32 ran at 32 bpp both times.** By default it sets its own
+  fullscreen mode (`RequestBpp=0x20`, `ModeBpp=0x20`), so the two rows
+  differ only in the desktop it came back to. `/bpp16` was not run.
+- **The seven V9XD32 failures are culling, by design.** `T9Ok=0xD` (the
+  triangle that should be culled was drawn) and all six `T11*Ok=0x1B`
+  (cells 2 and 5, the quads each cull mode should remove, drawn) make
+  seven. Everything else the probe judges passed: T1-T8, T10, T13, T14,
+  T15, T4. The software engine publishes `D3DPMISCCAPS_CULLNONE` alone
+  (`d3d_soft.c`), and the core applies a cull mode only when the engine
+  publishes it (`r3d_cull.h`, `v9x_r3d_cull_honoured`), so the requests
+  were ignored as intended; the core path's counters agree
+  (`T9CoreCulled=0`). The probe judges T9 and T11 without reading the
+  caps. Its release-check passes were all on engines that claim CW/CCW.
+- **DirectX 6.1 runtime.** `RunDdi=5` (no DrawPrimitives2 calls).
+  T16 and T18 skip (`T16DDraw7Hr=0x80004002`, no IDirectDraw7), T17 finds
+  no Direct3D 8 or 9 and T19 skips; T12 skips with one texture stage.
+- **V9XGLP `LitResult=differ`** is the probe's own label for an engine
+  without T&L: every lighting sample reads unlit white (`FFFFFF`), as the
+  probe's comment says it will. The 0.32.0 release checks show the same
+  on four machines.
+- **Screenshots.** Both `screenshot` calls after the probes timed out at
+  the relay; the agent answered the next verb. Not retried.
+
 ## Not measured
 
 - What the monitor shows. Screenshots read back what GDI drew.
 - The `/pal8` stop beyond the above.
 - The carve-out size, PCI config space and the video BIOS image.
-- Games, Direct3D (`V9XD32`) and OpenGL probes.
+- `V9XD32 /bpp16`, and games.
 
 ## Where Velocity9x stands on it
 
