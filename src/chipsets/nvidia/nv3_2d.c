@@ -125,6 +125,19 @@ v9x_u32 v9x_nv3_pfb_config(v9x_u32 bytes_per_pixel, v9x_u32 width)
            (depth << V9X_NV3_PFB_DEPTH_SHIFT) | V9X_NV3_PFB_TILING_OFF;
 }
 
+/*
+ * Whether the engine draws DirectDraw fills and copies at this depth: 8 and
+ * 32 bpp. The builders accept 16 bpp, where the probe measured the engine
+ * setting bit 15 of every pixel; this BIOS's 16 bpp modes are 5:6:5, where
+ * that bit is red's top bit, so 16 bpp stays on the CPU until the desktop
+ * runs 5:5:5 (decision 1 of docs\plans\nvidia-riva128.md).
+ */
+v9x_u16 v9x_nv3_depth_drawn(v9x_u32 bytes_per_pixel)
+{
+    return bytes_per_pixel == 1ul || bytes_per_pixel == 4ul ?
+           V9X_TRUE : V9X_FALSE;
+}
+
 v9x_u32 v9x_nv3_ramin_vram_offset(v9x_u32 vram_top, v9x_u32 ramin_offset)
 {
     return vram_top - V9X_NV3_RAMIN_UNIT -

@@ -263,6 +263,17 @@ static void test_copy(void)
     CHECK(v9x_nv3_build_copy(&copy, &op) != V9X_STATUS_OK);
 }
 
+/* The depths the engine draws for DirectDraw: 8 and 32 bpp. At 16 it sets
+ * bit 15 of every pixel, and this BIOS's 16 bpp modes are 5:6:5. */
+static void test_depth_drawn(void)
+{
+    CHECK(v9x_nv3_depth_drawn(1ul) == V9X_TRUE);
+    CHECK(v9x_nv3_depth_drawn(2ul) == V9X_FALSE);
+    CHECK(v9x_nv3_depth_drawn(3ul) == V9X_FALSE);
+    CHECK(v9x_nv3_depth_drawn(4ul) == V9X_TRUE);
+    CHECK(v9x_nv3_depth_drawn(0ul) == V9X_FALSE);
+}
+
 unsigned int v9x_run_nv3_2d_tests(void)
 {
     failures = 0u;
@@ -273,5 +284,6 @@ unsigned int v9x_run_nv3_2d_tests(void)
     test_fill();
     test_fill_placement();
     test_copy();
+    test_depth_drawn();
     return failures;
 }

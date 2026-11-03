@@ -16,11 +16,20 @@
  * checks one RAMHT word and PFB_CONFIG_0 and repeats the whole bring-up
  * when either is not what it wrote.
  *
- * 8 and 32 bpp only. At 16 bpp the engine sets bit 15 of every pixel it
- * writes, and this BIOS's 16 bpp modes are 5:6:5, where bit 15 is red's
- * top bit; 16 bpp waits for the desktop to run 5:5:5 (decision 1 of
- * docs\plans\nvidia-riva128.md). At 32 bpp the engine rewrites the top
- * byte, which X8R8G8B8 does not show.
+ * 8 and 32 bpp only (v9x_nv3_depth_drawn). At 16 bpp the engine sets bit
+ * 15 of every pixel it writes, and this BIOS's 16 bpp modes are 5:6:5,
+ * where bit 15 is red's top bit; 16 bpp waits for the desktop to run 5:5:5
+ * (decision 1 of docs\plans\nvidia-riva128.md). At 32 bpp the engine
+ * rewrites the top byte, which X8R8G8B8 does not show.
+ *
+ * At 16 bpp the engine is present and idle, not invalid: validate and the
+ * idle wait answer yes without touching a register, and fill and copy
+ * decline. The core waits on validate before every CPU fill, copy and Lock
+ * (v9x_render_drain), so an engine that failed validation by depth made
+ * each of them answer WASSTILLDRAWING for good, and DirectDraw retries a
+ * DDBLT_WAIT blit for good with the Win16 lock held: M-7V636C stopped
+ * twice at V9XDDP's first back-buffer fill at 640x480x16
+ * (docs\issues\2026-11-02-riva128-hang-under-v9xddp-at-32bpp.md).
  *
  * There is no recovery path: a timeout raises idle_timeouts, gives the
  * engine up for the mode and declines to the CPU.
@@ -46,14 +55,19 @@ static int v9x_nv3_ready(void)
 {
     return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
-        (v9x_hal->fb.bits_per_pixel == 8ul ||
-         v9x_hal->fb.bits_per_pixel == 32ul) &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_NV3 &&
         v9x_hal->engine.control_linear_base != 0ul &&
         v9x_hal->engine.mapped_aperture_bytes >= V9X_NV3_MMIO_BYTES &&
         v9x_hal->engine.reserve_offset != 0ul &&
         v9x_hal->fb.linear_base != 0ul;
+}
+
+/* Whether the engine draws at the current depth; ready() first. */
+static int v9x_nv3_depth_ok(void)
+{
+    return v9x_nv3_depth_drawn(v9x_hal->fb.bits_per_pixel / 8ul) ==
+           V9X_TRUE;
 }
 
 static DWORD v9x_nv3_read32(DWORD offset)
@@ -161,6 +175,11 @@ static int v9x_nv3_validate(void)
     if (!v9x_nv3_ready()) {
         return 0;
     }
+    /* Nothing is issued at this depth, so there is nothing to bring up and
+     * nothing for a CPU access to wait on. */
+    if (!v9x_nv3_depth_ok()) {
+        return 1;
+    }
     if ((v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul &&
         v9x_nv3_state_holds()) {
         return 1;
@@ -181,7 +200,8 @@ static int v9x_nv3_validate(void)
 static int v9x_nv3_validated(void)
 {
     return v9x_nv3_ready() &&
-        (v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul;
+        (!v9x_nv3_depth_ok() ||
+         (v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul);
 }
 
 /*
@@ -195,6 +215,9 @@ static int v9x_nv3_wait_idle(int wait)
 
     if (!v9x_nv3_validate()) {
         return 0;
+    }
+    if (!v9x_nv3_depth_ok()) {
+        return 1;
     }
     if (!(wait && v9x_fault_injected())) {
         if (v9x_nv3_idle_now()) {
@@ -244,7 +267,8 @@ static int v9x_nv3_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     struct v9x_nv3_fill fill;
     struct v9x_nv3_op op;
 
-    if (!v9x_nv3_validate() || data == 0 || data->lpDDDestSurface == 0 ||
+    if (!v9x_nv3_validate() || !v9x_nv3_depth_ok() ||
+        data == 0 || data->lpDDDestSurface == 0 ||
         data->lpDDDestSurface->lpGbl == 0 ||
         data->lpDDDestSurface->lpGbl->lPitch <= 0l ||
         data->rDest[2] <= data->rDest[0] ||
@@ -278,7 +302,7 @@ static int v9x_nv3_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     struct v9x_nv3_copy copy;
     struct v9x_nv3_op op;
 
-    if (!v9x_nv3_validate() || data == 0 ||
+    if (!v9x_nv3_validate() || !v9x_nv3_depth_ok() || data == 0 ||
         data->lpDDSrcSurface == 0 || data->lpDDSrcSurface->lpGbl == 0 ||
         data->lpDDDestSurface == 0 || data->lpDDDestSurface->lpGbl == 0 ||
         data->lpDDSrcSurface->lpGbl->lPitch <= 0l ||

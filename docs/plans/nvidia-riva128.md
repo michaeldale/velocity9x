@@ -141,7 +141,7 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    rewritten; a VBE mode set wipes RAMIN and leaves PMC_ENABLE and
    PFB_CONFIG_0. Still owed: overlapping blits in both directions, and
    B's RAMDAC switch to 5:5:5 watched on the monitor.
-4. **DirectDraw on the engine (coded, gated, hung once).** Engine32 ops
+4. **DirectDraw on the engine (seen working at 32 and 16 bpp, 8 owed).** Engine32 ops
    (`fill`, `copy`, `wait_idle`) under engine type NV3 (13), at 8 and 32
    bpp only: builders in `src\chipsets\nvidia\nv3_2d.c` (host-tested
    against rivafb's tables and the probe's values), the HAL engine
@@ -153,8 +153,11 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    was claimed (EngineCaps 3); V9XDDP at 800x600x32 then stopped the
    machine within seconds
    ([issue](../issues/2026-11-02-riva128-hang-under-v9xddp-at-32bpp.md)).
-   Cause unknown; next is that machine's own record of how far V9XDDP got,
-   and a control run on the tier-0 HAL.
+   Found 2026-11-03: at 16 bpp the engine failed validation, so the core's
+   CPU fill and Lock waited on it without end; the engine never drew. Now
+   it validates as idle at 16 bpp and declines per operation. Boot 15:
+   V9XDDP `COMPLETE` from 16 and 32 bpp desktops, V9XDDF PASS at both
+   (engine at 32, CPU at 16). Still owed: an 8 bpp run.
 5. **Flips and vblank** through the CRTC start address.
 6. **GDI** on the engine, under the existing conservative GDI path.
 7. **Direct3D**: its own plan, after the 16 bpp decision. The D3D0 object

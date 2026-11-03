@@ -179,5 +179,6 @@ v9x_status v9x_nv3_build_fill(const struct v9x_nv3_fill *fill,
                               struct v9x_nv3_op *op);
 v9x_status v9x_nv3_build_copy(const struct v9x_nv3_copy *copy,
                               struct v9x_nv3_op *op);
+v9x_u16 v9x_nv3_depth_drawn(v9x_u32 bytes_per_pixel);
 
 #endif
