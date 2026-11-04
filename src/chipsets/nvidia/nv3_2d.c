@@ -11,6 +11,15 @@
  * docs\decisions\2026-11-02-riva128-2d-engine-writes.md). Left out, as the
  * probe left them out: the DMA object and its page table at RAMIN 1400h,
  * and the D3D and surface objects, which only Direct3D needs.
+ *
+ * riva_tbl.h's notice, which its licence asks code derived from it to
+ * carry (the disclaimer in full is in packaging\win98se\NOTICES.TXT):
+ *
+ *   Copyright 1993-1999 NVIDIA, Corporation.  All rights reserved.
+ *
+ *   NVIDIA, CORPORATION MAKES NO REPRESENTATION ABOUT THE SUITABILITY OF
+ *   THIS SOURCE CODE FOR ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT
+ *   EXPRESS OR IMPLIED WARRANTY OF ANY KIND.
  */
 #include "velocity9x/nv3_2d.h"
 

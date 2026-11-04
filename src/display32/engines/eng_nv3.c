@@ -33,6 +33,16 @@
  *
  * There is no recovery path: a timeout raises idle_timeouts, gives the
  * engine up for the mode and declines to the CPU.
+ *
+ * The state load and busy test follow rivafb's riva_hw.c, whose licence
+ * asks code derived from it to carry its notice (the disclaimer in full
+ * is in packaging\win98se\NOTICES.TXT):
+ *
+ *   Copyright 1993-1999 NVIDIA, Corporation.  All rights reserved.
+ *
+ *   NVIDIA, CORPORATION MAKES NO REPRESENTATION ABOUT THE SUITABILITY OF
+ *   THIS SOURCE CODE FOR ANY PURPOSE.  IT IS PROVIDED "AS IS" WITHOUT
+ *   EXPRESS OR IMPLIED WARRANTY OF ANY KIND.
  */
 #include "ddhal_internal.h"
 #include "velocity9x/nv3_2d.h"

@@ -5,14 +5,15 @@
 # 2D engine (NV3) at 8 and 32 bpp, after Linux rivafb's bring-up, which the
 # HAL repeats after every mode set; GDI fill and copy run on it too, with
 # the same bring-up on the 16-bit side; everything else is drawn by the CPU
-# (docs\plans\nvidia-riva128.md, Phases 4 and 6).
+# (docs\plans\nvidia-riva128.md, Phases 4 and 6). Direct3D draws on the D3D
+# object at 16 bpp, its only depth (docs\plans\nvidia-riva128-d3d.md).
 #
 # Physical-only: the local 86Box build has no NV3 model.
 @{
     SchemaVersion = 1
     Id = 'nvidia'
     DisplayName = 'NVIDIA RIVA 128'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw fill and copy at 8 and 32 bpp, CPU drawing otherwise.'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -137,7 +138,7 @@
 
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
-        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy at 8 and 32 bpp)'
+        HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy at 8 and 32 bpp, Direct3D at 16 bpp)'
     }
 
     Floppy = @{

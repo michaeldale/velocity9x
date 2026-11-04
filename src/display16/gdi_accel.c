@@ -902,7 +902,10 @@ static void v9x_gdi_nv3_put(const struct v9x_nv3_write *writes, DWORD count)
  * The engine brought up for the screen's mode, here if not already: the
  * order eng_nv3.c's bring-up uses, which is rivafb's LoadStateExt, then
  * the bindings, the latched free count and the defaults. A PGRAPH that
- * does not go idle after the bindings poisons the session.
+ * does not go idle after the bindings poisons the session. Derived from
+ * riva_hw.c: Copyright 1993-1999 NVIDIA, Corporation.  All rights
+ * reserved. Provided "as is"; the notice in full is in
+ * packaging\win98se\NOTICES.TXT.
  */
 static WORD v9x_gdi_nv3_ready(DWORD bytes_per_pixel, DWORD width,
                               DWORD height, DWORD pitch)

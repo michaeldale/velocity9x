@@ -2,7 +2,8 @@ Velocity9x third-party notices
 ==============================
 
 Velocity9x is licensed under the GNU General Public License, version 3.
-V9XHAL.DLL also contains the following works under their own licences.
+V9XHAL.DLL (and, for the NVIDIA package, V9XDISP.DRV) also contains the
+following works under their own licences.
 
 
 ATI Rage 128 CCE microcode
@@ -157,3 +158,27 @@ not limited to the Export Administration Regulations administered by the
 U.S. Department of Commerce and International Traffic in Arm Regulations
 administered by the U.S. Department of State.  These laws include
 restrictions on destinations, end users and end use.
+
+
+NVIDIA RIVA 128 register tables
+-------------------------------
+
+The register and instance values with which V9XHAL.DLL and the NVIDIA
+package's V9XDISP.DRV bring up the RIVA 128's 2D engine are taken from
+Linux rivafb's riva_tbl.h, and the engine's state load and busy test
+follow its riva_hw.c. Both files carry this notice, which their licence
+asks to be included with code derived from them:
+
+  Copyright 1993-1999 NVIDIA, Corporation.  All rights reserved.
+
+  NVIDIA, CORPORATION MAKES NO REPRESENTATION ABOUT THE SUITABILITY
+  OF THIS SOURCE CODE FOR ANY PURPOSE.  IT IS PROVIDED "AS IS"
+  WITHOUT EXPRESS OR IMPLIED WARRANTY OF ANY KIND.  NVIDIA, CORPORATION
+  DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOURCE CODE, INCLUDING
+  ALL IMPLIED WARRANTIES OF MERCHANTABILITY, NONINFRINGEMENT, AND
+  FITNESS FOR A PARTICULAR PURPOSE.  IN NO EVENT SHALL NVIDIA,
+  CORPORATION BE LIABLE FOR ANY SPECIAL, INDIRECT, INCIDENTAL, OR
+  CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+  OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
+  OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
+  OR PERFORMANCE OF THIS SOURCE CODE.
