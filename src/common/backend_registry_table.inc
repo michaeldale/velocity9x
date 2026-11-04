@@ -10,6 +10,7 @@
 #include "velocity9x/ati_mach64.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/matrox_mga.h"
+#include "velocity9x/nvidia.h"
 #include "velocity9x/s3_virge.h"
 #include "velocity9x/sis_6326.h"
 #include "velocity9x/tdfx.h"
@@ -69,6 +70,7 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x102Bu, 0x0519u, v9x_matrox_mga_backend }, /* matrox / mga2064w */
     { 0x102Bu, 0x051Bu, v9x_matrox_mga_backend }, /* matrox / mga2164w */
     { 0x102Bu, 0x051Au, v9x_matrox_mga_backend }, /* matrox / mystique */
+    { 0x12D2u, 0x0018u, v9x_nvidia_backend }, /* nvidia / riva128 */
     { 0x5333u, 0x8A01u, v9x_s3_virge_backend }, /* s3 / virge-dx */
     { 0x5333u, 0x8A13u, v9x_s3_virge_backend }, /* s3 / virge-dx alias */
     { 0x5333u, 0x8904u, v9x_s3_virge_backend }, /* s3 / virge-dx alias */

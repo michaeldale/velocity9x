@@ -152,11 +152,19 @@ static void v9x_modes16_read_highcolor(void)
 }
 
 /* The row's 15 bpp sibling: the VESA pair, or the BIOS's own twin from the
- * scan cache (the Rage XL numbers 512x384 and 400x300 itself, 2026-10-16). */
+ * scan cache (the Rage XL numbers 512x384 and 400x300 itself, 2026-10-16).
+ * The nvidia family's BIOS has no 15 bpp modes, and its place_desktop hook
+ * switches the DAC to 5:5:5 after the row's own mode is set, so the row is
+ * its own sibling. A family conditional, not a hook: the intel-gma image
+ * has no code room for another V9X_HW16_OPS field. */
 static WORD v9x_modes16_sibling(const V9X_HW16_MODE *row)
 {
+#ifdef V9X_NVIDIA_FAMILY
+    return row->vbe_mode;
+#else
     return v9x_vbe_sibling_555(row->vbe_mode, v9x_scan_entries,
                                v9x_scan_count);
+#endif
 }
 
 /* The 15 bpp mode number to program when this row should be published, and

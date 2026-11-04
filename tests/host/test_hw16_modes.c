@@ -220,6 +220,9 @@ const V9X_HW16_DEVICE v9x_mystique_device = {
 const V9X_HW16_DEVICE v9x_vsa100_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_riva128_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)
@@ -277,6 +280,45 @@ unsigned short __far __pascal V9xTdfxIoWrite(unsigned short offset,
     return 0u;
 }
 
+/* runtime.asm's BAR0 access for the nvidia DAC switch; one register, no
+ * decision to test here. */
+unsigned short __far __pascal V9xNv3Selector(unsigned long linear)
+{
+    (void)linear;
+    return 0u;
+}
+
+unsigned long __far __pascal V9xNv3Read(unsigned long offset)
+{
+    (void)offset;
+    return 0ul;
+}
+
+void __far __pascal V9xNv3Write(unsigned long offset, unsigned long value)
+{
+    (void)offset;
+    (void)value;
+}
+
+/* ddi.c's selected mode and modes16.c's layout, which that switch reads;
+ * no mode is selected here. */
+unsigned short v9x_selected_mode_geometry(unsigned short *width,
+                                          unsigned short *height,
+                                          unsigned short *bpp,
+                                          unsigned short *pitch)
+{
+    (void)width;
+    (void)height;
+    (void)bpp;
+    (void)pitch;
+    return 0u;
+}
+
+unsigned short v9x_modes16_highcolor(void)
+{
+    return 0u;
+}
+
 unsigned long v9x_vbe_vram_reported = 0ul;
 unsigned short v9x_pci_match = 0u;
 unsigned long v9x_pci_display_ids = 0ul;
@@ -311,6 +353,10 @@ unsigned short v9x_active_width = 0u;
 #include "../../src/chipsets/tdfx/tdfx_hw16.c"
 #undef v9x_hw16
 
+#define v9x_hw16 v9x_hw16_nvidia
+#include "../../src/chipsets/nvidia/nvidia_hw16.c"
+#undef v9x_hw16
+
 static const struct {
     const char *family_id;
     const V9X_HW16_OPS *ops;
@@ -320,7 +366,8 @@ static const struct {
     { "ati", &v9x_hw16_ati },
     { "sis", &v9x_hw16_sis },
     { "matrox", &v9x_hw16_matrox },
-    { "3dfx", &v9x_hw16_tdfx }
+    { "3dfx", &v9x_hw16_tdfx },
+    { "nvidia", &v9x_hw16_nvidia }
 };
 
 #define V9X_HW16_TABLE_COUNT \

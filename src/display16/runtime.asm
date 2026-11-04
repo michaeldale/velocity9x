@@ -3283,6 +3283,260 @@ V9xMiniSisMmioMapDone:
 V9XMINISISMMIOMAP ENDP
 ENDIF
 
+IFDEF V9X_NVIDIA_FAMILY
+; WORD FAR PASCAL V9xPciReadNv3MmioBar(DWORD FAR *base)
+; The RIVA 128's BAR0, its 16 MiB register window (1F000000h on M-7V636C,
+; docs\decisions\2026-11-02-m-7v636c-riva128-first-look.md). A read-only
+; config access; a refusal changes no stage code, because a missing engine
+; must not fail Enable.
+PUBLIC V9XPCIREADNV3MMIOBAR
+V9XPCIREADNV3MMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadNv3MmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadNv3MmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadNv3MmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadNv3MmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadNv3MmioBarFailed
+    cmp     eax, 0ff000000h
+    jae     short V9xPciReadNv3MmioBarFailed
+    ; 16 MiB, so 16 MiB aligned.
+    test    eax, 00ffffffh
+    jnz     short V9xPciReadNv3MmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadNv3MmioBarDone
+V9xPciReadNv3MmioBarFailed:
+    xor     ax, ax
+V9xPciReadNv3MmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADNV3MMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniNv3MmioMap(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_NV3_MMIO_MAP: the mini-VDD maps BAR0, checks PMC_BOOT_0 names
+; chip 3, and returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMININV3MMIOMAP
+V9XMININV3MMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniNv3MmioMapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_NV3_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniNv3MmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniNv3MmioMapDone
+V9xMiniNv3MmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniNv3MmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMININV3MMIOMAP ENDP
+
+; WORD FAR PASCAL V9xNv3Selector(DWORD linear)
+; Describe V9xEngineSel over all 16 MiB of BAR0, the window the mini-VDD
+; mapped: NV3's registers span PMC at 0 to the USER area at 800000h, past
+; anything V9xEngineSelector's WORD limit can describe. The low twelve bits
+; of the limit are set, as DPMI 0008h needs for a page-granular one. AX is
+; the selector, 0 on failure. Only this family calls it.
+PUBLIC V9XNV3SELECTOR
+V9XNV3SELECTOR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     dword ptr [bp+6], 0
+    je      short V9xNv3SelectorFailed
+
+    mov     ax, V9xEngineSel
+    cmp     ax, 0
+    jne     short V9xNv3SelectorDescribe
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xNv3SelectorFailed
+    mov     V9xEngineSel, ax
+
+V9xNv3SelectorDescribe:
+    mov     bx, V9xEngineSel
+    mov     dx, word ptr [bp+6]
+    mov     cx, word ptr [bp+8]
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xNv3SelectorFree
+
+    mov     bx, V9xEngineSel
+    mov     cx, 00ffh
+    mov     dx, 0ffffh
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xNv3SelectorFree
+
+    mov     ax, V9xEngineSel
+    jmp     short V9xNv3SelectorDone
+
+V9xNv3SelectorFree:
+    mov     bx, V9xEngineSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xEngineSel, 0
+V9xNv3SelectorFailed:
+    xor     ax, ax
+V9xNv3SelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XNV3SELECTOR ENDP
+
+; DWORD FAR PASCAL V9xNv3Read(DWORD offset)
+; One BAR0 dword through V9xNv3Selector's window, 0 with no selector. The C
+; caller keeps the offset inside 16 MiB.
+PUBLIC V9XNV3READ
+V9XNV3READ PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xNv3ReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xNv3ReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    4
+V9XNV3READ ENDP
+
+; void FAR PASCAL V9xNv3Write(DWORD offset, DWORD value)
+; One BAR0 dword store, or nothing with no selector. value is at [bp+6],
+; offset above it at [bp+10].
+PUBLIC V9XNV3WRITE
+V9XNV3WRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xNv3WriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+V9xNv3WriteDone:
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    8
+V9XNV3WRITE ENDP
+
+; DWORD FAR PASCAL V9xNv3FbRead(DWORD offset)
+; void FAR PASCAL V9xNv3FbWrite(DWORD offset, DWORD value)
+; One dword of video memory through the framebuffer selector, for RAMIN at
+; the top of it. The C caller keeps the offset inside the map's limit.
+PUBLIC V9XNV3FBREAD
+V9XNV3FBREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xNv3FbReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xNv3FbReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    4
+V9XNV3FBREAD ENDP
+
+PUBLIC V9XNV3FBWRITE
+V9XNV3FBWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xNv3FbWriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+V9xNv3FbWriteDone:
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    8
+V9XNV3FBWRITE ENDP
+ENDIF
+
 IFDEF V9X_TDFX_FAMILY
 ; WORD FAR PASCAL V9xTdfxReadMemoryRegs(DWORD FAR *regs)
 ; The VSA-100's memory straps and linear/tiled boundary, through BAR2, the

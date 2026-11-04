@@ -102,6 +102,15 @@
  * engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_VI       12ul
+/*
+ * NVIDIA RIVA 128 (NV3) 2D engine (engines\eng_nv3.c): solid fill and
+ * screen copy through PFIFO channel 0's objects, written by the CPU into
+ * BAR0's USER area, after Linux rivafb's bring-up of PFIFO, PGRAPH and
+ * RAMIN (src\chipsets\nvidia\nv3_2d.c). Measured right on the RIVA 128ZX
+ * (docs\decisions\2026-11-02-riva128-2d-engine-writes.md). No Direct3D
+ * engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_NV3          13ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul
