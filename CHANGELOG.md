@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.35.0 - not yet released
+## 0.35.0 - 2026-11-04
 
 - **Intel GMA 4500MHD (GM45, GS45 and GL40, `8086:2A42`): a test build,
   not yet run on one.** The `intel-gma` package now binds it and drives it
@@ -67,7 +67,14 @@ build identifier so exact guest-tested binaries remain traceable.
     choice: SRCALPHA/ONE (exact for texels of full alpha without fog) and
     ONE/INVSRCCOLOR (brighter where both sides are bright). ONE/SRCALPHA
     is refused.
-  - OpenGL, Glide and 3DCIF have not been run on it.
+  - **Not finished.** 3DMark 2000 runs to the end at default settings,
+    but 513,441 of its 515,626 draws are refused, for textures not placed
+    in video memory and render targets the driver does not draw to. The
+    RIVA has no software fallback, so those draws are not drawn, and its
+    score (159) does not measure the card
+    ([record](docs/decisions/2026-11-04-0.35.0-release-checks.md)).
+  - The OpenGL probe passes on it; no OpenGL game, Glide or 3DCIF title
+    has been run.
   - `NOTICES.TXT` carries NVIDIA's notice from rivafb's `riva_tbl.h` and
     `riva_hw.c`, whose register tables and engine bring-up the package's
     2D code follows.
