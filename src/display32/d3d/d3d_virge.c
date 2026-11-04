@@ -1399,12 +1399,14 @@ static int v9x_d3d_triangle(const V9X_R3D_DRAW *draw,
                        V9X_R3D_FILTER_LINEARMIPLINEAR) {
             /*
              * The two-pass form draws level N here and blends N+1 over it, so
-             * this pass is bilinear on one level. The degraded form is that
-             * same pass with no second one. Only a part that is going to do
-             * neither gets the chip's own LINEAR_MIP_LINEAR.
+             * this pass is bilinear on one level: M4TPP, MIP_LINEAR. The
+             * degraded form is that same pass with no second one. Only a
+             * part that is going to do neither gets the chip's own
+             * LINEAR_MIP_LINEAR. (This sent 010 before 2026-11-04 too, under
+             * the name the swapped constants gave it.)
              */
             command |= (trilinear_blend || trilinear_degrade)
-                ? V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST
+                ? V9X_VIRGE_3D_CMD_MIP_LINEAR
                 : V9X_VIRGE_3D_CMD_LINEAR_MIP_LINEAR;
         } else if (draw->texture.min_filter == V9X_R3D_FILTER_LINEAR ||
                    draw->texture.mag_filter == V9X_R3D_FILTER_LINEAR) {

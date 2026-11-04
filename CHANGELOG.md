@@ -6,6 +6,19 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.36.0 - not yet released
 
+- **S3 ViRGE/DX, Trio3D and Trio3D/2X: mipmapped textures with bilinear
+  filtering are filtered again.** Two of the chip's filter modes had each
+  other's values, so a program asking for bilinear filtering within a mip
+  level got point sampling, and close-up textures such as 3DMark 2000's
+  sky were drawn in blocks. They now follow S3's ViRGE data book. Measured
+  on a physical ViRGE/DX, the first time its Direct3D has run on silicon
+  rather than an emulator: V9XDDP passes 197 of 227 checks, with none
+  that passes on 86Box failing there, and 3DMark 2000 runs a custom
+  800x600x16 benchmark with the sky filtered. Its default benchmark needs
+  16 MiB and does not start on a 4 MiB card. The Trio3D chips share the
+  code and have not run the fix
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
 - **S3 Trio64V2 (`5333:8901`): black is now black, not dark grey.** Its BIOS
   can leave the DAC's blank pedestal on, an NTSC-era lift of the black
   level that shows as washed-out grey on a VGA monitor and most on an LCD.

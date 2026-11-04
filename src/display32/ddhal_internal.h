@@ -171,9 +171,15 @@ typedef char v9x_assert_cmd_base_unchanged
 #define V9X_VIRGE_3D_CMD_TEX_ARGB4444   0x00000020ul
 #define V9X_VIRGE_3D_CMD_FILTER_NEAREST 0x00004000ul
 #define V9X_VIRGE_3D_CMD_FILTER_LINEAR  0x00006000ul
+/* The mipmapped filter modes, Command Set bits 14-12, by S3's own names
+ * (ViRGE data book DB019-B, 15.4.8.1, p. 15-27): 001 is M2TPP
+ * (LINEAR_MIP_NEAREST), the nearest texel of two levels blended; 010 is
+ * M4TPP (MIP_LINEAR), four texels of one level, bilinear. They match
+ * Direct3D 5's D3DFILTER_ names. Until 2026-11-04 these two values were
+ * swapped here, so MIPLINEAR drew point-sampled within its level. */
 #define V9X_VIRGE_3D_CMD_MIP_NEAREST    0x00000000ul
-#define V9X_VIRGE_3D_CMD_MIP_LINEAR     0x00001000ul
-#define V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST 0x00002000ul
+#define V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST 0x00001000ul
+#define V9X_VIRGE_3D_CMD_MIP_LINEAR     0x00002000ul
 #define V9X_VIRGE_3D_CMD_LINEAR_MIP_LINEAR  0x00003000ul
 #define V9X_VIRGE_3D_CMD_TEX_MODULATE   0x00008000ul
 #define V9X_VIRGE_3D_CMD_TEXTURE_WRAP   0x04000000ul
