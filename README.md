@@ -11,7 +11,7 @@ cards**. One driver package per chip family gives the card:
 All of them draw through one shared render core. It runs the Intel GMA 950,
 GMA 3150, GMA X3100, HD 4600 and HD 4000, the AMD Radeon HD 5450, HD 7470,
 HD 5770, HD 7660D and R7E (Carrizo), the ATI Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and Rage IIC, the S3 ViRGE and
-Trio3D, the Matrox Millennium II and Mystique, the SiS 6326 and the 3dfx Voodoo4 with
+Trio3D, the Matrox Millennium II and Mystique, the SiS 6326, the NVIDIA RIVA 128ZX and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS. The
 Intel GMA 4500 and GMA X4500 are claimed: built from their surveys, not
@@ -123,6 +123,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Matrox Millennium II (MGA-2164W) | `matrox` | MGA | Direct3D, OpenGL and Glide (the engine where exact, the CPU otherwise); GDI and DirectDraw on the engine |
 | Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it |
 | Matrox Millennium (MGA-2064W) | `matrox` | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
+| NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF not run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
 | Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk |
@@ -178,6 +179,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium | GDI, DirectDraw, flips | No | No | No | No | No | No |
+| NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Not run | No | Not run | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
@@ -379,9 +381,10 @@ and **Send report** includes it from 0.18.5.
 ## 16-bit colour: 5:6:5 or 5:5:5
 
 High Color comes in two layouts. Most cards and games use 5:6:5. The S3
-ViRGE's 3D engine draws only 5:5:5, and ATI's own driver ran 5:5:5, which
-titles written for ATI cards assume. So on the ViRGE, and on ATI cards
-with hardware Direct3D, the driver chooses 5:5:5 by itself. Glide games
+ViRGE's and the NVIDIA RIVA 128ZX's 3D engines draw only 5:5:5, and ATI's
+own driver ran 5:5:5, which titles written for ATI cards assume. So on the
+ViRGE, the RIVA 128ZX, and ATI cards with hardware Direct3D, the driver
+chooses 5:5:5 by itself. Glide games
 that write the screen as 5:6:5 are converted.
 
 The **16-bit colour** selector on the Velocity9x Advanced tab overrides

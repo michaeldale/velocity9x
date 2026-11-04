@@ -28,6 +28,41 @@ build identifier so exact guest-tested binaries remain traceable.
   - The HD 7470 was re-run on this build in another machine: V9XD32,
     V9XDDP and Quake 3 pass as before. The HD 5450 and HD 5770, which
     share the changed engine code, were not.
+- **NVIDIA RIVA 128ZX (`12D2:0018`) is claimed by a new `nvidia`
+  package**, measured on one tester's STB card (8 MiB) in a Windows 98
+  first edition machine through remote help. Modes come from the VBE.
+  The original RIVA 128 shares the id and has not run it
+  ([record](docs/decisions/2026-11-02-m-7v636c-riva128-first-look.md)).
+  - DirectDraw and GDI fills and copies run on the 2D engine at 8 and
+    32 bpp; 16 bpp is drawn by the CPU. Page flips set the CRTC start
+    address; whether they wait for the retrace has not been watched on
+    the monitor
+    ([record](docs/decisions/2026-11-02-riva128-2d-engine-writes.md),
+    [record](docs/decisions/2026-11-03-riva128-crtc-start.md),
+    [record](docs/decisions/2026-11-03-riva128-gdi-on-the-engine.md)).
+  - The chip's 3D engine draws only 5:5:5 and its BIOS sets only 5:6:5,
+    so the driver switches the DAC to 5:5:5 after each 16 bpp mode set.
+    Nobody has yet looked at the colours on the monitor
+    ([record](docs/decisions/2026-11-03-riva128-555-desktop.md)).
+  - Direct3D draws on the 3D engine at 16 bpp with 16-bit Z and one
+    texture stage: mipmaps (to 8x8), bilinear filtering, colour keys,
+    specular, fog and DECALALPHA. V9XDDP passes 216 of its 227 checks;
+    the trilinear blend, 32-bit textures (the chip has none) and
+    FlipPixelOk fail. Half-Life and Unreal Tournament draw windowed,
+    Thief fullscreen
+    ([record](docs/decisions/2026-11-03-riva128-d3d-hal-first-light.md),
+    [record](docs/decisions/2026-11-04-riva128-mipmaps.md),
+    [record](docs/decisions/2026-11-04-riva128-half-life-d3d.md),
+    [record](docs/decisions/2026-11-04-riva128-unreal-tournament.md),
+    [record](docs/decisions/2026-11-04-riva128-thief.md)).
+  - Two blends the chip lacks are drawn with its saturating add, by
+    choice: SRCALPHA/ONE (exact for texels of full alpha without fog) and
+    ONE/INVSRCCOLOR (brighter where both sides are bright). ONE/SRCALPHA
+    is refused.
+  - OpenGL, Glide and 3DCIF have not been run on it.
+  - `NOTICES.TXT` carries NVIDIA's notice from rivafb's `riva_tbl.h` and
+    `riva_hw.c`, whose register tables and engine bring-up the package's
+    2D code follows.
 - `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
   0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
   `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware
