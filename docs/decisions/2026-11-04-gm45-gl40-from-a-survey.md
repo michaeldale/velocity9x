@@ -86,7 +86,18 @@ budget; `I9XXCODE` was full too. `hsw_config.c` (the Haswell layout
 arithmetic, called only from `hsw_hw16.c`) moved to a third segment,
 `HSWCODE`, with its seven calls declared far in `intel_hsw.h` and held by
 check-tree to `intel16.h`'s rules. `_TEXT` is now 55,943 bytes and
-`HSWCODE` 1,505. No Haswell-class machine has booted the far calls.
+`HSWCODE` 1,505.
+
+Measured on the i5-4570 (HD 4600) the same day: main `366bd0e3`, built
+clean, its eight intel-gma files deployed by WININIT rename, `reset` from
+boot 172 (0.34.0) to 173, all eight hashes as built. `V9XHW.INI`, which
+`hsw_hw16.c` writes from the three far calls it makes into `HSWCODE`
+(`decode_ggc`, `protected_bytes`, `plan_heap`), is byte-identical to boot
+172's: `HeapLayout=chip`, `StolenBytes=02000000`, `ProtectedBytes=00100000`,
+`ReserveOffset` and `HeapEnd` `01EA0000`. V9XD32 PASS, V9XGLP PASS,
+V9XGLIDP PASS, V9XR3DP COMPLETE
+([evidence](../probe/hsw-4570-hswcode-2026-11-04/)). The HD 4400 and HD
+4000, which share the code, were not run; no game was run.
 
 ## What is untested
 
