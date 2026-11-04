@@ -5412,6 +5412,14 @@ BeginProc V9xMini_Vbe_Query_Record
     je      short V9xMini_Vbe_Query_Record_Answered
     test    dx, V9X_VBE_RF_ORIGIN_LIST
     jz      short V9xMini_Vbe_Query_Record_Bios_Failed
+    ; 014Fh is the standard's "function call failed": a VBE 1.2 BIOS's way
+    ; of saying a listed mode is not available. Kept apart from every other
+    ; answer, which says the walk itself is incomplete (vbe_cache.h).
+    cmp     ax, 014Fh
+    jne     short V9xMini_Vbe_Query_Record_Query_Failed
+    or      V9xVbeStatus, V9X_VBE_ST_QUERY_UNAVAIL
+    jmp     short V9xMini_Vbe_Query_Record_Bios_Failed
+V9xMini_Vbe_Query_Record_Query_Failed:
     or      V9xVbeStatus, V9X_VBE_ST_QUERY_FAILED
 V9xMini_Vbe_Query_Record_Bios_Failed:
     inc     V9xVbeFailed

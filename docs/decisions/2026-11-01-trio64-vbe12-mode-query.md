@@ -97,3 +97,34 @@ tier-0 aperture default still finds no linear record (its trace now reads
   Watcom: 0 failures.
 - Not run: `check-tree.ps1`, `build-host.ps1`, `run-checks.ps1`, an 86Box guest,
   a physical card.
+
+## Amended at merge, 2026-11-04
+
+Michael's review (2026-11-01, 86Box) and a second review at merge found
+three things, fixed before merging:
+
+- **The 16-bit driver did not link** (`modes16.c` called a `vbe_cache.c`
+  function no 16-bit driver links). The rule is written out inline in
+  `modes16.c` (`593caf37`); `v9x_vbe_scan_may_contradict_version` stays
+  as its host-tested twin.
+- **A 1.x scan no longer adds rows.** On 86Box's 4 MiB Trio64 (VBE 1.2)
+  the scan added 1600x1200x8 (0x120), which that BIOS sets interlaced
+  (99 Hz fields, about 50 frames a second). `v9x_vbe_scan_may_append`
+  (`vbe_modes.c`, host-tested) lets a 1.x scan correct and hide the
+  family's own rows but not append others. Which further modes a Trio64
+  drives non-interlaced is left to a pixel-clock rule measured on real
+  cards.
+- **Only 014Fh counts as "not available".** Ring 0 had set
+  `QUERY_FAILED` for every 4F01h answer other than 004Fh, and the 1.x
+  rule waived all of them, so a BIOS that does not handle 4F01h at all
+  (AL not 4Fh) would have given a trusted, empty walk. A new status bit,
+  `V9X_VBE_ST_QUERY_UNAVAIL` (8000h), records an exact 014Fh; only it is
+  waived below VBE 2.0. At 2.0 and later both still withdraw the scan,
+  as before.
+
+The intel-gma `_TEXT` segment, 11 bytes over budget on the PR's base,
+has room on main since the Haswell layout code moved to its own segment
+(`2026-11-04-gm45-gl40-from-a-survey.md`).
+
+Gates at merge: `check-tree.ps1`, `build-host.ps1` and `run-checks.ps1`
+on the merged tree. 86Box results are added below when run.

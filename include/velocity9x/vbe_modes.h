@@ -184,6 +184,18 @@ void v9x_mode_masks_555(struct v9x_mode_masks *out);
 v9x_u16 v9x_vbe_controller_scan_usable(v9x_u16 version, v9x_u16 admit_flags);
 
 /*
+ * Whether rows a controller of this version lists, and the family table
+ * does not, may be added to it.
+ *
+ * 2.0 and later, as before. A 1.x scan may only correct and hide the family's
+ * own rows: on 86Box's Trio64 ROM (VBE 1.2, 4 MiB) it would otherwise add
+ * 1600x1200x8 (0x120), which that BIOS sets interlaced. Which added modes a
+ * chip can drive non-interlaced is not yet measured
+ * (docs\decisions\2026-11-01-trio64-vbe12-mode-query.md).
+ */
+v9x_u16 v9x_vbe_scan_may_append(v9x_u16 version);
+
+/*
  * A family's distrust predicate: V9X_TRUE refuses a record the generic rules
  * accepted, with the known-defect reason. It may only refuse - a predicate
  * cannot admit what the generic rules rejected, so a family cannot use it to

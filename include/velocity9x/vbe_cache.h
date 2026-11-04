@@ -91,6 +91,12 @@
 #define V9X_VBE_ST_QUERY_LIMIT    ((v9x_u16)0x1000u)
 #define V9X_VBE_ST_SWEEP_RAN      ((v9x_u16)0x2000u)
 #define V9X_VBE_ST_SWEEP_UNRESTORED ((v9x_u16)0x4000u)
+/* A listed 4F01h answered exactly 014Fh, the standard's "function call
+ * failed": for a VBE 1.2 BIOS, a mode it cannot set (VBE 1.2, 6.2).
+ * QUERY_FAILED is every other answer that is not 004Fh - a BIOS that does
+ * not handle 4F01h at all (AL not 4Fh) among them - and keeps its meaning,
+ * an incomplete walk, at every version. */
+#define V9X_VBE_ST_QUERY_UNAVAIL  ((v9x_u16)0x8000u)
 
 /*
  * How many cached records a consumer may read, given the reported status and
@@ -121,15 +127,17 @@ v9x_u16 v9x_vbe_scan_may_contradict(v9x_u16 status);
 /*
  * v9x_vbe_scan_may_contradict for a controller of the given VBE version.
  *
- * Identical for 2.0 and later. For a 1.x controller a refused 4F01h on a
- * listed mode does not withdraw the scan's authority: VBE 1.2 (section 6.2)
+ * Identical for 2.0 and later, where QUERY_UNAVAIL withdraws the scan's
+ * authority as QUERY_FAILED does. For a 1.x controller a listed mode whose
+ * 4F01h answered 014Fh (QUERY_UNAVAIL) does not: VBE 1.2 (section 6.2)
  * says that some listed modes "may not be available due to the video board's
  * current memory and monitor configuration" and leaves it to the application
  * to verify each through 4F01h, so a 1.2 BIOS answering 014Fh is reporting a
  * mode it cannot set, not an incomplete walk. Measured on a 2 MiB Trio64
  * whose BIOS lists 0x0118-0x011B, answers 014Fh to 4F01h for them and refuses
  * them at 4F02h too (2026-08-26-s3-physical-pipeline-inert.md, section 7).
- * Every other completeness rule still applies.
+ * Any other refusal (QUERY_FAILED) still withdraws it, and every other
+ * completeness rule still applies.
  */
 v9x_u16 v9x_vbe_scan_may_contradict_version(v9x_u16 status, v9x_u16 version);
 

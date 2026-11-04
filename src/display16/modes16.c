@@ -460,6 +460,13 @@ void v9x_modes16_init(void)
         v9x_scan_entries, v9x_scan_count, vram, admit_flags, 0,
         v9x_stage_modes, v9x_stage_masks, V9X_MODE_TABLE_MAX,
         &v9x_runtime_dropped, v9x_runtime_reasons);
+
+    /* A 1.x scan corrects and hides the family's rows but adds none: the
+     * appended rows follow the baseline block (v9x_vbe_scan_may_append). */
+    if (v9x_vbe_scan_may_append(v9x_minivdd_version) != V9X_TRUE &&
+        count > v9x_hw16.mode_count) {
+        count = v9x_hw16.mode_count;
+    }
     if (count < v9x_hw16.mode_count || count > V9X_MODE_TABLE_MAX ||
         v9x_modes16_rows_sane(v9x_stage_modes, count) == 0u) {
         v9x_runtime_scan_state = 4u;
@@ -476,21 +483,23 @@ void v9x_modes16_init(void)
      * The completeness rule of v9x_vbe_scan_may_contradict_version
      * (vbe_cache.c, where the host tests exercise it; step 2 above makes its
      * own checks of the collection), written out here because no family's 16-bit
-     * driver links vbe_cache.c. Below VBE 2.0 a refused 4F01h on a listed mode
-     * is the standard's "not available", not a gap in the walk; every other
-     * completeness rule holds for every version. Keep the two in step.
+     * driver links vbe_cache.c. Below VBE 2.0 a 014Fh answer on a listed mode
+     * (QUERY_UNAVAIL) is the standard's "not available", not a gap in the
+     * walk; any other refusal and every other completeness rule hold for
+     * every version. Keep the two in step.
      */
     {
         WORD status = v9x_minivdd_status;
 
         if (v9x_minivdd_version < 0x0200u) {
-            status = (WORD)(status & (WORD)~V9X_VBE_ST_QUERY_FAILED);
+            status = (WORD)(status & (WORD)~V9X_VBE_ST_QUERY_UNAVAIL);
         }
         trusted = ((status & V9X_VBE_ST_LIST_TERM) != 0u &&
                    (status &
                     (V9X_VBE_ST_LIST_OVERFLOW | V9X_VBE_ST_LIST_FLAGGED |
                      V9X_VBE_ST_LIST_UNREACHED | V9X_VBE_ST_CACHE_FULL |
-                     V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_LIMIT)) == 0u)
+                     V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_UNAVAIL |
+                     V9X_VBE_ST_QUERY_LIMIT)) == 0u)
                       ? V9X_TRUE
                       : V9X_FALSE;
     }

@@ -6,14 +6,19 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.36.0 - not yet released
 
-- **S3 Trio64 and Trio64V+: the driver now asks the card's VBE 1.2 BIOS
-  which modes it has** and hides a mode the BIOS lacks, instead of offering
-  it and failing at 4F02h with the fallback to 640x480. On a 4 MiB
-  Diamond Stealth64 Graphics 2000 (Trio64, BIOS 2.05) that is 1024x768x32
-  and 1280x1024x16; on BARRY, 640x400x8. The mini-VDD's boot-time
-  collection accepts VBE 1.2; only a family that finds its aperture itself
-  (`s3`) uses a 1.2 scan
+- **S3 Trio32, Trio64 and Trio64V+: the driver now asks the card's VBE 1.2
+  BIOS which modes it has** and hides a mode the BIOS lacks, instead of
+  offering it and failing at the mode set with a fall back to 640x480 and
+  the "problem with your display settings" message. On a 2 MiB Trio32 that
+  is 800x600x32, 1024x768x32 and 1280x1024x16 (86Box); on a 4 MiB Diamond
+  Stealth64 Graphics 2000 (BIOS 2.05, run in an emulator of that BIOS),
+  1024x768x32 and 1280x1024x16; on an older
+  2 MiB Trio64 BIOS, 640x400x8. It never adds a mode the driver did not
+  already offer. Contributed in pull request 19
   ([record](docs/decisions/2026-11-01-trio64-vbe12-mode-query.md)).
+  - Cards on other packages with a VBE 1.2 BIOS now have their modes
+    queried at startup too; their mode lists are unchanged. No such card
+    has run it.
 
 ## 0.35.0 - 2026-11-04
 

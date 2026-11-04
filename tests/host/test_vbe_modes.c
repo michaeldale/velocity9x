@@ -1401,6 +1401,19 @@ static void test_controller_scan_usable(void)
     MODECHECK(v9x_vbe_controller_scan_usable(0u, 0u) == V9X_FALSE);
 }
 
+static void test_scan_may_append(void)
+{
+    /* 2.0 and later add rows the family table lacks, as before. */
+    MODECHECK(v9x_vbe_scan_may_append(0x0200u) == V9X_TRUE);
+    MODECHECK(v9x_vbe_scan_may_append(0x0300u) == V9X_TRUE);
+
+    /* A 1.x scan only corrects and hides: on a 4 MiB Trio64 it would add
+     * 0x120, 1600x1200x8, which the BIOS sets interlaced. */
+    MODECHECK(v9x_vbe_scan_may_append(0x0102u) == V9X_FALSE);
+    MODECHECK(v9x_vbe_scan_may_append(0x0101u) == V9X_FALSE);
+    MODECHECK(v9x_vbe_scan_may_append(0u) == V9X_FALSE);
+}
+
 static void test_publish_hides_contradicted_baseline(void)
 {
     struct v9x_vbe_scan_entry scanned[3];
@@ -1550,6 +1563,7 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_aperture_known_waives_aperture_rules();
     test_aperture_known_merges_an_s3_list();
     test_controller_scan_usable();
+    test_scan_may_append();
     test_publish_hides_contradicted_baseline();
     test_publish_fallback_rules();
     test_dd_subset_publication();

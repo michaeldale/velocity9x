@@ -538,6 +538,11 @@ v9x_u16 v9x_vbe_controller_scan_usable(v9x_u16 version, v9x_u16 admit_flags)
     return V9X_FALSE;
 }
 
+v9x_u16 v9x_vbe_scan_may_append(v9x_u16 version)
+{
+    return version >= V9X_VBE_VERSION_2_0 ? V9X_TRUE : V9X_FALSE;
+}
+
 v9x_u16 v9x_vbe_publish_rows(
     const V9X_HW16_MODE *table, v9x_u16 count, v9x_u16 baseline_rows,
     const struct v9x_vbe_scan_entry *scanned, v9x_u16 scanned_count,
