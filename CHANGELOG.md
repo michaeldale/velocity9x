@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.36.0 - not yet released
+
 ## 0.35.0 - 2026-11-04
 
 - **Intel GMA 4500MHD (GM45, GS45 and GL40, `8086:2A42`): a test build,
