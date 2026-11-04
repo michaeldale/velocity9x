@@ -71,6 +71,23 @@ build identifier so exact guest-tested binaries remain traceable.
   - `NOTICES.TXT` carries NVIDIA's notice from rivafb's `riva_tbl.h` and
     `riva_hw.c`, whose register tables and engine bring-up the package's
     2D code follows.
+- **Check for updates moves a card off the generic VESA package to its
+  chip's package.** Until now the updater kept whatever package the
+  driver was installed from, so a card set up on `vbe` before its chip
+  family existed stayed on `vbe` through every update (report V9X-AW3C75:
+  a Radeon R7E updated from 0.32.0 to 0.34.0 on `vbe` and lost Direct3D).
+  `SIGNED.TXT` now lists, under the release signature, the hardware IDs
+  each family claims. When the card is on `vbe` and exactly one other
+  family lists its ID, the updater downloads that family instead,
+  installs the model for the card's ID, and updates the name Device
+  Manager shows. It never moves a card from one chip family to another.
+  The move is the installed updater's, and updaters older than 0.35.0
+  ignore the new lines: a card on `vbe` today updates to 0.35.0's `vbe`
+  package and moves at the release after, unless its chip's package is
+  installed by hand. Measured on
+  an 86Box Mach64 VT2 against a locally signed test release; the update
+  server's handling of the new lines has not been checked
+  ([record](docs/decisions/2026-11-01-updater-moves-vbe-to-chip-family.md)).
 - `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
   0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
   `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware
