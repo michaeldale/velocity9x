@@ -312,6 +312,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-28 Write-combining the HD 4600's aperture through PAT: FbWrite 66 to 9,238 MB/s, 3DMark 2000 2344 to 3719, and the render engine is now the limit](2026-10-28-haswell-pat-write-combining.md)
 - [2026-10-28 The HD 4600's fixed cost a batch is not its flushes: seven variants measured, the first closing RT flush dropped](2026-10-28-haswell-flush-variants.md)
 - [2026-11-04 The GM45's GMA 4500MHD (8086:2A42, GL40 in an HP t5740) joins intel-gma on one DOS survey: the G45's path unchanged](2026-11-04-gm45-gl40-from-a-survey.md)
+- [2026-11-04 The G45 and Q45 run 0.28.0: issue 3's reporter's field report, 3DMark 2000 1942 and 1760](2026-11-04-g4x-g45-q45-field-report.md)
 
 ## SiS
 

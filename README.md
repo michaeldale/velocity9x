@@ -14,8 +14,9 @@ HD 5770, HD 7660D and R7E (Carrizo), the ATI Rage 128 Pro, Rage Pro, Rage XL, Ra
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326, the NVIDIA RIVA 128ZX and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS. The
-Intel GMA 4500, GMA X4500 and GMA 4500MHD are claimed: built from their
-surveys, not yet run.
+Intel GMA 4500 and GMA X4500 were built from their surveys and run, by
+one reporter's account, on 0.28.0. The GMA 4500MHD is claimed: built
+from a survey, not yet run.
 
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
 Direct3D HAL and OpenGL ICD contracts, rather than derived from anyone's
@@ -120,7 +121,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Claimed: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
-| Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | Claimed: the GM965's path with G4x's encodings, built from two reporters' surveys. Nothing has run on one |
+| Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
 | Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | Claimed: the G45's path unchanged, built from one survey of an HP t5740. Nothing has run on one |
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
@@ -175,7 +176,8 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
 | Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
-| Intel GMA X4500, GMA 4500, GMA 4500MHD | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
+| Intel GMA X4500, GMA 4500 (reported, 0.28.0) | Not recorded | Yes | Not run | Yes | Not recorded | Yes | Not run |
+| Intel GMA 4500MHD | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
