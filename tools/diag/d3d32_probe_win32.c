@@ -39,7 +39,14 @@
  *      an indexed list, a strip (its odd triangle's swap), a fan, an
  *      indexed strip and an indexed list over 260 vertices - each under
  *      no culling, CW and CCW, with a clockwise and a counter-clockwise
- *      quad: present where Direct3D keeps it, absent where it culls.
+ *      quad: present where Direct3D keeps it, absent where it culls. A
+ *      direction the device's triangle D3DPMISCCAPS do not advertise is
+ *      expected drawn, in T9 too: the driver does not cull it.
+ *
+ * T1, T4 and T14's flat triangles report <T>Flat: EXACT, DITHERED (outside
+ * clean, some inside exact, every miss one step high, at 16 bpp) or FAIL.
+ * Dithered passes: the ViRGE dithers 16-bit output whatever the
+ * DITHERENABLE state says.
  *   T12 two texture stages through a DirectX 6 device: a quadrant texture
  *      on stage 0 and a lightmap on stage 1 with its own coordinates,
  *      MODULATE and ADD, each quadrant against its expected colour; skipped
@@ -230,6 +237,12 @@ typedef struct d32_object { void **vtbl; } D32_OBJECT;
  * 41st, after the two 14-DWORD primitive caps. */
 #define D3DDESC_RENDER_DEPTH 39
 #define D3DDESC_Z_DEPTH 40
+/* dpcTriCaps.dwMiscCaps: the triangle D3DPRIMCAPS starts at the 26th DWORD,
+ * after the header (4), transform (2), clipping (1), lighting (4) and line
+ * caps (14); its second DWORD. */
+#define D3DDESC_TRI_MISC_CAPS 26
+#define D3DPMISCCAPS_CULLCW 0x00000020ul
+#define D3DPMISCCAPS_CULLCCW 0x00000040ul
 
 typedef HRESULT (WINAPI *d32_create_fn)(void *, D32_OBJECT **, void *);
 typedef ULONG (WINAPI *d32_release_fn)(D32_OBJECT *);
@@ -294,6 +307,10 @@ static HANDLE d32_file = INVALID_HANDLE_VALUE;
 static DWORD d32_bytes;
 static DWORD d32_masks[3];
 static DWORD d32_tolerance;
+/* The HAL device's triangle D3DPMISCCAPS. A device that advertises no
+ * culling direction does not cull it (Direct3D leaves culling to the
+ * driver), so T9 and T11 expect such triangles drawn, not gone. */
+static DWORD d32_tri_misc_caps;
 
 static void d32_hex(char *text, DWORD value)
 {
@@ -487,6 +504,7 @@ typedef struct d32_enum_result {
     DWORD hal_found;
     DWORD render_depth;
     DWORD z_depth;
+    DWORD tri_misc_caps;
 } D32_ENUM_RESULT;
 
 static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
@@ -503,6 +521,7 @@ static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
         result->hal_found = 1ul;
         result->render_depth = hardware[D3DDESC_RENDER_DEPTH];
         result->z_depth = hardware[D3DDESC_Z_DEPTH];
+        result->tri_misc_caps = hardware[D3DDESC_TRI_MISC_CAPS];
     }
     return 1;   /* D3DENUMRET_OK */
 }
@@ -894,12 +913,57 @@ static D32_OBJECT *d32_device(D32_OBJECT *d3d, D32_OBJECT *target,
  *
  * The last call's inside and outside misses, and the first of each with its
  * pixel, are kept for d32_flat_report: a count alone cannot tell a wrong
- * colour from a stray write or an uncleared target.
+ * colour from a stray write or an uncleared target. So are the inside
+ * pixels that are exact and the misses that are one step high, for
+ * d32_flat_verdict.
  */
 static DWORD d32_flat_inside_bad;
 static DWORD d32_flat_outside_bad;
 static DWORD d32_flat_inside_first;
 static DWORD d32_flat_outside_first;
+static DWORD d32_flat_inside_exact;
+static DWORD d32_flat_inside_step;
+
+/*
+ * Whether every channel of the pixel is the colour truncated to the
+ * channel's width, or one step above it: what an ordered dither leaves of a
+ * flat colour. The ViRGE dithers all 16-bit 3D output under no command bit
+ * (docs\decisions\2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md).
+ * Never at eight bits a channel, where there is nothing to dither.
+ */
+static int d32_one_step_high(DWORD pixel, DWORD rgb)
+{
+    DWORD index;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        DWORD mask = d32_masks[index];
+        DWORD shift = 0ul;
+        DWORD width = 0ul;
+        DWORD value;
+        DWORD want;
+
+        if (mask == 0ul) {
+            return 0;
+        }
+        while ((mask & 1ul) == 0ul) {
+            mask >>= 1;
+            ++shift;
+        }
+        while ((mask & 1ul) != 0ul) {
+            mask >>= 1;
+            ++width;
+        }
+        if (width >= 8ul) {
+            return 0;
+        }
+        value = (pixel >> shift) & ((1ul << width) - 1ul);
+        want = ((rgb >> (16ul - index * 8ul)) & 0xfful) >> (8ul - width);
+        if (value != want && value != want + 1ul) {
+            return 0;
+        }
+    }
+    return 1;
+}
 
 static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
                                  DWORD top, DWORD rgb, DWORD *judged)
@@ -912,6 +976,8 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
     d32_flat_outside_bad = 0ul;
     d32_flat_inside_first = 0xfffffffful;
     d32_flat_outside_first = 0xfffffffful;
+    d32_flat_inside_exact = 0ul;
+    d32_flat_inside_step = 0ul;
     *judged = 0ul;
     for (y = 0ul; y < 64ul; ++y) {
         for (x = 0ul; x < 64ul; ++x) {
@@ -923,8 +989,13 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
 
             if (inside) {
                 ++*judged;
-                if (!d32_is_colour(pixel, rgb)) {
+                if (d32_is_colour(pixel, rgb)) {
+                    ++d32_flat_inside_exact;
+                } else {
                     ++mismatches;
+                    if (d32_one_step_high(pixel, rgb)) {
+                        ++d32_flat_inside_step;
+                    }
                     if (d32_flat_inside_bad++ == 0ul) {
                         d32_flat_inside_first = (x << 24) | (y << 16) |
                                                 (pixel & 0xfffful);
@@ -959,6 +1030,32 @@ static void d32_flat_report(const char *prefix)
     d32_hx(key, d32_flat_outside_bad);
     wsprintfA(key, "%sOutsideFirst", prefix);
     d32_hx(key, d32_flat_outside_first);
+    wsprintfA(key, "%sInsideStep", prefix);
+    d32_hx(key, d32_flat_inside_step);
+}
+
+/*
+ * The last d32_flat_mismatches call judged, as `<prefix>Flat`: EXACT;
+ * DITHERED when nothing outside was written, some inside pixels are exact
+ * and every inside miss is one step high; else FAIL. Returns the failures,
+ * 0 or 1. Dithered is not exact, and is named as such, but it is what a
+ * chip that cannot turn its dither off draws correctly. A colour the engine
+ * rounds wrong misses everywhere, so it still fails: no exact pixel.
+ */
+static DWORD d32_flat_verdict(const char *prefix, DWORD mismatches)
+{
+    char key[32];
+    const char *verdict = "FAIL";
+
+    if (mismatches == 0ul) {
+        verdict = "EXACT";
+    } else if (d32_flat_outside_bad == 0ul && d32_flat_inside_exact != 0ul &&
+               d32_flat_inside_step == d32_flat_inside_bad) {
+        verdict = "DITHERED";
+    }
+    wsprintfA(key, "%sFlat", prefix);
+    d32_line(key, verdict);
+    return verdict[0] == 'F' ? 1ul : 0ul;
 }
 
 /* Within `tolerance` of 0x00RRGGBB on every channel, X byte zero at
@@ -1317,9 +1414,14 @@ static DWORD d32_cull_matrix(D32_OBJECT *device, D32_OBJECT *back)
         for (cell = 0ul; cell < 6ul; ++cell) {
             DWORD cull = culls[cell / 2ul];
             int clockwise = (cell & 1ul) == 0ul;
+            /* A direction the device does not advertise is not culled. */
             int kept = cull == D3DCULL_NONE ||
-                       (cull == D3DCULL_CW && !clockwise) ||
-                       (cull == D3DCULL_CCW && clockwise);
+                       (cull == D3DCULL_CW &&
+                        (!clockwise || (d32_tri_misc_caps &
+                                        D3DPMISCCAPS_CULLCW) == 0ul)) ||
+                       (cull == D3DCULL_CCW &&
+                        (clockwise || (d32_tri_misc_caps &
+                                       D3DPMISCCAPS_CULLCCW) == 0ul));
             DWORD seen = 0ul;
 
             for (point = 0ul; point < 4ul; ++point) {
@@ -5402,6 +5504,7 @@ static DWORD d32_child_and_after(HWND window, DWORD bpp)
     DWORD code = 0xfffffffful;
     DWORD judged = 0ul;
     DWORD mismatches;
+    DWORD failed;
     HRESULT hr;
 
     d32_line("Stage", "12-t14-child");
@@ -5478,9 +5581,12 @@ static DWORD d32_child_and_after(HWND window, DWORD bpp)
                                                      DDLOCK_WAIT, 0);
     d32_hx("T14LockHr", (DWORD)hr);
     mismatches = 1ul;
+    failed = 1ul;
     if (hr == 0 && desc.lpSurface != 0) {
         mismatches = d32_flat_mismatches(&desc, 8ul, 8ul, 0x0013579bul,
                                          &judged);
+        d32_flat_report("T14");
+        failed = d32_flat_verdict("T14", mismatches);
         d32_hx("T14Pixel", d32_pixel(&desc, 16ul, 16ul));
         ((d32_unlock_fn)session.back->vtbl[DDS_UNLOCK])(session.back,
                                                         desc.lpSurface);
@@ -5488,8 +5594,8 @@ static DWORD d32_child_and_after(HWND window, DWORD bpp)
     d32_hx("T14Judged", judged);
     d32_hx("T14Mismatches", mismatches);
     d32_session_close(&session);
-    d32_line("T14Result", mismatches == 0ul ? "PASS" : "FAIL");
-    return mismatches != 0ul ? 1ul : 0ul;
+    d32_line("T14Result", failed == 0ul ? "PASS" : "FAIL");
+    return failed;
 }
 
 void WINAPI V9xD3d32ProbeEntry(void)
@@ -5653,6 +5759,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("HalFound", enumerated.hal_found);
     d32_hx("HalRenderDepth", enumerated.render_depth);
     d32_hx("HalZDepth", enumerated.z_depth);
+    d32_hx("HalTriMiscCaps", enumerated.tri_misc_caps);
+    d32_tri_misc_caps = enumerated.tri_misc_caps;
     if (enumerated.hal_found == 0ul ||
         (enumerated.render_depth & (bpp == 32ul ? DDBD_32 : DDBD_16)) ==
             0ul) {
@@ -5969,7 +6077,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_hx("T1Judged", judged);
         d32_hx("T1Mismatches", mismatches);
         d32_flat_report("T1");
-        failures += mismatches != 0ul ? 1ul : 0ul;
+        failures += d32_flat_verdict("T1", mismatches);
 
         d32_hx("T2RedCorner", d32_pixel(&desc, 110ul, 10ul));
         d32_hx("T2GreenCorner", d32_pixel(&desc, 150ul, 10ul));
@@ -5993,14 +6101,16 @@ void WINAPI V9xD3d32ProbeEntry(void)
         failures += caps != 7ul ? 1ul : 0ul;
 
         /* T9: the kept triangle drawn, the culled one not, both halves of
-         * the indexed quad drawn. */
+         * the indexed quad drawn. A device without CCW culling draws the
+         * culled one too, and that is right for it. */
         d32_hx("T9Kept", d32_pixel(&desc, 16ul, 308ul));
         d32_hx("T9Culled", d32_pixel(&desc, 108ul, 308ul));
         d32_hx("T9QuadUpper", d32_pixel(&desc, 210ul, 310ul));
         d32_hx("T9QuadLower", d32_pixel(&desc, 254ul, 354ul));
         caps = (d32_is_colour(d32_pixel(&desc, 16ul, 308ul), 0x0000ff00ul)
                     ? 1ul : 0ul) |
-               (!d32_is_colour(d32_pixel(&desc, 108ul, 308ul), 0x0000ff00ul)
+               (d32_is_colour(d32_pixel(&desc, 108ul, 308ul), 0x0000ff00ul)
+                    == ((d32_tri_misc_caps & D3DPMISCCAPS_CULLCCW) == 0ul)
                     ? 2ul : 0ul) |
                (d32_is_colour(d32_pixel(&desc, 210ul, 310ul), 0x0000ff00ul)
                     ? 4ul : 0ul) |
@@ -6264,7 +6374,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
             d32_hx("T4Judged", judged);
             d32_hx("T4Mismatches", mismatches);
             d32_flat_report("T4");
-            failures += mismatches != 0ul ? 1ul : 0ul;
+            failures += d32_flat_verdict("T4", mismatches);
             ((d32_unlock_fn)offscreen->vtbl[DDS_UNLOCK])(offscreen,
                                                          desc.lpSurface);
         } else {

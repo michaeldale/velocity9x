@@ -50,6 +50,12 @@ build identifier so exact guest-tested binaries remain traceable.
     queried at startup too; their mode lists are unchanged. No such card
     has run it.
 
+- Probes: V9XD32 accepts a chip's ordered dither on its flat triangles
+  (reported as `DITHERED`, not `EXACT`) and expects triangles drawn in a
+  cull direction the device does not advertise. The ViRGE/DX goes from ten
+  failures to one; the Haswell control still passes exactly
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
 ## 0.35.0 - 2026-11-04
 
 - **Intel GMA 4500MHD (GM45, GS45 and GL40, `8086:2A42`): a test build,

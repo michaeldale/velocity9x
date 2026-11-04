@@ -155,3 +155,34 @@ before. One run; not looked into.
 
 V9XD32's ten failures on this card are therefore: 7 culling (no cull on
 this engine, by design), 3 dither (T1, T4, T14).
+
+### V9XD32 now judges both (2026-11-05)
+
+The probe was changed so these stop reading as failures, without
+loosening it for chips that pass exactly:
+
+- **Dither.** T1, T4 and T14 report `<T>Flat`: `EXACT`; `DITHERED` when
+  nothing outside the triangle was written, some inside pixels are exact
+  and every inside miss is the colour truncated to its channel width or
+  one step above it (16 bpp only); else `FAIL`. Dithered passes. A
+  colour the engine rounds wrong misses at every pixel, so it has no exact
+  pixel and still fails. A blanket tolerance would have hidden that.
+- **Culling.** The probe records the HAL's triangle `dwMiscCaps`
+  (`HalTriMiscCaps`). A direction the device does not advertise is
+  expected drawn in T9 and T11, since Direct3D leaves culling to the
+  driver. A device advertising CW and CCW is judged as before.
+
+Measured with the changed probe (`64dc2e2f-dirty`;
+[`../probe/virge-dx-a8u4i5-silicon-2026-11-04/d32-dither-and-cull-classified/`](../probe/virge-dx-a8u4i5-silicon-2026-11-04/d32-dither-and-cull-classified/)):
+
+- **ViRGE/DX, A8U4I5 `/bpp16`** (driver unchanged since boot 664):
+  `HalTriMiscCaps=0x10` (CULLNONE only). T9 and all six T11 forms pass.
+  T1 and T14 `DITHERED` (374 misses, all one step). T4 `FAIL`: its 506
+  inside misses are all one step, but the 8 pixels outside (first `7C00`
+  at local (52,0)) remain. **1 failure**, down from 10.
+- **Control, Haswell 4570** (boot 173 build): `HalTriMiscCaps=0x70`, so
+  culling is judged strictly. 32 bpp and `/bpp16` both PASS, every flat
+  triangle `EXACT`.
+
+T4's stray pixels are now the ViRGE's only V9XD32 failure, and still not
+explained.
