@@ -28,6 +28,11 @@
  * The i9xx_* units are also compiled 32-bit into the host test suite by both
  * Open Watcom and MSVC, where there are no segments and __far does not exist,
  * so the qualifier is spelled through a macro that expands to nothing there.
+ *
+ * A third segment, HSWCODE, holds hsw_config.c alone (2026-11-04, to keep
+ * _TEXT under its budget). Its seven calls carry the same qualifier and are
+ * declared in velocity9x/intel_hsw.h with the structures they take;
+ * check-tree.ps1 holds them to the rules here.
  */
 #if defined(__WATCOMC__) && defined(_M_I86)
 #define V9X_I9XX_FAR __far

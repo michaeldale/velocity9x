@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.35.0 - not yet released
 
+- **Intel GMA 4500MHD (GM45, GS45 and GL40, `8086:2A42`): a test build,
+  not yet run on one.** The `intel-gma` package now binds it and drives it
+  exactly as the G45 and Q45, the same generation's desktop parts. It
+  reports itself to Direct3D and OpenGL as "Velocity9x GMA 4500". Built
+  from the survey of an HP t5740 thin client attached to issue 22; the
+  first boot on one is the first measurement
+  ([record](docs/decisions/2026-11-04-gm45-gl40-from-a-survey.md)).
+
 - **AMD Radeon HD 7660D (Trinity, the A10-5700's graphics, `1002:9901`)
   is claimed by the `ati` package**, measured on one tester's machine
   through remote help. Modes come from the VBE

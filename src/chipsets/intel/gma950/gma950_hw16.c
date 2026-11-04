@@ -377,7 +377,9 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
 /*
  * The G45's GMA X4500 and the Q45's GMA 4500 (G4x, Gen4.5): the GM965's
  * engine, from two DOS surveys and the G45 PRM, with nothing run on either
- * (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
+ * (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md). The GM45's GMA
+ * 4500MHD takes the same hook, from one survey and nothing run
+ * (docs\decisions\2026-11-04-gm45-gl40-from-a-survey.md).
  *
  * What differs from the GM965 lives outside this hook: the GTT at BAR0 +
  * 2 MiB (V9xPciReadIntelGttConfig), and two 3D encodings g4_3d.c builds for
@@ -643,6 +645,25 @@ const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
     0x8086u, 0x2e12u,
     "Intel GMA 4500 (Q45)",
     "8086", "2E12",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen4",
+    0,
+    v9x_g4x_fill_engine,
+    2u
+};
+
+/*
+ * The GM45's GMA 4500MHD (also the GS45's and GL40's). Config space and VBE
+ * from an HP t5740's survey (docs\probe\references\hp-t5740-gl40-vgasurv-
+ * 2026-11-04-d9d7aeb9.ini): the G45's BAR layout, GMS 64 MiB, a Cantiga
+ * BIOS. Nothing here has run on one; the engine is the G45's.
+ */
+const V9X_HW16_DEVICE v9x_gm45_gma4500mhd_device = {
+    0x8086u, 0x2a42u,
+    "Intel GMA 4500MHD (GM45)",
+    "8086", "2A42",
     "intel-gen3-mmio-fingerprint-v1",
     "vbe-lfb",
     "directdraw-fill-blt",

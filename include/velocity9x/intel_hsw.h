@@ -28,6 +28,7 @@
 #ifndef VELOCITY9X_INTEL_HSW_H
 #define VELOCITY9X_INTEL_HSW_H
 
+#include "velocity9x/intel16.h"
 #include "velocity9x/status.h"
 #include "velocity9x/types.h"
 
@@ -254,17 +255,26 @@ struct v9x_intel_hsw_pte {
     v9x_u8 valid;
 };
 
-v9x_status v9x_intel_hsw_decode_ggc(v9x_u16 ggc,
-                                    struct v9x_intel_hsw_ggc *out);
+/*
+ * The seven calls below are defined in hsw_config.c, which the intel-gma
+ * family compiles into its own code segment, HSWCODE, to keep _TEXT under
+ * budget (docs\decisions\2026-11-04-gm45-gl40-from-a-survey.md). Their only
+ * 16-bit caller, hsw_hw16.c, stays in _TEXT because it owns near
+ * V9X_HW16_DEVICE entries, so every one is far. See velocity9x/intel16.h
+ * for why the qualifier sits before the name.
+ */
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_ggc(
+    v9x_u16 ggc, struct v9x_intel_hsw_ggc *out);
 
-v9x_status v9x_intel_hsw_aperture_bytes(v9x_u8 msac, v9x_u32 *bytes);
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_aperture_bytes(
+    v9x_u8 msac, v9x_u32 *bytes);
 
-v9x_status v9x_intel_hsw_decode_layout(
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_layout(
     const struct v9x_intel_hsw_config *config,
     struct v9x_intel_hsw_layout *out);
 
-v9x_status v9x_intel_hsw_decode_pte(v9x_u32 raw,
-                                    struct v9x_intel_hsw_pte *out);
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_pte(
+    v9x_u32 raw, struct v9x_intel_hsw_pte *out);
 
 /*
  * Where the DirectDraw heap ends and the engine reserve sits, from what the
@@ -318,15 +328,15 @@ struct v9x_intel_hsw_heap_plan {
 #define V9X_INTEL_HSW_STOLEN_RSVD_ENABLE    ((v9x_u32)0x00000001ul)
 #define V9X_INTEL_HSW_STOLEN_RSVD_BASE_MASK ((v9x_u32)0xfff00000ul)
 
-v9x_status v9x_intel_hsw_protected_bytes(v9x_u32 bdsm, v9x_u32 stolen_bytes,
-                                         v9x_u32 reserved_reg,
-                                         v9x_u32 *protected_bytes);
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
+    v9x_u32 bdsm, v9x_u32 stolen_bytes, v9x_u32 reserved_reg,
+    v9x_u32 *protected_bytes);
 
-v9x_status v9x_intel_hsw_plan_heap(
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_plan_heap(
     const struct v9x_intel_hsw_heap_inputs *in,
     struct v9x_intel_hsw_heap_plan *out);
 
-v9x_status v9x_intel_hsw_encode_pte(v9x_u32 physical, v9x_u8 cache,
-                                    v9x_u32 *raw);
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_encode_pte(
+    v9x_u32 physical, v9x_u8 cache, v9x_u32 *raw);
 
 #endif

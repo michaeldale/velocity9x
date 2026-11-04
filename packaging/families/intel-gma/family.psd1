@@ -227,6 +227,38 @@
             MapSymbols = @('v9x_q45_gma4500_device')
         }
         @{
+            # The GM45's GMA 4500MHD (G4x mobile; the GS45 and GL40 share
+            # the id), unmeasured, as the G45 above. From an HP t5740's DOS
+            # survey (GitHub issue 22); nothing has run on one:
+            # docs\decisions\2026-11-04-gm45-gl40-from-a-survey.md.
+            Id = 'gma-4500mhd-gm45'
+            Name = 'Intel GMA 4500MHD (GM45)'
+            VendorId = '8086'
+            DeviceId = '2A42'
+            DeviceDesc = 'Velocity9x Intel GMA 4500MHD (GM45)'
+            Adapter = 'Intel GMA 4500MHD (GM45)'
+            ClockDetector = 'intel-gen3-mmio-fingerprint-v1'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'hardware-gen4'
+            EngineType = 'INTEL_GEN3'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            VideoMemoryBytes = 4194304
+            # The family's table, which the driver's own must equal. The
+            # surveyed BIOS describes 0160-0162 as 1280x800, as TOMMOHP's
+            # mobile BIOS has its own panel mode there; the runtime scan
+            # publishes the modes it finds.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('gma950_hw16')
+            MapSymbols = @('v9x_gm45_gma4500mhd_device')
+        }
+        @{
             # Ironlake desktop HD Graphics (Gen5): the 945's ring and blits,
             # with the GTT at BAR0 + 2 MiB, and register flips through DSPSURF
             # and DSPLINOFF with the Gen3 display registers it lacks skipped
@@ -382,7 +414,9 @@
             @{ Name = 'intel_str16'; Path = 'src\display16\intel_str16.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'gma950_hw16'; Path = 'src\chipsets\intel\gma950\gma950_hw16.c' }
             @{ Name = 'hsw_hw16'; Path = 'src\chipsets\intel\hsw\hsw_hw16.c' }
-            @{ Name = 'hsw_config'; Path = 'src\chipsets\intel\hsw_config.c' }
+            # Its own segment, out of _TEXT's budget; its seven calls are far
+            # (velocity9x\intel_hsw.h).
+            @{ Name = 'hsw_config'; Path = 'src\chipsets\intel\hsw_config.c'; CodeSegment = 'HSWCODE' }
             @{ Name = 'intel_hw16'; Path = 'src\chipsets\intel\intel_hw16.c' }
             @{ Name = 'intel_bridge16'; Path = 'src\display16\intel_bridge16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
@@ -438,7 +472,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
     }
 
     Vm = @{
