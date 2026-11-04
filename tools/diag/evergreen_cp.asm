@@ -7,8 +7,8 @@
 ; its window, and a stream op that feeds microcode to a data port.
 ;
 ; It finds the card with configuration mechanism 1 (1002:68F9, 6778 for the
-; HD 7470 Caicos, docs\decisions\2026-10-31-caicos-register-probe.md, or
-; 68B8 for the HD 5770 Juniper), maps
+; HD 7470 Caicos, docs\decisions\2026-10-31-caicos-register-probe.md, 68B8
+; for the HD 5770 Juniper, or 9901 for the HD 7660D Trinity), maps
 ; BAR2 (128 KiB of registers) and a 64 KiB scratch window of VRAM through
 ; BAR0, and runs:
 ;
@@ -39,8 +39,17 @@
 ; The scratch window is BAR0 + 0F100000h, 241 MiB in: past the 16 MiB heap
 ; and past the 64 KiB at 240 MiB that the driver's DMA ring now occupies
 ; (cedar_hw16.c), so this probe and a running DirectDraw never share VRAM.
-; It is mapped only when BAR0 is a 64-bit memory BAR below 4 GiB, aligned
-; to 256 MiB, on a card whose CONFIG_MEMSIZE says 256 MiB or more.
+; It is mapped only when BAR0 is a memory BAR below 4 GiB (64-bit with a
+; zero high half, or 32-bit as on Trinity), aligned to 256 MiB, on a card
+; whose CONFIG_MEMSIZE says 256 MiB or more. Trinity's BAR0 is 256 MiB
+; (docs\decisions\2026-11-03-trinity-dma-write-probe.md), so the window is
+; inside its carve-out.
+;
+; Trinity's CP is Cayman's (Linux ni.c): three rings, whose bases are all
+; written because writing one resets them all (cayman_cp_resume), and read
+; pointers reset through CP_RB0/1/2_RPTR. Those registers are in both
+; lists below; the EXE writes them only on 9901. Its microcode is
+; 2176 + 2176 dwords, so the data area holds 8192.
 ;
 ; Offsets: Linux radeon's evergreend.h and r600d.h
 ; (build\external\evergreen\linux-radeon\).
@@ -61,9 +70,10 @@ EC_VENDOR_ATI           equ 1002h
 EC_DEVICE_CEDAR         equ 68f9h
 EC_DEVICE_CAICOS        equ 6778h
 EC_DEVICE_JUNIPER       equ 68b8h
+EC_DEVICE_TRINITY       equ 9901h
 EC_OP_MAX               equ 512
 EC_BLOCK_DWORDS         equ 4096
-EC_DATA_DWORDS          equ 4096
+EC_DATA_DWORDS          equ 8192
 EC_TIMEOUT              equ 0ffffffffh
 
 EC_CFG_BAR0             equ 10h
@@ -73,6 +83,7 @@ EC_CFG_BAR2_HIGH        equ 1ch
 EC_BAR_IO               equ 00000001h
 EC_BAR_TYPE_MASK        equ 00000006h
 EC_BAR_TYPE_64          equ 00000004h
+EC_BAR_TYPE_32          equ 00000000h
 EC_MMIO_BYTES           equ 00020000h
 EC_MMIO_ALIGN           equ 0001ffffh
 EC_LFB_ALIGN            equ 0fffffffh
@@ -147,8 +158,10 @@ ECReadWindows label dword
     dd 85c8h, 85cch     ; CP_SEM_INCOMPLETE_TIMER_CNTL
     dd 8680h, 8684h     ; CP_STAT
     dd 86d8h, 86dch     ; CP_ME_CNTL
+    dd 86f8h, 8700h     ; CP_RB2_RPTR, CP_RB1_RPTR (Cayman, nid.h)
     dd 8700h, 8708h     ; CP_RB_RPTR, CP_RB_WPTR_DELAY
     dd 0c100h, 0c118h   ; CP_RB_BASE .. CP_RB_WPTR
+    dd 0c180h, 0c1a8h   ; CP_RB1_BASE .. CP_RB2_WPTR (Cayman, nid.h)
     dd 0c150h, 0c154h   ; CP_PFP_UCODE_ADDR
     dd 0c158h, 0c160h   ; CP_ME_RAM_RADDR, CP_ME_RAM_WADDR
     dd 0c1fch, 0c200h   ; CP_DEBUG
@@ -183,7 +196,18 @@ ECReadWindows label dword
     dd 9a20h, 9a40h     ; CB_PERF_CTR0-3_SEL_0/1
     dd 0a008h, 0a00ch   ; SMX_SAR_CTL0
     dd 0a020h, 0a024h   ; SMX_DC_CTL0
-EC_READ_WINDOW_COUNT    equ 48
+    ; cayman_gpu_init's registers Evergreen's lacks (V9XCM3D, Trinity
+    ; only; nid.h), and CP_COHER_CNTL2, which its ring sets.
+    dd 85e8h, 85ech     ; CP_COHER_CNTL2
+    dd 89b4h, 89b8h     ; VGT_OFFCHIP_LDS_BASE
+    dd 8c50h, 8c54h     ; SQ_ESTMP_RING_BASE
+    dd 8c58h, 8c5ch     ; SQ_GSTMP_RING_BASE
+    dd 8c60h, 8c64h     ; SQ_VSTMP_RING_BASE
+    dd 8c68h, 8c6ch     ; SQ_PSTMP_RING_BASE
+    dd 8e10h, 8e14h     ; SQ_LSTMP_RING_BASE
+    dd 8e18h, 8e1ch     ; SQ_HSTMP_RING_BASE
+    dd 9150h, 9154h     ; CGTS_SM_CTRL_REG
+EC_READ_WINDOW_COUNT    equ 59
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.
@@ -207,6 +231,21 @@ ECWriteOffsets label dword
     dd 0c158h           ; CP_ME_RAM_RADDR
     dd 0c15ch           ; CP_ME_RAM_WADDR
     dd 0c1fch           ; CP_DEBUG
+    ; cayman_cp_resume's other two rings and its read-pointer resets
+    ; (Trinity only; nid.h).
+    dd 8700h            ; CP_RB0_RPTR
+    dd 86fch            ; CP_RB1_RPTR
+    dd 86f8h            ; CP_RB2_RPTR
+    dd 0c180h           ; CP_RB1_BASE
+    dd 0c184h           ; CP_RB1_CNTL
+    dd 0c188h           ; CP_RB1_RPTR_ADDR
+    dd 0c18ch           ; CP_RB1_RPTR_ADDR_HI
+    dd 0c190h           ; CP_RB1_WPTR
+    dd 0c194h           ; CP_RB2_BASE
+    dd 0c198h           ; CP_RB2_CNTL
+    dd 0c19ch           ; CP_RB2_RPTR_ADDR
+    dd 0c1a0h           ; CP_RB2_RPTR_ADDR_HI
+    dd 0c1a4h           ; CP_RB2_WPTR
     ; evergreen_gpu_init's writes for Cedar (V9XEG3D). The context
     ; registers it also writes (28000h and up) are left to CLEAR_STATE and
     ; packets, and the address-config copies that the display, host path
@@ -260,7 +299,18 @@ ECWriteOffsets label dword
     ; afterwards.
     dd 8958h            ; VGT_PRIMITIVE_TYPE
     dd 8e2ch            ; SQ_LDS_RESOURCE_MGMT
-EC_WRITE_OFFSET_COUNT   equ 66
+    ; cayman_gpu_init's writes Evergreen's lacks, and CP_COHER_CNTL2 put
+    ; back after V9XCM3D's ring set it (Trinity only; nid.h).
+    dd 85e8h            ; CP_COHER_CNTL2
+    dd 89b4h            ; VGT_OFFCHIP_LDS_BASE
+    dd 8c50h            ; SQ_ESTMP_RING_BASE
+    dd 8c58h            ; SQ_GSTMP_RING_BASE
+    dd 8c60h            ; SQ_VSTMP_RING_BASE
+    dd 8c68h            ; SQ_PSTMP_RING_BASE
+    dd 8e10h            ; SQ_LSTMP_RING_BASE
+    dd 8e18h            ; SQ_HSTMP_RING_BASE
+    dd 9150h            ; CGTS_SM_CTRL_REG (OVERRIDE, then its value back)
+EC_WRITE_OFFSET_COUNT   equ 88
 
 ECResult label dword
     dd EC_MAGIC                 ; 00 magic
@@ -320,8 +370,8 @@ BeginProc EC_Pci_Read
     ret
 EndProc EC_Pci_Read
 
-; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9, 6778 or
-; 68B8.
+; Scans buses 0-15, device slots 0-31, function 0, for 1002:68F9, 6778,
+; 68B8 or 9901.
 ; Returns CF clear and EAX = configuration address, or CF set.
 BeginProc EC_Find
     push    ebx
@@ -335,6 +385,8 @@ EC_Find_Next:
     cmp     eax, (EC_DEVICE_CAICOS shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
     cmp     eax, (EC_DEVICE_JUNIPER shl 16) or EC_VENDOR_ATI
+    je      short EC_Find_Found
+    cmp     eax, (EC_DEVICE_TRINITY shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h
@@ -365,7 +417,9 @@ BeginProc EC_Map
     mov     ECResult[44], eax
     or      ECResult[4], EC_ST_FOUND
 
-    ; BAR2: memory, 64-bit, high half zero, 128 KiB aligned.
+    ; BAR2: memory, 64-bit with the high half zero or 32-bit, 128 KiB
+    ; aligned. On a 32-bit BAR the next dword is another BAR, reported
+    ; but not checked.
     mov     eax, ECConfig
     or      eax, EC_CFG_BAR2
     call    EC_Pci_Read
@@ -379,16 +433,20 @@ BeginProc EC_Map
     jnz     EC_Map_Bad_Bar
     mov     edx, esi
     and     edx, EC_BAR_TYPE_MASK
+    cmp     edx, EC_BAR_TYPE_32
+    je      short EC_Map_Bar2_Low
     cmp     edx, EC_BAR_TYPE_64
     jne     EC_Map_Bad_Bar
     test    eax, eax
     jnz     EC_Map_Bad_Bar
+EC_Map_Bar2_Low:
     and     esi, NOT 0fh
     jz      EC_Map_Bad_Bar
     test    esi, EC_MMIO_ALIGN
     jnz     EC_Map_Bad_Bar
 
-    ; BAR0: memory, 64-bit, high half zero, 256 MiB aligned.
+    ; BAR0: memory, 64-bit with the high half zero or 32-bit, 256 MiB
+    ; aligned.
     mov     eax, ECConfig
     or      eax, EC_CFG_BAR0
     call    EC_Pci_Read
@@ -402,10 +460,13 @@ BeginProc EC_Map
     jnz     EC_Map_Bad_Bar
     mov     edx, edi
     and     edx, EC_BAR_TYPE_MASK
+    cmp     edx, EC_BAR_TYPE_32
+    je      short EC_Map_Bar0_Low
     cmp     edx, EC_BAR_TYPE_64
     jne     EC_Map_Bad_Bar
     test    eax, eax
     jnz     EC_Map_Bad_Bar
+EC_Map_Bar0_Low:
     and     edi, NOT 0fh
     jz      EC_Map_Bad_Bar
     test    edi, EC_LFB_ALIGN

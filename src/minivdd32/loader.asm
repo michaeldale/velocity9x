@@ -256,6 +256,18 @@ V9xMgaMmioBase   dd 0
 V9xMgaMmioLinear dd 0
 ENDIF
 
+IFDEF V9X_NV3_MMIO
+; NVIDIA RIVA 128 (NV3): BAR0, all 16 MiB, mapped once for the 2D engine
+; (V9XMINI_FN_NV3_MMIO_MAP in V9XMAPI.INC). PMC_BOOT_0 is BAR0 + 0, chip in
+; bits 19:16 (envytools pmc.rst).
+V9X_NV3_MMIO_BYTES      equ 01000000h
+V9X_NV3_PMC_BOOT_0      equ 00000000h
+V9X_NV3_BOOT_CHIP_MASK  equ 000f0000h
+V9X_NV3_BOOT_CHIP_NV3   equ 00030000h
+V9xNv3MmioBase   dd 0
+V9xNv3MmioLinear dd 0
+ENDIF
+
 IFDEF V9X_TDFX_MMIO
 ; 3dfx VSA-100: BAR0's engine registers, mapped once for the 2D and 3D
 ; engines. The window starts at the 2D block, BAR0 + 100000h (Napalm spec
@@ -2840,6 +2852,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_PatInfo
     cmp     ax, V9XMINI_FN_PAT_COVER
     je      V9xMini_Api_PatCover
+    cmp     ax, V9XMINI_FN_NV3_MMIO_MAP
+    je      V9xMini_Api_Nv3MmioMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -3773,6 +3787,49 @@ V9xMini_Api_MgaMmioMap_Check:
 V9xMini_Api_MgaMmioMap_Failed:
     mov     V9xMgaMmioBase, 0
 V9xMini_Api_MgaMmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR0 physical. See V9XMINI_FN_NV3_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_Nv3MmioMap:
+IFDEF V9X_NV3_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_Nv3MmioMap_Refused
+    cmp     eax, 0ff000000h
+    jae     short V9xMini_Api_Nv3MmioMap_Refused
+    test    eax, V9X_NV3_MMIO_BYTES - 1
+    jnz     short V9xMini_Api_Nv3MmioMap_Refused
+
+    cmp     V9xNv3MmioLinear, 0
+    je      short V9xMini_Api_Nv3MmioMap_Map
+    cmp     eax, V9xNv3MmioBase
+    jne     short V9xMini_Api_Nv3MmioMap_Refused
+    jmp     short V9xMini_Api_Nv3MmioMap_Check
+
+V9xMini_Api_Nv3MmioMap_Map:
+    mov     V9xNv3MmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_NV3_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_Nv3MmioMap_Failed
+    mov     V9xNv3MmioLinear, eax
+
+    ; PMC_BOOT_0 must name chip 3; a BAR whose decode is off reads all
+    ; ones and fails this too.
+V9xMini_Api_Nv3MmioMap_Check:
+    mov     edx, V9xNv3MmioLinear
+    mov     eax, [edx+V9X_NV3_PMC_BOOT_0]
+    and     eax, V9X_NV3_BOOT_CHIP_MASK
+    cmp     eax, V9X_NV3_BOOT_CHIP_NV3
+    jne     short V9xMini_Api_Nv3MmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_Nv3MmioMap_Failed:
+    mov     V9xNv3MmioBase, 0
+V9xMini_Api_Nv3MmioMap_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

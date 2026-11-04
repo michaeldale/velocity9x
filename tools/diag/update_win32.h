@@ -19,6 +19,11 @@ struct v9x_install {
     char inf_section[64];        /* its InfSection value */
     char device_id[96];          /* its MatchingDeviceId value */
     char inf_path[MAX_PATH];     /* the live OEM INF, from InfPath */
+    /* The present card's "PCI\VEN_xxxx&DEV_xxxx", or "" when it is not
+     * known: what a vbe install is matched against (family_for). */
+    char pci_id[V9X_RELEASE_PCI_ID_MAX];
+    /* That card's devnode under HKLM\Enum, or "". */
+    char hardware_key[160];
 };
 
 /* One file an update stages: where it goes, and what it must hash to. */
@@ -33,6 +38,13 @@ struct v9x_staged_file {
 
 struct v9x_update_job {
     struct v9x_install install;
+    /* The family whose package is installed: install.family, or the chip
+     * family that lists a card installed on vbe (v9x_release_family_for),
+     * and then family_switch is set. */
+    char family[32];
+    BOOL family_switch;
+    /* On a family switch, the new model's text for DriverDesc, or "". */
+    char description[V9X_INF_DATA_MAX];
     struct v9x_release_info release;
     /* The package, verified against the signed SHA-256. */
     BYTE *zip;

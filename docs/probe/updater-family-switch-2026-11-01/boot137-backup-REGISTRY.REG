@@ -1,0 +1,162 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002]
+"InfPath"="VELOCI~1.INF"
+"InfSection"="Velocity9x.Install.Manual"
+"ProviderName"="Velocity9x Project"
+"DriverDesc"="Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)"
+"MatchingDeviceId"="PCI\\CC_0300"
+"V9xFamily"="vbe"
+"DriverDate"="10-15-2026"
+"V9xSyncGeneration"="42"
+"Ver"="4.0"
+"DevLoader"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\ATI WDM Configurations]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\ATI WDM Configurations\TVOut Configuration]
+"TBDetected"="Not"
+"TVOut Information"="0"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\ATI WDM Configurations\Multimedia Table]
+"Tuner Type"="????"
+"Decoder Type"="????"
+"Decoder Crystals Type"="????"
+"Audio Chip Type"="????"
+"OEM Id"="????"
+"ATI Product Id"="????"
+"Product Revision Id"="????"
+"MMTableByte1"="????"
+"MMTableByte6"="????"
+"MMTableByte7"="????"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\ATI WDM Configurations\Hardware Info]
+"I2C Method"="??"
+"TVOut Support"="??"
+"VideoPort Type"="??"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\ATI WDM Configurations\Frequency Table]
+"Reference Clock"="598"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\INFO]
+"ChipType"="Mach64VT"
+"Revision"=""
+"DACType"="Internal"
+"VideoMemory"=dword:00400000
+"MMIO"=hex:01
+"Linear"=hex:00
+"HWCursor"=hex:00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\shellex]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\shellex\PropertySheetHandlers]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\shellex\PropertySheetHandlers\ATIPagesX]
+@="{2454EF40-4AE4-11d1-B72C-006097268D8C}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\DEFAULT]
+"Mode"="8,640,480"
+"drv"="v9xdisp.drv"
+"drv2"="v9xdisp.drv"
+"vdd"="*vdd,*vflatd"
+"minivdd"="v9xmini.vxd"
+"RefreshRate"="0"
+"ExtModeSwitch"="0"
+"CHIPID"=hex:00,00,00,00,00,00
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\4\640,480]
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\640,400]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\320,200]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\320,240]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\512,384]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\8\1280,1024]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\640,480]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\800,600]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\1024,768]
+@="60"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\320,200]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\320,240]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\512,384]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\16\1280,1024]
+@="60"
+"V9xDynamic"="1"
+"V9xGeneration"="41"
+
+[HKEY_LOCAL_MACHINE\Enum\PCI\VEN_1002&DEV_5654&SUBSYS_00000000&REV_40\BUS_00&DEV_0C&FUNC_00]
+"DeviceDesc"="Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)"
+
+[HKEY_CLASSES_ROOT\CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}]
+@="Velocity9x Settings Page"
+
+[HKEY_CLASSES_ROOT\CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}\InProcServer32]
+@="v9xsetp.dll"
+
+[HKEY_CLASSES_ROOT\CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}\InProcServer32]
+"ThreadingModel"="Apartment"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x]
+@="{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved]
+"{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"="Velocity9x Settings Page"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers]
+"Velocity9x"="v9xgl.dll"
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run]
+"V9xSyncModes"="rundll32.exe v9xsetp.dll,V9xSyncModes"

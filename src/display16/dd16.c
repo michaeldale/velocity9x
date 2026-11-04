@@ -119,13 +119,21 @@ const char *v9x_dd_d3d_state_text(void)
  * (Mach64 engine type) draws a 1555 target as it draws 565: V9XDDP on the
  * Rage XL agreed at both layouts but for untagged textures, since fixed
  * (docs\decisions\2026-10-14-rage-xl-555-desktop.md). Gen3 wants 5:6:5 and
- * every surface measured on it is 565.
+ * every surface measured on it is 565. The RIVA 128's D3D object writes
+ * X1R5G5B5 into a 5:6:5 target unchanged, and its 2D engine sets bit 15
+ * (docs\decisions\2026-11-03-riva128-d3d-hal-first-light.md,
+ * docs\decisions\2026-11-02-riva128-2d-engine-writes.md).
  *
  * Recorded from the last descriptor call rather than re-derived, because the
  * descriptor's answer can change during a boot - see v9x_dd_stamp_engine_caps.
  */
 WORD v9x_dd_engine_wants_555(void)
 {
+#ifdef V9X_NVIDIA_FAMILY
+    if (v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_NV3) {
+        return V9X_TRUE;
+    }
+#endif
     return (v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_S3_VIRGE_DX ||
             v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_ATI_RAGE2 ||
             v9x_dd_engine_type == V9X_DD_ENGINE_TYPE_ATI_MACH64)

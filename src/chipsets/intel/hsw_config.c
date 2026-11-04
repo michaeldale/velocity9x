@@ -9,8 +9,8 @@
 #define V9X_INTEL_HSW_GGMS_RESERVED ((v9x_u16)3u)
 #define V9X_INTEL_HSW_ONE_MB        ((v9x_u32)0x00100000ul)
 
-v9x_status v9x_intel_hsw_decode_ggc(v9x_u16 ggc,
-                                    struct v9x_intel_hsw_ggc *out)
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_ggc(
+    v9x_u16 ggc, struct v9x_intel_hsw_ggc *out)
 {
     v9x_u16 gms;
     v9x_u16 ggms;
@@ -49,7 +49,8 @@ v9x_status v9x_intel_hsw_decode_ggc(v9x_u16 ggc,
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_intel_hsw_aperture_bytes(v9x_u8 msac, v9x_u32 *bytes)
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_aperture_bytes(
+    v9x_u8 msac, v9x_u32 *bytes)
 {
     v9x_u8 size;
 
@@ -77,7 +78,7 @@ v9x_status v9x_intel_hsw_aperture_bytes(v9x_u8 msac, v9x_u32 *bytes)
     return V9X_STATUS_UNSUPPORTED;
 }
 
-v9x_status v9x_intel_hsw_decode_layout(
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_layout(
     const struct v9x_intel_hsw_config *config,
     struct v9x_intel_hsw_layout *out)
 {
@@ -174,8 +175,8 @@ v9x_status v9x_intel_hsw_decode_layout(
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_intel_hsw_decode_pte(v9x_u32 raw,
-                                    struct v9x_intel_hsw_pte *out)
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_pte(
+    v9x_u32 raw, struct v9x_intel_hsw_pte *out)
 {
     if (out == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -192,8 +193,8 @@ v9x_status v9x_intel_hsw_decode_pte(v9x_u32 raw,
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_intel_hsw_encode_pte(v9x_u32 physical, v9x_u8 cache,
-                                    v9x_u32 *raw)
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_encode_pte(
+    v9x_u32 physical, v9x_u8 cache, v9x_u32 *raw)
 {
     v9x_u32 value;
 
@@ -215,7 +216,7 @@ v9x_status v9x_intel_hsw_encode_pte(v9x_u32 physical, v9x_u8 cache,
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_intel_hsw_plan_heap(
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_plan_heap(
     const struct v9x_intel_hsw_heap_inputs *in,
     struct v9x_intel_hsw_heap_plan *out)
 {
@@ -266,9 +267,9 @@ v9x_status v9x_intel_hsw_plan_heap(
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_intel_hsw_protected_bytes(v9x_u32 bdsm, v9x_u32 stolen_bytes,
-                                         v9x_u32 reserved_reg,
-                                         v9x_u32 *protected_bytes)
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
+    v9x_u32 bdsm, v9x_u32 stolen_bytes, v9x_u32 reserved_reg,
+    v9x_u32 *protected_bytes)
 {
     v9x_u32 stolen_base;
     v9x_u32 stolen_top;

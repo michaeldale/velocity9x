@@ -102,6 +102,15 @@
  * engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_VI       12ul
+/*
+ * NVIDIA RIVA 128 (NV3) 2D engine (engines\eng_nv3.c): solid fill and
+ * screen copy through PFIFO channel 0's objects, written by the CPU into
+ * BAR0's USER area, after Linux rivafb's bring-up of PFIFO, PGRAPH and
+ * RAMIN (src\chipsets\nvidia\nv3_2d.c). Measured right on the RIVA 128ZX
+ * (docs\decisions\2026-11-02-riva128-2d-engine-writes.md). No Direct3D
+ * engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_NV3          13ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul
@@ -336,5 +345,14 @@
  * (docs\decisions\2026-11-01-juniper-bring-up.md).
  */
 #define V9X_DD_ENGINE_CAP_EG_JUNIPER    0x02000000ul
+/*
+ * AMD Evergreen engine on Trinity (HD 7660D, Linux's CHIP_ARUBA, Cayman's
+ * generation), not an Evergreen part. Its DMA engine runs Evergreen's
+ * packets at Evergreen's registers, but Linux's cayman_dma_resume does not
+ * write DMA_MODE, so eng_eg.c does not either. A chip identity bit,
+ * stamped by cedar_hw16.c's Trinity row only
+ * (docs\decisions\2026-11-03-trinity-dma-write-probe.md).
+ */
+#define V9X_DD_ENGINE_CAP_EG_TRINITY    0x04000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

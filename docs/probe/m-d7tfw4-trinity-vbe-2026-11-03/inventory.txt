@@ -1,0 +1,45 @@
+﻿os       product_name=Microsoft Windows 98  version_number=4.10.2222  sub_version=A  major=4  minor=10  build=2222  platform=1  csd=A  registered_owner=win98user  directx=4.08.01.0901  clean_boot=0
+cpu      count=1  type=586  vendor=AuthenticAMD  brand=AMD A10-5700 APU with Radeon(tm) HD Graphics  family=21  model=16  stepping=1  features=fpu tsc cmov mmx mmxext sse sse2 sse3  mhz=3399  reg_vendor=AuthenticAMD  reg_identifier=AMD A10-5700 APU with Radeon(tm) HD Graphics
+memory   total_phys=758665216  avail_phys=625238016  total_page=1388814336  avail_page=1362194432  load=9
+drive    letter=C  type=fixed  fs=FAT32  serial=705B-62EA  total=10726899712  free=9911173120
+drive    letter=D  type=removable
+drive    letter=E  type=removable
+display  desc=Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)  provider=Velocity9x Project  width=1024  height=768  bpp=16
+net      hostname=acer  ip=192.168.2.3
+bios     date=02/07/12  name=American Megatrends  version=BIOS Date: 05/23/12 11:26:29 Ver: 04.06.05
+device   class=Display  desc=Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)  provider=Velocity9x Project  driver_date=11- 1-2026  id=PCI\VEN_1002&DEV_9901&SUBSYS_070A1025&REV_00\BUS_00&DEV_01&FUNC_00
+device   class=Monitor  desc=Plug and Play Monitor  provider=Microsoft  driver_date=4-23-1999  id=MONITOR\AOC2769\PCI_VEN_1002&DEV_9901&SUBSYS_070A1025&REV_00_BUS_00&DEV_01&FUNC_00
+device   class=MEDIA  desc=HD Audio Controller (WDM)  provider=DrewHoffman  driver_date=10-29-2026  id=PCI\VEN_1002&DEV_9902&SUBSYS_070A1025&REV_00\BUS_00&DEV_01&FUNC_01
+device   class=MEDIA  desc=Microsoft Kernel System Renderer  provider=Microsoft  driver_date=4-23-1999  id=SW\{A7C7A5B0-5AF3-11D1-9CED-00A024BF0407}\{9B365890-165F-11D0-A195-0020AFD156E4}
+device   class=MEDIA  desc=Microsoft Kernel Audio Mixer  provider=Microsoft  driver_date=4-23-1999  id=SW\{B7EAFDC0-A680-11D0-96D8-00AA0051E51D}\{9B365890-165F-11D0-A195-0020AFD156E4}
+device   class=Net  desc=RTL8111/8168/8211/8411 PCI Express Gigabit Ethernet Controller (NDIS2)  provider=NDIS2INFER by Oerg866  driver_date=9-18-2026  id=PCI\VEN_10EC&DEV_8168&SUBSYS_070A1025&REV_0B\003800
+device   class=hdc  desc=Standard 6-Port PCI AHCI Controller  provider=RLoew  driver_date=9-18-2026  id=PCI\VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40\BUS_00&DEV_11&FUNC_00
+device   class=hdc  desc=Standard Bus Master PCI ATA Controller in Legacy Mode (switchable)  provider=SweetLow  driver_date=2-10-2026  id=PCI\VEN_1022&DEV_780C&SUBSYS_070A1025&REV_00\BUS_00&DEV_14&FUNC_01
+device   class=hdc  desc=AHCI Port 0  provider=RLoew  driver_date=9-18-2026  id=MF\CHILD0000\PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_00
+device   class=hdc  desc=AHCI Port 1  provider=RLoew  driver_date=9-18-2026  id=MF\CHILD0001\PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_00  problem=10
+device   class=hdc  desc=AHCI Port 2  provider=RLoew  driver_date=9-18-2026  id=MF\CHILD0002\PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_00  problem=10
+device   class=hdc  desc=AHCI Port 3  provider=RLoew  driver_date=9-18-2026  id=MF\CHILD0003\PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_00  problem=10
+device   class=hdc  desc=AHCI Port 4  provider=RLoew  driver_date=9-18-2026  id=MF\CHILD0004\PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_00  problem=10
+device   class=hdc  desc=AHCI Port 5  provider=RLoew  driver_date=9-18-2026  id=MF\CHILD0005\PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_00  problem=10
+device   class=hdc  desc=Primary ATA Channel (dedicated IRQ)  provider=SweetLow  driver_date=2-10-2026  id=MF\CHILD0000\PCI&VEN_1022&DEV_780C&SUBSYS_070A1025&REV_00&BUS_00&DEV_14&FUNC_01
+device   class=hdc  desc=Secondary ATA Channel (dedicated IRQ)  provider=SweetLow  driver_date=2-10-2026  id=MF\CHILD0001\PCI&VEN_1022&DEV_780C&SUBSYS_070A1025&REV_00&BUS_00&DEV_14&FUNC_01
+device   class=fdc  desc=Standard Floppy Disk Controller  provider=(Standard floppy disk controllers)  driver_date=4-23-1999  id=ROOT\*PNP0700\0000
+device   class=DiskDrive  desc=Disk drive  provider=(Standard disk drives)  driver_date=4-23-1999  id=ESDI\ST1000DM003-9YN162______C\MF&CHILD0000&PCI&VEN_1022&DEV_7801&SUBSYS_070A1025&REV_40&BUS_00&DEV_11&FUNC_0000
+device   class=DiskDrive  desc=Disk drive  provider=(Standard disk drives)  driver_date=4-23-1999  id=SCSI\GENERIC-COMPACT_FLASH___1\USBSTOR&DISK&VEN_GENERIC-&PROD_COMPACT_FLASH&REV_1.01&058F63616476&000
+device   class=DiskDrive  desc=Disk drive  provider=(Standard disk drives)  driver_date=4-23-1999  id=SCSI\MULTIPLEFLASH_READER____1\USBSTOR&DISK&VEN_MULTIPLE&PROD_FLASH_READER&REV_1.05&058F63616476&100
+device   class=Ports  desc=Communications Port  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0500\0000
+device   class=Ports  desc=Communications Port  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0500\0001
+device   class=USB  desc=Standard OpenHCI USB Host Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_1022&DEV_7807&SUBSYS_070A1025&REV_11\BUS_00&DEV_12&FUNC_00
+device   class=USB  desc=Standard PCI to USB Enhanced Host Controller  provider=Microsoft  driver_date=9-18-2026  id=PCI\VEN_1022&DEV_7808&SUBSYS_070A1025&REV_11\BUS_00&DEV_12&FUNC_02
+device   class=USB  desc=Standard OpenHCI USB Host Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_1022&DEV_7807&SUBSYS_070A1025&REV_11\BUS_00&DEV_13&FUNC_00
+device   class=USB  desc=Standard PCI to USB Enhanced Host Controller  provider=Microsoft  driver_date=9-18-2026  id=PCI\VEN_1022&DEV_7808&SUBSYS_070A1025&REV_11\BUS_00&DEV_13&FUNC_02
+device   class=USB  desc=Standard OpenHCI USB Host Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_1022&DEV_7809&SUBSYS_070A1025&REV_11\BUS_00&DEV_14&FUNC_05
+device   class=USB  desc=USB Root Hub  provider=Microsoft  driver_date=4-23-1999  id=USB\ROOT_HUB\PCI&VEN_1022&DEV_7807&SUBSYS_070A1025&REV_11&BUS_00&DEV_12&FUNC_00
+device   class=USB  desc=USB 2.0 Root Hub  provider=Microsoft  driver_date=9-18-2026  id=USB\ROOT_HUB20\PCI&VEN_1022&DEV_7808&SUBSYS_070A1025&REV_11&BUS_00&DEV_12&FUNC_02
+device   class=USB  desc=USB Mass Storage Device  provider=Microsoft  driver_date=9-18-2026  id=USB\VID_058F&PID_6361\058F63616476
+device   class=USB  desc=USB Root Hub  provider=Microsoft  driver_date=4-23-1999  id=USB\ROOT_HUB\PCI&VEN_1022&DEV_7807&SUBSYS_070A1025&REV_11&BUS_00&DEV_13&FUNC_00
+device   class=USB  desc=USB 2.0 Root Hub  provider=Microsoft  driver_date=9-18-2026  id=USB\ROOT_HUB20\PCI&VEN_1022&DEV_7808&SUBSYS_070A1025&REV_11&BUS_00&DEV_13&FUNC_02
+device   class=USB  desc=USB Root Hub  provider=Microsoft  driver_date=4-23-1999  id=USB\ROOT_HUB\PCI&VEN_1022&DEV_7809&SUBSYS_070A1025&REV_11&BUS_00&DEV_14&FUNC_05
+device   class=Mouse  desc=Standard PS/2 Port Mouse  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0F0E\0000
+device   class=Keyboard  desc=Standard 101/102-Key or Microsoft Natural Keyboard  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0303\0000
+meta     devices=live  install_id=480eaf5a-f7ad-401e-a519-443922493c4b  discovery=on

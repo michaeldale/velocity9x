@@ -544,6 +544,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_eg;
     case V9X_D3D_SELECT_VI:
         return &v9x_d3d_engine_vi;
+    case V9X_D3D_SELECT_NV3:
+        return &v9x_d3d_engine_nv3;
     default:
         return 0;
     }
@@ -1451,6 +1453,16 @@ void v9x_d3d_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
         return;
     }
     ops->unlock_surface(surface);
+}
+
+void v9x_d3d_surface_written(const V9X_DD_SURFACE_LCL *surface)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
+
+    if (surface == 0 || ops == 0 || ops->surface_written == 0) {
+        return;
+    }
+    ops->surface_written(surface);
 }
 
 /*
@@ -9693,6 +9705,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         } else if ((v9x_hal->engine.engine_caps &
                     V9X_DD_ENGINE_CAP_EG_JUNIPER) != 0ul) {
             name = "Velocity9x Radeon HD 5770";
+        } else if ((v9x_hal->engine.engine_caps &
+                    V9X_DD_ENGINE_CAP_EG_TRINITY) != 0ul) {
+            name = "Velocity9x Radeon HD 7660D";
         } else {
             name = "Velocity9x Radeon HD 5450";
         }

@@ -593,6 +593,19 @@ V9XMINI_FN_EG_MAP           EQU 0026h
 ; and ECX the value refused. Only the ati family image implements it.
 V9XMINI_FN_VI_MAP           EQU 0029h
 
+; NVIDIA RIVA 128 (NV3): map BAR0, the 16 MiB register window, for the 2D
+; engine (Phase 4 of docs\plans\nvidia-riva128.md).
+;
+; In: EBX = BAR0's physical base. Out: AX=1, EBX = linear address of BAR0 +
+; 0: PMC, PFIFO, PGRAPH and the USER channel area at + 800000h. AX=0 leaves
+; EBX zero.
+;
+; Maps once and refuses a moved BAR or one not 16 MiB aligned. The window is
+; handed over only if PMC_BOOT_0 (+0) names chip 3 in bits 19:16 (envytools
+; pmc.rst; 00030122h on M-7V636C), so a window that decodes something else
+; is never used. Only the nvidia family image implements it.
+V9XMINI_FN_NV3_MMIO_MAP     EQU 002Ah
+
 ; Write-combining through the page attribute table, for a machine whose BIOS
 ; leaves no MTRR pair to give (include\velocity9x\pat.h,
 ; docs\decisions\2026-10-28-haswell-pat-write-combining.md). The C policy

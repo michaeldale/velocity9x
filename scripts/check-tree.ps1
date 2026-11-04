@@ -99,6 +99,15 @@ $required = @(
     "src\chipsets\ati\vt2\vt2_hw16.c",
     "src\chipsets\ati\mobility\mobility_hw16.c",
     "src\chipsets\ati\rageiic\rage_iic_hw16.c",
+    "src\chipsets\nvidia\nvidia_backend.c",
+    "src\chipsets\nvidia\nvidia_hw16.c",
+    "src\chipsets\nvidia\riva128\riva128_hw16.c",
+    "src\chipsets\nvidia\nv3_2d.c",
+    "src\display32\engines\eng_nv3.c",
+    "tests\host\test_nv3_2d.c",
+    "src\chipsets\nvidia\nv3_3d.c",
+    "tests\host\test_nv3_3d.c",
+    "src\display32\d3d\d3d_nv3.c",
     "src\chipsets\sis\sis_backend.c",
     "src\chipsets\sis\sis_hw16.c",
     "src\chipsets\sis\sis6326\sis6326_hw16.c",
@@ -139,6 +148,12 @@ $required = @(
     "include\velocity9x\eg_3d.h",
     "src\chipsets\ati\evergreen\eg_3d.c",
     "tests\host\test_eg_3d.c",
+    "include\velocity9x\cm_shader.h",
+    "src\chipsets\ati\cayman\cm_shader.c",
+    "tests\host\test_cm_shader.c",
+    "include\velocity9x\cm_3d.h",
+    "src\chipsets\ati\cayman\cm_3d.c",
+    "tests\host\test_cm_3d.c",
     "src\display32\engines\eg_cp.c",
     "src\display32\d3d\d3d_eg_map.h",
     "src\display32\d3d\d3d_eg_map.c",
@@ -1209,11 +1224,23 @@ $boundarySymbols = @([regex]::Matches($boundaryHeaderText,
 # v9x_i9xx_sandbox_calculate is declared in intel_gma.h, which the other i9xx_
 # entry points share; it carries the qualifier there for the same reason.
 $boundarySymbols += 'v9x_i9xx_sandbox_calculate'
+# hsw_config.c is the family's third code segment, HSWCODE. Its seven calls
+# are declared far in intel_hsw.h, beside the structures they take, and are
+# held to the same two rules.
+$hswBoundaryPath = Join-Path $repoRoot "include\velocity9x\intel_hsw.h"
+$hswBoundarySymbols = @([regex]::Matches((Get-Content -LiteralPath $hswBoundaryPath -Raw),
+    '\bV9X_I9XX_FAR\s+(v9x_intel_hsw_\w+)\s*\(') |
+    ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+if ($hswBoundarySymbols.Count -ne 7) {
+    throw ("include\velocity9x\intel_hsw.h declares $($hswBoundarySymbols.Count) " +
+           "far hsw_config call(s), not 7; the parse or the header has changed.")
+}
+$boundarySymbols += $hswBoundarySymbols
 if ($boundarySymbols.Count -lt 6) {
     throw ("include\velocity9x\intel16.h declares only $($boundarySymbols.Count) " +
            "boundary symbol(s); the parse that finds them has stopped working.")
 }
-$boundaryOwners = @($boundaryHeaderPath,
+$boundaryOwners = @($boundaryHeaderPath, $hswBoundaryPath,
                     (Join-Path $repoRoot "include\velocity9x\intel_gma.h"))
 foreach ($file in $sourceFiles) {
     if ($file.FullName -in $boundaryOwners) { continue }

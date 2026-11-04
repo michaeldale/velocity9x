@@ -1582,6 +1582,9 @@ int v9x_set_display_start(DWORD byte_offset)
     if (v9x_mga_scanout_active()) {
         return v9x_mga_set_display_start(byte_offset);
     }
+    if (v9x_nv3_scanout_active()) {
+        return v9x_nv3_set_display_start(byte_offset);
+    }
     if (v9x_r128_scanout_active()) {
         return v9x_r128_set_display_start(byte_offset);
     }

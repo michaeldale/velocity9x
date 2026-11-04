@@ -86,7 +86,9 @@
 #define V9X_EGCP_RUN         1u
 #define V9X_EGCP_OP_MAX      512u
 #define V9X_EGCP_BLOCK       4096u
-#define V9X_EGCP_DATA        4096u
+/* EGCP.VXD's EC_DATA_DWORDS, raised for Trinity's Cayman-sized microcode;
+ * the request must be the VxD's whole layout. */
+#define V9X_EGCP_DATA        8192u
 #define V9X_EGCP_HEADER      16u
 #define V9X_EGCP_TIMEOUT     0xfffffffful
 

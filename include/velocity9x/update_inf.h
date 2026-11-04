@@ -81,6 +81,14 @@ v9x_u16 v9x_inf_find_section(const char *text, v9x_u32 length,
                              const char *old_section,
                              char *section, v9x_u32 capacity);
 
+/* The description of the model whose ID list names device_id, as SetupX
+ * writes it to DriverDesc: the text before '=', quotes removed. V9X_FALSE,
+ * with description empty, when no model lists the ID, the text is a
+ * %string% token or it does not fit. */
+v9x_u16 v9x_inf_model_description(const char *text, v9x_u32 length,
+                                  const char *device_id, char *description,
+                                  v9x_u32 capacity);
+
 /* Plan the install section of the INF text. V9X_FALSE, with plan->error
  * set, for anything outside the subset above. */
 v9x_u16 v9x_inf_plan(const char *text, v9x_u32 length,

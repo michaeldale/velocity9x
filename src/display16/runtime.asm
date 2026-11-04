@@ -2802,12 +2802,15 @@ V9xMiniAtiMmioMapDone:
 V9XMINIATIMMIOMAP ENDP
 
 ; WORD FAR PASCAL V9xPciReadEgBars(DWORD FAR *bar0, DWORD FAR *bar2)
-; AMD Evergreen (Cedar): BAR0, the framebuffer, and BAR2, the 128 KiB
-; register window. Both are 64-bit memory BARs (types 10b), read here with
-; their high halves (14h, 1Ch), which must be zero: half of a BAR above
-; 4 GiB names some other physical range. BAR0 must be 256 MiB aligned, BAR2
-; 128 KiB aligned. A read-only config access; a refusal changes no stage
-; code, because a missing engine must not fail Enable.
+; AMD Evergreen (Cedar): BAR0, the framebuffer, and BAR2, the register
+; window. On the discrete cards both are 64-bit memory BARs (type 10b),
+; whose high halves (14h, 1Ch) must be zero: half of a BAR above 4 GiB
+; names some other physical range. On Trinity (HD 7660D) both are 32-bit
+; (type 00b), and 14h and 1Ch are other BARs, not read here
+; (docs\decisions\2026-11-03-trinity-dma-write-probe.md). Any other type
+; is refused. BAR0 must be 256 MiB aligned, BAR2 128 KiB aligned. A
+; read-only config access; a refusal changes no stage code, because a
+; missing engine must not fail Enable.
 PUBLIC V9XPCIREADEGBARS
 V9XPCIREADEGBARS PROC FAR
     push    bp
@@ -2822,7 +2825,19 @@ V9XPCIREADEGBARS PROC FAR
     or      ax, ax
     jz      V9xPciReadEgBarsFailed
 
-    ; BAR0 high half, then low half.
+    ; BAR0 low half; then, for a 64-bit BAR, its high half.
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadEgBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadEgBarsFailed
+    mov     edx, ecx
+    mov     eax, ecx
+    and     eax, 00000007h
+    jz      short V9xPciReadEgBar0Low
+    cmp     eax, 00000004h
+    jne     V9xPciReadEgBarsFailed
     mov     di, 0014h
     mov     ax, 0b10ah
     int     1ah
@@ -2831,42 +2846,35 @@ V9XPCIREADEGBARS PROC FAR
     jnz     V9xPciReadEgBarsFailed
     or      ecx, ecx
     jnz     V9xPciReadEgBarsFailed
-    mov     di, 0010h
-    mov     ax, 0b10ah
-    int     1ah
-    jc      V9xPciReadEgBarsFailed
-    or      ah, ah
-    jnz     V9xPciReadEgBarsFailed
-    mov     edx, ecx
-    and     edx, 00000007h
-    cmp     edx, 00000004h
-    jne     V9xPciReadEgBarsFailed
-    mov     edx, ecx
+V9xPciReadEgBar0Low:
     and     edx, 0fffffff0h
     jz      V9xPciReadEgBarsFailed
     test    edx, 0fffffffh
     jnz     V9xPciReadEgBarsFailed
 
-    ; BAR2 high half, then low half.
-    mov     di, 001ch
-    mov     ax, 0b10ah
-    int     1ah
-    jc      V9xPciReadEgBarsFailed
-    or      ah, ah
-    jnz     V9xPciReadEgBarsFailed
-    or      ecx, ecx
-    jnz     V9xPciReadEgBarsFailed
+    ; BAR2 low half; then, for a 64-bit BAR, its high half. EDX holds
+    ; BAR0 across these calls, as the PCI BIOS returns only in ECX and AX.
     mov     di, 0018h
     mov     ax, 0b10ah
     int     1ah
     jc      V9xPciReadEgBarsFailed
     or      ah, ah
     jnz     V9xPciReadEgBarsFailed
-    mov     eax, ecx
-    and     eax, 00000007h
-    cmp     eax, 00000004h
-    jne     V9xPciReadEgBarsFailed
-    mov     eax, ecx
+    push    ecx
+    and     ecx, 00000007h
+    jz      short V9xPciReadEgBar2Low
+    cmp     ecx, 00000004h
+    jne     short V9xPciReadEgBar2Bad
+    mov     di, 001ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadEgBar2Bad
+    or      ah, ah
+    jnz     short V9xPciReadEgBar2Bad
+    or      ecx, ecx
+    jnz     short V9xPciReadEgBar2Bad
+V9xPciReadEgBar2Low:
+    pop     eax
     and     eax, 0fffffff0h
     cmp     eax, 01000000h
     jb      V9xPciReadEgBarsFailed
@@ -2880,6 +2888,9 @@ V9XPCIREADEGBARS PROC FAR
     mov     es:[bx], edx
     mov     ax, 1
     jmp     short V9xPciReadEgBarsDone
+V9xPciReadEgBar2Bad:
+    ; BAR2's low half, pushed above; ECX is restored on the way out.
+    pop     ecx
 V9xPciReadEgBarsFailed:
     xor     ax, ax
 V9xPciReadEgBarsDone:
@@ -3270,6 +3281,260 @@ V9xMiniSisMmioMapDone:
     pop     bp
     retf    8
 V9XMINISISMMIOMAP ENDP
+ENDIF
+
+IFDEF V9X_NVIDIA_FAMILY
+; WORD FAR PASCAL V9xPciReadNv3MmioBar(DWORD FAR *base)
+; The RIVA 128's BAR0, its 16 MiB register window (1F000000h on M-7V636C,
+; docs\decisions\2026-11-02-m-7v636c-riva128-first-look.md). A read-only
+; config access; a refusal changes no stage code, because a missing engine
+; must not fail Enable.
+PUBLIC V9XPCIREADNV3MMIOBAR
+V9XPCIREADNV3MMIOBAR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      short V9xPciReadNv3MmioBarFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadNv3MmioBarFailed
+    or      ah, ah
+    jnz     short V9xPciReadNv3MmioBarFailed
+    test    cl, 1
+    jnz     short V9xPciReadNv3MmioBarFailed
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadNv3MmioBarFailed
+    cmp     eax, 0ff000000h
+    jae     short V9xPciReadNv3MmioBarFailed
+    ; 16 MiB, so 16 MiB aligned.
+    test    eax, 00ffffffh
+    jnz     short V9xPciReadNv3MmioBarFailed
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    mov     ax, 1
+    jmp     short V9xPciReadNv3MmioBarDone
+V9xPciReadNv3MmioBarFailed:
+    xor     ax, ax
+V9xPciReadNv3MmioBarDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XPCIREADNV3MMIOBAR ENDP
+
+; WORD FAR PASCAL V9xMiniNv3MmioMap(DWORD bar0, DWORD FAR *linear)
+; V9XMINI_FN_NV3_MMIO_MAP: the mini-VDD maps BAR0, checks PMC_BOOT_0 names
+; chip 3, and returns the linear window. On any refusal *linear is 0.
+PUBLIC V9XMININV3MMIOMAP
+V9XMININV3MMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniNv3MmioMapFailed
+    ; PASCAL pushes left to right: bar0 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_NV3_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniNv3MmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniNv3MmioMapDone
+V9xMiniNv3MmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniNv3MmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMININV3MMIOMAP ENDP
+
+; WORD FAR PASCAL V9xNv3Selector(DWORD linear)
+; Describe V9xEngineSel over all 16 MiB of BAR0, the window the mini-VDD
+; mapped: NV3's registers span PMC at 0 to the USER area at 800000h, past
+; anything V9xEngineSelector's WORD limit can describe. The low twelve bits
+; of the limit are set, as DPMI 0008h needs for a page-granular one. AX is
+; the selector, 0 on failure. Only this family calls it.
+PUBLIC V9XNV3SELECTOR
+V9XNV3SELECTOR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     dword ptr [bp+6], 0
+    je      short V9xNv3SelectorFailed
+
+    mov     ax, V9xEngineSel
+    cmp     ax, 0
+    jne     short V9xNv3SelectorDescribe
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xNv3SelectorFailed
+    mov     V9xEngineSel, ax
+
+V9xNv3SelectorDescribe:
+    mov     bx, V9xEngineSel
+    mov     dx, word ptr [bp+6]
+    mov     cx, word ptr [bp+8]
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xNv3SelectorFree
+
+    mov     bx, V9xEngineSel
+    mov     cx, 00ffh
+    mov     dx, 0ffffh
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xNv3SelectorFree
+
+    mov     ax, V9xEngineSel
+    jmp     short V9xNv3SelectorDone
+
+V9xNv3SelectorFree:
+    mov     bx, V9xEngineSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xEngineSel, 0
+V9xNv3SelectorFailed:
+    xor     ax, ax
+V9xNv3SelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XNV3SELECTOR ENDP
+
+; DWORD FAR PASCAL V9xNv3Read(DWORD offset)
+; One BAR0 dword through V9xNv3Selector's window, 0 with no selector. The C
+; caller keeps the offset inside 16 MiB.
+PUBLIC V9XNV3READ
+V9XNV3READ PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xNv3ReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xNv3ReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    4
+V9XNV3READ ENDP
+
+; void FAR PASCAL V9xNv3Write(DWORD offset, DWORD value)
+; One BAR0 dword store, or nothing with no selector. value is at [bp+6],
+; offset above it at [bp+10].
+PUBLIC V9XNV3WRITE
+V9XNV3WRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xNv3WriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+V9xNv3WriteDone:
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    8
+V9XNV3WRITE ENDP
+
+; DWORD FAR PASCAL V9xNv3FbRead(DWORD offset)
+; void FAR PASCAL V9xNv3FbWrite(DWORD offset, DWORD value)
+; One dword of video memory through the framebuffer selector, for RAMIN at
+; the top of it. The C caller keeps the offset inside the map's limit.
+PUBLIC V9XNV3FBREAD
+V9XNV3FBREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xNv3FbReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xNv3FbReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    4
+V9XNV3FBREAD ENDP
+
+PUBLIC V9XNV3FBWRITE
+V9XNV3FBWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    es
+
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xNv3FbWriteDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, dword ptr [bp+6]
+    mov     es:[ebx], eax
+V9xNv3FbWriteDone:
+    pop     es
+    pop     ebx
+    pop     bp
+    retf    8
+V9XNV3FBWRITE ENDP
 ENDIF
 
 IFDEF V9X_TDFX_FAMILY
@@ -3921,6 +4186,8 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     ; and its GTT at + 2 MiB as Ironlake's: intel-gtt.c i9xx_setup() takes
     ; IS_G4X down the "case 5" arm. From two DOS surveys only; nothing here
     ; has run on one (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
+    ; The GM45 (2A42) is IS_G4X too, from one survey with the G45's BARs
+    ; (docs\decisions\2026-11-04-gm45-gl40-from-a-survey.md).
     ; SI keeps the device id for the offset below; no BIOS call here uses it.
     mov     di, 0002h
     mov     ax, 0b109h
@@ -3936,6 +4203,8 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     cmp     cx, 2e22h
     je      V9xPciReadIntelGttConfigGen4
     cmp     cx, 2e12h
+    je      V9xPciReadIntelGttConfigGen4
+    cmp     cx, 2a42h
     je      V9xPciReadIntelGttConfigGen4
 
     mov     di, 0018h
@@ -4015,6 +4284,8 @@ V9xPciReadIntelGttConfigGen4:
     cmp     si, 2e22h
     je      short V9xPciReadIntelGttConfigGen5
     cmp     si, 2e12h
+    je      short V9xPciReadIntelGttConfigGen5
+    cmp     si, 2a42h
     je      short V9xPciReadIntelGttConfigGen5
     add     eax, 00080000h
     jmp     short V9xPciReadIntelGttConfigBar0Gtt

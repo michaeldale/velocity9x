@@ -21,5 +21,11 @@ extern const v9x_u32 v9x_eg_caicos_me_microcode[V9X_EG_ME_MICROCODE_DWORDS];
 /* Juniper's: the same sizes again, its own code. */
 extern const v9x_u32 v9x_eg_juniper_pfp_microcode[V9X_EG_PFP_MICROCODE_DWORDS];
 extern const v9x_u32 v9x_eg_juniper_me_microcode[V9X_EG_ME_MICROCODE_DWORDS];
+/* Trinity's (ARUBA_pfp/me.bin): radeon_ucode.h CAYMAN_PFP_UCODE_SIZE and
+ * CAYMAN_PM4_UCODE_SIZE, twice Evergreen's. */
+#define V9X_CM_PFP_MICROCODE_DWORDS 2176u
+#define V9X_CM_ME_MICROCODE_DWORDS  2176u
+extern const v9x_u32 v9x_cm_aruba_pfp_microcode[V9X_CM_PFP_MICROCODE_DWORDS];
+extern const v9x_u32 v9x_cm_aruba_me_microcode[V9X_CM_ME_MICROCODE_DWORDS];
 
 #endif

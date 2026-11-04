@@ -40,6 +40,22 @@
  * (docs\decisions\2026-11-01-juniper-bring-up.md). Stamped
  * V9X_DD_ENGINE_CAP_EG_JUNIPER for its microcode, contexts, GPU
  * configuration and vertex cache.
+ *
+ * The A10-5700's Radeon HD 7660D, PCI 1002:9901 (Trinity, Linux's
+ * CHIP_ARUBA, Cayman's VLIW4 generation), is the fourth row (Michael,
+ * 2026-11-03). Its target is M-D7TFW4 since the HD 7470 left it:
+ * subsystem 1025:070A, at 00:01.0, a 256 MiB carve-out of system memory at
+ * GPU F_00000000, BAR0 C0000000-CFFFFFFF and BAR2 FEF00000, both 32-bit
+ * (docs\decisions\2026-11-03-trinity-tier0-and-registers.md). Its first DMA
+ * engine is Evergreen's and ran byte-exact
+ * (docs\decisions\2026-11-03-trinity-dma-write-probe.md), so it claims
+ * fill, copy and flips through D1. Its CP ran AMD's Aruba microcode and
+ * drew Linux's textured copy through the Cayman module
+ * (docs\decisions\2026-11-03-trinity-first-3d-draw.md), so it claims
+ * Direct3D too. Stamped V9X_DD_ENGINE_CAP_EG_TRINITY: eng_eg.c leaves
+ * DMA_MODE alone as Linux's cayman_dma_resume does, and the HAL takes
+ * Cayman's CP bring-up, streams and shader control flow (eg_cp.c,
+ * d3d_eg.c).
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -82,6 +98,11 @@ static unsigned long v9x_cedar_map_value;
                                  V9X_DD_ENGINE_CAP_FLIP | \
                                  V9X_DD_ENGINE_CAP_D3D | \
                                  V9X_DD_ENGINE_CAP_EG_CAICOS)
+#define V9X_TRINITY_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                  V9X_DD_ENGINE_CAP_FLIP | \
+                                  V9X_DD_ENGINE_CAP_D3D | \
+                                  V9X_DD_ENGINE_CAP_EG_TRINITY)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
                                       unsigned long *control_linear_base,
@@ -179,6 +200,22 @@ static void v9x_caicos_fill_engine(unsigned long framebuffer_linear_base,
 {
     (void)framebuffer_linear_base;
     v9x_evergreen_fill_engine(V9X_CAICOS_CLAIMED_CAPS, control_linear_base,
+                              mapped_aperture_bytes, engine_type,
+                              engine_caps, gtt_linear_base,
+                              ring_linear_base, ring_bytes);
+}
+
+static void v9x_trinity_fill_engine(unsigned long framebuffer_linear_base,
+                                    unsigned long *control_linear_base,
+                                    unsigned long *mapped_aperture_bytes,
+                                    unsigned long *engine_type,
+                                    unsigned long *engine_caps,
+                                    unsigned long *gtt_linear_base,
+                                    unsigned long *ring_linear_base,
+                                    unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_evergreen_fill_engine(V9X_TRINITY_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -287,6 +324,23 @@ const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
     "hardware-evergreen-cp",
     0,
     v9x_caicos_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    V9X_CEDAR_MAP_BYTES
+};
+
+/* Not static, for the same audit. The 128 MiB heap map and the engine
+ * window at BAR0 + 240 MiB both lie inside its 256 MiB BAR0. */
+const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
+    0x1002u, 0x9901u,
+    "AMD Radeon HD 7660D (Trinity)",
+    "1002", "9901",
+    "ati-evergreen-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-evergreen-cp",
+    0,
+    v9x_trinity_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES

@@ -150,8 +150,11 @@ static BOOL v9x_install_write_file(const char *path, const BYTE *data,
 
 /* The same rule settings_syncmodes.c applies: is a device present this
  * boot whose driver is Display\<instance>? HKLM\Enum keeps the devnode of
- * a card that has been taken out; HKEY_DYN_DATA lists only present ones. */
-static BOOL v9x_install_is_live(const char *instance)
+ * a card that has been taken out; HKEY_DYN_DATA lists only present ones.
+ * The present device's hardware key goes to hardware_key when one is
+ * asked for. */
+static BOOL v9x_install_is_live(const char *instance, char *hardware_key,
+                                DWORD hardware_key_size)
 {
     char wanted[32];
     HKEY live_root;
@@ -201,6 +204,9 @@ static BOOL v9x_install_is_live(const char *instance)
                              &driver_size) == ERROR_SUCCESS &&
             type == REG_SZ && lstrcmpiA(driver, wanted) == 0) {
             found = TRUE;
+            if (hardware_key != 0) {
+                lstrcpynA(hardware_key, hardware, (int)hardware_key_size);
+            }
         }
         RegCloseKey(enum_key);
     }
@@ -280,7 +286,7 @@ BOOL v9x_install_find(struct v9x_install *install, char *why, DWORD why_size)
     }
     if (count > 1u) {
         for (index = 0u; index < count; ++index) {
-            if (v9x_install_is_live(found[index])) {
+            if (v9x_install_is_live(found[index], 0, 0ul)) {
                 chosen = index;
                 ++live;
             }
@@ -295,6 +301,18 @@ BOOL v9x_install_find(struct v9x_install *install, char *why, DWORD why_size)
     }
 
     lstrcpyA(install->instance, found[chosen]);
+
+    /* The card itself, by its PCI vendor and device: a vbe install's
+     * MatchingDeviceId is the class code, which names no card. Not found
+     * leaves it empty, and the update keeps the installed family. */
+    install->pci_id[0] = '\0';
+    install->hardware_key[0] = '\0';
+    if (v9x_install_is_live(install->instance, install->hardware_key,
+                            sizeof(install->hardware_key)) &&
+        !v9x_release_pci_id(install->hardware_key, install->pci_id)) {
+        install->pci_id[0] = '\0';
+    }
+
     wsprintfA(path, V9X_DISPLAY_CLASS_KEY "\\%s", install->instance);
     if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, path, 0, KEY_READ, &key) !=
         ERROR_SUCCESS) {
@@ -533,14 +551,30 @@ BOOL v9x_install_prepare(struct v9x_update_job *job)
         goto done;
     }
     /* The new INF's model for this device, by hardware ID first: section
-     * names have changed between releases. */
-    if (!v9x_inf_find_section(job->inf, job->inf_length,
-                              job->install.device_id,
-                              job->install.inf_section, section,
-                              sizeof(section))) {
-        v9x_install_fail(job, "The new INF has no model for this card",
-                         job->install.device_id);
-        goto done;
+     * names have changed between releases. Moving off vbe, the card's own
+     * PCI ID is the one the chip family's INF lists, and vbe's section
+     * names mean nothing there. */
+    {
+        const char *device_id = job->install.device_id;
+        const char *old_section = job->install.inf_section;
+
+        if (job->family_switch) {
+            device_id = job->install.pci_id;
+            old_section = "";
+        }
+        if (!v9x_inf_find_section(job->inf, job->inf_length, device_id,
+                                  old_section, section, sizeof(section))) {
+            v9x_install_fail(job, "The new INF has no model for this card",
+                             device_id);
+            goto done;
+        }
+        /* The name Device Manager shows; the old one says vbe. */
+        job->description[0] = '\0';
+        if (job->family_switch) {
+            (void)v9x_inf_model_description(job->inf, job->inf_length,
+                                            device_id, job->description,
+                                            sizeof(job->description));
+        }
     }
     /* Recorded as SetupX records it, when the registry half is applied. */
     lstrcpynA(job->install.inf_section, section,
@@ -808,6 +842,28 @@ static BOOL v9x_install_backup(struct v9x_update_job *job, HKEY driver_key)
                   "\\%s", job->install.instance);
         v9x_install_reg_export(file, driver_key, key_path, 0u);
     }
+    /* A family switch renames the devnode too (v9x_install_commit). */
+    if (job->family_switch && job->install.hardware_key[0] != '\0') {
+        char enum_path[176];
+        char line[208];
+        BYTE data[256];
+        DWORD size = sizeof(data);
+        DWORD type;
+        HKEY enum_key;
+
+        wsprintfA(enum_path, "Enum\\%s", job->install.hardware_key);
+        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, enum_path, 0, KEY_READ,
+                          &enum_key) == ERROR_SUCCESS) {
+            if (RegQueryValueExA(enum_key, "DeviceDesc", 0, &type, data,
+                                 &size) == ERROR_SUCCESS) {
+                wsprintfA(line, "\r\n[HKEY_LOCAL_MACHINE\\%s]\r\n", enum_path);
+                (void)WriteFile(file, line, v9x_install_length(line),
+                                &written, 0);
+                v9x_install_reg_value(file, "DeviceDesc", type, data, size);
+            }
+            RegCloseKey(enum_key);
+        }
+    }
     for (index = 0u; index < job->plan->count; ++index) {
         const struct v9x_inf_op *op = &job->plan->ops[index];
         char line[V9X_INF_KEY_MAX + 32];
@@ -1009,6 +1065,35 @@ BOOL v9x_install_commit(struct v9x_update_job *job)
     (void)RegSetValueExA(driver_key, "InfSection", 0, REG_SZ,
                          (const BYTE *)job->install.inf_section,
                          v9x_install_length(job->install.inf_section) + 1ul);
+    /* SetupX records the ID the model matched and the model's text; after a
+     * move off vbe the ID is the card's own, which the next update looks
+     * its model up by. The INF's AddReg has already written the new
+     * V9xFamily. */
+    if (job->family_switch) {
+        (void)RegSetValueExA(driver_key, "MatchingDeviceId", 0, REG_SZ,
+                             (const BYTE *)job->install.pci_id,
+                             v9x_install_length(job->install.pci_id) + 1ul);
+        if (job->description[0] != '\0') {
+            char enum_path[176];
+            HKEY enum_key;
+
+            (void)RegSetValueExA(driver_key, "DriverDesc", 0, REG_SZ,
+                                 (const BYTE *)job->description,
+                                 v9x_install_length(job->description) + 1ul);
+            /* Device Manager lists the devnode's DeviceDesc, which SetupX
+             * sets from the same model text. */
+            wsprintfA(enum_path, "Enum\\%s", job->install.hardware_key);
+            if (job->install.hardware_key[0] != '\0' &&
+                RegOpenKeyExA(HKEY_LOCAL_MACHINE, enum_path, 0, KEY_WRITE,
+                              &enum_key) == ERROR_SUCCESS) {
+                (void)RegSetValueExA(enum_key, "DeviceDesc", 0, REG_SZ,
+                                     (const BYTE *)job->description,
+                                     v9x_install_length(job->description) +
+                                         1ul);
+                RegCloseKey(enum_key);
+            }
+        }
+    }
     RegCloseKey(driver_key);
 
     /* The live OEM INF, so a later reinstall from Device Manager installs
@@ -1023,6 +1108,8 @@ BOOL v9x_install_commit(struct v9x_update_job *job)
     v9x_install_record("From", V9X_VERSION_STRING);
     v9x_install_record("To", job->release.version);
     v9x_install_record("ToBuild", job->release.build);
+    v9x_install_record("FromFamily", job->install.family);
+    v9x_install_record("ToFamily", job->family);
     v9x_install_record("Backup", job->backup_dir);
     wsprintfA(text, "%u", job->file_count);
     v9x_install_record("Files", text);

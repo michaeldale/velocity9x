@@ -1,0 +1,27 @@
+N3D05 vertices +1/2: 420 pixels
+   integer centres, exact vertices       384 predicted,  114 differ
+   integer centres, floored vertices     420 predicted,    0 differ
+   integer centres, rounded vertices     420 predicted,  150 differ
+   half centres, exact vertices          420 predicted,    0 differ
+N3D13 vertices +1/4: 420 pixels
+   integer centres, exact vertices       364 predicted,   94 differ
+   integer centres, floored vertices     420 predicted,    0 differ
+   integer centres, rounded vertices     420 predicted,    0 differ
+   half centres, exact vertices          404 predicted,   16 differ
+N3D14 vertices +3/4: 420 pixels
+   integer centres, exact vertices       404 predicted,  134 differ
+   integer centres, floored vertices     420 predicted,    0 differ
+   integer centres, rounded vertices     420 predicted,  150 differ
+   half centres, exact vertices          364 predicted,   94 differ
+N3D01.BIN same
+N3D02.BIN same
+N3D03.BIN same
+N3D04.BIN same
+N3D05.BIN same
+N3D06.BIN same
+N3D07.BIN same
+N3D08.BIN same
+N3D09.BIN same
+N3D10.BIN same
+N3D11.BIN same
+N3D12.BIN same

@@ -36,6 +36,8 @@
 #define V9X_D3D_SELECT_EVERGREEN 13ul
 /* The Carrizo (GFX8) 3D engine through its command processor. */
 #define V9X_D3D_SELECT_VI        14ul
+/* The RIVA 128's D3D object (class 17h). */
+#define V9X_D3D_SELECT_NV3       15ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

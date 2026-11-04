@@ -468,6 +468,7 @@ extern const V9X_ENGINE32_OPS v9x_engine32_hsw;
 extern const V9X_ENGINE32_OPS v9x_engine32_r128;
 extern const V9X_ENGINE32_OPS v9x_engine32_eg;
 extern const V9X_ENGINE32_OPS v9x_engine32_vi;
+extern const V9X_ENGINE32_OPS v9x_engine32_nv3;
 /* Haswell's Y-tiled Z buffers are filled by the render engine, not the
  * blitter: eng_hsw.c's fill hands a depth destination to d3d\d3d_hsw.c.
  * rect is rDest's left, top, right, bottom; value is on the surface's full
@@ -525,6 +526,19 @@ int v9x_sis_set_display_start(DWORD byte_offset);
  * blank. */
 int v9x_mga_scanout_active(void);
 int v9x_mga_set_display_start(DWORD byte_offset);
+/* The RIVA 128's start address (CR0D, CR0C, CR19<4:0> behind SR06), in
+ * engines/eng_nv3.c: active only for NV3 stamped with
+ * V9X_DD_ENGINE_CAP_FLIP. */
+int v9x_nv3_scanout_active(void);
+int v9x_nv3_set_display_start(DWORD byte_offset);
+/* For the RIVA 128's D3D engine (d3d\d3d_nv3.c), in engines/eng_nv3.c:
+ * the engine brought up at any depth, with the D3D object, and idle; and
+ * an idle wait that is real at 16 bpp, where the 2D side's returns at
+ * once. Zero when the engine is gone. */
+int v9x_nv3_3d_begin(void);
+int v9x_nv3_3d_idle(void);
+/* All of its video memory, RAMIN included, which fb.vram_bytes is not. */
+DWORD v9x_nv3_3d_vram_bytes(void);
 /* Haswell's plane A, in engines/hsw_scanout.c: active only for
  * INTEL_GEN75 stamped with V9X_DD_ENGINE_CAP_FLIP. A flip is written at
  * any line and pending until DSPASURFLIVE reads the base written. */
@@ -844,6 +858,9 @@ void v9x_d3d_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data);
  * (d3d_internal.h, lock_surface). */
 void v9x_d3d_lock_surface(const V9X_DD_SURFACE_LCL *surface);
 void v9x_d3d_unlock_surface(const V9X_DD_SURFACE_LCL *surface);
+/* A surface changed outside the engine: an Unlock or a Blt's destination
+ * (d3d_internal.h, surface_written). */
+void v9x_d3d_surface_written(const V9X_DD_SURFACE_LCL *surface);
 V9X_D3D_COLOR_KEY *v9x_d3d_color_key_find(const V9X_DD_SURFACE_LCL *surface);
 /* This depth surface's cell: 2, 4 for a 32-bit one the engine takes, 0
  * when the engine has none or does not take this one. */

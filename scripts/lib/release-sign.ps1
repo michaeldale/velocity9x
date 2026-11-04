@@ -18,7 +18,8 @@ function Write-V9xSignedRelease {
         [Parameter(Mandatory = $true)][string]$ReleaseDir,
         [Parameter(Mandatory = $true)][string]$Version,
         [Parameter(Mandatory = $true)][string]$BuildId,
-        # Objects with .Family and .Name (the zip's file name in ReleaseDir).
+        # Objects with .Family and .Name (the zip's file name in ReleaseDir),
+        # and .HardwareIds, the PCI IDs the package's INF binds.
         [Parameter(Mandatory = $true)][object[]]$Packages,
         [string]$EnvFile,
         # Sign with the committed test seed (tests\host\test_update_release.c)
@@ -86,6 +87,17 @@ function Write-V9xSignedRelease {
             $lines += "Size=$((Get-Item -LiteralPath $zipPath).Length)"
             $lines += "Sha256=" + (Get-FileHash -Algorithm SHA256 `
                 -LiteralPath $zipPath).Hash.ToLowerInvariant()
+            # The cards each family claims, so an updater on the vbe
+            # fallback can move to the family that names its card
+            # (v9x_release_family_for). Updaters before 0.35.0 ignore the
+            # key. Only vendor-and-device IDs: that is all the updater
+            # compares against.
+            $ids = @(@($package.HardwareIds) | Where-Object {
+                $_ -match '^PCI\\VEN_[0-9A-F]{4}&DEV_[0-9A-F]{4}$'
+            })
+            if ($ids.Count -gt 0) {
+                $lines += "HardwareIds=" + ($ids -join ',')
+            }
             $lines += ""
         }
         $body = ($lines -join "`r`n") + "`r`n"

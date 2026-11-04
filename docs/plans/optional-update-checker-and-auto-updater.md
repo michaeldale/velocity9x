@@ -123,7 +123,9 @@ it.
 3. **Check.** `GET /v9update/check?app=velocity9x&version=<compiled>&family=<HKR V9xFamily>`.
    `current`: say so. `update`: fetch `signed=`, verify, and require its
    version to equal `latest=` and exceed the installed version, and its entry
-   for this family to match the package's size and SHA-256.
+   for this family to match the package's size and SHA-256. On `vbe`, when
+   one other family's signed `HardwareIds=` lists the card's PCI ID, check
+   again with that family and install its package instead.
 4. **Offer.** Old/new version, release notes, **Update now** / **Cancel**.
 5. **Download** to `C:\V9XDIAG\UPDATE\`, resuming with `Range`, and check
    size and SHA-256 against the signed file.
@@ -170,5 +172,9 @@ installed copy is newer, so a 3dfx card's own DLL survives.
 
 - Silent telemetry, scheduled uploads, crash uploads or unique client IDs.
 - Updating Windows, DirectX, browsers or another vendor's driver.
-- Changing the installed family, or installing for an unlisted PCI ID.
+- Changing the installed family, except off `vbe`: a card installed on the
+  fallback moves to the one chip family whose signed `HardwareIds=` lists
+  its PCI ID (added after V9X-AW3C75, 2026-11-01, where an update kept an
+  R7E on vbe). Never chip family to chip family, and never for an unlisted
+  PCI ID.
 - Automatic reboot, or deleting files the updater did not put there.

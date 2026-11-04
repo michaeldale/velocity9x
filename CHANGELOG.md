@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.35.0 - not yet released
+## 0.36.0 - not yet released
 
 - **S3 Trio64 and Trio64V+: the driver now asks the card's VBE 1.2 BIOS
   which modes it has** and hides a mode the BIOS lacks, instead of offering
@@ -14,10 +14,103 @@ build identifier so exact guest-tested binaries remain traceable.
   collection accepts VBE 1.2; only a family that finds its aperture itself
   (`s3`) uses a 1.2 scan
   ([record](docs/decisions/2026-11-01-trio64-vbe12-mode-query.md)).
+
+## 0.35.0 - 2026-11-04
+
+- **Intel GMA 4500MHD (GM45, GS45 and GL40, `8086:2A42`): a test build,
+  not yet run on one.** The `intel-gma` package now binds it and drives it
+  exactly as the G45 and Q45, the same generation's desktop parts. It
+  reports itself to Direct3D and OpenGL as "Velocity9x GMA 4500". Built
+  from the survey of an HP t5740 thin client attached to issue 22; the
+  first boot on one is the first measurement
+  ([record](docs/decisions/2026-11-04-gm45-gl40-from-a-survey.md)).
+
+- **AMD Radeon HD 7660D (Trinity, the A10-5700's graphics, `1002:9901`)
+  is claimed by the `ati` package**, measured on one tester's machine
+  through remote help. Modes come from the VBE
+  ([record](docs/decisions/2026-11-03-trinity-tier0-and-registers.md)).
+  - DirectDraw fills and copies run on the DMA engine, and page flips go
+    through the display controller
+    ([record](docs/decisions/2026-11-03-trinity-directdraw-and-flips.md)).
+  - Trinity is Cayman's generation, not Evergreen's: its command
+    processor runs AMD's `ARUBA` microcode through Cayman's three-ring
+    start, and its shaders are Cayman's VLIW4 form. A Cayman module
+    converts the Evergreen shaders the HAL already builds
+    ([record](docs/decisions/2026-11-03-trinity-cp-microcode.md),
+    [record](docs/decisions/2026-11-03-trinity-first-3d-draw.md)).
+  - Direct3D and OpenGL draw on the 3D engine. V9XD32 passes at 16 and
+    32 bpp, V9XDDP completes, 3DMark 2000's default run completes, and
+    the Quake 3 demo runs at 33.4 fps at 1280x1024x32 with every batch in
+    hardware
+    ([record](docs/decisions/2026-11-03-trinity-hal-direct3d-hang.md),
+    [record](docs/decisions/2026-11-04-trinity-direct3d-opengl-gates.md)).
+  - The HD 7470 was re-run on this build in another machine: V9XD32,
+    V9XDDP and Quake 3 pass as before. The HD 5450 and HD 5770, which
+    share the changed engine code, were not.
+- **NVIDIA RIVA 128ZX (`12D2:0018`) is claimed by a new `nvidia`
+  package**, measured on one tester's STB card (8 MiB) in a Windows 98
+  first edition machine through remote help. Modes come from the VBE.
+  The original RIVA 128 shares the id and has not run it
+  ([record](docs/decisions/2026-11-02-m-7v636c-riva128-first-look.md)).
+  - DirectDraw and GDI fills and copies run on the 2D engine at 8 and
+    32 bpp; 16 bpp is drawn by the CPU. Page flips set the CRTC start
+    address; whether they wait for the retrace has not been watched on
+    the monitor
+    ([record](docs/decisions/2026-11-02-riva128-2d-engine-writes.md),
+    [record](docs/decisions/2026-11-03-riva128-crtc-start.md),
+    [record](docs/decisions/2026-11-03-riva128-gdi-on-the-engine.md)).
+  - The chip's 3D engine draws only 5:5:5 and its BIOS sets only 5:6:5,
+    so the driver switches the DAC to 5:5:5 after each 16 bpp mode set.
+    Nobody has yet looked at the colours on the monitor
+    ([record](docs/decisions/2026-11-03-riva128-555-desktop.md)).
+  - Direct3D draws on the 3D engine at 16 bpp with 16-bit Z and one
+    texture stage: mipmaps (to 8x8), bilinear filtering, colour keys,
+    specular, fog and DECALALPHA. V9XDDP passes 216 of its 227 checks;
+    the trilinear blend, 32-bit textures (the chip has none) and
+    FlipPixelOk fail. Half-Life and Unreal Tournament draw windowed,
+    Thief fullscreen
+    ([record](docs/decisions/2026-11-03-riva128-d3d-hal-first-light.md),
+    [record](docs/decisions/2026-11-04-riva128-mipmaps.md),
+    [record](docs/decisions/2026-11-04-riva128-half-life-d3d.md),
+    [record](docs/decisions/2026-11-04-riva128-unreal-tournament.md),
+    [record](docs/decisions/2026-11-04-riva128-thief.md)).
+  - Two blends the chip lacks are drawn with its saturating add, by
+    choice: SRCALPHA/ONE (exact for texels of full alpha without fog) and
+    ONE/INVSRCCOLOR (brighter where both sides are bright). ONE/SRCALPHA
+    is refused.
+  - **Not finished.** 3DMark 2000 runs to the end at default settings,
+    but 513,441 of its 515,626 draws are refused, for textures not placed
+    in video memory and render targets the driver does not draw to. The
+    RIVA has no software fallback, so those draws are not drawn, and its
+    score (159) does not measure the card
+    ([record](docs/decisions/2026-11-04-0.35.0-release-checks.md)).
+  - The OpenGL probe passes on it; no OpenGL game, Glide or 3DCIF title
+    has been run.
+  - `NOTICES.TXT` carries NVIDIA's notice from rivafb's `riva_tbl.h` and
+    `riva_hw.c`, whose register tables and engine bring-up the package's
+    2D code follows.
+- **Check for updates moves a card off the generic VESA package to its
+  chip's package.** Until now the updater kept whatever package the
+  driver was installed from, so a card set up on `vbe` before its chip
+  family existed stayed on `vbe` through every update (report V9X-AW3C75:
+  a Radeon R7E updated from 0.32.0 to 0.34.0 on `vbe` and lost Direct3D).
+  `SIGNED.TXT` now lists, under the release signature, the hardware IDs
+  each family claims. When the card is on `vbe` and exactly one other
+  family lists its ID, the updater downloads that family instead,
+  installs the model for the card's ID, and updates the name Device
+  Manager shows. It never moves a card from one chip family to another.
+  The move is the installed updater's, and updaters older than 0.35.0
+  ignore the new lines: a card on `vbe` today updates to 0.35.0's `vbe`
+  package and moves at the release after, unless its chip's package is
+  installed by hand. Measured on
+  an 86Box Mach64 VT2 against a locally signed test release; the update
+  server's handling of the new lines has not been checked
+  ([record](docs/decisions/2026-11-01-updater-moves-vbe-to-chip-family.md)).
 - `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
   0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
   `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware
-  radeon set under the same licence, were in it too.
+  radeon set under the same licence, were in it too. The HD 7660D's
+  `ARUBA` files are named with them.
 
 ## 0.34.0 - 2026-11-01
 

@@ -979,32 +979,22 @@ static void v9x_check_value(const char *section, const char *key,
     }
 }
 
-/*
- * The check job: ask the server, and when it offers an update, fetch and
- * verify SIGNED.TXT and hold the reply to it. Only the signed file's
- * version, size and SHA-256 are used from here on; the reply's are
- * compared, never trusted.
- */
-static void v9x_check_job(void)
+/* Ask the server about one family and read its reply into v9x_check. FALSE,
+ * with v9x_check.error set, when no reply was read. */
+static BOOL v9x_check_query(const char *family)
 {
     struct v9x_memory_sink sink;
-    struct v9x_release_info *release = &v9x_update.release;
-    static const v9x_u8 key[32] = V9X_RELEASE_PUBLIC_KEY;
     char encoded_family[96];
     char path[V9X_UPDATE_PATH_MAX];
     char url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
     char report_url[V9X_UPDATE_HOST_MAX + V9X_UPDATE_PATH_MAX + 16];
-    v9x_u32 covered = 0ul;
-    v9x_u8 reply_digest[32];
     int result;
 
-    v9x_check.verified = FALSE;
-    v9x_check.error[0] = '\0';
-    if (!v9x_update_url_encode(v9x_update.install.family, encoded_family,
+    if (!v9x_update_url_encode(family, encoded_family,
                                sizeof(encoded_family))) {
         v9x_copy(v9x_check.error, sizeof(v9x_check.error),
                  "The card family name is too long.");
-        return;
+        return FALSE;
     }
     wsprintfA(path, V9X_UPDATE_CHECK_PATH "?app=" V9X_UPDATE_APP
               "&version=" V9X_VERSION_STRING "&family=%s", encoded_family);
@@ -1020,7 +1010,7 @@ static void v9x_check_job(void)
                  result == V9X_NET_NO_NETWORK
                      ? "The update server could not be reached."
                      : "The update server's reply could not be read.");
-        return;
+        return FALSE;
     }
     v9x_check_value("update", "status", v9x_check.status,
                     sizeof(v9x_check.status), sink.used);
@@ -1054,8 +1044,30 @@ static void v9x_check_job(void)
                                        report_url, V9X_DIAG_UPDATE_INI);
         }
     }
+    return TRUE;
+}
 
-    if (lstrcmpA(v9x_check.status, "update") != 0) {
+/*
+ * The check job: ask the server, and when it offers an update, fetch and
+ * verify SIGNED.TXT and hold the reply to it. Only the signed file's
+ * version, size and SHA-256 are used from here on; the reply's are
+ * compared, never trusted.
+ */
+static void v9x_check_job(void)
+{
+    struct v9x_memory_sink sink;
+    struct v9x_release_info *release = &v9x_update.release;
+    static const v9x_u8 key[32] = V9X_RELEASE_PUBLIC_KEY;
+    v9x_u32 covered = 0ul;
+    v9x_u8 reply_digest[32];
+
+    v9x_check.verified = FALSE;
+    v9x_check.error[0] = '\0';
+    v9x_copy(v9x_update.family, sizeof(v9x_update.family),
+             v9x_update.install.family);
+    v9x_update.family_switch = FALSE;
+    if (!v9x_check_query(v9x_update.install.family) ||
+        lstrcmpA(v9x_check.status, "update") != 0) {
         return;
     }
 
@@ -1076,13 +1088,40 @@ static void v9x_check_job(void)
         return;
     }
     if (!v9x_release_verify(v9x_buffers->signed_text, sink.used, key,
-                            &covered) ||
-        !v9x_release_read(v9x_buffers->signed_text, covered, V9X_UPDATE_APP,
-                          v9x_update.install.family, release)) {
+                            &covered)) {
         v9x_copy(v9x_check.error, sizeof(v9x_check.error),
-                 "The release file's signature does not verify, or it has "
-                 "no package for this card. Nothing was installed. This can "
-                 "mean the download was altered on the way.");
+                 "The release file's signature does not verify. Nothing was "
+                 "installed. This can mean the download was altered on the "
+                 "way.");
+        return;
+    }
+
+    /* A card on the vbe fallback moves to the chip family the signed file
+     * says claims it (V9X-AW3C75: an R7E kept on vbe by its update). That
+     * family's package URL comes from asking the server about it; its
+     * reply is held to the signed file like any other. */
+    if (v9x_release_family_for(v9x_buffers->signed_text, covered,
+                               v9x_update.install.family,
+                               v9x_update.install.pci_id, v9x_update.family,
+                               sizeof(v9x_update.family))) {
+        v9x_update.family_switch = TRUE;
+        v9x_progress_set("Asking for this card's own driver package...");
+        if (!v9x_check_query(v9x_update.family)) {
+            return;
+        }
+        if (lstrcmpA(v9x_check.status, "update") != 0) {
+            v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                     "The update server offers no package for the family "
+                     "that supports this card. Nothing was installed.");
+            return;
+        }
+    }
+
+    if (!v9x_release_read(v9x_buffers->signed_text, covered, V9X_UPDATE_APP,
+                          v9x_update.family, release)) {
+        v9x_copy(v9x_check.error, sizeof(v9x_check.error),
+                 "The release file has no package for this card. Nothing "
+                 "was installed.");
         return;
     }
     /* The signed file decides; the reply must agree with it. */
@@ -1197,6 +1236,12 @@ static BOOL CALLBACK v9x_update_dialog(HWND dialog, UINT message,
         wsprintfA(headline, "Velocity9x %s is available. This computer "
                   "has %s, for the %s family.", v9x_update.release.version,
                   V9X_VERSION_STRING, v9x_update.install.family);
+        /* Two lines of the headline control: say the driver changes. */
+        if (v9x_update.family_switch) {
+            wsprintfA(headline, "Velocity9x %s is available. It moves this "
+                      "card from the generic driver to the %s family.",
+                      v9x_update.release.version, v9x_update.family);
+        }
         SetDlgItemTextA(dialog, V9X_UPD_IDC_HEADLINE, headline);
         SetDlgItemTextA(dialog, V9X_UPD_IDC_NOTES,
                         v9x_buffers->notes_text[0] != '\0'

@@ -311,6 +311,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-26 Bay Trail's Valleyview graphics (8086:0F31) from one DOS survey: Ivy Bridge's layout with 32-bit BARs, so the Haswell decode would refuse it](2026-10-26-baytrail-valleyview-from-a-survey.md)
 - [2026-10-28 Write-combining the HD 4600's aperture through PAT: FbWrite 66 to 9,238 MB/s, 3DMark 2000 2344 to 3719, and the render engine is now the limit](2026-10-28-haswell-pat-write-combining.md)
 - [2026-10-28 The HD 4600's fixed cost a batch is not its flushes: seven variants measured, the first closing RT flush dropped](2026-10-28-haswell-flush-variants.md)
+- [2026-11-04 The GM45's GMA 4500MHD (8086:2A42, GL40 in an HP t5740) joins intel-gma on one DOS survey: the G45's path unchanged](2026-11-04-gm45-gl40-from-a-survey.md)
+- [2026-11-04 The G45 and Q45 run 0.28.0: issue 3's reporter's field report, 3DMark 2000 1942 and 1760](2026-11-04-g4x-g45-q45-field-report.md)
 
 ## SiS
 
@@ -376,6 +378,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)
 - [2026-11-01 0.34.0 release checks: the HD 4600, the GMA 950, the HD 5770 and the HD 7470](2026-11-01-0.34.0-release-checks.md)
+- [2026-11-04 0.35.0 release checks: the HD 4600, the GMA 950, the HD 7660D, the HD 7470 and the RIVA 128ZX](2026-11-04-0.35.0-release-checks.md)
+- [2026-11-01 The updater moves a card off vbe to its chip family (V9X-AW3C75)](2026-11-01-updater-moves-vbe-to-chip-family.md)
 - [2026-10-29 Write-combining the SiS 6326's frame buffer: FbWrite 49.9 to 89.3 MB/s](2026-10-29-sis6326-write-combining.md)
 - [2026-10-29 SiS 6326: the driver presteps U, so 1:1 text keeps every column](2026-10-29-sis6326-u-prestep.md)
 

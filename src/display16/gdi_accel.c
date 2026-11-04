@@ -62,6 +62,23 @@
 /* tdfx_hw16.c: the desktop's byte offset in video memory. */
 extern unsigned long v9x_tdfx_desktop_offset(void);
 #endif
+/* The NV3 arm uses nv3_2d.c, the builder eng_nv3.c uses, linked into the
+ * nvidia family's DRV only. */
+#ifdef V9X_NVIDIA_FAMILY
+#include "velocity9x/nv3_2d.h"
+
+/* runtime.asm, nvidia family only: BAR0 through a 16 MiB selector, and
+ * video memory through the framebuffer selector, by 32-bit offset. */
+extern WORD FAR PASCAL V9xNv3Selector(DWORD linear);
+extern DWORD FAR PASCAL V9xNv3Read(DWORD offset);
+extern void FAR PASCAL V9xNv3Write(DWORD offset, DWORD value);
+extern DWORD FAR PASCAL V9xNv3FbRead(DWORD offset);
+extern void FAR PASCAL V9xNv3FbWrite(DWORD offset, DWORD value);
+
+/* ddi.c: the framebuffer selector's limit, the map's bytes less one. */
+extern WORD v9x_map_pages_hi;
+extern WORD v9x_map_pages_lo;
+#endif
 
 /* ddi.c: the live screen PDEVICE, or NULL between Disable and Enable. This is
  * the driver's own liveness test and the identity an accelerated destination
@@ -291,6 +308,29 @@ static DWORD v9x_gdi_read(DWORD offset)
     return V9xEngineRead((WORD)offset);
 }
 
+#ifdef V9X_NVIDIA_FAMILY
+/*
+ * The NV3 engine's state on this side. eng_nv3.c brings the engine up in
+ * the HAL, but GDI draws from boot, before any DirectDraw program has made
+ * it do so, and every mode set wipes RAMIN. So this side runs the same
+ * bring-up from the same builder whenever RAMIN's mark or PFB_CONFIG_0 is
+ * not what that bring-up writes, the test the HAL makes: both sides write
+ * identical values, so either one's bring-up satisfies the other's test.
+ *
+ * The setup is static because it is over a kilobyte and BitBlt runs on the
+ * caller's stack.
+ */
+static struct v9x_nv3_setup v9x_gdi_nv3_setup;
+/* Video memory offset of RAMIN's end, from the chip's reserve hook. */
+static DWORD v9x_gdi_nv3_ramin_top;
+/* The free count latched after this side's bring-up; 0 until one ran in
+ * this mode, which is what makes the first operation after an Enable
+ * bring the engine up here. */
+static DWORD v9x_gdi_nv3_empty;
+/* The PFB_CONFIG_0 that bring-up wrote. */
+static DWORD v9x_gdi_nv3_pfb;
+#endif
+
 /*
  * Consume one armed fault injection.
  *
@@ -485,6 +525,20 @@ static WORD v9x_gdi_wait_idle(void)
                 }
             } while (spins-- != 0ul);
 #endif
+#ifdef V9X_NVIDIA_FAMILY
+        } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3) {
+            /* rivafb's nv3Busy, as in eng_nv3.c: busy while the free count
+             * is below the latched empty count or PGRAPH STATUS bit 0 is
+             * set. MMIO reads only, so safe at interrupt time. */
+            do {
+                if ((V9xNv3Read(V9X_NV3_USER_FREE) & V9X_NV3_FREE_MASK) >=
+                        v9x_gdi_nv3_empty &&
+                    (V9xNv3Read(V9X_NV3_PGRAPH_STATUS) &
+                     V9X_NV3_STATUS_BUSY) == 0ul) {
+                    return 1u;
+                }
+            } while (spins-- != 0ul);
+#endif
         } else {
             do {
                 if ((v9x_gdi_virge_status() & V9X_VIRGE_STATUS_IDLE) != 0ul) {
@@ -563,6 +617,10 @@ typedef struct v9x_gdi_op {
 #ifdef V9X_TDFX_FAMILY
     /* The VSA-100 fill or copy, built at gate 8 for the same reason. */
     struct v9x_tdfx_blt tdfx;
+#endif
+#ifdef V9X_NVIDIA_FAMILY
+    /* The NV3 fill or copy, likewise. */
+    struct v9x_nv3_op nv3;
 #endif
 } V9X_GDI_OP;
 
@@ -826,6 +884,92 @@ static WORD v9x_gdi_tdfx_draw(const V9X_GDI_OP *op)
     for (index = 0ul; index < op->tdfx.count; ++index) {
         v9x_gdi_write(op->tdfx.offsets[index], op->tdfx.values[index]);
     }
+    return 1u;
+}
+#endif
+
+#ifdef V9X_NVIDIA_FAMILY
+static void v9x_gdi_nv3_put(const struct v9x_nv3_write *writes, DWORD count)
+{
+    DWORD index;
+
+    for (index = 0ul; index < count; ++index) {
+        V9xNv3Write(writes[index].offset, writes[index].value);
+    }
+}
+
+/*
+ * The engine brought up for the screen's mode, here if not already: the
+ * order eng_nv3.c's bring-up uses, which is rivafb's LoadStateExt, then
+ * the bindings, the latched free count and the defaults. A PGRAPH that
+ * does not go idle after the bindings poisons the session. Derived from
+ * riva_hw.c: Copyright 1993-1999 NVIDIA, Corporation.  All rights
+ * reserved. Provided "as is"; the notice in full is in
+ * packaging\win98se\NOTICES.TXT.
+ */
+static WORD v9x_gdi_nv3_ready(DWORD bytes_per_pixel, DWORD width,
+                              DWORD height, DWORD pitch)
+{
+    struct v9x_nv3_setup *setup = &v9x_gdi_nv3_setup;
+    DWORD index;
+    DWORD spins;
+
+    if (v9x_gdi_nv3_empty != 0ul &&
+        V9xNv3FbRead(v9x_nv3_ramin_vram_offset(
+            v9x_gdi_nv3_ramin_top, V9X_NV3_RAMIN_MARK_OFFSET)) ==
+            V9X_NV3_RAMIN_MARK_VALUE &&
+        V9xNv3Read(V9X_NV3_PFB_CONFIG_0) == v9x_gdi_nv3_pfb) {
+        return 1u;
+    }
+    v9x_gdi_nv3_empty = 0ul;
+    if (v9x_nv3_build_setup(bytes_per_pixel, width, height, pitch, setup) !=
+            V9X_STATUS_OK) {
+        return 0u;
+    }
+    v9x_gdi_nv3_put(setup->before, setup->before_count);
+    for (index = 0ul; index < setup->ramin_count; ++index) {
+        V9xNv3FbWrite(v9x_nv3_ramin_vram_offset(v9x_gdi_nv3_ramin_top,
+                                                setup->ramin[index].offset),
+                      setup->ramin[index].value);
+    }
+    v9x_gdi_nv3_put(setup->after, setup->after_count);
+    v9x_gdi_nv3_put(setup->bind, setup->bind_count);
+    spins = V9X_GDI_IDLE_SPIN_LIMIT;
+    while ((V9xNv3Read(V9X_NV3_PGRAPH_STATUS) & V9X_NV3_STATUS_BUSY) != 0ul) {
+        if (spins-- == 0ul) {
+            ++v9x_gdi.idle_timeouts;
+            v9x_gdi_poison();
+            return 0u;
+        }
+    }
+    v9x_gdi_nv3_empty = V9xNv3Read(V9X_NV3_USER_FREE) & V9X_NV3_FREE_MASK;
+    if (v9x_gdi_nv3_empty == 0ul) {
+        /* No FIFO room at idle is no engine; the idle test would pass on
+         * anything. */
+        v9x_gdi_poison();
+        return 0u;
+    }
+    v9x_gdi_nv3_put(setup->defaults, setup->defaults_count);
+    v9x_gdi_nv3_pfb = v9x_nv3_pfb_config(bytes_per_pixel, width);
+    return 1u;
+}
+
+/*
+ * One NV3 fill or copy, built at gate 8 by the builder eng_nv3.c uses.
+ * Waits for idle first, as eng_nv3.c does: the surface registers are
+ * written directly and the methods then all fit in the empty FIFO.
+ */
+static WORD v9x_gdi_nv3_draw(const V9X_GDI_OP *op, DWORD width, DWORD height)
+{
+    if (v9x_gdi_nv3_ready((DWORD)op->bytes_per_pixel, width, height,
+                          op->pitch) == 0u) {
+        return 0u;
+    }
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    v9x_gdi_nv3_put(op->nv3.surface, op->nv3.surface_count);
+    v9x_gdi_nv3_put(op->nv3.methods, op->nv3.method_count);
     return 1u;
 }
 #endif
@@ -1386,6 +1530,10 @@ void v9x_gdi_accel_configure(void)
     v9x_gdi_engine_type = V9X_DD_ENGINE_TYPE_NONE;
     v9x_gdi_engine_caps = 0ul;
     v9x_gdi_engine_live = 0u;
+#ifdef V9X_NVIDIA_FAMILY
+    /* Every Enable is a mode set, which wipes RAMIN. */
+    v9x_gdi_nv3_empty = 0ul;
+#endif
 
     if (device != 0 && device->fill_engine_descriptor != 0) {
         /* The 2D path has no use for a second aperture; it is discarded
@@ -1473,6 +1621,19 @@ void v9x_gdi_accel_configure(void)
     if ((enabled & V9X_GDI_PRIM_COPY) == 0ul) {
         enabled &= ~V9X_GDI_PRIM_OVERLAP;
     }
+#ifdef V9X_NVIDIA_FAMILY
+    /* The NV3 draws 8 and 32 bpp only (gate 8 says why), and a ReEnable
+     * comes back through here at the new depth. Clearing the mode's
+     * primitives says so in GdiAcceleration=, where an enabled fill that
+     * every gate-8 test declined read as a fill that never fired (V9XGDI
+     * /accel at 800x600x16, M-7V636C boot 17). */
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3 &&
+        (v9x_driver_pdevice == 0 ||
+         v9x_nv3_depth_drawn(
+             (v9x_u32)v9x_driver_pdevice->deBitsPixel / 8ul) != V9X_TRUE)) {
+        enabled = 0ul;
+    }
+#endif
     /* A latched poison outlives a mode switch, so a ReEnable must not
      * re-enable what a timeout turned off. */
     if (v9x_gdi_poisoned != 0u) {
@@ -1513,6 +1674,27 @@ void v9x_gdi_accel_configure(void)
         if (V9xEngineSelector(control_base, (WORD)(aperture_bytes - 1ul)) !=
                 0u &&
             v9x_gdi_read(V9X_TDFX_2D_STATUS) != 0xfffffffful) {
+            v9x_gdi_engine_live = 1u;
+        }
+#endif
+#ifdef V9X_NVIDIA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3 &&
+               control_base != 0ul &&
+               aperture_bytes >= V9X_NV3_USER_FREE + 4ul &&
+               device->engine_reserve_offset != 0) {
+        /* All of BAR0, which the mini-VDD mapped after checking PMC_BOOT_0
+         * names NV3; a window reading all ones is refused here as on the
+         * other arms. RAMIN, above the reserve's start, has to lie inside
+         * the framebuffer selector, which reaches it by offset. */
+        DWORD reserve = device->engine_reserve_offset();
+        DWORD map_limit = ((DWORD)v9x_map_pages_hi << 16) |
+                          (DWORD)v9x_map_pages_lo;
+
+        if (reserve != 0ul &&
+            reserve + V9X_NV3_RAMIN_BYTES - 1ul <= map_limit &&
+            V9xNv3Selector(control_base) != 0u &&
+            V9xNv3Read(V9X_NV3_PMC_BOOT_0) != 0xfffffffful) {
+            v9x_gdi_nv3_ramin_top = reserve + V9X_NV3_RAMIN_BYTES;
             v9x_gdi_engine_live = 1u;
         }
 #endif
@@ -1724,6 +1906,14 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
                v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
         /* The MGA's fill and copy were measured at 32 bpp on silicon by the
          * write probe (docs\decisions\2026-10-09-mga2064w-drawing-engine.md). */
+        op.bytes_per_pixel = 4u;
+        all_ones = 0xfffffffful;
+#endif
+#ifdef V9X_NVIDIA_FAMILY
+    } else if (destination_device->deBitsPixel == 32u &&
+               v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3) {
+        /* The NV3's fill and copy were measured at 32 bpp by the write
+         * probe (docs\decisions\2026-11-02-riva128-2d-engine-writes.md). */
         op.bytes_per_pixel = 4u;
         all_ones = 0xfffffffful;
 #endif
@@ -2134,6 +2324,57 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             goto decline;
         }
 #endif
+#ifdef V9X_NVIDIA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3) {
+        /*
+         * The builder is the authority, as for the MGA. At 16 bpp the
+         * engine sets bit 15 of every pixel, red's top bit at 5:6:5
+         * (v9x_nv3_depth_drawn), so 16 bpp declines here.
+         */
+        v9x_u32 surface_bytes = op.base +
+            op.pitch * (v9x_u32)destination_device->deHeight;
+        v9x_status built;
+
+        if (upload != 0u ||
+            v9x_nv3_depth_drawn((v9x_u32)op.bytes_per_pixel) != V9X_TRUE) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+        if (rop256 == V9X_ROP256_SRCCOPY) {
+            struct v9x_nv3_copy copy;
+
+            copy.vram_bytes = surface_bytes;
+            copy.source_offset = op.base;
+            copy.source_pitch_bytes = op.pitch;
+            copy.destination_offset = op.base;
+            copy.destination_pitch_bytes = op.pitch;
+            copy.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            copy.source_left = (v9x_u32)op.source_x;
+            copy.source_top = (v9x_u32)op.source_y;
+            copy.destination_left = (v9x_u32)op.destination_x;
+            copy.destination_top = (v9x_u32)op.destination_y;
+            copy.width = (v9x_u32)op.width;
+            copy.height = (v9x_u32)op.height;
+            built = v9x_nv3_build_copy(&copy, &op.nv3);
+        } else {
+            struct v9x_nv3_fill fill;
+
+            fill.vram_bytes = surface_bytes;
+            fill.target_offset = op.base;
+            fill.pitch_bytes = op.pitch;
+            fill.bytes_per_pixel = (v9x_u32)op.bytes_per_pixel;
+            fill.left = (v9x_u32)op.destination_x;
+            fill.top = (v9x_u32)op.destination_y;
+            fill.width = (v9x_u32)op.width;
+            fill.height = (v9x_u32)op.height;
+            fill.color = op.color;
+            built = v9x_nv3_build_fill(&fill, &op.nv3);
+        }
+        if (built != V9X_STATUS_OK) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+#endif
     } else {
         ++v9x_gdi.decline_engine;
         goto decline;
@@ -2185,6 +2426,12 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
 #ifdef V9X_TDFX_FAMILY
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_TDFX) {
         issued = v9x_gdi_tdfx_draw(&op);
+#endif
+#ifdef V9X_NVIDIA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3) {
+        issued = v9x_gdi_nv3_draw(&op,
+                                  (DWORD)destination_device->deWidth,
+                                  (DWORD)destination_device->deHeight);
 #endif
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)

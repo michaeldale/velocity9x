@@ -297,6 +297,14 @@ unsigned int v9x_run_vsa100_decode_tests(void);
  * against the Napalm section 7 encodings. */
 unsigned int v9x_run_tdfx_2d_tests(void);
 
+/* tests\host\test_nv3_2d.c: RIVA 128 bring-up, fill and copy writes
+ * against rivafb's tables and the Phase 3 probe's measurements. */
+unsigned int v9x_run_nv3_2d_tests(void);
+
+/* tests\host\test_nv3_3d.c: RIVA 128 D3D object, state, vertex and
+ * swizzle words against what /d3d and /d3dstate drew. */
+unsigned int v9x_run_nv3_3d_tests(void);
+
 /* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
  * 3dfx driver builds for them. */
 unsigned int v9x_run_tdfx_hwc_tests(void);
@@ -327,6 +335,14 @@ unsigned int v9x_run_vi_3d_tests(void);
 /* tests\host\test_eg_shader.c: Evergreen shader words, held to Linux 3.9's
  * blit shaders bit for bit, and the Gouraud shaders' fields. */
 unsigned int v9x_run_eg_shader_tests(void);
+
+/* tests\host\test_cm_shader.c: Cayman (Trinity) shader words, held to Linux
+ * 3.9's Cayman blit shaders bit for bit. */
+unsigned int v9x_run_cm_shader_tests(void);
+
+/* tests\host\test_cm_3d.c: Trinity's cayman_gpu_init writes and the render
+ * backend map, the latter also against the Evergreen maps that drew. */
+unsigned int v9x_run_cm_3d_tests(void);
 
 /* tests\host\test_eg_3d.c: Evergreen PM4 streams, each packet's count
  * walked, against the words V9XEG3D sent. */
@@ -1463,12 +1479,16 @@ int main(int argc, char **argv)
     failures += v9x_run_tdfx_2d_tests();
     failures += v9x_run_tdfx_hwc_tests();
     failures += v9x_run_tdfx_3d_tests();
+    failures += v9x_run_nv3_2d_tests();
+    failures += v9x_run_nv3_3d_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_vi_3d_tests();
     failures += v9x_run_eg_shader_tests();
+    failures += v9x_run_cm_shader_tests();
+    failures += v9x_run_cm_3d_tests();
     failures += v9x_run_eg_3d_tests();
     failures += v9x_run_d3d_eg_map_tests();
     failures += v9x_run_d3d_vi_map_tests();
