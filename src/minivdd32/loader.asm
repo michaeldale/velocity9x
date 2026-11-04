@@ -5412,6 +5412,14 @@ BeginProc V9xMini_Vbe_Query_Record
     je      short V9xMini_Vbe_Query_Record_Answered
     test    dx, V9X_VBE_RF_ORIGIN_LIST
     jz      short V9xMini_Vbe_Query_Record_Bios_Failed
+    ; 014Fh is the standard's "function call failed": a VBE 1.2 BIOS's way
+    ; of saying a listed mode is not available. Kept apart from every other
+    ; answer, which says the walk itself is incomplete (vbe_cache.h).
+    cmp     ax, 014Fh
+    jne     short V9xMini_Vbe_Query_Record_Query_Failed
+    or      V9xVbeStatus, V9X_VBE_ST_QUERY_UNAVAIL
+    jmp     short V9xMini_Vbe_Query_Record_Bios_Failed
+V9xMini_Vbe_Query_Record_Query_Failed:
     or      V9xVbeStatus, V9X_VBE_ST_QUERY_FAILED
 V9xMini_Vbe_Query_Record_Bios_Failed:
     inc     V9xVbeFailed
@@ -5670,7 +5678,10 @@ BeginProc V9xMini_Vbe_Collect
     cmp     ax, 004Fh
     jne     V9xMini_Vbe_Collect_Done
 
-    ; Accept only a real VESA 2.0-or-later answer, matching vbe_parse.c.
+    ; Accept only a real VESA 1.2-or-later answer, matching vbe_parse.c: 1.2 is
+    ; the first version whose ModeInfoBlock is complete. The 16-bit side decides
+    ; per family whether a 1.x controller may be used
+    ; (v9x_vbe_controller_scan_usable).
     mov     ax, 0
     call    V9xMini_Vbe_Peek_Word
     cmp     ax, 4556h                   ; 'EV' - first half of "VESA"
@@ -5681,7 +5692,7 @@ BeginProc V9xMini_Vbe_Collect
     jne     V9xMini_Vbe_Collect_Done
     mov     ax, 4
     call    V9xMini_Vbe_Peek_Word
-    cmp     ax, 0200h
+    cmp     ax, 0102h
     jb      V9xMini_Vbe_Collect_Done
     mov     V9xVbeCtrlVer, ax
     mov     ax, 18

@@ -163,6 +163,38 @@ void v9x_mode_masks_555(struct v9x_mode_masks *out);
  */
 #define V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN ((v9x_u16)0x0001u)
 
+/* VBE 1.2 is the first version whose ModeInfoBlock must be valid in every
+ * field (VBE 1.2, 6.3: "Version 1.2 of the VBE requires that all fields of
+ * the ModeInfoBlock contain valid data"); 2.0 adds the linear framebuffer. */
+#define V9X_VBE_VERSION_1_2 ((v9x_u16)0x0102u)
+#define V9X_VBE_VERSION_2_0 ((v9x_u16)0x0200u)
+
+/*
+ * Whether a controller of this VBE version may feed the runtime mode scan.
+ *
+ * 2.0 and later always. 1.2 only for a family with APERTURE_KNOWN: a 1.2
+ * BIOS has no linear framebuffer, so its records can only tell such a family
+ * which modes the card has, and that is exactly what it needs - every
+ * Trio64 and Trio64V+ BIOS measured is VBE 1.2, and without its scan a
+ * baseline row the BIOS lacks is offered and then refused at 4F02h
+ * (docs\decisions\2026-11-01-trio64-vbe12-mode-query.md). A tier-0 family
+ * keeps refusing 1.x, as it always has. Below 1.2 the record is not
+ * required to be complete, so it is refused for everyone.
+ */
+v9x_u16 v9x_vbe_controller_scan_usable(v9x_u16 version, v9x_u16 admit_flags);
+
+/*
+ * Whether rows a controller of this version lists, and the family table
+ * does not, may be added to it.
+ *
+ * 2.0 and later, as before. A 1.x scan may only correct and hide the family's
+ * own rows: on 86Box's Trio64 ROM (VBE 1.2, 4 MiB) it would otherwise add
+ * 1600x1200x8 (0x120), which that BIOS sets interlaced. Which added modes a
+ * chip can drive non-interlaced is not yet measured
+ * (docs\decisions\2026-11-01-trio64-vbe12-mode-query.md).
+ */
+v9x_u16 v9x_vbe_scan_may_append(v9x_u16 version);
+
 /*
  * A family's distrust predicate: V9X_TRUE refuses a record the generic rules
  * accepted, with the known-defect reason. It may only refuse - a predicate

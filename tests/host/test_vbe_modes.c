@@ -1379,6 +1379,41 @@ static void test_555_masks(void)
     v9x_mode_masks_555(0);
 }
 
+static void test_controller_scan_usable(void)
+{
+    /* 2.0 and later serve every family. */
+    MODECHECK(v9x_vbe_controller_scan_usable(0x0200u, 0u) == V9X_TRUE);
+    MODECHECK(v9x_vbe_controller_scan_usable(0x0300u, 0u) == V9X_TRUE);
+    MODECHECK(v9x_vbe_controller_scan_usable(
+                  0x0200u, V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN) == V9X_TRUE);
+
+    /* 1.2 serves only a family that finds its aperture itself: the S3
+     * Trio64 and Trio64V+ BIOSes. A tier-0 family keeps refusing it. */
+    MODECHECK(v9x_vbe_controller_scan_usable(
+                  0x0102u, V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN) == V9X_TRUE);
+    MODECHECK(v9x_vbe_controller_scan_usable(0x0102u, 0u) == V9X_FALSE);
+
+    /* Below 1.2 the ModeInfoBlock need not be complete: refused for all. */
+    MODECHECK(v9x_vbe_controller_scan_usable(
+                  0x0101u, V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN) == V9X_FALSE);
+    MODECHECK(v9x_vbe_controller_scan_usable(
+                  0x0100u, V9X_VBE_ADMIT_FLAG_APERTURE_KNOWN) == V9X_FALSE);
+    MODECHECK(v9x_vbe_controller_scan_usable(0u, 0u) == V9X_FALSE);
+}
+
+static void test_scan_may_append(void)
+{
+    /* 2.0 and later add rows the family table lacks, as before. */
+    MODECHECK(v9x_vbe_scan_may_append(0x0200u) == V9X_TRUE);
+    MODECHECK(v9x_vbe_scan_may_append(0x0300u) == V9X_TRUE);
+
+    /* A 1.x scan only corrects and hides: on a 4 MiB Trio64 it would add
+     * 0x120, 1600x1200x8, which the BIOS sets interlaced. */
+    MODECHECK(v9x_vbe_scan_may_append(0x0102u) == V9X_FALSE);
+    MODECHECK(v9x_vbe_scan_may_append(0x0101u) == V9X_FALSE);
+    MODECHECK(v9x_vbe_scan_may_append(0u) == V9X_FALSE);
+}
+
 static void test_publish_hides_contradicted_baseline(void)
 {
     struct v9x_vbe_scan_entry scanned[3];
@@ -1527,6 +1562,8 @@ unsigned int v9x_run_vbe_modes_tests(void)
     test_build_ex_reasons_and_distrust();
     test_aperture_known_waives_aperture_rules();
     test_aperture_known_merges_an_s3_list();
+    test_controller_scan_usable();
+    test_scan_may_append();
     test_publish_hides_contradicted_baseline();
     test_publish_fallback_rules();
     test_dd_subset_publication();

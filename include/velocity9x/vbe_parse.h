@@ -170,9 +170,10 @@ v9x_u16 v9x_vbe_summary_significant_depth(
 v9x_u16 v9x_vbe_storage_bits(v9x_u16 bits_per_pixel);
 
 /*
- * 4F00h. V9X_TRUE when the block is a credible VBE 2.0-or-later answer:
- * "VESA" signature, version at least 0x0200, non-zero TotalMemory. The summary
- * is zeroed on refusal.
+ * 4F00h. V9X_TRUE when the block is a credible VBE 1.2-or-later answer:
+ * "VESA" signature, version at least 0x0102, non-zero TotalMemory. The summary
+ * is zeroed on refusal. A 1.x controller serves only a family that finds its
+ * aperture itself (v9x_vbe_controller_scan_usable in vbe_modes.h).
  */
 v9x_u16 v9x_vbe_parse_controller_info(
     const v9x_u8 *block, struct v9x_vbe_controller_summary *out);
