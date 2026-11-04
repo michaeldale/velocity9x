@@ -117,6 +117,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rage128\r128_2d.c',
         # Rage 128 3D: CCE state and primitive packet streams, no I/O.
         'src\chipsets\ati\rage128\r128_3d.c',
+        # RS690 2D engine: init, fill and copy register values, no I/O.
+        'src\chipsets\ati\rs690\rs690_2d.c',
         # Evergreen async DMA: fill and copy packets, no I/O.
         'src\chipsets\ati\evergreen\eg_dma.c',
         # Evergreen CP microcode (generated from linux-firmware), data only.
@@ -353,6 +355,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_nv3_3d.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
+        'tests\host\test_rs690_2d.c',
         'tests\host\test_eg_dma.c',
         'tests\host\test_eg_shader.c',
         'tests\host\test_eg_3d.c',
