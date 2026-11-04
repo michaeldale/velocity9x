@@ -181,3 +181,21 @@ family's hw16 data: SR1A bit 5 on the Trio64V2 (documented) and the Trio64V+
 revision first), SR27 bit 3 on the Trio 3D/2X (one source), nothing on the
 Trio64. The ViRGE/DX and Trio3D are still unknown. Read-modify-write of the
 one bit, as above. No write was made to any card.
+
+## 2026-11-04 (later): the Trio64V2 clears it
+
+Done for the one chip whose data book documents the control: the
+Trio64V2's `enable_aperture` hook (`v9x_s3_trio64v2_enable_aperture`,
+`src\chipsets\s3\common\s3_regs16.c`) runs the shared aperture enable,
+then clears SR1A bit 5 by read-modify-write inside the SR08 unlock, saving
+and restoring the sequencer index and lock. It runs after every mode set,
+including the restore from a DOS box. The value found and left is
+published as `Sr1aFound`, `Sr1aLeft` and `BlankPedestal` in `V9XHW.INI`
+on the Trio64V2 only.
+
+Departures from the plan above, both deliberate: step 1 (publish before
+writing) was folded into the change, since no Trio64V2 is in the fleet to
+publish from; and it is on by default rather than opt-in, by the project's
+rule against gated defaults on the development driver (Michael,
+2026-09-18). The Trio64, Trio64V+, Trio 3D/2X, Trio3D and ViRGE are
+unchanged. Not run on any card.

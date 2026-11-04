@@ -52,6 +52,17 @@ unsigned long v9x_s3_read_video_memory(void);
 unsigned short v9x_s3_enable_linear_aperture(void);
 
 /*
+ * The Trio64V2's enable_aperture: v9x_s3_enable_linear_aperture, then the
+ * blank pedestal (SR1A bit 5) cleared by read-modify-write so black is the
+ * DAC's black rather than 1.45 mA above it (Trio64V2/DX & GX data book, 3.4
+ * and 4.2). Runs after every mode set, so a DOS box's BIOS cannot leave the
+ * pedestal on. What it found and left is published as Sr1aFound, Sr1aLeft
+ * and BlankPedestal. Not run on a Trio64V2: no card in the fleet
+ * (docs\issues\2026-08-23-s3-pedestal-black-level.md).
+ */
+unsigned short v9x_s3_trio64v2_enable_aperture(void);
+
+/*
  * Identify an S3 from CR2D/CR2E when the PCI scan found nothing.
  *
  * The family's identify_without_pci hook. CR2D/CR2E carry the same device id

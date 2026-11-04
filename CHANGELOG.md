@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.36.0 - not yet released
 
+- **S3 Trio64V2 (`5333:8901`): black is now black, not dark grey.** Its BIOS
+  can leave the DAC's blank pedestal on, an NTSC-era lift of the black
+  level that shows as washed-out grey on a VGA monitor and most on an LCD.
+  The driver clears it after every mode set (SR1A bit 5, documented in
+  S3's Trio64V2 data book) and leaves the register's other bits alone.
+  `V9XHW.INI` reports what it found and left (`Sr1aFound`, `Sr1aLeft`,
+  `BlankPedestal`). **Not run on a Trio64V2**: none is in the fleet. The
+  Trio64 and Trio64V+ are unchanged: neither data book documents the
+  control ([issue](docs/issues/2026-08-23-s3-pedestal-black-level.md)).
 - **S3 Trio32, Trio64 and Trio64V+: the driver now asks the card's VBE 1.2
   BIOS which modes it has** and hides a mode the BIOS lacks, instead of
   offering it and failing at the mode set with a fall back to 640x480 and
