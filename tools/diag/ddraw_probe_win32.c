@@ -3045,6 +3045,14 @@ static void v9x_check_overlap(struct v9x_dds *surface, const char *prefix)
         wsprintfA(key, "%sRightSeen", prefix);
         v9x_write_uint(key,
                        v9x_surface_pixel16(surface, 79ul, 10ul));
+        /* The other two judged pixels, so a failure says which end of the
+         * row went wrong. */
+        wsprintfA(key, "%sRightSeen16", prefix);
+        v9x_write_uint(key,
+                       v9x_surface_pixel16(surface, 16ul, 10ul));
+        wsprintfA(key, "%sRightSeen47", prefix);
+        v9x_write_uint(key,
+                       v9x_surface_pixel16(surface, 47ul, 10ul));
     }
 
 }

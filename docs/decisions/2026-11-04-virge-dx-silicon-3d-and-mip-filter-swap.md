@@ -185,4 +185,57 @@ Measured with the changed probe (`64dc2e2f-dirty`;
   triangle `EXACT`.
 
 T4's stray pixels are now the ViRGE's only V9XD32 failure, and still not
-explained.
+explained. (Explained and fixed below.)
+
+### T4's strays: the first colour fill after 3D work (2026-11-05)
+
+Evidence: [`../probe/virge-dx-a8u4i5-silicon-2026-11-04/fill-after-3d/`](../probe/virge-dx-a8u4i5-silicon-2026-11-04/fill-after-3d/).
+V9XD32 now reads T4's target between its colour fill and its draw, with
+switches for the steps below. All on boot 664's driver unless named.
+
+1. **Already wrong after the clear.** After the fill to zero, 32 pixels of
+   row 0 are `7C00`: pixels 4-7, 12-15, ... 60-63, every other eight-byte
+   group (`T4ClearedRow0=0xAAAA`), and nothing else in the 64x64 target.
+   The triangle covers the ones inside it; 52-55 and 60-63 are the 8
+   strays. The same 32 in every run.
+2. **Painted, not skipped.** Before the fill (`/t4prelock`) those groups
+   held the previous run's blue triangle (`11B5`); after it, red. The fill
+   wrote them, in the wrong colour.
+3. **Not timing.** The `/t4prelock` lock waits for the engine to go idle
+   before the fill; the result is the same.
+4. **Only the first fill.** A second fill straight after (`/t4refill`, blue
+   `001F`, then zero again) is exact.
+5. **The colour is the last 3D draw's.** T13's strip, the last 3D work
+   before T4, is red. With a green triangle drawn on the back buffer just
+   before the fill (`/t4predraw`), the strays are `03E0`, green.
+
+So the first colour fill after S3D triangle work writes the last
+triangle colour into every other eight-byte group of its first row. This
+is the fault S3's DDK driver works around with a 1x1 screen-to-screen blit
+"in case we were called right after a 3D command"
+([issue](../issues/2026-08-30-virge-2d-after-3d-dummy-blit.md), filed
+from the DDK source and never reproduced until now).
+
+**Fix, first form: S3's dummy blit before every blit** (boot 665,
+`0e0f992f-dirty` plus the change). V9XD32 **PASS**: T4's clear clean,
+T1/T4/T14 `DITHERED`. But V9XDDP's `OverlapRightPixelOk` went from pass on
+0.35.0 to fail, in three runs: a 64x64 block shifted right 16 pixels on a
+128x128 offscreen surface (256-byte pitch), copied right to left, gets
+`0071` at x=16 where the source's x=0 value `0001` belongs - the value 112
+pixels along the row. The same copy on a display-pitch surface passes, and
+x=47 and x=79 are right. Not explained.
+
+**Fix as committed: the dummy blit before colour fills only** (boot 666).
+V9XD32 **PASS**, T4's clear clean. V9XDDP's `Ok` keys are identical to
+0.35.0's, `OverlapRightPixelOk` included. No idle timeout, no fault.
+
+Open:
+- A copy straight after 3D work is not measured; it may carry the same
+  fault, and the dummy blit as S3 wrote it breaks one copy here.
+- The 16-bit GDI path (`src\display16\gdi_accel.c`) issues fills without
+  the dummy blit; a GDI fill right after Direct3D could show the fault.
+- The Trio3D and Trio3D/2X share this engine file and get the change
+  under the same-design rule; neither has run it.
+- The 3DMark CPU-test margin streaks
+  ([issue](../issues/2026-11-04-virge-3dmark-cpu-test-margin-streaks.md))
+  might be this fault in each frame's clear. Not checked.

@@ -28,6 +28,16 @@ frames.
   when they were made (they are not cleared at creation).
 - Whether the streaks are in every page of the chain or one.
 
+## A candidate, 2026-11-05
+
+The first colour fill after 3D work paints the last 3D colour into every
+other eight-byte group of its first row
+([issue](2026-08-30-virge-2d-after-3d-dummy-blit.md)), fixed for fills on
+2026-11-05. If 3DMark clears the frame with a fill each frame, that could
+be these streaks. One row per fill is thin for what the capture shows, so
+this is a guess: rerun the CPU test on a build with the fix before doing
+the steps below.
+
 ## Next, when picked up
 
 Grab the three pages with `V9XTRACE -grab` during the CPU test and compare

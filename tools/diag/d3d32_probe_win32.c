@@ -25,6 +25,11 @@
  *   T3 depth: a quad at z 0.5, a triangle behind it that must not draw and
  *      one in front that must;
  *   T4 a flat triangle into a 64x64 offscreen render target of its own;
+ *      the target is also read between its clear and the draw (T4Cleared).
+ *      /t4prelock reads it before the clear too, /t4predraw draws a green
+ *      triangle on the back buffer just before the clear, and /t4refill
+ *      fills it blue and then zero again after the first clear - the
+ *      measurements behind the ViRGE's fill-after-3D fault;
  *   T5 depth precision: a quad a tenth of a 16-bit step in front of
  *      another, which a 16-bit buffer cannot tell apart and a 24-bit one
  *      can;
@@ -388,6 +393,7 @@ static int d32_has_switch(const char *option)
 static const char *const d32_known_switches[] = {
     "/bpp16", "/z24", "/ddi5", "/ddi6", "/ddi7", "/ddi8", "/child",
     "/clean", "/endscene", "/nomode", "/release3d",
+    "/t4predraw", "/t4prelock", "/t4refill",
     "/t14clean", "/t14endscene", "/t14nomode", "/t14release3d", "/t14wait",
     "/t15bare", "/t15early", "/t15frames", "/t15fresh", "/t15ones",
     "/t15only", "/t15small", "/t15mb=", "/t15frame=", "/t15hunt=",
@@ -923,6 +929,9 @@ static DWORD d32_flat_inside_first;
 static DWORD d32_flat_outside_first;
 static DWORD d32_flat_inside_exact;
 static DWORD d32_flat_inside_step;
+/* The first D32_FLAT_OUTSIDE_KEPT outside misses, as the First values. */
+#define D32_FLAT_OUTSIDE_KEPT 16ul
+static DWORD d32_flat_outside_at[D32_FLAT_OUTSIDE_KEPT];
 
 /*
  * Whether every channel of the pixel is the colour truncated to the
@@ -1005,6 +1014,10 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
                 ++*judged;
                 if (pixel != 0ul) {
                     ++mismatches;
+                    if (d32_flat_outside_bad < D32_FLAT_OUTSIDE_KEPT) {
+                        d32_flat_outside_at[d32_flat_outside_bad] =
+                            (x << 24) | (y << 16) | (pixel & 0xfffful);
+                    }
                     if (d32_flat_outside_bad++ == 0ul) {
                         d32_flat_outside_first = (x << 24) | (y << 16) |
                                                  (pixel & 0xfffful);
@@ -1021,6 +1034,7 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
 static void d32_flat_report(const char *prefix)
 {
     char key[32];
+    DWORD index;
 
     wsprintfA(key, "%sInsideBad", prefix);
     d32_hx(key, d32_flat_inside_bad);
@@ -1032,6 +1046,11 @@ static void d32_flat_report(const char *prefix)
     d32_hx(key, d32_flat_outside_first);
     wsprintfA(key, "%sInsideStep", prefix);
     d32_hx(key, d32_flat_inside_step);
+    for (index = 0ul; index < d32_flat_outside_bad &&
+                      index < D32_FLAT_OUTSIDE_KEPT; ++index) {
+        wsprintfA(key, "%sOutsideAt%02lu", prefix, index);
+        d32_hx(key, d32_flat_outside_at[index]);
+    }
 }
 
 /*
@@ -1056,6 +1075,63 @@ static DWORD d32_flat_verdict(const char *prefix, DWORD mismatches)
     wsprintfA(key, "%sFlat", prefix);
     d32_line(key, verdict);
     return verdict[0] == 'F' ? 1ul : 0ul;
+}
+
+/*
+ * A 64x64 target's pixels other than `expected` under `prefix`: where the
+ * surface is (to set against the back buffer), the count, the first as a
+ * First value, and row 0 as sixteen bits, one per group of four pixels, set
+ * where any pixel of the group is not `expected`.
+ */
+/* Blue at 5:5:5 and 5:6:5 alike: the low five bits. */
+#define D32_T4_REFILL_COLOUR 0x0000001ful
+static void d32_target_scan(D32_OBJECT *surface, DWORD expected,
+                            const char *prefix)
+{
+    D32_SURFACE_DESC desc;
+    HRESULT hr;
+    DWORD bad = 0ul;
+    DWORD first = 0xfffffffful;
+    DWORD row0 = 0ul;
+    DWORD x;
+    DWORD y;
+    char key[32];
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
+                                                DDLOCK_WAIT, 0);
+    wsprintfA(key, "%sLockHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        return;
+    }
+    wsprintfA(key, "%sSurface", prefix);
+    d32_hx(key, (DWORD)desc.lpSurface);
+    wsprintfA(key, "%sPitch", prefix);
+    d32_hx(key, (DWORD)desc.lPitch);
+    for (y = 0ul; y < 64ul; ++y) {
+        for (x = 0ul; x < 64ul; ++x) {
+            DWORD pixel = d32_pixel(&desc, x, y);
+
+            if (pixel == expected) {
+                continue;
+            }
+            if (bad++ == 0ul) {
+                first = (x << 24) | (y << 16) | (pixel & 0xfffful);
+            }
+            if (y == 0ul) {
+                row0 |= 1ul << (x / 4ul);
+            }
+        }
+    }
+    ((d32_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    wsprintfA(key, "%sBad", prefix);
+    d32_hx(key, bad);
+    wsprintfA(key, "%sFirst", prefix);
+    d32_hx(key, first);
+    wsprintfA(key, "%sRow0", prefix);
+    d32_hx(key, row0);
 }
 
 /* Within `tolerance` of 0x00RRGGBB on every channel, X byte zero at
@@ -6071,6 +6147,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("BackLockHr", (DWORD)hr);
     if (hr == 0 && desc.lpSurface != 0) {
         d32_hx("BackPitch", (DWORD)desc.lPitch);
+        d32_hx("BackSurface", (DWORD)desc.lpSurface);
         mismatches = d32_flat_mismatches(&desc, 8ul, 8ul, 0x0013579bul,
                                          &judged);
         d32_hx("T1Pixel", d32_pixel(&desc, 16ul, 16ul));
@@ -6357,7 +6434,35 @@ void WINAPI V9xD3d32ProbeEntry(void)
         device2 = d32_device(d3d, offscreen, 64ul, 64ul, "T4");
     }
     if (device2 != 0) {
+        /* /t4prelock: the target before the clear. Its lock also waits for
+         * the engine to go idle after T13, which a clear alone does not. */
+        if (d32_has_switch("/t4prelock")) {
+            d32_target_scan(offscreen, 0ul, "T4Before");
+        }
+        /* /t4predraw: a green triangle on the back buffer, through the
+         * first device, as the last 3D work before the clear - so a stray
+         * that follows the last 3D colour shows green, not T13's red. */
+        if (d32_has_switch("/t4predraw")) {
+            d32_vertex(&v[0], 600.0f, 400.0f, 0.5f, 0xff00ff00ul);
+            d32_vertex(&v[1], 632.0f, 400.0f, 0.5f, 0xff00ff00ul);
+            d32_vertex(&v[2], 600.0f, 432.0f, 0.5f, 0xff00ff00ul);
+            d32_hx("T4PredrawHr", (DWORD)d32_draw(device, v, 3ul));
+        }
         d32_hx("T4ClearHr", (DWORD)d32_fill(offscreen, DDBLT_COLORFILL, 0ul));
+        /* Between the clear and the draw: whether a stray found after the
+         * draw was there before it. */
+        d32_target_scan(offscreen, 0ul, "T4Cleared");
+        /* /t4refill: two more fills straight after, no 3D between - one in
+         * a colour, to tell pixels the fill missed from pixels it painted
+         * another colour, then zero again for the draw. */
+        if (d32_has_switch("/t4refill")) {
+            d32_hx("T4RefillHr", (DWORD)d32_fill(offscreen, DDBLT_COLORFILL,
+                                                 D32_T4_REFILL_COLOUR));
+            d32_target_scan(offscreen, D32_T4_REFILL_COLOUR, "T4Refill");
+            d32_hx("T4Reclear", (DWORD)d32_fill(offscreen, DDBLT_COLORFILL,
+                                                0ul));
+            d32_target_scan(offscreen, 0ul, "T4Recleared");
+        }
         d32_vertex(&v[0], 0.0f, 0.0f, 0.5f, 0xff2468acul);
         d32_vertex(&v[1], 48.0f, 0.0f, 0.5f, 0xff2468acul);
         d32_vertex(&v[2], 0.0f, 48.0f, 0.5f, 0xff2468acul);

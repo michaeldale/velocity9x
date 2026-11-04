@@ -27,6 +27,15 @@ build identifier so exact guest-tested binaries remain traceable.
   went from six failures to one, the known missing fog
   ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
 
+- **S3 ViRGE/DX, Trio3D and Trio3D/2X: a colour fill straight after 3D
+  drawing fills cleanly.** On a physical ViRGE/DX, the first fill after
+  Direct3D work painted the last triangle's colour into every other
+  eight-byte group of its first row. The driver now issues the one-pixel
+  blit S3's own driver uses before each fill. V9XD32 now passes on the
+  ViRGE/DX; V9XDDP is unchanged. The Trio3D chips share the code and have
+  not run it
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
 - **S3 Trio64V2 (`5333:8901`): black is now black, not dark grey.** Its BIOS
   can leave the DAC's blank pedestal on, an NTSC-era lift of the black
   level that shows as washed-out grey on a VGA monitor and most on an LCD.
@@ -52,8 +61,9 @@ build identifier so exact guest-tested binaries remain traceable.
 
 - Probes: V9XD32 accepts a chip's ordered dither on its flat triangles
   (reported as `DITHERED`, not `EXACT`) and expects triangles drawn in a
-  cull direction the device does not advertise. The ViRGE/DX goes from ten
-  failures to one; the Haswell control still passes exactly
+  cull direction the device does not advertise. With the fill fix above,
+  the ViRGE/DX goes from ten failures to none; the Haswell control still
+  passes exactly
   ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
 
 ## 0.35.0 - 2026-11-04
