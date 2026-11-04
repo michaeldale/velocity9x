@@ -623,6 +623,21 @@ static int v9x_d3d_nv3_blend(const V9X_R3D_DRAW *draw, v9x_u32 *blend)
         *blend = V9X_NV3_BLEND_ADD;
         return 1;
     }
+    /*
+     * ONE/INVSRCCOLOR, Unreal Tournament's translucency (5,488 of 37,035
+     * batches refused on M-7V636C's first run, 2026-11-04), has no
+     * counterpart: the chip scales the destination by the source alpha or
+     * the destination colour, never by the source colour per channel. It
+     * is drawn as the saturating add, src + dst for src + dst x (1 - src):
+     * the same where either is black, brighter where both are bright. An
+     * approximation by Michael's choice (2026-11-04), as the Matrox HAL's
+     * additive key: refused, the effects were not drawn at all. Not in the
+     * blend caps.
+     */
+    if (src == V9X_D3DBLEND_ONE && dst == V9X_D3DBLEND_INVSRCCOLOR) {
+        *blend = V9X_NV3_BLEND_ADD;
+        return 1;
+    }
     /* Half-Life's glows and sprites; v9x_d3d_nv3_map checks the texture. */
     if (src == V9X_D3DBLEND_SRCALPHA && dst == V9X_D3DBLEND_ONE) {
         *blend = V9X_NV3_BLEND_ADD_SRC_ALPHA;

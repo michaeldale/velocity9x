@@ -128,9 +128,12 @@ the DMA object's flag bits; 86Box draws no 3D.
    `c1a0` windowed on the HAL. SRCALPHA/ONE, a fifth of its batches, now
    goes to the chip's add with the vertex colour premultiplied (texels of
    alpha 1, no fog); 0.3% of batches are still refused (opaque A4R4G4B4
-   under the alpha test). Left: fullscreen (the owner looks), and the
-   guest's other D3D games (Thief, Final Fantasy VII, Homeworld,
-   3DMark 99 Max).
+   under the alpha test). **Unreal Tournament (2026-11-04, boot 35,
+   [record](../decisions/2026-11-04-riva128-unreal-tournament.md))**
+   draws its intro windowed; its ONE/INVSRCCOLOR translucency is drawn as
+   the add, by Michael's choice, and 137 of 32,740 batches are refused
+   (ONE/SRCALPHA). Left: fullscreen (the owner looks), and the guest's
+   other D3D games (Thief, Final Fantasy VII, Homeworld, 3DMark 99 Max).
 
 ## Unknowns
 
