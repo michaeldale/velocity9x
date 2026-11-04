@@ -402,6 +402,25 @@ static void test_lfb_pixels(void)
     }
 }
 
+/* 565 texels for an engine without 565 (the ViRGE): each channel's top
+ * five bits move to 1555, green's low bit goes, alpha is one. */
+static void test_texels_565_to_argb1555(void)
+{
+    v9x_u16 texels[5];
+
+    texels[0] = 0xF800u;
+    texels[1] = 0x07E0u;
+    texels[2] = 0x001Fu;
+    texels[3] = 0xFFFFu;
+    texels[4] = 0x0000u;
+    v9x_glide_texels_565_to_argb1555(texels, 5ul);
+    XCHECK(texels[0] == 0xFC00u);
+    XCHECK(texels[1] == 0x83E0u);
+    XCHECK(texels[2] == 0x801Fu);
+    XCHECK(texels[3] == 0xFFFFu);
+    XCHECK(texels[4] == 0x8000u);
+}
+
 unsigned int v9x_run_glide_texture_tests(void)
 {
     glide_texture_failures = 0u;
@@ -415,5 +434,6 @@ unsigned int v9x_run_glide_texture_tests(void)
     test_glide3_range();
     test_formats();
     test_lfb_pixels();
+    test_texels_565_to_argb1555();
     return glide_texture_failures;
 }

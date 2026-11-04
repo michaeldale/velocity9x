@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-04 ViRGE/DX: 3DMark 2000's CPU Speed test leaves streaks of stale video memory in the margins around its 640x480 view (A8U4I5; parked, minor)](2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)
 - [2026-10-26 Half-Life OpenGL on the GMA 950: starting a multiplayer game leaves the screen stuck or corrupt until Escape and resume (Michael; not blocking 0.30.0; not reproduced yet; the Millennium II's menu fault suspected)](2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)
 - [2026-10-25 A8U4I5: V9XD32 T15's bad words are bit 23 of RAM at 15C0h modulo 32 KiB in one 6.6 MiB physical window, under ATI's driver too; not the driver (DRAM inferred, unconfirmed); `MaxPhysPage=0A000` keeps Windows out of it](2026-10-25-rage128-t15-sentinel-corruption.md)
 - [2026-10-24 Haswell, a tester's HD 4600 (report V9X-YP59WN): Tux Racer's fogged, blended sky refused as GL_REPLACE on RGB565 (no Direct3D texture op); the ICD rewrites it as MODULATE by white vertices, seen fixed on the 4570](2026-10-24-haswell-tux-racer-sky-replace-rgb.md)

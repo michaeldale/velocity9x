@@ -53,4 +53,11 @@ void v9x_glide_lfb_565_to_555(const v9x_u8 *src, v9x_u8 *dst,
 void v9x_glide_lfb_555_to_565(const v9x_u8 *src, v9x_u8 *dst,
                               v9x_u32 pixels);
 
+/*
+ * RGB565 texels to ARGB1555 with alpha 1, in place, for an engine that
+ * samples no 565 (the ViRGE lists ARGB1555 and ARGB4444 only). Green's
+ * low bit is dropped, as the OpenGL driver does for the same engine.
+ */
+void v9x_glide_texels_565_to_argb1555(v9x_u16 *texels, v9x_u32 count);
+
 #endif /* VELOCITY9X_GLIDE_TEXFMT_H */

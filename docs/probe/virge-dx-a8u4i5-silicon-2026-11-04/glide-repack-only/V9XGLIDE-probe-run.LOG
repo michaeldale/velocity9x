@@ -1,0 +1,395 @@
+1 pid=FFFDF085 t=28440 attach instance=00560000 version=0.36.0 V9XGLIDE build=2ffd4238-dirty time=2026-11-03 10:14:40 uptime-ms=28096 exe=C:\V9XREL\V9XGLIDP.EXE
+2 pid=FFFDF085 t=29433 grGlideInit#1 
+3 pid=FFFDF085 t=29621 grSstQueryHardware#1 config=0054F9F4 -> voodoo fb=2MiB tmus=1 tmu0=2MiB
+4 pid=FFFDF085 t=29631 grSstSelect#1 sst=0
+5 pid=FFFDF085 t=32145 device: window=0000015C ours=1
+6 pid=FFFDF085 t=39115 device: describe result=0 engine=2 generation=2
+7 pid=FFFDF085 t=39115 device: target formats=00000004 texture formats=00000018 hw max=512
+8 pid=FFFDF085 t=39115 device: open 640x480 buffers=3
+9 pid=FFFDF085 t=39115 device: target 555=1
+10 pid=FFFDF085 t=39115 grSstWinOpen#1 hwnd=00000000 res=7 refresh=0 cformat=0 origin=0 colbuf=2 auxbuf=1 -> 1
+11 pid=FFFDF085 t=39117 grDepthBufferMode#1 mode=00000000
+12 pid=FFFDF085 t=39117 grRenderBuffer#1 buffer=1
+13 pid=FFFDF085 t=39117 grClipWindow#1 min=0,0 max=640,480
+14 pid=FFFDF085 t=39117 grBufferClear#1 color=00FF0000 alpha=00 depth=FFFF
+15 pid=FFFDF085 t=39140 grLfbLock#1 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+16 pid=FFFDF085 t=39575 grLfbUnlock#1 type=00 buffer=1
+17 pid=FFFDF085 t=39681 grBufferSwap#1 interval=1
+18 pid=FFFDF085 t=39719 capture frame after swap 1
+19 pid=FFFDF085 t=39719 grLfbLock#2 type=00 buffer=0 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+20 pid=FFFDF085 t=40150 grLfbUnlock#2 type=00 buffer=0
+21 pid=FFFDF085 t=40229 grBufferClear#2 color=0000FF00 alpha=00 depth=FFFF
+22 pid=FFFDF085 t=40251 grLfbLock#3 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+23 pid=FFFDF085 t=40780 grLfbUnlock#3 type=00 buffer=1
+24 pid=FFFDF085 t=40845 grLfbLock#4 type=00 buffer=0 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+25 pid=FFFDF085 t=41260 grLfbUnlock#4 type=00 buffer=0
+26 pid=FFFDF085 t=41373 grColorCombine#1 func=1 factor=0 local=0 other=2 invert=0
+27 pid=FFFDF085 t=41373 grAlphaCombine#1 func=1 factor=0 local=0 other=2 invert=0
+28 pid=FFFDF085 t=41373 grAlphaBlendFunction#1 rgb=4,0 alpha=4,0
+29 pid=FFFDF085 t=41373 grAlphaTestFunction#1 func=00000007
+30 pid=FFFDF085 t=41373 grCullMode#1 mode=00000000
+31 pid=FFFDF085 t=41373 grDrawTriangle#1 swap=1
+32 pid=FFFDF085 t=41373 grDrawTriangle#1   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+33 pid=FFFDF085 t=41373 grDrawTriangle#1   vb x=43960000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+34 pid=FFFDF085 t=41373 grDrawTriangle#1   vc x=42C80000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+35 pid=FFFDF085 t=41376 grLfbLock#5 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+36 pid=FFFDF085 t=41800 grLfbUnlock#5 type=00 buffer=1
+37 pid=FFFDF085 t=41910 grLfbLock#6 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+38 pid=FFFDF085 t=42330 grLfbUnlock#6 type=00 buffer=1
+39 pid=FFFDF085 t=42430 grDepthBufferMode#2 mode=00000002
+40 pid=FFFDF085 t=42430 grDepthBufferFunction#1 func=00000003
+41 pid=FFFDF085 t=42430 grDepthMask#1 enable=00000001
+42 pid=FFFDF085 t=42430 grBufferClear#3 color=00000000 alpha=00 depth=FFFF
+43 pid=FFFDF085 t=42435 grDrawTriangle#2 swap=1
+44 pid=FFFDF085 t=42435 grDrawTriangle#2   va x=43960000 y=42C80000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+45 pid=FFFDF085 t=42435 grDrawTriangle#2   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+46 pid=FFFDF085 t=42435 grDrawTriangle#2   vc x=43960000 y=43960000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+47 pid=FFFDF085 t=42435 grLfbLock#7 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+48 pid=FFFDF085 t=42880 grLfbUnlock#7 type=00 buffer=1
+49 pid=FFFDF085 t=42943 grDrawTriangle#3 swap=1
+50 pid=FFFDF085 t=42943 grDrawTriangle#3   va x=43960000 y=42C80000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+51 pid=FFFDF085 t=42943 grDrawTriangle#3   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+52 pid=FFFDF085 t=42943 grDrawTriangle#3   vc x=43960000 y=43960000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+53 pid=FFFDF085 t=42943 grLfbLock#8 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+54 pid=FFFDF085 t=43366 grLfbUnlock#8 type=00 buffer=1
+55 pid=FFFDF085 t=43459 grDrawTriangle#4 swap=1
+56 pid=FFFDF085 t=43459 grDrawTriangle#4   va x=43960000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+57 pid=FFFDF085 t=43459 grDrawTriangle#4   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+58 pid=FFFDF085 t=43459 grDrawTriangle#4   vc x=43960000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+59 pid=FFFDF085 t=43459 grLfbLock#9 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+60 pid=FFFDF085 t=43885 grLfbUnlock#9 type=00 buffer=1
+61 pid=FFFDF085 t=43962 grDepthBufferMode#3 mode=00000000
+62 pid=FFFDF085 t=43962 grClipWindow#2 min=0,0 max=50,50
+63 pid=FFFDF085 t=43962 grDrawTriangle#5 swap=1
+64 pid=FFFDF085 t=43962 grDrawTriangle#5   va x=00000000 y=00000000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+65 pid=FFFDF085 t=43962 grDrawTriangle#5   vb x=441FC000 y=00000000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+66 pid=FFFDF085 t=43962 grDrawTriangle#5   vc x=00000000 y=43EF8000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+67 pid=FFFDF085 t=43962 grLfbLock#10 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+68 pid=FFFDF085 t=44385 grLfbUnlock#10 type=00 buffer=1
+69 pid=FFFDF085 t=44450 grLfbLock#11 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+70 pid=FFFDF085 t=44870 grLfbUnlock#11 type=00 buffer=1
+71 pid=FFFDF085 t=44946 grClipWindow#3 min=0,0 max=640,480
+72 pid=FFFDF085 t=44946 grDrawLine#1 swap=1
+73 pid=FFFDF085 t=44946 grDrawLine#1   va x=41200000 y=43C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+74 pid=FFFDF085 t=44946 grDrawLine#1   vb x=43480000 y=43C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+75 pid=FFFDF085 t=44946 grLfbLock#12 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+76 pid=FFFDF085 t=45370 grLfbUnlock#12 type=00 buffer=1
+77 pid=FFFDF085 t=45436 grDrawTriangle#6 swap=1
+78 pid=FFFDF085 t=45436 grDrawTriangle#6   va x=49401900 y=494015E0 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+79 pid=FFFDF085 t=45436 grDrawTriangle#6   vb x=49401F40 y=494015E0 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+80 pid=FFFDF085 t=45436 grDrawTriangle#6   vc x=49401900 y=49401C20 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+81 pid=FFFDF085 t=45436 grLfbLock#13 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+82 pid=FFFDF085 t=45855 grLfbUnlock#13 type=00 buffer=1
+83 pid=FFFDF085 t=45936 grColorCombine#2 func=3 factor=1 local=0 other=1 invert=0
+84 pid=FFFDF085 t=45936 grAlphaCombine#2 func=3 factor=1 local=0 other=1 invert=0
+85 pid=FFFDF085 t=45936 grTexCombineFunction#1 tmu=0 func=1
+86 pid=FFFDF085 t=45936 grTexFilterMode#1 tmu=0 min=0 mag=0
+87 pid=FFFDF085 t=45936 grTexClampMode#1 tmu=0 s=1 t=1
+88 pid=FFFDF085 t=45936 grTexDownloadMipMap#1 tmu=0 addr=00000000 evenodd=3 lod=5..5 aspect=3 format=10 data=0054FAF4
+89 pid=FFFDF085 t=45936 grTexSource#1 tmu=0 addr=00000000 evenodd=3 lod=5..5 aspect=3 format=10
+90 pid=FFFDF085 t=45936 grDrawTriangle#7 swap=1
+91 pid=FFFDF085 t=45936 grDrawTriangle#7   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+92 pid=FFFDF085 t=45936 grDrawTriangle#7   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+93 pid=FFFDF085 t=45936 grDrawTriangle#7   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+94 pid=FFFDF085 t=45936 grDrawTriangle#8 swap=1
+95 pid=FFFDF085 t=45936 grDrawTriangle#8   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+96 pid=FFFDF085 t=45936 grDrawTriangle#8   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+97 pid=FFFDF085 t=45941 grDrawTriangle#8   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+98 pid=FFFDF085 t=45941 grLfbLock#14 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+99 pid=FFFDF085 t=45941 draw refused: result=4 triangles=2 storage/format=0103
+100 pid=FFFDF085 t=45941   ops color/alpha=2/2 address/filters=030101
+101 pid=FFFDF085 t=45941   blend=0 2/1
+102 pid=FFFDF085 t=45941   alpha test=0 func=8 ref=0
+103 pid=FFFDF085 t=45941   fog=0 depth enable/write/func=004 scissor-right=640
+104 pid=FFFDF085 t=45941   corner 0 x/y bits=42C80000/42C80000
+105 pid=FFFDF085 t=45941   corner 0 z/rhw bits=00000000/3F800000
+106 pid=FFFDF085 t=45941   corner 1 x/y bits=43240000/42C80000
+107 pid=FFFDF085 t=45941   corner 1 z/rhw bits=00000000/3F800000
+108 pid=FFFDF085 t=45941   corner 2 x/y bits=42C80000/43240000
+109 pid=FFFDF085 t=45941   corner 2 z/rhw bits=00000000/3F800000
+110 pid=FFFDF085 t=46360 grLfbUnlock#14 type=00 buffer=1
+111 pid=FFFDF085 t=46426 grTexDownloadTable#1 tmu=0 type=2 sum=C000003F first=FF000000 FF00FF00 FF000000 FF000000
+112 pid=FFFDF085 t=46426 grTexDownloadMipMap#2 tmu=0 addr=00001000 evenodd=3 lod=5..5 aspect=3 format=5 data=0054FD2C
+113 pid=FFFDF085 t=46426 grTexSource#2 tmu=0 addr=00001000 evenodd=3 lod=5..5 aspect=3 format=5
+114 pid=FFFDF085 t=46426 grDrawTriangle#9 swap=1
+115 pid=FFFDF085 t=46426 grDrawTriangle#9   va x=43480000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+116 pid=FFFDF085 t=46426 grDrawTriangle#9   vb x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+117 pid=FFFDF085 t=46426 grDrawTriangle#9   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+118 pid=FFFDF085 t=46426 grDrawTriangle#10 swap=1
+119 pid=FFFDF085 t=46426 grDrawTriangle#10   va x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+120 pid=FFFDF085 t=46426 grDrawTriangle#10   vb x=43840000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+121 pid=FFFDF085 t=46426 grDrawTriangle#10   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+122 pid=FFFDF085 t=46426 grLfbLock#15 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+123 pid=FFFDF085 t=46426 draw refused: result=4 triangles=2 storage/format=0103
+124 pid=FFFDF085 t=46430   ops color/alpha=2/2 address/filters=030101
+125 pid=FFFDF085 t=46430   blend=0 2/1
+126 pid=FFFDF085 t=46430   alpha test=0 func=8 ref=0
+127 pid=FFFDF085 t=46430   fog=0 depth enable/write/func=004 scissor-right=640
+128 pid=FFFDF085 t=46430   corner 0 x/y bits=43480000/42C80000
+129 pid=FFFDF085 t=46430   corner 0 z/rhw bits=00000000/3F800000
+130 pid=FFFDF085 t=46430   corner 1 x/y bits=43840000/42C80000
+131 pid=FFFDF085 t=46430   corner 1 z/rhw bits=00000000/3F800000
+132 pid=FFFDF085 t=46430   corner 2 x/y bits=43480000/43240000
+133 pid=FFFDF085 t=46430   corner 2 z/rhw bits=00000000/3F800000
+134 pid=FFFDF085 t=46850 grLfbUnlock#15 type=00 buffer=1
+135 pid=FFFDF085 t=46914 grTexDownloadTable#2 tmu=0 type=2 sum=3FC00000 first=FF000000 FF0000FF FF000000 FF000000
+136 pid=FFFDF085 t=46914 grDrawTriangle#11 swap=1
+137 pid=FFFDF085 t=46914 grDrawTriangle#11   va x=43480000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+138 pid=FFFDF085 t=46914 grDrawTriangle#11   vb x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+139 pid=FFFDF085 t=46914 grDrawTriangle#11   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+140 pid=FFFDF085 t=46915 grDrawTriangle#12 swap=1
+141 pid=FFFDF085 t=46915 grDrawTriangle#12   va x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+142 pid=FFFDF085 t=46915 grDrawTriangle#12   vb x=43840000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+143 pid=FFFDF085 t=46915 grDrawTriangle#12   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+144 pid=FFFDF085 t=46915 grLfbLock#16 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+145 pid=FFFDF085 t=46915 draw refused: result=4 triangles=2 storage/format=0103
+146 pid=FFFDF085 t=46915   ops color/alpha=2/2 address/filters=030101
+147 pid=FFFDF085 t=46915   blend=0 2/1
+148 pid=FFFDF085 t=46915   alpha test=0 func=8 ref=0
+149 pid=FFFDF085 t=46915   fog=0 depth enable/write/func=004 scissor-right=640
+150 pid=FFFDF085 t=46915   corner 0 x/y bits=43480000/42C80000
+151 pid=FFFDF085 t=46915   corner 0 z/rhw bits=00000000/3F800000
+152 pid=FFFDF085 t=46915   corner 1 x/y bits=43840000/42C80000
+153 pid=FFFDF085 t=46915   corner 1 z/rhw bits=00000000/3F800000
+154 pid=FFFDF085 t=46915   corner 2 x/y bits=43480000/43240000
+155 pid=FFFDF085 t=46915   corner 2 z/rhw bits=00000000/3F800000
+156 pid=FFFDF085 t=47335 grLfbUnlock#16 type=00 buffer=1
+157 pid=FFFDF085 t=47416 grTexDownloadMipMap#3 tmu=0 addr=00002000 evenodd=3 lod=5..5 aspect=3 format=10 data=0054FB74
+158 pid=FFFDF085 t=47416 grTexSource#3 tmu=0 addr=00002000 evenodd=3 lod=5..5 aspect=3 format=10
+159 pid=FFFDF085 t=47416 grChromakeyValue#1 color=0000FF00
+160 pid=FFFDF085 t=47416 grChromakeyMode#1 mode=00000001
+161 pid=FFFDF085 t=47416 grDrawTriangle#13 swap=1
+162 pid=FFFDF085 t=47416 grDrawTriangle#13   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+163 pid=FFFDF085 t=47416 grDrawTriangle#13   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+164 pid=FFFDF085 t=47416 grDrawTriangle#13   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+165 pid=FFFDF085 t=47416 grDrawTriangle#14 swap=1
+166 pid=FFFDF085 t=47416 grDrawTriangle#14   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+167 pid=FFFDF085 t=47416 grDrawTriangle#14   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+168 pid=FFFDF085 t=47416 grDrawTriangle#14   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+169 pid=FFFDF085 t=47416 grLfbLock#17 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+170 pid=FFFDF085 t=47416 draw refused: result=4 triangles=2 storage/format=0103
+171 pid=FFFDF085 t=47416   ops color/alpha=2/2 address/filters=030101
+172 pid=FFFDF085 t=47420   blend=0 2/1
+173 pid=FFFDF085 t=47420   alpha test=1 func=5 ref=0
+174 pid=FFFDF085 t=47420   fog=0 depth enable/write/func=004 scissor-right=640
+175 pid=FFFDF085 t=47420   corner 0 x/y bits=42C80000/42C80000
+176 pid=FFFDF085 t=47420   corner 0 z/rhw bits=00000000/3F800000
+177 pid=FFFDF085 t=47420   corner 1 x/y bits=43240000/42C80000
+178 pid=FFFDF085 t=47420   corner 1 z/rhw bits=00000000/3F800000
+179 pid=FFFDF085 t=47420   corner 2 x/y bits=42C80000/43240000
+180 pid=FFFDF085 t=47420   corner 2 z/rhw bits=00000000/3F800000
+181 pid=FFFDF085 t=47845 grLfbUnlock#17 type=00 buffer=1
+182 pid=FFFDF085 t=47917 grChromakeyMode#2 mode=00000000
+183 pid=FFFDF085 t=47917 grDrawTriangle#15 swap=1
+184 pid=FFFDF085 t=47917 grDrawTriangle#15   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+185 pid=FFFDF085 t=47917 grDrawTriangle#15   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+186 pid=FFFDF085 t=47917 grDrawTriangle#15   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+187 pid=FFFDF085 t=47917 grDrawTriangle#16 swap=1
+188 pid=FFFDF085 t=47917 grDrawTriangle#16   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+189 pid=FFFDF085 t=47917 grDrawTriangle#16   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+190 pid=FFFDF085 t=47917 grDrawTriangle#16   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+191 pid=FFFDF085 t=47917 grLfbLock#18 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+192 pid=FFFDF085 t=47917 draw refused: result=4 triangles=2 storage/format=0103
+193 pid=FFFDF085 t=47917   ops color/alpha=2/2 address/filters=030101
+194 pid=FFFDF085 t=47920   blend=0 2/1
+195 pid=FFFDF085 t=47920   alpha test=0 func=8 ref=0
+196 pid=FFFDF085 t=47920   fog=0 depth enable/write/func=004 scissor-right=640
+197 pid=FFFDF085 t=47920   corner 0 x/y bits=42C80000/42C80000
+198 pid=FFFDF085 t=47920   corner 0 z/rhw bits=00000000/3F800000
+199 pid=FFFDF085 t=47920   corner 1 x/y bits=43240000/42C80000
+200 pid=FFFDF085 t=47920   corner 1 z/rhw bits=00000000/3F800000
+201 pid=FFFDF085 t=47920   corner 2 x/y bits=42C80000/43240000
+202 pid=FFFDF085 t=47920   corner 2 z/rhw bits=00000000/3F800000
+203 pid=FFFDF085 t=48345 grLfbUnlock#18 type=00 buffer=1
+204 pid=FFFDF085 t=48417 grColorCombine#3 func=1 factor=0 local=0 other=2 invert=0
+205 pid=FFFDF085 t=48417 grAlphaCombine#3 func=1 factor=0 local=0 other=2 invert=0
+206 pid=FFFDF085 t=48417 grAlphaBlendFunction#2 rgb=1,5 alpha=0,0
+207 pid=FFFDF085 t=48417 grDrawTriangle#17 swap=1
+208 pid=FFFDF085 t=48417 grDrawTriangle#17   va x=44098000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,00000000,00000000
+209 pid=FFFDF085 t=48417 grDrawTriangle#17   vb x=44198000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,00000000,00000000
+210 pid=FFFDF085 t=48417 grDrawTriangle#17   vc x=44098000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,43800000,00000000
+211 pid=FFFDF085 t=48417 grDrawTriangle#18 swap=1
+212 pid=FFFDF085 t=48417 grDrawTriangle#18   va x=44198000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,00000000,00000000
+213 pid=FFFDF085 t=48417 grDrawTriangle#18   vb x=44198000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,43800000,00000000
+214 pid=FFFDF085 t=48417 grDrawTriangle#18   vc x=44098000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,43800000,00000000
+215 pid=FFFDF085 t=48420 grLfbLock#19 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+216 pid=FFFDF085 t=48845 grLfbUnlock#19 type=00 buffer=1
+217 pid=FFFDF085 t=48917 grAlphaBlendFunction#3 rgb=4,0 alpha=4,0
+218 pid=FFFDF085 t=48917 grFogTable#1 0-31 FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+219 pid=FFFDF085 t=48917 grFogTable#1 32-63 FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+220 pid=FFFDF085 t=48917 grFogColorValue#1 color=000000FF
+221 pid=FFFDF085 t=48917 grFogMode#1 mode=00000002
+222 pid=FFFDF085 t=48917 grDrawTriangle#19 swap=1
+223 pid=FFFDF085 t=48917 grDrawTriangle#19   va x=44098000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+224 pid=FFFDF085 t=48917 grDrawTriangle#19   vb x=44198000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,00000000,00000000
+225 pid=FFFDF085 t=48917 grDrawTriangle#19   vc x=44098000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43000000,00000000
+226 pid=FFFDF085 t=48917 grDrawTriangle#20 swap=1
+227 pid=FFFDF085 t=48917 grDrawTriangle#20   va x=44198000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,00000000,00000000
+228 pid=FFFDF085 t=48920 grDrawTriangle#20   vb x=44198000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,43000000,00000000
+229 pid=FFFDF085 t=48920 grDrawTriangle#20   vc x=44098000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43000000,00000000
+230 pid=FFFDF085 t=48920 grLfbLock#20 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+231 pid=FFFDF085 t=49340 grLfbUnlock#20 type=00 buffer=1
+232 pid=FFFDF085 t=49418 grFogMode#2 mode=00000000
+233 pid=FFFDF085 t=49418 grBufferSwap#2 interval=1
+234 pid=FFFDF085 t=49418 census periodic swaps=2
+235 pid=FFFDF085 t=49418 census   draws: drawn=19 refused=10 culled=0 skipped-textured=0
+236 pid=FFFDF085 t=49420 census   draws: fog-dropped=2 cpu-copies=10 uploads=5 surface-hits=0 evictions=0
+237 pid=FFFDF085 t=49420 census   draws: surfaces-lost=0
+238 pid=FFFDF085 t=49420 census   sources: calls=3 refills=0 new=3
+239 pid=FFFDF085 t=49420 census   cycles(Mc): frame=1077 entry=1 prepare=1 upload=0 submit=48 swap=36 clear=33 batches=17
+240 pid=FFFDF085 t=49420 census   batch ends: full=0 texture=0 state=0
+241 pid=FFFDF085 t=49420 census   grAlphaBlendFunction calls=3 lines=3
+242 pid=FFFDF085 t=49420 census   grAlphaCombine calls=3 lines=3
+243 pid=FFFDF085 t=49420 census   grAlphaTestFunction calls=1 lines=1
+244 pid=FFFDF085 t=49420 census   grBufferClear calls=3 lines=3
+245 pid=FFFDF085 t=49420 census   grBufferSwap calls=2 lines=2
+246 pid=FFFDF085 t=49420 census   grChromakeyMode calls=2 lines=2
+247 pid=FFFDF085 t=49420 census   grChromakeyValue calls=1 lines=1
+248 pid=FFFDF085 t=49420 census   grClipWindow calls=3 lines=3
+249 pid=FFFDF085 t=49420 census   grColorCombine calls=3 lines=3
+250 pid=FFFDF085 t=49420 census   grCullMode calls=1 lines=1
+251 pid=FFFDF085 t=49420 census   grDepthBufferFunction calls=1 lines=1
+252 pid=FFFDF085 t=49420 census   grDepthBufferMode calls=3 lines=3
+253 pid=FFFDF085 t=49420 census   grDepthMask calls=1 lines=1
+254 pid=FFFDF085 t=49476 census   grDrawLine calls=1 lines=3
+255 pid=FFFDF085 t=49476 census   grDrawTriangle calls=20 lines=80
+256 pid=FFFDF085 t=49476 census   grFogColorValue calls=1 lines=1
+257 pid=FFFDF085 t=49476 census   grFogMode calls=2 lines=2
+258 pid=FFFDF085 t=49476 census   grFogTable calls=1 lines=2
+259 pid=FFFDF085 t=49476 census   grGlideInit calls=1 lines=1
+260 pid=FFFDF085 t=49476 census   grLfbLock calls=20 lines=20
+261 pid=FFFDF085 t=49476 census   grLfbUnlock calls=20 lines=20
+262 pid=FFFDF085 t=49476 census   grRenderBuffer calls=1 lines=1
+263 pid=FFFDF085 t=49476 census   grSstQueryHardware calls=1 lines=1
+264 pid=FFFDF085 t=49476 census   grSstSelect calls=1 lines=1
+265 pid=FFFDF085 t=49476 census   grSstWinOpen calls=1 lines=1
+266 pid=FFFDF085 t=49476 census   grTexClampMode calls=1 lines=1
+267 pid=FFFDF085 t=49476 census   grTexCombineFunction calls=1 lines=1
+268 pid=FFFDF085 t=49476 census   grTexDownloadMipMap calls=3 lines=3
+269 pid=FFFDF085 t=49476 census   grTexDownloadTable calls=2 lines=2
+270 pid=FFFDF085 t=49476 census   grTexFilterMode calls=1 lines=1
+271 pid=FFFDF085 t=49480 census   grTexSource calls=3 lines=3
+272 pid=FFFDF085 t=49480 capture frame after swap 2
+273 pid=FFFDF085 t=51481 grSstWinClose#1 
+274 pid=FFFDF085 t=51481 census winclose swaps=2
+275 pid=FFFDF085 t=51481 census   draws: drawn=19 refused=10 culled=0 skipped-textured=0
+276 pid=FFFDF085 t=51481 census   draws: fog-dropped=2 cpu-copies=10 uploads=5 surface-hits=0 evictions=0
+277 pid=FFFDF085 t=51481 census   draws: surfaces-lost=0
+278 pid=FFFDF085 t=51481 census   sources: calls=3 refills=0 new=3
+279 pid=FFFDF085 t=51481 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+280 pid=FFFDF085 t=51481 census   batch ends: full=0 texture=0 state=0
+281 pid=FFFDF085 t=51481 census   grAlphaBlendFunction calls=3 lines=3
+282 pid=FFFDF085 t=51481 census   grAlphaCombine calls=3 lines=3
+283 pid=FFFDF085 t=51481 census   grAlphaTestFunction calls=1 lines=1
+284 pid=FFFDF085 t=51481 census   grBufferClear calls=3 lines=3
+285 pid=FFFDF085 t=51481 census   grBufferSwap calls=2 lines=2
+286 pid=FFFDF085 t=51481 census   grChromakeyMode calls=2 lines=2
+287 pid=FFFDF085 t=51481 census   grChromakeyValue calls=1 lines=1
+288 pid=FFFDF085 t=51481 census   grClipWindow calls=3 lines=3
+289 pid=FFFDF085 t=51486 census   grColorCombine calls=3 lines=3
+290 pid=FFFDF085 t=51486 census   grCullMode calls=1 lines=1
+291 pid=FFFDF085 t=51486 census   grDepthBufferFunction calls=1 lines=1
+292 pid=FFFDF085 t=51486 census   grDepthBufferMode calls=3 lines=3
+293 pid=FFFDF085 t=51486 census   grDepthMask calls=1 lines=1
+294 pid=FFFDF085 t=51486 census   grDrawLine calls=1 lines=3
+295 pid=FFFDF085 t=51486 census   grDrawTriangle calls=20 lines=80
+296 pid=FFFDF085 t=51486 census   grFogColorValue calls=1 lines=1
+297 pid=FFFDF085 t=51486 census   grFogMode calls=2 lines=2
+298 pid=FFFDF085 t=51486 census   grFogTable calls=1 lines=2
+299 pid=FFFDF085 t=51486 census   grGlideInit calls=1 lines=1
+300 pid=FFFDF085 t=51486 census   grLfbLock calls=20 lines=20
+301 pid=FFFDF085 t=51486 census   grLfbUnlock calls=20 lines=20
+302 pid=FFFDF085 t=51486 census   grRenderBuffer calls=1 lines=1
+303 pid=FFFDF085 t=51486 census   grSstQueryHardware calls=1 lines=1
+304 pid=FFFDF085 t=51486 census   grSstSelect calls=1 lines=1
+305 pid=FFFDF085 t=51486 census   grSstWinClose calls=1 lines=1
+306 pid=FFFDF085 t=51490 census   grSstWinOpen calls=1 lines=1
+307 pid=FFFDF085 t=51490 census   grTexClampMode calls=1 lines=1
+308 pid=FFFDF085 t=51490 census   grTexCombineFunction calls=1 lines=1
+309 pid=FFFDF085 t=51490 census   grTexDownloadMipMap calls=3 lines=3
+310 pid=FFFDF085 t=51490 census   grTexDownloadTable calls=2 lines=2
+311 pid=FFFDF085 t=51490 census   grTexFilterMode calls=1 lines=1
+312 pid=FFFDF085 t=51490 census   grTexSource calls=3 lines=3
+313 pid=FFFDF085 t=51964 device: closed
+314 pid=FFFDF085 t=54405 grGlideShutdown#1 
+315 pid=FFFDF085 t=54405 census shutdown swaps=2
+316 pid=FFFDF085 t=54405 census   draws: drawn=19 refused=10 culled=0 skipped-textured=0
+317 pid=FFFDF085 t=54405 census   draws: fog-dropped=2 cpu-copies=10 uploads=5 surface-hits=0 evictions=0
+318 pid=FFFDF085 t=54405 census   draws: surfaces-lost=0
+319 pid=FFFDF085 t=54405 census   sources: calls=3 refills=0 new=3
+320 pid=FFFDF085 t=54405 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+321 pid=FFFDF085 t=54405 census   batch ends: full=0 texture=0 state=0
+322 pid=FFFDF085 t=54405 census   grAlphaBlendFunction calls=3 lines=3
+323 pid=FFFDF085 t=54405 census   grAlphaCombine calls=3 lines=3
+324 pid=FFFDF085 t=54405 census   grAlphaTestFunction calls=1 lines=1
+325 pid=FFFDF085 t=54405 census   grBufferClear calls=3 lines=3
+326 pid=FFFDF085 t=54405 census   grBufferSwap calls=2 lines=2
+327 pid=FFFDF085 t=54405 census   grChromakeyMode calls=2 lines=2
+328 pid=FFFDF085 t=54405 census   grChromakeyValue calls=1 lines=1
+329 pid=FFFDF085 t=54405 census   grClipWindow calls=3 lines=3
+330 pid=FFFDF085 t=54405 census   grColorCombine calls=3 lines=3
+331 pid=FFFDF085 t=54405 census   grCullMode calls=1 lines=1
+332 pid=FFFDF085 t=54405 census   grDepthBufferFunction calls=1 lines=1
+333 pid=FFFDF085 t=54405 census   grDepthBufferMode calls=3 lines=3
+334 pid=FFFDF085 t=54410 census   grDepthMask calls=1 lines=1
+335 pid=FFFDF085 t=54410 census   grDrawLine calls=1 lines=3
+336 pid=FFFDF085 t=54410 census   grDrawTriangle calls=20 lines=80
+337 pid=FFFDF085 t=54410 census   grFogColorValue calls=1 lines=1
+338 pid=FFFDF085 t=54410 census   grFogMode calls=2 lines=2
+339 pid=FFFDF085 t=54410 census   grFogTable calls=1 lines=2
+340 pid=FFFDF085 t=54410 census   grGlideInit calls=1 lines=1
+341 pid=FFFDF085 t=54410 census   grGlideShutdown calls=1 lines=1
+342 pid=FFFDF085 t=54410 census   grLfbLock calls=20 lines=20
+343 pid=FFFDF085 t=54410 census   grLfbUnlock calls=20 lines=20
+344 pid=FFFDF085 t=54410 census   grRenderBuffer calls=1 lines=1
+345 pid=FFFDF085 t=54410 census   grSstQueryHardware calls=1 lines=1
+346 pid=FFFDF085 t=54410 census   grSstSelect calls=1 lines=1
+347 pid=FFFDF085 t=54410 census   grSstWinClose calls=1 lines=1
+348 pid=FFFDF085 t=54410 census   grSstWinOpen calls=1 lines=1
+349 pid=FFFDF085 t=54410 census   grTexClampMode calls=1 lines=1
+350 pid=FFFDF085 t=54410 census   grTexCombineFunction calls=1 lines=1
+351 pid=FFFDF085 t=54410 census   grTexDownloadMipMap calls=3 lines=3
+352 pid=FFFDF085 t=54410 census   grTexDownloadTable calls=2 lines=2
+353 pid=FFFDF085 t=54415 census   grTexFilterMode calls=1 lines=1
+354 pid=FFFDF085 t=54415 census   grTexSource calls=3 lines=3
+355 pid=FFFDF085 t=54420 detach: process exiting=1
+356 pid=FFFDF085 t=54420 census detach swaps=2
+357 pid=FFFDF085 t=54420 census   draws: drawn=19 refused=10 culled=0 skipped-textured=0
+358 pid=FFFDF085 t=54420 census   draws: fog-dropped=2 cpu-copies=10 uploads=5 surface-hits=0 evictions=0
+359 pid=FFFDF085 t=54420 census   draws: surfaces-lost=0
+360 pid=FFFDF085 t=54420 census   sources: calls=3 refills=0 new=3
+361 pid=FFFDF085 t=54420 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+362 pid=FFFDF085 t=54420 census   batch ends: full=0 texture=0 state=0
+363 pid=FFFDF085 t=54420 census   grAlphaBlendFunction calls=3 lines=3
+364 pid=FFFDF085 t=54420 census   grAlphaCombine calls=3 lines=3
+365 pid=FFFDF085 t=54420 census   grAlphaTestFunction calls=1 lines=1
+366 pid=FFFDF085 t=54420 census   grBufferClear calls=3 lines=3
+367 pid=FFFDF085 t=54420 census   grBufferSwap calls=2 lines=2
+368 pid=FFFDF085 t=54420 census   grChromakeyMode calls=2 lines=2
+369 pid=FFFDF085 t=54420 census   grChromakeyValue calls=1 lines=1
+370 pid=FFFDF085 t=54420 census   grClipWindow calls=3 lines=3
+371 pid=FFFDF085 t=54420 census   grColorCombine calls=3 lines=3
+372 pid=FFFDF085 t=54420 census   grCullMode calls=1 lines=1
+373 pid=FFFDF085 t=54420 census   grDepthBufferFunction calls=1 lines=1
+374 pid=FFFDF085 t=54437 census   grDepthBufferMode calls=3 lines=3
+375 pid=FFFDF085 t=54437 census   grDepthMask calls=1 lines=1
+376 pid=FFFDF085 t=54437 census   grDrawLine calls=1 lines=3
+377 pid=FFFDF085 t=54437 census   grDrawTriangle calls=20 lines=80
+378 pid=FFFDF085 t=54437 census   grFogColorValue calls=1 lines=1
+379 pid=FFFDF085 t=54437 census   grFogMode calls=2 lines=2
+380 pid=FFFDF085 t=54437 census   grFogTable calls=1 lines=2
+381 pid=FFFDF085 t=54437 census   grGlideInit calls=1 lines=1
+382 pid=FFFDF085 t=54437 census   grGlideShutdown calls=1 lines=1
+383 pid=FFFDF085 t=54437 census   grLfbLock calls=20 lines=20
+384 pid=FFFDF085 t=54437 census   grLfbUnlock calls=20 lines=20
+385 pid=FFFDF085 t=54437 census   grRenderBuffer calls=1 lines=1
+386 pid=FFFDF085 t=54437 census   grSstQueryHardware calls=1 lines=1
+387 pid=FFFDF085 t=54440 census   grSstSelect calls=1 lines=1
+388 pid=FFFDF085 t=54440 census   grSstWinClose calls=1 lines=1
+389 pid=FFFDF085 t=54440 census   grSstWinOpen calls=1 lines=1
+390 pid=FFFDF085 t=54440 census   grTexClampMode calls=1 lines=1
+391 pid=FFFDF085 t=54440 census   grTexCombineFunction calls=1 lines=1
+392 pid=FFFDF085 t=54440 census   grTexDownloadMipMap calls=3 lines=3
+393 pid=FFFDF085 t=54440 census   grTexDownloadTable calls=2 lines=2
+394 pid=FFFDF085 t=54440 census   grTexFilterMode calls=1 lines=1
+395 pid=FFFDF085 t=54440 census   grTexSource calls=3 lines=3

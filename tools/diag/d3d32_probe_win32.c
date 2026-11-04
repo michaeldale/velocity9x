@@ -891,7 +891,16 @@ static D32_OBJECT *d32_device(D32_OBJECT *d3d, D32_OBJECT *target,
  * to zero. Pixels whose centre is at least one pixel inside every edge must
  * be the colour, and those at least one pixel outside must be zero; the
  * pixels on the edges belong to the coverage rule and are not judged here.
+ *
+ * The last call's inside and outside misses, and the first of each with its
+ * pixel, are kept for d32_flat_report: a count alone cannot tell a wrong
+ * colour from a stray write or an uncleared target.
  */
+static DWORD d32_flat_inside_bad;
+static DWORD d32_flat_outside_bad;
+static DWORD d32_flat_inside_first;
+static DWORD d32_flat_outside_first;
+
 static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
                                  DWORD top, DWORD rgb, DWORD *judged)
 {
@@ -899,6 +908,10 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
     DWORD x;
     DWORD y;
 
+    d32_flat_inside_bad = 0ul;
+    d32_flat_outside_bad = 0ul;
+    d32_flat_inside_first = 0xfffffffful;
+    d32_flat_outside_first = 0xfffffffful;
     *judged = 0ul;
     for (y = 0ul; y < 64ul; ++y) {
         for (x = 0ul; x < 64ul; ++x) {
@@ -912,16 +925,40 @@ static DWORD d32_flat_mismatches(const D32_SURFACE_DESC *desc, DWORD left,
                 ++*judged;
                 if (!d32_is_colour(pixel, rgb)) {
                     ++mismatches;
+                    if (d32_flat_inside_bad++ == 0ul) {
+                        d32_flat_inside_first = (x << 24) | (y << 16) |
+                                                (pixel & 0xfffful);
+                    }
                 }
             } else if (outside) {
                 ++*judged;
                 if (pixel != 0ul) {
                     ++mismatches;
+                    if (d32_flat_outside_bad++ == 0ul) {
+                        d32_flat_outside_first = (x << 24) | (y << 16) |
+                                                 (pixel & 0xfffful);
+                    }
                 }
             }
         }
     }
     return mismatches;
+}
+
+/* The last d32_flat_mismatches call's misses under `prefix`. A First value
+ * is x << 24 | y << 16 | the pixel's low 16 bits, triangle-local. */
+static void d32_flat_report(const char *prefix)
+{
+    char key[32];
+
+    wsprintfA(key, "%sInsideBad", prefix);
+    d32_hx(key, d32_flat_inside_bad);
+    wsprintfA(key, "%sInsideFirst", prefix);
+    d32_hx(key, d32_flat_inside_first);
+    wsprintfA(key, "%sOutsideBad", prefix);
+    d32_hx(key, d32_flat_outside_bad);
+    wsprintfA(key, "%sOutsideFirst", prefix);
+    d32_hx(key, d32_flat_outside_first);
 }
 
 /* Within `tolerance` of 0x00RRGGBB on every channel, X byte zero at
@@ -5931,6 +5968,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_hx("T1Pixel", d32_pixel(&desc, 16ul, 16ul));
         d32_hx("T1Judged", judged);
         d32_hx("T1Mismatches", mismatches);
+        d32_flat_report("T1");
         failures += mismatches != 0ul ? 1ul : 0ul;
 
         d32_hx("T2RedCorner", d32_pixel(&desc, 110ul, 10ul));
@@ -6225,6 +6263,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
             d32_hx("T4Pixel", d32_pixel(&desc, 8ul, 8ul));
             d32_hx("T4Judged", judged);
             d32_hx("T4Mismatches", mismatches);
+            d32_flat_report("T4");
             failures += mismatches != 0ul ? 1ul : 0ul;
             ((d32_unlock_fn)offscreen->vtbl[DDS_UNLOCK])(offscreen,
                                                          desc.lpSurface);

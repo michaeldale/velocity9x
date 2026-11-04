@@ -184,3 +184,14 @@ void v9x_glide_lfb_555_to_565(const v9x_u8 *src, v9x_u8 *dst,
         dst[i + 1ul] = (v9x_u8)(p >> 8);
     }
 }
+
+void v9x_glide_texels_565_to_argb1555(v9x_u16 *texels, v9x_u32 count)
+{
+    v9x_u32 i;
+    v9x_u16 v;
+
+    for (i = 0ul; i < count; ++i) {
+        v = texels[i];
+        texels[i] = (v9x_u16)(0x8000u | ((v >> 1) & 0x7FE0u) | (v & 0x001Fu));
+    }
+}

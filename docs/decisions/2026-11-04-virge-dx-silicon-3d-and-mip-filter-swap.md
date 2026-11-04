@@ -39,7 +39,8 @@ No fault, no engine idle timeout, no draw into the presented page.
   advertises only `D3DPMISCCAPS_CULLNONE`, so the core does not cull for it;
   the RS690's software engine fails the same 7 by design. One is T14, the
   next program after one dies holding surfaces, the known issue in every
-  release's notes. Two are not attributed.
+  release's notes. Two are not attributed. (Corrected below, "Later the
+  same day": T14 is not that issue; T1, T4 and T14 are the chip's dither.)
 - **V9XGLIDP:** the first Glide run on a ViRGE. Five texture checks read
   black (`read=0000`) where a texel colour was expected, and the table-fog
   check reads `FFFF`, the open fog issue
@@ -97,3 +98,60 @@ Trio 3D and Trio3D/2X share this path and the constants. Their data books
 are not at hand; the fix applies to them on the same-design rule and has not
 run on either. V9XD32's two unattributed failures, the Glide texture
 failures and the CPU-test margins are open.
+
+## Later the same day: Glide textures, V9XD32's flat triangles
+
+### Glide: two refusals, one behind the other
+
+The five black texture checks were all textures the engine never drew. The
+Glide log (`glide-repack-only/V9XGLIDE-probe-run.LOG`) shows why, in two
+layers:
+
+1. **Format.** Glide's RGB_565 and palettised textures convert to RGB565,
+   which the ViRGE's describe does not list (ARGB1555 and ARGB4444 only), so
+   no surface was made and the draw went with CPU texels, which this engine
+   has no fallback for. Fix: `v9x_glide_texture_convert` repacks RGB565 to
+   ARGB1555 (alpha one, green's low bit dropped) when the device lists 1555
+   and not 565; `v9x_glide_texels_565_to_argb1555`, host-tested. Run alone
+   (boot 663): surfaces made and uploaded (`uploads=5`), draws still refused,
+   now as `storage/format=0103`. Six failures as before.
+2. **Texture op.** The checks' combine (texture times iterated colour, both
+   colour and alpha) reaches the core as `MODULATEALPHA`, which
+   `v9x_d3d_virge_accepts` refused: the S3D unit has DECAL, MODULATE and
+   COPY. With every vertex alpha 255 the two ops give the same colour and
+   alpha, so the ViRGE engine now takes `MODULATEALPHA` as `MODULATE` when
+   the render interface's `vertex_alpha_opaque` is set. Direct3D's own
+   paths leave that flag clear and are unchanged.
+
+Both together (boot 664, `glide-repack-and-modulatealpha/`): V9XGLIDP **1
+failure**, `FogTable` (the open fog issue). `Texture565`, `TexturePalette`,
+`TexturePaletteChange`, `ChromaKeyed` and `ChromaOff` pass; one draw refused
+in the whole run, the fogged one. No fault, no engine timeout.
+
+### V9XD32: T1, T4 and T14 are the chip's ordered dither
+
+V9XD32 now records the first wrong pixel inside and outside each flat
+triangle. Boot 664: T1 374 wrong inside, 0 outside; first at local (2,1),
+`0D74` where `0953` was expected. T4 506 inside, first at (2,1) `15B6`
+for `11B5`. Each wrong pixel is one 5-bit step high in some channels; the
+centre pixel, judged separately, is exact.
+
+86Box's ViRGE model (`build\reference-vid_s3_virge.c`, `RGB15`) dithers
+every 16-bit write with a 4x4 table, on by default, under no command bit.
+Its table predicts both first misses exactly: T1's (2,1) is screen (10,9),
+table value 7; 0x13+7, 0x57+7 and 0x9B+7 truncate to 3, 0B and 14, which is
+`0D74`; T4's (2,1) at the surface origin, also 7, gives `15B6`. The data
+book's 3D Command Set (DB019-B, chapter 19, MMB500) has no dither bit, and
+the probe already sets `D3DRENDERSTATE_DITHERENABLE` off. So the ViRGE
+dithers 16-bit 3D output whatever the driver asks, and the probe's exact
+flat-colour check cannot pass on it. Not a drawing fault; no driver change.
+
+T14 failed with T1's exact count (374) in its own process, so it is this
+dither, not the killed-program issue claimed above.
+
+T4 also has 8 pixels outside the triangle, the first `7C00` (pure red) at
+local (52,0) of its 64x64 offscreen target, cleared by a colour fill just
+before. One run; not looked into.
+
+V9XD32's ten failures on this card are therefore: 7 culling (no cull on
+this engine, by design), 3 dither (T1, T4, T14).

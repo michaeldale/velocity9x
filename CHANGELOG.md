@@ -19,6 +19,14 @@ build identifier so exact guest-tested binaries remain traceable.
   code and have not run the fix
   ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
 
+- **S3 ViRGE/DX: Glide games' 16-bit and palettised textures are drawn.**
+  The chip has no RGB565 texture format and no software fallback, so those
+  textures were never drawn. The Glide driver now repacks them as
+  ARGB1555, and the ViRGE takes Glide's usual texture-times-colour combine
+  when every vertex is opaque. On the physical ViRGE/DX, the Glide probe
+  went from six failures to one, the known missing fog
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
 - **S3 Trio64V2 (`5333:8901`): black is now black, not dark grey.** Its BIOS
   can leave the DAC's blank pedestal on, an NTSC-era lift of the black
   level that shows as washed-out grey on a VGA monitor and most on an LCD.
