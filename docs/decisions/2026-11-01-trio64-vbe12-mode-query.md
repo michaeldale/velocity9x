@@ -127,4 +127,16 @@ has room on main since the Haswell layout code moved to its own segment
 (`2026-11-04-gm45-gl40-from-a-survey.md`).
 
 Gates at merge: `check-tree.ps1`, `build-host.ps1` and `run-checks.ps1`
-on the merged tree. 86Box results are added below when run.
+on the merged tree.
+
+86Box, the merged build (`504e40ed`), S3 package deployed and booted
+([evidence](../probe/trio-vbe12-86box-2026-11-04/)):
+
+| Guest | Scan | Rows published |
+|---|---|---|
+| Trio64, 4 MiB, VBE 1.2 | trusted: 22 listed, 22 queried, flags `0407` | 12 of 12, all family rows; 1600x1200x8 no longer added (the PR build before the fixes published 13) |
+| Trio32, 2 MiB, VBE 1.2 | trusted: 17 listed, 17 queried, flags `0407` | 9 of 12: 1280x1024x16, 800x600x32 and 1024x768x32 hidden, as in Michael's run; desktop up |
+
+Neither BIOS answered 014Fh to a listed mode, so the new bit was not set
+on either guest. Not run: a physical Trio64, and any non-S3 card with a
+VBE 1.2 BIOS.
