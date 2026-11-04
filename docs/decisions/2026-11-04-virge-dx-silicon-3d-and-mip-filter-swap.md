@@ -229,9 +229,19 @@ x=47 and x=79 are right. Not explained.
 V9XD32 **PASS**, T4's clear clean. V9XDDP's `Ok` keys are identical to
 0.35.0's, `OverlapRightPixelOk` included. No idle timeout, no fault.
 
+**Copies are clean** (2026-11-05, boot 666; evidence in
+[`../probe/virge-dx-a8u4i5-silicon-2026-11-04/copy-after-3d/`](../probe/virge-dx-a8u4i5-silicon-2026-11-04/copy-after-3d/)).
+V9XD32's new T4Copy fills T4's target, draws a green triangle on the back
+buffer, then copies a 64x64 pattern (a distinct value at every pixel) into
+the target and checks every pixel. On the ViRGE/DX `/bpp16`: 0 wrong, and
+0 on the control copy straight after. `CountBlt` and `CountBltEngine` both
+rose by 14 over the run (43 to 57), so every blit in it, this copy
+included, went to the engine and not the CPU path. The Haswell 4570 also
+passes it, at 16 and 32 bpp. So the fault is in fills, the copy needs no
+dummy blit, and the one S3 put before copies is not needed on this chip
+(and breaks V9XDDP's overlap copy, above).
+
 Open:
-- A copy straight after 3D work is not measured; it may carry the same
-  fault, and the dummy blit as S3 wrote it breaks one copy here.
 - The 16-bit GDI path (`src\display16\gdi_accel.c`) issues fills without
   the dummy blit; a GDI fill right after Direct3D could show the fault.
 - The Trio3D and Trio3D/2X share this engine file and get the change

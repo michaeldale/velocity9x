@@ -77,7 +77,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-08-30 Every package claims "GUEST ACTIVATION NOT YET TESTED", including ones activated on guests](2026-08-30-package-status-string-is-hardcoded.md)
 - [2026-08-30 V9XTRACE.EXE faults in KRNL386 once DirectDraw has run](2026-08-30-trace-dump-krnl386-flush-gpf.md)
 - [2026-08-30 XFree86 says the ViRGE cannot do 32 bpp at 1024 wide, and this driver ships that mode](2026-08-30-virge-1024x768x32-xfree86-limit.md)
-- [2026-08-30 The ViRGE needs a dummy blit after a 3D command, and this driver does not issue one](2026-08-30-virge-2d-after-3d-dummy-blit.md) (fixed for fills 2026-11-05; copies and GDI open)
+- [2026-08-30 The ViRGE needs a dummy blit after a 3D command, and this driver does not issue one](2026-08-30-virge-2d-after-3d-dummy-blit.md) (fixed for fills 2026-11-05; copies clean; GDI open)
 - [2026-09-01 The D3D clipper loses the last row and column of any full-target triangle](2026-09-01-clipper-loses-last-row-and-column.md)
 - [2026-09-02 DxDiag's Direct3D test fails at step 44, EnumTextureFormats](2026-09-02-dxdiag-fails-at-enumtextureformats.md)
 - [2026-09-02 FlipPixelOk reads 0 on every target, including ones whose flips work](2026-09-02-flippixelok-is-uninterpretable.md)

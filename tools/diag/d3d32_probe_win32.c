@@ -29,7 +29,9 @@
  *      /t4prelock reads it before the clear too, /t4predraw draws a green
  *      triangle on the back buffer just before the clear, and /t4refill
  *      fills it blue and then zero again after the first clear - the
- *      measurements behind the ViRGE's fill-after-3D fault;
+ *      measurements behind the ViRGE's fill-after-3D fault. T4Copy then
+ *      copies a 64x64 pattern into the target straight after a 3D draw,
+ *      every pixel judged;
  *   T5 depth precision: a quad a tenth of a 16-bit step in front of
  *      another, which a 16-bit buffer cannot tell apart and a 24-bit one
  *      can;
@@ -1083,6 +1085,94 @@ static DWORD d32_flat_verdict(const char *prefix, DWORD mismatches)
  * First value, and row 0 as sixteen bits, one per group of four pixels, set
  * where any pixel of the group is not `expected`.
  */
+/*
+ * T4Copy's source pattern: a different value at every pixel of a 64x64
+ * block, never zero, under 16 bits so it reads the same at 16 and 32 bpp
+ * (the X byte stays zero).
+ */
+static DWORD d32_copy_pattern(DWORD x, DWORD y)
+{
+    return ((y << 6) | x) + 1ul;
+}
+
+/* Lay d32_copy_pattern into a 64x64 surface through a lock. */
+static int d32_copy_paint(D32_OBJECT *surface)
+{
+    D32_SURFACE_DESC desc;
+    DWORD x;
+    DWORD y;
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (((d32_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
+                                               DDLOCK_WAIT, 0) != 0 ||
+        desc.lpSurface == 0) {
+        return 0;
+    }
+    for (y = 0ul; y < 64ul; ++y) {
+        BYTE *row = (BYTE *)desc.lpSurface + y * (DWORD)desc.lPitch;
+
+        for (x = 0ul; x < 64ul; ++x) {
+            if (d32_bytes == 4ul) {
+                ((DWORD *)row)[x] = d32_copy_pattern(x, y);
+            } else {
+                ((WORD *)row)[x] = (WORD)d32_copy_pattern(x, y);
+            }
+        }
+    }
+    ((d32_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    return 1;
+}
+
+/*
+ * A 64x64 copy of d32_copy_pattern under `prefix`: the pixels that differ,
+ * the first as a First value, and row 0 as sixteen bits, one per group of
+ * four pixels. Returns the count, or 4096 when the lock fails.
+ */
+static DWORD d32_copy_scan(D32_OBJECT *surface, const char *prefix)
+{
+    D32_SURFACE_DESC desc;
+    DWORD bad = 0ul;
+    DWORD first = 0xfffffffful;
+    DWORD row0 = 0ul;
+    DWORD x;
+    DWORD y;
+    char key[32];
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (((d32_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
+                                               DDLOCK_WAIT, 0) != 0 ||
+        desc.lpSurface == 0) {
+        wsprintfA(key, "%sLock", prefix);
+        d32_line(key, "FAIL");
+        return 4096ul;
+    }
+    for (y = 0ul; y < 64ul; ++y) {
+        for (x = 0ul; x < 64ul; ++x) {
+            DWORD pixel = d32_pixel(&desc, x, y);
+
+            if (pixel == d32_copy_pattern(x, y)) {
+                continue;
+            }
+            if (bad++ == 0ul) {
+                first = (x << 24) | (y << 16) | (pixel & 0xfffful);
+            }
+            if (y == 0ul) {
+                row0 |= 1ul << (x / 4ul);
+            }
+        }
+    }
+    ((d32_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    wsprintfA(key, "%sBad", prefix);
+    d32_hx(key, bad);
+    wsprintfA(key, "%sFirst", prefix);
+    d32_hx(key, first);
+    wsprintfA(key, "%sRow0", prefix);
+    d32_hx(key, row0);
+    return bad;
+}
+
 /* Blue at 5:5:5 and 5:6:5 alike: the low five bits. */
 #define D32_T4_REFILL_COLOUR 0x0000001ful
 static void d32_target_scan(D32_OBJECT *surface, DWORD expected,
@@ -6488,6 +6578,49 @@ void WINAPI V9xD3d32ProbeEntry(void)
         ((d32_release_fn)device2->vtbl[COM_RELEASE])(device2);
     } else {
         ++failures;
+    }
+
+    /*
+     * T4Copy: a surface-to-surface copy straight after 3D work. On the
+     * ViRGE the first colour fill after S3D triangles paints part of its
+     * first row in the last triangle's colour; this asks the same of a
+     * copy, the blit a windowed game presents with. A 64x64 pattern is
+     * copied into T4's target right after a green triangle on the back
+     * buffer (T4Copy), then again with nothing between (T4Recopy, the
+     * control, not judged).
+     */
+    if (offscreen != 0) {
+        D32_OBJECT *source = 0;
+
+        d32_line("Stage", "10b-t4-copy-after-3d");
+        d32_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+        desc.dwWidth = 64ul;
+        desc.dwHeight = 64ul;
+        desc.ddsCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_VIDEOMEMORY;
+        hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+            ddraw, &desc, &source, 0);
+        d32_hx("T4CopySourceHr", (DWORD)hr);
+        if (hr == 0 && source != 0 && d32_copy_paint(source)) {
+            d32_hx("T4CopyClearHr",
+                   (DWORD)d32_fill(offscreen, DDBLT_COLORFILL, 0ul));
+            d32_vertex(&v[0], 600.0f, 400.0f, 0.5f, 0xff00ff00ul);
+            d32_vertex(&v[1], 632.0f, 400.0f, 0.5f, 0xff00ff00ul);
+            d32_vertex(&v[2], 600.0f, 432.0f, 0.5f, 0xff00ff00ul);
+            d32_hx("T4CopyDrawHr", (DWORD)d32_draw(device, v, 3ul));
+            d32_hx("T4CopyHr", (DWORD)((d32_blt_fn)offscreen->vtbl[DDS_BLT])(
+                offscreen, 0, source, 0, DDBLT_WAIT, 0));
+            failures += d32_copy_scan(offscreen, "T4Copy") != 0ul ? 1ul : 0ul;
+            d32_hx("T4RecopyHr", (DWORD)((d32_blt_fn)offscreen->vtbl[DDS_BLT])(
+                offscreen, 0, source, 0, DDBLT_WAIT, 0));
+            (void)d32_copy_scan(offscreen, "T4Recopy");
+        } else {
+            ++failures;
+        }
+        if (source != 0) {
+            ((d32_release_fn)source->vtbl[COM_RELEASE])(source);
+        }
     }
 
     d32_line("Stage", "11-release");

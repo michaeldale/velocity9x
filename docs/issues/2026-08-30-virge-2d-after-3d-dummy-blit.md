@@ -2,7 +2,7 @@
 
 Filed: 2026-08-30
 Status: reproduced on silicon and fixed for colour fills in the 32-bit HAL
-(2026-11-05); copies and the 16-bit GDI path open
+(2026-11-05); copies measured clean; the 16-bit GDI path open
 Found in: `98DDK\src\display\mini\s3v\S3_DD32.C:860-874`, while looking for
 best-practice precedent on `DDBLT_DEPTHFILL`.
 
@@ -21,9 +21,11 @@ section "T4's strays".
 there, V9XDDP's right-shifted overlapping copy on a 256-byte-pitch surface
 read one wrong pixel, in three runs, and without it that copy is right.
 
+A copy straight after 3D does not show the fault: V9XD32 T4Copy, 0 wrong
+pixels in 4096 on the engine path (boot 666, same record).
+
 Still open:
 
-- Whether a copy straight after 3D shows the fault. Not measured.
 - The 16-bit GDI path (`src\display16\gdi_accel.c`), which fills without
   the prefix.
 - The Trio3D and Trio3D/2X, which share the engine file and have not run

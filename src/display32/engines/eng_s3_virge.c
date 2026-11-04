@@ -316,8 +316,9 @@ int v9x_wait_idle(int wait)
  * (98DDK src\display\mini\s3v\S3_DD32.C), before every blit. Not before
  * copies here: with it, V9XDDP's right-shifted overlapping copy on a
  * 256-byte-pitch surface read its leftmost pixel from 112 pixels along the
- * row (boot 665, three runs), and without it that copy is right. Whether a
- * copy straight after 3D shows the fill's fault is not measured.
+ * row (boot 665, three runs), and without it that copy is right. A copy
+ * straight after 3D does not show the fill's fault (V9XD32 T4Copy, boot
+ * 666, on the engine path).
  * Unconditional before fills: knowing whether 3D ran last would take state
  * shared with the 3D engine, for seven register writes a fill.
  */
