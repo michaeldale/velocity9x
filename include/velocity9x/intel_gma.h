@@ -46,6 +46,14 @@
 #define V9X_PCI_DEVICE_GMA_X4500_G45     ((v9x_u16)0x2e22u)
 #define V9X_PCI_DEVICE_GMA4500_Q45       ((v9x_u16)0x2e12u)
 /*
+ * G4x mobile (Cantiga), function 0: the GM45's, GS45's and GL40's GMA
+ * 4500MHD. The G45's path, on the G45's BAR layout and Linux grouping the
+ * GM45 with the G45 (not re-read). From one DOS survey (an HP t5740,
+ * GitHub issue 22); not run
+ * (docs\decisions\2026-11-04-gm45-gl40-from-a-survey.md).
+ */
+#define V9X_PCI_DEVICE_GMA4500MHD_GM45   ((v9x_u16)0x2a42u)
+/*
  * Ironlake desktop (Clarkdale) HD Graphics, function 0: Gen5. The GM965's
  * 2D path carries over - blits on the render ring, no blitter ring before
  * Gen6 - with the GTT at BAR0 + 2 MiB instead of + 512 KiB (Linux 6.6
