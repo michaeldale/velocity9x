@@ -133,9 +133,11 @@ v9x_u16 v9x_vbe_scan_may_contradict(v9x_u16 status);
  * says that some listed modes "may not be available due to the video board's
  * current memory and monitor configuration" and leaves it to the application
  * to verify each through 4F01h, so a 1.2 BIOS answering 014Fh is reporting a
- * mode it cannot set, not an incomplete walk. Measured on a 2 MiB Trio64
- * whose BIOS lists 0x0118-0x011B, answers 014Fh to 4F01h for them and refuses
- * them at 4F02h too (2026-08-26-s3-physical-pipeline-inert.md, section 7).
+ * mode it cannot set, not an incomplete walk. The rule rests on that text;
+ * no BIOS measured so far answers 014Fh for a mode it lists. BARRY's 2 MiB
+ * Trio64 answers 014Fh for 0x0118-0x011B only when asked by number, and does
+ * not list them, so its walk sets neither bit (boot 655 on A8U4I5,
+ * 2026-11-01-trio64-vbe12-mode-query.md).
  * Any other refusal (QUERY_FAILED) still withdraws it, and every other
  * completeness rule still applies.
  */

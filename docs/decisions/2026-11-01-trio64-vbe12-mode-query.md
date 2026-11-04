@@ -140,3 +140,30 @@ on the merged tree.
 Neither BIOS answered 014Fh to a listed mode, so the new bit was not set
 on either guest. Not run: a physical Trio64, and any non-S3 card with a
 VBE 1.2 BIOS.
+
+## On BARRY's card, physically (A8U4I5, boot 655)
+
+BARRY's Trio64 (`5333:8811`, 86C764, 2 MiB, VBE 1.2, OEM string "S3
+Incorporated. Vision864") was refitted in the A8U4I5 P3 on 2026-11-04. Its
+September devnode still pointed at Velocity9x (`DISPLAY\0003`); the s3
+package from main `3a035cd0` went on by WININIT rename, `reset` from boot
+654 to 655, all eight hashes as built
+([evidence](../probe/trio-vbe12-a8u4i5-barry-card-2026-11-04/)):
+
+- `Bios=v=0102`, `Vram` 2 MiB, `Scan=state=1` (trusted): 18 listed,
+  18 queried, 13 cached, flags `0207`.
+- Hidden as scan-contradicted: **640x400x8 (0x0100)**, the defect of the
+  2026-08-26 record's section 8, and 1280x1024x16 (0x011A) and
+  1024x768x32 (0x0118), which `ValidateMode` refused at 2 MiB anyway.
+  9 of 12 rows published; `Stage=enable-ok`, an 800x600 desktop.
+- Not run here, by this card's history in this board: `V9XGDI /accel`,
+  a DOS box, or anything else heavy on the linear aperture.
+
+**One premise above does not hold.** Item 3 says BARRY's BIOS lists
+0x0118-0x011B and answers 014Fh to 4F01h for them, and that those answers
+kept its scan from hiding 0x0100. The flags (`0207`: neither `QUERY_FAILED`
+nor `QUERY_UNAVAIL`) and the 2026-08-20 inventory, whose 014Fh came from
+asking for those numbers directly, both say the BIOS does not list them. So
+BARRY's walk had no refused queries: what it needed was a scan at VBE 1.2
+at all, and the 1.x waiver, now narrowed to an exact 014Fh, is still not
+exercised by any BIOS measured. `vbe_cache.h` is corrected to say so.
