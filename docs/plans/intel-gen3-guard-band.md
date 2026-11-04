@@ -11,16 +11,22 @@ fault on the first run did not reproduce; UT99 clean; 3DMark 2001 SE
 flickers with and without the band (a separate, filed defect: batches
 refused for their vertices on the shipped path), so the band adds no
 refusals in any of the four. Step 3, shipping, needs its own section.
+**Step 3 done 2026-11-04** ([record](../decisions/2026-11-04-gen3-guard-band-step3.md)):
+the band ships at 1,024 with the classifier; V9XD32 both DDIs PASS,
+V9XDDP unchanged against a band-0 control, 3DMark 2000 and UT99's intro
+clean. Half-Life was not run.
 
-**Parked 2026-11-01** at Michael's word, on branch `park/gen3-batch-cost`
-(not merged). The branch also holds the census-per-flip change, the
-batch-cost records, the vertex-refusal counters and the 0.0 texture
-coordinate fix of the [3DMark 2001 SE
+**Parked 2026-11-04** at Michael's word, again, on branch
+`park/gen3-batch-cost` (not merged), rebased onto main `aa030a33` with
+step 3 committed on top. The branch also holds the census-per-flip
+change, the batch-cost records, the vertex-refusal counters and the 0.0
+texture coordinate fix of the [3DMark 2001 SE
 issue](../issues/2026-11-01-gma950-3dmark2001se-flicker-refused-vertices.md).
-To resume: step 3 (`clip_in_core` 0 for Gen3 with a 1,024-pixel
-classifier that core-clips beyond it, as the HD 4600's), and the frames
-under the band in 3DMark 2000 and Half-Life still to be looked at. The
-netbook was left on this branch's build (boot 268, mask 0).
+To resume: Half-Life mwd5 D3D under the shipped band (its step 2 driver
+script is lost; write a new one), 3DMark 2000's frames grabbed, then the
+merge to main with `run-checks.ps1` on the merged tree. The 3DMark 2001
+SE flicker is open on its own issue. The netbook was left on step 3's
+build (boot 269, `e44c8882-dirty`, mask 0).
 
 Machine: the netbook (945GSE / GMA 950, Atom N280). Its `reset` verb
 recovers a wedged render engine; nothing else may run this.
@@ -106,6 +112,43 @@ UT99's intro (the DX5 off-target case of `0bdf0c1a`), and 3DMark 2001 SE
 the band drawn as given, beyond it clipped by the core's clipper. The
 decoder's licence widened to the band permanently. The GMA 900 and GMA
 3150 take it by the same-design rule.
+
+Written 2026-11-04, after the branch was rebased onto main `aa030a33`.
+
+- **The band.** `V9X_D3D_I9XX_GUARD_BAND` = 1,024 pixels, the measured
+  band (step 1: writes stay inside DRAW_RECT to 3,968, Gouraud holds to
+  2,048). Every draw sets it on the run builders and in the decoder's
+  limits. The GUARD bit stays as a measurement override, so V9XGBND can
+  still try other bands; INSET is unchanged.
+- **The test, pure.** `v9x_i9xx_band_init` / `v9x_i9xx_band_holds` in
+  `i9xx_vertex.c` (flat builds only, as the band already is): is a
+  vertex's x and y, as bits, inside `[-band, size + band]`, finite. The
+  same bounds the run builders apply, so a triangle the classifier passes
+  is one the builder takes. Host-tested at the edges, NaN, infinity and
+  negative zero.
+- **The classifier**, in `v9x_d3d_i9xx_draw`: consecutive triangles inside
+  the band go to the body as one run, a window on the caller's array (the
+  two-unit pairs offset with it). A triangle outside it ends the run; it
+  is cut to the target by `v9x_r3d_clip_triangle` and its fan drawn as its
+  own batch, as the core's list builder drew it until now. One the clipper
+  refuses (non-finite, past `coordinate_limit`) is dropped and the draw
+  reports failure after drawing the rest, as the list builder did. A
+  two-unit triangle outside the band is dropped: the clipper cannot carry
+  its second pair. The ICD clips those to the drawable first, and the core
+  refused the whole request for them until now.
+- **DDI 6.** `guard_band_ddi6` 1: with `clip_in_core` 0 the core would
+  otherwise stop telling DDI 6 programs of the band (4,095) it tells them
+  today, and the runtime would clip on the CPU again. What they send is
+  what they send now; only what lies within 1,024 pixels is drawn without
+  a cut.
+- **Counters.** Two appended diagnostics: triangles cut by the classifier
+  and triangles dropped by it.
+
+Verification: host tests, `run-checks.ps1`, then the netbook on the
+build: V9XD32 at DDI 5 and 6, V9XDDP, the GL/Glide probes, Half-Life mwd5
+D3D, 3DMark 2000 and UT99's intro, with the counters and frames looked
+at (step 2's frames were not). The GMA 900 and GMA 3150 machines are not
+run here; they take it by the same-design rule.
 
 ## Decisions for Michael
 

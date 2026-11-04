@@ -86,9 +86,7 @@ typedef char v9x_assert_batch_fits_vertices[
  */
 #define V9X_D3D_I9XX_SAMPLER_SIZE_MIN 1ul
 
-/* Not const for one field: clip_in_core follows the measurement-only GUARD
- * variant (v9x_d3d_i9xx_ready). Nothing else here changes at run time. */
-static V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     16ul,                       /* target_bits_per_pixel  */
     V9X_I9XX_BUF_3D_PITCH_MASK, /* target_pitch_max       */
     4ul,                        /* target_pitch_align     */
@@ -134,17 +132,15 @@ static V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      */
     V9X_I9XX_SANDBOX_PAGE_BYTES, /* texture_align         */
     /*
-     * The core clips for this engine, as for every other. It was 0, on the
-     * reading that Gen3 clips against its own drawing rectangle inside the
-     * 4096 guard band - but the vertex builders (i9xx_vertex.c) accept a
-     * vertex on the target and nothing else, so with 0 nothing clipped at
-     * all and one vertex off the screen refused its whole batch (reason 6).
-     * 3DMark99 and Half-Life at DDI 5 send vertices on the target and never
-     * showed it; UT99's DX5 draws do not: 260,126 batches refused in one
-     * intro and DM-Morpheus run on the netbook (2026-10-07), walls drawn as
-     * holes and flat colour.
+     * The core does not clip for this engine: v9x_d3d_i9xx_draw does, and
+     * only past the measured guard band (V9X_D3D_I9XX_GUARD_BAND). Until
+     * 2026-11-04 this was 1, the core cutting every triangle to the target:
+     * the builders then accepted a vertex on the target and nothing else,
+     * and with 0 and no classifier one vertex off the screen refused its
+     * whole batch (UT99's DX5 draws, 260,126 batches in one run on the
+     * netbook, 2026-10-07). docs\plans\intel-gen3-guard-band.md, step 3.
      */
-    1ul,                        /* clip_in_core           */
+    0ul,                        /* clip_in_core           */
     /* BUF_INFO carries the depth pitch, so a padded Z surface is drawn at
      * its own pitch (v9x_d3d_i9xx_create_surface). */
     1ul,                        /* depth_pitch_own        */
@@ -163,7 +159,17 @@ static V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     V9X_I9XX_BUF_3D_PITCH_MASK, /* target_pitch_max_xrgb8888 */
     /* A 32-bit depth buffer, DEPTH_FRMT_24_FIXED_8_OTHER: 24 bits of depth
      * and an unused byte (v9x_i9xx_retarget_state). */
-    24ul                        /* depth32_bits           */
+    24ul,                       /* depth32_bits           */
+    0ul,                        /* centre_in_engine       */
+    0ul,                        /* texture_stages         */
+    /*
+     * DDI 6 programs keep the band (coordinate_limit less a pixel) they
+     * were told while the core clipped for this engine; without this,
+     * clip_in_core 0 would stop telling them, and the runtime would clip
+     * on the CPU again. What they send is what they sent; v9x_d3d_i9xx_draw
+     * cuts past 1,024 pixels as the core cut past the target.
+     */
+    1ul                         /* guard_band_ddi6        */
 };
 
 /*
@@ -2307,12 +2313,27 @@ static DWORD v9x_d3d_i9xx_state_previous_dwords = 0ul;
 #define V9X_D3D_I9XX_OMIT_STATE   0x80ul
 
 /*
- * GUARD, measurement only (docs\plans\intel-gen3-guard-band.md): the core
- * does not clip, and a vertex up to the band in bits 16-27, in pixels, off
- * the target on any side is drawn as given; one beyond it refuses the batch.
- * INSET also shrinks DRAW_RECT by V9X_D3D_I9XX_GUARD_INSET pixels on every
- * side, so a probe can read the frame between the rectangle and the
- * surface's edge for writes the rectangle should have stopped.
+ * The guard band, in pixels off the target on every side: a vertex within
+ * it is drawn as given, a triangle with one beyond it is cut to the target
+ * (v9x_d3d_i9xx_draw).
+ *
+ * MEASURED on the netbook (docs\decisions\2026-11-01-gen3-guard-band-
+ * step1.md): with DRAW_RECT inset 32 pixels, no write left the rectangle at
+ * any distance to 3,968 pixels; Gouraud colour held to 2,048 and was wrong
+ * at 3,968. The band is 2,048, the largest distance passing every test,
+ * halved for margin. Texture interpolation was not drawn there and is
+ * expected to fail with colour's. Half-Life, 3DMark 2000 and UT99 ran
+ * clean under it (step 2).
+ */
+#define V9X_D3D_I9XX_GUARD_BAND   1024ul
+
+/*
+ * GUARD, measurement only: the band in bits 16-27, in pixels, replaces
+ * V9X_D3D_I9XX_GUARD_BAND - zero is the target alone, the old rule - so
+ * V9XGBND can still measure another. INSET also shrinks DRAW_RECT by
+ * V9X_D3D_I9XX_GUARD_INSET pixels on every side, so a probe can read the
+ * frame between the rectangle and the surface's edge for writes the
+ * rectangle should have stopped.
  */
 #define V9X_D3D_I9XX_OMIT_GUARD   0x100ul
 #define V9X_D3D_I9XX_OMIT_INSET   0x200ul
@@ -2320,8 +2341,8 @@ static DWORD v9x_d3d_i9xx_state_previous_dwords = 0ul;
 #define V9X_D3D_I9XX_GUARD_MASK   0xffful
 #define V9X_D3D_I9XX_GUARD_INSET  32ul
 
-/* The band the GUARD variant asks for, bounded as the decoder bounds it;
- * zero when it is off. */
+/* The band this draw uses: the measured one, or the GUARD variant's,
+ * bounded as the decoder bounds it. */
 static DWORD v9x_d3d_i9xx_guard_band(void)
 {
     DWORD omit = v9x_hal->hsw_flush_omit;
@@ -2329,7 +2350,7 @@ static DWORD v9x_d3d_i9xx_guard_band(void)
 
     if ((omit & V9X_D3D_I9XX_OMIT_GUARD) == 0ul ||
         band > V9X_I9XX_GUARD_BAND_MAX) {
-        return 0ul;
+        return V9X_D3D_I9XX_GUARD_BAND;
     }
     return band;
 }
@@ -2465,7 +2486,129 @@ static void v9x_d3d_i9xx_note_batch(const V9X_D3DTLVERTEX *vertices,
     ++cell[2];
 }
 
-/* The engine's whole draw, timed; the work is in the body. */
+/*
+ * The guard-band classifier (step 3 of docs\plans\intel-gen3-guard-band.md).
+ *
+ * The core hands triangles over unclipped (clip_in_core 0). Consecutive
+ * triangles whose vertices all lie inside the band go to the body as one
+ * run, a window on the caller's array. A triangle with a vertex past it
+ * ends the run and is cut to the target by the core's clipper, its fan
+ * drawn as a batch of its own: what the core's list builder did for every
+ * triangle off the target until 2026-11-04. One the clipper refuses (not
+ * finite, past coordinate_limit) is dropped, as the list builder dropped
+ * it, and the draw answers 0 once the rest is drawn. A two-unit triangle
+ * past the band is dropped the same way: the clipper cannot carry its
+ * second pair, and the ICD clips those to the drawable before they come.
+ *
+ * The band test is the run builders' own (v9x_i9xx_band_holds), so a run
+ * the classifier passes is never refused by them for its positions.
+ * Statics, as the stream is, under the Win16 lock.
+ */
+static V9X_R3D_VERTEX v9x_d3d_i9xx_clipped[V9X_R3D_CLIP_MAX_VERTICES];
+static V9X_R3D_VERTEX v9x_d3d_i9xx_fan[V9X_R3D_MAX_FAN_TRIANGLES * 3u];
+static V9X_R3D_DRAW v9x_d3d_i9xx_window;
+
+/* Triangles first .. first + count - 1 of the draw, with a two-unit draw's
+ * pairs moved along with them. */
+static int v9x_d3d_i9xx_draw_run(const V9X_R3D_DRAW *draw,
+                                 const V9X_R3D_VERTEX *vertices,
+                                 DWORD first, DWORD count)
+{
+    const V9X_D3DTLVERTEX *run =
+        (const V9X_D3DTLVERTEX *)(vertices + first * 3ul);
+
+    if (count == 0ul) {
+        return 1;
+    }
+    if (draw->texcoords1 == 0) {
+        return v9x_d3d_i9xx_draw_triangles_body(draw, run, count);
+    }
+    v9x_d3d_i9xx_window = *draw;
+    v9x_d3d_i9xx_window.texcoords1 = draw->texcoords1 + first * 3ul * 2ul;
+    return v9x_d3d_i9xx_draw_triangles_body(&v9x_d3d_i9xx_window, run,
+                                            count);
+}
+
+static int v9x_d3d_i9xx_draw_classified(const V9X_R3D_DRAW *draw,
+                                        const V9X_R3D_VERTEX *vertices,
+                                        DWORD triangle_count)
+{
+    struct v9x_i9xx_band band;
+    DWORD run_start = 0ul;
+    DWORD index;
+    int ok = 1;
+
+    /* Nothing to classify: the body refuses it as it always did. */
+    if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
+        v9x_hal == 0) {
+        return v9x_d3d_i9xx_draw_triangles_body(
+            draw, (const V9X_D3DTLVERTEX *)vertices, triangle_count);
+    }
+    if (v9x_i9xx_band_init(&band, draw->target.width, draw->target.height,
+                           v9x_d3d_i9xx_guard_band()) != V9X_STATUS_OK) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
+    }
+
+    for (index = 0ul; index < triangle_count; ++index) {
+        const V9X_R3D_VERTEX *triangle = &vertices[index * 3ul];
+        DWORD corner;
+        DWORD fans = 0ul;
+        int corners;
+        int fan;
+
+        for (corner = 0ul; corner < 3ul; ++corner) {
+            const DWORD *bits = (const DWORD *)&triangle[corner];
+
+            if (v9x_i9xx_band_holds(&band, bits[0], bits[1]) == V9X_FALSE) {
+                break;
+            }
+        }
+        if (corner == 3ul) {
+            continue;
+        }
+
+        if (!v9x_d3d_i9xx_draw_run(draw, vertices, run_start,
+                                   index - run_start)) {
+            ok = 0;
+        }
+        run_start = index + 1ul;
+        if (draw->texcoords1 != 0) {
+            ++v9x_hal->d3d_diagnostics.i9xx_guard_dropped;
+            ok = 0;
+            continue;
+        }
+        corners = v9x_r3d_clip_triangle(
+            triangle, v9x_d3d_i9xx_limits.coordinate_limit,
+            (float)draw->target.width, (float)draw->target.height,
+            v9x_d3d_i9xx_clipped);
+        if (corners < 0) {
+            ++v9x_hal->d3d_diagnostics.i9xx_guard_dropped;
+            ok = 0;
+            continue;
+        }
+        ++v9x_hal->d3d_diagnostics.i9xx_guard_cut;
+        for (fan = 1; fan + 1 < corners; ++fan) {
+            v9x_d3d_i9xx_fan[fans * 3ul] = v9x_d3d_i9xx_clipped[0];
+            v9x_d3d_i9xx_fan[fans * 3ul + 1ul] = v9x_d3d_i9xx_clipped[fan];
+            v9x_d3d_i9xx_fan[fans * 3ul + 2ul] =
+                v9x_d3d_i9xx_clipped[fan + 1];
+            ++fans;
+        }
+        if (fans != 0ul &&
+            !v9x_d3d_i9xx_draw_triangles_body(
+                draw, (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan, fans)) {
+            ok = 0;
+        }
+    }
+    if (!v9x_d3d_i9xx_draw_run(draw, vertices, run_start,
+                               triangle_count - run_start)) {
+        ok = 0;
+    }
+    return ok;
+}
+
+/* The engine's whole draw, timed; the work is in the classifier and the
+ * body. */
 static int v9x_d3d_i9xx_draw(const V9X_R3D_DRAW *draw,
                              const V9X_R3D_VERTEX *r3d_vertices,
                              DWORD triangle_count)
@@ -2477,7 +2620,7 @@ static int v9x_d3d_i9xx_draw(const V9X_R3D_DRAW *draw,
     int ok;
 
     v9x_d3d_i9xx_last_head_cycles = 0ul;
-    ok = v9x_d3d_i9xx_draw_triangles_body(draw, vertices, triangle_count);
+    ok = v9x_d3d_i9xx_draw_classified(draw, r3d_vertices, triangle_count);
     V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
     if (ok && V9X_TIME_ENABLED() && v9x_d3d_i9xx_last_head_cycles != 0ul &&
         vertices != 0) {
@@ -2540,7 +2683,9 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD cut = 0ul;
     int flip_waited;
     DWORD guard_band = v9x_d3d_i9xx_guard_band();
+    /* The probe's inset rectangle, under its own GUARD band only. */
     DWORD draw_inset = (guard_band != 0ul &&
+                        (omit & V9X_D3D_I9XX_OMIT_GUARD) != 0ul &&
                         (omit & V9X_D3D_I9XX_OMIT_INSET) != 0ul)
                            ? V9X_D3D_I9XX_GUARD_INSET : 0ul;
 
@@ -3218,14 +3363,6 @@ static int v9x_d3d_i9xx_ready(void)
         v9x_hal->engine.ring_bytes == 0ul) {
         return 0;
     }
-    /*
-     * The measurement-only GUARD variant: the core hands triangles over
-     * unclipped and the vertex builders and decoder take the band. Set
-     * here because the core asks ready() before it reads the limits for a
-     * draw. docs\plans\intel-gen3-guard-band.md.
-     */
-    v9x_d3d_i9xx_limits.clip_in_core =
-        v9x_d3d_i9xx_guard_band() != 0ul ? 0ul : 1ul;
     return 1;
 }
 

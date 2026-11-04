@@ -1,0 +1,166 @@
+Log: Log file open, 11/04/26 17:32:55
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows 98 4.10 (Build: 67766446)
+Init: Version: 436
+Init: Compiled: Oct 24 2000 23:40:18
+Init: Command line: 
+Init: Base directory: C:\UNREALTOURNAMENT\SYSTEM\
+Init: Character set: Unicode
+Log: Bound to Engine.dll
+Log: Bound to Core.dll
+Log: Bound to Window.dll
+Init: Object subsystem initialized
+Init: Computer: W9QI2BE2
+Init: User: win98user
+Init: Memory total: Phys=1048056K Pagef=1049092K Virt=2093056K
+Init: Working set: 0 / 0
+Init: CPU Speed=1662.457146 MHz
+Init: CPU Page size=4096, Processors=1
+Init: CPU Detected: PentiumPro-class processor (GenuineIntel)
+Init: CPU Features: CMov FPU RDTSC PAE MMX KNI
+Init: Unreal engine initialized
+Log: Bound to WinDrv.dll
+Init: Mouse info: 0 0 0
+Init: Client initialized
+Log: Bound to Render.dll
+Init: Lighting subsystem initialized
+Init: Rendering initialized
+Log: LoadMap: Entry
+Log: Bound to Fire.dll
+Log: Bound to IpDrv.dll
+Log: Game class is 'UTIntro'
+Log: Level is Level Entry.MyLevel
+Log: Bringing Level Entry.MyLevel up for play (0)...
+ScriptLog: InitGame: 
+ScriptLog: Base Mutator is Entry.Mutator0
+Log: Browse: CityIntro.unr?Name=DLD-RABBIT?Class=Botpack.TMale2?team=255?skin=SoldierSkins.sldr?Face=SoldierSkins.Brock?Voice=BotPack.VoiceMaleTwo
+Log: LoadMap: CityIntro.unr?Name=DLD-RABBIT?Class=Botpack.TMale2?team=255?skin=SoldierSkins.sldr?Face=SoldierSkins.Brock?Voice=BotPack.VoiceMaleTwo
+Log: Collecting garbage
+Log: Purging garbage
+Log: 0.0ms Unloading: Package Render
+Log: Garbage: objects: 16410->16407; refs: 224628
+Log: Game class is 'UTIntro'
+Log: Level is Level CityIntro.MyLevel
+Log: Bringing Level CityIntro.MyLevel up for play (0)...
+ScriptLog: InitGame: ?Name=DLD-RABBIT?Class=Botpack.TMale2?team=255?skin=SoldierSkins.sldr?Face=SoldierSkins.Brock?Voice=BotPack.VoiceMaleTwo
+ScriptLog: Base Mutator is CityIntro.Mutator1
+Init: Initialized moving brush tracker for Level CityIntro.MyLevel
+Log: Bound to UWeb.dll
+ScriptLog: Team 255
+ScriptLog: Login: DLD-RABBIT
+Log: Possessed PlayerPawn: TMale2 CityIntro.TMale0
+Init: Input system initialized for WindowsViewport0
+Log: Opened viewport
+Log: Bound to D3DDrv.dll
+Init: DirectDraw drivers detected:
+Init:    display (Primary Display Driver)
+Log: D3D Device 5660K vram, 5660K free
+Init: Unreal Tournament Direct3D support - internal revision 1.9c
+Init: D3D Device: szDriver=V9XHAL.DLL
+Init: D3D Device: szDescription=Velocity9x Intel GMA 950 (945GSE)
+Init: D3D Device: wProduct=0
+Init: D3D Device: wVersion=35
+Init: D3D Device: wSubVersion=0
+Init: D3D Device: wBuild=0
+Init: D3D Device: dwVendorId=32902
+Init: D3D Device: dwDeviceId=10158
+Init: D3D Device: dwSubSysId=814682172
+Init: D3D Device: dwRevision=3
+Init: Best-match display mode: 640x480x16 (Error=0)
+Init: D3D Device: dwZbuffer depth: 16 bits.
+Init: D3D Driver: wMaxTextureBlendStages=1
+Init: D3D Driver: wMaxSimultaneousTextures=1
+Init: D3D Detected: Intel video card
+Init: D3D Driver: Supports trilinear
+Init: D3D Driver: Supports non-power-of-2 textures
+Init: D3D Driver: Textures (8x8)-(1024x1024), Max aspect 1024
+Init: D3D Driver: VSync flip disabling not available.
+Init: D3D Driver: Gamma control not available. Brightness adjustment won't work.
+Log: Video memory fill is complete
+Init: D3D Driver: VidMem Disposition: 202 1
+Log: Bound to Galaxy.dll
+Init: Galaxy is using DirectSound
+Init: Galaxy initialized
+DevAudio: Galaxy SetViewport: WindowsViewport0
+Init: Safely failed to initialize Galaxy: 15
+Init: Game engine initialized
+Log: Startup time: 17.991683 seconds
+Log: D3D Driver: Preloaded 0K/2525K (1)
+ScriptLog: Creating root window: UMenu.UMenuRootWindow
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Log: Purging garbage
+Log: Unbound to Engine.dll
+Log: Unbound to Core.dll
+Log: Unbound to Window.dll
+Log: 0.0ms Unloading: Package Engine
+Log: 0.0ms Unloading: Package Core
+Exit: Game engine shut down
+Log: Unbound to WinDrv.dll
+Exit: Windows client shut down
+Log: Unbound to Render.dll
+Exit: Lighting subsystem shut down
+Exit: Rendering shut down
+Log: 0.0ms Unloading: Package Entry
+Log: 0.0ms Unloading: Package Logo
+Log: Unbound to Fire.dll
+Log: 0.0ms Unloading: Package Fire
+Log: 0.0ms Unloading: Package credits
+Log: 0.0ms Unloading: Package Botpack
+Log: 0.0ms Unloading: Package UnrealShare
+Log: 0.0ms Unloading: Package UnrealI
+Log: 0.0ms Unloading: Package Female2Voice
+Log: 0.0ms Unloading: Package Male2Voice
+Log: 0.0ms Unloading: Package Female1Voice
+Log: 0.0ms Unloading: Package BossVoice
+Log: 0.0ms Unloading: Package Male1Voice
+Log: 0.0ms Unloading: Package UMenu
+Log: 0.0ms Unloading: Package UWindow
+Log: 0.0ms Unloading: Package UBrowser
+Log: Unbound to IpDrv.dll
+Log: 0.0ms Unloading: Package IpDrv
+Log: 0.0ms Unloading: Package Announcer
+Log: 0.0ms Unloading: Package CityIntro
+Log: 0.0ms Unloading: Package city
+Log: 0.0ms Unloading: Package Detail
+Log: 0.0ms Unloading: Package ArenaTex
+Log: 0.0ms Unloading: Package GenFX
+Log: 0.0ms Unloading: Package NaliCast
+Log: 0.0ms Unloading: Package RainFX
+Log: 0.0ms Unloading: Package DecayedS
+Log: 0.0ms Unloading: Package GenIn
+Log: 0.0ms Unloading: Package NaliFX
+Log: 0.0ms Unloading: Package genfluid
+Log: 0.0ms Unloading: Package ShaneSky
+Log: 0.0ms Unloading: Package AmbModern
+Log: 0.0ms Unloading: Package AmbAncient
+Log: 0.0ms Unloading: Package openingwave
+Log: 0.0ms Unloading: Package Uttitle
+Log: 0.0ms Unloading: Package AmbOutside
+Init: Shut down moving brush tracker for Level CityIntro.MyLevel
+Log: 0.0ms Unloading: Package UTMenu
+Log: 0.0ms Unloading: Package LadderSounds
+Log: Unbound to UWeb.dll
+Log: 0.0ms Unloading: Package UWeb
+Log: 0.0ms Unloading: Package UTServerAdmin
+Log: 0.0ms Unloading: Package IpServer
+Log: 0.0ms Unloading: Package LadrArrow
+Log: 0.0ms Unloading: Package SoldierSkins
+Log: Unbound to D3DDrv.dll
+Log: Unbound to Galaxy.dll
+DevAudio: Galaxy SetViewport: NULL
+Exit: Galaxy shut down
+Log: 0.0ms Unloading: Package LadderFonts
+Log: 0.0ms Unloading: Package UWindowFonts
+Log: 0.0ms Unloading: Package MultiMesh
+Log: 0.0ms Unloading: Package EpicCustomModels
+Log: 0.0ms Unloading: Package Revenge
+Log: Garbage: objects: 22236->0; refs: 224628
+Exit: Object subsystem successfully closed.
+Exit: Exiting.
+Uninitialized: Name subsystem shut down
+Uninitialized: Memory Allocation Status
+Uninitialized: Curr Memory  1.055M /  0.871M
+Uninitialized: Peak Memory  72.315M /  74.324M
+Uninitialized: Allocs          69 Current /  259123 Total
+Uninitialized: Log file closed, 11/04/26 17:34:22

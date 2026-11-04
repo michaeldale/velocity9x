@@ -1745,6 +1745,57 @@ static void test_two_unit_guard_band(void)
     v9x_i9xx_vertex_set_band(0ul);
 }
 
+/*
+ * The shipped band's vertex test (step 3 of docs\plans\intel-gen3-guard-
+ * band.md): on a 640x480 target with the 1,024-pixel band, x and y inside
+ * [-1024, size + 1024] and finite hold, and a pixel past either end, an
+ * infinity or a NaN does not. Band zero is the target alone, as the run
+ * builders take it.
+ */
+static void test_band_holds(void)
+{
+    struct v9x_i9xx_band band;
+
+    CHECK(v9x_i9xx_band_init(&band, 640ul, 480ul, 1024ul) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_band_holds(&band, 0ul, 0ul) == V9X_TRUE);
+    CHECK(v9x_i9xx_band_holds(&band, 0x80000000ul, 0x80000000ul) ==
+          V9X_TRUE);
+    /* -1024 and 640 + 1024 = 1664 on x; 480 + 1024 = 1504 on y. */
+    CHECK(v9x_i9xx_band_holds(&band, 0xc4800000ul, 0xc4800000ul) ==
+          V9X_TRUE);
+    CHECK(v9x_i9xx_band_holds(&band, 0x44d00000ul, 0x44bc0000ul) ==
+          V9X_TRUE);
+    /* -1025, 1665 and 1505: a pixel past the band. */
+    CHECK(v9x_i9xx_band_holds(&band, 0xc4802000ul, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0ul, 0xc4802000ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0x44d02000ul, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0ul, 0x44bc2000ul) == V9X_FALSE);
+    /* 1600 is inside on x and past the band on y. */
+    CHECK(v9x_i9xx_band_holds(&band, 0x44c80000ul, 0ul) == V9X_TRUE);
+    CHECK(v9x_i9xx_band_holds(&band, 0ul, 0x44c80000ul) == V9X_FALSE);
+    /* Infinities and a NaN, on either axis. */
+    CHECK(v9x_i9xx_band_holds(&band, 0x7f800000ul, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0xff800000ul, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0ul, 0x7fc00000ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0xffc00000ul, 0ul) == V9X_FALSE);
+
+    /* Band zero: the target, edges included, and nothing off it - negative
+     * zero included, as v9x_i9xx_float_in_range refuses it. */
+    CHECK(v9x_i9xx_band_init(&band, 640ul, 480ul, 0ul) == V9X_STATUS_OK);
+    CHECK(v9x_i9xx_band_holds(&band, 0x44200000ul, 0x43f00000ul) ==
+          V9X_TRUE);
+    CHECK(v9x_i9xx_band_holds(&band, 0x44204000ul, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0xbf800000ul, 0ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_band_holds(&band, 0x80000000ul, 0ul) == V9X_FALSE);
+
+    /* Past the decoder's largest band, or no state to fill: refused. */
+    CHECK(v9x_i9xx_band_init(&band, 640ul, 480ul,
+                             V9X_I9XX_GUARD_BAND_MAX + 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_i9xx_band_init(0, 640ul, 480ul, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_guard_band(void)
 {
     struct v9x_i9xx_decode_limits limits;
@@ -6488,6 +6539,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_stipple();
     test_guard_band();
     test_two_unit_guard_band();
+    test_band_holds();
 #endif
     test_decoder_breadcrumb();
     test_probe_expectation_names();

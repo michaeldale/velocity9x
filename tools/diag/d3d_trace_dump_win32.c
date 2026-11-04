@@ -2084,6 +2084,8 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_hex("I9xxVertexRefusedRhwBits",
                   snapshot.d3d.i9xx_vertex_refused_last[3]);
     v9x_write_uint("I9xxUvZeroed", snapshot.d3d.i9xx_uv_zeroed);
+    v9x_write_uint("I9xxGuardCut", snapshot.d3d.i9xx_guard_cut);
+    v9x_write_uint("I9xxGuardDropped", snapshot.d3d.i9xx_guard_dropped);
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

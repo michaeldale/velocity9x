@@ -449,6 +449,42 @@ v9x_u32 v9x_i9xx_vertex_get_band(void)
 {
     return v9x_i9xx_vertex_band;
 }
+
+/*
+ * The classifier's vertex test: the run builders' bounds under the same
+ * band (the check in v9x_i9xx_build_runtime_run_common), converted once a
+ * draw rather than once a vertex.
+ */
+v9x_status v9x_i9xx_band_init(struct v9x_i9xx_band *band, v9x_u32 width,
+                              v9x_u32 height, v9x_u32 pixels)
+{
+    if (band == 0 || pixels > V9X_I9XX_GUARD_BAND_MAX) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    band->band_bits = 0ul;
+    if (v9x_i9xx_float_from_int(width + pixels, &band->right_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        v9x_i9xx_float_from_int(height + pixels, &band->bottom_bits) !=
+            V9X_I9XX_FLOAT_OK ||
+        (pixels != 0ul &&
+         v9x_i9xx_float_from_int(pixels, &band->band_bits) !=
+             V9X_I9XX_FLOAT_OK)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return V9X_STATUS_OK;
+}
+
+v9x_u16 v9x_i9xx_band_holds(const struct v9x_i9xx_band *band,
+                            v9x_u32 x_bits, v9x_u32 y_bits)
+{
+    if (v9x_i9xx_float_in_span(x_bits, band->right_bits, band->band_bits) ==
+            V9X_FALSE ||
+        v9x_i9xx_float_in_span(y_bits, band->bottom_bits, band->band_bits) ==
+            V9X_FALSE) {
+        return V9X_FALSE;
+    }
+    return V9X_TRUE;
+}
 #define V9X_I9XX_VERTEX_BAND v9x_i9xx_vertex_band
 #define V9X_I9XX_IN_BAND(bits, upper, lower) \
     v9x_i9xx_float_in_span((bits), (upper), (lower))

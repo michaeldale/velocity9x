@@ -4062,6 +4062,16 @@ typedef struct v9x_d3d_diagnostics {
      * issue record). Appended 2026-11-01 within ABI 2026102002.
      */
     DWORD i9xx_uv_zeroed;
+    /*
+     * Gen3's guard-band classifier (v9x_d3d_i9xx_draw, step 3 of
+     * docs\plans\intel-gen3-guard-band.md): triangles with a vertex past
+     * the band, cut to the target by the core's clipper and drawn as a
+     * fan, and triangles dropped - refused by the clipper (not finite, or
+     * past coordinate_limit), or a two-unit triangle past the band, which
+     * the clipper cannot carry. Appended 2026-11-04 within ABI 2026102002.
+     */
+    DWORD i9xx_guard_cut;
+    DWORD i9xx_guard_dropped;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

@@ -1,0 +1,21 @@
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRC6.EXE' runs.
+games-pre : BootId=2026-11-04 17:24:23.45 I9xxDrawsSubmitted=4326 I9xxDrawsRefused=0 I9xxRefuseLast=0 I9xxVertexRefusedXy=0 I9xxGuardCut=4 I9xxGuardDropped=0 R3dListClipped=0 BatchesEngineRefused=0
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRACE.EXE' runs.
+Protocol error: No window titled '*Overall Score*' appeared within 120 s.
+Protocol error: No window titled '*Overall Score*' appeared within 120 s.
+Protocol error: No window titled '*Overall Score*' appeared within 120 s.
+3DMark windows:  | 3DMark2000 Overall Score | 3DMark2000 - Untitled | Program Manager
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRACE.EXE' runs.
+Note: no process matched '3DMARK2000.EXE' on the first look: it had already exited, or the name is wrong (see ps).
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRC6.EXE' runs.
+after-3dmark2000 : BootId=2026-11-04 17:24:23.45 I9xxDrawsSubmitted=1200596 I9xxDrawsRefused=0 I9xxRefuseLast=0 I9xxVertexRefusedXy=0 I9xxGuardCut=4 I9xxGuardDropped=0 R3dListClipped=0 BatchesEngineRefused=0
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRACE.EXE' runs.
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRACE.EXE' runs.
+
+window exit=0
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRACE.EXE' runs.
+windows:  [Shell_TrayWnd] | Program Manager [Progman]
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRACE.EXE' runs.
+ut99 done; mask 0
+Note: agent v0.13.0 does not report the pid (0.14.0+); waiting until no 'V9XTRC6.EXE' runs.
+after-ut99 : BootId=2026-11-04 17:24:23.45 I9xxDrawsSubmitted=1403313 I9xxDrawsRefused=7 I9xxRefuseLast=6 I9xxVertexRefusedXy=0 I9xxGuardCut=4 I9xxGuardDropped=0 R3dListClipped=0 BatchesEngineRefused=9

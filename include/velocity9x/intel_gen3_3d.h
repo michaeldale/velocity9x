@@ -1507,6 +1507,26 @@ void v9x_i9xx_vertex_set_band(v9x_u32 band);
 v9x_u32 v9x_i9xx_vertex_get_band(void);
 
 /*
+ * The guard band's vertex test, for the HAL's classifier (step 3 of
+ * docs\plans\intel-gen3-guard-band.md): x and y, as bit patterns, finite
+ * and inside [-band, width + band] x [-band, height + band] - the bounds
+ * the run builders apply under the same band, so a triangle whose three
+ * vertices hold is one they take. The bounds are converted once by
+ * v9x_i9xx_band_init, which refuses a band past V9X_I9XX_GUARD_BAND_MAX.
+ * The flat builds only, as the band is.
+ */
+struct v9x_i9xx_band {
+    v9x_u32 right_bits;
+    v9x_u32 bottom_bits;
+    v9x_u32 band_bits;
+};
+
+v9x_status v9x_i9xx_band_init(struct v9x_i9xx_band *band, v9x_u32 width,
+                              v9x_u32 height, v9x_u32 pixels);
+v9x_u16 v9x_i9xx_band_holds(const struct v9x_i9xx_band *band,
+                            v9x_u32 x_bits, v9x_u32 y_bits);
+
+/*
  * Is this bit pattern a float the rasteriser can walk to, in [0, limit]?
  *
  * Positive, finite, and no greater than the limit. Exposed because the same
