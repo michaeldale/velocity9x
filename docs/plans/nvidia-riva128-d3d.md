@@ -132,8 +132,12 @@ the DMA object's flag bits; 86Box draws no 3D.
    [record](../decisions/2026-11-04-riva128-unreal-tournament.md))**
    draws its intro windowed; its ONE/INVSRCCOLOR translucency is drawn as
    the add, by Michael's choice, and 137 of 32,740 batches are refused
-   (ONE/SRCALPHA). Left: fullscreen (the owner looks), and the guest's
-   other D3D games (Thief, Final Fantasy VII, Homeworld, 3DMark 99 Max).
+   (ONE/SRCALPHA). **Thief (2026-11-04, boot 36,
+   [record](../decisions/2026-11-04-riva128-thief.md))** draws Lord
+   Bafford's Manor fullscreen, seen through the flip-path frame grab: 719,438
+   draws, none refused. Left: the owner looks at a fullscreen game, and the
+   guest's other D3D games (Thief 2, Final Fantasy VII, Homeworld, 3DMark 99
+   Max).
 
 ## Unknowns
 
