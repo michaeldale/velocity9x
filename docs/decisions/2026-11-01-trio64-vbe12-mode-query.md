@@ -167,3 +167,29 @@ asking for those numbers directly, both say the BIOS does not list them. So
 BARRY's walk had no refused queries: what it needed was a scan at VBE 1.2
 at all, and the 1.x waiver, now narrowed to an exact 014Fh, is still not
 exercised by any BIOS measured. `vbe_cache.h` is corrected to say so.
+
+## Refresh on BARRY's BIOS: no interlace at the modes the family offers
+
+The contributor found, on 86Box's Trio64 ROM, that the 1024x768 and
+1280x1024 rows come up interlaced at the BIOS's default refresh index.
+On BARRY's physical card (A8U4I5, same boot), `V9XTIME` timed the vertical
+retrace for two seconds at each mode switched live with `V9XMSW`
+([evidence](../probe/trio64-a8u4i5-dosbox-and-timing-2026-11-04/)):
+
+| Mode | Retrace | Vertical total / display | Interlaced |
+|---|---|---|---|
+| 800x600x16 | 100.3 Hz | 641 / 600 | no |
+| 1024x768x8 | 80.1 Hz | 803 / 768 | no |
+| 1024x768x16 | 80.0 Hz | 806 / 768 | no |
+| 1280x1024x8 | 72.2 Hz | about 1077 / 1024 | no |
+
+`V9XTIME` decodes only the standard CRTC registers, so it reads the
+1280x1024 vertical total as 53 (bit 10, in an S3 extension register, is
+lost) and one horizontal total short by 256 characters for the same
+reason. The display heights decode whole and none is halved, so these are
+progressive frames; CR42 itself was not read. Michael looked at the first
+two modes and saw nothing wrong; no refresh readout was available to him.
+
+So this BIOS picks progressive timings at 72-100 Hz where 86Box's ROM
+picks interlaced ones: one physical BIOS, not a rule. It is evidence for
+the pixel-clock proposal's question rather than an answer to it.

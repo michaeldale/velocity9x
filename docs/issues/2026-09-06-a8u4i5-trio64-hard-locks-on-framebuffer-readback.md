@@ -111,3 +111,24 @@ Hard-locked at the end of the session; boots the **stock S3 driver** on
 reset. Velocity9x's binaries (`29fb2d8` display driver and HAL with the
 `GdiAccelSync` build, the `-NoVramSize` mini-VDD) are still installed and
 one registry file away. `SYSTEM.INI` `[Velocity9x]` has `GdiAccel=0`.
+
+## 2026-11-04: a ninth lock, dragging a window with DOS boxes open
+
+BARRY's Trio64 back in A8U4I5 (Windows boot 655, which the agent counts as
+656 after its update; main `3a035cd0`, 800x600x16, GDI
+acceleration on: `V9XGDI /stats` `Enabled=39`). Five windowed DOS boxes
+open (Michael, by hand), and the machine hard-locked while one was dragged:
+the OBS capture holds a still frame with the drag outline (a hatched XOR
+rectangle) across the windows and the prompt text garbled where it crosses,
+and the agent stopped answering
+([evidence](../probe/trio64-a8u4i5-dosbox-and-timing-2026-11-04/)).
+
+What differs from September: this boot wrote an MTRR, `MtrrWrite=ok s=3
+b=de000001 m=ffc00800` (pair 3, type 01 write-combining, 4 MiB at
+`DE000000`; `V9XBOOT.INI` in
+[the deploy's evidence](../probe/trio-vbe12-a8u4i5-barry-card-2026-11-04/)).
+Whether that range is this card's aperture was not checked, and whether
+write-combining matters here is the open question above; this lock does not
+answer it. Not tried: the same drag with `GdiAccel=0`, or without the
+MTRR. Michael's reading is the same as this issue's: the board (or a fast
+P3 in it), not the driver.
