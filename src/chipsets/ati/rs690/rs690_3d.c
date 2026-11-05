@@ -264,12 +264,29 @@
 #define V9X_RS690_ALU_ADDR0_CONST0      0x00000020ul
 #define V9X_RS690_ALU_ADDR1_SHIFT       6
 #define V9X_RS690_ALU_ADDRD_SHIFT       18
-#define V9X_RS690_ALU_RGB_MINUS_CONST   0x00080a84ul
+#define V9X_RS690_ALU_ADDR_FIELD        0x3ful
+#define V9X_RS690_ALU_ADDRD_FIELD       0x1ful
+/* The alpha unit idle: a MAD of zeros, no mask (the X driver's "alpha
+ * nop"). */
 #define V9X_RS690_ALU_ALPHA_NOP         0x00040810ul
-#define V9X_RS690_ALU_RGB_FOG           0x40000704ul
-#define V9X_RS690_US_ALU_CODE_SIZE_THREE 0x000000c0ul
+#define V9X_RS690_US_ALU_CODE_SIZE_SHIFT 6
 #define V9X_RS690_US_TEX_CODE_SIZE_ONE  0x00040000ul
-#define V9X_RS690_US_ALU_SIZE_THREE     0x00000080ul
+#define V9X_RS690_US_ALU_SIZE_SHIFT     6
+
+/* RGB MAD fields: SEL_A 4:0, SEL_B 11:7, SEL_C 18:14, MOD_C NEG bit 19,
+ * CLAMP bit 30 (radeon_reg.h:4903-4960), and the selects used. */
+#define V9X_RS690_ALU_MAX               5u
+#define V9X_RS690_ALU_SEL_B_SHIFT       7
+#define V9X_RS690_ALU_SEL_C_SHIFT       14
+#define V9X_RS690_ALU_NEG_C             0x00080000ul
+#define V9X_RS690_ALU_CLAMP             0x40000000ul
+#define V9X_RS690_SEL_SRC0_RGB          0ul
+#define V9X_RS690_SEL_SRC1_RGB          4ul
+#define V9X_RS690_SEL_SRC2_RGB          8ul
+#define V9X_RS690_SEL_SRC1_AAA          13ul
+#define V9X_RS690_SEL_SRC2_AAA          14ul
+#define V9X_RS690_SEL_ZERO              20ul
+#define V9X_RS690_SEL_ONE               21ul
 
 /* float24: the IEEE exponent re-biased from 127 to 63, the mantissa's top
  * 16 bits. */
@@ -716,8 +733,12 @@ v9x_status v9x_rs690_build_3d_draw(v9x_u32 primitive,
 
 /* The texture state appended to the list, after its checks; nothing is
  * appended when they refuse. */
+/* with_program: the TL state builder follows with its own shader, so the
+ * combines only it can build (ADD, DECALALPHA) are taken; their words here
+ * are MODULATE's and are overwritten. */
 static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
                                         const struct v9x_rs690_3d_texture *texture,
+                                        int with_program,
                                         struct v9x_rs690_3d_list *list)
 {
     v9x_u32 bytes_per_texel;
@@ -761,7 +782,10 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         rgb_inst = V9X_RS690_ALU_RGB_MOV;
         alpha_addr = V9X_RS690_ALU_ALPHA_ADDR_OUT;
         alpha_inst = V9X_RS690_ALU_ALPHA_MOV;
-    } else if (texture->combine == V9X_RS690_TEXCOMBINE_MODULATE) {
+    } else if (texture->combine == V9X_RS690_TEXCOMBINE_MODULATE ||
+               (with_program &&
+                (texture->combine == V9X_RS690_TEXCOMBINE_ADD ||
+                 texture->combine == V9X_RS690_TEXCOMBINE_DECALALPHA))) {
         rgb_addr = V9X_RS690_ALU_RGB_ADDR_OUT | V9X_RS690_ALU_ADDR1_TEMP1;
         rgb_inst = V9X_RS690_ALU_RGB_MUL;
         alpha_addr = V9X_RS690_ALU_ALPHA_ADDR_OUT | V9X_RS690_ALU_ADDR1_TEMP1;
@@ -860,7 +884,7 @@ v9x_status v9x_rs690_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     v9x_rs690_3d_begin(list);
-    return v9x_rs690_add_texture(fb_gpu_base, fb_bytes, texture, list);
+    return v9x_rs690_add_texture(fb_gpu_base, fb_bytes, texture, 0, list);
 }
 
 v9x_status v9x_rs690_build_3d_draw_textured(
@@ -975,8 +999,8 @@ static v9x_status v9x_rs690_check_state(const struct v9x_rs690_3d_state *state)
     return V9X_STATUS_OK;
 }
 
-static void v9x_rs690_add_fog(const struct v9x_rs690_3d_state *state,
-                              v9x_u32 temp, struct v9x_rs690_3d_list *list);
+static void v9x_rs690_add_shader(const struct v9x_rs690_3d_state *state,
+                                 struct v9x_rs690_3d_list *list);
 
 v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
                                     struct v9x_rs690_3d_list *list)
@@ -1005,27 +1029,9 @@ v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
     if (state->textured != 0ul) {
         status = v9x_rs690_add_texture(state->target.fb_gpu_base,
                                        state->target.fb_bytes,
-                                       &state->texture, list);
+                                       &state->texture, 1, list);
         if (status != V9X_STATUS_OK) {
             return status;
-        }
-        if (state->texture_alpha == V9X_RS690_TEXALPHA_TEXEL) {
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
-                             V9X_RS690_ALU_ALPHA_ADDR_OUT);
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0,
-                             V9X_RS690_ALU_ALPHA_MOV);
-        } else if (state->texture_alpha == V9X_RS690_TEXALPHA_DIFFUSE) {
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
-                             V9X_RS690_ALU_ALPHA_ADDR_OUT |
-                             V9X_RS690_ALU_ADDR1_TEMP1);
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0,
-                             V9X_RS690_ALU_ALPHA_DIFFUSE);
-        } else if (state->texture_alpha == V9X_RS690_TEXALPHA_MODULATE) {
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
-                             V9X_RS690_ALU_ALPHA_ADDR_OUT |
-                             V9X_RS690_ALU_ADDR1_TEMP1);
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0,
-                             V9X_RS690_ALU_ALPHA_MUL);
         }
     }
 
@@ -1109,24 +1115,8 @@ v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
                          (state->textured != 0ul ?
                           V9X_RS690_RS_COUNT_ST : 0ul));
         v9x_rs690_3d_add(list, V9X_RS690_RS_INST_COUNT, 1ul);
-        v9x_rs690_3d_add(list, V9X_RS690_US_PIXSIZE, temp);
-        if (state->specular != 0ul) {
-            v9x_u32 rgb_addr = V9X_RS690_ALU_RGB_ADDR_OUT |
-                               (temp << V9X_RS690_ALU_ADDR2_SHIFT);
-            v9x_u32 rgb_inst = V9X_RS690_ALU_RGB_MOV_PLUS_SRC2;
-
-            if (state->textured != 0ul &&
-                state->texture.combine == V9X_RS690_TEXCOMBINE_MODULATE) {
-                rgb_addr |= V9X_RS690_ALU_ADDR1_TEMP1;
-                rgb_inst = V9X_RS690_ALU_RGB_MUL_PLUS_SRC2;
-            }
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_ADDR_0, rgb_addr);
-            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_INST_0, rgb_inst);
-        }
-        if (state->fog != 0ul) {
-            v9x_rs690_add_fog(state, temp, list);
-        }
     }
+    v9x_rs690_add_shader(state, list);
 
     v9x_rs690_3d_add(list, V9X_RS690_VAP_VTX_SIZE,
                      V9X_RS690_TL_VERTEX_DWORDS);
@@ -1149,75 +1139,250 @@ v9x_u32 v9x_rs690_float24(v9x_u32 ieee)
             V9X_RS690_FLOAT24_DROP_BITS);
 }
 
-/* The value a list last writes to a register, or 0 when it writes none. */
-static v9x_u32 v9x_rs690_3d_last(const struct v9x_rs690_3d_list *list,
-                                 v9x_u32 offset)
-{
-    v9x_u32 index = list->count;
+/* One ALU instruction's four words, and the assembler's working state. */
+struct v9x_rs690_alu {
+    v9x_u32 rgb_addr;
+    v9x_u32 rgb_inst;
+    v9x_u32 alpha_addr;
+    v9x_u32 alpha_inst;
+};
 
-    while (index != 0ul) {
-        --index;
-        if (list->offsets[index] == offset) {
-            return list->values[index];
-        }
-    }
-    return 0ul;
+struct v9x_rs690_program {
+    struct v9x_rs690_alu alu[V9X_RS690_ALU_MAX];
+    v9x_u32 count;
+    v9x_u32 result;
+};
+
+static v9x_u32 v9x_rs690_sources(v9x_u32 src0, v9x_u32 src1, v9x_u32 src2)
+{
+    return src0 | (src1 << V9X_RS690_ALU_ADDR1_SHIFT) |
+           (src2 << V9X_RS690_ALU_ADDR2_SHIFT);
 }
 
-/* Fog's shader: instruction 0 as built, retargeted to temp 0, then the
- * blend toward constant 0 by the specular temp's alpha. */
-static void v9x_rs690_add_fog(const struct v9x_rs690_3d_state *state,
-                              v9x_u32 temp, struct v9x_rs690_3d_list *list)
+static v9x_u32 v9x_rs690_mad(v9x_u32 a, v9x_u32 b, v9x_u32 c, v9x_u32 flags)
 {
-    v9x_u32 rgb_addr = v9x_rs690_3d_last(list, V9X_RS690_US_ALU_RGB_ADDR_0);
-    v9x_u32 alpha_addr =
-        v9x_rs690_3d_last(list, V9X_RS690_US_ALU_ALPHA_ADDR_0);
-    v9x_u32 code_offset = V9X_RS690_US_ALU_CODE_SIZE_THREE;
-    v9x_u32 result = temp + 1ul;
+    return a | (b << V9X_RS690_ALU_SEL_B_SHIFT) |
+           (c << V9X_RS690_ALU_SEL_C_SHIFT) | flags;
+}
 
-    v9x_rs690_3d_add(list, V9X_RS690_US_PIXSIZE, result);
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_ADDR_0,
-                     (rgb_addr & ~V9X_RS690_ALU_RGB_OMASK_XYZ) |
-                     V9X_RS690_ALU_RGB_WMASK_XYZ |
-                     (result << V9X_RS690_ALU_ADDRD_SHIFT));
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
-                     (alpha_addr & ~V9X_RS690_ALU_ALPHA_OMASK_A) |
-                     V9X_RS690_ALU_ALPHA_WMASK_A |
-                     (result << V9X_RS690_ALU_ADDRD_SHIFT));
-    /* 1: result.rgb = result.rgb - fog, unclamped; alpha does nothing. */
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_ADDR_1,
-                     V9X_RS690_ALU_RGB_WMASK_XYZ |
-                     (result << V9X_RS690_ALU_ADDRD_SHIFT) |
-                     V9X_RS690_ALU_ADDR0_CONST0 |
-                     (result << V9X_RS690_ALU_ADDR1_SHIFT));
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_INST_1,
-                     V9X_RS690_ALU_RGB_MINUS_CONST);
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_1,
-                     result << V9X_RS690_ALU_ADDRD_SHIFT);
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_1,
-                     V9X_RS690_ALU_ALPHA_NOP);
+/*
+ * Append an RGB step. Every step but the last writes the result temp's
+ * RGB; the alpha unit idles (no mask) with the sources the RGB step's AAA
+ * selects need. The caller's alpha sources ride in alpha_sources.
+ */
+static void v9x_rs690_rgb_step(struct v9x_rs690_program *program,
+                               v9x_u32 sources, v9x_u32 inst,
+                               v9x_u32 alpha_sources)
+{
+    struct v9x_rs690_alu *alu;
 
-    /* 2: out.rgb = result.rgb * f + fog, out.a = result.a. */
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_ADDR_2,
-                     V9X_RS690_ALU_RGB_OMASK_XYZ |
-                     V9X_RS690_ALU_ADDR0_CONST0 |
-                     (result << V9X_RS690_ALU_ADDR1_SHIFT) |
-                     (temp << V9X_RS690_ALU_ADDR2_SHIFT));
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_INST_2,
-                     V9X_RS690_ALU_RGB_FOG);
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_2,
-                     V9X_RS690_ALU_ALPHA_OMASK_A | result |
-                     (temp << V9X_RS690_ALU_ADDR2_SHIFT));
-    v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_2,
-                     V9X_RS690_ALU_ALPHA_MOV);
-
-    if (state->textured != 0ul) {
-        code_offset |= V9X_RS690_US_TEX_CODE_SIZE_ONE;
+    if (program->count >= V9X_RS690_ALU_MAX) {
+        return;
     }
-    v9x_rs690_3d_add(list, V9X_RS690_US_CODE_OFFSET, code_offset);
+    alu = &program->alu[program->count++];
+    alu->rgb_addr = sources | V9X_RS690_ALU_RGB_WMASK_XYZ |
+                    (program->result << V9X_RS690_ALU_ADDRD_SHIFT);
+    alu->rgb_inst = inst;
+    alu->alpha_addr = alpha_sources |
+                      (program->result << V9X_RS690_ALU_ADDRD_SHIFT);
+    alu->alpha_inst = V9X_RS690_ALU_ALPHA_NOP;
+}
+
+/*
+ * The fragment shader for the TL state, in up to five MAD instructions.
+ * Temps: the texel in 0 and the diffuse in 1 when textured, the diffuse
+ * in 0 otherwise; the specular colour in the next (when specular or fog
+ * needs it); the result temp after that, when there is more than one
+ * instruction. Instruction 0 also makes the fragment's alpha (into the
+ * result temp's W, or the output when it is the only one); a later last
+ * instruction moves it out. Steps:
+ *
+ *   combine   REPLACE texel; MODULATE texel * diffuse; ADD texel +
+ *             diffuse; DECALALPHA (texel - diffuse) unclamped, then
+ *             * texel.a + diffuse; untextured the diffuse. Specular folds
+ *             into the first instruction as its C where C is free.
+ *   specular  + specular.rgb, as its own instruction after ADD or
+ *             DECALALPHA.
+ *   fog       - fog colour (constant 0), unclamped; then * f + fog.
+ *
+ * An RGB instruction's SRCn_AAA reads the alpha unit's source n, so a step
+ * that needs an alpha as an RGB operand names its temp in the alpha
+ * address word (measured, docs\decisions\2026-11-05-rs690-fog-probe.md).
+ * One-instruction programs come out word for word as the earlier
+ * builders wrote them.
+ */
+static void v9x_rs690_add_shader(const struct v9x_rs690_3d_state *state,
+                                 struct v9x_rs690_3d_list *list)
+{
+    struct v9x_rs690_program program;
+    struct v9x_rs690_alu *first;
+    v9x_u32 textured = state->textured != 0ul ? 1ul : 0ul;
+    v9x_u32 combine = textured != 0ul ? state->texture.combine
+                                      : V9X_RS690_TEXCOMBINE_REPLACE;
+    v9x_u32 diffuse = textured;
+    v9x_u32 side = textured + 1ul;
+    v9x_u32 side_used = state->specular != 0ul || state->fog != 0ul;
+    v9x_u32 specular_folded = 0ul;
+    v9x_u32 alpha_sources;
+    v9x_u32 alpha_inst;
+    v9x_u32 index;
+
+    program.count = 0ul;
+    program.result = side_used ? side + 1ul : textured + 1ul;
+
+    /* The fragment's alpha, made by instruction 0. */
+    alpha_sources = 0ul;
+    alpha_inst = V9X_RS690_ALU_ALPHA_MOV;
+    if (textured != 0ul) {
+        v9x_u32 alpha = state->texture_alpha;
+
+        if (alpha == V9X_RS690_TEXALPHA_SAME) {
+            alpha = combine == V9X_RS690_TEXCOMBINE_REPLACE ?
+                    V9X_RS690_TEXALPHA_TEXEL :
+                    combine == V9X_RS690_TEXCOMBINE_MODULATE ?
+                    V9X_RS690_TEXALPHA_MODULATE : V9X_RS690_TEXALPHA_DIFFUSE;
+        }
+        if (alpha == V9X_RS690_TEXALPHA_DIFFUSE) {
+            alpha_sources = V9X_RS690_ALU_ADDR1_TEMP1;
+            alpha_inst = V9X_RS690_ALU_ALPHA_DIFFUSE;
+        } else if (alpha == V9X_RS690_TEXALPHA_MODULATE) {
+            alpha_sources = V9X_RS690_ALU_ADDR1_TEMP1;
+            alpha_inst = V9X_RS690_ALU_ALPHA_MUL;
+        }
+    }
+
+    /* Instruction 0: the combine, specular as its C where C is free. */
+    if (combine == V9X_RS690_TEXCOMBINE_MODULATE) {
+        v9x_rs690_rgb_step(&program, v9x_rs690_sources(0ul, diffuse, side),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_SEL_SRC1_RGB,
+                                         state->specular != 0ul ?
+                                         V9X_RS690_SEL_SRC2_RGB :
+                                         V9X_RS690_SEL_ZERO,
+                                         V9X_RS690_ALU_CLAMP), 0ul);
+        specular_folded = 1ul;
+    } else if (combine == V9X_RS690_TEXCOMBINE_ADD) {
+        v9x_rs690_rgb_step(&program, v9x_rs690_sources(0ul, diffuse, 0ul),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_SEL_ONE,
+                                         V9X_RS690_SEL_SRC1_RGB,
+                                         V9X_RS690_ALU_CLAMP), 0ul);
+    } else if (combine == V9X_RS690_TEXCOMBINE_DECALALPHA) {
+        v9x_rs690_rgb_step(&program, v9x_rs690_sources(0ul, diffuse, 0ul),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_SEL_ONE,
+                                         V9X_RS690_SEL_SRC1_RGB,
+                                         V9X_RS690_ALU_NEG_C), 0ul);
+    } else {
+        v9x_rs690_rgb_step(&program, v9x_rs690_sources(0ul, 0ul, side),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_SEL_ONE,
+                                         state->specular != 0ul ?
+                                         V9X_RS690_SEL_SRC2_RGB :
+                                         V9X_RS690_SEL_ZERO,
+                                         V9X_RS690_ALU_CLAMP), 0ul);
+        specular_folded = 1ul;
+    }
+    first = &program.alu[0];
+    first->alpha_addr = alpha_sources | V9X_RS690_ALU_ALPHA_WMASK_A |
+                        (program.result << V9X_RS690_ALU_ADDRD_SHIFT);
+    first->alpha_inst = alpha_inst;
+    if (state->specular == 0ul) {
+        first->rgb_addr &= ~(V9X_RS690_ALU_ADDR_FIELD <<
+                             V9X_RS690_ALU_ADDR2_SHIFT);
+    }
+
+    /* DECALALPHA's second half: result * texel.a (alpha source 1 = temp
+     * 0) + diffuse. */
+    if (combine == V9X_RS690_TEXCOMBINE_DECALALPHA) {
+        v9x_rs690_rgb_step(&program,
+                           v9x_rs690_sources(program.result, diffuse, 0ul),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_SEL_SRC1_AAA,
+                                         V9X_RS690_SEL_SRC1_RGB,
+                                         V9X_RS690_ALU_CLAMP),
+                           v9x_rs690_sources(program.result, 0ul, 0ul));
+    }
+    if (state->specular != 0ul && specular_folded == 0ul) {
+        v9x_rs690_rgb_step(&program,
+                           v9x_rs690_sources(program.result, 0ul, side),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_SEL_ONE,
+                                         V9X_RS690_SEL_SRC2_RGB,
+                                         V9X_RS690_ALU_CLAMP),
+                           v9x_rs690_sources(program.result, 0ul, 0ul));
+    }
+    if (state->fog != 0ul) {
+        v9x_rs690_rgb_step(&program,
+                           v9x_rs690_sources(V9X_RS690_ALU_ADDR0_CONST0,
+                                             program.result, 0ul),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC1_RGB,
+                                         V9X_RS690_SEL_ONE,
+                                         V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_ALU_NEG_C), 0ul);
+        v9x_rs690_rgb_step(&program,
+                           v9x_rs690_sources(V9X_RS690_ALU_ADDR0_CONST0,
+                                             program.result, side),
+                           v9x_rs690_mad(V9X_RS690_SEL_SRC1_RGB,
+                                         V9X_RS690_SEL_SRC2_AAA,
+                                         V9X_RS690_SEL_SRC0_RGB,
+                                         V9X_RS690_ALU_CLAMP),
+                           v9x_rs690_sources(program.result, 0ul, side));
+    }
+
+    /* The last instruction writes the output: RGB by the output mask, and
+     * the alpha - instruction 0's own, or the result temp's moved out. */
+    {
+        struct v9x_rs690_alu *last = &program.alu[program.count - 1ul];
+
+        last->rgb_addr = (last->rgb_addr &
+                          ~(V9X_RS690_ALU_RGB_WMASK_XYZ |
+                            (V9X_RS690_ALU_ADDRD_FIELD <<
+                             V9X_RS690_ALU_ADDRD_SHIFT))) |
+                         V9X_RS690_ALU_RGB_OMASK_XYZ;
+        if (program.count == 1ul) {
+            last->alpha_addr = alpha_sources | V9X_RS690_ALU_ALPHA_OMASK_A;
+        } else {
+            last->alpha_addr = (last->alpha_addr &
+                                ~(V9X_RS690_ALU_ADDRD_FIELD <<
+                                  V9X_RS690_ALU_ADDRD_SHIFT)) |
+                               V9X_RS690_ALU_ALPHA_OMASK_A;
+            last->alpha_inst = V9X_RS690_ALU_ALPHA_MOV;
+        }
+    }
+
+    for (index = 0ul; index < program.count; ++index) {
+        v9x_u32 step = index * 4ul;
+
+        v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_ADDR_0 + step,
+                         program.alu[index].rgb_addr);
+        v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_INST_0 + step,
+                         program.alu[index].rgb_inst);
+        v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0 + step,
+                         program.alu[index].alpha_addr);
+        v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0 + step,
+                         program.alu[index].alpha_inst);
+    }
+
+    /* Highest temp and the sizes: one instruction keeps what the target
+     * and texture state wrote. */
+    if (program.count == 1ul) {
+        if (side_used) {
+            v9x_rs690_3d_add(list, V9X_RS690_US_PIXSIZE, side);
+        }
+        return;
+    }
+    v9x_rs690_3d_add(list, V9X_RS690_US_PIXSIZE, program.result);
+    v9x_rs690_3d_add(list, V9X_RS690_US_CODE_OFFSET,
+                     (program.count << V9X_RS690_US_ALU_CODE_SIZE_SHIFT) |
+                     (textured != 0ul ? V9X_RS690_US_TEX_CODE_SIZE_ONE
+                                      : 0ul));
     v9x_rs690_3d_add(list, V9X_RS690_US_CODE_ADDR_3,
                      V9X_RS690_US_LAST_NODE_RGBA_OUT |
-                     V9X_RS690_US_ALU_SIZE_THREE);
+                     ((program.count - 1ul) << V9X_RS690_US_ALU_SIZE_SHIFT));
+    if (state->fog == 0ul) {
+        return;
+    }
 
     v9x_rs690_3d_add(list, V9X_RS690_US_ALU_CONST_R_0,
                      v9x_rs690_float24(v9x_rs690_float_ratio(

@@ -264,8 +264,10 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
                                V9X_D3DPTFILTERCAPS_LINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
+                              V9X_D3DPTBLENDCAPS_DECALALPHA |
                               V9X_D3DPTBLENDCAPS_MODULATEALPHA |
-                              V9X_D3DPTBLENDCAPS_COPY;
+                              V9X_D3DPTBLENDCAPS_COPY |
+                              V9X_D3DPTBLENDCAPS_ADD;
     tri->dwTextureAddressCaps = V9X_D3DPTADDRESSCAPS_WRAP |
                                 V9X_D3DPTADDRESSCAPS_CLAMP;
 

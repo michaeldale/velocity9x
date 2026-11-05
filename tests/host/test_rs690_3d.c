@@ -878,6 +878,72 @@ static void test_state(void)
     CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400080ul);
     CHECK(list.count < V9X_RS690_3D_WRITES);
 
+    /* ADD, textured, diffuse alpha, one instruction: out.rgb = temp0 * 1 +
+     * temp1 (SEL_C SRC1_RGB), out.a = temp1.a. */
+    base_state(&state);
+    state.textured = 1ul;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_ADD;
+    state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c000040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40010a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x4004088aul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400000ul);
+
+    /* ADD with specular: the sum into result temp 3, then + temp2. */
+    state.specular = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 3ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x038c0040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40010a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x008c0040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_1) == 0x1c002003ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_1) == 0x40020a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_1) == 0x01000003ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_1) == 0x40040889ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0x00040080ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400040ul);
+
+    /* DECALALPHA: result temp 2 = texel - diffuse, unclamped; out.rgb =
+     * temp2 * texel.a + diffuse, the texel's alpha through the alpha
+     * unit's source 1 (SRC1_AAA, alpha ADDR1 = temp 0); out.a = temp2.a,
+     * the diffuse alpha instruction 0 put there. */
+    base_state(&state);
+    state.textured = 1ul;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_DECALALPHA;
+    state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 2ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x03880040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x00090a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x00880040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x4004088aul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_1) == 0x1c000042ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_1) == 0x40010680ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_1) == 0x01000002ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_1) == 0x40040889ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0x00040080ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400040ul);
+
+    /* The longest program: DECALALPHA, specular and fog, five
+     * instructions, and the list still holds it. */
+    state.specular = 1ul;
+    state.fog = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 3ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0x00040140ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400100ul);
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_VAP_VTX_SIZE);
+    CHECK(list.count < V9X_RS690_3D_WRITES);
+
+    /* The texture builder alone has no program to give them. */
+    state.texture.offset = 0x20000ul;
+    CHECK(v9x_rs690_build_3d_texture(RS690_FB_BASE, RS690_FB_BYTES,
+                                     &state.texture, &list) ==
+          V9X_STATUS_UNSUPPORTED);
+
     /* float24. */
     CHECK(v9x_rs690_float24(0ul) == 0ul);
     CHECK(v9x_rs690_float24(0x3f800000ul) == 0x003f0000ul);

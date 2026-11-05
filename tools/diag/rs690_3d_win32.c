@@ -1251,6 +1251,24 @@ static DWORD rs_encode_argb(DWORD argb)
 }
 
 /*
+ * When set, a textured rs_draw_tl writes the texture as rows instead of
+ * the gradient: row y red with alpha y / 15, as ARGB8888 at 32 bpp and
+ * ARGB4444 at 16 bpp (the test names that format). TexDecalAlpha's.
+ */
+static DWORD rs_texture_rows;
+
+static DWORD rs_texture_row(DWORD row)
+{
+    DWORD texel;
+
+    if (rs_bpp == 2u) {
+        texel = (row << 12) | 0x0f00u;
+        return texel | (texel << 16);
+    }
+    return ((row * 17u) << 24) | 0x00ff0000ul;
+}
+
+/*
  * Prefill the surface with `prefill`, clear the Z buffer to all ones when
  * the state tests Z, write the gradient texture when textured, wait idle,
  * the TL state, the draw, the finish, wait idle, read back. The caller
@@ -1298,7 +1316,15 @@ static int rs_draw_tl(const char *name, struct v9x_rs690_3d_state *state,
         rs_add(RS_OP_LFB_FILL32, DEPTH_OFFSET, 0xfffffffful,
                DEPTH_PITCH * rs_height / 4u);
     }
-    if (state->textured != 0ul) {
+    if (state->textured != 0ul && rs_texture_rows != 0u) {
+        DWORD row;
+
+        for (row = 0u; row < TEX_HEIGHT; ++row) {
+            rs_add(RS_OP_LFB_FILL32,
+                   TEX_OFFSET + row * state->texture.pitch_bytes,
+                   rs_texture_row(row), state->texture.pitch_bytes / 4u);
+        }
+    } else if (state->textured != 0ul) {
         rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
                state->texture.pitch_bytes * TEX_HEIGHT / 4u);
     }
@@ -1827,6 +1853,117 @@ static void rs_perspective_test(void)
                               first_wrong / TEST_WIDTH));
     }
     rs_result(name, judged != 0u && perspective == judged);
+}
+
+/*
+ * TexAdd: the gradient 1:1 over x 0-31, rows 0-15, nearest, clamped,
+ * Direct3D's ADD through the TL state - texel + diffuse (32, 64, 96),
+ * clamped, alpha the diffuse's 255. TexAddSpecular adds a specular blue
+ * of 64 on top (ADD's specular is its own instruction). Each channel within
+ * one step. TexDecalAlpha: row y of the texture red with alpha y / 15,
+ * DECALALPHA over a diffuse of (64, 128, 192): diffuse + (texel - diffuse)
+ * * texel alpha, alpha the diffuse's; within 1.5 steps.
+ */
+#define RS_ADD_DIFFUSE 0xff204060ul
+#define RS_DECAL_DIFFUSE 0xff4080c0ul
+#define RS_ADD_SPECULAR 0x00000040ul
+
+static DWORD rs_combine_specular;
+
+static void rs_add_model(DWORD x, DWORD y, long expected[4], long allowed[4])
+{
+    DWORD values[4];
+    DWORD maxima[4];
+    DWORD addend[4];
+    int channels = rs_channels(rs_texel(x, y), values, maxima);
+    int channel;
+
+    addend[0] = (RS_ADD_DIFFUSE >> 16) & 255u;
+    addend[1] = (RS_ADD_DIFFUSE >> 8) & 255u;
+    addend[2] = (RS_ADD_DIFFUSE & 255u) + (rs_combine_specular & 255u);
+    addend[3] = 255u;
+    if (channels == 4) {
+        values[3] = 0u;
+    }
+    /* In 1/255 of a step: texel * 255 + addend * max, clamped. */
+    for (channel = 0; channel < channels; ++channel) {
+        long sum = (long)values[channel] * 255l +
+                   (long)(addend[channel] * maxima[channel]);
+        long top = (long)maxima[channel] * 255l;
+
+        expected[channel] = sum > top ? top : sum;
+        allowed[channel] = RS_TEX_TOLERANCE * 255l;
+    }
+}
+
+static void rs_decal_alpha_model(DWORD x, DWORD y, long expected[4],
+                                 long allowed[4])
+{
+    static const DWORD texel[4] = { 255u, 0u, 0u, 255u };
+    DWORD diffuse[4];
+    DWORD values[4];
+    DWORD maxima[4];
+    int channels = rs_channels(rs_pixel(rs_model, x, y), values, maxima);
+    int channel;
+
+    diffuse[0] = (RS_DECAL_DIFFUSE >> 16) & 255u;
+    diffuse[1] = (RS_DECAL_DIFFUSE >> 8) & 255u;
+    diffuse[2] = RS_DECAL_DIFFUSE & 255u;
+    diffuse[3] = 255u;
+    /* In 1/(15 * 255) of a step, alpha y / 15. */
+    for (channel = 0; channel < channels; ++channel) {
+        DWORD a = channel == 3 ? 0u : y;
+
+        expected[channel] =
+            (long)((diffuse[channel] * (15u - a) + texel[channel] * a) *
+                   maxima[channel]);
+        allowed[channel] = 3l * 15l * 255l / 2l;
+    }
+}
+
+static void rs_combine_test(const char *name, char letter, DWORD combine,
+                            DWORD diffuse, DWORD specular)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD index;
+    int rows = combine == V9X_RS690_TEXCOMBINE_DECALALPHA;
+
+    rs_zero(&state, sizeof(state));
+    state.textured = 1u;
+    state.specular = specular != 0u ? 1u : 0u;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = combine;
+    state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    if (rows && rs_bpp == 2u) {
+        state.texture.format = V9X_RS690_TEXFMT_ARGB4444;
+    }
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, diffuse, 0u, 0u);
+    rs_tl(vertices + 8, 0u, TEX_HEIGHT, 0u, RS_FLOAT_ONE, diffuse, 0u,
+          RS_FLOAT_ONE);
+    rs_tl(vertices + 16, TEX_WIDTH, TEX_HEIGHT, 0u, RS_FLOAT_ONE, diffuse,
+          RS_FLOAT_ONE, RS_FLOAT_ONE);
+    rs_tl(vertices + 24, TEX_WIDTH, 0u, 0u, RS_FLOAT_ONE, diffuse,
+          RS_FLOAT_ONE, 0u);
+    for (index = 0u; index < 4u; ++index) {
+        vertices[index * 8u + 5u] = specular;
+    }
+    rs_texture_rows = rows ? 1u : 0u;
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        rs_texture_rows = 0u;
+        return;
+    }
+    rs_texture_rows = 0u;
+    rs_save_block(letter);
+    rs_combine_specular = specular;
+    rs_model_prefill();
+    if (rows) {
+        rs_tex_judge(name, 0u, TEX_WIDTH, 15l * 255l, rs_decal_alpha_model);
+    } else {
+        rs_tex_judge(name, 0u, TEX_WIDTH, 255l, rs_add_model);
+    }
 }
 
 /*
@@ -2865,6 +3002,12 @@ void WINAPI V9xRs6903dProbeEntry(void)
     rs_fog_inst_test("FogInstConst", '1', 0x40050a80ul, 0xff0000fful);
     rs_fog_inst_test("FogInstFactor", '2', 0x40050a8eul, 0xff000000ul);
     rs_fog_inst_test("FogInstTemp", '3', 0x40050a84ul, 0xffff0000ul);
+    rs_combine_test("TexAdd", '4', V9X_RS690_TEXCOMBINE_ADD, RS_ADD_DIFFUSE,
+                    0u);
+    rs_combine_test("TexAddSpecular", '5', V9X_RS690_TEXCOMBINE_ADD,
+                    RS_ADD_DIFFUSE, RS_ADD_SPECULAR);
+    rs_combine_test("TexDecalAlpha", '6', V9X_RS690_TEXCOMBINE_DECALALPHA,
+                    RS_DECAL_DIFFUSE, 0u);
     rs_fog_test("TlFog", 0u);
     rs_fog_test("TlFogSpecular", 1u);
     /* The colour-only state again: texturing, Z, blend, alpha test and

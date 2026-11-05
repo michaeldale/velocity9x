@@ -110,8 +110,10 @@ static int v9x_d3d_rs690_filter(v9x_u32 filter, v9x_u32 *code)
  * Direct3D's DX5 texture blends. DECAL and COPY take the texel's colour
  * and alpha (an RGB565 texel's alpha reads as one). MODULATE multiplies
  * the colours and takes the texel's alpha when it has one, the vertex's
- * otherwise. MODULATEALPHA multiplies both. DECALALPHA, ADD and the mask
- * forms are not built.
+ * otherwise. MODULATEALPHA multiplies both. DECALALPHA blends the diffuse
+ * toward the texel by the texel's alpha, and ADD adds them; both keep the
+ * diffuse alpha (Direct3D 6's SELECTARG2 for them). The mask forms are not
+ * built.
  */
 static int v9x_d3d_rs690_combine(v9x_u32 op, int has_alpha,
                                  struct v9x_rs690_3d_state *state)
@@ -130,6 +132,14 @@ static int v9x_d3d_rs690_combine(v9x_u32 op, int has_alpha,
     case V9X_R3D_TEXOP_MODULATEALPHA:
         state->texture.combine = V9X_RS690_TEXCOMBINE_MODULATE;
         state->texture_alpha = V9X_RS690_TEXALPHA_MODULATE;
+        return 1;
+    case V9X_R3D_TEXOP_DECALALPHA:
+        state->texture.combine = V9X_RS690_TEXCOMBINE_DECALALPHA;
+        state->texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+        return 1;
+    case V9X_R3D_TEXOP_ADD:
+        state->texture.combine = V9X_RS690_TEXCOMBINE_ADD;
+        state->texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
         return 1;
     }
     return 0;

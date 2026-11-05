@@ -300,10 +300,19 @@ static void test_texture(void)
     draw.texture.op = V9X_R3D_TEXOP_COPY;
     CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
     CHECK(state.texture.combine == V9X_RS690_TEXCOMBINE_REPLACE);
+    /* DECALALPHA and ADD keep the diffuse alpha; the mask forms are
+     * refused. */
     draw.texture.op = V9X_R3D_TEXOP_DECALALPHA;
-    CHECK(map(&draw, &resolved, 0ul, &state) ==
-          V9X_D3D_RS690_REFUSE_TEXTURE_OP);
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.combine == V9X_RS690_TEXCOMBINE_DECALALPHA);
+    CHECK(state.texture_alpha == V9X_RS690_TEXALPHA_DIFFUSE);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
     draw.texture.op = V9X_R3D_TEXOP_ADD;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.combine == V9X_RS690_TEXCOMBINE_ADD);
+    CHECK(state.texture_alpha == V9X_RS690_TEXALPHA_DIFFUSE);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    draw.texture.op = V9X_R3D_TEXOP_DECALMASK;
     CHECK(map(&draw, &resolved, 0ul, &state) ==
           V9X_D3D_RS690_REFUSE_TEXTURE_OP);
 

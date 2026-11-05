@@ -212,6 +212,11 @@
 #define V9X_RS690_TEXADDR_CLAMP         1ul
 #define V9X_RS690_TEXCOMBINE_REPLACE    0ul
 #define V9X_RS690_TEXCOMBINE_MODULATE   1ul
+/* Direct3D's: texel + diffuse; and the diffuse blended toward the texel by
+ * the texel's alpha. TL state only (v9x_rs690_build_3d_state builds the
+ * longer shader they need); the texture builder alone refuses them. */
+#define V9X_RS690_TEXCOMBINE_ADD        2ul
+#define V9X_RS690_TEXCOMBINE_DECALALPHA 3ul
 
 /* Texture limits: R300 width and height fields are 11 bits (texels - 1);
  * offsets 32-byte aligned (R300TextureSetup's CHECK_OFFSET). Pitches 64
