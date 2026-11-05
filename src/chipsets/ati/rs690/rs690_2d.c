@@ -319,6 +319,19 @@ v9x_u32 v9x_rs690_fb_gpu_base(v9x_u32 hdp_fb_location)
            V9X_RS690_FB_LOCATION_SHIFT;
 }
 
+v9x_status v9x_rs690_scanout_address(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
+                                     v9x_u32 offset, v9x_u32 *address)
+{
+    if (address == 0 || offset >= fb_bytes ||
+        offset > 0xfffffffful - fb_gpu_base ||
+        fb_bytes - 1ul > 0xfffffffful - fb_gpu_base ||
+        ((fb_gpu_base + offset) & (V9X_RS690_SCANOUT_ALIGN - 1ul)) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *address = fb_gpu_base + offset;
+    return V9X_STATUS_OK;
+}
+
 v9x_u32 v9x_rs690_cp_off(v9x_u32 cp_csq_cntl)
 {
     return ((cp_csq_cntl >> V9X_RS690_CSQ_MODE_SHIFT) &

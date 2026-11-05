@@ -469,6 +469,7 @@ extern const V9X_ENGINE32_OPS v9x_engine32_r128;
 extern const V9X_ENGINE32_OPS v9x_engine32_eg;
 extern const V9X_ENGINE32_OPS v9x_engine32_vi;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv3;
+extern const V9X_ENGINE32_OPS v9x_engine32_rs690;
 /* Haswell's Y-tiled Z buffers are filled by the render engine, not the
  * blitter: eng_hsw.c's fill hands a depth destination to d3d\d3d_hsw.c.
  * rect is rDest's left, top, right, bottom; value is on the surface's full
@@ -573,6 +574,21 @@ int v9x_eg_set_display_start(DWORD byte_offset);
 int v9x_eg_flip_pending(void);
 void v9x_eg_note_flip_done(void);
 void v9x_eg_scanout_reset(void);
+/* The Radeon X1200 IGP's (RS690) AVIVO controller D1, in
+ * engines/rs690_scanout.c: active only for ATI_RS690 stamped with
+ * V9X_DD_ENGINE_CAP_FLIP. Written under D1GRPH_UPDATE_LOCK, taken at the
+ * vertical blank; pending until SURFACE_UPDATE_PENDING clears. */
+int v9x_rs690_scanout_active(void);
+int v9x_rs690_scanout_live(void);
+int v9x_rs690_in_vblank(void);
+int v9x_rs690_set_display_start(DWORD byte_offset);
+int v9x_rs690_flip_pending(void);
+void v9x_rs690_note_flip_done(void);
+void v9x_rs690_scanout_reset(void);
+/* engines/eng_rs690.c, for rs690_scanout.c: D1GRPH's address for the
+ * surface at byte_offset, after the 2D engine has gone idle; zero when it
+ * cannot be given. */
+int v9x_rs690_flip_address(DWORD byte_offset, DWORD *address);
 /* Non-zero when this Rage 128's flips go into the CCE ring behind the
  * frame instead of waiting for it. */
 int v9x_r128_flip_queues(void);

@@ -137,6 +137,10 @@ V9xEngineSel dw 0
 ; directory has to exist before the first write.
 V9xDiagDirDone dw 0
 V9xDiagDirName db 'C:\V9XDIAG', 0
+IFDEF V9X_DURABLE_TRAIL
+; V9xTrailWrite's file.
+V9xTrailName db 'C:\V9XDIAG\V9XTRAIL.TXT', 0
+ENDIF
 
 ; GDI acceleration state that has to survive a live mode switch.
 ;
@@ -3141,6 +3145,47 @@ V9xMiniR128MmioMapDone:
     retf    8
 V9XMINIR128MMIOMAP ENDP
 
+; WORD FAR PASCAL V9xMiniRs690MmioMap(DWORD bar2, DWORD FAR *linear)
+; V9XMINI_FN_RS690_MMIO_MAP: the mini-VDD maps the RS690's 64 KiB register
+; BAR, checks CONFIG_MEMSIZE through it, and returns the linear window.
+; BAR2 comes from V9xPciReadEgBars, which checks its high half. On any
+; refusal *linear is 0. The Rage 128's wrapper with another function code.
+PUBLIC V9XMINIRS690MMIOMAP
+V9XMINIRS690MMIOMAP PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    edx
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniRs690MmioMapFailed
+    ; PASCAL pushes left to right: bar2 is the farther argument.
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_RS690_MMIO_MAP
+    call    dword ptr V9xMiniApiEntry
+    or      ax, ax
+    jz      short V9xMiniRs690MmioMapFailed
+    ; Save EBX before `les bx`, which overwrites its low half.
+    mov     edx, ebx
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xMiniRs690MmioMapDone
+V9xMiniRs690MmioMapFailed:
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniRs690MmioMapDone:
+    pop     es
+    pop     edx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XMINIRS690MMIOMAP ENDP
+
 ; WORD FAR PASCAL V9xMiniR128AgpRing(DWORD FAR *linear, DWORD FAR *bus,
 ;                                    DWORD FAR *bytes)
 ; V9XMINI_FN_R128_AGP_RING: the Rage 128's CCE ring pages in the AGP
@@ -4510,6 +4555,74 @@ V9XDOSCLOCK PROC FAR
     pop     bp
     retf    4
 V9XDOSCLOCK ENDP
+
+; WORD FAR PASCAL V9xTrailWrite(const char FAR *text, WORD length)
+; Appends length bytes to C:\V9XDIAG\V9XTRAIL.TXT and commits the file
+; (INT 21h AH=68h) before closing it. The first and only form of this
+; instrument that M-GB8KRE booted with: the later forms (a line before
+; DriverInit's first statement, disk resets, waits, a pre-sized file) hung
+; that machine even on the vbe driver
+; (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md). Open,
+; or create when absent; seek to the end; write; commit; close. AX=1 when
+; every call succeeded. A diagnostic: only V9X_DURABLE_TRAIL builds have it.
+IFDEF V9X_DURABLE_TRAIL
+PUBLIC V9XTRAILWRITE
+V9XTRAILWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    ds
+
+    ; DS stays DGROUP for the file name; the text's far pointer is loaded
+    ; only for the write.
+    mov     si, 0
+    mov     dx, OFFSET V9xTrailName
+    mov     ax, 3d02h
+    int     21h
+    jnc     short V9xTrailWriteOpen
+    mov     dx, OFFSET V9xTrailName
+    xor     cx, cx
+    mov     ah, 3ch
+    int     21h
+    jc      short V9xTrailWriteDone
+V9xTrailWriteOpen:
+    mov     bx, ax
+    xor     cx, cx
+    xor     dx, dx
+    mov     ax, 4202h
+    int     21h
+    jc      short V9xTrailWriteClose
+    ; PASCAL pushes left to right: text is the farther argument.
+    mov     cx, word ptr [bp+6]
+    lds     dx, dword ptr [bp+8]
+    mov     ah, 40h
+    int     21h
+    pop     ds
+    push    ds
+    jc      short V9xTrailWriteClose
+    cmp     ax, word ptr [bp+6]
+    jne     short V9xTrailWriteClose
+    mov     ah, 68h
+    int     21h
+    jc      short V9xTrailWriteClose
+    mov     si, 1
+V9xTrailWriteClose:
+    mov     ah, 3eh
+    int     21h
+V9xTrailWriteDone:
+    mov     ax, si
+    pop     ds
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XTRAILWRITE ENDP
+ENDIF
 
 ; Map the aperture in _v9x_map_physical_base and return its selector in AX,
 ; or 0 on failure. Stages 4 to 7 of the enable sequence.

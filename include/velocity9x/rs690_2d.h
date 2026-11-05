@@ -176,4 +176,14 @@ v9x_u32 v9x_rs690_fb_gpu_base(v9x_u32 hdp_fb_location);
 /* Non-zero when CP_CSQ_CNTL leaves the engine to direct writes. */
 v9x_u32 v9x_rs690_cp_off(v9x_u32 cp_csq_cntl);
 
+/* The display controller's address for a surface at offset into the frame
+ * buffer: fb_gpu_base + offset, refused unless the offset lies inside
+ * fb_bytes, the sum does not wrap, and the address is 256-byte aligned.
+ * The alignment is Evergreen's GRPH_PRIMARY_SURFACE_ADDRESS rule
+ * (eg_dma.h), taken for AVIVO's D1GRPH without an AVIVO register guide to
+ * confirm it. */
+#define V9X_RS690_SCANOUT_ALIGN 256ul
+v9x_status v9x_rs690_scanout_address(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
+                                     v9x_u32 offset, v9x_u32 *address);
+
 #endif

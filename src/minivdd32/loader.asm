@@ -206,6 +206,16 @@ V9X_R128_RING_PAGES     equ 145
 V9xR128RingLinear dd 0
 V9xR128RingBus    dd 0
 
+; ATI Radeon X1200 IGP (RS690): the 64 KiB register BAR (BAR2), mapped once
+; for the 2D engine. No configuration copy at 0F00h on this chip, so the
+; identity check is CONFIG_MEMSIZE (00F8h, bytes; 08000000h on M-GB8KRE,
+; docs\decisions\2026-11-04-rs690-register-probe.md).
+V9X_RS690_MMIO_BYTES    equ 00010000h
+V9X_RS690_CONFIG_MEMSIZE equ 000000f8h
+V9X_RS690_MEMSIZE_MAX   equ 20000000h
+V9xRs690MmioBase   dd 0
+V9xRs690MmioLinear dd 0
+
 ; AMD Evergreen (Cedar): the 128 KiB register BAR and the driver's VRAM
 ; window, BAR0 + 240 MiB, 4 MiB (V9XMINI_FN_EG_MAP in V9XMAPI.INC): the DMA
 ; ring, then the CP's ring, shaders and vertex arena (eg_3d.h,
@@ -2854,6 +2864,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_PatCover
     cmp     ax, V9XMINI_FN_NV3_MMIO_MAP
     je      V9xMini_Api_Nv3MmioMap
+    cmp     ax, V9XMINI_FN_RS690_MMIO_MAP
+    je      V9xMini_Api_Rs690MmioMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -3916,6 +3928,50 @@ V9xMini_Api_R128MmioMap_Check:
 V9xMini_Api_R128MmioMap_Failed:
     mov     V9xR128MmioBase, 0
 V9xMini_Api_R128MmioMap_Refused:
+    mov     [ebp.Client_EBX], 0
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+; EBX = BAR2 physical. See V9XMINI_FN_RS690_MMIO_MAP in V9XMAPI.INC.
+V9xMini_Api_Rs690MmioMap:
+IFDEF V9X_R128_MMIO
+    mov     eax, [ebp.Client_EBX]
+    cmp     eax, 01000000h
+    jb      short V9xMini_Api_Rs690MmioMap_Refused
+    cmp     eax, 0ffff0000h
+    ja      short V9xMini_Api_Rs690MmioMap_Refused
+    test    eax, V9X_RS690_MMIO_BYTES - 1
+    jnz     short V9xMini_Api_Rs690MmioMap_Refused
+
+    cmp     V9xRs690MmioLinear, 0
+    je      short V9xMini_Api_Rs690MmioMap_Map
+    cmp     eax, V9xRs690MmioBase
+    jne     short V9xMini_Api_Rs690MmioMap_Refused
+    jmp     short V9xMini_Api_Rs690MmioMap_Check
+
+V9xMini_Api_Rs690MmioMap_Map:
+    mov     V9xRs690MmioBase, eax
+    VMMcall _MapPhysToLinear,<eax,V9X_RS690_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Api_Rs690MmioMap_Failed
+    mov     V9xRs690MmioLinear, eax
+
+    ; A decoding-disabled window reads all ones; a memory size of zero or
+    ; past 512 MiB is not this chip's register file. Either is withheld.
+V9xMini_Api_Rs690MmioMap_Check:
+    mov     edx, V9xRs690MmioLinear
+    mov     eax, [edx+V9X_RS690_CONFIG_MEMSIZE]
+    test    eax, eax
+    jz      short V9xMini_Api_Rs690MmioMap_Refused
+    cmp     eax, V9X_RS690_MEMSIZE_MAX
+    ja      short V9xMini_Api_Rs690MmioMap_Refused
+    mov     [ebp.Client_EBX], edx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_Rs690MmioMap_Failed:
+    mov     V9xRs690MmioBase, 0
+V9xMini_Api_Rs690MmioMap_Refused:
     mov     [ebp.Client_EBX], 0
 ENDIF
     mov     [ebp.Client_AX], 0

@@ -311,6 +311,34 @@ static void test_status(void)
     CHECK(v9x_rs690_cp_off(0x0ffffffful) != 0ul);
 }
 
+/* D1GRPH's address for a flip: the frame buffer's GPU base plus the
+ * surface's offset, as the probe read the VBE desktop at 78000000h. */
+static void test_scanout_address(void)
+{
+    v9x_u32 address = 0ul;
+
+    CHECK(v9x_rs690_scanout_address(RS690_FB_BASE, 0x01000000ul, 0ul,
+                                    &address) == V9X_STATUS_OK);
+    CHECK(address == RS690_FB_BASE);
+    CHECK(v9x_rs690_scanout_address(RS690_FB_BASE, 0x01000000ul,
+                                    0x00180000ul, &address) ==
+          V9X_STATUS_OK);
+    CHECK(address == RS690_FB_BASE + 0x00180000ul);
+    /* Outside the frame buffer, short of the 256-byte alignment, a base
+     * that wraps, no output. */
+    CHECK(v9x_rs690_scanout_address(RS690_FB_BASE, 0x01000000ul,
+                                    0x01000000ul, &address) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_scanout_address(RS690_FB_BASE, 0x01000000ul,
+                                    0x00000080ul, &address) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_scanout_address(0xff000000ul, 0x02000000ul,
+                                    0x01000000ul, &address) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_scanout_address(RS690_FB_BASE, 0x01000000ul, 0ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_rs690_2d_tests(void)
 {
     failures = 0u;
@@ -322,5 +350,6 @@ unsigned int v9x_run_rs690_2d_tests(void)
     test_copy_overlap();
     test_copy_between_surfaces();
     test_status();
+    test_scanout_address();
     return failures;
 }

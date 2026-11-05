@@ -606,6 +606,21 @@ V9XMINI_FN_VI_MAP           EQU 0029h
 ; is never used. Only the nvidia family image implements it.
 V9XMINI_FN_NV3_MMIO_MAP     EQU 002Ah
 
+; ATI Radeon X1200 IGP (RS690): map the 64 KiB register BAR (BAR2) for the
+; 2D engine (Phase 3 of docs\plans\ati-rs690-x1200.md).
+;
+; In: EBX = BAR2's physical base, read from PCI config by the display
+; driver with its high half checked zero. Out: AX=1, EBX = linear address
+; of the window. AX=0 leaves EBX zero.
+;
+; Maps once and refuses a moved BAR or one not 64 KiB aligned. The RS690
+; keeps no configuration copy at 0F00h, unlike the Rage 128, so the window
+; is handed over only when CONFIG_MEMSIZE (00F8h, bytes) reads non-zero and
+; at most 512 MiB, which a window that decodes nothing (all ones) does not
+; (docs\decisions\2026-11-04-rs690-register-probe.md). Only the ati family
+; image implements it.
+V9XMINI_FN_RS690_MMIO_MAP   EQU 002Bh
+
 ; Write-combining through the page attribute table, for a machine whose BIOS
 ; leaves no MTRR pair to give (include\velocity9x\pat.h,
 ; docs\decisions\2026-10-28-haswell-pat-write-combining.md). The C policy

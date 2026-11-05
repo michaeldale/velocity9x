@@ -101,6 +101,22 @@ if ($BuildId -notmatch '^[A-Za-z0-9._+-]+$') {
     throw "BuildId may contain only letters, digits, dot, underscore, plus, and hyphen."
 }
 
+# The VxD stamps its id into nine strings in locked data, so every character
+# of the id moves everything after them. On the RS690 (M-GB8KRE) the same
+# source booted with an 8-character id and black-screened with the
+# 14-character "-dirty" one, in both the vbe and ati families; the mechanism
+# is not known (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
+# A fixed-width id makes a dirty test build lay out exactly like the clean
+# commit it becomes, so what was booted is what ships. Eight characters is
+# the width releases already carry. The "-dirty" mark is dropped here only;
+# the display driver and HAL still log the full id.
+$VxdBuildIdWidth = 8
+$vxdBuildId = ($BuildId -replace '-dirty$', '')
+if ($vxdBuildId.Length -gt $VxdBuildIdWidth) {
+    $vxdBuildId = $vxdBuildId.Substring(0, $VxdBuildIdWidth)
+}
+$vxdBuildId = $vxdBuildId.PadRight($VxdBuildIdWidth, '_')
+
 $assembler = Join-Path $DdkRoot "bin\win98\ML.EXE"
 $linker = Join-Path $DdkRoot "bin\LINK.EXE"
 $ddkInclude = Join-Path $DdkRoot "inc\win98"
@@ -134,20 +150,20 @@ $tdfxMmio = ($Family -eq '3dfx')
 $nv3Mmio = ($Family -eq 'nvidia')
 
 $buildIncludeLines = @(
-    "V9xMiniVddBuildId db `"velocity9x:$BuildId`", 0",
-    "V9xMiniInitLine db `"V9X-MINI init build=$BuildId`", 13, 10",
+    "V9xMiniVddBuildId db `"velocity9x:$vxdBuildId`", 0",
+    "V9xMiniInitLine db `"V9X-MINI init build=$vxdBuildId`", 13, 10",
     "V9xMiniInitLineLength equ `$ - V9xMiniInitLine",
-    "V9xMiniPowerCallbacksLine db `"V9X-MINI power-callbacks-ok callbacks=4 build=$BuildId`", 13, 10",
+    "V9xMiniPowerCallbacksLine db `"V9X-MINI power-callbacks-ok callbacks=4 build=$vxdBuildId`", 13, 10",
     "V9xMiniPowerCallbacksLineLength equ `$ - V9xMiniPowerCallbacksLine",
-    "V9xMiniDefaultsLine db `"V9X-MINI power-defaults callbacks=0 build=$BuildId`", 13, 10",
+    "V9xMiniDefaultsLine db `"V9X-MINI power-defaults callbacks=0 build=$vxdBuildId`", 13, 10",
     "V9xMiniDefaultsLineLength equ `$ - V9xMiniDefaultsLine",
     "V9xMiniPowerOnLine db `"V9X-MINI monitor-power D0`", 13, 10",
     "V9xMiniPowerOnLineLength equ `$ - V9xMiniPowerOnLine",
     "V9xMiniPowerOffLine db `"V9X-MINI monitor-power low`", 13, 10",
     "V9xMiniPowerOffLineLength equ `$ - V9xMiniPowerOffLine",
-    "V9xMiniFailLine db `"V9X-MINI init-fail build=$BuildId`", 13, 10",
+    "V9xMiniFailLine db `"V9X-MINI init-fail build=$vxdBuildId`", 13, 10",
     "V9xMiniFailLineLength equ `$ - V9xMiniFailLine",
-    "V9xMiniVbeStartLine db `"V9X-MINI vbe-collect start build=$BuildId`", 13, 10",
+    "V9xMiniVbeStartLine db `"V9X-MINI vbe-collect start build=$vxdBuildId`", 13, 10",
     "V9xMiniVbeStartLineLength equ `$ - V9xMiniVbeStartLine",
     "V9xMiniVbeDoneLine db `"V9X-MINI vbe-collect done`", 13, 10",
     "V9xMiniVbeDoneLineLength equ `$ - V9xMiniVbeDoneLine",
@@ -201,7 +217,7 @@ $buildIncludeLines = @(
 )
 if ($DisableVbeCollect) {
     $buildIncludeLines += @(
-        "V9xMiniVbeDisabledLine db `"V9X-MINI vbe-collect disabled build=$BuildId`", 13, 10",
+        "V9xMiniVbeDisabledLine db `"V9X-MINI vbe-collect disabled build=$vxdBuildId`", 13, 10",
         "V9xMiniVbeDisabledLineLength equ `$ - V9xMiniVbeDisabledLine"
     )
 }
@@ -212,25 +228,25 @@ if ($DisableVbeCollect) {
 $shieldStandalone = (-not $NoShieldAdvFunc) -and (-not $IoTrace)
 if ($shieldStandalone) {
     $buildIncludeLines += @(
-        "V9xMiniShieldLine db `"V9X-MINI advfunc-shield on build=$BuildId`", 13, 10",
+        "V9xMiniShieldLine db `"V9X-MINI advfunc-shield on build=$vxdBuildId`", 13, 10",
         "V9xMiniShieldLineLength equ `$ - V9xMiniShieldLine"
     )
 }
 if (-not $NoInt10Guard) {
     $buildIncludeLines += @(
-        "V9xMiniInt10GuardLine db `"V9X-MINI int10-guard on build=$BuildId`", 13, 10",
+        "V9xMiniInt10GuardLine db `"V9X-MINI int10-guard on build=$vxdBuildId`", 13, 10",
         "V9xMiniInt10GuardLineLength equ `$ - V9xMiniInt10GuardLine"
     )
 }
 if (-not $s3Dpms) {
     $buildIncludeLines += @(
-        "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-guarded family=$Family build=$BuildId`", 13, 10",
+        "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-guarded family=$Family build=$vxdBuildId`", 13, 10",
         "V9xMiniDpmsDisabledLineLength equ `$ - V9xMiniDpmsDisabledLine"
     )
 }
 if ($intelMmio) {
     $buildIncludeLines += @(
-        "V9xMiniIntelMmioLine db `"V9X-MINI intel-mmio read-only family=$Family build=$BuildId`", 13, 10",
+        "V9xMiniIntelMmioLine db `"V9X-MINI intel-mmio read-only family=$Family build=$vxdBuildId`", 13, 10",
         "V9xMiniIntelMmioLineLength equ `$ - V9xMiniIntelMmioLine"
     )
 }
@@ -246,7 +262,7 @@ if ($ScreenSwitchQuiet) {
     # The quiet variant's hooks write nothing, so this Device_Init line is the
     # only thing that says which image is running.
     $buildIncludeLines += @(
-        "V9xMiniSsTraceLine db `"V9X-MINI screen-switch-quiet build=$BuildId`", 13, 10",
+        "V9xMiniSsTraceLine db `"V9X-MINI screen-switch-quiet build=$vxdBuildId`", 13, 10",
         "V9xMiniSsTraceLineLength equ `$ - V9xMiniSsTraceLine"
     )
 }
@@ -254,7 +270,7 @@ if ($ScreenSwitchTrace) {
     # One line per callback, so the order they arrive in is the order the main
     # VDD called them and a missing line is a step that never happened.
     $buildIncludeLines += @(
-        "V9xMiniSsTraceLine db `"V9X-MINI screen-switch-trace build=$BuildId`", 13, 10",
+        "V9xMiniSsTraceLine db `"V9X-MINI screen-switch-trace build=$vxdBuildId`", 13, 10",
         "V9xMiniSsTraceLineLength equ `$ - V9xMiniSsTraceLine",
         "V9xMiniSsCheckLine db `"V9X-MINI ss check-screen-switch-ok`", 13, 10",
         "V9xMiniSsCheckLineLength equ `$ - V9xMiniSsCheckLine",
@@ -510,7 +526,7 @@ if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4d -or $bytes[1] -ne 0x5a -or
 }
 
 $imageText = [System.Text.Encoding]::ASCII.GetString($bytes)
-foreach ($marker in @("velocity9x:$BuildId", "V9X-MINI init",
+foreach ($marker in @("velocity9x:$vxdBuildId", "V9X-MINI init",
                        "V9X-MINI power-callbacks-ok",
                        "V9X-MINI monitor-power D0", "V9XMINI_DDB")) {
     if (-not $imageText.Contains($marker)) {

@@ -111,6 +111,16 @@
  * engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_NV3          13ul
+/*
+ * ATI Radeon X1200 IGP (RS690) 2D engine, direct register writes through
+ * the 64 KiB register BAR with the CP's queues off (engines\eng_rs690.c):
+ * solid fill and screen copy, built by src\chipsets\ati\rs690\rs690_2d.c
+ * and measured byte-exact at 8, 16 and 32 bpp on M-GB8KRE
+ * (docs\decisions\2026-11-04-rs690-2d-write-probe.md). The Radeon 2D engine,
+ * not the Rage 128's: other pitch-offset units, GPU addresses, another idle
+ * register. No Direct3D engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_RS690    14ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul
