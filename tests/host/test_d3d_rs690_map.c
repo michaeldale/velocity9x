@@ -355,6 +355,46 @@ static void test_texture(void)
     CHECK(map(&draw, &resolved, 0ul, &state) ==
           V9X_D3D_RS690_REFUSE_TEXTURE_FILTER);
 
+    /* A one-level texture under a mip filter samples its base alone. */
+    base_draw(&draw);
+    base_texture(&draw, &resolved);
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.levels == 0ul);
+    CHECK(state.texture.mip_filter == V9X_RS690_MIPFILTER_NONE);
+
+    /* A placed chain: DX5's names say the filter within a level and then
+     * between levels - MIPNEAREST nearest/nearest, MIPLINEAR linear/
+     * nearest, LINEARMIPNEAREST nearest/linear, LINEARMIPLINEAR
+     * linear/linear. The 64x32 base has seven levels. */
+    resolved.levels = 7ul;
+    resolved.pitch_bytes = 128ul;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.levels == 7ul);
+    CHECK(state.texture.mip_filter == V9X_RS690_MIPFILTER_NEAREST);
+    CHECK(state.texture.filter == V9X_RS690_TEXFILTER_NEAREST);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPNEAREST;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.mip_filter == V9X_RS690_MIPFILTER_LINEAR);
+    CHECK(state.texture.filter == V9X_RS690_TEXFILTER_NEAREST);
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPLINEAR;
+    draw.texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.mip_filter == V9X_RS690_MIPFILTER_NEAREST);
+    CHECK(state.texture.filter == V9X_RS690_TEXFILTER_LINEAR);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.mip_filter == V9X_RS690_MIPFILTER_LINEAR);
+    CHECK(state.texture.levels == 7ul);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+
+    /* The chain present but a plain filter: the base alone. */
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.levels == 0ul);
+    CHECK(state.texture.mip_filter == V9X_RS690_MIPFILTER_NONE);
+
     /* Format, shape, colour key. */
     base_draw(&draw);
     base_texture(&draw, &resolved);

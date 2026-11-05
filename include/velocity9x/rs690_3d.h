@@ -287,7 +287,17 @@ struct v9x_rs690_3d_texture {
      * texel becomes is a measurement, not a header's word. */
     v9x_u32 chroma_mode;
     v9x_u32 chroma_key;
+    /* Mip levels the chain has, 0 or 1 for the base alone, each half the
+     * last to 1x1; where the chip finds level n past the base is a
+     * measurement (docs\decisions\2026-11-06-rs690-mipmaps.md). The mip
+     * filter between levels. */
+    v9x_u32 levels;
+    v9x_u32 mip_filter;
 };
+
+#define V9X_RS690_MIPFILTER_NONE        0ul
+#define V9X_RS690_MIPFILTER_NEAREST     1ul
+#define V9X_RS690_MIPFILTER_LINEAR      2ul
 
 #define V9X_RS690_CHROMA_DISABLE        0ul
 #define V9X_RS690_CHROMA_FORCE          1ul
@@ -423,6 +433,19 @@ v9x_status v9x_rs690_build_3d_draw_textured(
 #define V9X_RS690_TEXALPHA_TEXEL        1ul
 #define V9X_RS690_TEXALPHA_DIFFUSE      2ul
 #define V9X_RS690_TEXALPHA_MODULATE     3ul
+
+/*
+ * The mip layout the RS690 samples, measured (docs\decisions\2026-11-06-
+ * rs690-mipmaps.md): level n's rows are its width (the base's >> n, at
+ * least 1) times the bytes a texel, rounded up to 64; each level starts
+ * where the one before ends, its row stride times its height. The pitch of
+ * level n, and the offset of level n from the base; level == the level
+ * count gives the bytes of the whole chain.
+ */
+v9x_u32 v9x_rs690_mip_pitch(v9x_u32 width, v9x_u32 bytes_per_texel,
+                            v9x_u32 level);
+v9x_u32 v9x_rs690_mip_offset(v9x_u32 width, v9x_u32 height,
+                             v9x_u32 bytes_per_texel, v9x_u32 level);
 
 /* R300 float24, the shader constants' format (xf86-video-ati 6.14.6
  * F_TO_24): sign in 23, exponent biased 63 in 22:16, the top 16 mantissa

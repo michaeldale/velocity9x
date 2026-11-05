@@ -496,6 +496,64 @@ static void test_texture(void)
     CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x803ffffful);
 
+    /* Mipmaps: the highest level in TX_FORMAT0's 29:26, the mip filter in
+     * TX_FILTER0's 14:13 (1 nearest, 2 linear) beside the min filter.
+     * 32x16 has levels to 1x1: six. More, or an unknown mip filter, is
+     * refused; one level with a mip filter is the base alone. */
+    base_texture(&texture);
+    texture.levels = 6ul;
+    texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    /* TXPITCH_EN cleared: with it set the chip steps every level's rows
+     * by TX_FORMAT2's base pitch (measured, MipLayoutPitch at 32 bpp). */
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x1400781ful);
+    CHECK(list_value(&list, V9X_RS690_TX_FILTER0_0) == 0x00002a12ul);
+
+    /* The measured layout: each level's rows width x bytes rounded to 64,
+     * each level straight after the last (V9XRS3D MipLayoutNoPitch). */
+    CHECK(v9x_rs690_mip_pitch(32ul, 2ul, 0ul) == 64ul);
+    CHECK(v9x_rs690_mip_pitch(32ul, 2ul, 1ul) == 64ul);
+    CHECK(v9x_rs690_mip_pitch(32ul, 4ul, 0ul) == 128ul);
+    CHECK(v9x_rs690_mip_pitch(32ul, 4ul, 1ul) == 64ul);
+    CHECK(v9x_rs690_mip_pitch(256ul, 4ul, 1ul) == 512ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 0ul) == 0ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 1ul) == 1024ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 2ul) == 1536ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 3ul) == 1792ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 4ul) == 1920ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 5ul) == 1984ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 2ul, 6ul) == 2048ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 1ul) == 2048ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 2ul) == 2560ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 3ul) == 2816ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 4ul) == 2944ul);
+    CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 6ul) == 3072ul);
+
+    /* A mipmapped base whose pitch is not the chip's own is refused, and
+     * so is a chain past the frame buffer. */
+    texture.pitch_bytes = 128ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    texture.pitch_bytes = 64ul;
+    texture.offset = RS690_FB_BYTES - 1536ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&texture);
+    texture.levels = 6ul;
+    texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+    texture.mip_filter = V9X_RS690_MIPFILTER_LINEAR;
+    texture.filter = V9X_RS690_TEXFILTER_LINEAR;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FILTER0_0) == 0x00005412ul);
+    texture.levels = 7ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    texture.levels = 6ul;
+    texture.mip_filter = 3ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&texture);
+    texture.levels = 1ul;
+    texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x8000781ful);
+
     /* ARGB1555 and ARGB4444: two bytes a texel, every channel straight
      * (X, Y, Z, W), W1Z5Y5X5 0Bh and W4Z4Y4X4 0Ah. */
     base_texture(&texture);

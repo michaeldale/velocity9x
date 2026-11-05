@@ -206,6 +206,24 @@ static v9x_u32 v9x_d3d_rs690_map_texture(const V9X_R3D_DRAW *draw,
     state->texture.width = resolved->width;
     state->texture.height = resolved->height;
     state->texture.filter = min_filter;
+
+    /* Mipmapping: a mip form of the minification filter on a chain placed
+     * in the chip's layout. The filter between levels is the DX5 name's:
+     * MIPNEAREST and MIPLINEAR nearest, the LINEARMIP forms linear. */
+    if (resolved->levels > 1ul) {
+        switch (sampler->min_filter) {
+        case V9X_R3D_FILTER_MIPNEAREST:
+        case V9X_R3D_FILTER_MIPLINEAR:
+            state->texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+            state->texture.levels = resolved->levels;
+            break;
+        case V9X_R3D_FILTER_LINEARMIPNEAREST:
+        case V9X_R3D_FILTER_LINEARMIPLINEAR:
+            state->texture.mip_filter = V9X_RS690_MIPFILTER_LINEAR;
+            state->texture.levels = resolved->levels;
+            break;
+        }
+    }
     return V9X_D3D_RS690_REFUSE_NONE;
 }
 

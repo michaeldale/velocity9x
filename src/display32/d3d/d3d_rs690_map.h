@@ -44,6 +44,9 @@ typedef struct v9x_d3d_rs690_texture {
      * value, in the texture's own pixel format. */
     int has_key;
     v9x_u32 key;
+    /* Levels found where the chip's layout puts them (v9x_rs690_mip_
+     * offset), level 0 included; 0 or 1 for the base alone. */
+    v9x_u32 levels;
 } V9X_D3D_RS690_TEXTURE;
 
 #define V9X_D3D_RS690_REFUSE_NONE            0ul

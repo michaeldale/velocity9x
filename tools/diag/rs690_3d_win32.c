@@ -866,6 +866,7 @@ static int rs_draw_textured(const char *name, DWORD filter, DWORD address,
     target.width = TEST_WIDTH;
     target.height = rs_height;
 
+    rs_zero(&texture, sizeof(texture));
     texture.offset = TEX_OFFSET;
     texture.pitch_bytes = TEX_WIDTH * rs_bpp;
     texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
@@ -2084,6 +2085,306 @@ static DWORD rs_chroma_key(int replicate)
 }
 
 /*
+ * MipLayout: where the chip finds each mip level, read off the gradient,
+ * whose texels say where they are (texel n holds n at 16 bpp; dword i
+ * holds 2i in its low half at 32 bpp). A 32x16 texture with six levels,
+ * nearest within and between levels, its levels 0-4 drawn 1:1 side by
+ * side - level n as a (32 >> n) x (16 >> n) quad at x 0, 32, 48, 56,
+ * 60, so the level of detail is exactly n. Each level's texels (0, 0),
+ * (1, 0) and (0, 1) give its offset from the base and its row stride in
+ * bytes. With pitch_en clear, TXPITCH_EN is cleared after the state.
+ * Published, not judged.
+ */
+#define RS_MIP_LEVELS 6u
+#define RS_MIP_DRAWN 5u
+#define RS_MIP_GRADIENT_DWORDS 4096ul
+
+static long rs_mip_byte(DWORD pixel)
+{
+    if (rs_bpp == 2u) {
+        return (long)(pixel & 0xffffu) * 2l;
+    }
+    return (long)((pixel & 0xffffu) / 2u) * 4l;
+}
+
+static void rs_mip_layout_test(const char *name, char letter, int pitch_en)
+{
+    static const DWORD left[RS_MIP_DRAWN] = { 0u, 32u, 48u, 56u, 60u };
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+    DWORD vertices[12 * 8];
+    const unsigned char *actual;
+    char key[64];
+    char field[32];
+    DWORD level;
+    DWORD quad;
+    DWORD format0 = 0u;
+    DWORD index;
+
+    rs_zero(&state, sizeof(state));
+    state.target.fb_gpu_base = rs_fb_gpu_base;
+    state.target.fb_bytes = TEST_FB;
+    state.target.offset = TEST_BASE;
+    state.target.pitch_bytes = rs_pitch;
+    state.target.bytes_per_pixel = rs_bpp;
+    state.target.width = TEST_WIDTH;
+    state.target.height = rs_height;
+    state.textured = 1u;
+    state.texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
+                           V9X_RS690_TEXFMT_ARGB8888;
+    state.texture.offset = TEX_OFFSET;
+    state.texture.pitch_bytes = TEX_WIDTH * rs_bpp;
+    state.texture.width = TEX_WIDTH;
+    state.texture.height = TEX_HEIGHT;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture.levels = RS_MIP_LEVELS;
+    state.texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    if (v9x_rs690_build_3d_state(&state, &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return;
+    }
+    for (index = 0u; index < list.count; ++index) {
+        if (list.offsets[index] == V9X_RS690_TX_FORMAT0_0) {
+            format0 = list.values[index];
+        }
+    }
+    if (!pitch_en) {
+        format0 &= 0x7ffffffful;
+    }
+    rs_write_hex(rs_key(key, name, "TxFormat0"), format0);
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u, RS_MIP_GRADIENT_DWORDS);
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add_list(&list);
+    rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
+    rs_add(RS_OP_MMIO_WRITE32, V9X_RS690_TX_FORMAT0_0, format0, 0u);
+
+    /* Two lists: levels 0-2, then 3-4. */
+    for (quad = 0u; quad < RS_MIP_DRAWN; quad += 3u) {
+        DWORD count = RS_MIP_DRAWN - quad < 3u ? RS_MIP_DRAWN - quad : 3u;
+        DWORD q;
+
+        for (q = 0u; q < count; ++q) {
+            DWORD n = quad + q;
+            DWORD x0 = left[n];
+            DWORD x1 = x0 + (TEX_WIDTH >> n);
+            DWORD y1 = TEX_HEIGHT >> n;
+            DWORD *v = vertices + q * 32u;
+
+            rs_tl(v, x0, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+            rs_tl(v + 8, x0, y1, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u,
+                  RS_FLOAT_ONE);
+            rs_tl(v + 16, x1, y1, 0u, RS_FLOAT_ONE, 0xfffffffful,
+                  RS_FLOAT_ONE, RS_FLOAT_ONE);
+            rs_tl(v + 24, x1, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful,
+                  RS_FLOAT_ONE, 0u);
+        }
+        (void)v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_QUADS, vertices,
+                                         count * 4u, &list);
+        rs_add_list(&list);
+    }
+    (void)v9x_rs690_build_3d_finish(&list);
+    rs_add_list(&list);
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return;
+    }
+    rs_save_block(letter);
+    actual = (const unsigned char *)rs_result_buffer.block;
+
+    for (level = 0u; level < RS_MIP_DRAWN; ++level) {
+        DWORD x0 = left[level];
+        long origin = rs_mip_byte(rs_pixel(actual, x0, 0u));
+
+        wsprintfA(field, "Level%luOffset", level);
+        rs_write_decimal(rs_key(key, name, field), (DWORD)origin);
+        if ((TEX_WIDTH >> level) > 1u) {
+            wsprintfA(field, "Level%luStepX", level);
+            rs_write_decimal(rs_key(key, name, field),
+                             (DWORD)(rs_mip_byte(rs_pixel(actual, x0 + 1u,
+                                                          0u)) - origin));
+        }
+        if ((TEX_HEIGHT >> level) > 1u) {
+            wsprintfA(field, "Level%luStride", level);
+            rs_write_decimal(rs_key(key, name, field),
+                             (DWORD)(rs_mip_byte(rs_pixel(actual, x0,
+                                                          1u)) - origin));
+        }
+        wsprintfA(field, "Level%luPixel", level);
+        rs_write_hex(rs_key(key, name, field), rs_pixel(actual, x0, 0u));
+    }
+    rs_write(rs_key(key, name, "Result"), "MEASURED");
+}
+
+/*
+ * MipSelect: the builder's layout (v9x_rs690_mip_offset) checked. The
+ * 32x16 chain's six levels each filled with a colour of their own -
+ * red, green, blue, white, yellow, cyan - at the offsets and pitches the
+ * builder computes, the rest of the texture memory the gradient; levels
+ * 0-4 drawn as MipLayout draws them, nearest between levels. Each quad
+ * must be its level's colour, byte for byte. MipLinear: a 23x11 quad,
+ * between level 0's and level 1's sizes, with the linear mip filter -
+ * published, and judged only as holding both red and green.
+ */
+static const DWORD rs_mip_colours[RS_MIP_LEVELS] = {
+    0xffff0000ul, 0xff00ff00ul, 0xff0000fful,
+    0xfffffffful, 0xffffff00ul, 0xff00fffful
+};
+
+static DWORD rs_mip_fill_value(DWORD argb)
+{
+    DWORD texel;
+
+    if (rs_bpp != 2u) {
+        return argb;
+    }
+    texel = rs_encode((argb >> 16) & 255u, (argb >> 8) & 255u, argb & 255u);
+    return texel | (texel << 16);
+}
+
+static int rs_mip_draw(const char *name, DWORD mip_filter,
+                       const DWORD *vertices, DWORD quads)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+    char key[64];
+    DWORD level;
+    DWORD quad;
+
+    rs_zero(&state, sizeof(state));
+    state.target.fb_gpu_base = rs_fb_gpu_base;
+    state.target.fb_bytes = TEST_FB;
+    state.target.offset = TEST_BASE;
+    state.target.pitch_bytes = rs_pitch;
+    state.target.bytes_per_pixel = rs_bpp;
+    state.target.width = TEST_WIDTH;
+    state.target.height = rs_height;
+    state.textured = 1u;
+    state.texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
+                           V9X_RS690_TEXFMT_ARGB8888;
+    state.texture.offset = TEX_OFFSET;
+    state.texture.pitch_bytes = v9x_rs690_mip_pitch(TEX_WIDTH, rs_bpp, 0u);
+    state.texture.width = TEX_WIDTH;
+    state.texture.height = TEX_HEIGHT;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture.levels = RS_MIP_LEVELS;
+    state.texture.mip_filter = mip_filter;
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    if (v9x_rs690_build_3d_state(&state, &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u, RS_MIP_GRADIENT_DWORDS);
+    for (level = 0u; level < RS_MIP_LEVELS; ++level) {
+        DWORD start = v9x_rs690_mip_offset(TEX_WIDTH, TEX_HEIGHT, rs_bpp,
+                                           level);
+        DWORD end = v9x_rs690_mip_offset(TEX_WIDTH, TEX_HEIGHT, rs_bpp,
+                                         level + 1u);
+
+        rs_add(RS_OP_LFB_FILL32, TEX_OFFSET + start,
+               rs_mip_fill_value(rs_mip_colours[level]), (end - start) / 4u);
+    }
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add_list(&list);
+    for (quad = 0u; quad < quads; quad += 3u) {
+        DWORD count = quads - quad < 3u ? quads - quad : 3u;
+
+        (void)v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_QUADS,
+                                         vertices + quad * 32u, count * 4u,
+                                         &list);
+        rs_add_list(&list);
+    }
+    (void)v9x_rs690_build_3d_finish(&list);
+    rs_add_list(&list);
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return 0;
+    }
+    return 1;
+}
+
+static void rs_mip_quad(DWORD *v, DWORD x0, DWORD x1, DWORD y1)
+{
+    rs_tl(v, x0, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+    rs_tl(v + 8, x0, y1, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, RS_FLOAT_ONE);
+    rs_tl(v + 16, x1, y1, 0u, RS_FLOAT_ONE, 0xfffffffful, RS_FLOAT_ONE,
+          RS_FLOAT_ONE);
+    rs_tl(v + 24, x1, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, RS_FLOAT_ONE, 0u);
+}
+
+static void rs_mip_select_test(void)
+{
+    static const char name[] = "MipSelect";
+    static const DWORD left[RS_MIP_DRAWN] = { 0u, 32u, 48u, 56u, 60u };
+    DWORD vertices[RS_MIP_DRAWN * 32];
+    char key[64];
+    char field[32];
+    DWORD level;
+
+    for (level = 0u; level < RS_MIP_DRAWN; ++level) {
+        rs_mip_quad(vertices + level * 32u, left[level],
+                    left[level] + (TEX_WIDTH >> level), TEX_HEIGHT >> level);
+    }
+    if (!rs_mip_draw(name, V9X_RS690_MIPFILTER_NEAREST, vertices,
+                     RS_MIP_DRAWN)) {
+        return;
+    }
+    rs_save_block('~');
+    rs_model_prefill();
+    for (level = 0u; level < RS_MIP_DRAWN; ++level) {
+        rs_model_rect(left[level], 0u, left[level] + (TEX_WIDTH >> level),
+                      TEX_HEIGHT >> level,
+                      rs_encode_argb(rs_mip_colours[level]));
+        wsprintfA(field, "Level%luPixel", level);
+        rs_write_hex(rs_key(key, name, field),
+                     rs_pixel((const unsigned char *)rs_result_buffer.block,
+                              left[level], 0u));
+    }
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+static void rs_mip_linear_test(void)
+{
+    static const char name[] = "MipLinear";
+    DWORD vertices[32];
+    DWORD pixel;
+    DWORD values[4];
+    DWORD maxima[4];
+    char key[64];
+
+    rs_mip_quad(vertices, 0u, 23u, 11u);
+    if (!rs_mip_draw(name, V9X_RS690_MIPFILTER_LINEAR, vertices, 1u)) {
+        return;
+    }
+    rs_save_block('#');
+    pixel = rs_pixel((const unsigned char *)rs_result_buffer.block, 11u, 5u);
+    (void)rs_channels(pixel, values, maxima);
+    rs_write_hex(rs_key(key, name, "Pixel11_5"), pixel);
+    rs_result(name, values[0] * 8u > maxima[0] && values[1] * 8u > maxima[1] &&
+                    values[2] * 8u < maxima[2]);
+}
+
+/*
  * TexFormat1555 / TexFormat4444: the gradient written as 16-bit texels
  * (texel n is n), read as ARGB1555 or ARGB4444, drawn 1:1 over x 0-31,
  * rows 0-15, nearest, clamped, REPLACE with the texel's alpha, through the
@@ -3146,6 +3447,10 @@ void WINAPI V9xRs6903dProbeEntry(void)
                    rs_chroma_key(RS_CHROMA_RAW));
     rs_chroma_scale = 1u;
     rs_chroma_filter = V9X_RS690_TEXFILTER_NEAREST;
+    rs_mip_layout_test("MipLayoutPitch", '-', 1);
+    rs_mip_layout_test("MipLayoutNoPitch", '!', 0);
+    rs_mip_select_test();
+    rs_mip_linear_test();
     rs_fog_test("TlFog", 0u);
     rs_fog_test("TlFogSpecular", 1u);
     /* The colour-only state again: texturing, Z, blend, alpha test and

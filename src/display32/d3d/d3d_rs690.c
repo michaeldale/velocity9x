@@ -264,7 +264,11 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
                          V9X_D3DPTEXTURECAPS_ALPHA |
                          V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
-                               V9X_D3DPTFILTERCAPS_LINEAR;
+                               V9X_D3DPTFILTERCAPS_LINEAR |
+                               V9X_D3DPTFILTERCAPS_MIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_MIPLINEAR |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPNEAREST |
+                               V9X_D3DPTFILTERCAPS_LINEARMIPLINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
                               V9X_D3DPTBLENDCAPS_MODULATE |
                               V9X_D3DPTBLENDCAPS_DECALALPHA |
@@ -342,6 +346,72 @@ static int v9x_d3d_rs690_ready(void)
         v9x_hal->engine.mapped_aperture_bytes >= V9X_D3D_RS690_MMIO_BYTES;
 }
 
+/*
+ * How many of a mip chain's levels lie where the chip will look for them:
+ * level n at the base plus v9x_rs690_mip_offset, at v9x_rs690_mip_pitch
+ * (the layout V9XRS3D measured; create_surface places chains so). The
+ * walk follows each level's mipmap attachment and stops at the first that
+ * is missing or elsewhere, recording it as the VI engine does (V9XTRACE
+ * MipGapExpected, MipGapActual, D3dMipChainDelta).
+ */
+static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
+                                        DWORD bytes,
+                                        V9X_D3D_RS690_TEXTURE *texture)
+{
+    const V9X_DD_SURFACE_LCL *level = surface;
+    DWORD longest = texture->width > texture->height ? texture->width
+                                                     : texture->height;
+    DWORD possible = 1ul;
+    DWORD found = 1ul;
+
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    while (longest > 1ul) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (texture->pitch_bytes !=
+        v9x_rs690_mip_pitch(texture->width, bytes, 0ul)) {
+        return;
+    }
+    while (found < possible) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+        DWORD expected = texture->offset +
+                         v9x_rs690_mip_offset(texture->width, texture->height,
+                                              bytes, found);
+        DWORD pitch = v9x_rs690_mip_pitch(texture->width, bytes, found);
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next->lpGbl == 0 ||
+            v9x_surface_offset(next) != expected ||
+            (DWORD)next->lpGbl->lPitch != pitch) {
+            if (next != 0) {
+                ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+                v9x_hal->d3d_diagnostics.mip_gap_expected = expected;
+                v9x_hal->d3d_diagnostics.mip_gap_actual =
+                    next->lpGbl != 0 ? v9x_surface_offset(next) : 0ul;
+                v9x_hal->d3d_diagnostics.mip_chain_delta =
+                    (next->lpGbl != 0 ?
+                     ((DWORD)next->lpGbl->lPitch << 16) : 0ul) |
+                    (pitch & 0xfffful);
+            }
+            break;
+        }
+        ++found;
+        level = next;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = found;
+    texture->levels = found;
+}
+
 /* The bound texture's level 0: format, shape, pitch and offset. */
 static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
                                           V9X_D3D_RS690_TEXTURE *texture)
@@ -358,6 +428,7 @@ static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->offset = 0ul;
     texture->has_key = 0;
     texture->key = 0ul;
+    texture->levels = 0ul;
 
     surface = (const V9X_DD_SURFACE_LCL *)sampler->object;
     if (surface == 0 || surface->lpGbl == 0 ||
@@ -382,6 +453,10 @@ static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         texture->has_key = 1;
         texture->key = surface->ddckCKSrcBltLow;
+    }
+    texture->levels = 1ul;
+    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+        v9x_d3d_rs690_resolve_chain(surface, bytes, texture);
     }
 
     /* The ViRGE's instrument (d3d_virge.c): where the texture is, and its
@@ -645,9 +720,10 @@ static DWORD v9x_d3d_rs690_align(DWORD bytes)
 
 /*
  * Placement. A video-memory texture of a format and size this engine
- * samples gets each level in a block of its own, 32-byte aligned, its
- * pitch rounded to 64 bytes (TX_OFFSET's rule and the rows the chip
- * steps). A Z16 buffer gets 32-byte alignment and a 64-byte pitch, 32
+ * samples gets a block 32-byte aligned, its pitch rounded to 64 bytes
+ * (TX_OFFSET's rule and the rows the chip steps); a mip chain gets one
+ * block with every level where the sampler finds it (below). A Z16 buffer
+ * gets 32-byte alignment and a 64-byte pitch, 32
  * pixels, which ZB_DEPTHPITCH needs here and DirectDraw's 8-byte heap
  * alignment does not give.
  */
@@ -657,6 +733,7 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     V9X_DD_SURFACE_LCL *surface;
     v9x_u32 pitches[V9X_D3D_RS690_TEXTURE_LEVELS];
     v9x_u32 rows[V9X_D3D_RS690_TEXTURE_LEVELS];
+    v9x_u32 offsets[V9X_D3D_RS690_TEXTURE_LEVELS];
     DWORD bytes = 0ul;
     DWORD width;
     DWORD height;
@@ -685,12 +762,16 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         pitches[0] = v9x_d3d_rs690_align(width * 2ul);
         rows[0] = height;
     } else {
+        DWORD base_width = width;
+        DWORD base_height = height;
+
         if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
             !v9x_d3d_rs690_texture_edge(width) ||
             !v9x_d3d_rs690_texture_edge(height) ||
             v9x_d3d_rs690_format_of(surface, &bytes) == 0ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
+
         for (level = 0ul; level < data->dwSCnt; ++level) {
             const V9X_DD_SURFACE_LCL *member = list[level];
 
@@ -709,8 +790,28 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 (DWORD)member->lpGbl->wHeight != height) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
-            pitches[level] = v9x_d3d_rs690_align(width * bytes);
+            pitches[level] = v9x_rs690_mip_pitch(base_width, bytes, level);
             rows[level] = height;
+            offsets[level] = v9x_rs690_mip_offset(base_width, base_height,
+                                                  bytes, level);
+        }
+
+        /* A mip chain in one block, each level where the sampler looks for
+         * it: rows rounded to 64 bytes, each level straight after the last
+         * (measured, docs\decisions\2026-11-06-rs690-mipmaps.md). */
+        if (data->dwSCnt > 1ul) {
+            DWORD base = 0ul;
+
+            if (v9x_d3d_place_chain(data, V9X_D3D_RS690_SURFACE_ALIGN,
+                                    v9x_rs690_mip_offset(base_width,
+                                                         base_height, bytes,
+                                                         data->dwSCnt),
+                                    offsets, pitches, &base) != 0ul) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            ++v9x_hal->d3d_diagnostics.texture_placed;
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
         }
     }
     if (v9x_d3d_place_each(data, V9X_D3D_RS690_SURFACE_ALIGN, pitches,

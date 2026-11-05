@@ -148,8 +148,12 @@
 #define V9X_RS690_TX_FILTER_LINEAR      0x00001400ul
 
 /* TX_FORMAT0: width - 1 in 10:0, height - 1 in 21:11, TXPITCH_EN (bit 31)
- * so TX_FORMAT2 gives the row pitch in texels - 1. */
+ * so TX_FORMAT2 gives the row pitch in texels - 1, the highest mip level
+ * in 29:26. TX_FILTER0's mip filter in 14:13, 1 nearest and 2 linear
+ * (Linux r300_reg.h:815-860). */
 #define V9X_RS690_TXHEIGHT_SHIFT        11
+#define V9X_RS690_TX_MAX_LEVEL_SHIFT    26
+#define V9X_RS690_TX_MIP_FILTER_SHIFT   13
 #define V9X_RS690_TXPITCH_EN            0x80000000ul
 
 /* TX_FORMAT1 as R300TexFormats has them, R300_EASY_TX_FORMAT(B, G, R, A,
@@ -749,6 +753,7 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     v9x_u32 alpha_addr;
     v9x_u32 alpha_inst;
     v9x_u32 texture_bytes;
+    v9x_u32 max_level = 0ul;
 
     if (texture->format == V9X_RS690_TEXFMT_RGB565) {
         bytes_per_texel = 2ul;
@@ -776,6 +781,28 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         filter |= V9X_RS690_TX_CLAMP_ST_EDGE;
     } else if (texture->address != V9X_RS690_TEXADDR_WRAP) {
         return V9X_STATUS_UNSUPPORTED;
+    }
+
+    /* Mip levels past the base, when there are any and a mip filter. */
+    if (texture->mip_filter > V9X_RS690_MIPFILTER_LINEAR) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (texture->levels > 1ul) {
+        v9x_u32 longest = texture->width > texture->height ? texture->width
+                                                           : texture->height;
+        v9x_u32 possible = 1ul;
+
+        while (longest > 1ul) {
+            longest >>= 1;
+            ++possible;
+        }
+        if (texture->levels > possible) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        if (texture->mip_filter != V9X_RS690_MIPFILTER_NONE) {
+            filter |= texture->mip_filter << V9X_RS690_TX_MIP_FILTER_SHIFT;
+            max_level = texture->levels - 1ul;
+        }
     }
     if (texture->combine == V9X_RS690_TEXCOMBINE_REPLACE) {
         rgb_addr = V9X_RS690_ALU_RGB_ADDR_OUT;
@@ -810,6 +837,18 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     texture_bytes = texture->pitch_bytes * texture->height;
+
+    /* A chain: the base's pitch must be the one the chip steps level 0
+     * by, and every level must lie in the frame buffer. */
+    if (max_level != 0ul) {
+        if (texture->pitch_bytes !=
+            v9x_rs690_mip_pitch(texture->width, bytes_per_texel, 0ul)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        texture_bytes = v9x_rs690_mip_offset(texture->width, texture->height,
+                                             bytes_per_texel,
+                                             max_level + 1ul);
+    }
     if (texture->offset >= fb_bytes ||
         texture_bytes > fb_bytes - texture->offset ||
         fb_bytes - 1ul > 0xfffffffful - fb_gpu_base) {
@@ -846,7 +885,8 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     v9x_rs690_3d_add(list, V9X_RS690_TX_FORMAT0_0,
                      (texture->width - 1ul) |
                      ((texture->height - 1ul) << V9X_RS690_TXHEIGHT_SHIFT) |
-                     V9X_RS690_TXPITCH_EN);
+                     (max_level << V9X_RS690_TX_MAX_LEVEL_SHIFT) |
+                     (max_level == 0ul ? V9X_RS690_TXPITCH_EN : 0ul));
     v9x_rs690_3d_add(list, V9X_RS690_TX_FORMAT1_0, card_format);
     v9x_rs690_3d_add(list, V9X_RS690_TX_FORMAT2_0,
                      texture->pitch_bytes / bytes_per_texel - 1ul);
@@ -1127,6 +1167,38 @@ v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
     v9x_rs690_3d_add(list, V9X_RS690_VAP_VTX_SIZE,
                      V9X_RS690_TL_VERTEX_DWORDS);
     return V9X_STATUS_OK;
+}
+
+/* A level's side: the base's halved per level, never below one. */
+static v9x_u32 v9x_rs690_mip_side(v9x_u32 side, v9x_u32 level)
+{
+    while (level != 0ul && side > 1ul) {
+        side >>= 1;
+        --level;
+    }
+    return side;
+}
+
+v9x_u32 v9x_rs690_mip_pitch(v9x_u32 width, v9x_u32 bytes_per_texel,
+                            v9x_u32 level)
+{
+    v9x_u32 bytes = v9x_rs690_mip_side(width, level) * bytes_per_texel;
+
+    return (bytes + V9X_RS690_TEX_PITCH_ALIGN - 1ul) &
+           ~(V9X_RS690_TEX_PITCH_ALIGN - 1ul);
+}
+
+v9x_u32 v9x_rs690_mip_offset(v9x_u32 width, v9x_u32 height,
+                             v9x_u32 bytes_per_texel, v9x_u32 level)
+{
+    v9x_u32 offset = 0ul;
+    v9x_u32 at;
+
+    for (at = 0ul; at < level; ++at) {
+        offset += v9x_rs690_mip_pitch(width, bytes_per_texel, at) *
+                  v9x_rs690_mip_side(height, at);
+    }
+    return offset;
 }
 
 v9x_u32 v9x_rs690_float24(v9x_u32 ieee)

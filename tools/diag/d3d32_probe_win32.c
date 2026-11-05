@@ -39,6 +39,9 @@
  *      half), the ADD and DECALALPHA texture blends, and a source colour
  *      key on an RGB565 texture, each at its quadrant centres within 8
  *      (d32_t20_draw).
+ *   T21 a six-level RGB565 mip chain, each level its own colour, drawn
+ *      MIPNEAREST at four sizes: each quad the level its size selects
+ *      (d32_t21_draw).
  *   T11 culling by every submit form the DX5 device has - a triangle list,
  *      an indexed list, a strip (its odd triangle's swap), a fan, an
  *      indexed strip and an indexed list over 260 vertices - each under
@@ -1308,6 +1311,176 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
     ok |= d32_t20_point(desc, "KeyWhite", 268ul, 132ul, 0x00fffffful) << 11;
     d32_hx("T20Ok", ok);
     return ok != 0xffful ? 1ul : 0ul;
+}
+
+/*
+ * T21: a mipmapped texture through DX5. A 32x32 RGB565 texture created
+ * with DDSCAPS_MIPMAP | DDSCAPS_COMPLEX and six levels, each level filled
+ * with a colour of its own (red, green, blue, white, yellow, cyan) by
+ * walking the mipmap attachments, drawn MIPNEAREST (nearest within and
+ * between levels) as quads 32, 16, 8 and 4 pixels square at x 8, 48, 72
+ * and 88 in the band y 160-191: each quad is the level its size selects,
+ * its centre within 8 of that level's colour. A device that samples only
+ * the base draws red everywhere and fails.
+ */
+#define DDSD_MIPMAPCOUNT 0x00020000ul
+#define DDSCAPS_MIPMAP 0x00400000ul
+#define D3DFILTER_MIPNEAREST 3ul
+#define D32_T21_LEVELS 6ul
+#define D32_T21_DRAWN 4ul
+#define D32_T21_TOP 160.0f
+
+static const WORD d32_t21_colours[D32_T21_LEVELS] = {
+    0xf800u, 0x07e0u, 0x001fu, 0xffffu, 0xffe0u, 0x07ffu
+};
+static const DWORD d32_t21_rgb[D32_T21_DRAWN] = {
+    0x00ff0000ul, 0x0000ff00ul, 0x000000fful, 0x00fffffful
+};
+static const DWORD d32_t21_left[D32_T21_DRAWN] = { 8ul, 48ul, 72ul, 88ul };
+
+/* The chain: created, every level filled; null when any step fails. */
+static D32_OBJECT *d32_t21_texture(D32_OBJECT *ddraw)
+{
+    D32_SURFACE_DESC desc;
+    D32_OBJECT *surface = 0;
+    D32_OBJECT *level;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD caps;
+    HRESULT hr;
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT |
+                   DDSD_MIPMAPCOUNT;
+    desc.dwWidth = 32ul;
+    desc.dwHeight = 32ul;
+    desc.dwMipMapCount = D32_T21_LEVELS;
+    desc.ddpfPixelFormat[0] = 32ul;
+    desc.ddpfPixelFormat[1] = DDPF_RGB;
+    desc.ddpfPixelFormat[3] = 16ul;
+    desc.ddpfPixelFormat[4] = 0x0000f800ul;
+    desc.ddpfPixelFormat[5] = 0x000007e0ul;
+    desc.ddpfPixelFormat[6] = 0x0000001ful;
+    desc.ddsCaps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP | DDSCAPS_COMPLEX |
+                   DDSCAPS_VIDEOMEMORY;
+    hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+        ddraw, &desc, &surface, 0);
+    d32_hx("T21CreateHr", (DWORD)hr);
+    if (hr != 0 || surface == 0) {
+        return 0;
+    }
+
+    level = surface;
+    for (index = 0ul; index < D32_T21_LEVELS; ++index) {
+        D32_OBJECT *next = 0;
+
+        d32_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        hr = ((d32_lock_fn)level->vtbl[DDS_LOCK])(level, 0, &desc,
+                                                  DDLOCK_WAIT, 0);
+        if (hr != 0 || desc.lpSurface == 0) {
+            d32_hx("T21LockHr", (DWORD)hr);
+            d32_hx("T21LockLevel", index);
+            break;
+        }
+        for (y = 0ul; y < desc.dwHeight; ++y) {
+            WORD *row = (WORD *)((BYTE *)desc.lpSurface +
+                                 y * (DWORD)desc.lPitch);
+
+            for (x = 0ul; x < desc.dwWidth; ++x) {
+                row[x] = d32_t21_colours[index];
+            }
+        }
+        ((d32_unlock_fn)level->vtbl[DDS_UNLOCK])(level, desc.lpSurface);
+        if (index + 1ul == D32_T21_LEVELS) {
+            ++index;
+            break;
+        }
+        caps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP;
+        hr = ((d32_get_attached_fn)level->vtbl[DDS_GET_ATTACHED_SURFACE])(
+            level, &caps, &next);
+        if (level != surface) {
+            ((d32_release_fn)level->vtbl[COM_RELEASE])(level);
+        }
+        if (hr != 0 || next == 0) {
+            d32_hx("T21AttachHr", (DWORD)hr);
+            level = surface;
+            break;
+        }
+        level = next;
+    }
+    if (level != surface) {
+        ((d32_release_fn)level->vtbl[COM_RELEASE])(level);
+    }
+    d32_hx("T21LevelsFilled", index);
+    if (index != D32_T21_LEVELS) {
+        ((d32_release_fn)surface->vtbl[COM_RELEASE])(surface);
+        return 0;
+    }
+    return surface;
+}
+
+static void d32_t21_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
+                         D32_OBJECT **surface_out)
+{
+    D32_TLVERTEX v[6];
+    DWORD handle;
+    DWORD quad;
+
+    d32_line("Stage", "8e2-t21-mipmaps");
+    *surface_out = d32_t21_texture(ddraw);
+    handle = d32_handle_of(*surface_out, device, "T21");
+    if (handle == 0ul) {
+        return;
+    }
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMAG, D3DFILTER_NEAREST);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_MIPNEAREST);
+    for (quad = 0ul; quad < D32_T21_DRAWN; ++quad) {
+        float x0 = (float)d32_t21_left[quad];
+        float size = (float)(32ul >> quad);
+
+        d32_vertex(&v[0], x0, D32_T21_TOP, 0.5f, 0xfffffffful);
+        d32_vertex(&v[1], x0 + size, D32_T21_TOP, 0.5f, 0xfffffffful);
+        d32_vertex(&v[2], x0, D32_T21_TOP + size, 0.5f, 0xfffffffful);
+        d32_vertex(&v[3], x0 + size, D32_T21_TOP, 0.5f, 0xfffffffful);
+        d32_vertex(&v[4], x0 + size, D32_T21_TOP + size, 0.5f, 0xfffffffful);
+        d32_vertex(&v[5], x0, D32_T21_TOP + size, 0.5f, 0xfffffffful);
+        v[1].tu = 1.0f;
+        v[2].tv = 1.0f;
+        v[3].tu = 1.0f;
+        v[4].tu = 1.0f;
+        v[4].tv = 1.0f;
+        v[5].tv = 1.0f;
+        d32_hx("T21DrawHr", (DWORD)d32_draw(device, v, 6ul));
+    }
+    d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_NEAREST);
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+}
+
+/* T21's judgement; 1 when any quad is not its level. */
+static DWORD d32_t21_judge(const D32_SURFACE_DESC *desc)
+{
+    DWORD ok = 0ul;
+    DWORD quad;
+    char key[24];
+
+    for (quad = 0ul; quad < D32_T21_DRAWN; ++quad) {
+        DWORD centre = (32ul >> quad) / 2ul;
+        DWORD pixel = d32_pixel(desc, d32_t21_left[quad] + centre,
+                                160ul + centre);
+
+        wsprintfA(key, "T21Level%lu", quad);
+        d32_hx(key, pixel);
+        if (d32_near(pixel, d32_t21_rgb[quad], 8ul)) {
+            ok |= 1ul << quad;
+        }
+    }
+    d32_hx("T21Ok", ok);
+    return ok != 0xful ? 1ul : 0ul;
 }
 
 static int d32_dominant(DWORD pixel, int channel)
@@ -5683,6 +5856,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_OBJECT *device2 = 0;
     D32_OBJECT *texture_surface = 0;
     D32_OBJECT *t20_surfaces[2] = { 0, 0 };
+    D32_OBJECT *t21_surface = 0;
     DWORD handle = 0ul;
     D32_SURFACE_DESC desc;
     D32_ENUM_RESULT enumerated;
@@ -6081,6 +6255,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
 
     d32_t20_draw(ddraw, device, handle, t20_surfaces);
+    d32_t21_draw(ddraw, device, &t21_surface);
 
     /* T9: DrawIndexedPrimitive under Direct3D's default culling (CCW).
      * With screen y down, a triangle whose (v1-v0) x (v2-v0) is positive
@@ -6356,6 +6531,7 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_hx("T7Ok", caps);
         failures += caps != 1ul ? 1ul : 0ul;
         failures += d32_t20_judge(&desc);
+        failures += d32_t21_judge(&desc);
         ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
     } else {
         ++failures;
@@ -6475,6 +6651,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
     if (t20_surfaces[1] != 0) {
         ((d32_release_fn)t20_surfaces[1]->vtbl[COM_RELEASE])(
             t20_surfaces[1]);
+    }
+    if (t21_surface != 0) {
+        ((d32_release_fn)t21_surface->vtbl[COM_RELEASE])(t21_surface);
     }
     if (zbuffer != 0) {
         ((d32_release_fn)zbuffer->vtbl[COM_RELEASE])(zbuffer);
