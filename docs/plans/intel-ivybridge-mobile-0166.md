@@ -1,7 +1,8 @@
 # Ivy Bridge mobile (HD 4000, 8086:0166) on M-ZJQ2DX
 
-Status: **started 2026-11-05** on branch `intel-ivb-mobile`. Not for main
-until the panel path has run.
+Status: **steps 1-4 done 2026-11-05** on branch `intel-ivb-mobile`: the
+alias runs 2D, flips and Direct3D on the LVDS laptop. Not merged; nobody
+has looked at the panel yet.
 
 ## Machine
 
@@ -38,4 +39,17 @@ pipe A and plane A are live.
 
 ## Records
 
-Each step's decision doc is listed here as it lands.
+- Step 1, 2026-11-05: `docs\decisions\2026-11-05-w9qi75e0-ivb-mobile-tier0.md`.
+  `enable-ok`, EDID 1366x768, 1366x768x16 sets live.
+- Steps 2 to 4, 2026-11-05:
+  `docs\decisions\2026-11-05-w9qi75e0-ivb-mobile-intel-gma.md`. The LVDS is
+  on pipe A behind panel fitter 0; flips (27 of 27 taken) and `V9XD32` at
+  16 and 32 bpp, Z16 and Z24, pass with no code beyond the claim.
+
+## Next
+
+- The owner's answer on what the panel shows.
+- OpenGL and Glide probes, then a game, as on W9QI4E14.
+- A DOS box round trip.
+- Then the merge question: the alias needed no panel code, so step 5 has
+  nothing to do unless the owner reports a problem.
