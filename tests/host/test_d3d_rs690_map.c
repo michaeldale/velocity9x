@@ -102,7 +102,7 @@ static void test_target(void)
     draw.target.format = V9X_R3D_FORMAT_XRGB1555;
     CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_TARGET);
 
-    /* Flat and Gouraud; specular added; fog not built yet. */
+    /* Flat and Gouraud; specular added; fog with its colour's RGB. */
     CHECK(state.flat == 0ul);
     CHECK(state.specular == 0ul);
     base_draw(&draw);
@@ -117,8 +117,14 @@ static void test_target(void)
     CHECK(state.specular == 1ul);
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
     base_draw(&draw);
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.fog == 0ul);
     draw.fog_enable = 1ul;
-    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_FOG);
+    draw.fog_color = 0xff336699ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.fog == 1ul);
+    CHECK(state.fog_color == 0x00336699ul);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
 
     /* The render interface's draws go to the CPU. */
     base_draw(&draw);

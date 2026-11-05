@@ -1475,6 +1475,175 @@ static void rs_blend_test(void)
 }
 
 /*
+ * TlFog: a quad over rows 0-15 in red (diffuse FFFF0000h), specular RGB
+ * 004000h (green 64), specular alpha 255 on the left edge and 0 on the
+ * right, fog colour 0000FFh. Direct3D's vertex fog: rgb = f * c + (1 - f)
+ * * fog, f the interpolated specular alpha, alpha untouched. With
+ * specular off, c is the diffuse alone (the specular RGB must not show);
+ * TlFogSpecular adds it first. Each channel within 1.5 steps of the model
+ * at the pixel centre, f = 1 - (x + 0.5) / width.
+ */
+#define RS_FOG_SPECULAR 0x00004000ul
+#define RS_FOG_COLOR 0x000000fful
+
+static DWORD rs_fog_add_specular;
+
+static void rs_fog_model(DWORD x, DWORD y, long expected[4], long allowed[4])
+{
+    static const DWORD fog[4] = { 0u, 0u, 255u, 255u };
+    DWORD source[4] = { 255u, 0u, 0u, 255u };
+    DWORD values[4];
+    DWORD maxima[4];
+    long width2 = (long)TEST_WIDTH * 2l;
+    long near_part = width2 - (long)(2u * x + 1u);
+    int channels = rs_channels(rs_pixel(rs_model, x, y), values, maxima);
+    int channel;
+
+    if (rs_fog_add_specular != 0u) {
+        source[1] = (RS_FOG_SPECULAR >> 8) & 255u;
+    }
+    /* In 1/(255 * 2 * width) of a step. */
+    for (channel = 0; channel < channels; ++channel) {
+        expected[channel] =
+            ((long)source[channel] * near_part +
+             (long)fog[channel] * (width2 - near_part)) *
+            (long)maxima[channel];
+        allowed[channel] = 3l * 255l * width2 / 2l;
+    }
+}
+
+static void rs_fog_test(const char *name, DWORD specular)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD corner;
+
+    rs_zero(&state, sizeof(state));
+    state.fog = 1u;
+    state.fog_color = RS_FOG_COLOR;
+    state.specular = specular;
+    rs_tl_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT, 0u, 0xffff0000ul);
+
+    /* Corners 0 and 1 are the left edge (rs_tl_quad's order). */
+    for (corner = 0u; corner < 4u; ++corner) {
+        vertices[corner * 8u + 5u] =
+            RS_FOG_SPECULAR | (corner < 2u ? 0xff000000ul : 0ul);
+    }
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block(specular != 0u ? 'N' : 'J');
+    rs_fog_add_specular = specular;
+    rs_model_prefill();
+    rs_tex_judge(name, 0u, TEST_WIDTH, 255l * 2l * (long)TEST_WIDTH,
+                 rs_fog_model);
+}
+
+/*
+ * Byte-exact single-colour checks that split colour 1's routing from the
+ * fog instruction: a quad over rows 0-15, diffuse FFFF0000h, every
+ * vertex's specular dword as given, and the whole quad expected in one
+ * colour. TlSpecularOnly: untextured, specular on, specular 0000FF00h -
+ * FFFFFF00h. TlFogFull and TexFogFull: fog on, f = 0 (specular alpha 0) -
+ * the fog colour 0000FFh with the diffuse alpha, FF0000FFh, whatever the
+ * colour or texture underneath. Channels of 0 and 255 only, so exact at
+ * 16 bpp too.
+ */
+static void rs_flat_colour_test(const char *name, char letter,
+                                DWORD textured, DWORD specular, DWORD fog,
+                                DWORD specular_dword, DWORD expected)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD corner;
+
+    rs_zero(&state, sizeof(state));
+    state.specular = specular;
+    state.fog = fog;
+    state.fog_color = RS_FOG_COLOR;
+    if (textured != 0u) {
+        state.textured = 1u;
+        state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+        state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+        state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+        state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    }
+    rs_tl_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT, 0u, 0xffff0000ul);
+    for (corner = 0u; corner < 4u; ++corner) {
+        vertices[corner * 8u + 5u] = specular_dword;
+    }
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block(letter);
+    rs_model_prefill();
+    rs_model_rect(0u, 0u, TEST_WIDTH, TEX_HEIGHT, rs_encode_argb(expected));
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
+ * FogInst*: TlFogFull's state (untextured, fog, f = 0), with the output
+ * instruction's (2) RGB word replaced after the state, to see what it
+ * reads. Const: out = src0 (constant 0, the fog colour) - FF0000FFh if it
+ * runs and the constant holds. Factor: out = src2.aaa (f) - FF000000h.
+ * Temp: out = src1 (the result temp, red less blue, clamped) -
+ * FFFF0000h.
+ */
+static void rs_fog_inst_test(const char *name, char letter, DWORD rgb_inst,
+                             DWORD expected)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+    DWORD vertices[4 * 8];
+    DWORD corner;
+
+    rs_zero(&state, sizeof(state));
+    state.fog = 1u;
+    state.fog_color = RS_FOG_COLOR;
+    state.target.fb_gpu_base = rs_fb_gpu_base;
+    state.target.fb_bytes = TEST_FB;
+    state.target.offset = TEST_BASE;
+    state.target.pitch_bytes = rs_pitch;
+    state.target.bytes_per_pixel = rs_bpp;
+    state.target.width = TEST_WIDTH;
+    state.target.height = rs_height;
+    rs_tl_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT, 0u, 0xffff0000ul);
+    for (corner = 0u; corner < 4u; ++corner) {
+        vertices[corner * 8u + 5u] = 0u;
+    }
+    if (v9x_rs690_build_3d_state(&state, &list) != V9X_STATUS_OK) {
+        rs_write(name, "STATE-REFUSED");
+        rs_failed = 1u;
+        return;
+    }
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add_list(&list);
+    rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
+    rs_add(RS_OP_MMIO_WRITE32, V9X_RS690_US_ALU_RGB_INST_2, rgb_inst, 0u);
+    (void)v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_QUADS, vertices, 4u,
+                                     &list);
+    rs_add_list(&list);
+    (void)v9x_rs690_build_3d_finish(&list);
+    rs_add_list(&list);
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rs_run()) {
+        rs_write(name, "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return;
+    }
+    rs_save_block(letter);
+    rs_model_prefill();
+    rs_model_rect(0u, 0u, TEST_WIDTH, TEX_HEIGHT, rs_encode_argb(expected));
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
  * AlphaTest: white quads at alpha 100 (4-28) and 200 (36-60), GREATER
  * than 128: only the second is drawn, byte-exact.
  */
@@ -2687,6 +2856,17 @@ void WINAPI V9xRs6903dProbeEntry(void)
     rs_tex_specular_test();
     rs_tex_quadrants_test("TexQuadrants", 'X', TEX_OFFSET);
     rs_tex_quadrants_test("TexQuadrants500", 'Y', TEX_OFFSET + 0x500u);
+    rs_flat_colour_test("TlSpecularOnly", 'E', 0u, 1u, 0u, 0x0000ff00ul,
+                        0xffffff00ul);
+    rs_flat_colour_test("TlFogFull", 'I', 0u, 0u, 1u, 0x00000000ul,
+                        0xff0000fful);
+    rs_flat_colour_test("TexFogFull", 'O', 1u, 0u, 1u, 0x00000000ul,
+                        0xff0000fful);
+    rs_fog_inst_test("FogInstConst", '1', 0x40050a80ul, 0xff0000fful);
+    rs_fog_inst_test("FogInstFactor", '2', 0x40050a8eul, 0xff000000ul);
+    rs_fog_inst_test("FogInstTemp", '3', 0x40050a84ul, 0xffff0000ul);
+    rs_fog_test("TlFog", 0u);
+    rs_fog_test("TlFogSpecular", 1u);
     /* The colour-only state again: texturing, Z, blend, alpha test and
      * cull must be off once more. */
     rs_quad_test("QuadAfterTex", 'A');

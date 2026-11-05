@@ -63,7 +63,10 @@ typedef struct v9x_d3d_rs690_texture {
                                                      shader adds it; kept
                                                      so V9XTRACE's numbers
                                                      stay put */
-#define V9X_D3D_RS690_REFUSE_FOG             15ul /* not built */
+#define V9X_D3D_RS690_REFUSE_FOG             15ul /* no longer given: the
+                                                     shader fogs; kept so
+                                                     V9XTRACE's numbers stay
+                                                     put */
 #define V9X_D3D_RS690_REFUSE_STATE           16ul /* the builder refused */
 
 /*

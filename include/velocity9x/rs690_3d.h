@@ -130,6 +130,19 @@
 #define V9X_RS690_US_ALU_ALPHA_ADDR_0   0x47c0ul
 #define V9X_RS690_US_ALU_RGB_INST_0     0x48c0ul
 #define V9X_RS690_US_ALU_ALPHA_INST_0   0x49c0ul
+#define V9X_RS690_US_ALU_RGB_ADDR_1     0x46c4ul
+#define V9X_RS690_US_ALU_ALPHA_ADDR_1   0x47c4ul
+#define V9X_RS690_US_ALU_RGB_INST_1     0x48c4ul
+#define V9X_RS690_US_ALU_ALPHA_INST_1   0x49c4ul
+#define V9X_RS690_US_ALU_RGB_ADDR_2     0x46c8ul
+#define V9X_RS690_US_ALU_ALPHA_ADDR_2   0x47c8ul
+#define V9X_RS690_US_ALU_RGB_INST_2     0x48c8ul
+#define V9X_RS690_US_ALU_ALPHA_INST_2   0x49c8ul
+/* Shader constant 0, R300 float24 per channel (radeon_reg.h:5053). */
+#define V9X_RS690_US_ALU_CONST_R_0      0x4c00ul
+#define V9X_RS690_US_ALU_CONST_G_0      0x4c04ul
+#define V9X_RS690_US_ALU_CONST_B_0      0x4c08ul
+#define V9X_RS690_US_ALU_CONST_A_0      0x4c0cul
 
 /* Fog, alpha test, the render backend and the Z buffer. */
 #define V9X_RS690_FG_FOG_BLEND          0x4bc0ul
@@ -215,11 +228,12 @@
  * rectangle less its guard offset. */
 #define V9X_RS690_SURFACE_MAX           (V9X_RS690_SC_CLIP_MAX - V9X_RS690_SC_OFFSET)
 
-/* Capacity of one register list: the init writes 64 registers, the
- * colour-buffer state 33, the texture state 31, the TL state at most 87,
- * a draw 1 + 6 or 8 per vertex up to 12 vertices. */
+/* Capacity of one register list: the init writes 66 registers, the
+ * colour-buffer state 33, the texture state 31, the TL state more than
+ * 100 when textured with specular and fog (the host test holds it under
+ * this), a draw 1 + 6 or 8 per vertex up to 12 vertices. */
 #define V9X_RS690_3D_VERTICES_MAX       12u
-#define V9X_RS690_3D_WRITES             100u
+#define V9X_RS690_3D_WRITES             128u
 
 struct v9x_rs690_3d_list {
     v9x_u32 offsets[V9X_RS690_3D_WRITES];
@@ -395,6 +409,12 @@ v9x_status v9x_rs690_build_3d_draw_textured(
 #define V9X_RS690_TEXALPHA_DIFFUSE      2ul
 #define V9X_RS690_TEXALPHA_MODULATE     3ul
 
+/* R300 float24, the shader constants' format (xf86-video-ati 6.14.6
+ * F_TO_24): sign in 23, exponent biased 63 in 22:16, the top 16 mantissa
+ * bits in 15:0; 0 for zero. From an IEEE single's bit pattern, for values
+ * in the constant's range (|x| between 2^-63 and 2^64). */
+v9x_u32 v9x_rs690_float24(v9x_u32 ieee);
+
 /* Z16 only: the pitch in pixels a multiple of 32 (DEPTHPITCH's field is in
  * 13:2; 32 is Mesa's RS690 linear alignment for 16 bits, the 64 bytes the
  * texture unit measured to need), the offset 32-byte aligned. */
@@ -429,6 +449,13 @@ struct v9x_rs690_3d_state {
      * leaves it as it was (Direct3D's XRGB8888, which a clear leaves 0);
      * zero writes alpha into it. No effect at 16 bpp. */
     v9x_u32 x_channel;
+    /* Vertex fog, Direct3D's: RGB = f * RGB + (1 - f) * fog_color, f the
+     * interpolated specular alpha (1 is no fog), alpha untouched, after
+     * the texture combine and the specular add. fog_color is 00RRGGBBh.
+     * Two more ALU instructions with shader constant 0, and one more
+     * temp. */
+    v9x_u32 fog;
+    v9x_u32 fog_color;
 };
 
 /*

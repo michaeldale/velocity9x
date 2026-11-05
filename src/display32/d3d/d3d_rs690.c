@@ -200,8 +200,9 @@ static int v9x_d3d_rs690_texture_format(const V9X_DD_SURFACE_LCL *surface,
  * without destination alpha (SRCALPHA/INVSRCALPHA measured), Gouraud,
  * textures to 2048 in four formats (RGB565 and ARGB8888 measured), nearest
  * and bilinear, wrap and clamp, perspective-correct; flat shading and
- * specular from Mesa's encodings. Fog is not published, and a fogged draw
- * is refused and counted.
+ * specular from Mesa's encodings; vertex fog in the shader (TlFog and
+ * TlFogSpecular measured), and FOGTABLE emulated per vertex in the core
+ * (d3d_fog.h).
  */
 static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -235,7 +236,9 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
     tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW | V9X_D3DPMISCCAPS_MASKZ;
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_SUBPIXEL;
+                        V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |

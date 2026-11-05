@@ -7,6 +7,7 @@
 #include "d3d_rs690_map.h"
 
 #define V9X_D3D_RS690_ALPHA_REF_MASK 0xfful
+#define V9X_D3D_RS690_FOG_COLOR_MASK 0x00fffffful
 
 /* The builder's texture limit (TX_FORMAT0's 11-bit size fields). */
 #define V9X_D3D_RS690_TEXTURE_SIDE_MAX V9X_RS690_TEX_SIZE_MAX
@@ -230,8 +231,11 @@ v9x_u32 v9x_d3d_rs690_map_draw(const V9X_R3D_DRAW *draw,
     }
     state->flat = draw->shade_mode == V9X_R3D_SHADE_FLAT ? 1ul : 0ul;
     state->specular = draw->specular_enable != 0ul ? 1ul : 0ul;
+    /* Vertex fog: the factor in the specular alpha (the core puts table
+     * fog's there too), the colour 00RRGGBBh. */
     if (draw->fog_enable != 0ul) {
-        return V9X_D3D_RS690_REFUSE_FOG;
+        state->fog = 1ul;
+        state->fog_color = draw->fog_color & V9X_D3D_RS690_FOG_COLOR_MASK;
     }
 
     state->target.fb_gpu_base = fb_gpu_base;

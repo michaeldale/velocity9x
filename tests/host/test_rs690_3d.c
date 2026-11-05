@@ -820,6 +820,70 @@ static void test_state(void)
     CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 0ul);
     CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040082ul);
     CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0ul);
+
+    /* Fog, untextured, no specular: colour 1 still into temp 1 for its
+     * alpha; instruction 0 writes result temp 2 (WMASK, not OMASK);
+     * instruction 1 makes temp2.rgb = temp2.rgb - const0, unclamped, its
+     * alpha a write-nothing MAD; instruction 2 is out.rgb = temp2.rgb *
+     * temp1.a + const0 (SEL_A SRC1_RGB, SEL_B SRC2_AAA, SEL_C SRC0_RGB),
+     * out.a = temp2.a; three ALU instructions; fog colour FF8000 as
+     * float24. */
+    base_state(&state);
+    state.fog = 1ul;
+    state.fog_color = 0x00ff8000ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list_value(&list, V9X_RS690_RS_IP_1) == 0x00000040ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_1) == 0x00024800ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040100ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 2ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x03880000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x00880000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_1) == 0x038800a0ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_1) == 0x00080a84ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_1) == 0x00080000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_1) == 0x00040810ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_2) == 0x1c0010a0ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_2) == 0x40000704ul);
+    /* SRC2_AAA reads the alpha unit's source 2: ADDR2 = temp 1 there too
+     * (measured: with ADDR2 0 f read as temp 0's alpha, 1). */
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_2) == 0x01001002ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_2) == 0x40040889ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0x000000c0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400080ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_CONST_R_0) == 0x003f0000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_CONST_G_0) == 0x003e0101ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_CONST_B_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_CONST_A_0) == 0ul);
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_VAP_VTX_SIZE);
+    CHECK(list.count < V9X_RS690_3D_WRITES);
+
+    /* Fog over textured MODULATE with specular: specular temp 2 serves
+     * both, result temp 3; instruction 0 keeps its sources; the texture
+     * instruction counted in CODE_OFFSET. */
+    state.specular = 1ul;
+    state.textured = 1ul;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_MODULATE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 3ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x038c2040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40020200ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x008c0040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_2) == 0x1c0020e0ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_2) == 0x01002003ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0x000400c0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400080ul);
+    CHECK(list.count < V9X_RS690_3D_WRITES);
+
+    /* float24. */
+    CHECK(v9x_rs690_float24(0ul) == 0ul);
+    CHECK(v9x_rs690_float24(0x3f800000ul) == 0x003f0000ul);
+    CHECK(v9x_rs690_float24(0x3f000000ul) == 0x003e0000ul);
+    CHECK(v9x_rs690_float24(0xbf800000ul) == 0x00bf0000ul);
+    CHECK(v9x_rs690_float24(0x3f008080ul) == 0x003e0101ul);
 
     /* Refusals. */
     base_state(&state);
