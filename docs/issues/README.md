@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-05 HD 4000 mobile (W9QI75E0, M-ZJQ2DX): a hard lock a minute into 3DMark 2000's Game 1 on branch intel-ivb-mobile; seen once; likeliest cause Haswell-only 3D changes since 21 October that no Ivy Bridge has run; blocks the 0166 merge](2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)
 - [2026-11-04 ViRGE/DX: 3DMark 2000's CPU Speed test leaves streaks of stale video memory in the margins around its 640x480 view (A8U4I5; parked, minor)](2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)
 - [2026-10-26 Half-Life OpenGL on the GMA 950: starting a multiplayer game leaves the screen stuck or corrupt until Escape and resume (Michael; not blocking 0.30.0; not reproduced yet; the Millennium II's menu fault suspected)](2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)
 - [2026-10-25 A8U4I5: V9XD32 T15's bad words are bit 23 of RAM at 15C0h modulo 32 KiB in one 6.6 MiB physical window, under ATI's driver too; not the driver (DRAM inferred, unconfirmed); `MaxPhysPage=0A000` keeps Windows out of it](2026-10-25-rage128-t15-sentinel-corruption.md)

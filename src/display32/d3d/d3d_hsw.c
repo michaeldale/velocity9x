@@ -184,6 +184,39 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     1ul             /* dxt_textures */
 };
 
+/*
+ * Ivy Bridge: Haswell's limits with one texture stage per pass. With two,
+ * 3DMark 2000's Game 1 stopped the HD 4000 mobile within a minute, twice,
+ * and with one it completed with the guard band and whole indexed draws
+ * on (W9QI75E0, boots 5 and 9-12: docs\issues\2026-11-05-ivb-mobile-hang-
+ * in-3dmark2000-game1.md). Which pairing stops it is not known; V9XD32 T12
+ * passed with two. The draw code reads v9x_d3d_hsw_limits for the rest,
+ * which this table must keep equal to it.
+ */
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
+    16ul,           /* target_bits_per_pixel */
+    16384ul,        /* target_pitch_max */
+    4ul,            /* target_pitch_align */
+    4096ul,         /* target_dimension_max */
+    1ul,            /* texture_size_min */
+    2048ul,         /* texture_size_max */
+    8192.0f,        /* coordinate_limit */
+    16ul,           /* depth_bits_per_pixel: D16_UNORM */
+    16ul,           /* texture_align */
+    0ul,            /* clip_in_core */
+    1ul,            /* depth_pitch_own */
+    0ul,            /* depth_fill_shift */
+    2ul,            /* texture_units: step 4, render interface only */
+    1ul,            /* pixel_centre_half */
+    1ul,            /* depth_tiled: Y tiles */
+    16384ul,        /* target_pitch_max_xrgb8888 */
+    24ul,           /* depth32_bits */
+    1ul,            /* centre_in_engine */
+    1ul,            /* texture_stages: the difference */
+    1ul,            /* guard_band_ddi6: measured on W9QI75E0, boot 12 */
+    1ul             /* dxt_textures */
+};
+
 /* One texture unit as the sampler reads it. */
 typedef struct v9x_d3d_hsw_texture {
     struct v9x_hsw_sampler sampler;
@@ -4040,6 +4073,25 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_draw_tnl,
     v9x_d3d_hsw_tnl_available,
     v9x_d3d_hsw_lock_surface,           /* lock_surface: DXT levels */
+    v9x_d3d_hsw_unlock_surface,
+    v9x_d3d_hsw_draw_shader
+};
+
+/* Ivy Bridge: the same entry points with its own limits (one stage). */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw_ivb = {
+    &v9x_d3d_ivb_limits,
+    v9x_d3d_hsw_texture_format,
+    v9x_d3d_hsw_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_hsw_ready,
+    v9x_d3d_hsw_create_surface,
+    v9x_d3d_hsw_destroy_surface,
+    v9x_d3d_hsw_draw,
+    v9x_d3d_hsw_accepts,
+    v9x_d3d_hsw_draw_indexed,
+    v9x_d3d_hsw_draw_tnl,
+    v9x_d3d_hsw_tnl_available,
+    v9x_d3d_hsw_lock_surface,
     v9x_d3d_hsw_unlock_surface,
     v9x_d3d_hsw_draw_shader
 };

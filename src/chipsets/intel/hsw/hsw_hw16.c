@@ -502,3 +502,31 @@ const V9X_HW16_DEVICE v9x_ivb_hd4000_device = {
     1u,
     v9x_hsw_write_combine
 };
+
+/*
+ * The 0162's alias: Ivy Bridge GT2 mobile, HD Graphics 4000. An entry of its
+ * own because the PCI scan matches one per id and V9XHW.INI names the part
+ * the machine has. Same GT, same open and forcewake; its config decode and
+ * VBE layout match the 0162's on W9QI75E0, where the panel is LVDS, not the
+ * desktop's CRT (docs\decisions\2026-11-05-w9qi75e0-ivb-mobile-audit.md).
+ */
+const V9X_HW16_DEVICE v9x_ivb_hd4000_mobile_device = {
+    0x8086u, 0x0166u,
+    "Intel HD Graphics 4000 (Ivy Bridge mobile)",
+    "8086", "0166",
+    "none",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen7",
+    0,
+    v9x_ivb_fill_engine,
+    /* VBE reports the framebuffer in GMADR, BAR2: D0000000 on W9QI75E0. */
+    2u,
+    /* Packed pitch: 640 at 640x480x8, measured at tier 0 there. */
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset,
+    /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
+};
