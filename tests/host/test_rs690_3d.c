@@ -417,6 +417,20 @@ static void test_texture(void)
     CHECK(list_value(&list, V9X_RS690_TX_FILTER1_0) == 0ul);
     CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x8000781ful);
     CHECK(list_value(&list, V9X_RS690_TX_FORMAT1_0) == 0x0000aa06ul);
+
+    /* A chroma key: the mode in TX_FILTER1's 1:0 and the key, two more
+     * writes; an unknown mode is refused. */
+    texture.chroma_mode = V9X_RS690_CHROMA_FORCE;
+    texture.chroma_key = 0xff00ff00ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count == 33u);
+    CHECK(list_value(&list, V9X_RS690_TX_FILTER1_0) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_TX_CHROMA_KEY_0) == 0xff00ff00ul);
+    texture.chroma_mode = 3ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    texture.chroma_mode = V9X_RS690_CHROMA_DISABLE;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
     CHECK(list_value(&list, V9X_RS690_TX_OFFSET_0) ==
           RS690_FB_BASE + 0x01010000ul);

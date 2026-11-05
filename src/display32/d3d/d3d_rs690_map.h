@@ -40,6 +40,10 @@ typedef struct v9x_d3d_rs690_texture {
     v9x_u32 height;
     v9x_u32 pitch_bytes;
     v9x_u32 offset;
+    /* The surface's source colour key (DDRAWISURF_HASCKEYSRCBLT), low
+     * value, in the texture's own pixel format. */
+    int has_key;
+    v9x_u32 key;
 } V9X_D3D_RS690_TEXTURE;
 
 #define V9X_D3D_RS690_REFUSE_NONE            0ul

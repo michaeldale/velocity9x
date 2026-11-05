@@ -8,6 +8,7 @@
 
 #define V9X_D3D_RS690_ALPHA_REF_MASK 0xfful
 #define V9X_D3D_RS690_FOG_COLOR_MASK 0x00fffffful
+#define V9X_D3D_RS690_KEY16_MASK     0x0000fffful
 
 /* The builder's texture limit (TX_FORMAT0's 11-bit size fields). */
 #define V9X_D3D_RS690_TEXTURE_SIDE_MAX V9X_RS690_TEX_SIZE_MAX
@@ -162,8 +163,18 @@ static v9x_u32 v9x_d3d_rs690_map_texture(const V9X_R3D_DRAW *draw,
         resolved->height > V9X_D3D_RS690_TEXTURE_SIDE_MAX) {
         return V9X_D3D_RS690_REFUSE_TEXTURE_SHAPE;
     }
-    if (draw->color_key_enable != 0ul) {
-        return V9X_D3D_RS690_REFUSE_COLOR_KEY;
+    /* A source colour key: the texture unit's chroma key in FORCE mode
+     * kills a fragment whose texel matches (under bilinear, any texel of
+     * the footprint). It compares the texel as stored, alpha bits and all,
+     * so only RGB565 keys as Direct3D does; a format with alpha is
+     * refused (docs\decisions\2026-11-06-rs690-colour-key.md). Enabled
+     * with no key on the texture, it means nothing. */
+    if (draw->color_key_enable != 0ul && resolved->has_key) {
+        if (resolved->format != V9X_RS690_TEXFMT_RGB565) {
+            return V9X_D3D_RS690_REFUSE_COLOR_KEY;
+        }
+        state->texture.chroma_mode = V9X_RS690_CHROMA_FORCE;
+        state->texture.chroma_key = resolved->key & V9X_D3D_RS690_KEY16_MASK;
     }
     /* The cylindrical WRAPU/WRAPV states have no chip function. */
     if (sampler->wrap_u != 0ul || sampler->wrap_v != 0ul) {

@@ -794,7 +794,8 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         return V9X_STATUS_UNSUPPORTED;
     }
     if (texture->offset % V9X_RS690_TEX_ALIGN != 0ul ||
-        texture->pitch_bytes % V9X_RS690_TEX_PITCH_ALIGN != 0ul) {
+        texture->pitch_bytes % V9X_RS690_TEX_PITCH_ALIGN != 0ul ||
+        texture->chroma_mode > V9X_RS690_CHROMA_BLEND) {
         return V9X_STATUS_UNSUPPORTED;
     }
 
@@ -852,6 +853,11 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     v9x_rs690_3d_add(list, V9X_RS690_TX_OFFSET_0,
                      fb_gpu_base + texture->offset);
     v9x_rs690_3d_add(list, V9X_RS690_TX_BORDER_COLOR_0, 0ul);
+    if (texture->chroma_mode != V9X_RS690_CHROMA_DISABLE) {
+        v9x_rs690_3d_add(list, V9X_RS690_TX_FILTER1_0, texture->chroma_mode);
+        v9x_rs690_3d_add(list, V9X_RS690_TX_CHROMA_KEY_0,
+                         texture->chroma_key);
+    }
     v9x_rs690_3d_add(list, V9X_RS690_TX_INVALTAGS, 0ul);
     v9x_rs690_3d_add(list, V9X_RS690_TX_ENABLE, V9X_RS690_TEX_0_ENABLE);
 

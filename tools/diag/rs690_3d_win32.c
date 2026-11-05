@@ -1967,6 +1967,123 @@ static void rs_combine_test(const char *name, char letter, DWORD combine,
 }
 
 /*
+ * Chroma*: what the texture unit's chroma key does, measured not judged.
+ * The gradient 1:1 over x 0-31, rows 0-15, nearest, REPLACE with the
+ * texel's alpha, blend and alpha test off, with TX_FILTER1's chroma mode
+ * and key set. Every gradient texel is unique, so a key that matches
+ * changes exactly texel (5, 3)'s pixel. Published: how many pixels differ
+ * from the unkeyed texture, and what pixel (5, 3) and its neighbour read.
+ */
+static DWORD rs_chroma_scale = 1u;
+static DWORD rs_chroma_filter = V9X_RS690_TEXFILTER_NEAREST;
+
+static void rs_chroma_test(const char *name, char letter, DWORD mode,
+                           DWORD key)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    const unsigned char *actual;
+    char key_name[64];
+    DWORD x;
+    DWORD y;
+    DWORD changed = 0u;
+    DWORD killed = 0u;
+    DWORD right = TEX_WIDTH * rs_chroma_scale;
+    DWORD bottom = TEX_HEIGHT * rs_chroma_scale;
+    DWORD prefill;
+
+    if (bottom > rs_height) {
+        bottom = rs_height;
+    }
+    rs_zero(&state, sizeof(state));
+    state.textured = 1u;
+    state.texture.filter = rs_chroma_filter;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture.chroma_mode = mode;
+    state.texture.chroma_key = key;
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+    rs_tl(vertices + 8, 0u, TEX_HEIGHT * rs_chroma_scale, 0u, RS_FLOAT_ONE,
+          0xfffffffful, 0u, RS_FLOAT_ONE);
+    rs_tl(vertices + 16, right, TEX_HEIGHT * rs_chroma_scale, 0u,
+          RS_FLOAT_ONE, 0xfffffffful, RS_FLOAT_ONE, RS_FLOAT_ONE);
+    rs_tl(vertices + 24, right, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful,
+          RS_FLOAT_ONE, 0u);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block(letter);
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    prefill = rs_pixel(rs_model, 0u, 0u);
+    for (y = 0u; y < bottom; ++y) {
+        for (x = 0u; x < right; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+
+            if (pixel == prefill) {
+                ++killed;
+            }
+            if (rs_chroma_scale == 1u && pixel != rs_texel(x, y)) {
+                ++changed;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key_name, name, "KilledPixels"), killed);
+    rs_write_hex(rs_key(key_name, name, "Key"), key);
+    rs_write_hex(rs_key(key_name, name, "Texel5_3"), rs_texel(5u, 3u));
+    rs_write_hex(rs_key(key_name, name, "Pixel5_3"), rs_pixel(actual, 5u, 3u));
+    rs_write_hex(rs_key(key_name, name, "Pixel6_3"), rs_pixel(actual, 6u, 3u));
+    rs_write_decimal(rs_key(key_name, name, "ChangedPixels"), changed);
+    rs_write(rs_key(key_name, name, "Result"), "MEASURED");
+}
+
+/* Texel (5, 3) of the gradient as a key. RS_CHROMA_RAW: the texel as
+ * stored; RS_CHROMA_RAW_FF: the same with the top byte FF (at 32 bpp an
+ * alpha that differs from the texel's 00). Otherwise as A8R8G8B8: itself
+ * at 32 bpp; at 16 bpp its 565 channels widened with the top bits repeated
+ * (replicate) or zeros below (zero fill), alpha FF. */
+#define RS_CHROMA_ZERO_FILL 0
+#define RS_CHROMA_REPLICATE 1
+#define RS_CHROMA_RAW 2
+#define RS_CHROMA_RAW_FF 3
+
+static DWORD rs_chroma_key(int replicate)
+{
+    DWORD texel = rs_texel(5u, 3u);
+    DWORD r;
+    DWORD g;
+    DWORD b;
+
+    if (rs_bpp == 2u) {
+        texel &= 0xffffu;
+    }
+    if (replicate == RS_CHROMA_RAW) {
+        return texel;
+    }
+    if (replicate == RS_CHROMA_RAW_FF) {
+        return texel | 0xff000000ul;
+    }
+    if (rs_bpp != 2u) {
+        return texel;
+    }
+    r = (texel >> 11) & 31u;
+    g = (texel >> 5) & 63u;
+    b = texel & 31u;
+    if (replicate) {
+        r = (r << 3) | (r >> 2);
+        g = (g << 2) | (g >> 4);
+        b = (b << 3) | (b >> 2);
+    } else {
+        r <<= 3;
+        g <<= 2;
+        b <<= 3;
+    }
+    return 0xff000000ul | (r << 16) | (g << 8) | b;
+}
+
+/*
  * TexFormat1555 / TexFormat4444: the gradient written as 16-bit texels
  * (texel n is n), read as ARGB1555 or ARGB4444, drawn 1:1 over x 0-31,
  * rows 0-15, nearest, clamped, REPLACE with the texel's alpha, through the
@@ -3008,6 +3125,27 @@ void WINAPI V9xRs6903dProbeEntry(void)
                     RS_ADD_DIFFUSE, RS_ADD_SPECULAR);
     rs_combine_test("TexDecalAlpha", '6', V9X_RS690_TEXCOMBINE_DECALALPHA,
                     RS_DECAL_DIFFUSE, 0u);
+    rs_chroma_test("ChromaForce", '7', V9X_RS690_CHROMA_FORCE,
+                   rs_chroma_key(RS_CHROMA_REPLICATE));
+    rs_chroma_test("ChromaForceZeroFill", '8', V9X_RS690_CHROMA_FORCE,
+                   rs_chroma_key(RS_CHROMA_ZERO_FILL));
+    rs_chroma_test("ChromaForceRaw", '9', V9X_RS690_CHROMA_FORCE,
+                   rs_chroma_key(RS_CHROMA_RAW));
+    rs_chroma_test("ChromaForceRawFF", 'C', V9X_RS690_CHROMA_FORCE,
+                   rs_chroma_key(RS_CHROMA_RAW_FF));
+    rs_chroma_test("ChromaBlend", '0', V9X_RS690_CHROMA_BLEND,
+                   rs_chroma_key(RS_CHROMA_REPLICATE));
+    /* The same key magnified 2x: nearest should kill the 2x2 block of
+     * texel (5, 3), four pixels; bilinear shows what the filter does with
+     * a keyed texel among its four. */
+    rs_chroma_scale = 2u;
+    rs_chroma_test("ChromaNearest2x", '_', V9X_RS690_CHROMA_FORCE,
+                   rs_chroma_key(RS_CHROMA_RAW));
+    rs_chroma_filter = V9X_RS690_TEXFILTER_LINEAR;
+    rs_chroma_test("ChromaLinear2x", '$', V9X_RS690_CHROMA_FORCE,
+                   rs_chroma_key(RS_CHROMA_RAW));
+    rs_chroma_scale = 1u;
+    rs_chroma_filter = V9X_RS690_TEXFILTER_NEAREST;
     rs_fog_test("TlFog", 0u);
     rs_fog_test("TlFogSpecular", 1u);
     /* The colour-only state again: texturing, Z, blend, alpha test and

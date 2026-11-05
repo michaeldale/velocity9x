@@ -370,8 +370,39 @@ static void test_texture(void)
     resolved.height = 4096ul;
     CHECK(map(&draw, &resolved, 0ul, &state) ==
           V9X_D3D_RS690_REFUSE_TEXTURE_SHAPE);
+    /* Colour key on an RGB565 texture with a source key: the texture
+     * unit's chroma key, FORCE (kills the fragment), the key as stored
+     * (16 bits). Measured, docs\decisions\2026-11-06-rs690-colour-key.md. */
     base_texture(&draw, &resolved);
     draw.color_key_enable = 1ul;
+    resolved.has_key = 1;
+    resolved.key = 0xffff0065ul;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.chroma_mode == V9X_RS690_CHROMA_FORCE);
+    CHECK(state.texture.chroma_key == 0x00000065ul);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    {
+        v9x_u32 index;
+        v9x_u32 key = 0xfffffffful;
+
+        for (index = 0ul; index < list.count; ++index) {
+            if (list.offsets[index] == V9X_RS690_TX_CHROMA_KEY_0) {
+                key = list.values[index];
+            }
+        }
+        CHECK(key == 0x00000065ul);
+    }
+
+    /* Enabled, but the texture has no key: drawn unkeyed. */
+    resolved.has_key = 0;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.chroma_mode == V9X_RS690_CHROMA_DISABLE);
+
+    /* A format with alpha: the unit compares the alpha bits too, which
+     * Direct3D's colour key does not. Refused. */
+    resolved.has_key = 1;
+    resolved.has_alpha = 1;
+    resolved.format = V9X_RS690_TEXFMT_ARGB8888;
     CHECK(map(&draw, &resolved, 0ul, &state) ==
           V9X_D3D_RS690_REFUSE_COLOR_KEY);
 

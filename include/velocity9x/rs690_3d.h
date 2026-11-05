@@ -111,6 +111,7 @@
 #define V9X_RS690_TX_FORMAT2_0          0x4500ul
 #define V9X_RS690_TX_OFFSET_0           0x4540ul
 #define V9X_RS690_TX_BORDER_COLOR_0     0x45c0ul
+#define V9X_RS690_TX_CHROMA_KEY_0       0x4580ul
 
 /* The fragment shader (US). */
 #define V9X_RS690_US_CONFIG             0x4600ul
@@ -281,7 +282,16 @@ struct v9x_rs690_3d_texture {
     v9x_u32 filter;
     v9x_u32 address;
     v9x_u32 combine;
+    /* The texture unit's chroma key: TX_FILTER1's mode (Linux r300_reg.h,
+     * marked guessed from the R200) and the 32-bit key. What a matching
+     * texel becomes is a measurement, not a header's word. */
+    v9x_u32 chroma_mode;
+    v9x_u32 chroma_key;
 };
+
+#define V9X_RS690_CHROMA_DISABLE        0ul
+#define V9X_RS690_CHROMA_FORCE          1ul
+#define V9X_RS690_CHROMA_BLEND          2ul
 
 /* The colour buffer: a surface at an offset into the frame buffer. */
 struct v9x_rs690_3d_target {

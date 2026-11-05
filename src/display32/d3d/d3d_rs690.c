@@ -257,9 +257,12 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
+    /* TRANSPARENCY: source colour keys on RGB565 textures by the texture
+     * unit's chroma key; other formats' keyed draws are refused. */
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
-                         V9X_D3DPTEXTURECAPS_ALPHA;
+                         V9X_D3DPTEXTURECAPS_ALPHA |
+                         V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
                                V9X_D3DPTFILTERCAPS_LINEAR;
     tri->dwTextureBlendCaps = V9X_D3DPTBLENDCAPS_DECAL |
@@ -353,6 +356,8 @@ static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->height = 0ul;
     texture->pitch_bytes = 0ul;
     texture->offset = 0ul;
+    texture->has_key = 0;
+    texture->key = 0ul;
 
     surface = (const V9X_DD_SURFACE_LCL *)sampler->object;
     if (surface == 0 || surface->lpGbl == 0 ||
@@ -374,6 +379,10 @@ static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->pitch_bytes = (DWORD)surface->lpGbl->lPitch;
     texture->offset = offset;
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
+        texture->has_key = 1;
+        texture->key = surface->ddckCKSrcBltLow;
+    }
 
     /* The ViRGE's instrument (d3d_virge.c): where the texture is, and its
      * first 16 bits at the corner and the centre texel, read from the
