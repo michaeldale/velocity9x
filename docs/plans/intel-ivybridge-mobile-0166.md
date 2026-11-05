@@ -46,10 +46,16 @@ pipe A and plane A are live.
   on pipe A behind panel fitter 0; flips (27 of 27 taken) and `V9XD32` at
   16 and 32 bpp, Z16 and Z24, pass with no code beyond the claim.
 
+- OpenGL and Glide, 2026-11-05:
+  `docs\decisions\2026-11-05-w9qi75e0-ivb-mobile-gl-glide.md`. W9QI4E14's
+  results, unchanged.
+- 3DMark 2000, 2026-11-05: **hard lock in Game 1**, one run
+  (`docs\issues\2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md`).
+
 ## Next
 
+- The 3DMark 2000 hang blocks the merge. The likeliest cause is Haswell
+  work since 21 October that no Ivy Bridge has run; the issue gives the
+  bisect order.
 - The owner's answer on what the panel shows.
-- OpenGL and Glide probes, then a game, as on W9QI4E14.
-- A DOS box round trip.
-- Then the merge question: the alias needed no panel code, so step 5 has
-  nothing to do unless the owner reports a problem.
+- A DOS box round trip needs the owner at the keyboard.
