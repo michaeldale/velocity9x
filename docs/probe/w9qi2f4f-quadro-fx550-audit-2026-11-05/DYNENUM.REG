@@ -1,0 +1,516 @@
+REGEDIT4
+
+[HKEY_DYN_DATA\Config Manager\Enum]
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A29B0]
+"HardWareKey"="HTREE\\ROOT\\0"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,08,08,1a
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:b0,65,5a,c3
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:00,00,00,00
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A65B0]
+"HardWareKey"="HTREE\\RESERVED\\0"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,08,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:d0,67,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A67D0]
+"HardWareKey"="ROOT\\SWENUM\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:cf,6a,88,19
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:30,69,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A6930]
+"HardWareKey"="ROOT\\*PNP0A03\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:cf,6a,08,1a
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:90,d8,5a,c3
+"Sibling"=hex:90,6a,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A6A90]
+"HardWareKey"="ROOT\\*PNP0000\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,6a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  20,00,21,00,00,00,00,ff,14,00,00,00,02,00,00,00,00,00,0c,00,a0,00,a1,00,00,\
+  00,00,ff,10,00,00,00,04,00,00,00,00,00,02,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,9f,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A9F00]
+"HardWareKey"="ROOT\\*PNP0200\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,0a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  00,00,0f,00,00,00,00,ff,14,00,00,00,02,00,00,00,00,00,0c,00,81,00,83,00,00,\
+  00,00,ff,14,00,00,00,02,00,00,00,00,00,0c,00,87,00,87,00,00,00,00,ff,14,00,\
+  00,00,02,00,00,00,00,00,0c,00,89,00,8b,00,00,00,00,ff,14,00,00,00,02,00,00,\
+  00,00,00,0c,00,8f,00,8f,00,00,00,00,ff,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  c0,00,df,00,00,00,00,ff,0c,00,00,00,03,00,00,00,00,04,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:d0,a4,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AA4D0]
+"HardWareKey"="ROOT\\*PNP0B00\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,0a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  70,00,71,00,00,00,00,ff,10,00,00,00,04,00,00,00,00,00,08,00,00,00,00,00,00,\
+  00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:40,a7,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AA740]
+"HardWareKey"="ROOT\\*PNP0100\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,0a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  40,00,43,00,00,00,00,ff,10,00,00,00,04,00,00,00,00,00,00,00,00,00,00,00,00,\
+  00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:70,a9,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AA970]
+"HardWareKey"="ROOT\\*PNP0800\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,0a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  61,00,61,00,00,00,00,ff,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:30,ab,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AAB30]
+"HardWareKey"="ROOT\\*PNP0C04\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,0a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  f0,00,ff,00,00,00,00,ff,10,00,00,00,04,00,00,00,00,00,0d,00,00,00,00,00,00,\
+  00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:70,ad,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AAD70]
+"HardWareKey"="ROOT\\*PNP0C01\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4f,4a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:c0,7d,5a,c3
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A7DC0]
+"HardWareKey"="ROOT\\*PNP030B\\0000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:cf,6a,88,19
+"Allocation"=hex:00,04,00,00,00,00,00,00,14,00,00,00,02,00,00,00,00,00,0c,00,\
+  60,00,60,00,00,00,00,ff,14,00,00,00,02,00,00,00,00,00,0c,00,64,00,64,00,00,\
+  00,00,ff,10,00,00,00,04,00,00,00,00,00,01,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:b0,29,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AD890]
+"HardWareKey"="PCI\\VEN_8086&DEV_0040&SUBSYS_00408086&REV_18\\BUS_00&DEV_00&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,da,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35ADA00]
+"HardWareKey"="PCI\\VEN_8086&DEV_0041&SUBSYS_00000000&REV_18\\BUS_00&DEV_01&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,08,18
+"Allocation"=hex:00,04,00,00,00,30,00,00,24,00,00,00,02,80,00,00,01,00,0c,00,\
+  00,00,ff,ff,00,00,ff,00,00,f0,00,00,00,00,ff,ff,00,00,ff,00,fe,00,00,00,30,\
+  00,00,00,01,00,00,00,01,00,14,00,00,00,f0,f6,ff,ff,ff,fb,01,00,00,00,00,00,\
+  f0,ff,00,00,10,05,00,00,00,00,ff,ff,ff,ff,01,00,00,00,fe,00,00,00,30,00,00,\
+  00,01,00,00,00,01,00,14,00,00,00,00,d8,ff,ff,ff,df,05,00,00,00,00,00,f0,ff,\
+  00,00,00,08,00,00,00,00,ff,ff,ff,ff,05,00,00,00,fe,00,00,00,08,00,00,00,43,\
+  00,00,00,10,00,00,00,04,00,00,00,03,00,0a,00,00,04,00,00,00,00,00,00
+"Child"=hex:50,70,5a,c3
+"Sibling"=hex:f0,de,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35ADEF0]
+"HardWareKey"="PCI\\IRQHOLDER\\IRQ0A"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,5a
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,0a,00,\
+  00,04,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:c0,87,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A87C0]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B56&SUBSYS_3B568086&REV_06\\BUS_00&DEV_1B&FUNC_00"
+"Problem"=hex:1c,00,00,00
+"Status"=hex:20,06,00,08
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,0b,00,\
+  00,08,00,00,30,00,00,00,01,00,00,00,01,00,14,00,00,c0,ef,f6,ff,ff,ef,f6,01,\
+  00,00,00,00,c0,ff,ff,00,40,00,00,00,00,00,00,ff,ff,ff,ff,01,00,00,00,10,00,\
+  00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:60,5b,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A5B60]
+"HardWareKey"="PCI\\IRQHOLDER\\IRQ0B"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,5a
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,0b,00,\
+  00,08,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:e0,e8,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AE8E0]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B42&SUBSYS_00000000&REV_06\\BUS_00&DEV_1C&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,08,18
+"Allocation"=hex:00,04,00,00,00,30,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  00,e0,ff,ef,00,00,ff,00,00,f0,00,10,00,00,ff,ff,00,00,ff,00,fe,00,00,00,30,\
+  00,00,00,01,80,00,00,01,00,14,00,00,00,00,00,ff,ff,ff,ff,01,00,00,00,00,00,\
+  f0,ff,00,00,00,00,00,00,00,00,ff,ff,ff,ff,01,00,00,00,fe,00,00,00,30,00,00,\
+  00,01,00,00,00,01,00,14,00,00,00,f0,f5,ff,ff,ff,f5,05,00,00,00,00,00,f0,ff,\
+  00,00,10,00,00,00,00,00,ff,ff,ff,ff,05,00,00,00,fe,00,00,00,08,00,00,00,43,\
+  00,00,00,10,00,00,00,04,00,00,00,03,00,05,00,20,00,00,00,00,00,00,00
+"Child"=hex:60,8d,5a,c3
+"Sibling"=hex:50,8a,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A8A50]
+"HardWareKey"="PCI\\IRQHOLDER\\IRQ05"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,5a
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,05,00,\
+  20,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:f0,ed,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AEDF0]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B36&SUBSYS_3B368086&REV_06\\BUS_00&DEV_1D&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,88,19
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,03,00,\
+  08,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,00,dc,1f,dc,00,00,ff,00,e0,\
+  ff,20,00,00,00,ff,ff,00,00,ff,00,20,00,00,00,00,00,00,00
+"Child"=hex:f0,87,5b,c3
+"Sibling"=hex:60,61,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A6160]
+"HardWareKey"="PCI\\IRQHOLDER\\IRQ03"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,5a
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,03,00,\
+  08,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,7c,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A7C00]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B37&SUBSYS_3B378086&REV_06\\BUS_00&DEV_1D&FUNC_01"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,88,19
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,0a,00,\
+  00,04,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,80,d8,9f,d8,00,00,ff,00,e0,\
+  ff,20,00,00,00,ff,ff,00,00,ff,00,20,00,00,00,00,00,00,00
+"Child"=hex:50,99,5b,c3
+"Sibling"=hex:50,b6,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AB650]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B38&SUBSYS_3B388086&REV_06\\BUS_00&DEV_1D&FUNC_02"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,88,19
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,07,00,\
+  80,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,00,d8,1f,d8,00,00,ff,00,e0,\
+  ff,20,00,00,00,ff,ff,00,00,ff,00,20,00,00,00,00,00,00,00
+"Child"=hex:a0,9c,5b,c3
+"Sibling"=hex:b0,b4,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AB4B0]
+"HardWareKey"="PCI\\IRQHOLDER\\IRQ07"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,5a
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,07,00,\
+  80,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:60,f1,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AF160]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B34&SUBSYS_3B348086&REV_06\\BUS_00&DEV_1D&FUNC_07"
+"Problem"=hex:0a,00,00,00
+"Status"=hex:a6,6e,80,19
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,04,00,\
+  10,00,00,00,30,00,00,00,01,00,00,00,01,00,14,00,00,a0,ef,f6,ff,a3,ef,f6,01,\
+  00,00,00,00,fc,ff,ff,00,04,00,00,00,00,00,00,ff,ff,ff,ff,01,00,00,00,10,00,\
+  00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,92,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A9200]
+"HardWareKey"="PCI\\IRQHOLDER\\IRQ04"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,5a
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,04,00,\
+  10,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:90,f4,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AF490]
+"HardWareKey"="PCI\\VEN_8086&DEV_244E&SUBSYS_00000000&REV_A6\\BUS_00&DEV_1E&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,08,18
+"Allocation"=hex:00,04,00,00,00,30,00,00,08,00,00,00,43,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:d0,f6,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AF6D0]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B06&SUBSYS_3B068086&REV_06\\BUS_00&DEV_1F&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,4a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:20,21,5b,c3
+"Sibling"=hex:70,f8,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AF870]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06\\BUS_00&DEV_1F&FUNC_02"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,09,1a
+"Allocation"=hex:00,04,00,00,01,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  f0,01,f7,01,00,00,04,03,ff,ff,08,00,f0,01,f7,01,00,00,04,03,ff,00,00,00,24,\
+  00,00,00,02,00,00,00,01,00,0c,00,f6,03,f6,03,00,00,04,03,ff,ff,01,00,f6,03,\
+  f6,03,00,00,04,03,ff,00,00,00,10,00,00,00,04,00,00,00,00,00,0e,00,00,40,00,\
+  00,24,00,00,00,02,00,00,00,01,00,0c,00,70,01,77,01,00,00,04,03,ff,ff,08,00,\
+  70,01,77,01,00,00,04,03,ff,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,76,\
+  03,76,03,00,00,04,03,ff,ff,01,00,76,03,76,03,00,00,04,03,ff,00,00,00,10,00,\
+  00,00,04,00,00,00,00,00,0f,00,00,80,00,00,24,00,00,00,02,00,00,00,01,00,0c,\
+  00,90,ff,9f,ff,00,00,ff,00,f0,ff,10,00,00,00,ff,ff,00,00,ff,00,20,00,00,00,\
+  00,00,00,00
+"Child"=hex:e0,75,5b,c3
+"Sibling"=hex:50,fd,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AFD50]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B30&SUBSYS_3B308086&REV_06\\BUS_00&DEV_1F&FUNC_03"
+"Problem"=hex:1c,00,00,00
+"Status"=hex:20,06,00,08
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,07,00,\
+  80,00,00,00,30,00,00,00,01,00,00,00,01,00,14,00,00,80,ef,f6,ff,80,ef,f6,01,\
+  00,00,00,00,ff,ff,ff,00,01,00,00,00,00,00,00,ff,ff,ff,ff,01,00,00,00,10,00,\
+  00,00,24,00,00,00,02,00,00,00,01,00,0c,00,00,04,1f,04,00,00,ff,00,e0,ff,20,\
+  00,00,00,ff,ff,00,00,ff,00,20,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:10,ff,5a,c3
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35AFF10]
+"HardWareKey"="PCI\\VEN_8086&DEV_3B26&SUBSYS_3B268086&REV_06\\BUS_00&DEV_1F&FUNC_05"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,09,18
+"Allocation"=hex:00,04,00,00,01,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  00,d4,07,d4,00,00,ff,00,ff,ff,08,00,00,00,ff,ff,00,00,ff,00,10,00,00,00,24,\
+  00,00,00,02,00,00,00,01,00,0c,00,80,d0,83,d0,00,00,ff,00,ff,ff,04,00,00,00,\
+  ff,ff,00,00,ff,00,14,00,00,00,10,00,00,00,04,00,00,00,03,00,03,00,08,00,00,\
+  00,24,00,00,00,02,00,00,00,01,00,0c,00,00,d0,07,d0,00,00,ff,00,ff,ff,08,00,\
+  00,00,ff,ff,00,00,ff,00,18,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,00,\
+  cc,03,cc,00,00,ff,00,ff,ff,04,00,00,00,ff,ff,00,00,ff,00,1c,00,00,00,10,00,\
+  00,00,04,00,00,00,03,00,03,00,08,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,\
+  00,80,c8,8f,c8,00,00,ff,00,f0,ff,10,00,00,00,ff,ff,00,00,ff,00,20,00,00,00,\
+  00,00,00,00
+"Child"=hex:30,7b,5b,c3
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:30,69,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A7050]
+"HardWareKey"="PCI\\VEN_10DE&DEV_014D&SUBSYS_034910DE&REV_A2\\000800"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,08,18
+"Allocation"=hex:00,04,00,00,00,30,00,00,30,00,00,00,01,00,00,00,01,00,14,00,\
+  00,00,0a,00,ff,ff,0a,00,01,00,00,00,ff,ff,ff,ff,00,00,01,00,00,00,0a,00,ff,\
+  ff,0a,00,01,00,00,00,ff,00,00,00,30,00,00,00,01,00,00,00,01,00,14,00,00,00,\
+  0b,00,ff,ff,0b,00,01,00,00,00,ff,ff,ff,ff,00,00,01,00,00,00,0b,00,ff,ff,0b,\
+  00,01,00,00,00,ff,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,b0,03,bb,03,\
+  00,00,04,03,ff,ff,0c,00,b0,03,bb,03,00,00,04,03,ff,00,00,00,24,00,00,00,02,\
+  00,00,00,01,00,0c,00,c0,03,df,03,00,00,04,03,ff,ff,20,00,c0,03,df,03,00,00,\
+  04,03,ff,00,00,00,10,00,00,00,04,00,00,00,03,00,0a,00,00,04,00,00,30,00,00,\
+  00,01,00,00,00,01,00,14,00,00,00,00,f8,ff,ff,ff,fb,01,00,00,00,00,00,00,fc,\
+  00,00,00,04,00,00,00,00,ff,ff,ff,ff,01,00,00,00,10,00,00,00,30,00,00,00,01,\
+  00,00,00,01,00,14,00,00,00,00,d8,ff,ff,ff,df,05,00,00,00,00,00,00,f8,00,00,\
+  00,08,00,00,00,00,ff,ff,ff,ff,05,00,00,00,14,00,00,00,30,00,00,00,01,00,00,\
+  00,01,00,14,00,00,00,00,f7,ff,ff,ff,f7,01,00,00,00,00,00,00,ff,00,00,00,01,\
+  00,00,00,00,ff,ff,ff,ff,01,00,00,00,1c,00,00,00,30,00,00,00,01,00,00,00,01,\
+  00,14,00,00,00,0c,00,ff,c1,0c,00,00,00,00,00,ff,ff,ff,ff,00,c2,00,00,00,00,\
+  0c,00,ff,c1,0c,00,00,00,00,00,ff,00,00,00,30,00,00,00,01,00,00,00,01,00,14,\
+  00,00,00,f0,f6,ff,ff,f1,f6,00,00,00,00,00,00,fe,ff,00,00,02,00,00,00,00,00,\
+  ff,ff,ff,ff,00,00,00,00,fc,00,00,00,00,00,00,00
+"Child"=hex:90,84,5b,c3
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:00,da,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B8490]
+"HardWareKey"="MONITOR\\DEFAULT_MONITOR\\0001"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:50,70,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35A8D60]
+"HardWareKey"="PCI\\VEN_10EC&DEV_8136&SUBSYS_012310EC&REV_05\\00E000"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,0a,08,18
+"Allocation"=hex:00,04,00,00,01,00,00,00,10,00,00,00,04,00,00,00,03,00,0a,00,\
+  00,04,00,00,30,00,00,00,01,00,00,00,01,00,14,00,00,f0,ff,f5,ff,ff,ff,f5,05,\
+  00,00,00,00,f0,ff,ff,00,10,00,00,00,00,00,00,ff,ff,ff,ff,05,00,00,00,18,00,\
+  00,00,30,00,00,00,01,00,00,00,01,00,14,00,00,80,ff,f5,ff,bf,ff,f5,05,00,00,\
+  00,00,c0,ff,ff,00,40,00,00,00,00,00,00,ff,ff,ff,ff,05,00,00,00,20,00,00,00,\
+  24,00,00,00,02,00,00,00,01,00,0c,00,00,e8,ff,e8,00,00,ff,00,00,ff,00,01,00,\
+  00,ff,ff,00,00,ff,00,10,00,00,00,00,00,00,00
+"Child"=hex:b0,a1,5b,c3
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:e0,e8,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35BA1B0]
+"HardWareKey"="NETWORK\\MSTCP\\0001"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:40,a5,5b,c3
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:60,8d,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35BA540]
+"HardWareKey"="NETWORK\\VREDIR\\0001"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,18
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:b0,a1,5b,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B87F0]
+"HardWareKey"="USB\\ROOT_HUB\\PCI&VEN_8086&DEV_3B36&SUBSYS_3B368086&REV_06&BUS_00&DEV_1D&FUNC_00"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,88,19
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:f0,ed,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B9950]
+"HardWareKey"="USB\\ROOT_HUB\\PCI&VEN_8086&DEV_3B37&SUBSYS_3B378086&REV_06&BUS_00&DEV_1D&FUNC_01"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,88,19
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:00,7c,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B9CA0]
+"HardWareKey"="USB\\ROOT_HUB\\PCI&VEN_8086&DEV_3B38&SUBSYS_3B388086&REV_06&BUS_00&DEV_1D&FUNC_02"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,6a,88,19
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:50,b6,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B2120]
+"HardWareKey"="ISAPNP\\READDATAPORT\\0"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,18
+"Allocation"=hex:00,04,00,00,00,20,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:d0,f6,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B75E0]
+"HardWareKey"="MF\\CHILD0000\\PCI&VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06&BUS_00&DEV_1F&FUNC_02"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,62,0a,18
+"Allocation"=hex:00,04,00,00,01,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  f0,01,f7,01,00,00,04,03,ff,ff,08,00,f0,01,f7,01,00,00,04,03,ff,00,00,00,24,\
+  00,00,00,02,00,00,00,01,00,0c,00,f6,03,f6,03,00,00,04,03,ff,ff,01,00,f6,03,\
+  f6,03,00,00,04,03,ff,00,00,00,10,00,00,00,04,00,00,00,01,00,0e,00,00,40,00,\
+  00,14,00,00,00,02,00,00,00,00,00,0c,00,90,ff,97,ff,00,00,ff,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:90,77,5b,c3
+"Parent"=hex:70,f8,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B7790]
+"HardWareKey"="MF\\CHILD0001\\PCI&VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06&BUS_00&DEV_1F&FUNC_02"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,62,0a,1a
+"Allocation"=hex:00,04,00,00,01,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  70,01,77,01,00,00,04,03,ff,ff,08,00,70,01,77,01,00,00,04,03,ff,00,00,00,24,\
+  00,00,00,02,00,00,00,01,00,0c,00,76,03,76,03,00,00,04,03,ff,ff,01,00,76,03,\
+  76,03,00,00,04,03,ff,00,00,00,10,00,00,00,04,00,00,00,01,00,0f,00,00,80,00,\
+  00,14,00,00,00,02,00,00,00,00,00,0c,00,98,ff,9f,ff,00,00,ff,00,00,00,00,00
+"Child"=hex:d0,b6,5b,c3
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:70,f8,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35BB6D0]
+"HardWareKey"="ESDI\\GENERIC_IDE__DISK_TYPE95_\\MF&CHILD0001&PCI&VEN_8086&DEV_3B20&SUBSYS_3B208086&REV_06&BUS_00&DEV_1F&FUNC_0200"
+"Problem"=hex:00,00,00,00
+"Status"=hex:4e,6a,08,1a
+"Allocation"=hex:00,04,00,00,00,00,00,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:90,77,5b,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B7B30]
+"HardWareKey"="MF\\CHILD0000\\PCI&VEN_8086&DEV_3B26&SUBSYS_3B268086&REV_06&BUS_00&DEV_1F&FUNC_05"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,62,0a,18
+"Allocation"=hex:00,04,00,00,01,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  00,d4,07,d4,00,00,ff,00,ff,ff,08,00,00,00,ff,ff,00,00,ff,00,10,00,00,00,24,\
+  00,00,00,02,00,00,00,01,00,0c,00,80,d0,83,d0,00,00,ff,00,ff,ff,04,00,00,00,\
+  ff,ff,00,00,ff,00,14,00,00,00,10,00,00,00,04,00,00,00,03,00,03,00,08,00,00,\
+  00,14,00,00,00,02,00,00,00,00,00,0c,00,80,c8,87,c8,00,00,ff,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:e0,7c,5b,c3
+"Parent"=hex:10,ff,5a,c3
+
+[HKEY_DYN_DATA\Config Manager\Enum\C35B7CE0]
+"HardWareKey"="MF\\CHILD0001\\PCI&VEN_8086&DEV_3B26&SUBSYS_3B268086&REV_06&BUS_00&DEV_1F&FUNC_05"
+"Problem"=hex:00,00,00,00
+"Status"=hex:ce,62,0a,18
+"Allocation"=hex:00,04,00,00,01,00,00,00,24,00,00,00,02,00,00,00,01,00,0c,00,\
+  00,d0,07,d0,00,00,ff,00,ff,ff,08,00,00,00,ff,ff,00,00,ff,00,18,00,00,00,24,\
+  00,00,00,02,00,00,00,01,00,0c,00,00,cc,03,cc,00,00,ff,00,ff,ff,04,00,00,00,\
+  ff,ff,00,00,ff,00,1c,00,00,00,10,00,00,00,04,00,00,00,03,00,03,00,08,00,00,\
+  00,14,00,00,00,02,00,00,00,00,00,0c,00,88,c8,8f,c8,00,00,ff,00,00,00,00,00
+"Child"=hex:00,00,00,00
+"Sibling"=hex:00,00,00,00
+"Parent"=hex:10,ff,5a,c3
+
