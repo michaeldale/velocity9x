@@ -227,6 +227,10 @@ static void test_target(void)
     CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040889ul);
     CHECK(list_value(&list, V9X_RS690_RB3D_CBLEND) == 0ul);
     CHECK(list_value(&list, V9X_RS690_RB3D_ABLEND) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_CNTL) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_FG_ALPHA_FUNC) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_SU_CULL_MODE) == 0x00000004ul);
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_VAP_VTX_SIZE);
 
     target.bytes_per_pixel = 4ul;
     target.pitch_bytes = 256ul;
@@ -592,19 +596,252 @@ static void test_draw_textured(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void base_state(struct v9x_rs690_3d_state *state)
+{
+    memset(state, 0, sizeof(*state));
+    base_target(&state->target);
+    base_texture(&state->texture);
+    state->depth_offset = 0x01020000ul;
+    state->depth_pitch_bytes = 128ul;
+    state->depth_func = V9X_RS690_ZFUNC_LESS;
+    state->depth_write = 1ul;
+    state->blend_src = V9X_RS690_BLEND_SRC_ALPHA;
+    state->blend_dst = V9X_RS690_BLEND_INV_SRC_ALPHA;
+    state->alpha_func = V9X_RS690_AFUNC_GREATER;
+    state->alpha_ref = 128ul;
+}
+
+static void test_state(void)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+
+    /* Everything off: untextured, no Z, blend, alpha test or cull. */
+    base_state(&state);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_VAP_VTX_SIZE);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTX_SIZE) ==
+          V9X_RS690_TL_VERTEX_DWORDS);
+
+    /* The TL vertex: position FLOAT_4 signed to slot 0; diffuse BYTE
+     * normalized to slot 2; specular the same to slot 3; tu, tv FLOAT_2
+     * signed to slot 6, last. Colours swizzled BGRA to RGBA. */
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_0) ==
+          0x82044003ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_1) ==
+          0x66018304ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_EXT_0) ==
+          0xf60af688ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_EXT_1) ==
+          0xf688f60aul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VSM_VTX_ASSM) == 0x00000405ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_OUTPUT_VTX_FMT_0) == 0x00000007ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_OUTPUT_VTX_FMT_1) == 0x00000002ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTE_CNTL) == 0x00000300ul);
+
+    /* The colour path of the target state. */
+    CHECK(list_value(&list, V9X_RS690_TX_ENABLE) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RS_IP_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040080ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_0) == 0x00004000ul);
+    CHECK(list_value(&list, V9X_RS690_US_CONFIG) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050a80ul);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLORPITCH0) ==
+          (64ul | V9X_RS690_COLOR_FORMAT_RGB565));
+    CHECK(list_value(&list, V9X_RS690_SC_SCISSOR1) ==
+          ((1440ul + 63ul) | ((1440ul + 31ul) << 13)));
+
+    CHECK(list_value(&list, V9X_RS690_ZB_CNTL) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_ZSTENCILCNTL) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_DEPTHOFFSET) == 0xdeadbeeful);
+    CHECK(list_value(&list, V9X_RS690_RB3D_CBLEND) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RB3D_ABLEND) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_FG_ALPHA_FUNC) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_SU_CULL_MODE) == 0x00000004ul);
+
+    /* Everything on. */
+    state.textured = 1ul;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_MODULATE;
+    state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    state.depth_enable = 1ul;
+    state.blend_enable = 1ul;
+    state.alpha_test_enable = 1ul;
+    state.cull = V9X_RS690_CULL_BACK;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count <= V9X_RS690_3D_WRITES);
+    CHECK(list_value(&list, V9X_RS690_TX_ENABLE) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_TX_OFFSET_0) ==
+          RS690_FB_BASE + 0x01010000ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_0) == 0x00024008ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040082ul);
+    CHECK(list_value(&list, V9X_RS690_US_CONFIG) == 0x00000008ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050200ul);
+    /* Alpha from the diffuse colour alone: SRC1_A times one. */
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x4004088aul);
+    /* The stream stays the TL vertex's with a texture. */
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_1) ==
+          0x66018304ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTX_SIZE) ==
+          V9X_RS690_TL_VERTEX_DWORDS);
+
+    /* Z16: test and write, LESS, at the GPU address, pitch in pixels. */
+    CHECK(list_value(&list, V9X_RS690_ZB_CNTL) == 0x00000006ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_ZSTENCILCNTL) == 0x00000001ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_FORMAT) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_DEPTHOFFSET) ==
+          RS690_FB_BASE + 0x01020000ul);
+    CHECK(list_value(&list, V9X_RS690_ZB_DEPTHPITCH) == 64ul);
+
+    /* Blend enabled, reading the destination, ADD_CLAMP, the same factors
+     * for alpha. */
+    CHECK(list_value(&list, V9X_RS690_RB3D_CBLEND) == 0x27260005ul);
+    CHECK(list_value(&list, V9X_RS690_RB3D_ABLEND) == 0x27260005ul);
+    /* Reference 128, GREATER, enabled. */
+    CHECK(list_value(&list, V9X_RS690_FG_ALPHA_FUNC) == 0x00000c80ul);
+    CHECK(list_value(&list, V9X_RS690_SU_CULL_MODE) == 0x00000006ul);
+
+    /* Z without writes; texture alpha following MODULATE and REPLACE. */
+    state.depth_write = 0ul;
+    state.texture_alpha = V9X_RS690_TEXALPHA_SAME;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_ZB_CNTL) == 0x00000002ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040509ul);
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture_alpha = V9X_RS690_TEXALPHA_MODULATE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040509ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c000000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000040ul);
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040889ul);
+    state.cull = V9X_RS690_CULL_FRONT;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_SU_CULL_MODE) == 0x00000005ul);
+
+    /* Refusals. */
+    base_state(&state);
+    state.depth_enable = 1ul;
+    state.depth_offset = 0x01020010ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.depth_enable = 1ul;
+    state.depth_pitch_bytes = 144ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.depth_enable = 1ul;
+    state.depth_pitch_bytes = 64ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.depth_enable = 1ul;
+    state.depth_offset = RS690_FB_BYTES - 128ul * 16ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.depth_enable = 1ul;
+    state.depth_func = 8ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.alpha_test_enable = 1ul;
+    state.alpha_func = 8ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.alpha_test_enable = 1ul;
+    state.alpha_ref = 256ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.blend_enable = 1ul;
+    state.blend_src = 31ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.blend_enable = 1ul;
+    state.blend_dst = 43ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.cull = 3ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.textured = 1ul;
+    state.texture_alpha = 4ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.textured = 1ul;
+    state.texture.format = 3ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    base_state(&state);
+    state.target.bytes_per_pixel = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_rs690_build_3d_state(0, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    CHECK(v9x_rs690_build_3d_state(&state, 0) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_draw_tl(void)
+{
+    v9x_u32 vertices[(V9X_RS690_3D_VERTICES_MAX + 1u) * 8u];
+    struct v9x_rs690_3d_list list;
+    v9x_u32 index;
+
+    CHECK(v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_TRIANGLES, 3ul) ==
+          0x00030034ul);
+    CHECK(v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_QUADS, 4ul) == 0x0004003dul);
+    CHECK(v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_TRIANGLES, 65535ul) ==
+          0xffff0034ul);
+    CHECK(v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_TRIANGLES, 4ul) == 0ul);
+    CHECK(v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_TRIANGLES, 0ul) == 0ul);
+    CHECK(v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_TRIANGLES, 65538ul) == 0ul);
+    CHECK(v9x_rs690_3d_vf_cntl(5ul, 3ul) == 0ul);
+
+    for (index = 0u; index < (V9X_RS690_3D_VERTICES_MAX + 1u) * 8u; ++index) {
+        vertices[index] = 0x1000ul + index;
+    }
+    CHECK(v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_TRIANGLES, vertices, 3ul,
+                                     &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count == 1u + 3u * 8u);
+    CHECK(list.offsets[0] == V9X_RS690_VAP_VF_CNTL);
+    CHECK(list.values[0] == 0x00030034ul);
+    for (index = 1u; index < list.count; ++index) {
+        CHECK(list.offsets[index] == V9X_RS690_SE_PORT_DATA0);
+        CHECK(list.values[index] == 0x1000ul + index - 1u);
+    }
+    CHECK(v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                     V9X_RS690_3D_VERTICES_MAX, &list) ==
+          V9X_STATUS_OK);
+    CHECK(list.count == 1u + V9X_RS690_3D_VERTICES_MAX * 8u);
+    CHECK(v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                     V9X_RS690_3D_VERTICES_MAX + 3u,
+                                     &list) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_QUADS, vertices, 3ul,
+                                     &list) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw_tl(5ul, vertices, 3ul, &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_TRIANGLES, 0, 3ul,
+                                     &list) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 static void test_finish(void)
 {
     struct v9x_rs690_3d_list list;
 
     CHECK(v9x_rs690_build_3d_finish(&list) == V9X_STATUS_OK);
     CHECK(list_in_windows(&list));
-    CHECK(list.count == 3u);
+    CHECK(list.count == 4u);
     CHECK(list.offsets[0] == V9X_RS690_SC_CLIP_RULE);
     CHECK(list.values[0] == 0x0000aaaaul);
     CHECK(list.offsets[1] == V9X_RS690_RB3D_DSTCACHE_CTLSTAT);
     CHECK(list.values[1] == V9X_RS690_RB3D_DC_FLUSH_ALL);
-    CHECK(list.offsets[2] == V9X_RS690_WAIT_UNTIL);
-    CHECK(list.values[2] == V9X_RS690_WAIT_3D_IDLECLEAN);
+    /* The Z cache too, so a CPU read of the Z buffer sees the draw. */
+    CHECK(list.offsets[2] == V9X_RS690_ZB_ZCACHE_CTLSTAT);
+    CHECK(list.values[2] == V9X_RS690_ZC_FLUSH_ALL);
+    CHECK(list.offsets[3] == V9X_RS690_WAIT_UNTIL);
+    CHECK(list.values[3] == V9X_RS690_WAIT_3D_IDLECLEAN);
     CHECK(v9x_rs690_build_3d_finish(0) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
@@ -617,6 +854,8 @@ unsigned int v9x_run_rs690_3d_tests(void)
     test_draw();
     test_texture();
     test_draw_textured();
+    test_state();
+    test_draw_tl();
     test_finish();
     return failures;
 }

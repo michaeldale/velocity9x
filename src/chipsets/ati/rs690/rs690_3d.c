@@ -164,6 +164,44 @@
 #define V9X_RS690_ALU_RGB_MUL           0x40050200ul
 #define V9X_RS690_ALU_ALPHA_MUL         0x40040509ul
 
+/*
+ * The TL vertex (Mesa r300 data types and swizzles, r300_reg.h:238-382,
+ * r300_state_inlines.h r300_translate_vertex_data_type). Stream 0: FLOAT_4
+ * (3), slot 0, SIGNED - sx, sy, sz, rhw. Stream 1: BYTE (4) with NORMALIZE
+ * (bit 15), slot 2 - the diffuse D3DCOLOR. Stream 2: the same into slot 3,
+ * colour 1 - the specular. Stream 3: FLOAT_2 (1), slot 6, SIGNED, last -
+ * tu, tv. A D3DCOLOR's bytes are B, G, R, A, so its swizzle selects
+ * Z, Y, X, W (2 | 1 << 3 | 0 << 6 | 3 << 9) with all four written, as Mesa
+ * gives B8G8R8A8_UNORM. VTE's W0 format bit stays clear, so the fourth
+ * position component is 1/W, Mesa's software-TCL arrangement.
+ */
+#define V9X_RS690_STREAMS_TL_POS4_DIFFUSE  0x82044003ul
+#define V9X_RS690_STREAMS_TL_SPECULAR_TEX0 0x66018304ul
+#define V9X_RS690_STREAM_SWIZZLE_BGRA   0x0000f60aul
+#define V9X_RS690_OUT_VTX_POS_COLOR01   0x00000007ul
+
+/* Z: ZB_FORMAT 16-bit integer; ZB_CNTL Z_ENABLE (bit 1) and
+ * Z_WRITE_ENABLE (bit 2); ZB_DEPTHPITCH in pixels in 13:2, linear
+ * (micro- and macrotiling off). */
+#define V9X_RS690_DEPTHFORMAT_16BIT     0x00000000ul
+#define V9X_RS690_Z_ENABLE              0x00000002ul
+#define V9X_RS690_Z_WRITE_ENABLE        0x00000004ul
+#define V9X_RS690_DEPTHPITCH_MASK       0x00003ffcul
+
+/* RB3D_CBLEND/ABLEND: ALPHA_BLEND_ENABLE (bit 0) and READ_ENABLE (bit 2),
+ * COMB_FCN_ADD_CLAMP (0 in 14:12), source factor at 21:16, destination at
+ * 29:24. */
+#define V9X_RS690_BLEND_ON_READ         0x00000005ul
+#define V9X_RS690_SRC_BLEND_SHIFT       16
+#define V9X_RS690_DST_BLEND_SHIFT       24
+
+/* FG_ALPHA_FUNC: reference in 7:0, compare in 10:8, enable bit 11. */
+#define V9X_RS690_AFUNC_SHIFT           8
+#define V9X_RS690_ALPHA_TEST_ENABLE     0x00000800ul
+
+/* Alpha from the diffuse colour: SRC1_A (10) times ONE (17 << 7). */
+#define V9X_RS690_ALU_ALPHA_DIFFUSE     0x4004088aul
+
 /* IEEE single fields. */
 #define V9X_RS690_FLOAT_EXPONENT_BIAS   127ul
 #define V9X_RS690_FLOAT_MANTISSA_BITS   23
@@ -397,16 +435,15 @@ v9x_status v9x_rs690_build_3d_init(v9x_u32 pipe_select,
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_rs690_build_3d_target(const struct v9x_rs690_3d_target *target,
-                                     struct v9x_rs690_3d_list *list)
+/* The colour-only target state appended to the list, after its checks;
+ * nothing is appended when they refuse. */
+static v9x_status v9x_rs690_add_target(const struct v9x_rs690_3d_target *target,
+                                       struct v9x_rs690_3d_list *list)
 {
     v9x_u32 format;
     v9x_u32 pitch_pixels;
     v9x_u32 surface_bytes;
 
-    if (target == 0 || list == 0) {
-        return V9X_STATUS_INVALID_ARGUMENT;
-    }
     if (target->bytes_per_pixel == 2ul) {
         format = V9X_RS690_COLOR_FORMAT_RGB565;
     } else if (target->bytes_per_pixel == 4ul) {
@@ -439,8 +476,6 @@ v9x_status v9x_rs690_build_3d_target(const struct v9x_rs690_3d_target *target,
         target->fb_bytes - 1ul > 0xfffffffful - target->fb_gpu_base) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-
-    v9x_rs690_3d_begin(list);
 
     /* Vertex stream and what the assembler passes on. */
     v9x_rs690_3d_add(list, V9X_RS690_VAP_PROG_STREAM_CNTL_0,
@@ -494,8 +529,24 @@ v9x_status v9x_rs690_build_3d_target(const struct v9x_rs690_3d_target *target,
     v9x_rs690_3d_add(list, V9X_RS690_RB3D_COLORPITCH0, pitch_pixels | format);
     v9x_rs690_3d_add(list, V9X_RS690_RB3D_CBLEND, 0ul);
     v9x_rs690_3d_add(list, V9X_RS690_RB3D_ABLEND, 0ul);
+
+    /* Z, the alpha test and culling off, as the init left them, so this
+     * state means the same after a TL-vertex state that set them. */
+    v9x_rs690_3d_add(list, V9X_RS690_ZB_CNTL, 0ul);
+    v9x_rs690_3d_add(list, V9X_RS690_FG_ALPHA_FUNC, 0ul);
+    v9x_rs690_3d_add(list, V9X_RS690_SU_CULL_MODE, V9X_RS690_SU_FACE_NEG);
     v9x_rs690_3d_add(list, V9X_RS690_VAP_VTX_SIZE, V9X_RS690_VERTEX_DWORDS);
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_rs690_build_3d_target(const struct v9x_rs690_3d_target *target,
+                                     struct v9x_rs690_3d_list *list)
+{
+    if (target == 0 || list == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_rs690_3d_begin(list);
+    return v9x_rs690_add_target(target, list);
 }
 
 /* The checks both draw builders share: a known primitive and a whole
@@ -576,9 +627,11 @@ v9x_status v9x_rs690_build_3d_draw(v9x_u32 primitive,
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_rs690_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
-                                      const struct v9x_rs690_3d_texture *texture,
-                                      struct v9x_rs690_3d_list *list)
+/* The texture state appended to the list, after its checks; nothing is
+ * appended when they refuse. */
+static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
+                                        const struct v9x_rs690_3d_texture *texture,
+                                        struct v9x_rs690_3d_list *list)
 {
     v9x_u32 bytes_per_texel;
     v9x_u32 card_format;
@@ -589,9 +642,6 @@ v9x_status v9x_rs690_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     v9x_u32 alpha_inst;
     v9x_u32 texture_bytes;
 
-    if (texture == 0 || list == 0) {
-        return V9X_STATUS_INVALID_ARGUMENT;
-    }
     if (texture->format == V9X_RS690_TEXFMT_RGB565) {
         bytes_per_texel = 2ul;
         card_format = V9X_RS690_TXFMT1_RGB565;
@@ -647,8 +697,6 @@ v9x_status v9x_rs690_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         fb_bytes - 1ul > 0xfffffffful - fb_gpu_base) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-
-    v9x_rs690_3d_begin(list);
 
     /* The vertex gains texture 0 after the colour; the colour stream is no
      * longer the last. */
@@ -711,6 +759,17 @@ v9x_status v9x_rs690_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_rs690_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
+                                      const struct v9x_rs690_3d_texture *texture,
+                                      struct v9x_rs690_3d_list *list)
+{
+    if (texture == 0 || list == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_rs690_3d_begin(list);
+    return v9x_rs690_add_texture(fb_gpu_base, fb_bytes, texture, list);
+}
+
 v9x_status v9x_rs690_build_3d_draw_textured(
     v9x_u32 primitive, const struct v9x_rs690_3d_tex_vertex *vertices,
     v9x_u32 count, v9x_u32 width, v9x_u32 height,
@@ -766,6 +825,220 @@ v9x_status v9x_rs690_build_3d_draw_textured(
     return V9X_STATUS_OK;
 }
 
+/* The checks of the state's own fields - Z, blend, alpha test, cull and
+ * texture alpha - before anything is built. */
+static v9x_status v9x_rs690_check_state(const struct v9x_rs690_3d_state *state)
+{
+    const struct v9x_rs690_3d_target *target = &state->target;
+    v9x_u32 depth_pixels;
+    v9x_u32 depth_bytes;
+
+    if (state->textured != 0ul &&
+        state->texture_alpha > V9X_RS690_TEXALPHA_MODULATE) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (state->cull > V9X_RS690_CULL_BACK) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (state->blend_enable != 0ul &&
+        (state->blend_src < V9X_RS690_BLEND_ZERO ||
+         state->blend_src > V9X_RS690_BLEND_SRC_ALPHA_SAT ||
+         state->blend_dst < V9X_RS690_BLEND_ZERO ||
+         state->blend_dst > V9X_RS690_BLEND_SRC_ALPHA_SAT)) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (state->alpha_test_enable != 0ul) {
+        if (state->alpha_func > V9X_RS690_AFUNC_ALWAYS) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        if (state->alpha_ref > V9X_RS690_CHANNEL_MAX) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    if (state->depth_enable == 0ul) {
+        return V9X_STATUS_OK;
+    }
+
+    /* Z16 under the target: aligned, a row at least as wide, every row in
+     * the frame buffer. */
+    if (state->depth_func > V9X_RS690_ZFUNC_ALWAYS ||
+        state->depth_offset % V9X_RS690_DEPTH_OFFSET_ALIGN != 0ul ||
+        state->depth_pitch_bytes % 2ul != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    depth_pixels = state->depth_pitch_bytes / 2ul;
+    if (depth_pixels % V9X_RS690_DEPTH_PITCH_ALIGN != 0ul ||
+        (depth_pixels & ~V9X_RS690_DEPTHPITCH_MASK) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (depth_pixels < target->width) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    depth_bytes = state->depth_pitch_bytes * target->height;
+    if (state->depth_offset >= target->fb_bytes ||
+        depth_bytes > target->fb_bytes - state->depth_offset) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
+                                    struct v9x_rs690_3d_list *list)
+{
+    v9x_status status;
+    v9x_u32 blend = 0ul;
+    v9x_u32 alpha_test = 0ul;
+
+    if (state == 0 || list == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    status = v9x_rs690_check_state(state);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+
+    /* The proven sequences first - the colour-buffer state, then the
+     * texture's - and then the writes that differ from them: a register
+     * written twice takes the later value, and the FIFO cost of the
+     * repeats is a few dozen writes per state change. */
+    v9x_rs690_3d_begin(list);
+    status = v9x_rs690_add_target(&state->target, list);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    if (state->textured != 0ul) {
+        status = v9x_rs690_add_texture(state->target.fb_gpu_base,
+                                       state->target.fb_bytes,
+                                       &state->texture, list);
+        if (status != V9X_STATUS_OK) {
+            return status;
+        }
+        if (state->texture_alpha == V9X_RS690_TEXALPHA_TEXEL) {
+            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
+                             V9X_RS690_ALU_ALPHA_ADDR_OUT);
+            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0,
+                             V9X_RS690_ALU_ALPHA_MOV);
+        } else if (state->texture_alpha == V9X_RS690_TEXALPHA_DIFFUSE) {
+            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
+                             V9X_RS690_ALU_ALPHA_ADDR_OUT |
+                             V9X_RS690_ALU_ADDR1_TEMP1);
+            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0,
+                             V9X_RS690_ALU_ALPHA_DIFFUSE);
+        } else if (state->texture_alpha == V9X_RS690_TEXALPHA_MODULATE) {
+            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_ADDR_0,
+                             V9X_RS690_ALU_ALPHA_ADDR_OUT |
+                             V9X_RS690_ALU_ADDR1_TEMP1);
+            v9x_rs690_3d_add(list, V9X_RS690_US_ALU_ALPHA_INST_0,
+                             V9X_RS690_ALU_ALPHA_MUL);
+        }
+    }
+
+    /* The TL vertex, whichever routing the rasterizer has. */
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_PROG_STREAM_CNTL_0,
+                     V9X_RS690_STREAMS_TL_POS4_DIFFUSE);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_PROG_STREAM_CNTL_1,
+                     V9X_RS690_STREAMS_TL_SPECULAR_TEX0);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_PROG_STREAM_CNTL_EXT_0,
+                     V9X_RS690_STREAM_SWIZZLE_XYZW |
+                     (V9X_RS690_STREAM_SWIZZLE_BGRA << 16));
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_PROG_STREAM_CNTL_EXT_1,
+                     V9X_RS690_STREAM_SWIZZLE_BGRA |
+                     (V9X_RS690_STREAM_SWIZZLE_XYZW << 16));
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_VTX_STATE_CNTL,
+                     V9X_RS690_VTX_STATE_USER_COLOR);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_VSM_VTX_ASSM,
+                     V9X_RS690_VSM_POS_COLOR | V9X_RS690_VSM_TC0);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_OUTPUT_VTX_FMT_0,
+                     V9X_RS690_OUT_VTX_POS_COLOR01);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_OUTPUT_VTX_FMT_1,
+                     V9X_RS690_OUT_VTX_TEX0_ST);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_VTE_CNTL,
+                     V9X_RS690_VTE_WINDOW_COORDS);
+
+    /* Z16, linear, at the GPU address; the compare, and writes or not. */
+    if (state->depth_enable != 0ul) {
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_FORMAT,
+                         V9X_RS690_DEPTHFORMAT_16BIT);
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_DEPTHOFFSET,
+                         state->target.fb_gpu_base + state->depth_offset);
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_DEPTHPITCH,
+                         state->depth_pitch_bytes / 2ul);
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_ZSTENCILCNTL, state->depth_func);
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_CNTL,
+                         V9X_RS690_Z_ENABLE |
+                         (state->depth_write != 0ul ?
+                          V9X_RS690_Z_WRITE_ENABLE : 0ul));
+    } else {
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_ZSTENCILCNTL, 0ul);
+        v9x_rs690_3d_add(list, V9X_RS690_ZB_CNTL, 0ul);
+    }
+
+    /* Blend: on, reading the destination, ADD_CLAMP; alpha the same pair
+     * (SEPARATE_ALPHA off). */
+    if (state->blend_enable != 0ul) {
+        blend = V9X_RS690_BLEND_ON_READ |
+                (state->blend_src << V9X_RS690_SRC_BLEND_SHIFT) |
+                (state->blend_dst << V9X_RS690_DST_BLEND_SHIFT);
+    }
+    v9x_rs690_3d_add(list, V9X_RS690_RB3D_CBLEND, blend);
+    v9x_rs690_3d_add(list, V9X_RS690_RB3D_ABLEND, blend);
+
+    if (state->alpha_test_enable != 0ul) {
+        alpha_test = state->alpha_ref |
+                     (state->alpha_func << V9X_RS690_AFUNC_SHIFT) |
+                     V9X_RS690_ALPHA_TEST_ENABLE;
+    }
+    v9x_rs690_3d_add(list, V9X_RS690_FG_ALPHA_FUNC, alpha_test);
+    v9x_rs690_3d_add(list, V9X_RS690_SU_CULL_MODE,
+                     V9X_RS690_SU_FACE_NEG | state->cull);
+
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_VTX_SIZE,
+                     V9X_RS690_TL_VERTEX_DWORDS);
+    return V9X_STATUS_OK;
+}
+
+v9x_u32 v9x_rs690_3d_vf_cntl(v9x_u32 primitive, v9x_u32 count)
+{
+    v9x_u32 per_primitive;
+
+    if (primitive == V9X_RS690_PRIM_TRIANGLES) {
+        per_primitive = 3ul;
+    } else if (primitive == V9X_RS690_PRIM_QUADS) {
+        per_primitive = 4ul;
+    } else {
+        return 0ul;
+    }
+    if (count == 0ul || count > V9X_RS690_VF_NUM_VERTICES_MAX ||
+        count % per_primitive != 0ul) {
+        return 0ul;
+    }
+    return primitive | V9X_RS690_VF_PRIM_WALK_DATA |
+           (count << V9X_RS690_VF_NUM_VERTICES_SHIFT);
+}
+
+v9x_status v9x_rs690_build_3d_draw_tl(v9x_u32 primitive,
+                                      const v9x_u32 *vertices,
+                                      v9x_u32 count,
+                                      struct v9x_rs690_3d_list *list)
+{
+    v9x_status status = V9X_STATUS_OK;
+    v9x_u32 index;
+
+    if (vertices == 0 || list == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (v9x_rs690_check_primitive(primitive, count, &status) == 0ul) {
+        return status;
+    }
+    v9x_rs690_3d_begin(list);
+    v9x_rs690_3d_add(list, V9X_RS690_VAP_VF_CNTL,
+                     v9x_rs690_3d_vf_cntl(primitive, count));
+    for (index = 0ul; index < count * V9X_RS690_TL_VERTEX_DWORDS; ++index) {
+        v9x_rs690_3d_add(list, V9X_RS690_SE_PORT_DATA0, vertices[index]);
+    }
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_rs690_build_3d_finish(struct v9x_rs690_3d_list *list)
 {
     if (list == 0) {
@@ -776,6 +1049,8 @@ v9x_status v9x_rs690_build_3d_finish(struct v9x_rs690_3d_list *list)
                      V9X_RS690_SC_CLIP_RULE_VALUE);
     v9x_rs690_3d_add(list, V9X_RS690_RB3D_DSTCACHE_CTLSTAT,
                      V9X_RS690_RB3D_DC_FLUSH_ALL);
+    v9x_rs690_3d_add(list, V9X_RS690_ZB_ZCACHE_CTLSTAT,
+                     V9X_RS690_ZC_FLUSH_ALL);
     v9x_rs690_3d_add(list, V9X_RS690_WAIT_UNTIL, V9X_RS690_WAIT_3D_IDLECLEAN);
     return V9X_STATUS_OK;
 }

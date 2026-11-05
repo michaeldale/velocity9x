@@ -144,8 +144,11 @@
 #define V9X_RS690_RB3D_AARESOLVE_CTL    0x4e88ul
 #define V9X_RS690_ZB_CNTL               0x4f00ul
 #define V9X_RS690_ZB_ZSTENCILCNTL       0x4f04ul
+#define V9X_RS690_ZB_FORMAT             0x4f10ul
 #define V9X_RS690_ZB_ZTOP               0x4f14ul
 #define V9X_RS690_RB3D_BW_CNTL          0x4f1cul
+#define V9X_RS690_ZB_DEPTHOFFSET        0x4f20ul
+#define V9X_RS690_ZB_DEPTHPITCH         0x4f24ul
 
 /* VAP_VF_CNTL: primitive type in 3:0, vertices embedded in the data
  * written after it (PRIM_WALK 3 << 4), vertex count from bit 16. */
@@ -202,8 +205,8 @@
 #define V9X_RS690_SURFACE_MAX           (V9X_RS690_SC_CLIP_MAX - V9X_RS690_SC_OFFSET)
 
 /* Capacity of one register list: the init writes 64 registers, the
- * colour-buffer state 30, the texture state 31, a draw 1 + 6 or 8 per
- * vertex up to 12 vertices. */
+ * colour-buffer state 33, the texture state 31, the TL state at most 87,
+ * a draw 1 + 6 or 8 per vertex up to 12 vertices. */
 #define V9X_RS690_3D_VERTICES_MAX       12u
 #define V9X_RS690_3D_WRITES             100u
 
@@ -273,7 +276,8 @@ v9x_status v9x_rs690_build_3d_init(v9x_u32 pipe_select,
  * The state for colour-interpolated drawing into one colour buffer: the
  * vertex stream (position, colour), the rasterizer routing colour 0 into
  * fragment shader temp 0, the one-instruction shader writing it out,
- * blending off, and the scissor opened to the surface. 16 and 32 bpp only.
+ * blending, Z, the alpha test and culling off, and the scissor opened to
+ * the surface. 16 and 32 bpp only.
  */
 v9x_status v9x_rs690_build_3d_target(const struct v9x_rs690_3d_target *target,
                                      struct v9x_rs690_3d_list *list);
@@ -314,8 +318,117 @@ v9x_status v9x_rs690_build_3d_draw_textured(
     v9x_u32 count, v9x_u32 width, v9x_u32 height,
     struct v9x_rs690_3d_list *list);
 
-/* Flush the 3D destination cache and hold the FIFO until the 3D engine is
- * idle and clean (RadeonFinishComposite). */
+/*
+ * The Direct3D-shaped draw state: every vertex is a D3DTLVERTEX taken as it
+ * is - sx, sy, sz, rhw (FLOAT_4 into vector slot 0; rhw is 1/W, VTE's W0
+ * format clear), the diffuse and specular colours as normalized bytes in
+ * BGRA order (into colour slots 0 and 1), tu, tv (FLOAT_2 into slot 6) -
+ * eight dwords. Untextured draws carry tu, tv anyway, unread.
+ */
+#define V9X_RS690_TL_VERTEX_DWORDS      8ul
+
+/* Z buffer compare, ZB_ZSTENCILCNTL's encoding. */
+#define V9X_RS690_ZFUNC_NEVER           0ul
+#define V9X_RS690_ZFUNC_LESS            1ul
+#define V9X_RS690_ZFUNC_LEQUAL          2ul
+#define V9X_RS690_ZFUNC_EQUAL           3ul
+#define V9X_RS690_ZFUNC_GEQUAL          4ul
+#define V9X_RS690_ZFUNC_GREATER         5ul
+#define V9X_RS690_ZFUNC_NOTEQUAL        6ul
+#define V9X_RS690_ZFUNC_ALWAYS          7ul
+
+/* Alpha test compare, FG_ALPHA_FUNC's encoding (Direct3D's D3DCMP - 1). */
+#define V9X_RS690_AFUNC_NEVER           0ul
+#define V9X_RS690_AFUNC_LESS            1ul
+#define V9X_RS690_AFUNC_EQUAL           2ul
+#define V9X_RS690_AFUNC_LEQUAL          3ul
+#define V9X_RS690_AFUNC_GREATER         4ul
+#define V9X_RS690_AFUNC_NOTEQUAL        5ul
+#define V9X_RS690_AFUNC_GEQUAL          6ul
+#define V9X_RS690_AFUNC_ALWAYS          7ul
+
+/* Blend factors, RB3D_CBLEND's GL encoding. */
+#define V9X_RS690_BLEND_ZERO            32ul
+#define V9X_RS690_BLEND_ONE             33ul
+#define V9X_RS690_BLEND_SRC_COLOR       34ul
+#define V9X_RS690_BLEND_INV_SRC_COLOR   35ul
+#define V9X_RS690_BLEND_DST_COLOR       36ul
+#define V9X_RS690_BLEND_INV_DST_COLOR   37ul
+#define V9X_RS690_BLEND_SRC_ALPHA       38ul
+#define V9X_RS690_BLEND_INV_SRC_ALPHA   39ul
+#define V9X_RS690_BLEND_DST_ALPHA       40ul
+#define V9X_RS690_BLEND_INV_DST_ALPHA   41ul
+#define V9X_RS690_BLEND_SRC_ALPHA_SAT   42ul
+
+/* SU_CULL_MODE's two cull bits, with the front face counter-clockwise
+ * (FACE_NEG) as the init sets it. Which screen winding each removes is a
+ * measurement (docs\decisions\2026-11-05-rs690-z-blend-probe.md). */
+#define V9X_RS690_CULL_NONE             0ul
+#define V9X_RS690_CULL_FRONT            1ul
+#define V9X_RS690_CULL_BACK             2ul
+
+/* What the shader puts in the fragment's alpha when textured: the
+ * texture's combine (TEXEL for REPLACE, MODULATE for MODULATE), or one
+ * named here. */
+#define V9X_RS690_TEXALPHA_SAME         0ul
+#define V9X_RS690_TEXALPHA_TEXEL        1ul
+#define V9X_RS690_TEXALPHA_DIFFUSE      2ul
+#define V9X_RS690_TEXALPHA_MODULATE     3ul
+
+/* Z16 only: the pitch in pixels a multiple of 16 (DEPTHPITCH's field is in
+ * 13:2; 16 is this builder's margin, as the colour pitch takes 8), the
+ * offset 32-byte aligned. */
+#define V9X_RS690_DEPTH_PITCH_ALIGN     16ul
+#define V9X_RS690_DEPTH_OFFSET_ALIGN    32ul
+
+struct v9x_rs690_3d_state {
+    struct v9x_rs690_3d_target target;
+    v9x_u32 textured;
+    struct v9x_rs690_3d_texture texture;
+    v9x_u32 texture_alpha;
+    v9x_u32 depth_enable;
+    v9x_u32 depth_offset;
+    v9x_u32 depth_pitch_bytes;
+    v9x_u32 depth_func;
+    v9x_u32 depth_write;
+    v9x_u32 blend_enable;
+    v9x_u32 blend_src;
+    v9x_u32 blend_dst;
+    v9x_u32 alpha_test_enable;
+    v9x_u32 alpha_func;
+    v9x_u32 alpha_ref;
+    v9x_u32 cull;
+};
+
+/*
+ * The whole state for TL-vertex drawing, after the init: the vertex
+ * stream, the colour buffer and scissor, texturing on or off, Z16, blend,
+ * alpha test and cull. The texture's offset is into the same frame buffer
+ * as the target's (target.fb_gpu_base, target.fb_bytes), and so is the Z
+ * buffer, whose rows are the target's height. Refused as the target and
+ * texture builders refuse, and for an unknown Z or alpha function, blend
+ * factor, cull, or texture alpha; a misaligned Z offset or pitch
+ * (UNSUPPORTED); a Z pitch short of the target's row at two bytes a pixel,
+ * a Z buffer past the frame buffer, or an alpha reference over 255
+ * (INVALID_ARGUMENT).
+ */
+v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
+                                    struct v9x_rs690_3d_list *list);
+
+/* VAP_VF_CNTL for count embedded vertices of a primitive, or 0 when the
+ * primitive is unknown, the count not a whole number of them, or past the
+ * register's 16-bit field. The HAL writes this, then count * 8 dwords. */
+v9x_u32 v9x_rs690_3d_vf_cntl(v9x_u32 primitive, v9x_u32 count);
+
+/* The VF_CNTL write and count TL vertices (eight dwords each, as given),
+ * for at most V9X_RS690_3D_VERTICES_MAX. */
+v9x_status v9x_rs690_build_3d_draw_tl(v9x_u32 primitive,
+                                      const v9x_u32 *vertices,
+                                      v9x_u32 count,
+                                      struct v9x_rs690_3d_list *list);
+
+/* Flush the 3D destination and Z caches and hold the FIFO until the 3D
+ * engine is idle and clean (RadeonFinishComposite, plus the Z cache). */
 v9x_status v9x_rs690_build_3d_finish(struct v9x_rs690_3d_list *list);
 
 /* The IEEE single nearest numerator / denominator, ties to even, for
