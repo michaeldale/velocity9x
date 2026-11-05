@@ -1,0 +1,41 @@
+# Ivy Bridge mobile (HD 4000, 8086:0166) on M-ZJQ2DX
+
+Status: **started 2026-11-05** on branch `intel-ivb-mobile`. Not for main
+until the panel path has run.
+
+## Machine
+
+W9QI75E0, Tom Rossell's Lenovo (SUBSYS `17AA:5001`), remote help
+`M-ZJQ2DX`. i7-3632QM, IGD `8086:0166` rev 09, an Optimus GF108M that
+Windows cannot start, a 1366x768 LVDS panel (LGD033B), HDMI on port B and
+a VGA port. Audit: `docs\decisions\2026-11-05-w9qi75e0-ivb-mobile-audit.md`.
+
+The owner works on HDA audio drivers on this machine. Remote help on is
+consent to install and restart; say so in the chat before a series.
+
+## Why it is not just an id
+
+`0166` is the same GT2 silicon as `0162`, and the audit's config decode
+matches W9QI4E14's. But the Haswell/IVB path has only ever scanned out to a
+CRT through FDI and the PCH. There is no LVDS, panel power or backlight
+code in `src\chipsets\intel\hsw`. The driver sets modes through VBE, so the
+BIOS owns the panel; what is new is whatever our own code does to the
+display: flips through plane A, which `hsw_scanout.c` takes only while
+pipe A and plane A are live.
+
+## Order
+
+1. Tier-0 `vbe` baseline: modes, EDID through 4F15h, the panel at
+   1366x768. Shows what VBE gives before our code runs.
+2. Claim `0166` as an alias of `hd4000-ivb` (the `041E` pattern): its own
+   `V9X_HW16_DEVICE`, the Ivy Bridge open and forcewake, the same caps.
+   Install, boot, `V9XDDF`/`V9XDDP`.
+3. Read-only MMIO: which pipe the LVDS is on, PP_STATUS/PP_CONTROL, the
+   backlight PWM, before and after a mode change.
+4. Flips and Direct3D: `V9XDDP`, `V9XD32` at 16 and 32 bpp.
+5. If any step turns the panel off, decide then whether panel power code is
+   needed. Not before.
+
+## Records
+
+Each step's decision doc is listed here as it lands.

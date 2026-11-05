@@ -78,6 +78,9 @@
  * W9QI4E14 (docs\plans\intel-ivybridge-gen7.md).
  */
 #define V9X_PCI_DEVICE_HD4000_IVB        ((v9x_u16)0x0162u)
+/* Its alias, Ivy Bridge GT2 mobile: the same GT behind an LVDS panel
+ * (docs\plans\intel-ivybridge-mobile-0166.md). */
+#define V9X_PCI_DEVICE_HD4000M_IVB       ((v9x_u16)0x0166u)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)

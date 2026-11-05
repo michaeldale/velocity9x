@@ -368,6 +368,15 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('hsw_hw16')
             MapSymbols = @('v9x_ivb_hd4000_device')
+
+            # Ivy Bridge GT2 mobile: the same GT and open, behind an LVDS
+            # panel. Tier 0 passed at 1366x768 on W9QI75E0; this path has
+            # not run there yet: docs\plans\intel-ivybridge-mobile-0166.md.
+            Aliases = @(
+                @{ DeviceId = '0166'
+                   Name = 'Intel HD Graphics 4000 (Ivy Bridge mobile)'
+                   DeviceDesc = 'Velocity9x Intel HD Graphics 4000 (Ivy Bridge mobile)' }
+            )
         }
     )
 
@@ -472,7 +481,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0412, 8086:041E or 8086:0162 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0412, 8086:041E, 8086:0162 or 8086:0166 exactly'
     }
 
     Vm = @{
