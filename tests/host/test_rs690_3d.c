@@ -1,0 +1,622 @@
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "velocity9x/rs690_3d.h"
+
+static unsigned int failures = 0u;
+#define CHECK(e) do { if (!(e)) { \
+    printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, #e); \
+    ++failures; } } while (0)
+
+/* M-GB8KRE's frame buffer: 128 MiB at GPU address 78000000
+ * (docs\decisions\2026-11-04-rs690-register-probe.md). */
+#define RS690_FB_BASE  0x78000000ul
+#define RS690_FB_BYTES 0x08000000ul
+
+#define FLOAT_ONE 0x3f800000ul
+
+/* The value of the last write to one register, or 0xdeadbeef if none. */
+static v9x_u32 list_value(const struct v9x_rs690_3d_list *list, v9x_u32 offset)
+{
+    v9x_u32 index;
+    v9x_u32 value = 0xdeadbeeful;
+
+    for (index = 0u; index < list->count; ++index) {
+        if (list->offsets[index] == offset) {
+            value = list->values[index];
+        }
+    }
+    return value;
+}
+
+/* Every write is a dword-aligned register in one of the blocks the probe
+ * VxD lets through: the 2D block's WAIT_UNTIL and DST_PIPE_CONFIG, the
+ * vertex port, the VAP, and the 3D state 4000h-4FFFh. */
+static int list_in_windows(const struct v9x_rs690_3d_list *list)
+{
+    v9x_u32 index;
+
+    for (index = 0u; index < list->count; ++index) {
+        v9x_u32 offset = list->offsets[index];
+
+        if ((offset & 3ul) != 0ul) {
+            return 0;
+        }
+        if (offset == V9X_RS690_WAIT_UNTIL ||
+            offset == V9X_RS690_DST_PIPE_CONFIG ||
+            offset == V9X_RS690_SE_PORT_DATA0 ||
+            (offset >= 0x2080ul && offset < 0x2300ul) ||
+            (offset >= 0x4000ul && offset < 0x5000ul)) {
+            continue;
+        }
+        return 0;
+    }
+    return 1;
+}
+
+static double float_value(v9x_u32 bits)
+{
+    v9x_u32 exponent = (bits >> 23) & 0xfful;
+    v9x_u32 mantissa = bits & 0x007ffffful;
+
+    if (exponent == 0ul) {
+        return ldexp((double)mantissa, -149);
+    }
+    return ldexp((double)(mantissa | 0x00800000ul), (int)exponent - 150);
+}
+
+/* bits is the single nearest to numerator / denominator: no neighbour is
+ * strictly closer. */
+static int float_is_nearest(v9x_u32 bits, v9x_u32 numerator,
+                            v9x_u32 denominator)
+{
+    double exact = (double)numerator / (double)denominator;
+    double here = fabs(float_value(bits) - exact);
+
+    if (bits != 0ul && fabs(float_value(bits - 1ul) - exact) < here) {
+        return 0;
+    }
+    if (fabs(float_value(bits + 1ul) - exact) < here) {
+        return 0;
+    }
+    return (bits & 0x80000000ul) == 0ul;
+}
+
+static void test_floats(void)
+{
+    v9x_u32 n;
+
+    CHECK(v9x_rs690_float_integer(0ul) == 0ul);
+    CHECK(v9x_rs690_float_integer(1ul) == FLOAT_ONE);
+    CHECK(v9x_rs690_float_integer(64ul) == 0x42800000ul);
+    CHECK(v9x_rs690_float_integer(1440ul) == 0x44b40000ul);
+    CHECK(v9x_rs690_float_integer(4080ul) == 0x457f0000ul);
+    CHECK(v9x_rs690_float_integer(0x00ffffffful >> 4) == 0x4b7ffffful);
+
+    CHECK(v9x_rs690_float_ratio(0ul, 255ul) == 0ul);
+    CHECK(v9x_rs690_float_ratio(255ul, 255ul) == FLOAT_ONE);
+    CHECK(v9x_rs690_float_ratio(1ul, 2ul) == 0x3f000000ul);
+    CHECK(v9x_rs690_float_ratio(1ul, 3ul) == 0x3eaaaaabul);
+    CHECK(v9x_rs690_float_ratio(2ul, 3ul) == 0x3f2aaaabul);
+    for (n = 0ul; n <= 255ul; ++n) {
+        if (!float_is_nearest(v9x_rs690_float_ratio(n, 255ul), n, 255ul)) {
+            printf("  ratio %lu/255 -> %08lx\n", (unsigned long)n,
+                   (unsigned long)v9x_rs690_float_ratio(n, 255ul));
+            CHECK(0);
+        }
+    }
+    for (n = 0ul; n <= 31ul; ++n) {
+        CHECK(float_is_nearest(v9x_rs690_float_ratio(n, 31ul), n, 31ul));
+    }
+}
+
+static void test_init(void)
+{
+    struct v9x_rs690_3d_list list;
+
+    /* M-GB8KRE: one pipe (GB_PIPE_SELECT 13:12 = 0). */
+    CHECK(v9x_rs690_build_3d_init(0ul, &list) == V9X_STATUS_OK);
+    CHECK(list.count == 64u);
+    CHECK(list_in_windows(&list));
+    CHECK(list.offsets[0] == V9X_RS690_RB3D_DSTCACHE_CTLSTAT);
+    CHECK(list.values[0] == V9X_RS690_RB3D_DC_FLUSH_ALL);
+    CHECK(list.offsets[2] == V9X_RS690_WAIT_UNTIL);
+    CHECK(list.values[2] == (V9X_RS690_WAIT_2D_IDLECLEAN |
+                             V9X_RS690_WAIT_3D_IDLECLEAN));
+    CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x00000011ul);
+    CHECK(list_value(&list, V9X_RS690_DST_PIPE_CONFIG) ==
+          V9X_RS690_PIPE_AUTO_CONFIG);
+    CHECK(list_value(&list, V9X_RS690_GB_MSPOS0) == 0x66666666ul);
+    CHECK(list_value(&list, V9X_RS690_GB_MSPOS1) == 0x06666666ul);
+    CHECK(list_value(&list, V9X_RS690_GA_ENHANCE) == 0x00000003ul);
+    CHECK(list_value(&list, V9X_RS690_GA_POLY_MODE) == 0x00000120ul);
+    CHECK(list_value(&list, V9X_RS690_GA_ROUND_MODE) == 0x00000005ul);
+    CHECK(list_value(&list, V9X_RS690_GA_COLOR_CONTROL) == 0x0000aaaaul);
+    CHECK(list_value(&list, V9X_RS690_SU_CULL_MODE) == 0x00000004ul);
+    CHECK(list_value(&list, V9X_RS690_SU_DEPTH_SCALE) == 0x4b7ffffful);
+    CHECK(list_value(&list, V9X_RS690_VAP_CNTL_STATUS) == 0x00000100ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_CNTL) == 0x0014025aul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTE_CNTL) == 0x00000300ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_EXT_0) ==
+          0xf688f688ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_EXT_1) ==
+          0x0000f688ul);
+    CHECK(list_value(&list, V9X_RS690_RS_IP_0) == 0x01610000ul);
+    CHECK(list_value(&list, V9X_RS690_RS_IP_1) == 0x01610002ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_0) == 0x00000008ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_1) == 0x00000049ul);
+    CHECK(list_value(&list, V9X_RS690_US_OUT_FMT_1) == 0x00001b0ful);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK) ==
+          0x0000000ful);
+    CHECK(list_value(&list, V9X_RS690_SC_EDGERULE) == 0x0a5294a5ul);
+    CHECK(list_value(&list, V9X_RS690_SC_CLIP_0_A) ==
+          (1440ul | (1440ul << 13)));
+    CHECK(list_value(&list, V9X_RS690_SC_CLIP_0_B) ==
+          (4080ul | (4080ul << 13)));
+    CHECK(list_value(&list, V9X_RS690_SC_CLIP_RULE) == 0x0000aaaaul);
+    CHECK(list_value(&list, V9X_RS690_SC_SCREENDOOR) == 0x00fffffful);
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_SC_SCREENDOOR);
+
+    /* Two, three and four pipes: R300, R420_3P, R420 encodings. */
+    CHECK(v9x_rs690_build_3d_init(0x1000ul, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x00000017ul);
+    CHECK(v9x_rs690_build_3d_init(0x2000ul, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x0000001dul);
+    CHECK(v9x_rs690_build_3d_init(0x3000ul, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x0000001ful);
+
+    CHECK(v9x_rs690_build_3d_init(0ul, 0) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void base_target(struct v9x_rs690_3d_target *target)
+{
+    memset(target, 0, sizeof(*target));
+    target->fb_gpu_base = RS690_FB_BASE;
+    target->fb_bytes = RS690_FB_BYTES;
+    target->offset = 0x01000000ul;
+    target->pitch_bytes = 128ul;
+    target->bytes_per_pixel = 2ul;
+    target->width = 64ul;
+    target->height = 32ul;
+}
+
+static void test_target(void)
+{
+    struct v9x_rs690_3d_target target;
+    struct v9x_rs690_3d_list list;
+
+    base_target(&target);
+    CHECK(v9x_rs690_build_3d_target(&target, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOROFFSET0) ==
+          RS690_FB_BASE + 0x01000000ul);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLORPITCH0) ==
+          (64ul | V9X_RS690_COLOR_FORMAT_RGB565));
+    CHECK(list_value(&list, V9X_RS690_SC_SCISSOR0) ==
+          (1440ul | (1440ul << 13)));
+    CHECK(list_value(&list, V9X_RS690_SC_SCISSOR1) ==
+          ((1440ul + 63ul) | ((1440ul + 31ul) << 13)));
+
+    /* Position FLOAT_2 to slot 0, colour FLOAT_4 to slot 2, last. */
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_0) ==
+          0x62034001ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTX_SIZE) ==
+          V9X_RS690_VERTEX_DWORDS);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTX_STATE_CNTL) == 0x00005555ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VSM_VTX_ASSM) == 0x00000005ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_OUTPUT_VTX_FMT_0) == 0x00000003ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_OUTPUT_VTX_FMT_1) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_TX_ENABLE) == 0ul);
+
+    /* One colour interpolated into shader temp 0. */
+    CHECK(list_value(&list, V9X_RS690_RS_IP_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_0) == 0x00004000ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040080ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 0ul);
+
+    /* One ALU instruction, out = temp0 * 1 + 0, clamped. */
+    CHECK(list_value(&list, V9X_RS690_US_CONFIG) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400000ul);
+    CHECK(list_value(&list, V9X_RS690_US_OUT_FMT_0) == 0x00001b00ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c000000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040889ul);
+    CHECK(list_value(&list, V9X_RS690_RB3D_CBLEND) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RB3D_ABLEND) == 0ul);
+
+    target.bytes_per_pixel = 4ul;
+    target.pitch_bytes = 256ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLORPITCH0) ==
+          (64ul | V9X_RS690_COLOR_FORMAT_ARGB8888));
+
+    /* 8 and 24 bpp; a pitch short of 8 pixels' alignment or the width; an
+     * unaligned offset; a surface past the frame buffer or the scan
+     * converter; nothing to write into. */
+    base_target(&target);
+    target.bytes_per_pixel = 1ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) == V9X_STATUS_UNSUPPORTED);
+    target.bytes_per_pixel = 3ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) == V9X_STATUS_UNSUPPORTED);
+    base_target(&target);
+    target.pitch_bytes = 132ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) == V9X_STATUS_UNSUPPORTED);
+    base_target(&target);
+    target.width = 72ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_target(&target);
+    target.offset = 0x01000008ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) == V9X_STATUS_UNSUPPORTED);
+    base_target(&target);
+    target.offset = RS690_FB_BYTES - 128ul * 31ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_target(&target);
+    target.width = V9X_RS690_SURFACE_MAX + 8ul;
+    target.pitch_bytes = target.width * 2ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_target(&target);
+    target.height = 0ul;
+    CHECK(v9x_rs690_build_3d_target(&target, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_target(&target);
+    CHECK(v9x_rs690_build_3d_target(0, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_target(&target, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void set_vertex(struct v9x_rs690_3d_vertex *vertex, v9x_u32 x,
+                       v9x_u32 y, v9x_u32 red, v9x_u32 green, v9x_u32 blue)
+{
+    vertex->x = x;
+    vertex->y = y;
+    vertex->red = red;
+    vertex->green = green;
+    vertex->blue = blue;
+    vertex->alpha = 255ul;
+}
+
+static void test_draw(void)
+{
+    struct v9x_rs690_3d_vertex vertices[V9X_RS690_3D_VERTICES_MAX + 1u];
+    struct v9x_rs690_3d_list list;
+    v9x_u32 index;
+
+    set_vertex(&vertices[0], 4ul, 2ul, 255ul, 0ul, 0ul);
+    set_vertex(&vertices[1], 40ul, 2ul, 0ul, 255ul, 0ul);
+    set_vertex(&vertices[2], 4ul, 30ul, 0ul, 0ul, 255ul);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 3ul,
+                                  64ul, 32ul, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count == 1u + 3u * 6u);
+    CHECK(list.offsets[0] == V9X_RS690_VAP_VF_CNTL);
+    CHECK(list.values[0] == 0x00030034ul);
+    for (index = 1u; index < list.count; ++index) {
+        CHECK(list.offsets[index] == V9X_RS690_SE_PORT_DATA0);
+    }
+    /* x, y, r, g, b, a of the first vertex; the second's green. */
+    CHECK(list.values[1] == 0x40800000ul);
+    CHECK(list.values[2] == 0x40000000ul);
+    CHECK(list.values[3] == FLOAT_ONE);
+    CHECK(list.values[4] == 0ul);
+    CHECK(list.values[5] == 0ul);
+    CHECK(list.values[6] == FLOAT_ONE);
+    CHECK(list.values[7] == 0x42200000ul);
+    CHECK(list.values[10] == FLOAT_ONE);
+
+    set_vertex(&vertices[3], 40ul, 30ul, 0ul, 0ul, 0ul);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_QUADS, vertices, 4ul, 64ul,
+                                  32ul, &list) == V9X_STATUS_OK);
+    CHECK(list.values[0] == 0x0004003dul);
+    CHECK(list.count == 1u + 4u * 6u);
+
+    /* Edges of the surface are coordinates; past them is not. */
+    set_vertex(&vertices[0], 64ul, 32ul, 0ul, 0ul, 0ul);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 3ul,
+                                  64ul, 32ul, &list) == V9X_STATUS_OK);
+    vertices[0].x = 65ul;
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 3ul,
+                                  64ul, 32ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vertices[0].x = 4ul;
+    vertices[0].y = 33ul;
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 3ul,
+                                  64ul, 32ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vertices[0].y = 2ul;
+    vertices[1].blue = 256ul;
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 3ul,
+                                  64ul, 32ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vertices[1].blue = 0ul;
+
+    /* Not a whole number of primitives; none; too many; an unknown type. */
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 4ul,
+                                  64ul, 32ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_QUADS, vertices, 3ul, 64ul,
+                                  32ul, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices, 0ul,
+                                  64ul, 32ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    for (index = 0u; index <= V9X_RS690_3D_VERTICES_MAX; ++index) {
+        set_vertex(&vertices[index], 1ul, 1ul, 0ul, 0ul, 0ul);
+    }
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                  V9X_RS690_3D_VERTICES_MAX, 64ul, 32ul,
+                                  &list) == V9X_STATUS_OK);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                  V9X_RS690_3D_VERTICES_MAX + 3u, 64ul, 32ul,
+                                  &list) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw(5ul, vertices, 3ul, 64ul, 32ul, &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_rs690_build_3d_draw(V9X_RS690_PRIM_TRIANGLES, 0, 3ul, 64ul,
+                                  32ul, &list) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void base_texture(struct v9x_rs690_3d_texture *texture)
+{
+    memset(texture, 0, sizeof(*texture));
+    texture->offset = 0x01010000ul;
+    texture->pitch_bytes = 64ul;
+    texture->format = V9X_RS690_TEXFMT_RGB565;
+    texture->width = 32ul;
+    texture->height = 16ul;
+    texture->filter = V9X_RS690_TEXFILTER_NEAREST;
+    texture->address = V9X_RS690_TEXADDR_CLAMP;
+    texture->combine = V9X_RS690_TEXCOMBINE_REPLACE;
+}
+
+static v9x_status build_texture(const struct v9x_rs690_3d_texture *texture,
+                                struct v9x_rs690_3d_list *list)
+{
+    return v9x_rs690_build_3d_texture(RS690_FB_BASE, RS690_FB_BYTES, texture,
+                                      list);
+}
+
+static void test_texture(void)
+{
+    struct v9x_rs690_3d_texture texture;
+    struct v9x_rs690_3d_list list;
+
+    base_texture(&texture);
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count == 31u);
+
+    /* Unit 0: clamp to the edge texel on S and T, nearest both ways; 32 x 16
+     * texels addressed by pitch; RGB565 with alpha forced to one; pitch in
+     * texels less one; the GPU address. */
+    CHECK(list_value(&list, V9X_RS690_TX_FILTER0_0) == 0x00000a12ul);
+    CHECK(list_value(&list, V9X_RS690_TX_FILTER1_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x8000781ful);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT1_0) == 0x0000aa06ul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
+    CHECK(list_value(&list, V9X_RS690_TX_OFFSET_0) ==
+          RS690_FB_BASE + 0x01010000ul);
+    CHECK(list_value(&list, V9X_RS690_TX_BORDER_COLOR_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_TX_INVALTAGS) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_TX_ENABLE) == 1ul);
+
+    /* Position slot 0, colour slot 2, texture 0 slot 6 and last. */
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_0) ==
+          0x42034001ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_PROG_STREAM_CNTL_1) ==
+          0x00006601ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VSM_VTX_ASSM) == 0x00000405ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_OUTPUT_VTX_FMT_0) == 0x00000003ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_OUTPUT_VTX_FMT_1) == 0x00000002ul);
+    CHECK(list_value(&list, V9X_RS690_VAP_VTX_SIZE) ==
+          V9X_RS690_TEX_VERTEX_DWORDS);
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_VAP_VTX_SIZE);
+
+    /* s, t, 0, 1 into temp 0; colour into temp 1; two texture components
+     * and one colour. */
+    CHECK(list_value(&list, V9X_RS690_RS_IP_0) == 0x01610000ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040082ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_0) == 0x00024008ul);
+
+    /* First node has a texture load: LD temp 0 <- unit 0 at temp 0; then
+     * out = temp0 * 1 + 0. */
+    CHECK(list_value(&list, V9X_RS690_US_CONFIG) == 0x00000008ul);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_OFFSET) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_0) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_US_CODE_ADDR_3) == 0x00400000ul);
+    CHECK(list_value(&list, V9X_RS690_US_TEX_INST_0) == 0x00008000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c000000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040889ul);
+
+    /* ARGB8888, bilinear, wrapping, modulated: out = temp0 * temp1 + 0. */
+    texture.format = V9X_RS690_TEXFMT_ARGB8888;
+    texture.pitch_bytes = 128ul;
+    texture.filter = V9X_RS690_TEXFILTER_LINEAR;
+    texture.address = V9X_RS690_TEXADDR_WRAP;
+    texture.combine = V9X_RS690_TEXCOMBINE_MODULATE;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FILTER0_0) == 0x00001400ul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT1_0) == 0x0000a60cul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c000040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40050200ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040509ul);
+
+    /* A wider pitch than the row: the pitch field follows the pitch. */
+    base_texture(&texture);
+    texture.pitch_bytes = 128ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 63ul);
+    texture.width = 2048ul;
+    texture.height = 2048ul;
+    texture.pitch_bytes = 4096ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x803ffffful);
+
+    /* Unknown format, filter, addressing, combine. */
+    base_texture(&texture);
+    texture.format = 3ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&texture);
+    texture.filter = 2ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&texture);
+    texture.address = 2ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&texture);
+    texture.combine = 2ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+
+    /* Misaligned offset or pitch. */
+    base_texture(&texture);
+    texture.offset = 0x01010010ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&texture);
+    texture.pitch_bytes = 80ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+
+    /* Empty, too large, a pitch shorter than a row, past the frame buffer. */
+    base_texture(&texture);
+    texture.width = 0ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&texture);
+    texture.height = 0ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&texture);
+    texture.width = 2049ul;
+    texture.pitch_bytes = 4128ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&texture);
+    texture.pitch_bytes = 32ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&texture);
+    texture.offset = RS690_FB_BYTES - 64ul * 15ul;
+    texture.offset &= ~31ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
+    base_texture(&texture);
+    CHECK(v9x_rs690_build_3d_texture(RS690_FB_BASE, RS690_FB_BYTES, 0,
+                                     &list) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_texture(RS690_FB_BASE, RS690_FB_BYTES, &texture,
+                                     0) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void set_tex_vertex(struct v9x_rs690_3d_tex_vertex *vertex, v9x_u32 x,
+                           v9x_u32 y, v9x_u32 s, v9x_u32 t)
+{
+    vertex->x = x;
+    vertex->y = y;
+    vertex->red = 255ul;
+    vertex->green = 128ul;
+    vertex->blue = 0ul;
+    vertex->alpha = 255ul;
+    vertex->s = s;
+    vertex->t = t;
+}
+
+static void test_draw_textured(void)
+{
+    struct v9x_rs690_3d_tex_vertex vertices[V9X_RS690_3D_VERTICES_MAX + 1u];
+    struct v9x_rs690_3d_list list;
+    v9x_u32 index;
+
+    set_tex_vertex(&vertices[0], 4ul, 0ul, 0ul, 0ul);
+    set_tex_vertex(&vertices[1], 4ul, 16ul, 0ul, FLOAT_ONE);
+    set_tex_vertex(&vertices[2], 36ul, 16ul, FLOAT_ONE, FLOAT_ONE);
+    set_tex_vertex(&vertices[3], 36ul, 0ul, FLOAT_ONE, 0ul);
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_QUADS, vertices,
+                                           4ul, 64ul, 16ul, &list) ==
+          V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count == 1u + 4u * 8u);
+    CHECK(list.values[0] == 0x0004003dul);
+    for (index = 1u; index < list.count; ++index) {
+        CHECK(list.offsets[index] == V9X_RS690_SE_PORT_DATA0);
+    }
+    /* The second vertex: x, y, r, g, b, a, s, t. */
+    CHECK(list.values[9] == 0x40800000ul);
+    CHECK(list.values[10] == 0x41800000ul);
+    CHECK(list.values[11] == FLOAT_ONE);
+    CHECK(list.values[12] == v9x_rs690_float_ratio(128ul, 255ul));
+    CHECK(list.values[13] == 0ul);
+    CHECK(list.values[14] == FLOAT_ONE);
+    CHECK(list.values[15] == 0ul);
+    CHECK(list.values[16] == FLOAT_ONE);
+
+    /* Coordinates past 1 (wrapping) go through unchanged. */
+    vertices[2].s = 0x40000000ul;
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_QUADS, vertices,
+                                           4ul, 64ul, 16ul, &list) ==
+          V9X_STATUS_OK);
+    CHECK(list.values[1u + 2u * 8u + 6u] == 0x40000000ul);
+
+    /* Twelve vertices fill the list without overflowing it. */
+    for (index = 0u; index <= V9X_RS690_3D_VERTICES_MAX; ++index) {
+        set_tex_vertex(&vertices[index], 1ul, 1ul, 0ul, 0ul);
+    }
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                           V9X_RS690_3D_VERTICES_MAX, 64ul,
+                                           16ul, &list) == V9X_STATUS_OK);
+    CHECK(list.count == 1u + V9X_RS690_3D_VERTICES_MAX * 8u);
+
+    /* The same refusals as the colour-only draw. */
+    vertices[0].x = 65ul;
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                           3ul, 64ul, 16ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vertices[0].x = 1ul;
+    vertices[0].alpha = 256ul;
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                           3ul, 64ul, 16ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    vertices[0].alpha = 255ul;
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_TRIANGLES, vertices,
+                                           V9X_RS690_3D_VERTICES_MAX + 3u,
+                                           64ul, 16ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_QUADS, vertices,
+                                           3ul, 64ul, 16ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_draw_textured(5ul, vertices, 3ul, 64ul, 16ul,
+                                           &list) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_TRIANGLES, 0, 3ul,
+                                           64ul, 16ul, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_finish(void)
+{
+    struct v9x_rs690_3d_list list;
+
+    CHECK(v9x_rs690_build_3d_finish(&list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list.count == 3u);
+    CHECK(list.offsets[0] == V9X_RS690_SC_CLIP_RULE);
+    CHECK(list.values[0] == 0x0000aaaaul);
+    CHECK(list.offsets[1] == V9X_RS690_RB3D_DSTCACHE_CTLSTAT);
+    CHECK(list.values[1] == V9X_RS690_RB3D_DC_FLUSH_ALL);
+    CHECK(list.offsets[2] == V9X_RS690_WAIT_UNTIL);
+    CHECK(list.values[2] == V9X_RS690_WAIT_3D_IDLECLEAN);
+    CHECK(v9x_rs690_build_3d_finish(0) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+unsigned int v9x_run_rs690_3d_tests(void)
+{
+    failures = 0u;
+    test_floats();
+    test_init();
+    test_target();
+    test_draw();
+    test_texture();
+    test_draw_textured();
+    test_finish();
+    return failures;
+}

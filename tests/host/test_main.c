@@ -321,6 +321,10 @@ unsigned int v9x_run_r128_2d_tests(void);
  * values against xf86-video-ati 6.14.6's MMIO EXA encodings. */
 unsigned int v9x_run_rs690_2d_tests(void);
 
+/* tests\host\test_rs690_3d.c: RS690 3D init, colour-buffer state and draw
+ * register values against xf86-video-ati 6.14.6 and Mesa r300. */
+unsigned int v9x_run_rs690_3d_tests(void);
+
 /* tests\host\test_eg_dma.c: Evergreen DMA fill and copy packets, run
  * through a model of the engine the write probe measured and compared
  * with a CPU rectangle operation. */
@@ -1488,6 +1492,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_rs690_2d_tests();
+    failures += v9x_run_rs690_3d_tests();
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_vi_3d_tests();
