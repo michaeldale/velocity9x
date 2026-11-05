@@ -536,6 +536,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_tdfx;
     case V9X_D3D_SELECT_GEN75:
         return &v9x_d3d_engine_hsw;
+    case V9X_D3D_SELECT_GEN7:
+        return &v9x_d3d_engine_hsw_ivb;
     case V9X_D3D_SELECT_GEN4:
         return &v9x_d3d_engine_g4;
     case V9X_D3D_SELECT_R128:
@@ -9667,7 +9669,7 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_tdfx) {
         out->engine = V9X_R3D_ABI_ENGINE_TDFX;
         name = "Velocity9x VSA-100";
-    } else if (ops == &v9x_d3d_engine_hsw) {
+    } else if (ops == &v9x_d3d_engine_hsw || ops == &v9x_d3d_engine_hsw_ivb) {
         out->engine = V9X_R3D_ABI_ENGINE_GEN75;
         /* The same engine on Ivy Bridge, named by its identity bit; it
          * read "HD 4600" until 2026-10-21 (V9XGLP on W9QI4E14). */
@@ -9798,7 +9800,7 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
-    } else if (ops == &v9x_d3d_engine_hsw) {
+    } else if (ops == &v9x_d3d_engine_hsw || ops == &v9x_d3d_engine_hsw_ivb) {
         /* Haswell samples DirectDraw's video-memory textures in all three
          * formats, 1 to 2048 (V9XDDP's texture checks, F2a). Powers of two
          * until a non-power-of-two edge is measured: Vol 2d allows one on a
