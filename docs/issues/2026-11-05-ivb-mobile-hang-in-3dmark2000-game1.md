@@ -1,6 +1,7 @@
 # The HD 4000 mobile hard-locks a minute into 3DMark 2000's Game 1
 
-Date: 2026-11-05. Status: **open**, seen once, cause not found.
+Date: 2026-11-05. Status: **open; bisected 2026-11-06 to the two-stage path
+(`45bfb395`)**. The kernel or state that stops the GPU is not found yet.
 
 Machine: W9QI75E0 (`M-ZJQ2DX`), HD 4000 mobile `8086:0166`, LVDS panel on
 pipe A. Driver `aa70a3a9` from branch `intel-ivb-mobile`, boot 5. Plan:
@@ -58,3 +59,45 @@ Each hang costs the owner a power cycle, so the order matters:
    behaviour on Ivy Bridge. If Game 1 then runs, split those three.
 3. Run 3DMark 2000 windowed or at 1366x768, if hypothesis 1 survives,
    to separate the full-screen mode change.
+
+## Bisect (2026-11-06, boots 7-12)
+
+Whole-HAL bisection by commit does not work: the HALs built at
+`178201b9` and at `9a3a8178` (the desktop's 3DMark build, committed)
+load beside the `aa70a3a9` driver but offer no Direct3D device, and
+3DMark 2000 refuses to start ("requires a DirectX 7 compatible
+3D-accelerator"; boots 7 and 8). Why was not looked into.
+
+So each run below is `aa70a3a9`'s HAL with a measurement patch in
+`d3d_hsw.c` that changes Ivy Bridge only (never committed). Each went in
+as `V9XHAL.DLL` alone by a plain `WININIT.INI` rename, checked by SHA-256
+after the `reset`; `V9XD32` passed on each before 3DMark ran. The owner
+was told before the first run.
+
+| Boot | Variant | Guard band | Two stages | Indexed | 3DMark 2000 default run |
+|---|---|---|---|---|---|
+| 5 | as shipped | on | on | on | hard lock ~1 min in (owner power-cycled) |
+| 9 | 1 | off (core clips) | off | declined | completed, 2492 |
+| 10 | 2 | **on** | off | declined | completed, 2532 |
+| 11 | 3 | on | **on** | declined | **stalled**: no agent log line for 19 min from ~30 s in, then the desktop with 3DMark gone, same boot |
+| 12 | 4 | on | off | **on** | completed, 2719 |
+
+Scores are recorded, not compared. Each completed run took 5.5 min
+(`wait-window` on "Overall Score").
+
+So the guard band (`1d8d3045`) and whole indexed draws (`8574abcc`) are
+cleared on this machine; the two Direct3D texture stages in one pass
+(`45bfb395`) are what Game 1 cannot survive on the HD 4000. W9QI4E14's
+3DMark pass predates that commit.
+
+Boot 11 recovered without a reboot, unlike boot 5. The owner has been
+asked whether he ended 3DMark himself.
+
+Not yet known: which stage pairing Game 1 asks for. `V9XD32` T12 (two
+stages) and the render interface's two-unit test pass on this machine,
+so it is a pairing they do not draw, or its kernel, sampler or PS state
+on Gen7. `TwoUnitBatches` read 266 in every snapshot, the same with one
+stage, so it counts `V9XD32`'s render-interface run, not 3DMark.
+
+Captures: `boot9-variant1-*`, `boot10-variant2-*`, `boot11-variant3-*`,
+`boot12-variant4-*` and `AGENT-boot11.LOG`.
