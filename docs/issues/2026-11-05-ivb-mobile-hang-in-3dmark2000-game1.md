@@ -1,7 +1,9 @@
 # The HD 4000 mobile hard-locks a minute into 3DMark 2000's Game 1
 
-Date: 2026-11-05. Status: **open; bisected 2026-11-06 to the two-stage path
-(`45bfb395`)**. The kernel or state that stops the GPU is not found yet.
+Date: 2026-11-05. Status: **fixed 2026-11-06 in `efef10e0`** (Ivy Bridge
+draws one texture stage per pass), measured on this machine at boot 13.
+Bisected to the two-stage path (`45bfb395`); the kernel or state that
+stops the GPU with two stages is not found.
 
 Machine: W9QI75E0 (`M-ZJQ2DX`), HD 4000 mobile `8086:0166`, LVDS panel on
 pipe A. Driver `aa70a3a9` from branch `intel-ivb-mobile`, boot 5. Plan:
@@ -101,3 +103,21 @@ stage, so it counts `V9XD32`'s render-interface run, not 3DMark.
 
 Captures: `boot9-variant1-*`, `boot10-variant2-*`, `boot11-variant3-*`,
 `boot12-variant4-*` and `AGENT-boot11.LOG`.
+
+## Fix (2026-11-06, `efef10e0`, boot 13)
+
+The Gen7.5 engine type selects its own table on Ivy Bridge
+(`V9X_D3D_SELECT_GEN7`, `v9x_d3d_engine_hsw_ivb`), whose limits equal
+Haswell's but for `texture_stages = 1`; Haswell is unchanged.
+`run-checks` passed, with the new selector cases seen failing first.
+
+`V9XHAL.DLL` from `efef10e0` (SHA-256 `55B27DEF...`) went in alone by the
+same `WININIT.INI` rename. `V9XD32` passed (T12 `SKIPPED-ONE-STAGE`), and
+3DMark 2000's default run completed in 5.5 min with 2711, `EngineResets`
+and every timeout 0 (`boot13-efef10e0-*`).
+
+`HalBuild` in every snapshot of these swaps read `aa70a3a9`, so it is not
+the HAL file's own id; the hash is what identifies the file.
+
+Left open: which stage pairing stops the GPU on Gen7, and whether boot
+11 recovered by itself (the owner has not answered).

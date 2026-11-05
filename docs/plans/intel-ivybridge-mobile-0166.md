@@ -51,11 +51,13 @@ pipe A and plane A are live.
   results, unchanged.
 - 3DMark 2000, 2026-11-05: **hard lock in Game 1**, one run
   (`docs\issues\2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md`).
+- 2026-11-06: bisected to two texture stages in one pass (`dd0a2a46`);
+  fixed by one stage on Ivy Bridge (`efef10e0`). 3DMark 2000 completes
+  on boot 13.
 
 ## Next
 
-- The 3DMark 2000 hang blocks the merge. The likeliest cause is Haswell
-  work since 21 October that no Ivy Bridge has run; the issue gives the
-  bisect order.
+- The merge question. The fix changes Ivy Bridge's Direct3D on every
+  HD 4000, including W9QI4E14's desktop, which has not run it.
 - The owner's answer on what the panel shows.
 - A DOS box round trip needs the owner at the keyboard.
