@@ -1,0 +1,93 @@
+REGEDIT4
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display]
+@="Display adapters"
+"Installer"="SetupX.Dll, Display_ClassInstaller"
+"Icon"="-1"
+"EnumDriverStack"="enumfile.dll,EnumDisplayDriverStack"
+"Link"="{4d36e968-e325-11ce-bfc1-08002be10318}"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"InfPath"="MSDISP.INF"
+"InfSection"="VGA"
+"ProviderName"="Microsoft"
+"DriverDate"=" 4-23-1999"
+"DriverDesc"="Standard PCI Graphics Adapter (VGA)"
+"MatchingDeviceId"="PCI\\CC_0300"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\DEFAULT]
+"Mode"="4,640,480"
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\1]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\1\640,480]
+"drv"="framebuf.drv"
+"vdd"="*vdd,*vflatd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0000\MODES\4\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"InfPath"="MSDISP.INF"
+"InfSection"="VGA"
+"ProviderName"="Microsoft"
+"DriverDate"=" 4-23-1999"
+"DriverDesc"="Standard PCI Graphics Adapter (VGA)"
+"MatchingDeviceId"="PCI\\CC_0300"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\DEFAULT]
+"Mode"="4,640,480"
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\1]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\1\640,480]
+"drv"="framebuf.drv"
+"vdd"="*vdd,*vflatd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0001\MODES\4\640,480]
+@=""
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002]
+"Ver"="4.0"
+"DevLoader"="*vdd"
+"InfPath"="MSDISP.INF"
+"InfSection"="VGA"
+"ProviderName"="Microsoft"
+"DriverDate"=" 4-23-1999"
+"DriverDesc"="Standard PCI Graphics Adapter (VGA)"
+"MatchingDeviceId"="PCI\\CC_0300"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\DEFAULT]
+"Mode"="4,640,480"
+"drv"="vga.drv"
+"vdd"="*vdd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\1]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\1\640,480]
+"drv"="framebuf.drv"
+"vdd"="*vdd,*vflatd"
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\4]
+
+[HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display\0002\MODES\4\640,480]
+@=""
+
