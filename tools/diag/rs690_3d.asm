@@ -98,6 +98,9 @@ RS_OP_LFB_GRADIENT      equ 6
 RS_OP_LFB_READ_BLOCK    equ 7
 RS_OP_WAIT_IDLE         equ 8
 RS_OP_WAIT_FIFO         equ 9
+RS_OP_PHYS_READ_BLOCK   equ 10
+RS_PHYS_WINDOW_BASE     equ 05c00000h
+RS_PHYS_WINDOW_BYTES    equ 00800000h
 
 ; Status bits.
 RS_PCI_FOUND            equ 00000001h
@@ -116,6 +119,7 @@ RS_RESULT_DWORDS        equ (RS_HEADER_DWORDS + RS_OP_MAX * RS_OP_DWORDS + \
 VxD_LOCKED_DATA_SEG
 ; Readable windows: start, limit (exclusive).
 RSReadWindows label dword
+    dd 0078h, 0080h     ; MC_INDEX, MC_DATA (MC registers, read only)
     dd 00f8h, 00fch     ; CONFIG_MEMSIZE
     dd 0134h, 0138h     ; HDP_FB_LOCATION
     dd 0740h, 0744h     ; CP_CSQ_CNTL
@@ -124,21 +128,30 @@ RSReadWindows label dword
     dd 1724h, 17c0h     ; DSTCACHE_*, the rest below HOST_DATA0
     dd 6000h, 6150h     ; D1CRTC_*, D1GRPH_*
     dd 2140h, 2144h     ; VAP_CNTL_STATUS
+    dd 3428h, 342ch     ; RB2D_DSTCACHE_MODE
     dd 4018h, 401ch     ; GB_TILE_CONFIG
     dd 402ch, 4030h     ; GB_PIPE_SELECT
     dd 4e4ch, 4e50h     ; RB3D_DSTCACHE_CTLSTAT
     dd 4f18h, 4f1ch     ; ZB_ZCACHE_CTLSTAT
-RS_READ_WINDOW_COUNT    equ 12
+RS_READ_WINDOW_COUNT    equ 14
 
-; Writable windows: start, limit (exclusive).
+; Writable windows: start, limit (exclusive). MC_INDEX takes an index
+; only: a value with MC_IND_WR_EN (bit 9) is refused, so the memory
+; controller's registers can be read through MC_DATA and never written
+; (Linux rs690_mc_rreg's sequence).
+RS_MC_INDEX             equ 0078h
+RS_MC_IND_WR_EN         equ 0200h
 RSWriteWindows label dword
+    dd 0078h, 007ch     ; MC_INDEX
     dd 1400h, 1700h     ; the 2D engine
     dd 170ch, 1710h     ; DST_PIPE_CONFIG
+    dd 1714h, 1718h     ; DSTCACHE_CTLSTAT (eng_rs690.c's 2D flush)
     dd 1720h, 1724h     ; WAIT_UNTIL
     dd 2000h, 2004h     ; SE_PORT_DATA0
     dd 2080h, 2300h     ; VAP
+    dd 3428h, 342ch     ; RB2D_DSTCACHE_MODE (Linux r420_pipes_init)
     dd 4000h, 5000h     ; GB, GA, SU, RS, SC, US, FG, RB3D, ZB
-RS_WRITE_WINDOW_COUNT   equ 6
+RS_WRITE_WINDOW_COUNT   equ 9
 
 RSResult label dword
     dd RS_MAGIC                 ; 00 magic
@@ -153,6 +166,7 @@ RSOps   dd (RS_OP_MAX * RS_OP_DWORDS) dup (0)
 RSBlock dd RS_BLOCK_DWORDS dup (0)
 RSLfbLinear  dd 0
 RSMmioLinear dd 0
+RSPhysLinear dd 0
 RSLfbPhys    dd 0
 RSMmioPhys   dd 0
 RSCount      dd 0
@@ -413,7 +427,47 @@ BeginProc RS_Execute_One
     je      RS_Do_Wait_Idle
     cmp     eax, RS_OP_WAIT_FIFO
     je      RS_Do_Wait_Fifo
+    cmp     eax, RS_OP_PHYS_READ_BLOCK
+    je      RS_Do_Phys_Read_Block
     jmp     RS_Do_Refuse
+
+; a = byte offset into the physical window, c = dword count (at most the
+; block). Read only: the window is the system RAM the T15 hunt found the
+; second Direct3D process's pixels in
+; (docs\issues\2026-11-05-rs690-t15-heap-words-zeroed-once.md). Mapped once,
+; on first use; nothing in it is ever written.
+RS_Do_Phys_Read_Block:
+    cmp     edx, RS_BLOCK_DWORDS
+    ja      RS_Do_Refuse
+    test    ebx, 3
+    jnz     RS_Do_Refuse
+    cmp     ebx, RS_PHYS_WINDOW_BYTES
+    jae     RS_Do_Refuse
+    mov     eax, RS_PHYS_WINDOW_BYTES
+    sub     eax, ebx
+    shr     eax, 2
+    cmp     edx, eax
+    ja      RS_Do_Refuse
+    cmp     RSPhysLinear, 0
+    jne     short RS_Do_Phys_Mapped
+    push    ebx
+    push    edx
+    VMMcall _MapPhysToLinear,<RS_PHYS_WINDOW_BASE,RS_PHYS_WINDOW_BYTES,0>
+    pop     edx
+    pop     ebx
+    cmp     eax, 0ffffffffh
+    je      RS_Do_Refuse
+    mov     RSPhysLinear, eax
+RS_Do_Phys_Mapped:
+    push    esi
+    mov     esi, RSPhysLinear
+    add     esi, ebx
+    mov     edi, OFFSET32 RSBlock
+    mov     ecx, edx
+    cld
+    rep     movsd
+    pop     esi
+    jmp     RS_Do_Done
 
 ; a = free entries wanted, 1 to 64. Result: reads taken, or RS_TIMEOUT,
 ; which refuses the op so that nothing after it is written.
@@ -445,6 +499,11 @@ RS_Do_Wait_Fifo_Done:
 RS_Do_Mmio_Write32:
     call    RS_Write_Allowed
     jc      RS_Do_Refuse
+    cmp     ebx, RS_MC_INDEX
+    jne     short RS_Do_Mmio_Write32_Go
+    test    ecx, RS_MC_IND_WR_EN
+    jnz     RS_Do_Refuse
+RS_Do_Mmio_Write32_Go:
     mov     edi, RSMmioLinear
     mov     [edi+ebx], ecx
     jmp     RS_Do_Done

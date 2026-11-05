@@ -589,6 +589,12 @@ void v9x_rs690_scanout_reset(void);
  * surface at byte_offset, after the 2D engine has gone idle; zero when it
  * cannot be given. */
 int v9x_rs690_flip_address(DWORD byte_offset, DWORD *address);
+/* engines/eng_rs690.c, for d3d/d3d_rs690.c: the engine validated (its 2D
+ * and 3D init lists written for this mode), the frame buffer's MC address
+ * and where the mapped frame buffer starts in it; zero when the engine is
+ * not usable. Marks the engine as having drawn, so the next idle wait
+ * flushes. */
+int v9x_rs690_3d_begin(DWORD *fb_gpu_base, DWORD *desktop_offset);
 /* Non-zero when this Rage 128's flips go into the CCE ring behind the
  * frame instead of waiting for it. */
 int v9x_r128_flip_queues(void);

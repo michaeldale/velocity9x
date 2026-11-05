@@ -1,0 +1,17 @@
+[V9xD3d32]Build=gb8kre-4d53ab07
+CommandLine="C:\V9XPKG\V9XD32.EXE" /t15bare /t15watch=500
+UnknownSwitches=0x00000000
+RequestBpp=0x00000020
+RequestZBits=0x00000010
+TraceReadable=0x00000001
+Stage=3b-t15-sentinel-fill
+T15Paged=3c-t15-before-file heap 0/0 map 0/0
+T15Paged=3d-t15-after-file heap 0/0 map 0/0
+T15HeapReady=0x00000001
+T15HeapBase=0x005D0000
+T15MapReady=0x00000001
+T15MapBase=0x84586000
+T15HeapBytes=0x02000000
+T15FramesReadable=0x00000001
+T15FillTick=0x00037DA7
+T15FileReady=0x00000001

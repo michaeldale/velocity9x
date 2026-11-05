@@ -45,6 +45,7 @@ static int list_in_windows(const struct v9x_rs690_3d_list *list)
         }
         if (offset == V9X_RS690_WAIT_UNTIL ||
             offset == V9X_RS690_DST_PIPE_CONFIG ||
+            offset == V9X_RS690_RB2D_DSTCACHE_MODE ||
             offset == V9X_RS690_SE_PORT_DATA0 ||
             (offset >= 0x2080ul && offset < 0x2300ul) ||
             (offset >= 0x4000ul && offset < 0x5000ul)) {
@@ -115,9 +116,20 @@ static void test_init(void)
 {
     struct v9x_rs690_3d_list list;
 
-    /* M-GB8KRE: one pipe (GB_PIPE_SELECT 13:12 = 0). */
-    CHECK(v9x_rs690_build_3d_init(0ul, &list) == V9X_STATUS_OK);
-    CHECK(list.count == 64u);
+    /* M-GB8KRE: one pipe (GB_PIPE_SELECT 13:12 = 0), RB2D_DSTCACHE_MODE
+     * read as 0. */
+    CHECK(v9x_rs690_build_3d_init(0ul, 0ul, &list) == V9X_STATUS_OK);
+    CHECK(list.count == 66u);
+    /* Linux r420_pipes_init, which runs for the RS690: GA_ENHANCE with the
+     * TCL deadlock workaround's bits 2 and 3 too; SU_REG_DEST to the one
+     * pipe; the 2D destination cache autoflushed and DC_DISABLE_IGNORE_PE,
+     * ORed into what was read. */
+    CHECK(list_value(&list, V9X_RS690_SU_REG_DEST) == 0x00000001ul);
+    CHECK(list_value(&list, V9X_RS690_RB2D_DSTCACHE_MODE) == 0x00020100ul);
+    CHECK(v9x_rs690_build_3d_init(0ul, 0x00000005ul, &list) ==
+          V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RB2D_DSTCACHE_MODE) == 0x00020105ul);
+    CHECK(v9x_rs690_build_3d_init(0ul, 0ul, &list) == V9X_STATUS_OK);
     CHECK(list_in_windows(&list));
     CHECK(list.offsets[0] == V9X_RS690_RB3D_DSTCACHE_CTLSTAT);
     CHECK(list.values[0] == V9X_RS690_RB3D_DC_FLUSH_ALL);
@@ -129,7 +141,7 @@ static void test_init(void)
           V9X_RS690_PIPE_AUTO_CONFIG);
     CHECK(list_value(&list, V9X_RS690_GB_MSPOS0) == 0x66666666ul);
     CHECK(list_value(&list, V9X_RS690_GB_MSPOS1) == 0x06666666ul);
-    CHECK(list_value(&list, V9X_RS690_GA_ENHANCE) == 0x00000003ul);
+    CHECK(list_value(&list, V9X_RS690_GA_ENHANCE) == 0x0000000ful);
     CHECK(list_value(&list, V9X_RS690_GA_POLY_MODE) == 0x00000120ul);
     CHECK(list_value(&list, V9X_RS690_GA_ROUND_MODE) == 0x00000005ul);
     CHECK(list_value(&list, V9X_RS690_GA_COLOR_CONTROL) == 0x0000aaaaul);
@@ -159,14 +171,18 @@ static void test_init(void)
     CHECK(list.offsets[list.count - 1u] == V9X_RS690_SC_SCREENDOOR);
 
     /* Two, three and four pipes: R300, R420_3P, R420 encodings. */
-    CHECK(v9x_rs690_build_3d_init(0x1000ul, &list) == V9X_STATUS_OK);
+    CHECK(v9x_rs690_build_3d_init(0x1000ul, 0ul, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x00000017ul);
-    CHECK(v9x_rs690_build_3d_init(0x2000ul, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_SU_REG_DEST) == 0x00000003ul);
+    CHECK(v9x_rs690_build_3d_init(0x2000ul, 0ul, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x0000001dul);
-    CHECK(v9x_rs690_build_3d_init(0x3000ul, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_SU_REG_DEST) == 0x00000007ul);
+    CHECK(v9x_rs690_build_3d_init(0x3000ul, 0ul, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_GB_TILE_CONFIG) == 0x0000001ful);
+    CHECK(list_value(&list, V9X_RS690_SU_REG_DEST) == 0x0000000ful);
 
-    CHECK(v9x_rs690_build_3d_init(0ul, 0) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_rs690_build_3d_init(0ul, 0ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 static void base_target(struct v9x_rs690_3d_target *target)
@@ -466,9 +482,21 @@ static void test_texture(void)
     CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_TX_FORMAT0_0) == 0x803ffffful);
 
+    /* ARGB1555 and ARGB4444: two bytes a texel, every channel straight
+     * (X, Y, Z, W), W1Z5Y5X5 0Bh and W4Z4Y4X4 0Ah. */
+    base_texture(&texture);
+    texture.format = V9X_RS690_TEXFMT_ARGB1555;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT1_0) == 0x0000a60bul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
+    texture.format = V9X_RS690_TEXFMT_ARGB4444;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT1_0) == 0x0000a60aul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
+
     /* Unknown format, filter, addressing, combine. */
     base_texture(&texture);
-    texture.format = 3ul;
+    texture.format = 5ul;
     CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
     base_texture(&texture);
     texture.filter = 2ul;
@@ -487,6 +515,18 @@ static void test_texture(void)
     base_texture(&texture);
     texture.pitch_bytes = 80ul;
     CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    /* 32-byte aligned is not enough: the RS690 steps 64-byte rows. An
+     * 8-texel 16-bit texture needs its row padded to 64 bytes. */
+    base_texture(&texture);
+    texture.width = 8ul;
+    texture.height = 8ul;
+    texture.pitch_bytes = 32ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    texture.pitch_bytes = 96ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    texture.pitch_bytes = 64ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
 
     /* Empty, too large, a pitch shorter than a row, past the frame buffer. */
     base_texture(&texture);
@@ -497,10 +537,11 @@ static void test_texture(void)
     CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
     base_texture(&texture);
     texture.width = 2049ul;
-    texture.pitch_bytes = 4128ul;
+    texture.pitch_bytes = 4160ul;
     CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
     base_texture(&texture);
-    texture.pitch_bytes = 32ul;
+    texture.width = 64ul;
+    texture.pitch_bytes = 64ul;
     CHECK(build_texture(&texture, &list) == V9X_STATUS_INVALID_ARGUMENT);
     base_texture(&texture);
     texture.offset = RS690_FB_BYTES - 64ul * 15ul;
@@ -723,6 +764,63 @@ static void test_state(void)
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RS690_SU_CULL_MODE) == 0x00000005ul);
 
+    /* Every channel written, unless the top byte is X. */
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK) == 0x0000000ful);
+    state.x_channel = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK) == 0x00000007ul);
+    state.x_channel = 0ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+
+    /* Shading: Gouraud unless flat, first vertex provoking. */
+    CHECK(list_value(&list, V9X_RS690_GA_COLOR_CONTROL) == 0x0000aaaaul);
+    state.flat = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_GA_COLOR_CONTROL) == 0x00005555ul);
+
+    /* Specular, untextured: colour 1 through interpolator 1 into temp 1;
+     * two colours; out.rgb = temp0 * 1 + temp1 (SEL_C SRC2_RGB, ADDR2 1). */
+    base_state(&state);
+    state.specular = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list_value(&list, V9X_RS690_RS_IP_1) == 0x00000040ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_1) == 0x00024800ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040100ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c001000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40020a80ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040889ul);
+    CHECK(list.offsets[list.count - 1u] == V9X_RS690_VAP_VTX_SIZE);
+
+    /* Specular, textured MODULATE: texel temp 0, diffuse temp 1,
+     * specular temp 2; out.rgb = temp0 * temp1 + temp2. */
+    state.textured = 1ul;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_MODULATE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_0) == 0x00024008ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_1) == 0x00044800ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040102ul);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 1ul);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 2ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c002040ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40020200ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040509ul);
+
+    /* Specular, textured REPLACE: out.rgb = temp0 * 1 + temp2. */
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_ADDR_0) == 0x1c002000ul);
+    CHECK(list_value(&list, V9X_RS690_US_ALU_RGB_INST_0) == 0x40020a80ul);
+
+    /* Without specular the colour-only routing stands. */
+    state.specular = 0ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RS_INST_COUNT) == 0ul);
+    CHECK(list_value(&list, V9X_RS690_RS_COUNT) == 0x00040082ul);
+    CHECK(list_value(&list, V9X_RS690_US_PIXSIZE) == 1ul);
+
     /* Refusals. */
     base_state(&state);
     state.depth_enable = 1ul;
@@ -731,6 +829,9 @@ static void test_state(void)
     base_state(&state);
     state.depth_enable = 1ul;
     state.depth_pitch_bytes = 144ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    /* 48 pixels: 16-aligned, not 32. */
+    state.depth_pitch_bytes = 96ul;
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
     base_state(&state);
     state.depth_enable = 1ul;
@@ -772,7 +873,7 @@ static void test_state(void)
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
     base_state(&state);
     state.textured = 1ul;
-    state.texture.format = 3ul;
+    state.texture.format = 5ul;
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
     base_state(&state);
     state.target.bytes_per_pixel = 1ul;

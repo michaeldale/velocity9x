@@ -79,6 +79,7 @@
 
 #define RS_OP_MMIO_WRITE32 1ul
 #define RS_OP_MMIO_READ32 2ul
+#define RS_OP_LFB_WRITE32 3ul
 #define RS_OP_LFB_FILL32 5ul
 #define RS_OP_LFB_GRADIENT 6ul
 #define RS_OP_LFB_READ_BLOCK 7ul
@@ -1274,10 +1275,19 @@ static int rs_draw_tl(const char *name, struct v9x_rs690_3d_state *state,
     state->depth_offset = DEPTH_OFFSET;
     state->depth_pitch_bytes = DEPTH_PITCH;
     if (state->textured != 0ul) {
+        DWORD texel_bytes = rs_bpp;
+
+        /* A test may name a 16-bit format of its own (rs_tex_format_test);
+         * otherwise the surface's. */
+        if (state->texture.format == V9X_RS690_TEXFMT_ARGB1555 ||
+            state->texture.format == V9X_RS690_TEXFMT_ARGB4444) {
+            texel_bytes = 2u;
+        } else {
+            state->texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
+                                    V9X_RS690_TEXFMT_ARGB8888;
+        }
         state->texture.offset = TEX_OFFSET;
-        state->texture.pitch_bytes = TEX_WIDTH * rs_bpp;
-        state->texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
-                                V9X_RS690_TEXFMT_ARGB8888;
+        state->texture.pitch_bytes = TEX_WIDTH * texel_bytes;
         state->texture.width = TEX_WIDTH;
         state->texture.height = TEX_HEIGHT;
     }
@@ -1290,7 +1300,7 @@ static int rs_draw_tl(const char *name, struct v9x_rs690_3d_state *state,
     }
     if (state->textured != 0ul) {
         rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
-               TEX_WIDTH * TEX_HEIGHT * rs_bpp / 4u);
+               state->texture.pitch_bytes * TEX_HEIGHT / 4u);
     }
     before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     if (v9x_rs690_build_3d_state(state, &list) != V9X_STATUS_OK) {
@@ -1650,6 +1660,288 @@ static void rs_perspective_test(void)
     rs_result(name, judged != 0u && perspective == judged);
 }
 
+/*
+ * TexFormat1555 / TexFormat4444: the gradient written as 16-bit texels
+ * (texel n is n), read as ARGB1555 or ARGB4444, drawn 1:1 over x 0-31,
+ * rows 0-15, nearest, clamped, REPLACE with the texel's alpha, through the
+ * TL state. Each channel within one step of the texel's channel scaled to
+ * the target's; alpha too at 32 bpp. The raw pixels at the four corners
+ * are published, so a channel or row mapping other than the model's can
+ * be read from the result alone.
+ */
+static DWORD rs_format_under_test;
+
+/* Texel n's channel c (0 red, 1 green, 2 blue, 3 alpha) and its maximum. */
+static DWORD rs_texel16_channel(DWORD n, int channel, DWORD *maximum)
+{
+    if (rs_format_under_test == V9X_RS690_TEXFMT_ARGB1555) {
+        static const DWORD shifts[4] = { 10u, 5u, 0u, 15u };
+
+        *maximum = channel == 3 ? 1u : 31u;
+        return (n >> shifts[channel]) & *maximum;
+    }
+    {
+        static const DWORD shifts[4] = { 8u, 4u, 0u, 12u };
+
+        *maximum = 15u;
+        return (n >> shifts[channel]) & 15u;
+    }
+}
+
+/* In 1/(31 * 15) of a target step: v / source max * target max. */
+#define RS_FORMAT_SCALE 465l
+
+static void rs_format_model(DWORD x, DWORD y, long expected[4],
+                            long allowed[4])
+{
+    DWORD n = (y * TEX_WIDTH + x) & 0xffffu;
+    DWORD values[4];
+    DWORD maxima[4];
+    int channels = rs_channels(rs_pixel(rs_model, 0u, 0u), values, maxima);
+    int channel;
+
+    for (channel = 0; channel < channels; ++channel) {
+        DWORD source_max;
+        DWORD value = rs_texel16_channel(n, channel, &source_max);
+
+        expected[channel] = (long)(value * maxima[channel]) *
+                            (RS_FORMAT_SCALE / (long)source_max);
+        allowed[channel] = RS_TEX_TOLERANCE * RS_FORMAT_SCALE;
+    }
+}
+
+static void rs_tex_format_test(const char *name, char letter, DWORD format)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    const unsigned char *actual;
+    char key[64];
+
+    rs_zero(&state, sizeof(state));
+    state.textured = 1u;
+    state.texture.format = format;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+    rs_tl(vertices + 8, 0u, TEX_HEIGHT, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u,
+          RS_FLOAT_ONE);
+    rs_tl(vertices + 16, TEX_WIDTH, TEX_HEIGHT, 0u, RS_FLOAT_ONE,
+          0xfffffffful, RS_FLOAT_ONE, RS_FLOAT_ONE);
+    rs_tl(vertices + 24, TEX_WIDTH, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful,
+          RS_FLOAT_ONE, 0u);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block(letter);
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_write_hex(rs_key(key, name, "Pixel0_0"), rs_pixel(actual, 0u, 0u));
+    rs_write_hex(rs_key(key, name, "Pixel31_0"), rs_pixel(actual, 31u, 0u));
+    rs_write_hex(rs_key(key, name, "Pixel0_15"), rs_pixel(actual, 0u, 15u));
+    rs_write_hex(rs_key(key, name, "Pixel31_15"),
+                 rs_pixel(actual, 31u, 15u));
+    rs_format_under_test = format;
+    rs_model_prefill();
+    rs_tex_judge(name, 0u, TEX_WIDTH, RS_FORMAT_SCALE, rs_format_model);
+}
+
+/*
+ * TexSpecular: the gradient texture in the surface's format drawn 1:1 over
+ * x 0-31, rows 0-15, REPLACE with the texel's alpha, through the TL state
+ * with specular on and every specular colour zero: the result must be the
+ * texture, byte for byte, as TexDecal's. Then TexSpecularAdd: the same
+ * with a specular of (0, 0, 64) on every vertex, published, not judged.
+ */
+static int rs_tex_specular_draw(const char *name, DWORD specular)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD index;
+
+    rs_zero(&state, sizeof(state));
+    state.textured = 1u;
+    state.specular = 1u;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+    rs_tl(vertices + 8, 0u, TEX_HEIGHT, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u,
+          RS_FLOAT_ONE);
+    rs_tl(vertices + 16, TEX_WIDTH, TEX_HEIGHT, 0u, RS_FLOAT_ONE,
+          0xfffffffful, RS_FLOAT_ONE, RS_FLOAT_ONE);
+    rs_tl(vertices + 24, TEX_WIDTH, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful,
+          RS_FLOAT_ONE, 0u);
+    for (index = 0u; index < 4u; ++index) {
+        vertices[index * 8u + 5u] = specular;
+    }
+    return rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                      TEST_PREFILL);
+}
+
+static void rs_tex_specular_test(void)
+{
+    static const char name[] = "TexSpecular";
+    static const char added[] = "TexSpecularAdd";
+    const unsigned char *actual;
+    char key[64];
+    DWORD x;
+    DWORD y;
+
+    if (!rs_tex_specular_draw(name, 0u)) {
+        return;
+    }
+    rs_save_block('U');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_write_hex(rs_key(key, name, "Pixel0_0"), rs_pixel(actual, 0u, 0u));
+    rs_write_hex(rs_key(key, name, "Pixel31_0"), rs_pixel(actual, 31u, 0u));
+    rs_write_hex(rs_key(key, name, "Pixel0_15"), rs_pixel(actual, 0u, 15u));
+    rs_model_prefill();
+    for (y = 0u; y < TEX_HEIGHT; ++y) {
+        for (x = 0u; x < TEX_WIDTH; ++x) {
+            rs_set_pixel(rs_model, x, y, rs_texel(x, y));
+        }
+    }
+    rs_result(name, rs_compare_model(name) == 0u);
+
+    if (!rs_tex_specular_draw(added, 0x00000040ul)) {
+        return;
+    }
+    rs_save_block('V');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_write_hex(rs_key(key, added, "Pixel0_0"), rs_pixel(actual, 0u, 0u));
+    rs_write_hex(rs_key(key, added, "Pixel31_0"), rs_pixel(actual, 31u, 0u));
+    rs_write_hex(rs_key(key, added, "Pixel0_15"), rs_pixel(actual, 0u, 15u));
+}
+
+/*
+ * TexQuadrants: V9XD32's T6 texture - 8 x 8 ARGB1555, red, green, blue and
+ * white quadrants, alpha set - drawn over a square of the surface's
+ * height, nearest, REPLACE with the texel's alpha, through the TL state;
+ * at an offset aligned as every other probe texture is (64 KiB) and at
+ * one aligned only to 32 bytes, as Direct3D's placement put T6 (offset
+ * ...500h, M-GB8KRE 2026-11-05). Every pixel exact. Its first run put the
+ * rows 32 bytes apart and read them 64 apart at both offsets; the rows
+ * are now 64 bytes apart, the builder's rule.
+ */
+static const DWORD rs_quadrant_texels[4] = {
+    0xfc00u, 0x83e0u, 0x801fu, 0xffffu
+};
+
+static void rs_tex_quadrants_test(const char *name, char letter,
+                                  DWORD offset)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+    DWORD vertices[4 * 8];
+    char key[64];
+    DWORD side = rs_height;
+    DWORD x;
+    DWORD y;
+    DWORD before_index;
+    DWORD after_index;
+
+    rs_zero(&state, sizeof(state));
+    state.target.fb_gpu_base = rs_fb_gpu_base;
+    state.target.fb_bytes = TEST_FB;
+    state.target.offset = TEST_BASE;
+    state.target.pitch_bytes = rs_pitch;
+    state.target.bytes_per_pixel = rs_bpp;
+    state.target.width = TEST_WIDTH;
+    state.target.height = rs_height;
+    state.textured = 1u;
+    state.texture.offset = offset;
+    state.texture.pitch_bytes = V9X_RS690_TEX_PITCH_ALIGN;
+    state.texture.format = V9X_RS690_TEXFMT_ARGB1555;
+    state.texture.width = 8u;
+    state.texture.height = 8u;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_WRAP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    state.texture_alpha = V9X_RS690_TEXALPHA_TEXEL;
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+    rs_tl(vertices + 8, 0u, side, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u,
+          RS_FLOAT_ONE);
+    rs_tl(vertices + 16, side, side, 0u, RS_FLOAT_ONE, 0xfffffffful,
+          RS_FLOAT_ONE, RS_FLOAT_ONE);
+    rs_tl(vertices + 24, side, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful,
+          RS_FLOAT_ONE, 0u);
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    /* Each 64-byte row: four dwords of two texels, then padding. */
+    for (y = 0u; y < 8u; ++y) {
+        for (x = 0u; x < 8u; ++x) {
+            DWORD value = 0u;
+
+            if (x < 4u) {
+                DWORD quadrant = (y >= 4u ? 2u : 0u) + (x >= 2u ? 1u : 0u);
+
+                value = rs_quadrant_texels[quadrant] |
+                        (rs_quadrant_texels[quadrant] << 16);
+            }
+            rs_add(RS_OP_LFB_WRITE32,
+                   offset + y * V9X_RS690_TEX_PITCH_ALIGN + x * 4u, value,
+                   0u);
+        }
+    }
+    before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (v9x_rs690_build_3d_state(&state, &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return;
+    }
+    rs_add_list(&list);
+    (void)v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_QUADS, vertices, 4u,
+                                     &list);
+    rs_add_list(&list);
+    (void)v9x_rs690_build_3d_finish(&list);
+    rs_add_list(&list);
+    after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return;
+    }
+    rs_write_hex(rs_key(key, name, "WaitBefore"),
+                 rs_result_buffer.ops[before_index].result);
+    rs_write_hex(rs_key(key, name, "WaitAfter"),
+                 rs_result_buffer.ops[after_index].result);
+    rs_save_block(letter);
+
+    rs_model_prefill();
+    for (y = 0u; y < side; ++y) {
+        for (x = 0u; x < side; ++x) {
+            DWORD quadrant = (y * 2u >= side ? 2u : 0u) +
+                             (x * 2u >= side ? 1u : 0u);
+            DWORD argb = quadrant == 0u ? 0xffff0000ul :
+                         quadrant == 1u ? 0xff00ff00ul :
+                         quadrant == 2u ? 0xff0000fful : 0xfffffffful;
+
+            rs_set_pixel(rs_model, x, y, rs_encode_argb(argb));
+        }
+    }
+    {
+        const unsigned char *actual =
+            (const unsigned char *)rs_result_buffer.block;
+        DWORD quarter = side / 4u;
+
+        rs_write_hex(rs_key(key, name, "PixelRed"),
+                     rs_pixel(actual, quarter, quarter));
+        rs_write_hex(rs_key(key, name, "PixelGreen"),
+                     rs_pixel(actual, 3u * quarter, quarter));
+        rs_write_hex(rs_key(key, name, "PixelBlue"),
+                     rs_pixel(actual, quarter, 3u * quarter));
+        rs_write_hex(rs_key(key, name, "PixelWhite"),
+                     rs_pixel(actual, 3u * quarter, 3u * quarter));
+    }
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
 /* A 2D fill after the 3D tests, byte-exact, as the 2D probe's Fill. */
 static void rs_fill_after_test(void)
 {
@@ -1722,6 +2014,507 @@ static void rs_fill_after_test(void)
     if (mismatches != 0u) {
         rs_failed = 1u;
     }
+}
+
+/* Non-zero when the command line holds the word (a plain substring
+ * search; the probe's switches do not prefix one another). */
+static int rs_has_switch(const char *word)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(word);
+
+    for (; *line != '\0'; ++line) {
+        int index = 0;
+
+        while (index < length && line[index] == word[index]) {
+            ++index;
+        }
+        if (index == length) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * /mc: where the memory controller puts the frame buffer, read through
+ * MC_INDEX / MC_DATA as Linux rs690_mc_rreg does, the index left at 7Fh
+ * after. MCCFG_FB_LOCATION (100h) is the GPU-side window; K8_FB_LOCATION
+ * (1Eh) with MC_MISC_UMA_CNTL's K8_ADDR_EXT (5Fh, 7:0) is the system
+ * physical address the UMA frame buffer occupies (rs690.c:164-182). The
+ * VxD refuses an index write with MC_IND_WR_EN, so nothing is written to
+ * the memory controller.
+ */
+#define RS_MC_INDEX 0x0078ul
+#define RS_MC_DATA 0x007cul
+#define RS_MC_INDEX_IDLE 0x7ful
+
+static void rs_mc_report(void)
+{
+    static const DWORD registers[3] = { 0x100ul, 0x01eul, 0x05ful };
+    static const char *const names[3] = {
+        "McCfgFbLocation", "K8FbLocation", "McMiscUmaCntl"
+    };
+    DWORD reads[3];
+    DWORD index;
+
+    rs_begin();
+    for (index = 0u; index < 3u; ++index) {
+        rs_add(RS_OP_MMIO_WRITE32, RS_MC_INDEX, registers[index], 0u);
+        reads[index] = rs_add(RS_OP_MMIO_READ32, RS_MC_DATA, 0u, 0u);
+    }
+    rs_add(RS_OP_MMIO_WRITE32, RS_MC_INDEX, RS_MC_INDEX_IDLE, 0u);
+    if (!rs_run()) {
+        rs_write("Mc", "NOT-RUN");
+        rs_report_refusal("Mc");
+        return;
+    }
+    for (index = 0u; index < 3u; ++index) {
+        rs_write_hex(names[index], rs_result_buffer.ops[reads[index]].result);
+    }
+    /* MCCFG_FB_LOCATION: start in 15:0, top in 31:16, both >> 16. */
+    rs_write_hex("McFbStart",
+                 (rs_result_buffer.ops[reads[0]].result & 0xfffful) << 16);
+    rs_write_hex("McFbTop",
+                 (rs_result_buffer.ops[reads[0]].result >> 16) << 16);
+    rs_write_hex("K8PhysicalHigh",
+                 rs_result_buffer.ops[reads[2]].result & 0xfful);
+    rs_write_hex("K8PhysicalLow", rs_result_buffer.ops[reads[1]].result);
+}
+
+/*
+ * /physscan: 8 MiB of system RAM at physical 05C00000h, around the
+ * 06000000h-0609FFFFh where the T15 hunt found the second Direct3D
+ * process's pixels, read (never written)
+ * a page at a time through the VxD. Per page: a checksum, the words whose
+ * low three bytes are 00FF00h (that process's green written RGB-only over
+ * a kept top byte) and the zero words. A scan before and one after a
+ * Direct3D program show whether it wrote here without owning the frames.
+ */
+#define RS_OP_PHYS_READ_BLOCK 10ul
+#define RS_PHYS_WINDOW_BASE 0x05c00000ul
+#define RS_PHYS_PAGES 2048ul
+#define RS_PAGE_DWORDS 1024ul
+
+static void rs_phys_scan(void)
+{
+    char key[16];
+    char text[48];
+    DWORD page;
+    DWORD green_total = 0u;
+    DWORD zero_total = 0u;
+    DWORD green_pages = 0u;
+
+    for (page = 0u; page < RS_PHYS_PAGES; ++page) {
+        DWORD checksum = 0u;
+        DWORD green = 0u;
+        DWORD zeros = 0u;
+        DWORD index;
+
+        rs_begin();
+        rs_add(RS_OP_PHYS_READ_BLOCK, page * 4096u, 0u, RS_PAGE_DWORDS);
+        if (!rs_run()) {
+            rs_write("PhysScan", "NOT-RUN");
+            rs_report_refusal("Phys");
+            return;
+        }
+        for (index = 0u; index < RS_PAGE_DWORDS; ++index) {
+            DWORD word = rs_result_buffer.block[index];
+
+            checksum = ((checksum << 5) | (checksum >> 27)) ^ word;
+            if ((word & 0x00fffffful) == 0x0000ff00ul) {
+                ++green;
+            }
+            if (word == 0u) {
+                ++zeros;
+            }
+        }
+        green_total += green;
+        zero_total += zeros;
+        if (green != 0u) {
+            ++green_pages;
+        }
+        /* /physdump: a page's non-zero words, offset and value, up to 48. */
+        if (rs_has_switch("/physdump") && zeros != RS_PAGE_DWORDS) {
+            DWORD shown = 0u;
+
+            for (index = 0u; index < RS_PAGE_DWORDS && shown < 48u;
+                 ++index) {
+                DWORD word = rs_result_buffer.block[index];
+
+                if (word == 0u) {
+                    continue;
+                }
+                rs_hex(key + 1, page * 4096u + index * 4u, 8);
+                key[0] = 'W';
+                rs_write_hex(key, word);
+                ++shown;
+            }
+        }
+        rs_hex(key + 1, RS_PHYS_WINDOW_BASE + page * 4096u, 8);
+        key[0] = 'P';
+        rs_hex(text, checksum, 8);
+        text[8] = ' ';
+        rs_decimal(text + 9, green);
+        lstrcatA(text, " ");
+        rs_decimal(text + lstrlenA(text), zeros);
+        rs_write(key, text);
+    }
+    rs_write_decimal("PhysGreenWords", green_total);
+    rs_write_decimal("PhysGreenPages", green_pages);
+    rs_write_decimal("PhysZeroWords", zero_total);
+}
+
+/* The hex number after word on the command line, or `fallback`. */
+static DWORD rs_switch_hex(const char *word, DWORD fallback)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(word);
+
+    for (; *line != '\0'; ++line) {
+        int index = 0;
+        DWORD value = 0u;
+        int digits = 0;
+
+        while (index < length && line[index] == word[index]) {
+            ++index;
+        }
+        if (index != length) {
+            continue;
+        }
+        line += length;
+        for (;; ++line, ++digits) {
+            char ch = *line;
+
+            if (ch >= '0' && ch <= '9') {
+                value = (value << 4) | (DWORD)(ch - '0');
+            } else if (ch >= 'a' && ch <= 'f') {
+                value = (value << 4) | (DWORD)(ch - 'a' + 10);
+            } else if (ch >= 'A' && ch <= 'F') {
+                value = (value << 4) | (DWORD)(ch - 'A' + 10);
+            } else {
+                break;
+            }
+        }
+        return digits != 0 ? value : fallback;
+    }
+    return fallback;
+}
+
+/*
+ * /strayat=<hex>: the T15 child's drawing without Direct3D - 40 batches of
+ * three green 12x12 quads, TL vertices, the XRGB channel mask on, at
+ * 32 bpp, into a 640-pixel-wide, 2560-byte-pitch colour buffer at that
+ * frame buffer offset, each batch ended by the finish - and nothing read
+ * back. A /physscan after it shows whether lines went to system RAM
+ * (docs\issues\2026-11-05-rs690-t15-heap-words-zeroed-once.md). At offset 0
+ * it draws over the desktop.
+ */
+#define RS_STRAY_PITCH 2560ul
+#define RS_STRAY_WIDTH 640ul
+#define RS_STRAY_HEIGHT 96ul
+#define RS_STRAY_BATCHES 40ul
+
+static void rs_stray_draw(DWORD offset)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+    struct v9x_rs690_fill fill;
+    struct v9x_rs690_blt fill_init;
+    struct v9x_rs690_blt fill_blt;
+    DWORD vertices[12 * 8];
+    DWORD batch;
+    DWORD quad;
+    DWORD with_fill;
+
+    /*
+     * /strayfill: a 2D engine fill of the whole target before each batch,
+     * the child's DDBLT_COLORFILL-then-draw order.
+     */
+    with_fill = rs_has_switch("/strayfill") ? 1u : 0u;
+    if (with_fill != 0u) {
+        rs_zero(&fill, sizeof(fill));
+        fill.fb_gpu_base = rs_fb_gpu_base;
+        fill.fb_bytes = TEST_FB;
+        fill.target_offset = offset;
+        fill.pitch_bytes = RS_STRAY_PITCH;
+        fill.bytes_per_pixel = 4u;
+        fill.width = RS_STRAY_WIDTH;
+        fill.height = RS_STRAY_HEIGHT;
+        fill.color = 0ul;
+        if (v9x_rs690_build_init(rs_read_register(V9X_RS690_DP_DATATYPE),
+                                 &fill_init) != V9X_STATUS_OK ||
+            v9x_rs690_build_fill(&fill, &fill_blt) != V9X_STATUS_OK) {
+            rs_write("Stray", "FILL-REFUSED");
+            return;
+        }
+    }
+    rs_write_decimal("StrayFill", with_fill);
+
+    rs_zero(&state, sizeof(state));
+    state.target.fb_gpu_base = rs_fb_gpu_base;
+    state.target.fb_bytes = TEST_FB;
+    state.target.offset = offset;
+    state.target.pitch_bytes = RS_STRAY_PITCH;
+    state.target.bytes_per_pixel = 4u;
+    state.target.width = RS_STRAY_WIDTH;
+    state.target.height = RS_STRAY_HEIGHT;
+    state.x_channel = 1u;
+    if (v9x_rs690_build_3d_state(&state, &list) != V9X_STATUS_OK) {
+        rs_write("Stray", "STATE-REFUSED");
+        return;
+    }
+    for (batch = 0u; batch < RS_STRAY_BATCHES; ++batch) {
+        rs_begin();
+        rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        if (with_fill != 0u) {
+            rs_add_blt(&fill_init);
+            rs_add_blt(&fill_blt);
+            rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        }
+        (void)v9x_rs690_build_3d_state(&state, &list);
+        rs_add_list(&list);
+        for (quad = 0u; quad < 3u; ++quad) {
+            DWORD index = (batch * 3u + quad) % 170u;
+            DWORD x = (index % 34u) * 16u + 2u;
+            DWORD y = (index / 34u) * 16u + 2u;
+
+            rs_tl_quad(vertices + quad * 32u, x, y, x + 12u, y + 12u,
+                       0x3f000000ul, 0xff00ff00ul);
+        }
+        (void)v9x_rs690_build_3d_draw_tl(V9X_RS690_PRIM_QUADS, vertices, 12u,
+                                         &list);
+        rs_add_list(&list);
+        (void)v9x_rs690_build_3d_finish(&list);
+        rs_add_list(&list);
+        rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        if (!rs_run()) {
+            rs_write("Stray", "NOT-RUN");
+            rs_report_refusal("Stray");
+            return;
+        }
+    }
+    rs_write_hex("StrayOffset", offset);
+    rs_write_decimal("StrayBatches", RS_STRAY_BATCHES);
+}
+
+/*
+ * /strayhal: the T15 child's frames in the HAL's own order rather than the
+ * probe's. Four frames, alternating targets at 12C000h and 0 (the child's
+ * back buffer, then the buffer a flip hands it), each: wait idle and the
+ * 2D destination cache flush eng_rs690.c's wait_idle writes, the 2D fill
+ * of the 640x480 target, then eight draws of the 170-quad volume list as
+ * d3d_rs690.c sends them - WAIT_UNTIL 2D idle, the state, triangles in
+ * runs of 64 behind VF_CNTL, the finish - with no CPU idle wait between
+ * draws. The flip itself is left out: the CRTC is not touched.
+ */
+#define RS_HAL_FRAMES 4ul
+#define RS_HAL_DRAWS 8ul
+#define RS_HAL_QUADS 170ul
+#define RS_HAL_RUN 64ul
+#define RS_HAL_HEIGHT 480ul
+
+static DWORD rs_hal_failed;
+
+/* rs_add, sending the request when it is full so long streams fit. */
+static void rs_hal_add(DWORD code, DWORD a, DWORD b)
+{
+    if (rs_request_buffer.count >= RS_OP_MAX - 1u) {
+        if (!rs_run()) {
+            rs_hal_failed = 1u;
+        }
+        rs_begin();
+    }
+    rs_add(code, a, b, 0u);
+}
+
+static void rs_hal_writes(const DWORD *offsets, const DWORD *values,
+                          DWORD count)
+{
+    DWORD index;
+
+    for (index = 0u; index < count; ++index) {
+        if (index % RS_FIFO_BATCH == 0u) {
+            DWORD batch = count - index;
+
+            if (batch > RS_FIFO_BATCH) {
+                batch = RS_FIFO_BATCH;
+            }
+            rs_hal_add(RS_OP_WAIT_FIFO, batch, 0u);
+        }
+        rs_hal_add(RS_OP_MMIO_WRITE32, offsets[index], values[index]);
+    }
+}
+
+/* Corner `corner` (0-5) of quad `index`'s two triangles. */
+static void rs_hal_corner(DWORD *vertex, DWORD index, DWORD corner)
+{
+    static const unsigned char right[6] = { 0u, 0u, 1u, 0u, 1u, 1u };
+    static const unsigned char bottom[6] = { 0u, 1u, 1u, 0u, 1u, 0u };
+    DWORD x = (index % 34u) * 16u + 2u;
+    DWORD y = (index / 34u) * 16u + 2u;
+
+    rs_tl(vertex, x + 12u * right[corner], y + 12u * bottom[corner],
+          0x3f000000ul, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+}
+
+static void rs_stray_hal(void)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_list list;
+    struct v9x_rs690_3d_list finish;
+    struct v9x_rs690_fill fill;
+    struct v9x_rs690_blt fill_init;
+    struct v9x_rs690_blt fill_blt;
+    DWORD vertex[8];
+    DWORD dc_ctlstat;
+    DWORD frame;
+    DWORD draw;
+    DWORD triangle;
+    DWORD word;
+    DWORD idle_between;
+    DWORD no_flush;
+    DWORD no_fill;
+    DWORD one_target;
+    DWORD fill_idle;
+    DWORD fill_flush;
+    DWORD wait_bits;
+
+    /* Bisection switches: a CPU idle wait after every draw, no 2D cache
+     * flush, no 2D fill, every frame at offset 0. */
+    idle_between = rs_has_switch("/hidle") ? 1u : 0u;
+    no_flush = rs_has_switch("/hnoflush") ? 1u : 0u;
+    no_fill = rs_has_switch("/hnofill") ? 1u : 0u;
+    one_target = rs_has_switch("/hzero") ? 1u : 0u;
+
+    /* Separations after the fill: a CPU idle wait, the 2D destination
+     * cache flush (no wait), or WAIT_UNTIL with 2D, 3D and host idle-clean
+     * (bits 16-18, Linux RADEON_WAIT_*_IDLECLEAN) for the draws' wait. */
+    fill_idle = rs_has_switch("/hfillidle") ? 1u : 0u;
+    fill_flush = rs_has_switch("/hfillflush") ? 1u : 0u;
+    wait_bits = rs_has_switch("/hwaitall") ? 0x00070000ul :
+                V9X_RS690_WAIT_2D_IDLECLEAN;
+    rs_write_decimal("StrayHalFillIdle", fill_idle);
+    rs_write_decimal("StrayHalFillFlush", fill_flush);
+    rs_write_hex("StrayHalWaitUntil", wait_bits);
+    rs_write_decimal("StrayHalIdle", idle_between);
+    rs_write_decimal("StrayHalNoFlush", no_flush);
+    rs_write_decimal("StrayHalNoFill", no_fill);
+    rs_write_decimal("StrayHalZero", one_target);
+
+    dc_ctlstat = rs_read_register(V9X_RS690_DSTCACHE_CTLSTAT);
+    if (v9x_rs690_build_init(rs_read_register(V9X_RS690_DP_DATATYPE),
+                             &fill_init) != V9X_STATUS_OK) {
+        rs_write("StrayHal", "INIT-REFUSED");
+        return;
+    }
+    (void)v9x_rs690_build_3d_finish(&finish);
+    rs_hal_failed = 0u;
+    rs_begin();
+    rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+    rs_hal_writes(fill_init.offsets, fill_init.values, fill_init.count);
+
+    for (frame = 0u; frame < RS_HAL_FRAMES; ++frame) {
+        DWORD offset =
+            ((frame & 1u) == 0u && one_target == 0u) ? 0x12c000ul : 0ul;
+
+        /* eng_rs690.c's wait_idle with the engine dirty: idle, then the
+         * 2D destination cache flush, then the fill. */
+        rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+        if (no_flush == 0u) {
+            rs_hal_add(RS_OP_MMIO_WRITE32, V9X_RS690_DSTCACHE_CTLSTAT,
+                       dc_ctlstat | V9X_RS690_DC_FLUSH_ALL);
+            rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+        }
+        rs_zero(&fill, sizeof(fill));
+        fill.fb_gpu_base = rs_fb_gpu_base;
+        fill.fb_bytes = TEST_FB;
+        fill.target_offset = offset;
+        fill.pitch_bytes = RS_STRAY_PITCH;
+        fill.bytes_per_pixel = 4u;
+        fill.width = RS_STRAY_WIDTH;
+        fill.height = RS_HAL_HEIGHT;
+        fill.color = 0ul;
+        if (v9x_rs690_build_fill(&fill, &fill_blt) != V9X_STATUS_OK) {
+            rs_write("StrayHal", "FILL-REFUSED");
+            return;
+        }
+        if (no_fill == 0u) {
+            rs_hal_writes(fill_blt.offsets, fill_blt.values, fill_blt.count);
+        }
+        if (fill_idle != 0u) {
+            rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+        }
+        if (fill_flush != 0u) {
+            rs_hal_add(RS_OP_WAIT_FIFO, 1u, 0u);
+            rs_hal_add(RS_OP_MMIO_WRITE32, V9X_RS690_DSTCACHE_CTLSTAT,
+                       dc_ctlstat | V9X_RS690_DC_FLUSH_ALL);
+        }
+
+        rs_zero(&state, sizeof(state));
+        state.target.fb_gpu_base = rs_fb_gpu_base;
+        state.target.fb_bytes = TEST_FB;
+        state.target.offset = offset;
+        state.target.pitch_bytes = RS_STRAY_PITCH;
+        state.target.bytes_per_pixel = 4u;
+        state.target.width = RS_STRAY_WIDTH;
+        state.target.height = RS_HAL_HEIGHT;
+        state.x_channel = 1u;
+        if (v9x_rs690_build_3d_state(&state, &list) != V9X_STATUS_OK) {
+            rs_write("StrayHal", "STATE-REFUSED");
+            return;
+        }
+
+        for (draw = 0u; draw < RS_HAL_DRAWS; ++draw) {
+            rs_hal_add(RS_OP_WAIT_FIFO, 1u, 0u);
+            rs_hal_add(RS_OP_MMIO_WRITE32, V9X_RS690_WAIT_UNTIL,
+                       wait_bits);
+            rs_hal_writes(list.offsets, list.values, list.count);
+            for (triangle = 0u; triangle < RS_HAL_QUADS * 2u; ++triangle) {
+                DWORD corner;
+
+                if (triangle % RS_HAL_RUN == 0u) {
+                    DWORD run = RS_HAL_QUADS * 2u - triangle;
+
+                    if (run > RS_HAL_RUN) {
+                        run = RS_HAL_RUN;
+                    }
+                    rs_hal_add(RS_OP_WAIT_FIFO, 1u, 0u);
+                    rs_hal_add(RS_OP_MMIO_WRITE32, V9X_RS690_VAP_VF_CNTL,
+                               v9x_rs690_3d_vf_cntl(V9X_RS690_PRIM_TRIANGLES,
+                                                    run * 3u));
+                }
+                for (corner = 0u; corner < 3u; ++corner) {
+                    rs_hal_corner(vertex, triangle / 2u,
+                                  (triangle & 1u) * 3u + corner);
+                    rs_hal_add(RS_OP_WAIT_FIFO, 8u, 0u);
+                    for (word = 0u; word < 8u; ++word) {
+                        rs_hal_add(RS_OP_MMIO_WRITE32,
+                                   V9X_RS690_SE_PORT_DATA0, vertex[word]);
+                    }
+                }
+            }
+            rs_hal_writes(finish.offsets, finish.values, finish.count);
+            if (idle_between != 0u) {
+                rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+            }
+        }
+    }
+
+    /* The flip's wait_idle and flush, without the flip. */
+    rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+    rs_hal_add(RS_OP_MMIO_WRITE32, V9X_RS690_DSTCACHE_CTLSTAT,
+               dc_ctlstat | V9X_RS690_DC_FLUSH_ALL);
+    rs_hal_add(RS_OP_WAIT_IDLE, 0u, 0u);
+    if (!rs_run()) {
+        rs_hal_failed = 1u;
+    }
+    if (rs_hal_failed != 0u) {
+        rs_write("StrayHal", "NOT-RUN");
+        rs_report_refusal("StrayHal");
+        return;
+    }
+    rs_write_decimal("StrayHalFrames", RS_HAL_FRAMES);
 }
 
 static void rs_close(DWORD code)
@@ -1816,13 +2609,46 @@ void WINAPI V9xRs6903dProbeEntry(void)
     rs_fb_gpu_base =
         v9x_rs690_fb_gpu_base(rs_read_register(V9X_RS690_HDP_FB_LOCATION));
     rs_write_hex("FbGpuBase", rs_fb_gpu_base);
+    if (rs_has_switch("/mc")) {
+        rs_mc_report();
+        rs_write("Result", "MC-ONLY");
+        rs_close(0u);
+    }
+    if (rs_has_switch("/physscan")) {
+        rs_phys_scan();
+        rs_write("Result", "PHYS-SCAN-ONLY");
+        rs_close(0u);
+    }
+    if (rs_has_switch("/strayat=")) {
+        struct v9x_rs690_3d_list stray_init;
+
+        (void)v9x_rs690_build_3d_init(
+            pipe_select, rs_read_register(V9X_RS690_RB2D_DSTCACHE_MODE),
+            &stray_init);
+        rs_begin();
+        rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        rs_add_list(&stray_init);
+        rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        if (!rs_run()) {
+            rs_write("Result", "INIT-NOT-RUN");
+            rs_close(3u);
+        }
+        if (rs_has_switch("/strayhal")) {
+            rs_stray_hal();
+        } else {
+            rs_stray_draw(rs_switch_hex("/strayat=", 0xfffffffful));
+        }
+        rs_write("Result", "STRAY-ONLY");
+        rs_close(0u);
+    }
     if (rs_fb_gpu_base == 0ul || pipe_select == 0xfffffffful) {
         rs_write("Result", "REFUSED-FB-BASE");
         rs_close(3u);
     }
 
     /* The 3D init list, once. */
-    (void)v9x_rs690_build_3d_init(pipe_select, &init);
+    (void)v9x_rs690_build_3d_init(
+        pipe_select, rs_read_register(V9X_RS690_RB2D_DSTCACHE_MODE), &init);
     rs_begin();
     before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     rs_add_list(&init);
@@ -1856,6 +2682,11 @@ void WINAPI V9xRs6903dProbeEntry(void)
     rs_alpha_test();
     rs_cull_test();
     rs_perspective_test();
+    rs_tex_format_test("TexFormat1555", 'R', V9X_RS690_TEXFMT_ARGB1555);
+    rs_tex_format_test("TexFormat4444", 'S', V9X_RS690_TEXFMT_ARGB4444);
+    rs_tex_specular_test();
+    rs_tex_quadrants_test("TexQuadrants", 'X', TEX_OFFSET);
+    rs_tex_quadrants_test("TexQuadrants500", 'Y', TEX_OFFSET + 0x500u);
     /* The colour-only state again: texturing, Z, blend, alpha test and
      * cull must be off once more. */
     rs_quad_test("QuadAfterTex", 'A');

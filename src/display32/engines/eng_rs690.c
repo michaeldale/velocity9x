@@ -27,6 +27,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/rs690_2d.h"
+#include "velocity9x/rs690_3d.h"
 
 /* Bounded busy-wait. The write probe measured 5-11 status reads per small
  * operation; this bound only has to tell slow from stuck. */
@@ -127,6 +128,7 @@ static int v9x_rs690_validated(void)
 static int v9x_rs690_validate(void)
 {
     struct v9x_rs690_blt init;
+    struct v9x_rs690_3d_list init3d;
     DWORD memsize;
     DWORD index;
 
@@ -157,6 +159,29 @@ static int v9x_rs690_validate(void)
     }
     for (index = 0ul; index < init.count; ++index) {
         v9x_rs690_write32(init.offsets[index], init.values[index]);
+    }
+    if (!v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS)) {
+        return 0;
+    }
+
+    /* The 3D engine's once-per-mode setup, RADEONInit3DEngine's, for
+     * d3d_rs690.c: VBE leaves the 3D core unprogrammed (GB_TILE_CONFIG
+     * read 46FB5D5Eh before the probe's first init). Sixty-six writes,
+     * more than the FIFO's 64 entries hold with the WAIT_UNTILs in it, so
+     * in two halves on an idle engine; the 2D engine was exact after it
+     * in every probe run (docs\decisions\2026-11-05-rs690-3d-draw-
+     * probe.md). */
+    if (v9x_rs690_build_3d_init(v9x_rs690_read32(V9X_RS690_GB_PIPE_SELECT),
+                                v9x_rs690_read32(V9X_RS690_RB2D_DSTCACHE_MODE),
+                                &init3d) != V9X_STATUS_OK) {
+        return 0;
+    }
+    for (index = 0ul; index < init3d.count; ++index) {
+        if (index == init3d.count / 2ul &&
+            !v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS)) {
+            return 0;
+        }
+        v9x_rs690_write32(init3d.offsets[index], init3d.values[index]);
     }
     if (!v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS)) {
         return 0;
@@ -247,6 +272,22 @@ static int v9x_rs690_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
         return V9X_BLT_BUSY;
     }
     v9x_rs690_emit(&blt);
+
+    /* The fill destinations' MC addresses, lowest and highest, in the
+     * indexed-range fields this engine leaves unused, for the T15 hunt
+     * (docs\issues\2026-11-05-rs690-t15-heap-words-zeroed-once.md). */
+    {
+        V9X_D3D_DIAGNOSTICS *record = &v9x_hal->d3d_diagnostics;
+        DWORD destination = fill.fb_gpu_base + fill.target_offset;
+
+        if (record->indexed_decline_range_max == 0ul ||
+            destination < record->indexed_decline_range_max) {
+            record->indexed_decline_range_max = destination;
+        }
+        if (destination > record->indexed_drawn_range_max) {
+            record->indexed_drawn_range_max = destination;
+        }
+    }
     return V9X_BLT_DONE;
 }
 
@@ -314,6 +355,30 @@ int v9x_rs690_flip_address(DWORD byte_offset, DWORD *address)
         return 0;
     }
     *address = gpu;
+    return 1;
+}
+
+/*
+ * Before every 3D draw, the engine idle on the CPU's own poll, the 2D
+ * destination cache flushed. A draw that starts while a 2D fill is still
+ * running writes colour-cache lines to wrong addresses - elsewhere in the
+ * frame buffer and into system RAM near physical 06000000h (T15) - and
+ * WAIT_UNTIL 2D idle-clean in the FIFO does not stop it with the CP off,
+ * nor does 2D|3D|host idle-clean or a 2D cache flush in the FIFO; only
+ * the CPU's wait does (V9XRS3D /strayhal on M-GB8KRE, docs\issues\
+ * 2026-11-05-rs690-t15-heap-words-zeroed-once.md).
+ */
+int v9x_rs690_3d_begin(DWORD *fb_gpu_base, DWORD *desktop_offset)
+{
+    if (fb_gpu_base == 0 || desktop_offset == 0 || !v9x_rs690_validate()) {
+        return 0;
+    }
+    if (!v9x_rs690_wait_idle(1)) {
+        return 0;
+    }
+    *fb_gpu_base = v9x_rs690_fb_base;
+    *desktop_offset = v9x_rs690_desktop_offset();
+    v9x_rs690_dirty = 1;
     return 1;
 }
 

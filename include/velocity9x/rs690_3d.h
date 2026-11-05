@@ -40,6 +40,8 @@
 #define V9X_RS690_DST_PIPE_CONFIG       0x170cul
 #define V9X_RS690_GB_PIPE_SELECT        0x402cul
 #define V9X_RS690_RB3D_DSTCACHE_CTLSTAT 0x4e4cul
+#define V9X_RS690_RB2D_DSTCACHE_MODE    0x3428ul
+#define V9X_RS690_SU_REG_DEST           0x42c8ul
 #define V9X_RS690_ZB_ZCACHE_CTLSTAT     0x4f18ul
 
 /* WAIT_UNTIL: hold the FIFO until the engine is idle and clean. */
@@ -179,10 +181,14 @@
 #define V9X_RS690_VERTEX_DWORDS         6ul
 #define V9X_RS690_TEX_VERTEX_DWORDS     8ul
 
-/* Texture formats the builder takes; each is the same layout as the
- * colour buffer format of that name. */
+/* Texture formats the builder takes; RGB565 and ARGB8888 are the same
+ * layouts as the colour buffer formats of those names. ARGB1555 and
+ * ARGB4444 are R300TexFormats' a1r5g5b5 and Mesa's B4G4R4A4 encodings,
+ * not yet sampled on the chip. */
 #define V9X_RS690_TEXFMT_RGB565         1ul
 #define V9X_RS690_TEXFMT_ARGB8888       2ul
+#define V9X_RS690_TEXFMT_ARGB1555       3ul
+#define V9X_RS690_TEXFMT_ARGB4444       4ul
 
 /* Texture filter, addressing (both axes) and how the texel meets the
  * interpolated colour: REPLACE takes the texel, MODULATE multiplies the
@@ -195,10 +201,15 @@
 #define V9X_RS690_TEXCOMBINE_MODULATE   1ul
 
 /* Texture limits: R300 width and height fields are 11 bits (texels - 1);
- * offsets and pitches 32-byte aligned (R300TextureSetup's CHECK_OFFSET
- * and pitch fallback). */
+ * offsets 32-byte aligned (R300TextureSetup's CHECK_OFFSET). Pitches 64
+ * bytes: the RS690 rounds a linear texture's row up to 64 bytes whatever
+ * TX_FORMAT2 says - an 8-texel ARGB1555 texture at a 32-byte pitch was
+ * sampled from rows 64 bytes apart on M-GB8KRE (2026-11-05,
+ * docs\decisions\2026-11-05-rs690-d3d-hal-first-boot.md) - and Mesa's
+ * r300_get_pixel_alignment gives the RS690 alone 64 / bytes-per-texel. */
 #define V9X_RS690_TEX_SIZE_MAX          2048ul
 #define V9X_RS690_TEX_ALIGN             32ul
+#define V9X_RS690_TEX_PITCH_ALIGN       64ul
 
 /* The largest surface the builders accept: the scan converter's clip
  * rectangle less its guard offset. */
@@ -265,11 +276,20 @@ struct v9x_rs690_3d_target {
 };
 
 /*
- * RADEONInit3DEngine's writes, once, with the engine idle. pipe_select is
- * GB_PIPE_SELECT as read: bits 13:12 hold the pipe count less one, which
- * picks GB_TILE_CONFIG's pipe field (radeon_accel.c:470-486).
+ * RADEONInit3DEngine's writes, once, with the engine idle, plus what Linux
+ * r420_pipes_init (r420.c:90-160, run for the RS690 by rs690_gpu_init)
+ * writes and the X driver does not: GA_ENHANCE's TCL deadlock bits,
+ * SU_REG_DEST to the active pipes, and the 2D destination cache in
+ * RB2D_DSTCACHE_MODE autoflushed with DC_DISABLE_IGNORE_PE. Taken while
+ * hunting colour-buffer lines a second Direct3D process wrote into system
+ * RAM (docs\issues\2026-11-05-rs690-t15-heap-words-zeroed-once.md). pipe_select
+ * is GB_PIPE_SELECT as read: bits 13:12 hold the pipe count less one,
+ * which picks GB_TILE_CONFIG's pipe field (radeon_accel.c:470-486).
+ * rb2d_dstcache_mode is RB2D_DSTCACHE_MODE as read; the two bits are ORed
+ * into it, as Linux does.
  */
 v9x_status v9x_rs690_build_3d_init(v9x_u32 pipe_select,
+                                   v9x_u32 rb2d_dstcache_mode,
                                    struct v9x_rs690_3d_list *list);
 
 /*
@@ -375,10 +395,10 @@ v9x_status v9x_rs690_build_3d_draw_textured(
 #define V9X_RS690_TEXALPHA_DIFFUSE      2ul
 #define V9X_RS690_TEXALPHA_MODULATE     3ul
 
-/* Z16 only: the pitch in pixels a multiple of 16 (DEPTHPITCH's field is in
- * 13:2; 16 is this builder's margin, as the colour pitch takes 8), the
- * offset 32-byte aligned. */
-#define V9X_RS690_DEPTH_PITCH_ALIGN     16ul
+/* Z16 only: the pitch in pixels a multiple of 32 (DEPTHPITCH's field is in
+ * 13:2; 32 is Mesa's RS690 linear alignment for 16 bits, the 64 bytes the
+ * texture unit measured to need), the offset 32-byte aligned. */
+#define V9X_RS690_DEPTH_PITCH_ALIGN     32ul
 #define V9X_RS690_DEPTH_OFFSET_ALIGN    32ul
 
 struct v9x_rs690_3d_state {
@@ -398,6 +418,17 @@ struct v9x_rs690_3d_state {
     v9x_u32 alpha_func;
     v9x_u32 alpha_ref;
     v9x_u32 cull;
+    /* Flat shading: every colour from the first vertex (GA_COLOR_CONTROL
+     * flat, provoking vertex first, Direct3D's convention). */
+    v9x_u32 flat;
+    /* Add the specular colour to the result's RGB, alpha untouched
+     * (Direct3D's SPECULARENABLE): colour 1 interpolated into the next
+     * free temp and taken as the ALU's third operand. */
+    v9x_u32 specular;
+    /* The target's top byte is X, not alpha: RB3D_COLOR_CHANNEL_MASK
+     * leaves it as it was (Direct3D's XRGB8888, which a clear leaves 0);
+     * zero writes alpha into it. No effect at 16 bpp. */
+    v9x_u32 x_channel;
 };
 
 /*

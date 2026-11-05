@@ -251,6 +251,11 @@ $sources = @(
     "src\chipsets\ati\rage128\r128_cce_microcode.c",
     "src\display32\d3d\d3d_r128_map.c",
     "src\display32\d3d\d3d_r128.c",
+    # The RS690 3D core: register values, the neutral draw to them, and
+    # the engine that writes them with the CP off.
+    "src\chipsets\ati\rs690\rs690_3d.c",
+    "src\display32\d3d\d3d_rs690_map.c",
+    "src\display32\d3d\d3d_rs690.c",
     # The RIVA 128 D3D object: swizzled texture copies and PIO methods.
     "src\display32\d3d\d3d_nv3.c",
     "src\display32\d3d\d3d_hsw.c",

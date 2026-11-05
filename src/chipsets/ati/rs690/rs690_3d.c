@@ -20,10 +20,16 @@
 #define V9X_RS690_MSPOS0                0x66666666ul
 #define V9X_RS690_MSPOS1                0x06666666ul
 
-/* GA_ENHANCE: deadlock and fast-sync control on. GA_POLY_MODE: front and
- * back faces drawn as triangles. GA_ROUND_MODE: geometry and colour round
- * to nearest. GA_COLOR_CONTROL: all four colours Gouraud-shaded. */
-#define V9X_RS690_GA_ENHANCE_VALUE      0x00000003ul
+/* GA_ENHANCE: deadlock and fast-sync control on, and bits 2 and 3 as Linux
+ * r420_pipes_init sets them ("workaround TCL deadlock issue"); the X driver
+ * writes 3. GA_POLY_MODE: front and back faces drawn as triangles.
+ * GA_ROUND_MODE: geometry and colour round to nearest. GA_COLOR_CONTROL:
+ * all four colours Gouraud-shaded. */
+#define V9X_RS690_GA_ENHANCE_VALUE      0x0000000ful
+
+/* RB2D_DSTCACHE_MODE bits (Linux r500_reg.h:89-91). */
+#define V9X_RS690_DC_AUTOFLUSH_ENABLE   0x00000100ul
+#define V9X_RS690_DC_DISABLE_IGNORE_PE  0x00020000ul
 #define V9X_RS690_GA_POLY_TRIANGLES     0x00000120ul
 #define V9X_RS690_GA_ROUND_NEAREST      0x00000005ul
 #define V9X_RS690_GA_ALL_GOURAUD        0x0000aaaaul
@@ -61,8 +67,10 @@
 #define V9X_RS690_US_OUT_BGRA           0x00001b00ul
 #define V9X_RS690_US_OUT_UNUSED         0x0000000ful
 
-/* RB3D_COLOR_CHANNEL_MASK: blue, green, red and alpha writable. */
+/* RB3D_COLOR_CHANNEL_MASK: blue, green, red and alpha writable (bits 0-3,
+ * Mesa r300_reg.h:2356-2359); without alpha, for an XRGB target. */
 #define V9X_RS690_CHANNELS_ALL          0x0000000ful
+#define V9X_RS690_CHANNELS_RGB          0x00000007ul
 
 /* SC_EDGERULE, SC_CLIP_RULE, SC_SCREENDOOR: the X driver's values. */
 #define V9X_RS690_SC_EDGERULE_VALUE     0x0a5294a5ul
@@ -149,6 +157,10 @@
  * Z5Y6X5 6), a8r8g8b8 (X, Y, Z, W, W8Z8Y8X8 0Ch). */
 #define V9X_RS690_TXFMT1_RGB565         0x0000aa06ul
 #define V9X_RS690_TXFMT1_ARGB8888       0x0000a60cul
+/* a1r5g5b5 (X, Y, Z, W, W1Z5Y5X5 0Bh), R300TexFormats; B4G4R4A4 (X, Y, Z,
+ * W, W4Z4Y4X4 0Ah), Mesa r300_translate_texformat. */
+#define V9X_RS690_TXFMT1_ARGB1555       0x0000a60bul
+#define V9X_RS690_TXFMT1_ARGB4444       0x0000a60aul
 #define V9X_RS690_TEX_0_ENABLE          0x00000001ul
 
 /* US_CONFIG FIRST_TEX: the first node has texture instructions. US_TEX_INST
@@ -201,6 +213,25 @@
 
 /* Alpha from the diffuse colour: SRC1_A (10) times ONE (17 << 7). */
 #define V9X_RS690_ALU_ALPHA_DIFFUSE     0x4004088aul
+
+/* Flat shading: every colour FLAT (1 in each 2-bit field), provoking
+ * vertex FIRST (0 in 17:16), Mesa r300_reg.h:1073-1110. */
+#define V9X_RS690_GA_ALL_FLAT_FIRST     0x00005555ul
+
+/* Specular. Interpolator 1 carries colour 1 (COL_PTR 1 at 8:6, RGBA);
+ * instruction 1 writes it (COL_ID 1 at 13:11, COL_CN_WRITE bit 14) to the
+ * temp in COL_ADDR (bit 17 up). RS_COUNT: two colours (IC_COUNT 2 << 7),
+ * HIRES_EN, and two texture components when textured. The RGB MAD takes
+ * source 2 (ADDR2, 17:12) as C, SRC2_RGB (8 << 14): out = temp0 * 1 +
+ * src2, or temp0 * temp1 + src2 when modulated. */
+#define V9X_RS690_RS_IP_COLOR1          0x00000040ul
+#define V9X_RS690_RS_INST_COLOR1        0x00004800ul
+#define V9X_RS690_RS_INST_COL_ADDR_SHIFT 17
+#define V9X_RS690_RS_COUNT_TWO_COLORS   0x00040100ul
+#define V9X_RS690_RS_COUNT_ST           0x00000002ul
+#define V9X_RS690_ALU_ADDR2_SHIFT       12
+#define V9X_RS690_ALU_RGB_MOV_PLUS_SRC2 0x40020a80ul
+#define V9X_RS690_ALU_RGB_MUL_PLUS_SRC2 0x40020200ul
 
 /* IEEE single fields. */
 #define V9X_RS690_FLOAT_EXPONENT_BIAS   127ul
@@ -298,6 +329,7 @@ v9x_u32 v9x_rs690_float_ratio(v9x_u32 numerator, v9x_u32 denominator)
 }
 
 v9x_status v9x_rs690_build_3d_init(v9x_u32 pipe_select,
+                                   v9x_u32 rb2d_dstcache_mode,
                                    struct v9x_rs690_3d_list *list)
 {
     static const v9x_u32 pipe_fields[4] = {
@@ -328,9 +360,19 @@ v9x_status v9x_rs690_build_3d_init(v9x_u32 pipe_select,
      * CHIP_FAMILY_R420 on, which takes in the RS690. */
     v9x_rs690_3d_add(list, V9X_RS690_GB_TILE_CONFIG,
                      V9X_RS690_GB_TILE_BASE | pipe_fields[pipes]);
+    /* Linux r420_pipes_init: the setup unit takes register writes for the
+     * active pipes (bit per pipe). */
+    v9x_rs690_3d_add(list, V9X_RS690_SU_REG_DEST,
+                     (1ul << (pipes + 1ul)) - 1ul);
     v9x_rs690_3d_add(list, V9X_RS690_WAIT_UNTIL, idle_clean);
     v9x_rs690_3d_add(list, V9X_RS690_DST_PIPE_CONFIG,
                      V9X_RS690_PIPE_AUTO_CONFIG);
+    /* Linux r420_pipes_init again: the 2D destination cache flushes
+     * itself (DC_AUTOFLUSH_ENABLE) and DC_DC_DISABLE_IGNORE_PE, ORed into
+     * the mode as read. The X driver writes neither. */
+    v9x_rs690_3d_add(list, V9X_RS690_RB2D_DSTCACHE_MODE,
+                     rb2d_dstcache_mode | V9X_RS690_DC_AUTOFLUSH_ENABLE |
+                     V9X_RS690_DC_DISABLE_IGNORE_PE);
     v9x_rs690_3d_add(list, V9X_RS690_GB_SELECT, 0ul);
     v9x_rs690_3d_add(list, V9X_RS690_GB_ENABLE, 0ul);
 
@@ -648,6 +690,12 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     } else if (texture->format == V9X_RS690_TEXFMT_ARGB8888) {
         bytes_per_texel = 4ul;
         card_format = V9X_RS690_TXFMT1_ARGB8888;
+    } else if (texture->format == V9X_RS690_TEXFMT_ARGB1555) {
+        bytes_per_texel = 2ul;
+        card_format = V9X_RS690_TXFMT1_ARGB1555;
+    } else if (texture->format == V9X_RS690_TEXFMT_ARGB4444) {
+        bytes_per_texel = 2ul;
+        card_format = V9X_RS690_TXFMT1_ARGB4444;
     } else {
         return V9X_STATUS_UNSUPPORTED;
     }
@@ -677,7 +725,7 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
         return V9X_STATUS_UNSUPPORTED;
     }
     if (texture->offset % V9X_RS690_TEX_ALIGN != 0ul ||
-        texture->pitch_bytes % V9X_RS690_TEX_ALIGN != 0ul) {
+        texture->pitch_bytes % V9X_RS690_TEX_PITCH_ALIGN != 0ul) {
         return V9X_STATUS_UNSUPPORTED;
     }
 
@@ -991,6 +1039,39 @@ v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
     v9x_rs690_3d_add(list, V9X_RS690_FG_ALPHA_FUNC, alpha_test);
     v9x_rs690_3d_add(list, V9X_RS690_SU_CULL_MODE,
                      V9X_RS690_SU_FACE_NEG | state->cull);
+    v9x_rs690_3d_add(list, V9X_RS690_GA_COLOR_CONTROL,
+                     state->flat != 0ul ? V9X_RS690_GA_ALL_FLAT_FIRST
+                                        : V9X_RS690_GA_ALL_GOURAUD);
+    v9x_rs690_3d_add(list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK,
+                     state->x_channel != 0ul ? V9X_RS690_CHANNELS_RGB
+                                             : V9X_RS690_CHANNELS_ALL);
+
+    /* Specular: colour 1 through interpolator 1 into the temp after the
+     * colour's, the ALU's third operand, added to RGB only. */
+    if (state->specular != 0ul) {
+        v9x_u32 temp = state->textured != 0ul ? 2ul : 1ul;
+        v9x_u32 rgb_addr = V9X_RS690_ALU_RGB_ADDR_OUT |
+                           (temp << V9X_RS690_ALU_ADDR2_SHIFT);
+        v9x_u32 rgb_inst = V9X_RS690_ALU_RGB_MOV_PLUS_SRC2;
+
+        if (state->textured != 0ul &&
+            state->texture.combine == V9X_RS690_TEXCOMBINE_MODULATE) {
+            rgb_addr |= V9X_RS690_ALU_ADDR1_TEMP1;
+            rgb_inst = V9X_RS690_ALU_RGB_MUL_PLUS_SRC2;
+        }
+        v9x_rs690_3d_add(list, V9X_RS690_RS_IP_1, V9X_RS690_RS_IP_COLOR1);
+        v9x_rs690_3d_add(list, V9X_RS690_RS_INST_1,
+                         V9X_RS690_RS_INST_COLOR1 |
+                         (temp << V9X_RS690_RS_INST_COL_ADDR_SHIFT));
+        v9x_rs690_3d_add(list, V9X_RS690_RS_COUNT,
+                         V9X_RS690_RS_COUNT_TWO_COLORS |
+                         (state->textured != 0ul ?
+                          V9X_RS690_RS_COUNT_ST : 0ul));
+        v9x_rs690_3d_add(list, V9X_RS690_RS_INST_COUNT, 1ul);
+        v9x_rs690_3d_add(list, V9X_RS690_US_PIXSIZE, temp);
+        v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_ADDR_0, rgb_addr);
+        v9x_rs690_3d_add(list, V9X_RS690_US_ALU_RGB_INST_0, rgb_inst);
+    }
 
     v9x_rs690_3d_add(list, V9X_RS690_VAP_VTX_SIZE,
                      V9X_RS690_TL_VERTEX_DWORDS);

@@ -65,10 +65,12 @@ static void v9x_rs690_fill_engine(unsigned long framebuffer_linear_base,
     *mapped_aperture_bytes = V9X_RS690_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RS690;
     /* FLIP: D1GRPH, where the register probe read the VBE desktop
-     * (rs690_scanout.c). */
+     * (rs690_scanout.c). D3D: the 3D core by register writes, through
+     * the same window (d3d_rs690.c). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_FLIP;
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_D3D;
 }
 
 /*
@@ -82,7 +84,7 @@ const V9X_HW16_DEVICE v9x_rs690_device = {
     "ati-rs690-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    "not-advertised",
+    "hardware-rs690-pio",
     0,
     v9x_rs690_fill_engine
 };

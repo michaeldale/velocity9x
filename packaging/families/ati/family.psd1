@@ -569,10 +569,13 @@
             # (docs\decisions\2026-11-04-rs690-2d-write-probe.md); the rest
             # is drawn by the CPU (docs\plans\ati-rs690-x1200.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            # The R300-class 3D core by register writes, no CP: its state
+            # and TL vertices drawn as modelled at 16 and 32 bpp on this chip
+            # (docs\decisions\2026-11-05-rs690-z-blend-probe.md).
+            Direct3D = 'hardware-rs690-pio'
             EngineType = 'ATI_RS690'
             # FLIP: D1GRPH (docs\decisions\2026-11-05-rs690-flips.md).
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What M-GB8KRE's VBE 4F00h reports; the carve-out is 128 MiB.
             # The heap sizes from 4F00h, clamped to the family's 16 MiB
             # mapping.
