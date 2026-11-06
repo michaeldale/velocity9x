@@ -4,6 +4,17 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-06 Feature gap: Intel video BIOSes lack the panel's native mode (netbook 1024x600, GM965 1280x800, GM45 1920x1080); no BIOS mode-table patch exists](2026-11-06-intel-vbios-mode-table-lacks-panel-modes.md)
+- [2026-11-06 Feature gap: DirectDraw offers no YUV surfaces (YUY2, UYVY, YV12) and no overlay, emulated or hardware](2026-11-06-no-yuv-surfaces-or-overlay.md)
+- [2026-11-06 Feature gap: the VBE family refuses banked-only modes (VBE 1.2, ISA/VLB, frame buffer above 4 GiB); no A000h window fallback](2026-11-06-vbe-family-refuses-banked-modes.md)
+- [2026-11-06 Feature gap: no refresh rate can be chosen; the VBE 3.0 CRTC builder is host-tested but unused](2026-11-06-no-refresh-rate-choice.md)
+- [2026-11-06 Feature gap: only S3 has a DPMS body; whether other families power the monitor down (master VDD's own 4F10h) is unmeasured](2026-11-06-vbe-family-has-no-dpms.md)
+- [2026-11-06 Feature gap: nothing restores the mode or engine state after an APM/ACPI resume; untested on any machine](2026-11-06-no-mode-restore-after-resume.md)
+- [2026-11-06 Feature gap: no gamma ramp at 8 bpp on any family (palette ramp, DDCAPS2_PRIMARYGAMMA), none at all on the VBE family](2026-11-06-no-gamma-ramp-at-8bpp-or-on-vbe.md)
+- [2026-11-06 Feature gap: the Bochs/QEMU DISPI interface is unused, so no custom modes and every flip declined on the std-vga](2026-11-06-bochs-dispi-modes-and-flips-unused.md)
+- [2026-11-06 Feature gap: VMware SVGA II is not supported (low priority)](2026-11-06-no-vmware-svga-ii-support.md)
+- [2026-11-06 Feature gap: the VBE family leaves the DAC at 6 bits in 256-colour modes (no 4F08h)](2026-11-06-vbe-8bit-dac-unused.md)
+- [2026-11-06 Feature gap: the CPU rasterizer has no stencil, two texture units and five blend factors](2026-11-06-cpu-rasterizer-lacks-stencil-stages-blends.md)
 - [2026-11-06 M-7V636C (RIVA 128ZX): the Glide 2 probe draws no triangles on the 0.37.0 candidate (14 failures, against 1 on the installed development build); whether 0.36.0 does the same is unknown; review later (Michael)](2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md)
 - [2026-11-06 A8U4I5 (Rage 128 Pro): V9XD32's new T20/T21 make its later T4 (Clear E_NOTIMPL, nothing drawn) and T16 fail; the 0.36.0 probe passes on the same 0.37.0 driver, so not a driver regression; cause unknown](2026-11-06-v9xd32-t20-t21-break-t4-t16-on-rage128.md)
 - [2026-11-06 M-GB8KRE (RS690): 3DMark 2000's Game 1 draws some distant terrain triangles salmon-red, hard-edged, where the Rage 128 fades them to grey haze; drawn, not refused; state unknown; not a 0.37.0 blocker (Michael)](2026-11-06-rs690-3dmark2000-pink-terrain.md)
