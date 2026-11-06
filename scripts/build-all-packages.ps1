@@ -34,6 +34,11 @@ if ($Family) {
     $families = @($families | Where-Object { $_.Id -in $Family })
 }
 
+# Once, not per family: none of these reads a manifest (see
+# build-shared-components.ps1).
+& (Join-Path $PSScriptRoot "build-shared-components.ps1") `
+    -BuildId $BuildId -DdkRoot $DdkRoot | Write-Verbose
+
 $entries = @()
 # Not $family: the [string[]]$Family parameter is the same name to PowerShell,
 # and assigning a manifest hashtable to it silently coerces it to strings.
@@ -47,7 +52,8 @@ foreach ($manifest in $families) {
         throw "Family $($manifest.Id) has no INF; no family installs any other way."
     }
     & (Join-Path $PSScriptRoot "build-active-package.ps1") `
-        -BuildId $BuildId -DdkRoot $DdkRoot -Family $manifest.Id | Write-Verbose
+        -BuildId $BuildId -DdkRoot $DdkRoot -Family $manifest.Id `
+        -SkipShared | Write-Verbose
 
     $files = @(Get-ChildItem -LiteralPath $outputDir -File | Sort-Object Name |
         ForEach-Object {

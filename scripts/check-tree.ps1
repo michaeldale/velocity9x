@@ -70,6 +70,7 @@ $required = @(
     "scripts\build-win16-loader-probe.ps1",
     "scripts\build-minivdd-skeleton.ps1",
     "scripts\build-active-package.ps1",
+    "scripts\build-shared-components.ps1",
     "scripts\build-floppy-package.ps1",
     "scripts\build-settings.ps1",
     "scripts\build-settings-page.ps1",

@@ -40,7 +40,10 @@ param(
     # Trace the two VESA hooks, which every build installs already, so this adds
     # no dispatch entry. They are the only callbacks of ours that might still be
     # reached on the DOS-box path.
-    [switch]$VesaTrace
+    [switch]$VesaTrace,
+    # The caller has already run build-shared-components.ps1 with this
+    # BuildId; build-all-packages.ps1 does, once for every family.
+    [switch]$SkipShared
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,22 +91,10 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
-& (Join-Path $PSScriptRoot "build-gdi-smoke.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-palette-smoke.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-mode-switch.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-power-cycle.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-ddraw-probe.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-trace-dump.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-update.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-window-list.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-ddraw-hal-dll.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-opengl-icd.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-glide.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-glide3.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-vxd-loader-probe.ps1") `
-    -BuildId $BuildId -DdkRoot $DdkRoot
-& (Join-Path $PSScriptRoot "build-win16-loader-probe.ps1") -BuildId $BuildId
-& (Join-Path $PSScriptRoot "build-driver-stage-probe.ps1") -BuildId $BuildId
+if (-not $SkipShared) {
+    & (Join-Path $PSScriptRoot "build-shared-components.ps1") `
+        -BuildId $BuildId -DdkRoot $DdkRoot
+}
 
 $installSource = Join-Path $repoRoot "packaging\win98se\INSTALL.TXT"
 $recoverSource = Join-Path $repoRoot "packaging\win98se\RECOVER.TXT"
@@ -194,7 +185,6 @@ Set-Content -LiteralPath (Join-Path $outputDir "VELOCITY9X.INF") `
 # Every model the INF offers must be one V9XUPD.EXE can apply itself
 # (src\common\update_inf.c), or an installed user's update would be
 # refused for a reason only this build could have caught.
-& (Join-Path $PSScriptRoot "build-release-tools.ps1") | Out-Null
 & (Join-Path $repoRoot "build\release-tools\v9xinfplan.exe") `
     (Join-Path $outputDir "VELOCITY9X.INF") | Out-Null
 if ($LASTEXITCODE -ne 0) {

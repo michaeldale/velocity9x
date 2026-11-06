@@ -43,9 +43,11 @@ if ($floppyFamilies.Count -eq 0) {
 }
 
 if (-not $SkipBuild) {
+    & (Join-Path $PSScriptRoot "build-shared-components.ps1") `
+        -BuildId $BuildId -DdkRoot $DdkRoot
     foreach ($family in $floppyFamilies) {
         & (Join-Path $PSScriptRoot "build-active-package.ps1") `
-            -BuildId $BuildId -DdkRoot $DdkRoot -Family $family.Id
+            -BuildId $BuildId -DdkRoot $DdkRoot -Family $family.Id -SkipShared
     }
 }
 
