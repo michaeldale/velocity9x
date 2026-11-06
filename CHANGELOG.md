@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.37.0 - not yet released
+
 ## 0.36.0 - 2026-11-06
 
 - **Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`) on the
