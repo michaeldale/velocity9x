@@ -63,6 +63,27 @@ Commit: `Date the X.Y.Z changelog for release`.
 `run-checks.ps1` builds every family package (`build-all-packages.ps1`) and
 must pass. The tree must be clean: a `-dirty` build id is refused in step 3.
 
+Then check those packages on hardware:
+
+```powershell
+./scripts/run-release-checks.ps1 -MachineList <release-machines.psd1>
+```
+
+It rebuilds the four probes with the packages' build id, then on every
+machine at once installs the machine's family package by WININIT renames
+and `reset`, checks each installed file's hash, and runs V9XD32 (once per
+switch the list gives), V9XGLP, V9XGLIDP and V9XR3DP. The evidence goes to
+`docs/probe/<version>-release-checks-<date>/`, one folder per machine, with
+`SUMMARY.md`: the install table, the results table, and every verdict that
+changed since the previous release's checks folder. Add `-ThreeDMark` for a
+grabbed 3DMark 2000 run where the list gives the input sequence, and
+`-Baseline` first if the drivers the machines have now should be recorded.
+
+The machine list names hosts and remote-help machines, so it is kept
+outside this repository (`V9X_RELEASE_MACHINES` can name it). Write the
+release-checks record in `docs/decisions/` from `SUMMARY.md`, explaining
+each change it lists.
+
 ## 3. Build the release folder
 
 ```powershell
