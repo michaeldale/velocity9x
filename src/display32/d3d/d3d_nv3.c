@@ -41,6 +41,9 @@
 #define V9X_D3D_NV3_TEXTURES 512ul
 #define V9X_D3D_NV3_VERTEX_BYTES (V9X_NV3_D3D_VERTEX_METHODS * 4ul)
 #define V9X_D3D_NV3_STATE_BYTES 64ul
+/* An explicit draw's write mask with every channel on (r3d_abi.h
+ * V9X_R3D_ABI_WRITE_RGB, which the HAL's engines do not include). */
+#define V9X_D3D_NV3_WRITE_RGB 7ul
 
 /* Refusal reasons, counted in the Mach64's policy counters as the other
  * engines do (V9XTRACE M64PolicyNN). */
@@ -670,7 +673,28 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     *sampled = 0;
     *use_opaque = 0;
     *decal_alpha = 0;
-    if (draw->explicit_state != 0ul || draw->texcoords1 != 0) {
+    if (draw->texcoords1 != 0 || draw->texture1.object != 0) {
+        return V9X_D3D_NV3_REFUSE_EXPLICIT;
+    }
+    /*
+     * The render interface's draws (OpenGL, Glide, 3DCIF) state a scissor
+     * and a channel mask, and may carry texture levels in CPU memory.
+     * Nothing here programs a scissor or a mask, and the chip samples only
+     * surfaces placed by v9x_d3d_nv3_create_surface. So an explicit draw is
+     * drawn when it changes nothing Direct3D's would not: the whole target,
+     * every channel, a surface texture or none, as the ViRGE takes them.
+     * CPU levels with no surface must be refused here, not read below as
+     * untextured and drawn white. Until 2026-11-07 every explicit draw was
+     * refused, and with no fallback for this chip Glide and 3DCIF drew
+     * nothing (docs\issues\2026-11-07-riva128-render-interface-has-no-
+     * engine.md).
+     */
+    if (draw->explicit_state != 0ul &&
+        (draw->texture.levels != 0 || draw->texture.level_count != 0ul ||
+         draw->write_mask != V9X_D3D_NV3_WRITE_RGB ||
+         draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
+         draw->scissor_right != draw->target.width ||
+         draw->scissor_bottom != draw->target.height)) {
         return V9X_D3D_NV3_REFUSE_EXPLICIT;
     }
     if (draw->target.format != V9X_R3D_FORMAT_RGB565 &&

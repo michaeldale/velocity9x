@@ -9721,6 +9721,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_rs690) {
         out->engine = V9X_R3D_ABI_ENGINE_RS690;
         name = "Velocity9x Radeon X1200";
+    } else if (ops == &v9x_d3d_engine_nv3) {
+        out->engine = V9X_R3D_ABI_ENGINE_NV3;
+        name = "Velocity9x RIVA 128";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -9857,6 +9860,16 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          * no fallback, so without this branch the ICD and Glide kept every
          * texture on the CPU and no textured draw was drawn (V9XGLIDP's
          * five texture checks, M-GB8KRE boot 87). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_nv3) {
+        /* The RIVA 128's: power-of-two edges, 1 to 256, square or not, all
+         * three formats, placed by v9x_d3d_nv3_create_surface with a
+         * swizzled square copy. CPU levels are refused (d3d_nv3.c) and
+         * there is no fallback, so without this branch the ICD and Glide
+         * would keep every texture on the CPU and no textured draw would
+         * be drawn, as on the RS690 before 99c78398. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

@@ -6,6 +6,23 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.39.0 - not yet released
 
+- **NVIDIA RIVA 128ZX: OpenGL, Glide and 3DCIF now draw on the 3D
+  engine.** Before, the engine refused every draw from these three, so
+  Glide and 3DCIF drew nothing and OpenGL ran on the CPU. Now a draw is
+  taken when it covers the whole target and writes every colour channel.
+  Its textures are placed in video memory, as Direct3D's already were.
+  The renderer is named "Velocity9x RIVA 128". A smaller OpenGL scissor
+  or a colour mask is still refused, and those draws are dropped.
+  Measured on one tester's card through remote help:
+  - the Glide 2 probe has 1 failure where it had 14. The one left is a
+    50 % blend one step dark at 5:5:5;
+  - the OpenGL probe passes, with ten fog, polygon-offset and blend checks
+    that failed on the CPU now passing;
+  - Direct3D's probe is unchanged.
+
+  Not yet tried: 3DCIF or any game
+  ([record](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)).
+
 - **Correction, NVIDIA RIVA 128ZX: Glide did not regress in 0.37.0.** The
   0.37.0 notes said the Glide 2 probe drew no triangles on that release,
   against 1 failure on the build before. The earlier run had drawn on the
