@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../../src/display32/d3d/d3d_rs690_map.h"
+#include "velocity9x/r3d_abi.h"     /* V9X_R3D_ABI_WRITE_* */
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -126,10 +127,50 @@ static void test_target(void)
     CHECK(state.fog_color == 0x00336699ul);
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
 
-    /* The render interface's draws go to the CPU. */
+    /* A Direct3D draw states no scissor and masks nothing. */
+    base_draw(&draw);
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.scissor_enable == 0ul && state.masked_channels == 0ul);
+
+    /* The render interface's draws (OpenGL, Glide, 3DCIF) on the engine,
+     * with their scissor and write mask (probed on M-GB8KRE, ScissorTest
+     * and ChannelMaskTest). */
     base_draw(&draw);
     draw.explicit_state = 1ul;
+    draw.scissor_left = 0ul;
+    draw.scissor_top = 0ul;
+    draw.scissor_right = 800ul;
+    draw.scissor_bottom = 600ul;
+    draw.write_mask = V9X_R3D_ABI_WRITE_RGB;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.scissor_enable == 1ul);
+    CHECK(state.scissor_right == 800ul && state.scissor_bottom == 600ul);
+    CHECK(state.masked_channels == 0ul);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    draw.scissor_left = 16ul;
+    draw.scissor_top = 8ul;
+    draw.scissor_right = 100ul;
+    draw.scissor_bottom = 50ul;
+    draw.write_mask = V9X_R3D_ABI_WRITE_GREEN | V9X_R3D_ABI_WRITE_BLUE;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.scissor_left == 16ul && state.scissor_top == 8ul &&
+          state.scissor_right == 100ul && state.scissor_bottom == 50ul);
+    CHECK(state.masked_channels == V9X_RS690_CHANNEL_RED);
+    draw.write_mask = 0ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.masked_channels == (V9X_RS690_CHANNEL_RED |
+                                    V9X_RS690_CHANNEL_GREEN |
+                                    V9X_RS690_CHANNEL_BLUE));
+    /* An empty scissor or one past the target is refused, not clamped. */
+    draw.scissor_right = 16ul;
     CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_EXPLICIT);
+    draw.scissor_right = 801ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_EXPLICIT);
+    draw.scissor_right = 100ul;
+    draw.scissor_bottom = 601ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_EXPLICIT);
+
+    /* Still refused: levels in CPU memory and a second unit. */
     base_draw(&draw);
     draw.texture.level_count = 1ul;
     CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RS690_REFUSE_EXPLICIT);

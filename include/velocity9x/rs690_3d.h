@@ -459,6 +459,12 @@ v9x_u32 v9x_rs690_float24(v9x_u32 ieee);
 #define V9X_RS690_DEPTH_PITCH_ALIGN     32ul
 #define V9X_RS690_DEPTH_OFFSET_ALIGN    32ul
 
+/* RB3D_COLOR_CHANNEL_MASK's colour bits (Mesa r300_reg.h:2356-2359,
+ * R300_BLUE/GREEN/RED_MASK_EN), for masked_channels. */
+#define V9X_RS690_CHANNEL_BLUE          0x00000001ul
+#define V9X_RS690_CHANNEL_GREEN         0x00000002ul
+#define V9X_RS690_CHANNEL_RED           0x00000004ul
+
 struct v9x_rs690_3d_state {
     struct v9x_rs690_3d_target target;
     v9x_u32 textured;
@@ -487,6 +493,20 @@ struct v9x_rs690_3d_state {
      * leaves it as it was (Direct3D's XRGB8888, which a clear leaves 0);
      * zero writes alpha into it. No effect at 16 bpp. */
     v9x_u32 x_channel;
+    /* An explicit draw's write mask (the render interface's: OpenGL's
+     * glColorMask, Glide's): V9X_RS690_CHANNEL_* bits taken out of
+     * RB3D_COLOR_CHANNEL_MASK, so those channels keep what the target
+     * held. Zero writes every channel the target has. */
+    v9x_u32 masked_channels;
+    /* An explicit draw's scissor, half-open in target pixels, written to
+     * SC_SCISSOR0/1 inclusive and guard-offset as the target's own
+     * scissor is. It must be non-empty and inside the target, or the
+     * state is refused (UNSUPPORTED). Off: the target's scissor. */
+    v9x_u32 scissor_enable;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
     /* Vertex fog, Direct3D's: RGB = f * RGB + (1 - f) * fog_color, f the
      * interpolated specular alpha (1 is no fog), alpha untouched, after
      * the texture combine and the specular add. fog_color is 00RRGGBBh.

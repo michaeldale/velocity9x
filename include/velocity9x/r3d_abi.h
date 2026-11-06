@@ -259,6 +259,9 @@ typedef struct v9x_r3d_abi_state {
 #define V9X_R3D_ABI_ENGINE_EVERGREEN 12ul
 /* The Carrizo CP engine (d3d_vi.c), 2026-10-28, on the same terms. */
 #define V9X_R3D_ABI_ENGINE_VI       13ul
+/* The RS690's R300-class engine (d3d_rs690.c), 2026-11-06, on the same
+ * terms; it described as 0 until then. */
+#define V9X_R3D_ABI_ENGINE_RS690    14ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;

@@ -10,6 +10,11 @@
 #define V9X_D3D_RS690_FOG_COLOR_MASK 0x00fffffful
 #define V9X_D3D_RS690_KEY16_MASK     0x0000fffful
 
+/* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
+#define V9X_D3D_RS690_WRITE_RED      1ul
+#define V9X_D3D_RS690_WRITE_GREEN    2ul
+#define V9X_D3D_RS690_WRITE_BLUE     4ul
+
 /* The builder's texture limit (TX_FORMAT0's 11-bit size fields). */
 #define V9X_D3D_RS690_TEXTURE_SIDE_MAX V9X_RS690_TEX_SIZE_MAX
 
@@ -227,6 +232,36 @@ static v9x_u32 v9x_d3d_rs690_map_texture(const V9X_R3D_DRAW *draw,
     return V9X_D3D_RS690_REFUSE_NONE;
 }
 
+/* An explicit draw's scissor and write mask, as the builder takes them.
+ * The scissor must be a non-empty rectangle inside the target; one that
+ * is not is refused rather than clamped, as the Rage 128's and the
+ * Evergreen's are. A channel the write mask leaves out is masked. */
+static int v9x_d3d_rs690_explicit(const V9X_R3D_DRAW *draw,
+                                  struct v9x_rs690_3d_state *state)
+{
+    if (draw->scissor_left >= draw->scissor_right ||
+        draw->scissor_top >= draw->scissor_bottom ||
+        draw->scissor_right > draw->target.width ||
+        draw->scissor_bottom > draw->target.height) {
+        return 0;
+    }
+    state->scissor_enable = 1ul;
+    state->scissor_left = draw->scissor_left;
+    state->scissor_top = draw->scissor_top;
+    state->scissor_right = draw->scissor_right;
+    state->scissor_bottom = draw->scissor_bottom;
+    if ((draw->write_mask & V9X_D3D_RS690_WRITE_RED) == 0ul) {
+        state->masked_channels |= V9X_RS690_CHANNEL_RED;
+    }
+    if ((draw->write_mask & V9X_D3D_RS690_WRITE_GREEN) == 0ul) {
+        state->masked_channels |= V9X_RS690_CHANNEL_GREEN;
+    }
+    if ((draw->write_mask & V9X_D3D_RS690_WRITE_BLUE) == 0ul) {
+        state->masked_channels |= V9X_RS690_CHANNEL_BLUE;
+    }
+    return 1;
+}
+
 v9x_u32 v9x_d3d_rs690_map_draw(const V9X_R3D_DRAW *draw,
                                const V9X_D3D_RS690_TEXTURE *resolved,
                                v9x_u32 fb_gpu_base,
@@ -243,11 +278,19 @@ v9x_u32 v9x_d3d_rs690_map_draw(const V9X_R3D_DRAW *draw,
         bytes[index] = 0u;
     }
 
-    /* The render interface's draws (explicit state, CPU-resident levels,
-     * a second unit) are the software engine's for now. */
-    if (draw->explicit_state != 0ul || draw->texture.levels != 0 ||
-        draw->texture.level_count != 0ul || draw->texcoords1 != 0 ||
-        draw->texture1.object != 0) {
+    /* The render interface's draws (OpenGL, Glide, 3DCIF) are drawn here
+     * with their scissor and write mask (V9XRS3D ScissorTest and
+     * ChannelMaskTest, byte-exact on M-GB8KRE, 2026-11-06). Until then
+     * every one was refused, and with no fallback for this chip they drew
+     * nothing (docs\decisions\2026-11-06-rs690-opengl-draws-nothing.md).
+     * Levels in CPU memory are not sampled and there is one unit: those
+     * stay refused. */
+    if (draw->texture.levels != 0 || draw->texture.level_count != 0ul ||
+        draw->texcoords1 != 0 || draw->texture1.object != 0) {
+        return V9X_D3D_RS690_REFUSE_EXPLICIT;
+    }
+    if (draw->explicit_state != 0ul &&
+        !v9x_d3d_rs690_explicit(draw, state)) {
         return V9X_D3D_RS690_REFUSE_EXPLICIT;
     }
     switch (draw->target.format) {

@@ -844,6 +844,48 @@ static void test_state(void)
     state.x_channel = 0ul;
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
 
+    /* Masked channels (an explicit draw's write mask) are taken out of the
+     * mask, with or without the X byte: red masked leaves blue, green and
+     * alpha (0Bh), or blue and green (03h). */
+    state.masked_channels = V9X_RS690_CHANNEL_RED;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK) == 0x0000000bul);
+    state.x_channel = 1ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK) == 0x00000003ul);
+    state.masked_channels = V9X_RS690_CHANNEL_RED | V9X_RS690_CHANNEL_GREEN |
+                            V9X_RS690_CHANNEL_BLUE;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK) == 0ul);
+    state.masked_channels = 0ul;
+    state.x_channel = 0ul;
+
+    /* An explicit draw's scissor: the half-open rectangle as the target's
+     * is written, inclusive and guard-offset, after the target's own. An
+     * empty one, or one past the target, is refused. */
+    state.scissor_enable = 1ul;
+    state.scissor_left = 10ul;
+    state.scissor_top = 2ul;
+    state.scissor_right = 30ul;
+    state.scissor_bottom = 12ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_in_windows(&list));
+    CHECK(list_value(&list, V9X_RS690_SC_SCISSOR0) ==
+          ((1440ul + 10ul) | ((1440ul + 2ul) << 13)));
+    CHECK(list_value(&list, V9X_RS690_SC_SCISSOR1) ==
+          ((1440ul + 29ul) | ((1440ul + 11ul) << 13)));
+    state.scissor_right = 10ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    state.scissor_right = 65ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    state.scissor_right = 64ul;
+    state.scissor_bottom = 33ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
+    state.scissor_enable = 0ul;
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_SC_SCISSOR1) ==
+          ((1440ul + 63ul) | ((1440ul + 31ul) << 13)));
+
     /* Shading: Gouraud unless flat, first vertex provoking. */
     CHECK(list_value(&list, V9X_RS690_GA_COLOR_CONTROL) == 0x0000aaaaul);
     state.flat = 1ul;

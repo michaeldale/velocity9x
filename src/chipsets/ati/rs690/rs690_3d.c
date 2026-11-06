@@ -1018,6 +1018,16 @@ static v9x_status v9x_rs690_check_state(const struct v9x_rs690_3d_state *state)
             return V9X_STATUS_INVALID_ARGUMENT;
         }
     }
+    /* An explicit scissor is clamped by nothing: an empty one or one past
+     * the target is refused rather than adjusted, as the Rage 128's and the
+     * Evergreen's are. */
+    if (state->scissor_enable != 0ul &&
+        (state->scissor_left >= state->scissor_right ||
+         state->scissor_top >= state->scissor_bottom ||
+         state->scissor_right > target->width ||
+         state->scissor_bottom > target->height)) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
     if (state->depth_enable == 0ul) {
         return V9X_STATUS_OK;
     }
@@ -1143,8 +1153,23 @@ v9x_status v9x_rs690_build_3d_state(const struct v9x_rs690_3d_state *state,
                      state->flat != 0ul ? V9X_RS690_GA_ALL_FLAT_FIRST
                                         : V9X_RS690_GA_ALL_GOURAUD);
     v9x_rs690_3d_add(list, V9X_RS690_RB3D_COLOR_CHANNEL_MASK,
-                     state->x_channel != 0ul ? V9X_RS690_CHANNELS_RGB
-                                             : V9X_RS690_CHANNELS_ALL);
+                     (state->x_channel != 0ul ? V9X_RS690_CHANNELS_RGB
+                                              : V9X_RS690_CHANNELS_ALL) &
+                     ~(state->masked_channels &
+                       (V9X_RS690_CHANNEL_RED | V9X_RS690_CHANNEL_GREEN |
+                        V9X_RS690_CHANNEL_BLUE)));
+
+    /* An explicit draw's scissor over the target's (v9x_rs690_add_target),
+     * in the same inclusive, guard-offset form; checked in
+     * v9x_rs690_check_state. */
+    if (state->scissor_enable != 0ul) {
+        v9x_rs690_3d_add(list, V9X_RS690_SC_SCISSOR0,
+                         v9x_rs690_sc_point(state->scissor_left,
+                                            state->scissor_top));
+        v9x_rs690_3d_add(list, V9X_RS690_SC_SCISSOR1,
+                         v9x_rs690_sc_point(state->scissor_right - 1ul,
+                                            state->scissor_bottom - 1ul));
+    }
 
     /* Specular: colour 1 through interpolator 1 into the temp after the
      * colour's, the ALU's third operand, added to RGB only. Fog needs

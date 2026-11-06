@@ -1697,6 +1697,74 @@ static void rs_alpha_test(void)
 }
 
 /*
+ * ScissorTest: a white quad over x 4-60, rows 0-15, with the state's
+ * scissor (10,2)-(30,10) half-open, as an explicit draw (OpenGL's
+ * glScissor) states it. Only the scissor's pixels may change: the
+ * builder's SC_SCISSOR0/1, inclusive and guard-offset as the target's,
+ * byte-exact against the prefill.
+ */
+static void rs_scissor_test(void)
+{
+    static const char name[] = "ScissorTest";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+
+    rs_zero(&state, sizeof(state));
+    state.scissor_enable = 1u;
+    state.scissor_left = 10u;
+    state.scissor_top = 2u;
+    state.scissor_right = 30u;
+    state.scissor_bottom = 10u;
+    rs_tl_quad(vertices, 4u, 0u, 60u, TEX_HEIGHT, 0u, 0xfffffffful);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('S');
+    rs_model_prefill();
+    rs_model_rect(10u, 2u, 30u, 10u, rs_encode_argb(0xfffffffful));
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
+ * ChannelMaskTest: the same white quad, unscissored, with red masked
+ * (glColorMask(FALSE, TRUE, TRUE, ...)): every covered pixel keeps the
+ * prefill's red and takes white's green and blue - A7FFh at 16 bpp,
+ * FFA5FFFFh at 32 (alpha written). Byte-exact.
+ */
+static void rs_channel_mask_test(void)
+{
+    static const char name[] = "ChannelMaskTest";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD red_field;
+    DWORD white;
+    DWORD pixel;
+    DWORD x;
+    DWORD y;
+
+    rs_zero(&state, sizeof(state));
+    state.masked_channels = V9X_RS690_CHANNEL_RED;
+    rs_tl_quad(vertices, 4u, 0u, 60u, TEX_HEIGHT, 0u, 0xfffffffful);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('W');
+    rs_model_prefill();
+    red_field = rs_bpp == 2u ? 0x0000f800ul : 0x00ff0000ul;
+    white = rs_encode_argb(0xfffffffful);
+    for (y = 0u; y < TEX_HEIGHT; ++y) {
+        for (x = 4u; x < 60u; ++x) {
+            pixel = rs_pixel(rs_model, x, y);
+            rs_set_pixel(rs_model, x, y,
+                         (pixel & red_field) | (white & ~red_field));
+        }
+    }
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
  * Cull: two triangles in one draw - A (4,2) (28,2) (4,14), clockwise as
  * the screen shows it (y down); B (36,2) (36,14) (60,2), counter-clockwise
  * - once with CULL_FRONT and once with CULL_BACK. Publishes which survive;
@@ -3404,6 +3472,8 @@ void WINAPI V9xRs6903dProbeEntry(void)
     rs_z_test();
     rs_blend_test();
     rs_alpha_test();
+    rs_scissor_test();
+    rs_channel_mask_test();
     rs_cull_test();
     rs_perspective_test();
     rs_tex_format_test("TexFormat1555", 'R', V9X_RS690_TEXFMT_ARGB1555);
