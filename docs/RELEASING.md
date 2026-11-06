@@ -96,7 +96,15 @@ record).
 grabbed default run (V9XTRACE frame grabs, score screenshot) on the
 machines whose list entry gives its `ThreeDMark` input sequence. Run it on
 one or two machines with `-Machine`, when a release changes what 3DMark
-draws, not on every check.
+draws, not on every check. It runs before the probes, and the record
+reports its V9XTRACE counters for that run alone. Three findings are
+flagged for a look at the grabs, because each once needed someone watching
+the screen to catch: draws into the page on screen (`DrawsIntoPresented`,
+the 0.34.0 HD 4600 flicker), no linear magnification asked for
+(`FilterMagSeen` without LINEAR, the 0.34.0 point-sampled sky), and
+engine timeouts or resets. The run stops early, with a screenshot, if
+3DMark crashes, shows a dialog that is not its own, or stops flipping for
+two minutes.
 
 Finish the record by hand only where it says `TODO`: whether this release
 caused each change, with the evidence. `-SummaryOnly` rewrites it from the

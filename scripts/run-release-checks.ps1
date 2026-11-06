@@ -154,7 +154,7 @@ if ($Worker) {
         Name = $Worker; Family = $entry.Family; Baseline = [bool]$Baseline
         BootBefore = $null; BootAfter = $null; Installed = $null; Error = $null
         Offline = $false; Agent = $null; Boot = $null; Desktop = $null; AnswerSeconds = $null
-        ThreeDMark = $null
+        ThreeDMark = $null; Counters = $null; CounterFlags = $null
     }
 
     function Invoke-Ctl {
@@ -277,41 +277,48 @@ if ($Worker) {
             Send-GuestFile $probes[$name] "$guestDir\$name"
         }
 
-        # The agent cannot delete and its stat has no time, so each report is
-        # overwritten with this before its probe runs: a probe that never
-        # started leaves no Result instead of an earlier run's verdicts. It
-        # holds no key, because V9XGLIDP updates its own INI section through
-        # WritePrivateProfileString and a key outside it would survive.
-        $notRun = [IO.Path]::GetTempFileName()
-        [IO.File]::WriteAllText($notRun, "; placeholder from run-release-checks.ps1`r`n",
-            [Text.Encoding]::ASCII)
-
-        foreach ($run in @($entry.D32Runs)) {
-            $tag = if ($run) { $run.TrimStart('/') } else { 'default' }
-            Send-GuestFile $notRun 'C:\V9XDIAG\V9XD32.TXT'
-            $result = Invoke-Ctl exec @{
-                Application = "$guestDir\V9XD32.EXE"; Arguments = $run
-                WorkingDirectory = $guestDir; TimeoutSeconds = 120
-            } 120
-            Get-GuestFile 'C:\V9XDIAG\V9XD32.TXT' (Join-Path $machineDir "v9xd32-$tag-V9XD32.TXT")
-            Write-Output "V9XD32 $tag exit=$($result.ExitCode)"
-        }
-        foreach ($probe in $probeReports) {
-            Send-GuestFile $notRun "C:\V9XDIAG\$($probe.Report)"
-            $result = Invoke-Ctl exec @{
-                Application = "$guestDir\$($probe.Exe)"
-                WorkingDirectory = $guestDir; TimeoutSeconds = 120
-            } 120
-            Get-GuestFile "C:\V9XDIAG\$($probe.Report)" `
-                (Join-Path $machineDir "$($probe.Prefix)-$($probe.Report)")
-            Write-Output "$($probe.Exe) exit=$($result.ExitCode)"
-        }
-
+        # 3DMark before the probes: FilterMagSeen is a mask since boot and
+        # cannot be subtracted, so a probe that asked for LINEAR first would
+        # hide a point-sampling 3DMark. After an install's reset the mask
+        # then holds 3DMark's requests alone.
         if ($ThreeDMark -and $entry.ThreeDMark) {
             $grabDir = Join-Path $machineDir '3dmark2000-grab'
             New-Item -ItemType Directory -Force -Path $grabDir | Out-Null
             $traceArgs = @{ Application = "$guestDir\V9XTRACE.EXE"; WorkingDirectory = $guestDir; TimeoutSeconds = 120 }
-            $null = Invoke-Ctl exec $traceArgs 150
+
+            # A full V9XTRACE snapshot, fetched by the name the run itself
+            # wrote to V9XSNAL.TXT: it rolls over eight names, so a fixed
+            # V9XSNA7.INI is right only once all eight are taken.
+            function Save-Snapshot {
+                param([string]$Destination)
+                $null = Invoke-Ctl exec $traceArgs 150
+                $latest = Join-Path $machineDir 'snapshot-latest.txt'
+                Get-GuestFile 'C:\V9XDIAG\V9XSNAL.TXT' $latest
+                if (-not (Test-Path -LiteralPath $latest)) {
+                    return
+                }
+                $guestPath = @([IO.File]::ReadAllLines($latest) | Where-Object { $_.Trim() })[0]
+                Remove-Item -LiteralPath $latest
+                if ($guestPath) {
+                    Get-GuestFile $guestPath.Trim() $Destination
+                }
+            }
+            function Read-SnapshotCounters {
+                param([string]$Path)
+                $values = @{}
+                if (-not (Test-Path -LiteralPath $Path)) {
+                    return $values
+                }
+                foreach ($line in [IO.File]::ReadAllLines($Path)) {
+                    if ($line -match '^([A-Za-z0-9]+)=(0x[0-9A-Fa-f]+|\d+)$') {
+                        $values[$Matches[1]] = [uint32]$(if ($Matches[2] -like '0x*') {
+                            [Convert]::ToUInt32($Matches[2].Substring(2), 16) } else { $Matches[2] })
+                    }
+                }
+                return $values
+            }
+
+            Save-Snapshot (Join-Path $grabDir 'snapshot-before.ini')
             $null = Invoke-Ctl exec ($traceArgs + @{ Arguments = '-grab:40x10' }) 150
             $null = Invoke-Ctl exec @{
                 Application = 'C:\Program Files\MadOnion.com\3DMark2000\3DMark2000.exe'
@@ -354,7 +361,7 @@ if ($Worker) {
                 Start-Sleep -Seconds 5
                 $windows = Get-GuestWindows
                 $started3d = ($windows -ne $null -and
-                    -not @($windows | Where-Object { $_.Class -eq '#32770' -and $_.Title -ceq '3DMark2000' }))
+                    -not @($windows | Where-Object { $_.Class -eq '#32770' -and $_.Title -clike '3DMark2000*' }))
             }
             if (-not $started3d) {
                 Save-Stuck 'the start click did not leave the welcome dialog'
@@ -439,11 +446,83 @@ if ($Worker) {
             & $controller screenshot -OutFile (Join-Path $machineDir '3dmark-score.png') `
                 @connection -ConnectTimeoutSeconds 120 | Out-Null
             $null = Invoke-Ctl kill @{ Name = '3DMARK2000.EXE' }
-            $null = Invoke-Ctl exec $traceArgs 150
+            Save-Snapshot (Join-Path $grabDir 'snapshot-after.ini')
             for ($i = 0; $i -lt 10; ++$i) {
                 Get-GuestFile "C:\V9XDIAG\V9XGRAB$i.BMP" (Join-Path $grabDir "V9XGRAB$i.BMP")
             }
-            Get-GuestFile 'C:\V9XDIAG\V9XSNA7.INI' (Join-Path $grabDir 'V9XSNA7.INI')
+
+            # The counters that caught what eyes caught in 0.34.0, over this
+            # run only (they are cumulative since boot, so after minus
+            # before). DrawsIntoPresented: the engine drew into the page on
+            # screen - the HD 4600 flicker, 21,358 in one Game 1 run.
+            # FilterMagSeen without bit 2 (D3DFILTER_LINEAR): the program
+            # never asked for bilinear magnification - the point-sampled sky,
+            # when DX6/7 programs saw no linear filter cap. Engine timeouts
+            # and resets: the engine stopped and was recovered.
+            $before = Read-SnapshotCounters (Join-Path $grabDir 'snapshot-before.ini')
+            $after = Read-SnapshotCounters (Join-Path $grabDir 'snapshot-after.ini')
+            if ($before.Count -gt 0 -and $after.Count -gt 0) {
+                function Get-Delta {
+                    param([string]$Key)
+                    if (-not $after.ContainsKey($Key) -or -not $before.ContainsKey($Key)) {
+                        return $null
+                    }
+                    return [int64]$after[$Key] - [int64]$before[$Key]
+                }
+                $intoPresented = Get-Delta 'DrawsIntoPresented'
+                $draws = Get-Delta 'D3dRenderPrimitiveCalls'
+                $hangs = [int64](Get-Delta 'EngineFifoTimeouts') + [int64](Get-Delta 'EngineIdleTimeouts') +
+                    [int64](Get-Delta 'EngineResets')
+                $refused = Get-Delta 'BatchesEngineRefused'
+                $mag = $after['FilterMagSeen']
+                $flags = @()
+                if ($intoPresented -gt 0) {
+                    $flags += "drew into the page on screen $intoPresented times (flicker)"
+                }
+                if ($mag -ne $null -and $draws -gt 0 -and -not ($mag -band 0x4)) {
+                    $flags += ("no linear magnification asked for, FilterMagSeen 0x{0:X} (point-sampled)" -f $mag)
+                }
+                if ($hangs -gt 0) {
+                    $flags += "engine timed out or was reset $hangs times"
+                }
+                $status.Counters = ("draws +{0}, into presented +{1}, refused batches +{2}, engine stalls +{3}, FilterMagSeen 0x{4:X}" -f
+                    $draws, $intoPresented, $refused, $hangs, $mag)
+                $status.CounterFlags = ($flags -join '; ')
+                Write-Output "3DMark counters: $($status.Counters)$(if ($flags) { "; LOOK: $($status.CounterFlags)" })"
+            } else {
+                $status.Counters = 'no snapshot pair'
+                Write-Output '3DMark counters: no snapshot pair'
+            }
+        }
+
+        # The agent cannot delete and its stat has no time, so each report is
+        # overwritten with this before its probe runs: a probe that never
+        # started leaves no Result instead of an earlier run's verdicts. It
+        # holds no key, because V9XGLIDP updates its own INI section through
+        # WritePrivateProfileString and a key outside it would survive.
+        $notRun = [IO.Path]::GetTempFileName()
+        [IO.File]::WriteAllText($notRun, "; placeholder from run-release-checks.ps1`r`n",
+            [Text.Encoding]::ASCII)
+
+        foreach ($run in @($entry.D32Runs)) {
+            $tag = if ($run) { $run.TrimStart('/') } else { 'default' }
+            Send-GuestFile $notRun 'C:\V9XDIAG\V9XD32.TXT'
+            $result = Invoke-Ctl exec @{
+                Application = "$guestDir\V9XD32.EXE"; Arguments = $run
+                WorkingDirectory = $guestDir; TimeoutSeconds = 120
+            } 120
+            Get-GuestFile 'C:\V9XDIAG\V9XD32.TXT' (Join-Path $machineDir "v9xd32-$tag-V9XD32.TXT")
+            Write-Output "V9XD32 $tag exit=$($result.ExitCode)"
+        }
+        foreach ($probe in $probeReports) {
+            Send-GuestFile $notRun "C:\V9XDIAG\$($probe.Report)"
+            $result = Invoke-Ctl exec @{
+                Application = "$guestDir\$($probe.Exe)"
+                WorkingDirectory = $guestDir; TimeoutSeconds = 120
+            } 120
+            Get-GuestFile "C:\V9XDIAG\$($probe.Report)" `
+                (Join-Path $machineDir "$($probe.Prefix)-$($probe.Report)")
+            Write-Output "$($probe.Exe) exit=$($result.ExitCode)"
         }
     }
     catch {
@@ -911,12 +990,20 @@ if ($ran3d.Count -gt 0) {
     $md += '## 3DMark 2000'
     $md += ''
     $md += 'Default benchmark, frames grabbed by V9XTRACE (`3dmark2000-grab/`), progress'
-    $md += 'watched through the HAL''s FlipHandled (`3dmark-beat.ini`).'
+    $md += 'watched through the HAL''s FlipHandled (`3dmark-beat.ini`). Counters are this'
+    $md += 'run''s, from V9XTRACE snapshots before and after it.'
     $md += ''
-    $md += '| Machine | Run | Score |'
-    $md += '|---|---|---|'
+    $md += '| Machine | Run | Score | Counters |'
+    $md += '|---|---|---|---|'
     foreach ($folder in $ran3d) {
-        $md += "| $($labels[$folder]) | $($statuses[$folder].ThreeDMark) | TODO: from ``$folder/3dmark-score.png`` |"
+        $s = $statuses[$folder]
+        $counters = if ($s.CounterFlags) { "**$($s.CounterFlags)**; $($s.Counters)" } else { $s.Counters }
+        $md += "| $($labels[$folder]) | $($s.ThreeDMark) | TODO: from ``$folder/3dmark-score.png`` | $counters |"
+    }
+    $flagged = @($ran3d | Where-Object { $statuses[$_].CounterFlags })
+    foreach ($folder in $flagged) {
+        $md += ''
+        $md += "- TODO: **$($labels[$folder])** counters say: $($statuses[$folder].CounterFlags). Check the grabs and say whether this release caused it."
     }
 }
 
