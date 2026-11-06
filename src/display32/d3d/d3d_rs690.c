@@ -622,6 +622,20 @@ static int v9x_d3d_rs690_write_run(const V9X_R3D_VERTEX *vertices,
 }
 
 /*
+ * The idle wait's cost, carried in diagnostics fields this engine leaves
+ * unused (V9XTRACE names them for the Mach64): M64Degenerate the cycles
+ * the wait before each draw took, M64PolicyLast the cycles of the whole
+ * draws, both summed in units of 256; M64DepthDraws the draws whose wait
+ * took more than an idle engine's few status reads. The time-stamp
+ * counter's low half, as glide_core.c reads it.
+ */
+#define V9X_D3D_RS690_CYCLE_SHIFT 8
+#define V9X_D3D_RS690_IDLE_CYCLES 4096ul
+
+static DWORD v9x_d3d_rs690_cycles(void);
+#pragma aux v9x_d3d_rs690_cycles = 0x0f 0x31 value [eax] modify exact [eax edx];
+
+/*
  * A run of clipped triangles: the state, then runs of consecutive good
  * triangles, then the finish. A triangle that fails the vertex check is
  * dropped alone, as the core's clipper would refuse it.
@@ -633,6 +647,8 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
     struct v9x_rs690_3d_list finish;
     v9x_u32 reason;
     DWORD at = 0ul;
+    DWORD started;
+    DWORD waited;
     int textured;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
@@ -648,11 +664,13 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
      * idle on the CPU's poll, and the frame buffer's place, before the
      * state that addresses it. The idle wait is what keeps a draw off a
      * 2D fill still running (T15); the WAIT_UNTIL below does not. */
+    started = v9x_d3d_rs690_cycles();
     if (!v9x_rs690_3d_begin(&v9x_d3d_rs690_fb_base,
                             &v9x_d3d_rs690_desktop)) {
         ++v9x_hal->d3d_diagnostics.m64_unrenderable;
         return 0;
     }
+    waited = v9x_d3d_rs690_cycles() - started;
     reason = v9x_d3d_rs690_map(draw);
     if (reason != V9X_D3D_RS690_REFUSE_NONE) {
         ++v9x_hal->d3d_diagnostics.m64_refused;
@@ -701,6 +719,17 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     v9x_present_note_submission();
+
+    /* What the idle wait costs: cycles waiting and cycles in the whole
+     * draw, each summed in units of 256 (V9X_D3D_RS690_CYCLE_SHIFT), and
+     * the draws whose wait found the engine still busy. */
+    v9x_hal->d3d_diagnostics.m64_degenerate +=
+        waited >> V9X_D3D_RS690_CYCLE_SHIFT;
+    v9x_hal->d3d_diagnostics.m64_policy_last +=
+        (v9x_d3d_rs690_cycles() - started) >> V9X_D3D_RS690_CYCLE_SHIFT;
+    if (waited > V9X_D3D_RS690_IDLE_CYCLES) {
+        ++v9x_hal->d3d_diagnostics.m64_depth_draws;
+    }
     return 1;
 }
 
