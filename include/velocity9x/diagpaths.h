@@ -69,6 +69,7 @@
 #define V9X_DIAG_SNAP_INI    V9X_DIAG_PATH("V9XSNAP.INI")   /* d3d_trace_dump_win32.c */
 /* One line: the snapshot file the last V9XTRACE run wrote. */
 #define V9X_DIAG_SNAP_LATEST V9X_DIAG_PATH("V9XSNAL.TXT")   /* d3d_trace_dump_win32.c */
+#define V9X_DIAG_BEAT_INI    V9X_DIAG_PATH("V9XBEAT.INI")   /* d3d_trace_dump_win32.c -beat */
 /* One presented frame, as a binary PPM, written by the 32-bit HAL itself -
  * the dump tool cannot read video memory. Once per session: the counters
  * beside it are colour differences and only the image says what the scene

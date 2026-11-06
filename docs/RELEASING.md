@@ -88,10 +88,15 @@ switch the list gives), V9XGLP, V9XGLIDP and V9XR3DP. The evidence goes to
 `docs/probe/<version>-release-checks-<date>/`, one folder per machine, and
 the record to `docs/decisions/<date>-<version>-release-checks.md` (never
 over an existing one): status, builds, results, every verdict that changed
-since the previous release's checks folder, and what was not covered. Add
-`-ThreeDMark` for a grabbed 3DMark 2000 run where the list gives the input
-sequence, and `-Baseline` first if the drivers the machines have now should
-be recorded (`-baseline` record).
+since the previous release's checks folder, and what was not covered.
+`-Baseline` first records the drivers the machines have now (`-baseline`
+record).
+
+3DMark 2000 is slow and does not run unless asked for: `-ThreeDMark` adds a
+grabbed default run (V9XTRACE frame grabs, score screenshot) on the
+machines whose list entry gives its `ThreeDMark` input sequence. Run it on
+one or two machines with `-Machine`, when a release changes what 3DMark
+draws, not on every check.
 
 Finish the record by hand only where it says `TODO`: whether this release
 caused each change, with the evidence. `-SummaryOnly` rewrites it from the

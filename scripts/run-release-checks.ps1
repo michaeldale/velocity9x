@@ -154,6 +154,7 @@ if ($Worker) {
         Name = $Worker; Family = $entry.Family; Baseline = [bool]$Baseline
         BootBefore = $null; BootAfter = $null; Installed = $null; Error = $null
         Offline = $false; Agent = $null; Boot = $null; Desktop = $null; AnswerSeconds = $null
+        ThreeDMark = $null
     }
 
     function Invoke-Ctl {
@@ -227,6 +228,7 @@ if ($Worker) {
                 [Text.Encoding]::ASCII)
             & $controller put -Source $wininit -Destination 'C:\WINDOWS\WININIT.INI' `
                 @connection -ConnectTimeoutSeconds 60 | Out-Null
+            Write-Output "staged $($installFiles.Count) files; resetting"
             $reset = Invoke-Ctl reset @{ WaitSeconds = 420 } 60
             $status.BootBefore = $reset.PreviousBootCounter
             $status.BootAfter = $reset.BootCounter
@@ -315,15 +317,125 @@ if ($Worker) {
                 Application = 'C:\Program Files\MadOnion.com\3DMark2000\3DMark2000.exe'
                 WorkingDirectory = 'C:\Program Files\MadOnion.com\3DMark2000'; Detach = $true
             }
-            $null = Invoke-Ctl wait-window @{ Title = '3DMark2000'; TimeoutSeconds = 120 } 150
-            $null = Invoke-Ctl input @{ Sequence = $entry.ThreeDMark }
-            $finished = $false
-            for ($i = 0; $i -lt 12 -and -not $finished; ++$i) {
-                $null = Invoke-Ctl wait-window @{ Title = 'Overall Score'; TimeoutSeconds = 120 } 150
-                $titles = @((Invoke-Ctl windows).Windows | ForEach-Object { $_.Title }) -join ' | '
-                $finished = ($titles -match 'Overall Score')
+            # Every step is checked: on 2026-11-06 the start click was lost
+            # (a 12 s delay inside the input sequence dropped the agent's
+            # connection), 3DMark sat on its menu, and the old loop waited up
+            # to 24 minutes for a score that could never come.
+            $menu = Invoke-Ctl wait-window @{ Title = '3DMark2000'; TimeoutSeconds = 120 } 130
+            if (-not $menu -or -not $menu.Success) {
+                throw "3DMark 2000 did not open its window."
             }
-            Write-Output "3DMark finished: $finished"
+            # The menu takes this long to accept a click after it appears;
+            # waited here, not inside the input sequence.
+            Start-Sleep -Seconds 12
+            $click = Invoke-Ctl input @{ Sequence = $entry.ThreeDMark }
+            if (-not $click -or -not $click.Success) {
+                throw "The 3DMark start input failed."
+            }
+
+            function Get-GuestWindows {
+                $listed = Invoke-Ctl windows
+                if (-not $listed) {
+                    return $null
+                }
+                return @($listed.Windows | Where-Object { $_.Title })
+            }
+            function Save-Stuck {
+                param([string]$Why)
+                & $controller screenshot -OutFile (Join-Path $machineDir '3dmark-stuck.png') `
+                    @connection -ConnectTimeoutSeconds 60 | Out-Null
+                $status.ThreeDMark = "stopped: $Why"
+                throw "3DMark: $Why (screen in 3dmark-stuck.png)"
+            }
+
+            # The click must take 3DMark off its welcome dialog.
+            $started3d = $false
+            for ($i = 0; $i -lt 6 -and -not $started3d; ++$i) {
+                Start-Sleep -Seconds 5
+                $windows = Get-GuestWindows
+                $started3d = ($windows -ne $null -and
+                    -not @($windows | Where-Object { $_.Class -eq '#32770' -and $_.Title -ceq '3DMark2000' }))
+            }
+            if (-not $started3d) {
+                Save-Stuck 'the start click did not leave the welcome dialog'
+            }
+            Write-Output "3DMark started"
+
+            # Then watch it: a score, the main window gone (crashed), a
+            # dialog that is not 3DMark's own (a fault, MPREXE in 0.37.0), or
+            # no new frames. Screenshots are blind during fullscreen flips, so
+            # the frames are counted by the driver: V9XTRACE -beat writes the
+            # HAL's FlipHandled to V9XBEAT.INI. A beat that cannot be read is
+            # logged and never taken for a frozen screen.
+            $beatFile = Join-Path $machineDir '3dmark-beat.ini'
+            $lastFlips = $null
+            $lastTick = $null
+            $flipsMoved = Get-Date
+            $began = Get-Date
+            $finished = $false
+            while (-not $finished) {
+                if (((Get-Date) - $began).TotalMinutes -gt 20) {
+                    Save-Stuck 'no score after 20 minutes'
+                }
+                Start-Sleep -Seconds 20
+
+                $null = Invoke-Ctl exec @{
+                    Application = "$guestDir\V9XTRACE.EXE"; Arguments = '-beat'
+                    WorkingDirectory = $guestDir; TimeoutSeconds = 30
+                } 40
+                Get-GuestFile 'C:\V9XDIAG\V9XBEAT.INI' $beatFile
+                $beat = @{}
+                if (Test-Path -LiteralPath $beatFile) {
+                    foreach ($line in [IO.File]::ReadAllLines($beatFile)) {
+                        if ($line -match '^([A-Za-z0-9]+)=(\d+)$') {
+                            $beat[$Matches[1]] = [uint32]$Matches[2]
+                        }
+                    }
+                }
+                $minute = ((Get-Date) - $began).TotalMinutes
+                if ($beat['Ok'] -eq 1 -and $beat['Tick'] -ne $lastTick) {
+                    $lastTick = $beat['Tick']
+                    if ($beat['FlipHandled'] -ne $lastFlips) {
+                        $lastFlips = $beat['FlipHandled']
+                        $flipsMoved = Get-Date
+                    }
+                    Write-Output ("3DMark +{0:N1} min: FlipHandled {1}" -f $minute, $lastFlips)
+                    if (((Get-Date) - $flipsMoved).TotalSeconds -gt 120) {
+                        Save-Stuck "frozen: FlipHandled stayed at $lastFlips for 2 minutes"
+                    }
+                } else {
+                    Write-Output ("3DMark +{0:N1} min: no beat" -f $minute)
+                }
+
+                $windows = Get-GuestWindows
+                if ($windows -eq $null) {
+                    # Screenshots and calls can fail during fullscreen flips;
+                    # one missed poll is not a verdict.
+                    continue
+                }
+                if (@($windows | Where-Object { $_.Title -match 'Overall Score' })) {
+                    $finished = $true
+                    continue
+                }
+                # The process, not a window: running fullscreen, 3DMark's
+                # main window drops out of the agent's window list (A8U4I5,
+                # 2026-11-06: a finished run was taken for a crash).
+                $listed = Invoke-Ctl ps
+                if ($listed -and -not @($listed.Processes | Where-Object { $_.Name -eq '3DMARK2000.EXE' })) {
+                    Save-Stuck 'the 3DMark process is gone (crashed or exited)'
+                }
+                # 3DMark's own dialogs are titled "3DMark2000 ..."; the
+                # Windows 98 fault box takes the exe name in capitals
+                # ("3DMARK2000"), so the match is case-sensitive.
+                $foreign = @($windows | Where-Object {
+                    $_.Class -eq '#32770' -and $_.Title -cnotlike '3DMark2000*' })
+                if ($foreign) {
+                    Save-Stuck "dialog '$($foreign[0].Title)' appeared"
+                }
+            }
+            $status.ThreeDMark = ("finished in {0:N1} min, last FlipHandled {1}" -f
+                ((Get-Date) - $began).TotalMinutes, $lastFlips)
+            Write-Output "3DMark $($status.ThreeDMark)"
             & $controller screenshot -OutFile (Join-Path $machineDir '3dmark-score.png') `
                 @connection -ConnectTimeoutSeconds 120 | Out-Null
             $null = Invoke-Ctl kill @{ Name = '3DMARK2000.EXE' }
@@ -470,30 +582,54 @@ function Write-V9xFinished {
     Write-Output $text
 }
 
+# A worker is stopped, and its machine recorded, when it cannot finish:
+# no first answer within ReachSeconds (skipped); no return from its reset
+# within RebootMinutes; or no new log line for StallMinutes. On 2026-11-06
+# M-JJN1ZZ stopped checking in after its reset and v9xctl kept reopening
+# relay sessions to it, 150 s each, well past the reset's own wait.
+$RebootMinutes = 8
+$StallMinutes = 10
+function Stop-V9xWorker {
+    param($Worker, [string]$Reason, [bool]$Offline)
+    Stop-Process -Id $Worker.Process.Id -Force -ErrorAction SilentlyContinue
+    $Worker.Process.WaitForExit()
+    $Worker.Skipped = $true
+    $statusDir = Join-Path $OutDir $Worker.Folder
+    New-Item -ItemType Directory -Force -Path $statusDir | Out-Null
+    $statusPath = Join-Path $statusDir 'status.json'
+    $kept = if (Test-Path -LiteralPath $statusPath) { Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json }
+    [ordered]@{
+        Name = $Worker.Name; Family = $Worker.Family; Baseline = [bool]$Baseline
+        BootBefore = $null; BootAfter = $null; Installed = $null
+        Error = $Reason; Offline = $Offline; Agent = $(if ($kept) { $kept.Agent })
+    } | ConvertTo-Json | Set-Content -LiteralPath $statusPath -Encoding Ascii
+    if (-not $List) {
+        Write-Output "$($Worker.Name) stopped: $Reason"
+    }
+}
+
 $running = @($processes)
 while ($running.Count -gt 0) {
     Start-Sleep -Seconds 1
     $late = ((Get-Date) - $started).TotalSeconds -gt $ReachSeconds
     foreach ($p in $running) {
-        if (-not $late -or $p.Answered -or $p.Process.HasExited) {
+        if ($p.Process.HasExited) {
             continue
         }
-        if (Select-String -LiteralPath $p.Log -Pattern '^agent ' -Quiet) {
-            $p.Answered = $true
+        if (-not $p.Answered) {
+            if (Select-String -LiteralPath $p.Log -Pattern '^agent ' -Quiet) {
+                $p.Answered = $true
+            } elseif ($late) {
+                Stop-V9xWorker $p "skipped: no answer within $ReachSeconds s" $true
+            }
             continue
         }
-        Stop-Process -Id $p.Process.Id -Force -ErrorAction SilentlyContinue
-        $p.Process.WaitForExit()
-        $p.Skipped = $true
-        $statusDir = Join-Path $OutDir $p.Folder
-        New-Item -ItemType Directory -Force -Path $statusDir | Out-Null
-        [ordered]@{
-            Name = $p.Name; Family = $p.Family; Baseline = [bool]$Baseline
-            BootBefore = $null; BootAfter = $null; Installed = $null
-            Error = "skipped: no answer within $ReachSeconds s"; Offline = $true; Agent = $null
-        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $statusDir 'status.json') -Encoding Ascii
-        if (-not $List) {
-            Write-Output "$($p.Name) skipped: no answer within $ReachSeconds s"
+        $quietMinutes = ((Get-Date) - (Get-Item -LiteralPath $p.Log).LastWriteTime).TotalMinutes
+        $lastLine = @(Read-V9xNewLines -Path $p.Log -Skip 0) | Select-Object -Last 1
+        if ($lastLine -like '*resetting' -and $quietMinutes -gt $RebootMinutes) {
+            Stop-V9xWorker $p "did not come back within $RebootMinutes min of its reset; look at the machine" $true
+        } elseif ($quietMinutes -gt $StallMinutes) {
+            Stop-V9xWorker $p "no progress for $StallMinutes min after '$lastLine'" $false
         }
     }
     $done = @($running | Where-Object { $_.Process.HasExited })
@@ -769,6 +905,21 @@ if (-not $Previous) {
     }
 }
 
+$ran3d = @($folderNames | Where-Object { $statuses.Contains($_) -and $statuses[$_].ThreeDMark })
+if ($ran3d.Count -gt 0) {
+    $md += ''
+    $md += '## 3DMark 2000'
+    $md += ''
+    $md += 'Default benchmark, frames grabbed by V9XTRACE (`3dmark2000-grab/`), progress'
+    $md += 'watched through the HAL''s FlipHandled (`3dmark-beat.ini`).'
+    $md += ''
+    $md += '| Machine | Run | Score |'
+    $md += '|---|---|---|'
+    foreach ($folder in $ran3d) {
+        $md += "| $($labels[$folder]) | $($statuses[$folder].ThreeDMark) | TODO: from ``$folder/3dmark-score.png`` |"
+    }
+}
+
 $md += ''
 $md += '## Not covered'
 $md += ''
@@ -783,6 +934,9 @@ if ($unchecked.Count -gt 0 -and -not $Baseline) {
 }
 if (-not $ThreeDMark) {
     $md += '- 3DMark 2000: not run (no `-ThreeDMark`).'
+}
+if ($md[-1] -eq '') {
+    $md += 'Nothing: every machine asked for was checked.'
 }
 
 $text = ($md -join "`r`n") + "`r`n"
@@ -800,7 +954,7 @@ if ($inTree) {
 Write-Output "Wrote $recordPath"
 $skipped = @($processes | Where-Object { $_.Skipped })
 if ($skipped.Count -ne 0) {
-    Write-Output "Skipped, no answer: $(@($skipped | ForEach-Object { $_.Name }) -join ', ')"
+    Write-Output "Stopped (see the record's Not covered): $(@($skipped | ForEach-Object { $_.Name }) -join ', ')"
 }
 $failed = @($processes | Where-Object { -not $_.Skipped -and $_.Process.ExitCode -ne 0 })
 if ($failed.Count -ne 0) {

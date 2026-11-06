@@ -1654,6 +1654,69 @@ static void v9x_write_driver_identity(const struct v9x_diag_identity *identity)
     }
 }
 
+/*
+ * "-beat": only the counters that move while a 3D program renders, to the
+ * fixed C:\V9XDIAG\V9XBEAT.INI. A full snapshot takes one of the eight
+ * rollover names and writes about 1,600 profile lines; polling one every 20
+ * seconds through a benchmark would use the names up and slow the machine
+ * it is measuring. scripts\run-release-checks.ps1 reads this to tell a
+ * benchmark that is still flipping from one that has stopped. Tick changes
+ * on every run, so a reader can also tell a fresh file from a stale one.
+ */
+#define V9X_BEAT_SECTION "Velocity9xBeat"
+
+static void v9x_beat_uint(const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_uint_text(text, value);
+    WritePrivateProfileStringA(V9X_BEAT_SECTION, key, text, V9X_DIAG_BEAT_INI);
+}
+
+static void v9x_write_beat(void)
+{
+    V9X_DCICMD command;
+    V9X_DD_TRACE_SNAPSHOT snapshot;
+    HDC screen;
+    unsigned char *bytes;
+    unsigned index;
+    int result = 0;
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    bytes = (unsigned char *)&snapshot;
+    for (index = 0u; index < sizeof(snapshot); ++index) {
+        bytes[index] = 0u;
+    }
+
+    screen = GetDC(0);
+    if (screen != 0) {
+        command.dwCommand = V9X_DDGETTRACE;
+        command.dwParam1 = 0ul;
+        command.dwParam2 = 0ul;
+        command.dwVersion = V9X_DD_VERSION;
+        command.dwReserved = 0ul;
+        result = ExtEscape(screen, V9X_DCICOMMAND, sizeof(command),
+                           (LPCSTR)&command, sizeof(snapshot),
+                           (LPSTR)&snapshot);
+        ReleaseDC(0, screen);
+    }
+
+    WritePrivateProfileStringA(V9X_BEAT_SECTION, 0, 0, V9X_DIAG_BEAT_INI);
+    v9x_beat_uint("Tick", GetTickCount());
+    if (result <= 0 || snapshot.dwSize != sizeof(V9X_DD_TRACE_SNAPSHOT) ||
+        snapshot.abi != V9X_DD_SHARED_ABI) {
+        v9x_beat_uint("Ok", 0ul);
+    } else {
+        v9x_beat_uint("Ok", 1ul);
+        v9x_beat_uint("FlipHandled", snapshot.d3d.flip_handled);
+        v9x_beat_uint("D3dRenderPrimitiveCalls",
+                      snapshot.d3d.render_primitive_calls);
+        v9x_beat_uint("D3dExecuteCalls", snapshot.d3d.execute_calls);
+    }
+    /* Flush the profile cache before the process exits. */
+    WritePrivateProfileStringA(0, 0, 0, V9X_DIAG_BEAT_INI);
+}
+
 void __stdcall V9xTraceDumpEntry(void)
 {
     V9X_DCICMD command;
@@ -1665,6 +1728,12 @@ void __stdcall V9xTraceDumpEntry(void)
     unsigned index;
     unsigned char *bytes;
     void *dd_object = 0;
+
+    /* Before anything picks a rollover name or writes the stage file. */
+    if (v9x_has_switch("-beat")) {
+        v9x_write_beat();
+        ExitProcess(0ul);
+    }
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     v9x_stage("start", 0ul);
