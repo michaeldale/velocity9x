@@ -54,10 +54,24 @@ typedef struct v9x_gl_array {
  * TEXTURE_COORD_ARRAY enable and its queries, and glInterleavedArrays
  * address. All of it is the client vertex-array group's.
  */
+/*
+ * GL_EXT_compiled_vertex_array's lock: the elements glLockArraysEXT named,
+ * lock_count zero when nothing is locked. The lock is the program's
+ * promise not to change those elements until glUnlockArraysEXT, which an
+ * ICD may use to keep transformed vertices between passes; nothing here
+ * keeps any yet, so a locked draw is exactly the unlocked one. It is
+ * client-vertex-array state (the extension's New State table), held here
+ * so glPushClientAttrib saves it with the arrays.
+ */
+#define V9X_GL_ARRAY_ELEMENT_LOCK_FIRST_EXT 0x81A8u
+#define V9X_GL_ARRAY_ELEMENT_LOCK_COUNT_EXT 0x81A9u
+
 typedef struct v9x_gl_arrays {
     V9X_GL_ARRAY array[V9X_GL_ARRAY_COUNT];
     V9X_GL_ARRAY texcoord1;
     v9x_u32 client_active;
+    GLint lock_first;
+    GLsizei lock_count;
 } V9X_GL_ARRAYS;
 
 /* Table 6.6's initial values: every array disabled, null, stride 0, size
@@ -71,6 +85,14 @@ void v9x_gl_arrays_init(V9X_GL_ARRAYS *arrays);
 void v9x_gl_arrays_client_active(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
                                  GLenum target);
 
+/* glLockArraysEXT: INVALID_VALUE for a negative first or a count that is
+ * not positive, INVALID_OPERATION when already locked or between Begin
+ * and End; each leaves the lock as it was. */
+void v9x_gl_arrays_lock(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
+                        GLint first, GLsizei count);
+/* glUnlockArraysEXT: INVALID_OPERATION when nothing is locked or between
+ * Begin and End. */
+void v9x_gl_arrays_unlock(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays);
 /* glEnableClientState / glDisableClientState. INVALID_ENUM for any other
  * name. */
 void v9x_gl_arrays_client_state(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,

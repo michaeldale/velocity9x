@@ -304,6 +304,17 @@ static void test_client_bits(void)
     v9x_gl_attrib_pop_client(&s, &t, &a, &stack);
     ACHECK(a.client_active == 0ul && !a.texcoord1.enabled &&
            a.texcoord1.pointer == 0);
+
+    /* GL_EXT_compiled_vertex_array: the lock is client-vertex-array state
+     * (the extension's New State table). */
+    v9x_gl_arrays_lock(&s, &a, 1, 4);
+    v9x_gl_attrib_push_client(&s, &t, &a, &stack,
+                              V9X_GL_CLIENT_VERTEX_ARRAY_BIT);
+    v9x_gl_arrays_unlock(&s, &a);
+    ACHECK(a.lock_count == 0);
+    v9x_gl_attrib_pop_client(&s, &t, &a, &stack);
+    ACHECK(a.lock_first == 1 && a.lock_count == 4);
+    v9x_gl_arrays_unlock(&s, &a);
     v9x_gl_textures_release(&t);
 }
 

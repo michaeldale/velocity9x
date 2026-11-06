@@ -385,6 +385,23 @@ static GLint v9x_gl_as_integer(const V9X_GL_VALUES *values, unsigned int i)
     return (GLint)v9x_gl_get_round(value);
 }
 
+/* GL_EXT_compiled_vertex_array's state: the locked range, 0 and 0 when
+ * nothing is locked. */
+static int v9x_gl_query_lock(const V9X_GL_ARRAYS *arrays, GLenum pname,
+                             V9X_GL_VALUES *out)
+{
+    switch (pname) {
+    case V9X_GL_ARRAY_ELEMENT_LOCK_FIRST_EXT:
+        v9x_gl_one(out, V9X_GL_CLASS_INTEGER, (double)arrays->lock_first);
+        return 1;
+    case V9X_GL_ARRAY_ELEMENT_LOCK_COUNT_EXT:
+        v9x_gl_one(out, V9X_GL_CLASS_INTEGER, (double)arrays->lock_count);
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 void v9x_gl_get(V9X_GL_STATE *state, const V9X_GL_PIPELINE *pipeline,
                 const V9X_GL_TEXTURES *textures, const V9X_GL_ARRAYS *arrays,
                 v9x_u32 texture_units, GLenum pname, int kind, void *out)
@@ -398,6 +415,7 @@ void v9x_gl_get(V9X_GL_STATE *state, const V9X_GL_PIPELINE *pipeline,
     }
     if (!v9x_gl_query_units(textures, arrays, texture_units, pname,
                             &values) &&
+        !v9x_gl_query_lock(arrays, pname, &values) &&
         !v9x_gl_query(state, pipeline, textures, pname, &values)) {
         v9x_gl_state_error(state, V9X_GL_INVALID_ENUM);
         return;

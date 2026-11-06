@@ -85,6 +85,35 @@ void v9x_gl_arrays_init(V9X_GL_ARRAYS *arrays)
     arrays->array[V9X_GL_ARRAY_EDGE_FLAG].type = V9X_GL_UNSIGNED_BYTE;
     arrays->texcoord1 = arrays->array[V9X_GL_ARRAY_TEXCOORD];
     arrays->client_active = 0ul;
+    arrays->lock_first = 0;
+    arrays->lock_count = 0;
+}
+
+/* The errors are the extension's Errors section, in its order; the first
+ * one found is the one recorded, and the lock is left as it was. */
+void v9x_gl_arrays_lock(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,
+                        GLint first, GLsizei count)
+{
+    if (first < 0 || count <= 0) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_VALUE);
+        return;
+    }
+    if (arrays->lock_count != 0 || state->in_begin) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    arrays->lock_first = first;
+    arrays->lock_count = count;
+}
+
+void v9x_gl_arrays_unlock(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays)
+{
+    if (arrays->lock_count == 0 || state->in_begin) {
+        v9x_gl_state_error(state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    arrays->lock_first = 0;
+    arrays->lock_count = 0;
 }
 
 void v9x_gl_arrays_client_active(V9X_GL_STATE *state, V9X_GL_ARRAYS *arrays,

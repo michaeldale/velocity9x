@@ -6,6 +6,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.38.0 - not yet released
 
+- **OpenGL: `GL_EXT_compiled_vertex_array` on every card.** The ICD
+  now offers `glLockArraysEXT` and `glUnlockArraysEXT`, with the
+  extension's errors and its two `ARRAY_ELEMENT_LOCK_*_EXT` queries.
+  Quake 3 and engines built on it use these when the extension is
+  offered. The lock is recorded but nothing is cached yet: a locked
+  draw is drawn exactly as an unlocked one, which the extension
+  allows. It needs nothing from the 3D engine, so every package offers
+  it, including those whose engine has one texture unit.
+  Checked by host tests; V9XGLP's new `Cva` case checks it on each
+  machine in the release checks.
+
 ## 0.37.0 - 2026-11-06
 
 - **ATI Radeon X1200 IGP (RS690, `1002:791F`) on the `ati` package.**

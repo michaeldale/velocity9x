@@ -503,6 +503,68 @@ static void test_client_active_texture(void)
            a.client_active == 1ul);
 }
 
+/*
+ * GL_EXT_compiled_vertex_array: glLockArraysEXT and glUnlockArraysEXT, the
+ * extension's errors (each leaving the lock as it was), and a draw inside
+ * a locked range drawing what it draws unlocked - the lock is a promise
+ * the arrays will not change, which the ICD may use but need not.
+ */
+static void test_lock_arrays(void)
+{
+    static const GLfloat xy[6] = { 0.0f, 0.0f, 320.0f, 0.0f, 0.0f, 200.0f };
+
+    vscene();
+    VCHECK(a.lock_first == 0 && a.lock_count == 0);
+
+    v9x_gl_arrays_lock(&s, &a, -1, 3);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
+    v9x_gl_arrays_lock(&s, &a, 0, 0);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
+    v9x_gl_arrays_lock(&s, &a, 0, -2);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_VALUE);
+    VCHECK(a.lock_first == 0 && a.lock_count == 0);
+
+    /* Unlocking with nothing locked. */
+    v9x_gl_arrays_unlock(&s, &a);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+
+    v9x_gl_arrays_lock(&s, &a, 2, 5);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    VCHECK(a.lock_first == 2 && a.lock_count == 5);
+
+    /* Locking while locked, and either call between Begin and End. */
+    v9x_gl_arrays_lock(&s, &a, 0, 3);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    VCHECK(a.lock_first == 2 && a.lock_count == 5);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    v9x_gl_arrays_unlock(&s, &a);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    VCHECK(a.lock_first == 2 && a.lock_count == 5);
+    v9x_gl_prim_end(&s, &p);
+
+    v9x_gl_arrays_unlock(&s, &a);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    VCHECK(a.lock_first == 0 && a.lock_count == 0);
+
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    v9x_gl_arrays_lock(&s, &a, 0, 3);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_INVALID_OPERATION);
+    VCHECK(a.lock_count == 0);
+    v9x_gl_prim_end(&s, &p);
+
+    /* A locked draw is the unlocked draw. */
+    v9x_gl_arrays_pointer(&s, &a, V9X_GL_ARRAY_VERTEX, 2, V9X_GL_FLOAT, 0,
+                          xy);
+    v9x_gl_arrays_client_state(&s, &a, V9X_GL_VERTEX_ARRAY, 1);
+    v9x_gl_arrays_lock(&s, &a, 0, 3);
+    vsunk_triangles = 0ul;
+    v9x_gl_arrays_draw(&s, &p, &a, V9X_GL_TRIANGLES, 0, 3);
+    VCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    VCHECK(vsunk_triangles == 1ul);
+    VCHECK(vnear(vsunk[1].sx, 320.0f) && vnear(vsunk[1].sy, 200.0f));
+    v9x_gl_arrays_unlock(&s, &a);
+}
+
 unsigned int v9x_run_gl_varray_tests(void)
 {
     gl_varray_failures = 0u;
@@ -513,6 +575,7 @@ unsigned int v9x_run_gl_varray_tests(void)
     test_conversions();
     test_interleaved();
     test_client_active_texture();
+    test_lock_arrays();
     if (gl_varray_failures == 0u) {
         printf("PASS: OpenGL vertex arrays\n");
     }

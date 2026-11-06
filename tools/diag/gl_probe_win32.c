@@ -1037,6 +1037,96 @@ static void v9x_glp_polygon_offset(GLint width, GLint height)
 }
 
 /*
+ * GL_EXT_compiled_vertex_array, offered on every engine: advertised, both
+ * entry points, the extension's errors, ARRAY_ELEMENT_LOCK_FIRST/COUNT_EXT,
+ * and a glDrawArrays inside the locked range that must put its green on
+ * the screen exactly as an unlocked one does. CvaResult sums them.
+ */
+#define V9X_GLP_ARRAY_ELEMENT_LOCK_FIRST_EXT 0x81A8u
+#define V9X_GLP_ARRAY_ELEMENT_LOCK_COUNT_EXT 0x81A9u
+
+typedef void (APIENTRY *V9X_GLP_LOCK_FN)(GLint first, GLsizei count);
+typedef void (APIENTRY *V9X_GLP_UNLOCK_FN)(void);
+
+static void v9x_glp_cva(GLint width, GLint height)
+{
+    static GLfloat quad[12];
+    V9X_GLP_LOCK_FN lock;
+    V9X_GLP_UNLOCK_FN unlock;
+    GLint first = -1;
+    GLint count = -1;
+    GLint after = -1;
+    int advertised;
+    int errors_ok;
+    int queries_ok;
+    int draw_ok;
+    DWORD rgb;
+
+    advertised = v9x_glp_contains(glGetString(GL_EXTENSIONS),
+                                  "GL_EXT_compiled_vertex_array ");
+    lock = (V9X_GLP_LOCK_FN)wglGetProcAddress("glLockArraysEXT");
+    unlock = (V9X_GLP_UNLOCK_FN)wglGetProcAddress("glUnlockArraysEXT");
+    v9x_glp_uint("CvaAdvertised", advertised ? 1ul : 0ul);
+    v9x_glp_uint("CvaEntryPoints", (lock != 0 ? 1ul : 0ul) +
+                                   (unlock != 0 ? 1ul : 0ul));
+    if (!advertised || lock == 0 || unlock == 0) {
+        v9x_glp_text("CvaResult", "FAIL-MISSING");
+        return;
+    }
+
+    /* Two triangles over the whole window, in window coordinates. */
+    quad[0] = 0.0f;            quad[1] = 0.0f;
+    quad[2] = (GLfloat)width;  quad[3] = 0.0f;
+    quad[4] = (GLfloat)width;  quad[5] = (GLfloat)height;
+    quad[6] = 0.0f;            quad[7] = 0.0f;
+    quad[8] = (GLfloat)width;  quad[9] = (GLfloat)height;
+    quad[10] = 0.0f;           quad[11] = (GLfloat)height;
+
+    while (glGetError() != GL_NO_ERROR) {
+    }
+    lock(-1, 6);
+    errors_ok = glGetError() == GL_INVALID_VALUE;
+    unlock();
+    errors_ok = errors_ok && glGetError() == GL_INVALID_OPERATION;
+
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_TEXTURE_2D);
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor3f(0.0f, 1.0f, 0.0f);
+    glVertexPointer(2, GL_FLOAT, 0, quad);
+    glEnableClientState(GL_VERTEX_ARRAY);
+
+    lock(0, 6);
+    glGetIntegerv(V9X_GLP_ARRAY_ELEMENT_LOCK_FIRST_EXT, &first);
+    glGetIntegerv(V9X_GLP_ARRAY_ELEMENT_LOCK_COUNT_EXT, &count);
+    lock(0, 6);
+    errors_ok = errors_ok && glGetError() == GL_INVALID_OPERATION;
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    unlock();
+    glGetIntegerv(V9X_GLP_ARRAY_ELEMENT_LOCK_COUNT_EXT, &after);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glFinish();
+    rgb = v9x_glp_read(width / 2, height / 2);
+
+    queries_ok = first == 0 && count == 6 && after == 0;
+    draw_ok = v9x_glp_near(rgb, 0ul, 255ul, 0ul);
+    v9x_glp_uint("CvaErrorsOk", errors_ok ? 1ul : 0ul);
+    v9x_glp_uint("CvaQueriesOk", queries_ok ? 1ul : 0ul);
+    v9x_glp_hex("CvaLockedDraw", rgb);
+    v9x_glp_hex("ErrorAfterCva", (DWORD)glGetError());
+    v9x_glp_text("CvaResult",
+                 errors_ok && queries_ok && draw_ok ? "PASS" : "FAIL");
+}
+
+/*
  * glFog (GL 1.1 3.9) and the integer/double immediate-mode forms. A red
  * quad at eye distance 0.5 under blue fog: LINEAR 0..1 leaves f = 0.5,
  * so half red and half blue; EXP with density 2 leaves f = e^-1, red 94
@@ -3730,6 +3820,8 @@ void __stdcall V9xGlProbeEntry(void)
                              client.bottom - client.top);
             v9x_glp_polygon_offset(client.right - client.left,
                                    client.bottom - client.top);
+            v9x_glp_cva(client.right - client.left,
+                        client.bottom - client.top);
             v9x_glp_fog(client.right - client.left,
                         client.bottom - client.top);
             v9x_glp_lit(client.right - client.left,

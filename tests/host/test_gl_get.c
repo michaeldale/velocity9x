@@ -353,6 +353,21 @@ static void test_multitexture_queries(void)
     GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
 }
 
+/* GL_EXT_compiled_vertex_array's state: initial 0 and 0, then the locked
+ * range, and 0 and 0 again once unlocked. */
+static void test_lock_queries(void)
+{
+    fresh();
+    GGCHECK(geti(V9X_GL_ARRAY_ELEMENT_LOCK_FIRST_EXT) == 0);
+    GGCHECK(geti(V9X_GL_ARRAY_ELEMENT_LOCK_COUNT_EXT) == 0);
+    v9x_gl_arrays_lock(&s, &a, 3, 7);
+    GGCHECK(geti(V9X_GL_ARRAY_ELEMENT_LOCK_FIRST_EXT) == 3);
+    GGCHECK(geti(V9X_GL_ARRAY_ELEMENT_LOCK_COUNT_EXT) == 7);
+    v9x_gl_arrays_unlock(&s, &a);
+    GGCHECK(geti(V9X_GL_ARRAY_ELEMENT_LOCK_COUNT_EXT) == 0);
+    GGCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+}
+
 unsigned int v9x_run_gl_get_tests(void)
 {
     gl_get_failures = 0u;
@@ -362,6 +377,7 @@ unsigned int v9x_run_gl_get_tests(void)
     test_fog_index_and_edge_queries();
     test_stack_depth_and_stencil_queries();
     test_multitexture_queries();
+    test_lock_queries();
     if (gl_get_failures == 0u) {
         printf("PASS: OpenGL state queries\n");
     }

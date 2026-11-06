@@ -716,11 +716,14 @@ static const GLubyte * V9X_GL_API v9x_gl_get_string(GLenum name)
         return (const GLubyte *)"1.1.0";
     case V9X_GL_EXTENSIONS:
         /* With the trailing space: GLQuake looks for the name followed by
-         * one (gl_vidnt.c:580), so it must not end the string bare. */
+         * one (gl_vidnt.c:580), so it must not end the string bare.
+         * GL_EXT_compiled_vertex_array needs nothing from the engine and is
+         * offered on every one. */
         return (const GLubyte *)(v9x_gl_two_units()
                                      ? "GL_ARB_multitexture "
+                                       "GL_EXT_compiled_vertex_array "
                                        "GL_SGIS_multitexture "
-                                     : "");
+                                     : "GL_EXT_compiled_vertex_array ");
     default:
         v9x_gl_state_error(&v9x_gl_current()->state, V9X_GL_INVALID_ENUM);
         return 0;
@@ -3590,6 +3593,32 @@ static void V9X_GL_API v9x_gl_client_active_texture_arb(GLenum target)
                                                     target));
 }
 
+/*
+ * GL_EXT_compiled_vertex_array: glLockArraysEXT and glUnlockArraysEXT,
+ * offered on every engine because they need nothing from one - the lock
+ * is state and a promise (gl_varray.h), and a locked draw is drawn as an
+ * unlocked one. The first lock is logged, so V9XGL.LOG says whether a
+ * program uses the extension at all.
+ */
+static int v9x_gl_cva_seen;
+
+static void V9X_GL_API v9x_gl_lock_arrays_ext(GLint first, GLsizei count)
+{
+    if (!v9x_gl_cva_seen) {
+        v9x_gl_cva_seen = 1;
+        v9x_gl_log3("cva first glLockArraysEXT first=%lu count=%lu",
+                    (DWORD)first, (DWORD)count, 0ul);
+    }
+    V9X_GL_WITH_CONTEXT(v9x_gl_arrays_lock(&context_->state,
+                                           &context_->arrays, first, count));
+}
+
+static void V9X_GL_API v9x_gl_unlock_arrays_ext(void)
+{
+    V9X_GL_WITH_CONTEXT(v9x_gl_arrays_unlock(&context_->state,
+                                             &context_->arrays));
+}
+
 static void v9x_gl_multitexcoord_body(GLenum target, const void *v,
                                       GLenum type, unsigned int count)
 {
@@ -3718,6 +3747,17 @@ static const V9X_GL_EXTENSION_PROC v9x_gl_extension_procs[] = {
 
 #define V9X_GL_EXTENSION_PROC_COUNT \
     (sizeof(v9x_gl_extension_procs) / sizeof(v9x_gl_extension_procs[0]))
+
+/* The extension entry points DrvGetProcAddress answers on every engine:
+ * those that need nothing from the engine. */
+static const V9X_GL_EXTENSION_PROC v9x_gl_shared_extension_procs[] = {
+    { "glLockArraysEXT", (PROC)v9x_gl_lock_arrays_ext },
+    { "glUnlockArraysEXT", (PROC)v9x_gl_unlock_arrays_ext }
+};
+
+#define V9X_GL_SHARED_EXTENSION_PROC_COUNT \
+    (sizeof(v9x_gl_shared_extension_procs) / \
+     sizeof(v9x_gl_shared_extension_procs[0]))
 
 static void V9X_GL_API v9x_gl_shade_model(GLenum mode)
 {
@@ -5147,7 +5187,15 @@ PROC __stdcall DrvGetProcAddress(LPCSTR name)
     PROC proc = 0;
     unsigned int i;
 
-    if (name != 0 && v9x_gl_two_units()) {
+    if (name != 0) {
+        for (i = 0u; i < V9X_GL_SHARED_EXTENSION_PROC_COUNT; ++i) {
+            if (lstrcmpA(name, v9x_gl_shared_extension_procs[i].name) == 0) {
+                proc = v9x_gl_shared_extension_procs[i].proc;
+                break;
+            }
+        }
+    }
+    if (name != 0 && proc == 0 && v9x_gl_two_units()) {
         for (i = 0u; i < V9X_GL_EXTENSION_PROC_COUNT; ++i) {
             if (lstrcmpA(name, v9x_gl_extension_procs[i].name) == 0) {
                 proc = v9x_gl_extension_procs[i].proc;
