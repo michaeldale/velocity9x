@@ -28,14 +28,18 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.37.0.** It adds the ATI Radeon X1200 IGP (RS690,
-`1002:791F`) to the `ati` package. DirectDraw and page flips run on its
+**Current version: 0.38.0.** OpenGL offers `GL_EXT_compiled_vertex_array`
+on every card, which Quake 3 and engines built on it use. On the ATI
+Radeon X1200, OpenGL and Glide now draw on its 3D engine; in 0.37.0 they
+drew nothing there. Measured on one tester's machine: the OpenGL and
+Glide 2 probes pass. 3DCIF, 32 bpp and games have not been run on it.
+**Known issues: on the X1200, 3DMark 2000's first game test tints some
+distant terrain red. On the RIVA 128ZX, the Glide 2 probe draws no
+triangles.** From 0.37.0: the ATI Radeon X1200 IGP (RS690,
+`1002:791F`) on the `ati` package. DirectDraw and page flips run on its
 2D engine, and Direct3D on its 3D core. Measured on one tester's
 machine: 3DMark 2000 scored 1781 there, where the CPU renderer scored 7.
-**Known issues: on the X1200, Glide and 3DCIF draw nothing, so keep the
-`vbe` package for Glide games on it, and 3DMark 2000's first game test
-tints some distant terrain red. On the RIVA 128ZX, the Glide 2 probe draws
-no triangles on this release.** From 0.36.0: the Intel HD Graphics 4000 mobile
+From 0.36.0: the Intel HD Graphics 4000 mobile
 (Ivy Bridge, `8086:0166`) with its laptop panel, measured on one tester's
 Lenovo laptop, and stops 3DMark 2000 locking the HD 4000 in its first game
 test. On a physical S3 ViRGE/DX, the first time its Direct3D has run on
@@ -89,7 +93,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.37.0](releases/0.37.0/README.md).
+[releases/0.38.0](releases/0.38.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -143,7 +147,7 @@ serves every chip in it and picks the right one by PCI id at boot.
 | AMD Radeon HD 5770 (Juniper, `1002:68B8`), from 0.34.0 | `ati` | Evergreen, through AMD's Juniper CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 up to 1600x1200. One tester's machine through remote help; modes from the VBE. The Glide 2 probe passes |
 | AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. Glide not run |
 | AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips. 3DMark 2000 and Quake 3. One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only. Glide not run |
-| ATI Radeon X1200 IGP (RS690, `1002:791F`), from 0.37.0 | `ati` | R300-class, by register writes | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys and mipmaps; DirectDraw on the 2D engine and page flips. Rollcage and 3DMark 2000. The OpenGL probe passes. **Glide and 3DCIF draw nothing** (the `vbe` package draws them on the CPU). One tester's Sempron machine through remote help; 16 MiB of the 128 MiB carve-out used; modes from the VBE |
+| ATI Radeon X1200 IGP (RS690, `1002:791F`), from 0.37.0 | `ati` | R300-class, by register writes | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys and mipmaps; DirectDraw on the 2D engine and page flips. Rollcage and 3DMark 2000. From 0.38.0 OpenGL and Glide draw on the 3D engine: the OpenGL and Glide 2 probes pass; 3DCIF not run. One tester's Sempron machine through remote help; 16 MiB of the 128 MiB carve-out used; modes from the VBE |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
@@ -200,7 +204,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7660D (0.35.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
-| ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe | No | No (draws nothing) | No (draws nothing) |
+| ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe (0.38.0) | No | Glide 2 probe only (0.38.0) | Not run |
 | ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
 | ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |
@@ -354,7 +358,9 @@ Implemented: the matrix stacks, immediate mode, vertex arrays, clipping
 environments, fog, attribute stacks, state queries, `glReadPixels`,
 front-buffer drawing, and `GL_ARB_multitexture` and
 `GL_SGIS_multitexture` on the Rage Pro, Gen3, Gen4, the HD 4600 and the
-HD 4000. Lighting (`glLight`, `glMaterial`, `glColorMaterial`) on the HD
+HD 4000. `GL_EXT_compiled_vertex_array` on every card (0.38.0): the lock
+is accepted and queried, and a locked draw is drawn as an unlocked one,
+with nothing cached yet. Lighting (`glLight`, `glMaterial`, `glColorMaterial`) on the HD
 4600 only, where transform and lighting run on the card; every other card
 draws OpenGL unlit. Not yet: display lists, evaluators, and feedback and
 selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
@@ -381,8 +387,9 @@ Measured:
   on them yet.
 - **HD 5450 and the Ironlake:** the Glide 2 probe passes every check. No
   game has been run on them yet.
-- **X1200 (0.37.0) and RIVA 128ZX:** Glide draws no triangles. On the
-  X1200, use the `vbe` package for Glide games.
+- **X1200:** from 0.38.0 the Glide 2 probe passes every check (0.37.0
+  drew no triangles). No game has been run on it yet.
+- **RIVA 128ZX:** Glide draws no triangles.
 
 A game that carries its own Glide DLL in its folder loads that first.
 The logs are `C:\V9XDIAG\V9XGLIDE.LOG` and `V9XGLD3.LOG`.
