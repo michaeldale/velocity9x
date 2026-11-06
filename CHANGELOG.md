@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.39.0 - not yet released
 
+- **Correction, NVIDIA RIVA 128ZX: Glide did not regress in 0.37.0.** The
+  0.37.0 notes said the Glide 2 probe drew no triangles on that release,
+  against 1 failure on the build before. The earlier run had drawn on the
+  tester's second card, a Voodoo 1, through 3dfx's own Glide. Velocity9x's
+  Glide has never drawn on the RIVA: its render interface offers no 3D
+  engine there, so Glide and 3DCIF draw nothing on any release so far.
+  Direct3D and OpenGL are unaffected
+  ([record](docs/issues/2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md),
+  [gap](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)).
+
 ## 0.38.0 - 2026-11-07
 
 - **OpenGL: `GL_EXT_compiled_vertex_array` on every card.** The ICD

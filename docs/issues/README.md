@@ -15,7 +15,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-11-06 Feature gap: VMware SVGA II is not supported (low priority)](2026-11-06-no-vmware-svga-ii-support.md)
 - [2026-11-06 Feature gap: the VBE family leaves the DAC at 6 bits in 256-colour modes (no 4F08h)](2026-11-06-vbe-8bit-dac-unused.md)
 - [2026-11-06 Feature gap: the CPU rasterizer has no stencil, two texture units and five blend factors](2026-11-06-cpu-rasterizer-lacks-stencil-stages-blends.md)
-- [2026-11-06 M-7V636C (RIVA 128ZX): the Glide 2 probe draws no triangles on the 0.37.0 candidate (14 failures, against 1 on the installed development build); whether 0.36.0 does the same is unknown; review later (Michael)](2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md)
+- [2026-11-07 RIVA 128ZX: the render interface describes no engine and has no fallback, so Glide and 3DCIF draw nothing (never have); the RS690's 0.38.0 steps apply](2026-11-07-riva128-render-interface-has-no-engine.md)
 - [2026-11-06 A8U4I5 (Rage 128 Pro): V9XD32's new T20/T21 make its later T4 (Clear E_NOTIMPL, nothing drawn) and T16 fail; the 0.36.0 probe passes on the same 0.37.0 driver, so not a driver regression; cause unknown](2026-11-06-v9xd32-t20-t21-break-t4-t16-on-rage128.md)
 - [2026-11-06 M-GB8KRE (RS690): 3DMark 2000's Game 1 draws some distant terrain triangles salmon-red, hard-edged, where the Rage 128 fades them to grey haze; drawn, not refused; state unknown; not a 0.37.0 blocker (Michael)](2026-11-06-rs690-3dmark2000-pink-terrain.md)
 - [2026-11-05 M-GB8KRE (RS690, branch `ati-rs690`): under the register-write Direct3D HAL, Direct3D pixels land in physical RAM at 0600xxxxh (V9XD32 T15); cause: a 3D draw started while a 2D fill still ran, which MMIO WAIT_UNTIL does not prevent with the CP off; fixed by a CPU idle poll before a 3D draw that follows 2D work (42cfea26, narrowed in f6ed13f1); why that physical window is unknown](2026-11-05-rs690-t15-heap-words-zeroed-once.md)
@@ -106,6 +106,8 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-09-06 Text acceleration hangs the physical Trio64 within a minute of the desktop](2026-09-06-text-acceleration-hangs-physical-trio64.md)
 
 ## Closed/explained
+
+- [2026-11-06 M-7V636C (RIVA 128ZX): the Glide 2 probe draws no triangles on the 0.37.0 candidate (explained 2026-11-07: not a regression; the "before" run loaded 3dfx's Glide on the machine's Voodoo 1, and our Glide has never drawn on the RIVA)](2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md)
 
 - [2026-11-02 RIVA 128ZX (M-7V636C, remote help): the machine stopped seconds into V9XDDP, the first run with the NV3 engine claimed (fixed 2026-11-03, seen at boot 15: at 16 bpp the engine failed validation, so every CPU fill and Lock answered WASSTILLDRAWING for good; the engine never drew)](2026-11-02-riva128-hang-under-v9xddp-at-32bpp.md)
 - [2026-11-01 Haswell, 3DMark 2000 Game 1: unfinished frames presented (flicker) and a point-sampled, blocky sky; both in 0.33.0 too; fixed and seen on the monitor at boot 171 (DDI 7 render target by handle after a flip; DX6 filter caps)](2026-11-01-haswell-3dmark2000-flicker-and-blocky-sky.md)

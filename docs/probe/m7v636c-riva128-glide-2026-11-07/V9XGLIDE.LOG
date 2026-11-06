@@ -1,0 +1,978 @@
+1 pid=FFFC4915 t=432789 attach instance=00560000 version=0.37.0 V9XGLIDE build=55a661a2 time=2026-11-05 23:13:59 uptime-ms=432784 exe=C:\V9XREL\V9XGLIDP.EXE
+2 pid=FFFC4915 t=432789 grGlideInit#1 
+3 pid=FFFC4915 t=432789 grSstQueryHardware#1 config=0054F9F4 -> voodoo fb=2MiB tmus=1 tmu0=2MiB
+4 pid=FFFC4915 t=432789 grSstSelect#1 sst=0
+5 pid=FFFC4915 t=432795 device: window=00000108 ours=1
+6 pid=FFFC4915 t=433661 device: describe result=0 engine=0 generation=11
+7 pid=FFFC4915 t=433661 device: target formats=00000004 texture formats=0000001A hw max=0
+8 pid=FFFC4915 t=433661 device: open 640x480 buffers=3
+9 pid=FFFC4915 t=433661 device: target 555=1
+10 pid=FFFC4915 t=433661 grSstWinOpen#1 hwnd=00000000 res=7 refresh=0 cformat=0 origin=0 colbuf=2 auxbuf=1 -> 1
+11 pid=FFFC4915 t=433664 grDepthBufferMode#1 mode=00000000
+12 pid=FFFC4915 t=433664 grRenderBuffer#1 buffer=1
+13 pid=FFFC4915 t=433664 grClipWindow#1 min=0,0 max=640,480
+14 pid=FFFC4915 t=433664 grBufferClear#1 color=00FF0000 alpha=00 depth=FFFF
+15 pid=FFFC4915 t=433664 draw refused: result=4 triangles=2 storage/format=0000
+16 pid=FFFC4915 t=433664   ops color/alpha=0/0 address/filters=000000
+17 pid=FFFC4915 t=433664   blend=0 2/1
+18 pid=FFFC4915 t=433664   alpha test=0 func=0 ref=0
+19 pid=FFFC4915 t=433664   fog=0 depth enable/write/func=008 scissor-right=640
+20 pid=FFFC4915 t=433664   corner 0 x/y bits=00000000/00000000
+21 pid=FFFC4915 t=433664   corner 0 z/rhw bits=00000000/3F800000
+22 pid=FFFC4915 t=433664   corner 1 x/y bits=44200000/00000000
+23 pid=FFFC4915 t=433664   corner 1 z/rhw bits=00000000/3F800000
+24 pid=FFFC4915 t=433664   corner 2 x/y bits=00000000/43F00000
+25 pid=FFFC4915 t=433664   corner 2 z/rhw bits=00000000/3F800000
+26 pid=FFFC4915 t=433885 grLfbLock#1 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+27 pid=FFFC4915 t=434210 grLfbUnlock#1 type=00 buffer=1
+28 pid=FFFC4915 t=434280 grBufferSwap#1 interval=1
+29 pid=FFFC4915 t=434283 capture frame after swap 1
+30 pid=FFFC4915 t=434283 grLfbLock#2 type=00 buffer=0 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+31 pid=FFFC4915 t=434604 grLfbUnlock#2 type=00 buffer=0
+32 pid=FFFC4915 t=434677 grBufferClear#2 color=0000FF00 alpha=00 depth=FFFF
+33 pid=FFFC4915 t=434677 draw refused: result=4 triangles=2 storage/format=0000
+34 pid=FFFC4915 t=434677   ops color/alpha=0/0 address/filters=000000
+35 pid=FFFC4915 t=434677   blend=0 2/1
+36 pid=FFFC4915 t=434677   alpha test=0 func=0 ref=0
+37 pid=FFFC4915 t=434677   fog=0 depth enable/write/func=008 scissor-right=640
+38 pid=FFFC4915 t=434677   corner 0 x/y bits=00000000/00000000
+39 pid=FFFC4915 t=434680   corner 0 z/rhw bits=00000000/3F800000
+40 pid=FFFC4915 t=434680   corner 1 x/y bits=44200000/00000000
+41 pid=FFFC4915 t=434680   corner 1 z/rhw bits=00000000/3F800000
+42 pid=FFFC4915 t=434680   corner 2 x/y bits=00000000/43F00000
+43 pid=FFFC4915 t=434680   corner 2 z/rhw bits=00000000/3F800000
+44 pid=FFFC4915 t=434899 grLfbLock#3 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+45 pid=FFFC4915 t=435234 grLfbUnlock#3 type=00 buffer=1
+46 pid=FFFC4915 t=435305 grLfbLock#4 type=00 buffer=0 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+47 pid=FFFC4915 t=435624 grLfbUnlock#4 type=00 buffer=0
+48 pid=FFFC4915 t=435699 grColorCombine#1 func=1 factor=0 local=0 other=2 invert=0
+49 pid=FFFC4915 t=435699 grAlphaCombine#1 func=1 factor=0 local=0 other=2 invert=0
+50 pid=FFFC4915 t=435699 grAlphaBlendFunction#1 rgb=4,0 alpha=4,0
+51 pid=FFFC4915 t=435699 grAlphaTestFunction#1 func=00000007
+52 pid=FFFC4915 t=435699 grCullMode#1 mode=00000000
+53 pid=FFFC4915 t=435699 grDrawTriangle#1 swap=1
+54 pid=FFFC4915 t=435699 grDrawTriangle#1   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+55 pid=FFFC4915 t=435699 grDrawTriangle#1   vb x=43960000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+56 pid=FFFC4915 t=435699 grDrawTriangle#1   vc x=42C80000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+57 pid=FFFC4915 t=435699 grLfbLock#5 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+58 pid=FFFC4915 t=435699 draw refused: result=4 triangles=1 storage/format=0000
+59 pid=FFFC4915 t=435699   ops color/alpha=0/0 address/filters=000000
+60 pid=FFFC4915 t=435699   blend=0 2/1
+61 pid=FFFC4915 t=435699   alpha test=0 func=8 ref=0
+62 pid=FFFC4915 t=435699   fog=0 depth enable/write/func=002 scissor-right=640
+63 pid=FFFC4915 t=435699   corner 0 x/y bits=42C80000/42C80000
+64 pid=FFFC4915 t=435699   corner 0 z/rhw bits=00000000/3F800000
+65 pid=FFFC4915 t=435699   corner 1 x/y bits=43960000/42C80000
+66 pid=FFFC4915 t=435699   corner 1 z/rhw bits=00000000/3F800000
+67 pid=FFFC4915 t=435705   corner 2 x/y bits=42C80000/43960000
+68 pid=FFFC4915 t=435705   corner 2 z/rhw bits=00000000/3F800000
+69 pid=FFFC4915 t=436024 grLfbUnlock#5 type=00 buffer=1
+70 pid=FFFC4915 t=436099 grLfbLock#6 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+71 pid=FFFC4915 t=436420 grLfbUnlock#6 type=00 buffer=1
+72 pid=FFFC4915 t=436491 grDepthBufferMode#2 mode=00000002
+73 pid=FFFC4915 t=436491 grDepthBufferFunction#1 func=00000003
+74 pid=FFFC4915 t=436491 grDepthMask#1 enable=00000001
+75 pid=FFFC4915 t=436491 grBufferClear#3 color=00000000 alpha=00 depth=FFFF
+76 pid=FFFC4915 t=436493 draw refused: result=4 triangles=2 storage/format=0000
+77 pid=FFFC4915 t=436493   ops color/alpha=0/0 address/filters=000000
+78 pid=FFFC4915 t=436493   blend=0 2/1
+79 pid=FFFC4915 t=436495   alpha test=0 func=0 ref=0
+80 pid=FFFC4915 t=436495   fog=0 depth enable/write/func=118 scissor-right=640
+81 pid=FFFC4915 t=436495   corner 0 x/y bits=00000000/00000000
+82 pid=FFFC4915 t=436495   corner 0 z/rhw bits=3F800000/3F800000
+83 pid=FFFC4915 t=436495   corner 1 x/y bits=44200000/00000000
+84 pid=FFFC4915 t=436495   corner 1 z/rhw bits=3F800000/3F800000
+85 pid=FFFC4915 t=436495   corner 2 x/y bits=00000000/43F00000
+86 pid=FFFC4915 t=436495   corner 2 z/rhw bits=3F800000/3F800000
+87 pid=FFFC4915 t=436794 grDrawTriangle#2 swap=1
+88 pid=FFFC4915 t=436794 grDrawTriangle#2   va x=43960000 y=42C80000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+89 pid=FFFC4915 t=436794 grDrawTriangle#2   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+90 pid=FFFC4915 t=436794 grDrawTriangle#2   vc x=43960000 y=43960000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+91 pid=FFFC4915 t=436794 grLfbLock#7 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+92 pid=FFFC4915 t=436794 draw refused: result=4 triangles=1 storage/format=0000
+93 pid=FFFC4915 t=436794   ops color/alpha=0/0 address/filters=000000
+94 pid=FFFC4915 t=436794   blend=0 2/1
+95 pid=FFFC4915 t=436794   alpha test=0 func=8 ref=0
+96 pid=FFFC4915 t=436794   fog=0 depth enable/write/func=114 scissor-right=640
+97 pid=FFFC4915 t=436794   corner 0 x/y bits=43960000/42C80000
+98 pid=FFFC4915 t=436794   corner 0 z/rhw bits=3F000000/3F000000
+99 pid=FFFC4915 t=436794   corner 1 x/y bits=43FA0000/42C80000
+100 pid=FFFC4915 t=436794   corner 1 z/rhw bits=3F000000/3F000000
+101 pid=FFFC4915 t=436794   corner 2 x/y bits=43960000/43960000
+102 pid=FFFC4915 t=436794   corner 2 z/rhw bits=3F000000/3F000000
+103 pid=FFFC4915 t=437119 grLfbUnlock#7 type=00 buffer=1
+104 pid=FFFC4915 t=437190 grDrawTriangle#3 swap=1
+105 pid=FFFC4915 t=437190 grDrawTriangle#3   va x=43960000 y=42C80000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+106 pid=FFFC4915 t=437190 grDrawTriangle#3   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+107 pid=FFFC4915 t=437190 grDrawTriangle#3   vc x=43960000 y=43960000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+108 pid=FFFC4915 t=437190 grLfbLock#8 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+109 pid=FFFC4915 t=437190 draw refused: result=4 triangles=1 storage/format=0000
+110 pid=FFFC4915 t=437190   ops color/alpha=0/0 address/filters=000000
+111 pid=FFFC4915 t=437190   blend=0 2/1
+112 pid=FFFC4915 t=437190   alpha test=0 func=8 ref=0
+113 pid=FFFC4915 t=437190   fog=0 depth enable/write/func=114 scissor-right=640
+114 pid=FFFC4915 t=437190   corner 0 x/y bits=43960000/42C80000
+115 pid=FFFC4915 t=437190   corner 0 z/rhw bits=3F400000/3E800000
+116 pid=FFFC4915 t=437190   corner 1 x/y bits=43FA0000/42C80000
+117 pid=FFFC4915 t=437190   corner 1 z/rhw bits=3F400000/3E800000
+118 pid=FFFC4915 t=437195   corner 2 x/y bits=43960000/43960000
+119 pid=FFFC4915 t=437195   corner 2 z/rhw bits=3F400000/3E800000
+120 pid=FFFC4915 t=437514 grLfbUnlock#8 type=00 buffer=1
+121 pid=FFFC4915 t=437586 grDrawTriangle#4 swap=1
+122 pid=FFFC4915 t=437586 grDrawTriangle#4   va x=43960000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+123 pid=FFFC4915 t=437586 grDrawTriangle#4   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+124 pid=FFFC4915 t=437586 grDrawTriangle#4   vc x=43960000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+125 pid=FFFC4915 t=437586 grLfbLock#9 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+126 pid=FFFC4915 t=437586 draw refused: result=4 triangles=1 storage/format=0000
+127 pid=FFFC4915 t=437586   ops color/alpha=0/0 address/filters=000000
+128 pid=FFFC4915 t=437586   blend=0 2/1
+129 pid=FFFC4915 t=437586   alpha test=0 func=8 ref=0
+130 pid=FFFC4915 t=437586   fog=0 depth enable/write/func=114 scissor-right=640
+131 pid=FFFC4915 t=437586   corner 0 x/y bits=43960000/42C80000
+132 pid=FFFC4915 t=437586   corner 0 z/rhw bits=00000000/3F800000
+133 pid=FFFC4915 t=437589   corner 1 x/y bits=43FA0000/42C80000
+134 pid=FFFC4915 t=437589   corner 1 z/rhw bits=00000000/3F800000
+135 pid=FFFC4915 t=437589   corner 2 x/y bits=43960000/43960000
+136 pid=FFFC4915 t=437589   corner 2 z/rhw bits=00000000/3F800000
+137 pid=FFFC4915 t=437911 grLfbUnlock#9 type=00 buffer=1
+138 pid=FFFC4915 t=437983 grDepthBufferMode#3 mode=00000000
+139 pid=FFFC4915 t=437983 grClipWindow#2 min=0,0 max=50,50
+140 pid=FFFC4915 t=437983 grDrawTriangle#5 swap=1
+141 pid=FFFC4915 t=437984 grDrawTriangle#5   va x=00000000 y=00000000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+142 pid=FFFC4915 t=437984 grDrawTriangle#5   vb x=441FC000 y=00000000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+143 pid=FFFC4915 t=437984 grDrawTriangle#5   vc x=00000000 y=43EF8000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+144 pid=FFFC4915 t=437984 grLfbLock#10 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+145 pid=FFFC4915 t=437984 draw refused: result=4 triangles=2 storage/format=0000
+146 pid=FFFC4915 t=437984   ops color/alpha=0/0 address/filters=000000
+147 pid=FFFC4915 t=437984   blend=0 2/1
+148 pid=FFFC4915 t=437984   alpha test=0 func=8 ref=0
+149 pid=FFFC4915 t=437984   fog=0 depth enable/write/func=004 scissor-right=640
+150 pid=FFFC4915 t=437984   corner 0 x/y bits=00000000/00000000
+151 pid=FFFC4915 t=437984   corner 0 z/rhw bits=00000000/3F800000
+152 pid=FFFC4915 t=437984   corner 1 x/y bits=42480000/00000000
+153 pid=FFFC4915 t=437984   corner 1 z/rhw bits=00000000/3F800000
+154 pid=FFFC4915 t=437984   corner 2 x/y bits=42480000/42480000
+155 pid=FFFC4915 t=437984   corner 2 z/rhw bits=00000000/3F800000
+156 pid=FFFC4915 t=438310 grLfbUnlock#10 type=00 buffer=1
+157 pid=FFFC4915 t=438379 grLfbLock#11 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+158 pid=FFFC4915 t=438704 grLfbUnlock#11 type=00 buffer=1
+159 pid=FFFC4915 t=438778 grClipWindow#3 min=0,0 max=640,480
+160 pid=FFFC4915 t=438778 grDrawLine#1 swap=1
+161 pid=FFFC4915 t=438778 grDrawLine#1   va x=41200000 y=43C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+162 pid=FFFC4915 t=438778 grDrawLine#1   vb x=43480000 y=43C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+163 pid=FFFC4915 t=438779 grLfbLock#12 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+164 pid=FFFC4915 t=438779 draw refused: result=4 triangles=2 storage/format=0000
+165 pid=FFFC4915 t=438779   ops color/alpha=0/0 address/filters=000000
+166 pid=FFFC4915 t=438779   blend=0 2/1
+167 pid=FFFC4915 t=438779   alpha test=0 func=8 ref=0
+168 pid=FFFC4915 t=438779   fog=0 depth enable/write/func=004 scissor-right=640
+169 pid=FFFC4915 t=438779   corner 0 x/y bits=41200000/43C80000
+170 pid=FFFC4915 t=438779   corner 0 z/rhw bits=00000000/3F800000
+171 pid=FFFC4915 t=438779   corner 1 x/y bits=41200000/43C88000
+172 pid=FFFC4915 t=438779   corner 1 z/rhw bits=00000000/3F800000
+173 pid=FFFC4915 t=438779   corner 2 x/y bits=43480000/43C88000
+174 pid=FFFC4915 t=438779   corner 2 z/rhw bits=00000000/3F800000
+175 pid=FFFC4915 t=439104 grLfbUnlock#12 type=00 buffer=1
+176 pid=FFFC4915 t=439178 grDrawTriangle#6 swap=1
+177 pid=FFFC4915 t=439178 grDrawTriangle#6   va x=49401900 y=494015E0 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+178 pid=FFFC4915 t=439178 grDrawTriangle#6   vb x=49401F40 y=494015E0 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+179 pid=FFFC4915 t=439178 grDrawTriangle#6   vc x=49401900 y=49401C20 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+180 pid=FFFC4915 t=439178 grLfbLock#13 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+181 pid=FFFC4915 t=439179 draw refused: result=4 triangles=1 storage/format=0000
+182 pid=FFFC4915 t=439179   ops color/alpha=0/0 address/filters=000000
+183 pid=FFFC4915 t=439179   blend=0 2/1
+184 pid=FFFC4915 t=439179   alpha test=0 func=8 ref=0
+185 pid=FFFC4915 t=439179   fog=0 depth enable/write/func=004 scissor-right=640
+186 pid=FFFC4915 t=439179   corner 0 x/y bits=43C80000/43AF0000
+187 pid=FFFC4915 t=439179   corner 0 z/rhw bits=00000000/3F800000
+188 pid=FFFC4915 t=439179   corner 1 x/y bits=43FA0000/43AF0000
+189 pid=FFFC4915 t=439179   corner 1 z/rhw bits=00000000/3F800000
+190 pid=FFFC4915 t=439179   corner 2 x/y bits=43C80000/43E10000
+191 pid=FFFC4915 t=439179   corner 2 z/rhw bits=00000000/3F800000
+192 pid=FFFC4915 t=439499 grLfbUnlock#13 type=00 buffer=1
+193 pid=FFFC4915 t=439573 grColorCombine#2 func=3 factor=1 local=0 other=1 invert=0
+194 pid=FFFC4915 t=439573 grAlphaCombine#2 func=3 factor=1 local=0 other=1 invert=0
+195 pid=FFFC4915 t=439573 grTexCombineFunction#1 tmu=0 func=1
+196 pid=FFFC4915 t=439574 grTexFilterMode#1 tmu=0 min=0 mag=0
+197 pid=FFFC4915 t=439574 grTexClampMode#1 tmu=0 s=1 t=1
+198 pid=FFFC4915 t=439574 grTexDownloadMipMap#1 tmu=0 addr=00000000 evenodd=3 lod=5..5 aspect=3 format=10 data=0054FAF4
+199 pid=FFFC4915 t=439574 grTexSource#1 tmu=0 addr=00000000 evenodd=3 lod=5..5 aspect=3 format=10
+200 pid=FFFC4915 t=439574 grDrawTriangle#7 swap=1
+201 pid=FFFC4915 t=439574 grDrawTriangle#7   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+202 pid=FFFC4915 t=439574 grDrawTriangle#7   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+203 pid=FFFC4915 t=439574 grDrawTriangle#7   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+204 pid=FFFC4915 t=439574 grDrawTriangle#8 swap=1
+205 pid=FFFC4915 t=439574 grDrawTriangle#8   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+206 pid=FFFC4915 t=439574 grDrawTriangle#8   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+207 pid=FFFC4915 t=439574 grDrawTriangle#8   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+208 pid=FFFC4915 t=439574 grLfbLock#14 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+209 pid=FFFC4915 t=439574 draw refused: result=4 triangles=2 storage/format=0101
+210 pid=FFFC4915 t=439574   ops color/alpha=2/2 address/filters=030101
+211 pid=FFFC4915 t=439574   blend=0 2/1
+212 pid=FFFC4915 t=439574   alpha test=0 func=8 ref=0
+213 pid=FFFC4915 t=439574   fog=0 depth enable/write/func=004 scissor-right=640
+214 pid=FFFC4915 t=439579   corner 0 x/y bits=42C80000/42C80000
+215 pid=FFFC4915 t=439579   corner 0 z/rhw bits=00000000/3F800000
+216 pid=FFFC4915 t=439579   corner 1 x/y bits=43240000/42C80000
+217 pid=FFFC4915 t=439579   corner 1 z/rhw bits=00000000/3F800000
+218 pid=FFFC4915 t=439579   corner 2 x/y bits=42C80000/43240000
+219 pid=FFFC4915 t=439579   corner 2 z/rhw bits=00000000/3F800000
+220 pid=FFFC4915 t=439899 grLfbUnlock#14 type=00 buffer=1
+221 pid=FFFC4915 t=439972 grTexDownloadTable#1 tmu=0 type=2 sum=C000003F first=FF000000 FF00FF00 FF000000 FF000000
+222 pid=FFFC4915 t=439972 grTexDownloadMipMap#2 tmu=0 addr=00001000 evenodd=3 lod=5..5 aspect=3 format=5 data=0054FD2C
+223 pid=FFFC4915 t=439972 grTexSource#2 tmu=0 addr=00001000 evenodd=3 lod=5..5 aspect=3 format=5
+224 pid=FFFC4915 t=439972 grDrawTriangle#9 swap=1
+225 pid=FFFC4915 t=439972 grDrawTriangle#9   va x=43480000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+226 pid=FFFC4915 t=439972 grDrawTriangle#9   vb x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+227 pid=FFFC4915 t=439972 grDrawTriangle#9   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+228 pid=FFFC4915 t=439972 grDrawTriangle#10 swap=1
+229 pid=FFFC4915 t=439974 grDrawTriangle#10   va x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+230 pid=FFFC4915 t=439974 grDrawTriangle#10   vb x=43840000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+231 pid=FFFC4915 t=439974 grDrawTriangle#10   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+232 pid=FFFC4915 t=439974 grLfbLock#15 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+233 pid=FFFC4915 t=439974 draw refused: result=4 triangles=2 storage/format=0101
+234 pid=FFFC4915 t=439974   ops color/alpha=2/2 address/filters=030101
+235 pid=FFFC4915 t=439974   blend=0 2/1
+236 pid=FFFC4915 t=439974   alpha test=0 func=8 ref=0
+237 pid=FFFC4915 t=439974   fog=0 depth enable/write/func=004 scissor-right=640
+238 pid=FFFC4915 t=439974   corner 0 x/y bits=43480000/42C80000
+239 pid=FFFC4915 t=439974   corner 0 z/rhw bits=00000000/3F800000
+240 pid=FFFC4915 t=439974   corner 1 x/y bits=43840000/42C80000
+241 pid=FFFC4915 t=439974   corner 1 z/rhw bits=00000000/3F800000
+242 pid=FFFC4915 t=439974   corner 2 x/y bits=43480000/43240000
+243 pid=FFFC4915 t=439974   corner 2 z/rhw bits=00000000/3F800000
+244 pid=FFFC4915 t=440309 grLfbUnlock#15 type=00 buffer=1
+245 pid=FFFC4915 t=440383 grTexDownloadTable#2 tmu=0 type=2 sum=3FC00000 first=FF000000 FF0000FF FF000000 FF000000
+246 pid=FFFC4915 t=440383 grDrawTriangle#11 swap=1
+247 pid=FFFC4915 t=440383 grDrawTriangle#11   va x=43480000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+248 pid=FFFC4915 t=440384 grDrawTriangle#11   vb x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+249 pid=FFFC4915 t=440384 grDrawTriangle#11   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+250 pid=FFFC4915 t=440384 grDrawTriangle#12 swap=1
+251 pid=FFFC4915 t=440384 grDrawTriangle#12   va x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+252 pid=FFFC4915 t=440384 grDrawTriangle#12   vb x=43840000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+253 pid=FFFC4915 t=440384 grDrawTriangle#12   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+254 pid=FFFC4915 t=440384 grLfbLock#16 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+255 pid=FFFC4915 t=440384 draw refused: result=4 triangles=2 storage/format=0101
+256 pid=FFFC4915 t=440384   ops color/alpha=2/2 address/filters=030101
+257 pid=FFFC4915 t=440384   blend=0 2/1
+258 pid=FFFC4915 t=440384   alpha test=0 func=8 ref=0
+259 pid=FFFC4915 t=440384   fog=0 depth enable/write/func=004 scissor-right=640
+260 pid=FFFC4915 t=440384   corner 0 x/y bits=43480000/42C80000
+261 pid=FFFC4915 t=440384   corner 0 z/rhw bits=00000000/3F800000
+262 pid=FFFC4915 t=440384   corner 1 x/y bits=43840000/42C80000
+263 pid=FFFC4915 t=440384   corner 1 z/rhw bits=00000000/3F800000
+264 pid=FFFC4915 t=440384   corner 2 x/y bits=43480000/43240000
+265 pid=FFFC4915 t=440384   corner 2 z/rhw bits=00000000/3F800000
+266 pid=FFFC4915 t=440709 grLfbUnlock#16 type=00 buffer=1
+267 pid=FFFC4915 t=440780 grTexDownloadMipMap#3 tmu=0 addr=00002000 evenodd=3 lod=5..5 aspect=3 format=10 data=0054FB74
+268 pid=FFFC4915 t=440780 grTexSource#3 tmu=0 addr=00002000 evenodd=3 lod=5..5 aspect=3 format=10
+269 pid=FFFC4915 t=440780 grChromakeyValue#1 color=0000FF00
+270 pid=FFFC4915 t=440780 grChromakeyMode#1 mode=00000001
+271 pid=FFFC4915 t=440780 grDrawTriangle#13 swap=1
+272 pid=FFFC4915 t=440780 grDrawTriangle#13   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+273 pid=FFFC4915 t=440780 grDrawTriangle#13   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+274 pid=FFFC4915 t=440780 grDrawTriangle#13   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+275 pid=FFFC4915 t=440780 grDrawTriangle#14 swap=1
+276 pid=FFFC4915 t=440780 grDrawTriangle#14   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+277 pid=FFFC4915 t=440780 grDrawTriangle#14   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+278 pid=FFFC4915 t=440780 grDrawTriangle#14   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+279 pid=FFFC4915 t=440780 grLfbLock#17 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+280 pid=FFFC4915 t=440784 draw refused: result=4 triangles=2 storage/format=0103
+281 pid=FFFC4915 t=440784   ops color/alpha=2/2 address/filters=030101
+282 pid=FFFC4915 t=440784   blend=0 2/1
+283 pid=FFFC4915 t=440784   alpha test=1 func=5 ref=0
+284 pid=FFFC4915 t=440784   fog=0 depth enable/write/func=004 scissor-right=640
+285 pid=FFFC4915 t=440784   corner 0 x/y bits=42C80000/42C80000
+286 pid=FFFC4915 t=440784   corner 0 z/rhw bits=00000000/3F800000
+287 pid=FFFC4915 t=440784   corner 1 x/y bits=43240000/42C80000
+288 pid=FFFC4915 t=440784   corner 1 z/rhw bits=00000000/3F800000
+289 pid=FFFC4915 t=440784   corner 2 x/y bits=42C80000/43240000
+290 pid=FFFC4915 t=440784   corner 2 z/rhw bits=00000000/3F800000
+291 pid=FFFC4915 t=441110 grLfbUnlock#17 type=00 buffer=1
+292 pid=FFFC4915 t=441183 grChromakeyMode#2 mode=00000000
+293 pid=FFFC4915 t=441183 grDrawTriangle#15 swap=1
+294 pid=FFFC4915 t=441183 grDrawTriangle#15   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+295 pid=FFFC4915 t=441183 grDrawTriangle#15   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+296 pid=FFFC4915 t=441184 grDrawTriangle#15   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+297 pid=FFFC4915 t=441184 grDrawTriangle#16 swap=1
+298 pid=FFFC4915 t=441184 grDrawTriangle#16   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+299 pid=FFFC4915 t=441184 grDrawTriangle#16   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+300 pid=FFFC4915 t=441184 grDrawTriangle#16   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+301 pid=FFFC4915 t=441184 grLfbLock#18 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+302 pid=FFFC4915 t=441184 draw refused: result=4 triangles=2 storage/format=0101
+303 pid=FFFC4915 t=441184   ops color/alpha=2/2 address/filters=030101
+304 pid=FFFC4915 t=441184   blend=0 2/1
+305 pid=FFFC4915 t=441184   alpha test=0 func=8 ref=0
+306 pid=FFFC4915 t=441184   fog=0 depth enable/write/func=004 scissor-right=640
+307 pid=FFFC4915 t=441184   corner 0 x/y bits=42C80000/42C80000
+308 pid=FFFC4915 t=441184   corner 0 z/rhw bits=00000000/3F800000
+309 pid=FFFC4915 t=441184   corner 1 x/y bits=43240000/42C80000
+310 pid=FFFC4915 t=441184   corner 1 z/rhw bits=00000000/3F800000
+311 pid=FFFC4915 t=441184   corner 2 x/y bits=42C80000/43240000
+312 pid=FFFC4915 t=441184   corner 2 z/rhw bits=00000000/3F800000
+313 pid=FFFC4915 t=441509 grLfbUnlock#18 type=00 buffer=1
+314 pid=FFFC4915 t=441581 grColorCombine#3 func=1 factor=0 local=0 other=2 invert=0
+315 pid=FFFC4915 t=441581 grAlphaCombine#3 func=1 factor=0 local=0 other=2 invert=0
+316 pid=FFFC4915 t=441581 grAlphaBlendFunction#2 rgb=1,5 alpha=0,0
+317 pid=FFFC4915 t=441581 grDrawTriangle#17 swap=1
+318 pid=FFFC4915 t=441581 grDrawTriangle#17   va x=44098000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,00000000,00000000
+319 pid=FFFC4915 t=441581 grDrawTriangle#17   vb x=44198000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,00000000,00000000
+320 pid=FFFC4915 t=441581 grDrawTriangle#17   vc x=44098000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,43800000,00000000
+321 pid=FFFC4915 t=441581 grDrawTriangle#18 swap=1
+322 pid=FFFC4915 t=441581 grDrawTriangle#18   va x=44198000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,00000000,00000000
+323 pid=FFFC4915 t=441581 grDrawTriangle#18   vb x=44198000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,43800000,00000000
+324 pid=FFFC4915 t=441581 grDrawTriangle#18   vc x=44098000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,43800000,00000000
+325 pid=FFFC4915 t=441581 grLfbLock#19 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+326 pid=FFFC4915 t=441585 draw refused: result=4 triangles=2 storage/format=0000
+327 pid=FFFC4915 t=441585   ops color/alpha=0/0 address/filters=000000
+328 pid=FFFC4915 t=441585   blend=1 5/6
+329 pid=FFFC4915 t=441585   alpha test=0 func=8 ref=0
+330 pid=FFFC4915 t=441585   fog=0 depth enable/write/func=004 scissor-right=640
+331 pid=FFFC4915 t=441585   corner 0 x/y bits=44098000/43960000
+332 pid=FFFC4915 t=441585   corner 0 z/rhw bits=00000000/3F800000
+333 pid=FFFC4915 t=441585   corner 1 x/y bits=44198000/43960000
+334 pid=FFFC4915 t=441585   corner 1 z/rhw bits=00000000/3F800000
+335 pid=FFFC4915 t=441585   corner 2 x/y bits=44098000/43B60000
+336 pid=FFFC4915 t=441585   corner 2 z/rhw bits=00000000/3F800000
+337 pid=FFFC4915 t=441909 grLfbUnlock#19 type=00 buffer=1
+338 pid=FFFC4915 t=441980 grAlphaBlendFunction#3 rgb=4,0 alpha=4,0
+339 pid=FFFC4915 t=441980 grFogTable#1 0-31 FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+340 pid=FFFC4915 t=441980 grFogTable#1 32-63 FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+341 pid=FFFC4915 t=441980 grFogColorValue#1 color=000000FF
+342 pid=FFFC4915 t=441980 grFogMode#1 mode=00000002
+343 pid=FFFC4915 t=441980 grDrawTriangle#19 swap=1
+344 pid=FFFC4915 t=441980 grDrawTriangle#19   va x=44098000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+345 pid=FFFC4915 t=441980 grDrawTriangle#19   vb x=44198000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,00000000,00000000
+346 pid=FFFC4915 t=441980 grDrawTriangle#19   vc x=44098000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43000000,00000000
+347 pid=FFFC4915 t=441980 grDrawTriangle#20 swap=1
+348 pid=FFFC4915 t=441980 grDrawTriangle#20   va x=44198000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,00000000,00000000
+349 pid=FFFC4915 t=441980 grDrawTriangle#20   vb x=44198000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,43000000,00000000
+350 pid=FFFC4915 t=441980 grDrawTriangle#20   vc x=44098000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43000000,00000000
+351 pid=FFFC4915 t=441980 grLfbLock#20 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+352 pid=FFFC4915 t=441985 draw refused: result=4 triangles=2 storage/format=0000
+353 pid=FFFC4915 t=441985   ops color/alpha=0/0 address/filters=000000
+354 pid=FFFC4915 t=441985   blend=0 2/1
+355 pid=FFFC4915 t=441985   alpha test=0 func=8 ref=0
+356 pid=FFFC4915 t=441985   fog=0 depth enable/write/func=004 scissor-right=640
+357 pid=FFFC4915 t=441985   corner 0 x/y bits=44098000/43BE0000
+358 pid=FFFC4915 t=441985   corner 0 z/rhw bits=00000000/3F000000
+359 pid=FFFC4915 t=441985   corner 1 x/y bits=44198000/43BE0000
+360 pid=FFFC4915 t=441985   corner 1 z/rhw bits=00000000/3F000000
+361 pid=FFFC4915 t=441985   corner 2 x/y bits=44098000/43DE0000
+362 pid=FFFC4915 t=441985   corner 2 z/rhw bits=00000000/3F000000
+363 pid=FFFC4915 t=442314 grLfbUnlock#20 type=00 buffer=1
+364 pid=FFFC4915 t=442385 grFogMode#2 mode=00000000
+365 pid=FFFC4915 t=442385 grBufferSwap#2 interval=1
+366 pid=FFFC4915 t=442385 capture frame after swap 2
+367 pid=FFFC4915 t=444389 grSstWinClose#1 
+368 pid=FFFC4915 t=444389 census winclose swaps=2
+369 pid=FFFC4915 t=444389 census   draws: drawn=0 refused=29 culled=0 skipped-textured=0
+370 pid=FFFC4915 t=444389 census   draws: fog-dropped=2 cpu-copies=0 uploads=0 surface-hits=0 evictions=0
+371 pid=FFFC4915 t=444389 census   draws: surfaces-lost=0
+372 pid=FFFC4915 t=444389 census   sources: calls=3 refills=0 new=3
+373 pid=FFFC4915 t=444389 census   cycles(Mc): frame=2574 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=235 batches=17
+374 pid=FFFC4915 t=444389 census   batch ends: full=0 texture=0 state=0
+375 pid=FFFC4915 t=444389 census   grAlphaBlendFunction calls=3 lines=3
+376 pid=FFFC4915 t=444389 census   grAlphaCombine calls=3 lines=3
+377 pid=FFFC4915 t=444389 census   grAlphaTestFunction calls=1 lines=1
+378 pid=FFFC4915 t=444389 census   grBufferClear calls=3 lines=3
+379 pid=FFFC4915 t=444389 census   grBufferSwap calls=2 lines=2
+380 pid=FFFC4915 t=444389 census   grChromakeyMode calls=2 lines=2
+381 pid=FFFC4915 t=444389 census   grChromakeyValue calls=1 lines=1
+382 pid=FFFC4915 t=444389 census   grClipWindow calls=3 lines=3
+383 pid=FFFC4915 t=444389 census   grColorCombine calls=3 lines=3
+384 pid=FFFC4915 t=444389 census   grCullMode calls=1 lines=1
+385 pid=FFFC4915 t=444389 census   grDepthBufferFunction calls=1 lines=1
+386 pid=FFFC4915 t=444395 census   grDepthBufferMode calls=3 lines=3
+387 pid=FFFC4915 t=444395 census   grDepthMask calls=1 lines=1
+388 pid=FFFC4915 t=444395 census   grDrawLine calls=1 lines=3
+389 pid=FFFC4915 t=444395 census   grDrawTriangle calls=20 lines=80
+390 pid=FFFC4915 t=444395 census   grFogColorValue calls=1 lines=1
+391 pid=FFFC4915 t=444395 census   grFogMode calls=2 lines=2
+392 pid=FFFC4915 t=444395 census   grFogTable calls=1 lines=2
+393 pid=FFFC4915 t=444395 census   grGlideInit calls=1 lines=1
+394 pid=FFFC4915 t=444395 census   grLfbLock calls=20 lines=20
+395 pid=FFFC4915 t=444395 census   grLfbUnlock calls=20 lines=20
+396 pid=FFFC4915 t=444395 census   grRenderBuffer calls=1 lines=1
+397 pid=FFFC4915 t=444395 census   grSstQueryHardware calls=1 lines=1
+398 pid=FFFC4915 t=444395 census   grSstSelect calls=1 lines=1
+399 pid=FFFC4915 t=444395 census   grSstWinClose calls=1 lines=1
+400 pid=FFFC4915 t=444395 census   grSstWinOpen calls=1 lines=1
+401 pid=FFFC4915 t=444395 census   grTexClampMode calls=1 lines=1
+402 pid=FFFC4915 t=444395 census   grTexCombineFunction calls=1 lines=1
+403 pid=FFFC4915 t=444395 census   grTexDownloadMipMap calls=3 lines=3
+404 pid=FFFC4915 t=444400 census   grTexDownloadTable calls=2 lines=2
+405 pid=FFFC4915 t=444400 census   grTexFilterMode calls=1 lines=1
+406 pid=FFFC4915 t=444400 census   grTexSource calls=3 lines=3
+407 pid=FFFC4915 t=445284 device: closed
+408 pid=FFFC4915 t=445337 grGlideShutdown#1 
+409 pid=FFFC4915 t=445337 census shutdown swaps=2
+410 pid=FFFC4915 t=445337 census   draws: drawn=0 refused=29 culled=0 skipped-textured=0
+411 pid=FFFC4915 t=445337 census   draws: fog-dropped=2 cpu-copies=0 uploads=0 surface-hits=0 evictions=0
+412 pid=FFFC4915 t=445337 census   draws: surfaces-lost=0
+413 pid=FFFC4915 t=445337 census   sources: calls=3 refills=0 new=3
+414 pid=FFFC4915 t=445337 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+415 pid=FFFC4915 t=445339 census   batch ends: full=0 texture=0 state=0
+416 pid=FFFC4915 t=445339 census   grAlphaBlendFunction calls=3 lines=3
+417 pid=FFFC4915 t=445339 census   grAlphaCombine calls=3 lines=3
+418 pid=FFFC4915 t=445339 census   grAlphaTestFunction calls=1 lines=1
+419 pid=FFFC4915 t=445339 census   grBufferClear calls=3 lines=3
+420 pid=FFFC4915 t=445339 census   grBufferSwap calls=2 lines=2
+421 pid=FFFC4915 t=445339 census   grChromakeyMode calls=2 lines=2
+422 pid=FFFC4915 t=445339 census   grChromakeyValue calls=1 lines=1
+423 pid=FFFC4915 t=445339 census   grClipWindow calls=3 lines=3
+424 pid=FFFC4915 t=445339 census   grColorCombine calls=3 lines=3
+425 pid=FFFC4915 t=445339 census   grCullMode calls=1 lines=1
+426 pid=FFFC4915 t=445339 census   grDepthBufferFunction calls=1 lines=1
+427 pid=FFFC4915 t=445339 census   grDepthBufferMode calls=3 lines=3
+428 pid=FFFC4915 t=445339 census   grDepthMask calls=1 lines=1
+429 pid=FFFC4915 t=445339 census   grDrawLine calls=1 lines=3
+430 pid=FFFC4915 t=445339 census   grDrawTriangle calls=20 lines=80
+431 pid=FFFC4915 t=445339 census   grFogColorValue calls=1 lines=1
+432 pid=FFFC4915 t=445339 census   grFogMode calls=2 lines=2
+433 pid=FFFC4915 t=445339 census   grFogTable calls=1 lines=2
+434 pid=FFFC4915 t=445345 census   grGlideInit calls=1 lines=1
+435 pid=FFFC4915 t=445345 census   grGlideShutdown calls=1 lines=1
+436 pid=FFFC4915 t=445345 census   grLfbLock calls=20 lines=20
+437 pid=FFFC4915 t=445345 census   grLfbUnlock calls=20 lines=20
+438 pid=FFFC4915 t=445345 census   grRenderBuffer calls=1 lines=1
+439 pid=FFFC4915 t=445345 census   grSstQueryHardware calls=1 lines=1
+440 pid=FFFC4915 t=445345 census   grSstSelect calls=1 lines=1
+441 pid=FFFC4915 t=445345 census   grSstWinClose calls=1 lines=1
+442 pid=FFFC4915 t=445345 census   grSstWinOpen calls=1 lines=1
+443 pid=FFFC4915 t=445345 census   grTexClampMode calls=1 lines=1
+444 pid=FFFC4915 t=445345 census   grTexCombineFunction calls=1 lines=1
+445 pid=FFFC4915 t=445345 census   grTexDownloadMipMap calls=3 lines=3
+446 pid=FFFC4915 t=445345 census   grTexDownloadTable calls=2 lines=2
+447 pid=FFFC4915 t=445345 census   grTexFilterMode calls=1 lines=1
+448 pid=FFFC4915 t=445345 census   grTexSource calls=3 lines=3
+449 pid=FFFC4915 t=445350 detach: process exiting=1
+450 pid=FFFC4915 t=445350 census detach swaps=2
+451 pid=FFFC4915 t=445350 census   draws: drawn=0 refused=29 culled=0 skipped-textured=0
+452 pid=FFFC4915 t=445350 census   draws: fog-dropped=2 cpu-copies=0 uploads=0 surface-hits=0 evictions=0
+453 pid=FFFC4915 t=445350 census   draws: surfaces-lost=0
+454 pid=FFFC4915 t=445350 census   sources: calls=3 refills=0 new=3
+455 pid=FFFC4915 t=445350 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+456 pid=FFFC4915 t=445350 census   batch ends: full=0 texture=0 state=0
+457 pid=FFFC4915 t=445350 census   grAlphaBlendFunction calls=3 lines=3
+458 pid=FFFC4915 t=445350 census   grAlphaCombine calls=3 lines=3
+459 pid=FFFC4915 t=445350 census   grAlphaTestFunction calls=1 lines=1
+460 pid=FFFC4915 t=445350 census   grBufferClear calls=3 lines=3
+461 pid=FFFC4915 t=445350 census   grBufferSwap calls=2 lines=2
+462 pid=FFFC4915 t=445350 census   grChromakeyMode calls=2 lines=2
+463 pid=FFFC4915 t=445350 census   grChromakeyValue calls=1 lines=1
+464 pid=FFFC4915 t=445354 census   grClipWindow calls=3 lines=3
+465 pid=FFFC4915 t=445354 census   grColorCombine calls=3 lines=3
+466 pid=FFFC4915 t=445354 census   grCullMode calls=1 lines=1
+467 pid=FFFC4915 t=445354 census   grDepthBufferFunction calls=1 lines=1
+468 pid=FFFC4915 t=445354 census   grDepthBufferMode calls=3 lines=3
+469 pid=FFFC4915 t=445354 census   grDepthMask calls=1 lines=1
+470 pid=FFFC4915 t=445354 census   grDrawLine calls=1 lines=3
+471 pid=FFFC4915 t=445354 census   grDrawTriangle calls=20 lines=80
+472 pid=FFFC4915 t=445354 census   grFogColorValue calls=1 lines=1
+473 pid=FFFC4915 t=445354 census   grFogMode calls=2 lines=2
+474 pid=FFFC4915 t=445354 census   grFogTable calls=1 lines=2
+475 pid=FFFC4915 t=445354 census   grGlideInit calls=1 lines=1
+476 pid=FFFC4915 t=445354 census   grGlideShutdown calls=1 lines=1
+477 pid=FFFC4915 t=445354 census   grLfbLock calls=20 lines=20
+478 pid=FFFC4915 t=445354 census   grLfbUnlock calls=20 lines=20
+479 pid=FFFC4915 t=445354 census   grRenderBuffer calls=1 lines=1
+480 pid=FFFC4915 t=445354 census   grSstQueryHardware calls=1 lines=1
+481 pid=FFFC4915 t=445354 census   grSstSelect calls=1 lines=1
+482 pid=FFFC4915 t=445354 census   grSstWinClose calls=1 lines=1
+483 pid=FFFC4915 t=445359 census   grSstWinOpen calls=1 lines=1
+484 pid=FFFC4915 t=445359 census   grTexClampMode calls=1 lines=1
+485 pid=FFFC4915 t=445359 census   grTexCombineFunction calls=1 lines=1
+486 pid=FFFC4915 t=445359 census   grTexDownloadMipMap calls=3 lines=3
+487 pid=FFFC4915 t=445359 census   grTexDownloadTable calls=2 lines=2
+488 pid=FFFC4915 t=445359 census   grTexFilterMode calls=1 lines=1
+489 pid=FFFC4915 t=445359 census   grTexSource calls=3 lines=3
+1 pid=FFFD28D1 t=3868974 attach instance=00560000 version=0.37.0 V9XGLIDE build=55a661a2 time=2026-11-06 00:11:15 uptime-ms=3868974 exe=C:\V9XREL\V9XGLIDP.EXE
+2 pid=FFFD28D1 t=3868974 grGlideInit#1 
+3 pid=FFFD28D1 t=3868974 grSstQueryHardware#1 config=0054F9F4 -> voodoo fb=2MiB tmus=1 tmu0=2MiB
+4 pid=FFFD28D1 t=3868974 grSstSelect#1 sst=0
+5 pid=FFFD28D1 t=3868979 device: window=00000124 ours=1
+6 pid=FFFD28D1 t=3869857 device: describe result=0 engine=0 generation=18
+7 pid=FFFD28D1 t=3869857 device: target formats=00000004 texture formats=0000001A hw max=0
+8 pid=FFFD28D1 t=3869857 device: open 640x480 buffers=3
+9 pid=FFFD28D1 t=3869857 device: target 555=1
+10 pid=FFFD28D1 t=3869857 grSstWinOpen#1 hwnd=00000000 res=7 refresh=0 cformat=0 origin=0 colbuf=2 auxbuf=1 -> 1
+11 pid=FFFD28D1 t=3869860 grDepthBufferMode#1 mode=00000000
+12 pid=FFFD28D1 t=3869860 grRenderBuffer#1 buffer=1
+13 pid=FFFD28D1 t=3869860 grClipWindow#1 min=0,0 max=640,480
+14 pid=FFFD28D1 t=3869860 grBufferClear#1 color=00FF0000 alpha=00 depth=FFFF
+15 pid=FFFD28D1 t=3869860 draw refused: result=4 triangles=2 storage/format=0000
+16 pid=FFFD28D1 t=3869860   ops color/alpha=0/0 address/filters=000000
+17 pid=FFFD28D1 t=3869860   blend=0 2/1
+18 pid=FFFD28D1 t=3869860   alpha test=0 func=0 ref=0
+19 pid=FFFD28D1 t=3869860   fog=0 depth enable/write/func=008 scissor-right=640
+20 pid=FFFD28D1 t=3869860   corner 0 x/y bits=00000000/00000000
+21 pid=FFFD28D1 t=3869860   corner 0 z/rhw bits=00000000/3F800000
+22 pid=FFFD28D1 t=3869860   corner 1 x/y bits=44200000/00000000
+23 pid=FFFD28D1 t=3869860   corner 1 z/rhw bits=00000000/3F800000
+24 pid=FFFD28D1 t=3869860   corner 2 x/y bits=00000000/43F00000
+25 pid=FFFD28D1 t=3869860   corner 2 z/rhw bits=00000000/3F800000
+26 pid=FFFD28D1 t=3870081 grLfbLock#1 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+27 pid=FFFD28D1 t=3870404 grLfbUnlock#1 type=00 buffer=1
+28 pid=FFFD28D1 t=3870475 grBufferSwap#1 interval=1
+29 pid=FFFD28D1 t=3870475 capture frame after swap 1
+30 pid=FFFD28D1 t=3870475 grLfbLock#2 type=00 buffer=0 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+31 pid=FFFD28D1 t=3870805 grLfbUnlock#2 type=00 buffer=0
+32 pid=FFFD28D1 t=3870878 grBufferClear#2 color=0000FF00 alpha=00 depth=FFFF
+33 pid=FFFD28D1 t=3870878 draw refused: result=4 triangles=2 storage/format=0000
+34 pid=FFFD28D1 t=3870878   ops color/alpha=0/0 address/filters=000000
+35 pid=FFFD28D1 t=3870880   blend=0 2/1
+36 pid=FFFD28D1 t=3870880   alpha test=0 func=0 ref=0
+37 pid=FFFD28D1 t=3870880   fog=0 depth enable/write/func=008 scissor-right=640
+38 pid=FFFD28D1 t=3870880   corner 0 x/y bits=00000000/00000000
+39 pid=FFFD28D1 t=3870880   corner 0 z/rhw bits=00000000/3F800000
+40 pid=FFFD28D1 t=3870880   corner 1 x/y bits=44200000/00000000
+41 pid=FFFD28D1 t=3870880   corner 1 z/rhw bits=00000000/3F800000
+42 pid=FFFD28D1 t=3870880   corner 2 x/y bits=00000000/43F00000
+43 pid=FFFD28D1 t=3870880   corner 2 z/rhw bits=00000000/3F800000
+44 pid=FFFD28D1 t=3871100 grLfbLock#3 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+45 pid=FFFD28D1 t=3871424 grLfbUnlock#3 type=00 buffer=1
+46 pid=FFFD28D1 t=3871497 grLfbLock#4 type=00 buffer=0 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+47 pid=FFFD28D1 t=3871819 grLfbUnlock#4 type=00 buffer=0
+48 pid=FFFD28D1 t=3871890 grColorCombine#1 func=1 factor=0 local=0 other=2 invert=0
+49 pid=FFFD28D1 t=3871890 grAlphaCombine#1 func=1 factor=0 local=0 other=2 invert=0
+50 pid=FFFD28D1 t=3871890 grAlphaBlendFunction#1 rgb=4,0 alpha=4,0
+51 pid=FFFD28D1 t=3871890 grAlphaTestFunction#1 func=00000007
+52 pid=FFFD28D1 t=3871890 grCullMode#1 mode=00000000
+53 pid=FFFD28D1 t=3871890 grDrawTriangle#1 swap=1
+54 pid=FFFD28D1 t=3871890 grDrawTriangle#1   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+55 pid=FFFD28D1 t=3871890 grDrawTriangle#1   vb x=43960000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+56 pid=FFFD28D1 t=3871890 grDrawTriangle#1   vc x=42C80000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+57 pid=FFFD28D1 t=3871890 grLfbLock#5 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+58 pid=FFFD28D1 t=3871890 draw refused: result=4 triangles=1 storage/format=0000
+59 pid=FFFD28D1 t=3871890   ops color/alpha=0/0 address/filters=000000
+60 pid=FFFD28D1 t=3871890   blend=0 2/1
+61 pid=FFFD28D1 t=3871890   alpha test=0 func=8 ref=0
+62 pid=FFFD28D1 t=3871890   fog=0 depth enable/write/func=002 scissor-right=640
+63 pid=FFFD28D1 t=3871896   corner 0 x/y bits=42C80000/42C80000
+64 pid=FFFD28D1 t=3871896   corner 0 z/rhw bits=00000000/3F800000
+65 pid=FFFD28D1 t=3871896   corner 1 x/y bits=43960000/42C80000
+66 pid=FFFD28D1 t=3871896   corner 1 z/rhw bits=00000000/3F800000
+67 pid=FFFD28D1 t=3871896   corner 2 x/y bits=42C80000/43960000
+68 pid=FFFD28D1 t=3871896   corner 2 z/rhw bits=00000000/3F800000
+69 pid=FFFD28D1 t=3872229 grLfbUnlock#5 type=00 buffer=1
+70 pid=FFFD28D1 t=3872301 grLfbLock#6 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+71 pid=FFFD28D1 t=3872619 grLfbUnlock#6 type=00 buffer=1
+72 pid=FFFD28D1 t=3872693 grDepthBufferMode#2 mode=00000002
+73 pid=FFFD28D1 t=3872693 grDepthBufferFunction#1 func=00000003
+74 pid=FFFD28D1 t=3872693 grDepthMask#1 enable=00000001
+75 pid=FFFD28D1 t=3872693 grBufferClear#3 color=00000000 alpha=00 depth=FFFF
+76 pid=FFFD28D1 t=3872695 draw refused: result=4 triangles=2 storage/format=0000
+77 pid=FFFD28D1 t=3872695   ops color/alpha=0/0 address/filters=000000
+78 pid=FFFD28D1 t=3872695   blend=0 2/1
+79 pid=FFFD28D1 t=3872695   alpha test=0 func=0 ref=0
+80 pid=FFFD28D1 t=3872695   fog=0 depth enable/write/func=118 scissor-right=640
+81 pid=FFFD28D1 t=3872695   corner 0 x/y bits=00000000/00000000
+82 pid=FFFD28D1 t=3872695   corner 0 z/rhw bits=3F800000/3F800000
+83 pid=FFFD28D1 t=3872695   corner 1 x/y bits=44200000/00000000
+84 pid=FFFD28D1 t=3872695   corner 1 z/rhw bits=3F800000/3F800000
+85 pid=FFFD28D1 t=3872695   corner 2 x/y bits=00000000/43F00000
+86 pid=FFFD28D1 t=3872695   corner 2 z/rhw bits=3F800000/3F800000
+87 pid=FFFD28D1 t=3872995 grDrawTriangle#2 swap=1
+88 pid=FFFD28D1 t=3872995 grDrawTriangle#2   va x=43960000 y=42C80000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+89 pid=FFFD28D1 t=3872995 grDrawTriangle#2   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+90 pid=FFFD28D1 t=3872995 grDrawTriangle#2   vc x=43960000 y=43960000 ooz=00000000 oow=3F000000 rgba=00000000,00000000,437F0000,437F0000 st0=00000000,00000000,00000000
+91 pid=FFFD28D1 t=3872995 grLfbLock#7 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+92 pid=FFFD28D1 t=3872995 draw refused: result=4 triangles=1 storage/format=0000
+93 pid=FFFD28D1 t=3872995   ops color/alpha=0/0 address/filters=000000
+94 pid=FFFD28D1 t=3872995   blend=0 2/1
+95 pid=FFFD28D1 t=3872995   alpha test=0 func=8 ref=0
+96 pid=FFFD28D1 t=3872995   fog=0 depth enable/write/func=114 scissor-right=640
+97 pid=FFFD28D1 t=3872995   corner 0 x/y bits=43960000/42C80000
+98 pid=FFFD28D1 t=3872995   corner 0 z/rhw bits=3F000000/3F000000
+99 pid=FFFD28D1 t=3872995   corner 1 x/y bits=43FA0000/42C80000
+100 pid=FFFD28D1 t=3872995   corner 1 z/rhw bits=3F000000/3F000000
+101 pid=FFFD28D1 t=3872995   corner 2 x/y bits=43960000/43960000
+102 pid=FFFD28D1 t=3872995   corner 2 z/rhw bits=3F000000/3F000000
+103 pid=FFFD28D1 t=3873320 grLfbUnlock#7 type=00 buffer=1
+104 pid=FFFD28D1 t=3873392 grDrawTriangle#3 swap=1
+105 pid=FFFD28D1 t=3873392 grDrawTriangle#3   va x=43960000 y=42C80000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+106 pid=FFFD28D1 t=3873392 grDrawTriangle#3   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+107 pid=FFFD28D1 t=3873392 grDrawTriangle#3   vc x=43960000 y=43960000 ooz=00000000 oow=3E800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+108 pid=FFFD28D1 t=3873392 grLfbLock#8 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+109 pid=FFFD28D1 t=3873392 draw refused: result=4 triangles=1 storage/format=0000
+110 pid=FFFD28D1 t=3873392   ops color/alpha=0/0 address/filters=000000
+111 pid=FFFD28D1 t=3873395   blend=0 2/1
+112 pid=FFFD28D1 t=3873395   alpha test=0 func=8 ref=0
+113 pid=FFFD28D1 t=3873395   fog=0 depth enable/write/func=114 scissor-right=640
+114 pid=FFFD28D1 t=3873395   corner 0 x/y bits=43960000/42C80000
+115 pid=FFFD28D1 t=3873395   corner 0 z/rhw bits=3F400000/3E800000
+116 pid=FFFD28D1 t=3873395   corner 1 x/y bits=43FA0000/42C80000
+117 pid=FFFD28D1 t=3873395   corner 1 z/rhw bits=3F400000/3E800000
+118 pid=FFFD28D1 t=3873395   corner 2 x/y bits=43960000/43960000
+119 pid=FFFD28D1 t=3873395   corner 2 z/rhw bits=3F400000/3E800000
+120 pid=FFFD28D1 t=3873715 grLfbUnlock#8 type=00 buffer=1
+121 pid=FFFD28D1 t=3873787 grDrawTriangle#4 swap=1
+122 pid=FFFD28D1 t=3873787 grDrawTriangle#4   va x=43960000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+123 pid=FFFD28D1 t=3873787 grDrawTriangle#4   vb x=43FA0000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+124 pid=FFFD28D1 t=3873787 grDrawTriangle#4   vc x=43960000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,00000000,00000000,437F0000 st0=00000000,00000000,00000000
+125 pid=FFFD28D1 t=3873787 grLfbLock#9 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+126 pid=FFFD28D1 t=3873787 draw refused: result=4 triangles=1 storage/format=0000
+127 pid=FFFD28D1 t=3873787   ops color/alpha=0/0 address/filters=000000
+128 pid=FFFD28D1 t=3873806   blend=0 2/1
+129 pid=FFFD28D1 t=3873806   alpha test=0 func=8 ref=0
+130 pid=FFFD28D1 t=3873806   fog=0 depth enable/write/func=114 scissor-right=640
+131 pid=FFFD28D1 t=3873806   corner 0 x/y bits=43960000/42C80000
+132 pid=FFFD28D1 t=3873806   corner 0 z/rhw bits=00000000/3F800000
+133 pid=FFFD28D1 t=3873806   corner 1 x/y bits=43FA0000/42C80000
+134 pid=FFFD28D1 t=3873806   corner 1 z/rhw bits=00000000/3F800000
+135 pid=FFFD28D1 t=3873806   corner 2 x/y bits=43960000/43960000
+136 pid=FFFD28D1 t=3873806   corner 2 z/rhw bits=00000000/3F800000
+137 pid=FFFD28D1 t=3874129 grLfbUnlock#9 type=00 buffer=1
+138 pid=FFFD28D1 t=3874203 grDepthBufferMode#3 mode=00000000
+139 pid=FFFD28D1 t=3874203 grClipWindow#2 min=0,0 max=50,50
+140 pid=FFFD28D1 t=3874203 grDrawTriangle#5 swap=1
+141 pid=FFFD28D1 t=3874203 grDrawTriangle#5   va x=00000000 y=00000000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+142 pid=FFFD28D1 t=3874203 grDrawTriangle#5   vb x=441FC000 y=00000000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+143 pid=FFFD28D1 t=3874203 grDrawTriangle#5   vc x=00000000 y=43EF8000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+144 pid=FFFD28D1 t=3874205 grLfbLock#10 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+145 pid=FFFD28D1 t=3874205 draw refused: result=4 triangles=2 storage/format=0000
+146 pid=FFFD28D1 t=3874205   ops color/alpha=0/0 address/filters=000000
+147 pid=FFFD28D1 t=3874205   blend=0 2/1
+148 pid=FFFD28D1 t=3874205   alpha test=0 func=8 ref=0
+149 pid=FFFD28D1 t=3874205   fog=0 depth enable/write/func=004 scissor-right=640
+150 pid=FFFD28D1 t=3874205   corner 0 x/y bits=00000000/00000000
+151 pid=FFFD28D1 t=3874205   corner 0 z/rhw bits=00000000/3F800000
+152 pid=FFFD28D1 t=3874205   corner 1 x/y bits=42480000/00000000
+153 pid=FFFD28D1 t=3874205   corner 1 z/rhw bits=00000000/3F800000
+154 pid=FFFD28D1 t=3874205   corner 2 x/y bits=42480000/42480000
+155 pid=FFFD28D1 t=3874205   corner 2 z/rhw bits=00000000/3F800000
+156 pid=FFFD28D1 t=3874529 grLfbUnlock#10 type=00 buffer=1
+157 pid=FFFD28D1 t=3874602 grLfbLock#11 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+158 pid=FFFD28D1 t=3874924 grLfbUnlock#11 type=00 buffer=1
+159 pid=FFFD28D1 t=3874998 grClipWindow#3 min=0,0 max=640,480
+160 pid=FFFD28D1 t=3874998 grDrawLine#1 swap=1
+161 pid=FFFD28D1 t=3874998 grDrawLine#1   va x=41200000 y=43C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+162 pid=FFFD28D1 t=3874999 grDrawLine#1   vb x=43480000 y=43C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+163 pid=FFFD28D1 t=3874999 grLfbLock#12 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+164 pid=FFFD28D1 t=3874999 draw refused: result=4 triangles=2 storage/format=0000
+165 pid=FFFD28D1 t=3874999   ops color/alpha=0/0 address/filters=000000
+166 pid=FFFD28D1 t=3874999   blend=0 2/1
+167 pid=FFFD28D1 t=3874999   alpha test=0 func=8 ref=0
+168 pid=FFFD28D1 t=3874999   fog=0 depth enable/write/func=004 scissor-right=640
+169 pid=FFFD28D1 t=3874999   corner 0 x/y bits=41200000/43C80000
+170 pid=FFFD28D1 t=3874999   corner 0 z/rhw bits=00000000/3F800000
+171 pid=FFFD28D1 t=3874999   corner 1 x/y bits=41200000/43C88000
+172 pid=FFFD28D1 t=3874999   corner 1 z/rhw bits=00000000/3F800000
+173 pid=FFFD28D1 t=3874999   corner 2 x/y bits=43480000/43C88000
+174 pid=FFFD28D1 t=3874999   corner 2 z/rhw bits=00000000/3F800000
+175 pid=FFFD28D1 t=3875325 grLfbUnlock#12 type=00 buffer=1
+176 pid=FFFD28D1 t=3875394 grDrawTriangle#6 swap=1
+177 pid=FFFD28D1 t=3875394 grDrawTriangle#6   va x=49401900 y=494015E0 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+178 pid=FFFD28D1 t=3875394 grDrawTriangle#6   vb x=49401F40 y=494015E0 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+179 pid=FFFD28D1 t=3875394 grDrawTriangle#6   vc x=49401900 y=49401C20 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+180 pid=FFFD28D1 t=3875394 grLfbLock#13 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+181 pid=FFFD28D1 t=3875394 draw refused: result=4 triangles=1 storage/format=0000
+182 pid=FFFD28D1 t=3875394   ops color/alpha=0/0 address/filters=000000
+183 pid=FFFD28D1 t=3875394   blend=0 2/1
+184 pid=FFFD28D1 t=3875394   alpha test=0 func=8 ref=0
+185 pid=FFFD28D1 t=3875394   fog=0 depth enable/write/func=004 scissor-right=640
+186 pid=FFFD28D1 t=3875394   corner 0 x/y bits=43C80000/43AF0000
+187 pid=FFFD28D1 t=3875394   corner 0 z/rhw bits=00000000/3F800000
+188 pid=FFFD28D1 t=3875394   corner 1 x/y bits=43FA0000/43AF0000
+189 pid=FFFD28D1 t=3875394   corner 1 z/rhw bits=00000000/3F800000
+190 pid=FFFD28D1 t=3875394   corner 2 x/y bits=43C80000/43E10000
+191 pid=FFFD28D1 t=3875394   corner 2 z/rhw bits=00000000/3F800000
+192 pid=FFFD28D1 t=3875719 grLfbUnlock#13 type=00 buffer=1
+193 pid=FFFD28D1 t=3875792 grColorCombine#2 func=3 factor=1 local=0 other=1 invert=0
+194 pid=FFFD28D1 t=3875792 grAlphaCombine#2 func=3 factor=1 local=0 other=1 invert=0
+195 pid=FFFD28D1 t=3875792 grTexCombineFunction#1 tmu=0 func=1
+196 pid=FFFD28D1 t=3875792 grTexFilterMode#1 tmu=0 min=0 mag=0
+197 pid=FFFD28D1 t=3875792 grTexClampMode#1 tmu=0 s=1 t=1
+198 pid=FFFD28D1 t=3875792 grTexDownloadMipMap#1 tmu=0 addr=00000000 evenodd=3 lod=5..5 aspect=3 format=10 data=0054FAF4
+199 pid=FFFD28D1 t=3875792 grTexSource#1 tmu=0 addr=00000000 evenodd=3 lod=5..5 aspect=3 format=10
+200 pid=FFFD28D1 t=3875794 grDrawTriangle#7 swap=1
+201 pid=FFFD28D1 t=3875794 grDrawTriangle#7   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+202 pid=FFFD28D1 t=3875794 grDrawTriangle#7   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+203 pid=FFFD28D1 t=3875794 grDrawTriangle#7   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+204 pid=FFFD28D1 t=3875794 grDrawTriangle#8 swap=1
+205 pid=FFFD28D1 t=3875794 grDrawTriangle#8   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+206 pid=FFFD28D1 t=3875794 grDrawTriangle#8   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+207 pid=FFFD28D1 t=3875794 grDrawTriangle#8   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+208 pid=FFFD28D1 t=3875794 grLfbLock#14 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+209 pid=FFFD28D1 t=3875794 draw refused: result=4 triangles=2 storage/format=0101
+210 pid=FFFD28D1 t=3875794   ops color/alpha=2/2 address/filters=030101
+211 pid=FFFD28D1 t=3875794   blend=0 2/1
+212 pid=FFFD28D1 t=3875794   alpha test=0 func=8 ref=0
+213 pid=FFFD28D1 t=3875794   fog=0 depth enable/write/func=004 scissor-right=640
+214 pid=FFFD28D1 t=3875794   corner 0 x/y bits=42C80000/42C80000
+215 pid=FFFD28D1 t=3875794   corner 0 z/rhw bits=00000000/3F800000
+216 pid=FFFD28D1 t=3875794   corner 1 x/y bits=43240000/42C80000
+217 pid=FFFD28D1 t=3875794   corner 1 z/rhw bits=00000000/3F800000
+218 pid=FFFD28D1 t=3875799   corner 2 x/y bits=42C80000/43240000
+219 pid=FFFD28D1 t=3875799   corner 2 z/rhw bits=00000000/3F800000
+220 pid=FFFD28D1 t=3876119 grLfbUnlock#14 type=00 buffer=1
+221 pid=FFFD28D1 t=3876190 grTexDownloadTable#1 tmu=0 type=2 sum=C000003F first=FF000000 FF00FF00 FF000000 FF000000
+222 pid=FFFD28D1 t=3876190 grTexDownloadMipMap#2 tmu=0 addr=00001000 evenodd=3 lod=5..5 aspect=3 format=5 data=0054FD2C
+223 pid=FFFD28D1 t=3876190 grTexSource#2 tmu=0 addr=00001000 evenodd=3 lod=5..5 aspect=3 format=5
+224 pid=FFFD28D1 t=3876190 grDrawTriangle#9 swap=1
+225 pid=FFFD28D1 t=3876190 grDrawTriangle#9   va x=43480000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+226 pid=FFFD28D1 t=3876190 grDrawTriangle#9   vb x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+227 pid=FFFD28D1 t=3876190 grDrawTriangle#9   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+228 pid=FFFD28D1 t=3876190 grDrawTriangle#10 swap=1
+229 pid=FFFD28D1 t=3876190 grDrawTriangle#10   va x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+230 pid=FFFD28D1 t=3876190 grDrawTriangle#10   vb x=43840000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+231 pid=FFFD28D1 t=3876190 grDrawTriangle#10   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+232 pid=FFFD28D1 t=3876190 grLfbLock#15 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+233 pid=FFFD28D1 t=3876190 draw refused: result=4 triangles=2 storage/format=0101
+234 pid=FFFD28D1 t=3876194   ops color/alpha=2/2 address/filters=030101
+235 pid=FFFD28D1 t=3876194   blend=0 2/1
+236 pid=FFFD28D1 t=3876194   alpha test=0 func=8 ref=0
+237 pid=FFFD28D1 t=3876194   fog=0 depth enable/write/func=004 scissor-right=640
+238 pid=FFFD28D1 t=3876194   corner 0 x/y bits=43480000/42C80000
+239 pid=FFFD28D1 t=3876194   corner 0 z/rhw bits=00000000/3F800000
+240 pid=FFFD28D1 t=3876194   corner 1 x/y bits=43840000/42C80000
+241 pid=FFFD28D1 t=3876194   corner 1 z/rhw bits=00000000/3F800000
+242 pid=FFFD28D1 t=3876194   corner 2 x/y bits=43480000/43240000
+243 pid=FFFD28D1 t=3876194   corner 2 z/rhw bits=00000000/3F800000
+244 pid=FFFD28D1 t=3876515 grLfbUnlock#15 type=00 buffer=1
+245 pid=FFFD28D1 t=3876588 grTexDownloadTable#2 tmu=0 type=2 sum=3FC00000 first=FF000000 FF0000FF FF000000 FF000000
+246 pid=FFFD28D1 t=3876588 grDrawTriangle#11 swap=1
+247 pid=FFFD28D1 t=3876588 grDrawTriangle#11   va x=43480000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+248 pid=FFFD28D1 t=3876588 grDrawTriangle#11   vb x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+249 pid=FFFD28D1 t=3876589 grDrawTriangle#11   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+250 pid=FFFD28D1 t=3876589 grDrawTriangle#12 swap=1
+251 pid=FFFD28D1 t=3876589 grDrawTriangle#12   va x=43840000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+252 pid=FFFD28D1 t=3876589 grDrawTriangle#12   vb x=43840000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+253 pid=FFFD28D1 t=3876589 grDrawTriangle#12   vc x=43480000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+254 pid=FFFD28D1 t=3876589 grLfbLock#16 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+255 pid=FFFD28D1 t=3876591 draw refused: result=4 triangles=2 storage/format=0101
+256 pid=FFFD28D1 t=3876591   ops color/alpha=2/2 address/filters=030101
+257 pid=FFFD28D1 t=3876591   blend=0 2/1
+258 pid=FFFD28D1 t=3876591   alpha test=0 func=8 ref=0
+259 pid=FFFD28D1 t=3876591   fog=0 depth enable/write/func=004 scissor-right=640
+260 pid=FFFD28D1 t=3876591   corner 0 x/y bits=43480000/42C80000
+261 pid=FFFD28D1 t=3876591   corner 0 z/rhw bits=00000000/3F800000
+262 pid=FFFD28D1 t=3876591   corner 1 x/y bits=43840000/42C80000
+263 pid=FFFD28D1 t=3876591   corner 1 z/rhw bits=00000000/3F800000
+264 pid=FFFD28D1 t=3876591   corner 2 x/y bits=43480000/43240000
+265 pid=FFFD28D1 t=3876591   corner 2 z/rhw bits=00000000/3F800000
+266 pid=FFFD28D1 t=3876919 grLfbUnlock#16 type=00 buffer=1
+267 pid=FFFD28D1 t=3876991 grTexDownloadMipMap#3 tmu=0 addr=00002000 evenodd=3 lod=5..5 aspect=3 format=10 data=0054FB74
+268 pid=FFFD28D1 t=3876991 grTexSource#3 tmu=0 addr=00002000 evenodd=3 lod=5..5 aspect=3 format=10
+269 pid=FFFD28D1 t=3876991 grChromakeyValue#1 color=0000FF00
+270 pid=FFFD28D1 t=3876991 grChromakeyMode#1 mode=00000001
+271 pid=FFFD28D1 t=3876991 grDrawTriangle#13 swap=1
+272 pid=FFFD28D1 t=3876991 grDrawTriangle#13   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+273 pid=FFFD28D1 t=3876991 grDrawTriangle#13   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+274 pid=FFFD28D1 t=3876991 grDrawTriangle#13   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+275 pid=FFFD28D1 t=3876991 grDrawTriangle#14 swap=1
+276 pid=FFFD28D1 t=3876991 grDrawTriangle#14   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+277 pid=FFFD28D1 t=3876991 grDrawTriangle#14   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+278 pid=FFFD28D1 t=3876994 grDrawTriangle#14   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+279 pid=FFFD28D1 t=3876994 grLfbLock#17 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+280 pid=FFFD28D1 t=3876994 draw refused: result=4 triangles=2 storage/format=0103
+281 pid=FFFD28D1 t=3876994   ops color/alpha=2/2 address/filters=030101
+282 pid=FFFD28D1 t=3876994   blend=0 2/1
+283 pid=FFFD28D1 t=3876994   alpha test=1 func=5 ref=0
+284 pid=FFFD28D1 t=3876994   fog=0 depth enable/write/func=004 scissor-right=640
+285 pid=FFFD28D1 t=3876994   corner 0 x/y bits=42C80000/42C80000
+286 pid=FFFD28D1 t=3876994   corner 0 z/rhw bits=00000000/3F800000
+287 pid=FFFD28D1 t=3876994   corner 1 x/y bits=43240000/42C80000
+288 pid=FFFD28D1 t=3876994   corner 1 z/rhw bits=00000000/3F800000
+289 pid=FFFD28D1 t=3876994   corner 2 x/y bits=42C80000/43240000
+290 pid=FFFD28D1 t=3876994   corner 2 z/rhw bits=00000000/3F800000
+291 pid=FFFD28D1 t=3877329 grLfbUnlock#17 type=00 buffer=1
+292 pid=FFFD28D1 t=3877403 grChromakeyMode#2 mode=00000000
+293 pid=FFFD28D1 t=3877403 grDrawTriangle#15 swap=1
+294 pid=FFFD28D1 t=3877403 grDrawTriangle#15   va x=42C80000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+295 pid=FFFD28D1 t=3877403 grDrawTriangle#15   vb x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+296 pid=FFFD28D1 t=3877404 grDrawTriangle#15   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+297 pid=FFFD28D1 t=3877404 grDrawTriangle#16 swap=1
+298 pid=FFFD28D1 t=3877404 grDrawTriangle#16   va x=43240000 y=42C80000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,00000000,00000000
+299 pid=FFFD28D1 t=3877404 grDrawTriangle#16   vb x=43240000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43800000,43800000,00000000
+300 pid=FFFD28D1 t=3877404 grDrawTriangle#16   vc x=42C80000 y=43240000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43800000,00000000
+301 pid=FFFD28D1 t=3877404 grLfbLock#18 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+302 pid=FFFD28D1 t=3877404 draw refused: result=4 triangles=2 storage/format=0101
+303 pid=FFFD28D1 t=3877404   ops color/alpha=2/2 address/filters=030101
+304 pid=FFFD28D1 t=3877404   blend=0 2/1
+305 pid=FFFD28D1 t=3877404   alpha test=0 func=8 ref=0
+306 pid=FFFD28D1 t=3877404   fog=0 depth enable/write/func=004 scissor-right=640
+307 pid=FFFD28D1 t=3877404   corner 0 x/y bits=42C80000/42C80000
+308 pid=FFFD28D1 t=3877404   corner 0 z/rhw bits=00000000/3F800000
+309 pid=FFFD28D1 t=3877404   corner 1 x/y bits=43240000/42C80000
+310 pid=FFFD28D1 t=3877404   corner 1 z/rhw bits=00000000/3F800000
+311 pid=FFFD28D1 t=3877404   corner 2 x/y bits=42C80000/43240000
+312 pid=FFFD28D1 t=3877404   corner 2 z/rhw bits=00000000/3F800000
+313 pid=FFFD28D1 t=3877729 grLfbUnlock#18 type=00 buffer=1
+314 pid=FFFD28D1 t=3877800 grColorCombine#3 func=1 factor=0 local=0 other=2 invert=0
+315 pid=FFFD28D1 t=3877800 grAlphaCombine#3 func=1 factor=0 local=0 other=2 invert=0
+316 pid=FFFD28D1 t=3877800 grAlphaBlendFunction#2 rgb=1,5 alpha=0,0
+317 pid=FFFD28D1 t=3877800 grDrawTriangle#17 swap=1
+318 pid=FFFD28D1 t=3877800 grDrawTriangle#17   va x=44098000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,00000000,00000000
+319 pid=FFFD28D1 t=3877800 grDrawTriangle#17   vb x=44198000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,00000000,00000000
+320 pid=FFFD28D1 t=3877800 grDrawTriangle#17   vc x=44098000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,43800000,00000000
+321 pid=FFFD28D1 t=3877800 grDrawTriangle#18 swap=1
+322 pid=FFFD28D1 t=3877800 grDrawTriangle#18   va x=44198000 y=43960000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,00000000,00000000
+323 pid=FFFD28D1 t=3877800 grDrawTriangle#18   vb x=44198000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=43800000,43800000,00000000
+324 pid=FFFD28D1 t=3877800 grDrawTriangle#18   vc x=44098000 y=43B60000 ooz=00000000 oow=3F800000 rgba=437F0000,437F0000,437F0000,43000000 st0=00000000,43800000,00000000
+325 pid=FFFD28D1 t=3877800 grLfbLock#19 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+326 pid=FFFD28D1 t=3877800 draw refused: result=4 triangles=2 storage/format=0000
+327 pid=FFFD28D1 t=3877800   ops color/alpha=0/0 address/filters=000000
+328 pid=FFFD28D1 t=3877804   blend=1 5/6
+329 pid=FFFD28D1 t=3877804   alpha test=0 func=8 ref=0
+330 pid=FFFD28D1 t=3877804   fog=0 depth enable/write/func=004 scissor-right=640
+331 pid=FFFD28D1 t=3877804   corner 0 x/y bits=44098000/43960000
+332 pid=FFFD28D1 t=3877804   corner 0 z/rhw bits=00000000/3F800000
+333 pid=FFFD28D1 t=3877804   corner 1 x/y bits=44198000/43960000
+334 pid=FFFD28D1 t=3877804   corner 1 z/rhw bits=00000000/3F800000
+335 pid=FFFD28D1 t=3877804   corner 2 x/y bits=44098000/43B60000
+336 pid=FFFD28D1 t=3877804   corner 2 z/rhw bits=00000000/3F800000
+337 pid=FFFD28D1 t=3878130 grLfbUnlock#19 type=00 buffer=1
+338 pid=FFFD28D1 t=3878200 grAlphaBlendFunction#3 rgb=4,0 alpha=4,0
+339 pid=FFFD28D1 t=3878200 grFogTable#1 0-31 FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+340 pid=FFFD28D1 t=3878200 grFogTable#1 32-63 FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF
+341 pid=FFFD28D1 t=3878200 grFogColorValue#1 color=000000FF
+342 pid=FFFD28D1 t=3878200 grFogMode#1 mode=00000002
+343 pid=FFFD28D1 t=3878200 grDrawTriangle#19 swap=1
+344 pid=FFFD28D1 t=3878200 grDrawTriangle#19   va x=44098000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,00000000,00000000
+345 pid=FFFD28D1 t=3878200 grDrawTriangle#19   vb x=44198000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,00000000,00000000
+346 pid=FFFD28D1 t=3878200 grDrawTriangle#19   vc x=44098000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43000000,00000000
+347 pid=FFFD28D1 t=3878200 grDrawTriangle#20 swap=1
+348 pid=FFFD28D1 t=3878200 grDrawTriangle#20   va x=44198000 y=43BE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,00000000,00000000
+349 pid=FFFD28D1 t=3878200 grDrawTriangle#20   vb x=44198000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=43000000,43000000,00000000
+350 pid=FFFD28D1 t=3878200 grDrawTriangle#20   vc x=44098000 y=43DE0000 ooz=00000000 oow=3F000000 rgba=437F0000,437F0000,437F0000,437F0000 st0=00000000,43000000,00000000
+351 pid=FFFD28D1 t=3878200 grLfbLock#20 type=00 buffer=1 wmode=FF origin=0 pipeline=0 info.size=20 -> 009F0000 stride=2048
+352 pid=FFFD28D1 t=3878200 draw refused: result=4 triangles=2 storage/format=0000
+353 pid=FFFD28D1 t=3878200   ops color/alpha=0/0 address/filters=000000
+354 pid=FFFD28D1 t=3878204   blend=0 2/1
+355 pid=FFFD28D1 t=3878204   alpha test=0 func=8 ref=0
+356 pid=FFFD28D1 t=3878204   fog=0 depth enable/write/func=004 scissor-right=640
+357 pid=FFFD28D1 t=3878204   corner 0 x/y bits=44098000/43BE0000
+358 pid=FFFD28D1 t=3878204   corner 0 z/rhw bits=00000000/3F000000
+359 pid=FFFD28D1 t=3878204   corner 1 x/y bits=44198000/43BE0000
+360 pid=FFFD28D1 t=3878204   corner 1 z/rhw bits=00000000/3F000000
+361 pid=FFFD28D1 t=3878204   corner 2 x/y bits=44098000/43DE0000
+362 pid=FFFD28D1 t=3878204   corner 2 z/rhw bits=00000000/3F000000
+363 pid=FFFD28D1 t=3878524 grLfbUnlock#20 type=00 buffer=1
+364 pid=FFFD28D1 t=3878598 grFogMode#2 mode=00000000
+365 pid=FFFD28D1 t=3878598 grBufferSwap#2 interval=1
+366 pid=FFFD28D1 t=3878599 capture frame after swap 2
+367 pid=FFFD28D1 t=3880599 grSstWinClose#1 
+368 pid=FFFD28D1 t=3880599 census winclose swaps=2
+369 pid=FFFD28D1 t=3880599 census   draws: drawn=0 refused=29 culled=0 skipped-textured=0
+370 pid=FFFD28D1 t=3880599 census   draws: fog-dropped=2 cpu-copies=0 uploads=0 surface-hits=0 evictions=0
+371 pid=FFFD28D1 t=3880599 census   draws: surfaces-lost=0
+372 pid=FFFD28D1 t=3880599 census   sources: calls=3 refills=0 new=3
+373 pid=FFFD28D1 t=3880599 census   cycles(Mc): frame=2581 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=235 batches=17
+374 pid=FFFD28D1 t=3880599 census   batch ends: full=0 texture=0 state=0
+375 pid=FFFD28D1 t=3880599 census   grAlphaBlendFunction calls=3 lines=3
+376 pid=FFFD28D1 t=3880599 census   grAlphaCombine calls=3 lines=3
+377 pid=FFFD28D1 t=3880599 census   grAlphaTestFunction calls=1 lines=1
+378 pid=FFFD28D1 t=3880599 census   grBufferClear calls=3 lines=3
+379 pid=FFFD28D1 t=3880599 census   grBufferSwap calls=2 lines=2
+380 pid=FFFD28D1 t=3880599 census   grChromakeyMode calls=2 lines=2
+381 pid=FFFD28D1 t=3880599 census   grChromakeyValue calls=1 lines=1
+382 pid=FFFD28D1 t=3880599 census   grClipWindow calls=3 lines=3
+383 pid=FFFD28D1 t=3880599 census   grColorCombine calls=3 lines=3
+384 pid=FFFD28D1 t=3880599 census   grCullMode calls=1 lines=1
+385 pid=FFFD28D1 t=3880599 census   grDepthBufferFunction calls=1 lines=1
+386 pid=FFFD28D1 t=3880604 census   grDepthBufferMode calls=3 lines=3
+387 pid=FFFD28D1 t=3880604 census   grDepthMask calls=1 lines=1
+388 pid=FFFD28D1 t=3880604 census   grDrawLine calls=1 lines=3
+389 pid=FFFD28D1 t=3880604 census   grDrawTriangle calls=20 lines=80
+390 pid=FFFD28D1 t=3880604 census   grFogColorValue calls=1 lines=1
+391 pid=FFFD28D1 t=3880604 census   grFogMode calls=2 lines=2
+392 pid=FFFD28D1 t=3880604 census   grFogTable calls=1 lines=2
+393 pid=FFFD28D1 t=3880604 census   grGlideInit calls=1 lines=1
+394 pid=FFFD28D1 t=3880604 census   grLfbLock calls=20 lines=20
+395 pid=FFFD28D1 t=3880604 census   grLfbUnlock calls=20 lines=20
+396 pid=FFFD28D1 t=3880604 census   grRenderBuffer calls=1 lines=1
+397 pid=FFFD28D1 t=3880604 census   grSstQueryHardware calls=1 lines=1
+398 pid=FFFD28D1 t=3880604 census   grSstSelect calls=1 lines=1
+399 pid=FFFD28D1 t=3880604 census   grSstWinClose calls=1 lines=1
+400 pid=FFFD28D1 t=3880604 census   grSstWinOpen calls=1 lines=1
+401 pid=FFFD28D1 t=3880604 census   grTexClampMode calls=1 lines=1
+402 pid=FFFD28D1 t=3880604 census   grTexCombineFunction calls=1 lines=1
+403 pid=FFFD28D1 t=3880604 census   grTexDownloadMipMap calls=3 lines=3
+404 pid=FFFD28D1 t=3880604 census   grTexDownloadTable calls=2 lines=2
+405 pid=FFFD28D1 t=3880609 census   grTexFilterMode calls=1 lines=1
+406 pid=FFFD28D1 t=3880609 census   grTexSource calls=3 lines=3
+407 pid=FFFD28D1 t=3881444 device: closed
+408 pid=FFFD28D1 t=3881481 grGlideShutdown#1 
+409 pid=FFFD28D1 t=3881481 census shutdown swaps=2
+410 pid=FFFD28D1 t=3881481 census   draws: drawn=0 refused=29 culled=0 skipped-textured=0
+411 pid=FFFD28D1 t=3881481 census   draws: fog-dropped=2 cpu-copies=0 uploads=0 surface-hits=0 evictions=0
+412 pid=FFFD28D1 t=3881481 census   draws: surfaces-lost=0
+413 pid=FFFD28D1 t=3881481 census   sources: calls=3 refills=0 new=3
+414 pid=FFFD28D1 t=3881481 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+415 pid=FFFD28D1 t=3881481 census   batch ends: full=0 texture=0 state=0
+416 pid=FFFD28D1 t=3881481 census   grAlphaBlendFunction calls=3 lines=3
+417 pid=FFFD28D1 t=3881481 census   grAlphaCombine calls=3 lines=3
+418 pid=FFFD28D1 t=3881484 census   grAlphaTestFunction calls=1 lines=1
+419 pid=FFFD28D1 t=3881484 census   grBufferClear calls=3 lines=3
+420 pid=FFFD28D1 t=3881484 census   grBufferSwap calls=2 lines=2
+421 pid=FFFD28D1 t=3881484 census   grChromakeyMode calls=2 lines=2
+422 pid=FFFD28D1 t=3881484 census   grChromakeyValue calls=1 lines=1
+423 pid=FFFD28D1 t=3881484 census   grClipWindow calls=3 lines=3
+424 pid=FFFD28D1 t=3881484 census   grColorCombine calls=3 lines=3
+425 pid=FFFD28D1 t=3881484 census   grCullMode calls=1 lines=1
+426 pid=FFFD28D1 t=3881484 census   grDepthBufferFunction calls=1 lines=1
+427 pid=FFFD28D1 t=3881484 census   grDepthBufferMode calls=3 lines=3
+428 pid=FFFD28D1 t=3881484 census   grDepthMask calls=1 lines=1
+429 pid=FFFD28D1 t=3881484 census   grDrawLine calls=1 lines=3
+430 pid=FFFD28D1 t=3881484 census   grDrawTriangle calls=20 lines=80
+431 pid=FFFD28D1 t=3881484 census   grFogColorValue calls=1 lines=1
+432 pid=FFFD28D1 t=3881484 census   grFogMode calls=2 lines=2
+433 pid=FFFD28D1 t=3881484 census   grFogTable calls=1 lines=2
+434 pid=FFFD28D1 t=3881484 census   grGlideInit calls=1 lines=1
+435 pid=FFFD28D1 t=3881484 census   grGlideShutdown calls=1 lines=1
+436 pid=FFFD28D1 t=3881484 census   grLfbLock calls=20 lines=20
+437 pid=FFFD28D1 t=3881489 census   grLfbUnlock calls=20 lines=20
+438 pid=FFFD28D1 t=3881489 census   grRenderBuffer calls=1 lines=1
+439 pid=FFFD28D1 t=3881489 census   grSstQueryHardware calls=1 lines=1
+440 pid=FFFD28D1 t=3881489 census   grSstSelect calls=1 lines=1
+441 pid=FFFD28D1 t=3881489 census   grSstWinClose calls=1 lines=1
+442 pid=FFFD28D1 t=3881489 census   grSstWinOpen calls=1 lines=1
+443 pid=FFFD28D1 t=3881489 census   grTexClampMode calls=1 lines=1
+444 pid=FFFD28D1 t=3881489 census   grTexCombineFunction calls=1 lines=1
+445 pid=FFFD28D1 t=3881489 census   grTexDownloadMipMap calls=3 lines=3
+446 pid=FFFD28D1 t=3881489 census   grTexDownloadTable calls=2 lines=2
+447 pid=FFFD28D1 t=3881489 census   grTexFilterMode calls=1 lines=1
+448 pid=FFFD28D1 t=3881489 census   grTexSource calls=3 lines=3
+449 pid=FFFD28D1 t=3881494 detach: process exiting=1
+450 pid=FFFD28D1 t=3881494 census detach swaps=2
+451 pid=FFFD28D1 t=3881494 census   draws: drawn=0 refused=29 culled=0 skipped-textured=0
+452 pid=FFFD28D1 t=3881494 census   draws: fog-dropped=2 cpu-copies=0 uploads=0 surface-hits=0 evictions=0
+453 pid=FFFD28D1 t=3881494 census   draws: surfaces-lost=0
+454 pid=FFFD28D1 t=3881494 census   sources: calls=3 refills=0 new=3
+455 pid=FFFD28D1 t=3881494 census   cycles(Mc): frame=0 entry=0 prepare=0 upload=0 submit=0 swap=0 clear=0 batches=0
+456 pid=FFFD28D1 t=3881494 census   batch ends: full=0 texture=0 state=0
+457 pid=FFFD28D1 t=3881494 census   grAlphaBlendFunction calls=3 lines=3
+458 pid=FFFD28D1 t=3881494 census   grAlphaCombine calls=3 lines=3
+459 pid=FFFD28D1 t=3881494 census   grAlphaTestFunction calls=1 lines=1
+460 pid=FFFD28D1 t=3881494 census   grBufferClear calls=3 lines=3
+461 pid=FFFD28D1 t=3881494 census   grBufferSwap calls=2 lines=2
+462 pid=FFFD28D1 t=3881494 census   grChromakeyMode calls=2 lines=2
+463 pid=FFFD28D1 t=3881494 census   grChromakeyValue calls=1 lines=1
+464 pid=FFFD28D1 t=3881494 census   grClipWindow calls=3 lines=3
+465 pid=FFFD28D1 t=3881494 census   grColorCombine calls=3 lines=3
+466 pid=FFFD28D1 t=3881494 census   grCullMode calls=1 lines=1
+467 pid=FFFD28D1 t=3881494 census   grDepthBufferFunction calls=1 lines=1
+468 pid=FFFD28D1 t=3881516 census   grDepthBufferMode calls=3 lines=3
+469 pid=FFFD28D1 t=3881516 census   grDepthMask calls=1 lines=1
+470 pid=FFFD28D1 t=3881516 census   grDrawLine calls=1 lines=3
+471 pid=FFFD28D1 t=3881516 census   grDrawTriangle calls=20 lines=80
+472 pid=FFFD28D1 t=3881516 census   grFogColorValue calls=1 lines=1
+473 pid=FFFD28D1 t=3881516 census   grFogMode calls=2 lines=2
+474 pid=FFFD28D1 t=3881516 census   grFogTable calls=1 lines=2
+475 pid=FFFD28D1 t=3881516 census   grGlideInit calls=1 lines=1
+476 pid=FFFD28D1 t=3881516 census   grGlideShutdown calls=1 lines=1
+477 pid=FFFD28D1 t=3881516 census   grLfbLock calls=20 lines=20
+478 pid=FFFD28D1 t=3881516 census   grLfbUnlock calls=20 lines=20
+479 pid=FFFD28D1 t=3881516 census   grRenderBuffer calls=1 lines=1
+480 pid=FFFD28D1 t=3881516 census   grSstQueryHardware calls=1 lines=1
+481 pid=FFFD28D1 t=3881516 census   grSstSelect calls=1 lines=1
+482 pid=FFFD28D1 t=3881520 census   grSstWinClose calls=1 lines=1
+483 pid=FFFD28D1 t=3881520 census   grSstWinOpen calls=1 lines=1
+484 pid=FFFD28D1 t=3881520 census   grTexClampMode calls=1 lines=1
+485 pid=FFFD28D1 t=3881520 census   grTexCombineFunction calls=1 lines=1
+486 pid=FFFD28D1 t=3881520 census   grTexDownloadMipMap calls=3 lines=3
+487 pid=FFFD28D1 t=3881520 census   grTexDownloadTable calls=2 lines=2
+488 pid=FFFD28D1 t=3881520 census   grTexFilterMode calls=1 lines=1
+489 pid=FFFD28D1 t=3881520 census   grTexSource calls=3 lines=3
