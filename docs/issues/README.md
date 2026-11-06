@@ -4,6 +4,8 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-06 M-7V636C (RIVA 128ZX): the Glide 2 probe draws no triangles on the 0.37.0 candidate (14 failures, against 1 on the installed development build); whether 0.36.0 does the same is unknown; review later (Michael)](2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md)
+- [2026-11-06 A8U4I5 (Rage 128 Pro): V9XD32's new T20/T21 make its later T4 (Clear E_NOTIMPL, nothing drawn) and T16 fail; the 0.36.0 probe passes on the same 0.37.0 driver, so not a driver regression; cause unknown](2026-11-06-v9xd32-t20-t21-break-t4-t16-on-rage128.md)
 - [2026-11-06 M-GB8KRE (RS690): 3DMark 2000's Game 1 draws some distant terrain triangles salmon-red, hard-edged, where the Rage 128 fades them to grey haze; drawn, not refused; state unknown; not a 0.37.0 blocker (Michael)](2026-11-06-rs690-3dmark2000-pink-terrain.md)
 - [2026-11-05 M-GB8KRE (RS690, branch `ati-rs690`): under the register-write Direct3D HAL, Direct3D pixels land in physical RAM at 0600xxxxh (V9XD32 T15); cause: a 3D draw started while a 2D fill still ran, which MMIO WAIT_UNTIL does not prevent with the CP off; fixed by a CPU idle poll before a 3D draw that follows 2D work (42cfea26, narrowed in f6ed13f1); why that physical window is unknown](2026-11-05-rs690-t15-heap-words-zeroed-once.md)
 - [2026-11-05 HD 4000 mobile (W9QI75E0, M-ZJQ2DX): a hard lock a minute into 3DMark 2000's Game 1 on branch intel-ivb-mobile; seen once; likeliest cause Haswell-only 3D changes since 21 October that no Ivy Bridge has run; blocks the 0166 merge](2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)
