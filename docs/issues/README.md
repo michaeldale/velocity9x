@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-06 M-GB8KRE (RS690): 3DMark 2000's Game 1 draws some distant terrain triangles salmon-red, hard-edged, where the Rage 128 fades them to grey haze; drawn, not refused; state unknown; not a 0.37.0 blocker (Michael)](2026-11-06-rs690-3dmark2000-pink-terrain.md)
 - [2026-11-05 M-GB8KRE (RS690, branch `ati-rs690`): under the register-write Direct3D HAL, Direct3D pixels land in physical RAM at 0600xxxxh (V9XD32 T15); cause: a 3D draw started while a 2D fill still ran, which MMIO WAIT_UNTIL does not prevent with the CP off; fixed by a CPU idle poll before a 3D draw that follows 2D work (42cfea26, narrowed in f6ed13f1); why that physical window is unknown](2026-11-05-rs690-t15-heap-words-zeroed-once.md)
 - [2026-11-05 HD 4000 mobile (W9QI75E0, M-ZJQ2DX): a hard lock a minute into 3DMark 2000's Game 1 on branch intel-ivb-mobile; seen once; likeliest cause Haswell-only 3D changes since 21 October that no Ivy Bridge has run; blocks the 0166 merge](2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)
 - [2026-11-04 ViRGE/DX: 3DMark 2000's CPU Speed test leaves streaks of stale video memory in the margins around its 640x480 view (A8U4I5; parked, minor)](2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)
