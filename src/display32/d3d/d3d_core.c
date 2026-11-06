@@ -9849,6 +9849,17 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_rs690) {
+        /* The X1200's: power-of-two edges, 1 to 2048, all three formats,
+         * placed by v9x_d3d_rs690_create_surface with 64-byte rows (the
+         * V9XRS3D texture probes, docs\decisions\2026-11-05-rs690-texture-
+         * probe.md). CPU levels are refused (d3d_rs690_map.c) and there is
+         * no fallback, so without this branch the ICD and Glide kept every
+         * texture on the CPU and no textured draw was drawn (V9XGLIDP's
+         * five texture checks, M-GB8KRE boot 87). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
     }
     for (index = 0ul; index + 1ul < sizeof(out->renderer) &&
                       name[index] != '\0'; ++index) {
