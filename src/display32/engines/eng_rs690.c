@@ -58,6 +58,14 @@
 static int v9x_rs690_dirty;
 static DWORD v9x_rs690_fb_base;
 
+/* Set when a 2D fill or copy has gone to the engine since it last read
+ * idle. A 3D draw that starts behind a 2D operation still running sends
+ * colour-cache lines to wrong addresses, and WAIT_UNTIL does not hold it
+ * back; 3D behind 3D was clean (T15, docs\issues\2026-11-05-rs690-t15-
+ * heap-words-zeroed-once.md). GDI does not drive this engine
+ * (gdi_accel.c has no RS690 path), so this flag sees every 2D operation. */
+static int v9x_rs690_2d_pending;
+
 static int v9x_rs690_ready(void)
 {
     return v9x_hal != 0 &&
@@ -214,6 +222,7 @@ static int v9x_rs690_wait_idle(int wait)
     if (v9x_rs690_poll_idle(reads) &&
         (!v9x_rs690_dirty || v9x_rs690_flush(reads))) {
         v9x_rs690_dirty = 0;
+        v9x_rs690_2d_pending = 0;
         return 1;
     }
     if (!wait) {
@@ -238,6 +247,7 @@ static void v9x_rs690_emit(const struct v9x_rs690_blt *blt)
     }
     (void)v9x_rs690_read32(V9X_RS690_RBBM_STATUS);
     v9x_rs690_dirty = 1;
+    v9x_rs690_2d_pending = 1;
     v9x_present_note_submission();
 }
 
@@ -359,21 +369,27 @@ int v9x_rs690_flip_address(DWORD byte_offset, DWORD *address)
 }
 
 /*
- * Before every 3D draw, the engine idle on the CPU's own poll, the 2D
- * destination cache flushed. A draw that starts while a 2D fill is still
+ * Before a 3D draw that follows 2D work, the engine idle on the CPU's own
+ * poll, the 2D destination cache flushed. A draw that starts while a 2D
+ * fill is still
  * running writes colour-cache lines to wrong addresses - elsewhere in the
  * frame buffer and into system RAM near physical 06000000h (T15) - and
  * WAIT_UNTIL 2D idle-clean in the FIFO does not stop it with the CP off,
  * nor does 2D|3D|host idle-clean or a 2D cache flush in the FIFO; only
  * the CPU's wait does (V9XRS3D /strayhal on M-GB8KRE, docs\issues\
  * 2026-11-05-rs690-t15-heap-words-zeroed-once.md).
+ *
+ * Behind 3D alone the wait is skipped: draws back to back were clean
+ * there (/hnofill), and in Rollcage the wait before every draw was about
+ * 38% of the draws' CPU time (docs\decisions\2026-11-06-rs690-rollcage-
+ * and-idle-wait.md).
  */
 int v9x_rs690_3d_begin(DWORD *fb_gpu_base, DWORD *desktop_offset)
 {
     if (fb_gpu_base == 0 || desktop_offset == 0 || !v9x_rs690_validate()) {
         return 0;
     }
-    if (!v9x_rs690_wait_idle(1)) {
+    if (v9x_rs690_2d_pending && !v9x_rs690_wait_idle(1)) {
         return 0;
     }
     *fb_gpu_base = v9x_rs690_fb_base;

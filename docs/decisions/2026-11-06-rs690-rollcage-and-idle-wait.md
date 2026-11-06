@@ -75,9 +75,49 @@ from the engine whether the 2D side is still busy, for example from
 `RBBM_STATUS`'s per-block busy bits, and that needs measuring before it
 is trusted.
 
+## The wait only after 2D work
+
+GDI does not drive this engine: `gdi_accel.c` has no RS690 path. Every
+2D operation is therefore the HAL's own, through `eng_rs690.c`'s emit,
+and the HAL needs no busy bits to know about them. Emit now sets a flag,
+and a successful idle poll clears it. `v9x_rs690_3d_begin` waits only
+while the flag is set. Flip and Lock still wait for the whole engine,
+so 3D left in flight is drained before the CPU or the CRTC sees the
+surface.
+
+Boot 79, HAL 40f409c5-dirty:
+
+| Run | Result |
+|---|---|
+| V9XD32, 32 bpp | Failures 0, T15 heap/map/file 0 bad, T20Ok FFF, T21Ok F |
+| V9XD32 `/bpp16` | Failures 0, T15 0 bad, T20Ok FFF, T21Ok F |
+| V9XD32 `/t15bare /t15hunt=2 /t15mb=128 /t15frames` | T15 0 bad, PASS |
+
+Captures: `d32-targeted-*.txt`.
+
+Rollcage ran the same attract race and drew correctly
+(`rc2-play1.png`, `rc2-play2.png`). Snapshot `rc2-snap1.INI`, compared
+with the first run:
+
+| Per draw | Wait before every draw | Wait after 2D only |
+|---|---|---|
+| draws | 1,567,154 | 1,677,527 |
+| triangles a draw | 7.71 | 7.66 |
+| cycles in the wait | 18,515 | 296 |
+| cycles in the whole draw | 48,528 | 40,104 |
+| wait's share | 38.2% | 0.7% |
+| draws whose wait found the engine busy | 26.6% | 0.08% (1,300) |
+| refused / unrenderable | 0 / 0 | 0 / 0 |
+
+**The whole draw is 17% cheaper, not 38%.** The rest of the draw went
+from 117 to 156 units of 256 cycles: about half the wait moved into the
+FIFO room waits of the vertex writes, as expected. The engine, not the
+CPU, now sets the pace of these small draws. The 1,300 waits that still
+happen follow the 2D fills (clears and blits).
+
 ## Not checked
 
-- Frame rate. Rollcage reports none, and this was not a benchmark.
-- 32 bpp. The dialog offered 16 bpp at 640x480.
+- Frame rate. Rollcage reports none, and this was not a benchmark. The
+  17% is CPU time per draw, not frames.
+- 32 bpp in the game. The dialog offered 16 bpp at 640x480.
 - A full race played by input.
-- What a targeted wait would save.

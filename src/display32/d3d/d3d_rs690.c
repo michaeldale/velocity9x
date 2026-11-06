@@ -660,10 +660,11 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
         }
         return 0;
     }
-    /* The engine validated - its 3D init written for this mode - and
-     * idle on the CPU's poll, and the frame buffer's place, before the
-     * state that addresses it. The idle wait is what keeps a draw off a
-     * 2D fill still running (T15); the WAIT_UNTIL below does not. */
+    /* The engine validated - its 3D init written for this mode - and,
+     * after 2D work, idle on the CPU's poll, and the frame buffer's
+     * place, before the state that addresses it. The idle wait is what
+     * keeps a draw off a 2D fill still running (T15); the WAIT_UNTIL
+     * below does not. */
     started = v9x_d3d_rs690_cycles();
     if (!v9x_rs690_3d_begin(&v9x_d3d_rs690_fb_base,
                             &v9x_d3d_rs690_desktop)) {
