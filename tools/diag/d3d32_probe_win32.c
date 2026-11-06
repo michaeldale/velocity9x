@@ -45,10 +45,10 @@
  *   T20 DX5 render states the others leave alone: vertex fog (full and
  *      half), the ADD and DECALALPHA texture blends, and a source colour
  *      key on an RGB565 texture, each at its quadrant centres within 8
- *      (d32_t20_draw).
+ *      (d32_t20_draw); only the parts the HAL's caps advertise count.
  *   T21 a six-level RGB565 mip chain, each level its own colour, drawn
  *      MIPNEAREST at four sizes: each quad the level its size selects
- *      (d32_t21_draw).
+ *      (d32_t21_draw); counted only when MIPNEAREST is advertised.
  *   T11 culling by every submit form the DX5 device has - a triangle list,
  *      an indexed list, a strip (its odd triangle's swap), a fan, an
  *      indexed strip and an indexed list over 260 vertices - each under
@@ -264,6 +264,18 @@ typedef struct d32_object { void **vtbl; } D32_OBJECT;
 #define D3DDESC_TRI_MISC_CAPS 26
 #define D3DPMISCCAPS_CULLCW 0x00000020ul
 #define D3DPMISCCAPS_CULLCCW 0x00000040ul
+/* The rest of dpcTriCaps that T20 and T21 need: dwRasterCaps,
+ * dwTextureCaps, dwTextureFilterCaps and dwTextureBlendCaps follow
+ * dwMiscCaps at 1, 7, 8 and 9 DWORDs on (D3DPRIMCAPS in d3dcaps.h). */
+#define D3DDESC_TRI_RASTER_CAPS 27
+#define D3DDESC_TRI_TEXTURE_CAPS 33
+#define D3DDESC_TRI_FILTER_CAPS 34
+#define D3DDESC_TRI_BLEND_CAPS 35
+#define D3DPRASTERCAPS_FOGVERTEX 0x00000080ul
+#define D3DPTEXTURECAPS_TRANSPARENCY 0x00000008ul
+#define D3DPTFILTERCAPS_MIPNEAREST 0x00000004ul
+#define D3DPTBLENDCAPS_DECALALPHA 0x00000004ul
+#define D3DPTBLENDCAPS_ADD 0x00000080ul
 
 typedef HRESULT (WINAPI *d32_create_fn)(void *, D32_OBJECT **, void *);
 typedef ULONG (WINAPI *d32_release_fn)(D32_OBJECT *);
@@ -332,6 +344,14 @@ static DWORD d32_tolerance;
  * culling direction does not cull it (Direct3D leaves culling to the
  * driver), so T9 and T11 expect such triangles drawn, not gone. */
 static DWORD d32_tri_misc_caps;
+/* The HAL device's triangle raster, texture, filter and blend caps. T20
+ * and T21 judge only what the device advertises: a device that does not
+ * publish vertex fog, a blend, colour keying or mip filtering is not
+ * failed for drawing without it. */
+static DWORD d32_tri_raster_caps;
+static DWORD d32_tri_texture_caps;
+static DWORD d32_tri_filter_caps;
+static DWORD d32_tri_blend_caps;
 
 static void d32_hex(char *text, DWORD value)
 {
@@ -527,6 +547,10 @@ typedef struct d32_enum_result {
     DWORD render_depth;
     DWORD z_depth;
     DWORD tri_misc_caps;
+    DWORD tri_raster_caps;
+    DWORD tri_texture_caps;
+    DWORD tri_filter_caps;
+    DWORD tri_blend_caps;
 } D32_ENUM_RESULT;
 
 static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
@@ -544,6 +568,10 @@ static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
         result->render_depth = hardware[D3DDESC_RENDER_DEPTH];
         result->z_depth = hardware[D3DDESC_Z_DEPTH];
         result->tri_misc_caps = hardware[D3DDESC_TRI_MISC_CAPS];
+        result->tri_raster_caps = hardware[D3DDESC_TRI_RASTER_CAPS];
+        result->tri_texture_caps = hardware[D3DDESC_TRI_TEXTURE_CAPS];
+        result->tri_filter_caps = hardware[D3DDESC_TRI_FILTER_CAPS];
+        result->tri_blend_caps = hardware[D3DDESC_TRI_BLEND_CAPS];
     }
     return 1;   /* D3DENUMRET_OK */
 }
@@ -1594,6 +1622,7 @@ static DWORD d32_t20_point(const D32_SURFACE_DESC *desc, const char *name,
 static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
 {
     DWORD ok = 0ul;
+    DWORD expected = 0ul;
 
     ok |= d32_t20_point(desc, "FogFull", 32ul, 120ul, 0x000000fful);
     ok |= d32_t20_point(desc, "FogHalf", 88ul, 120ul, 0x0080007ful) << 1;
@@ -1610,7 +1639,23 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
     ok |= d32_t20_point(desc, "KeyBlue", 244ul, 132ul, 0x000000fful) << 10;
     ok |= d32_t20_point(desc, "KeyWhite", 268ul, 132ul, 0x00fffffful) << 11;
     d32_hx("T20Ok", ok);
-    return ok != 0xffful ? 1ul : 0ul;
+
+    /* Only the parts the device advertises count: fog bits 0-1, ADD 2-3,
+     * DECALALPHA 4-7, the colour key 8-11. T20Ok still shows them all. */
+    if ((d32_tri_raster_caps & D3DPRASTERCAPS_FOGVERTEX) != 0ul) {
+        expected |= 0x003ul;
+    }
+    if ((d32_tri_blend_caps & D3DPTBLENDCAPS_ADD) != 0ul) {
+        expected |= 0x00cul;
+    }
+    if ((d32_tri_blend_caps & D3DPTBLENDCAPS_DECALALPHA) != 0ul) {
+        expected |= 0x0f0ul;
+    }
+    if ((d32_tri_texture_caps & D3DPTEXTURECAPS_TRANSPARENCY) != 0ul) {
+        expected |= 0xf00ul;
+    }
+    d32_hx("T20Expected", expected);
+    return (ok & expected) != expected ? 1ul : 0ul;
 }
 
 /*
@@ -1780,6 +1825,13 @@ static DWORD d32_t21_judge(const D32_SURFACE_DESC *desc)
         }
     }
     d32_hx("T21Ok", ok);
+
+    /* A device that advertises no mip filtering may sample the base
+     * alone; T21 counts only where MIPNEAREST is published. */
+    if ((d32_tri_filter_caps & D3DPTFILTERCAPS_MIPNEAREST) == 0ul) {
+        d32_line("T21Result", "SKIP-NO-MIP-CAPS");
+        return 0ul;
+    }
     return ok != 0xful ? 1ul : 0ul;
 }
 
@@ -6316,6 +6368,14 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("HalZDepth", enumerated.z_depth);
     d32_hx("HalTriMiscCaps", enumerated.tri_misc_caps);
     d32_tri_misc_caps = enumerated.tri_misc_caps;
+    d32_hx("HalTriRasterCaps", enumerated.tri_raster_caps);
+    d32_hx("HalTriTextureCaps", enumerated.tri_texture_caps);
+    d32_hx("HalTriFilterCaps", enumerated.tri_filter_caps);
+    d32_hx("HalTriBlendCaps", enumerated.tri_blend_caps);
+    d32_tri_raster_caps = enumerated.tri_raster_caps;
+    d32_tri_texture_caps = enumerated.tri_texture_caps;
+    d32_tri_filter_caps = enumerated.tri_filter_caps;
+    d32_tri_blend_caps = enumerated.tri_blend_caps;
     if (enumerated.hal_found == 0ul ||
         (enumerated.render_depth & (bpp == 32ul ? DDBD_32 : DDBD_16)) ==
             0ul) {
