@@ -791,7 +791,7 @@ V9X_VBE_ST_LIST_OVERFLOW  EQU 0008h  ; hit V9X_VBE_MODE_LIST_MAX first
 V9X_VBE_ST_LIST_FLAGGED   EQU 0010h  ; a listed value carried set-mode flag bits
 V9X_VBE_ST_LIST_UNREACHED EQU 0020h  ; VideoModePtr null or not addressable
 V9X_VBE_ST_CACHE_FULL     EQU 0040h  ; more admissible records than cache slots
-V9X_VBE_ST_QUERY_FAILED   EQU 0080h  ; a listed 4F01h did not answer 004Fh
+V9X_VBE_ST_QUERY_FAILED   EQU 0080h  ; a listed 4F01h answered neither 004Fh nor 014Fh
 V9X_VBE_ST_EDID_VALID     EQU 0100h  ; a 128-byte block 0 was collected
 V9X_VBE_ST_EDID_NO_DDC    EQU 0200h  ; 4F15h reported no DDC support
 V9X_VBE_ST_EDID_FAILED    EQU 0400h  ; DDC claimed, read refused
@@ -799,3 +799,4 @@ V9X_VBE_ST_COLLECT_OFF    EQU 0800h  ; assembled without collection at all
 V9X_VBE_ST_QUERY_LIMIT    EQU 1000h  ; first-drop BIOS-call clamp stopped queries
 V9X_VBE_ST_SWEEP_RAN      EQU 2000h  ; the set-and-ask-again pass was assembled in
 V9X_VBE_ST_SWEEP_UNRESTORED EQU 4000h ; the sweep could not put the entry mode back
+V9X_VBE_ST_QUERY_UNAVAIL  EQU 8000h  ; a listed 4F01h answered 014Fh (mode not available)

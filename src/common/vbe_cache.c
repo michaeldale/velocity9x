@@ -64,8 +64,20 @@ v9x_u16 v9x_vbe_scan_may_contradict(v9x_u16 status)
     }
     if ((status & (V9X_VBE_ST_LIST_OVERFLOW | V9X_VBE_ST_LIST_UNREACHED |
                    V9X_VBE_ST_LIST_FLAGGED | V9X_VBE_ST_CACHE_FULL |
-                   V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_LIMIT)) != 0u) {
+                   V9X_VBE_ST_QUERY_FAILED | V9X_VBE_ST_QUERY_UNAVAIL |
+                   V9X_VBE_ST_QUERY_LIMIT)) != 0u) {
         return V9X_FALSE;
     }
     return V9X_TRUE;
+}
+
+v9x_u16 v9x_vbe_scan_may_contradict_version(v9x_u16 status, v9x_u16 version)
+{
+    /* Below VBE 2.0 a 014Fh answer on a listed mode is the standard's own
+     * "not available", not a gap in the walk (see vbe_cache.h). Any other
+     * refusal still is. */
+    if (version < (v9x_u16)0x0200u) {
+        status = (v9x_u16)(status & (v9x_u16)~V9X_VBE_ST_QUERY_UNAVAIL);
+    }
+    return v9x_vbe_scan_may_contradict(status);
 }

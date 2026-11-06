@@ -316,10 +316,14 @@
         # From 2026-08-18 to 2026-10-04 this was $false: the cache was never
         # read here, and the collection, before its V86-buffer alignment fix,
         # hung a physical Trio64 (docs\issues\2026-08-18-trio64-minivdd-boot-
-        # hang.md). The fixed collection booted that Trio64 clean twice. The
-        # VBE 1.2 S3 BIOSes measured (2026-08-20-vbe-mode-inventory.md) stop
-        # at the ring-0 2.0 version check, so on them this is one 4F00h call
-        # at boot and the baseline table, unchanged.
+        # hang.md). The fixed collection booted that Trio64 clean twice. Until
+        # 2026-11-01 the VBE 1.2 S3 BIOSes measured (2026-08-20-vbe-mode-
+        # inventory.md) stopped at the ring-0 2.0 version check, one 4F00h
+        # call and the baseline table. The check now accepts 1.2, and
+        # v9x_vbe_controller_scan_usable lets a 1.2 scan through for this
+        # family only, so a Trio64 or Trio64V+ also gets its BIOS's 4F01h
+        # answers and a baseline row its BIOS lacks is hidden instead of
+        # failing at 4F02h (2026-11-01-trio64-vbe12-mode-query.md).
         MiniVddVbeCollect = $true
     }
 

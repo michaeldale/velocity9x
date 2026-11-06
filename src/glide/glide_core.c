@@ -795,6 +795,8 @@ static v9x_u32 v9x_glide_variant(const V9X_GLIDE_TEXTURE *texture,
 static int v9x_glide_texture_convert(V9X_GLIDE_TEXTURE *texture, v9x_u32 variant,
                                      v9x_u32 key_enable, v9x_u32 key_rgb)
 {
+    const V9X_R3D_ABI_DESCRIBE *describe;
+
     if (texture->variant == variant) {
         return 1;
     }
@@ -810,6 +812,19 @@ static int v9x_glide_texture_convert(V9X_GLIDE_TEXTURE *texture, v9x_u32 variant
                                   v9x_glide_palette, key_enable, key_rgb,
                                   texture->texels, &texture->abi_format)) {
         return 0;
+    }
+
+    /* An engine that samples no 565 but does sample 1555 (the ViRGE) would
+     * otherwise refuse the surface and get CPU texels it cannot draw. */
+    describe = v9x_glide_device_description();
+    if (texture->abi_format == V9X_R3D_ABI_FORMAT_RGB565 && describe != 0 &&
+        (describe->texture_formats &
+         (1ul << V9X_R3D_ABI_FORMAT_RGB565)) == 0ul &&
+        (describe->texture_formats &
+         (1ul << V9X_R3D_ABI_FORMAT_ARGB1555)) != 0ul) {
+        v9x_glide_texels_565_to_argb1555(texture->texels,
+                                         texture->width * texture->height);
+        texture->abi_format = V9X_R3D_ABI_FORMAT_ARGB1555;
     }
     texture->variant = variant;
     return 1;

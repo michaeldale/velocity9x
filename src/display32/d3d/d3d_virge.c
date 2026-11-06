@@ -78,6 +78,21 @@ static int v9x_d3d_virge_unlit_alpha_ok(void)
             V9X_DD_ENGINE_CAP_S3D_UNLIT_ALPHA) != 0ul;
 }
 
+/*
+ * Whether the draw's texture op is MODULATE as the S3D unit draws it. The
+ * unit has no MODULATEALPHA, but with every vertex alpha 255 that op's
+ * alpha (texel times vertex) is the texel's, which is MODULATE's, and the
+ * colours are the same product: the two are equal there. Glide's
+ * texture-times-iterated combine arrives as MODULATEALPHA (V9XGLIDP on
+ * A8U4I5, 2026-11-04). The flag is set only on the render interface path.
+ */
+static int v9x_d3d_virge_modulates(const V9X_R3D_DRAW *draw)
+{
+    return draw->texture.op == V9X_R3D_TEXOP_MODULATE ||
+           (draw->texture.op == V9X_R3D_TEXOP_MODULATEALPHA &&
+            draw->vertex_alpha_opaque != 0ul);
+}
+
 /* Which ViRGE texture format a surface is sampled as. */
 #define V9X_TEX_FORMAT_ARGB1555 0
 #define V9X_TEX_FORMAT_ARGB4444 1
@@ -1218,7 +1233,7 @@ static int v9x_d3d_triangle(const V9X_R3D_DRAW *draw,
      * is most of what any application draws.
      */
     if (textured && alpha_bits != 0ul &&
-        draw->texture.op != V9X_R3D_TEXOP_MODULATE &&
+        !v9x_d3d_virge_modulates(draw) &&
         !v9x_d3d_virge_unlit_alpha_ok()) {
         unlit_alpha_lit = 1;
         color = 0xfffffffful;
@@ -1374,8 +1389,7 @@ static int v9x_d3d_triangle(const V9X_R3D_DRAW *draw,
                         ? V9X_VIRGE_3D_CMD_TEX_ARGB4444
                         : V9X_VIRGE_3D_CMD_TEX_ARGB1555) |
                    (texture_size_log << 8);
-        if (draw->texture.op == V9X_R3D_TEXOP_MODULATE ||
-            unlit_alpha_lit) {
+        if (v9x_d3d_virge_modulates(draw) || unlit_alpha_lit) {
             command |= V9X_VIRGE_3D_CMD_TEXTURE_LIT |
                        V9X_VIRGE_3D_CMD_TEX_MODULATE;
         } else {
@@ -1399,12 +1413,14 @@ static int v9x_d3d_triangle(const V9X_R3D_DRAW *draw,
                        V9X_R3D_FILTER_LINEARMIPLINEAR) {
             /*
              * The two-pass form draws level N here and blends N+1 over it, so
-             * this pass is bilinear on one level. The degraded form is that
-             * same pass with no second one. Only a part that is going to do
-             * neither gets the chip's own LINEAR_MIP_LINEAR.
+             * this pass is bilinear on one level: M4TPP, MIP_LINEAR. The
+             * degraded form is that same pass with no second one. Only a
+             * part that is going to do neither gets the chip's own
+             * LINEAR_MIP_LINEAR. (This sent 010 before 2026-11-04 too, under
+             * the name the swapped constants gave it.)
              */
             command |= (trilinear_blend || trilinear_degrade)
-                ? V9X_VIRGE_3D_CMD_LINEAR_MIP_NEAREST
+                ? V9X_VIRGE_3D_CMD_MIP_LINEAR
                 : V9X_VIRGE_3D_CMD_LINEAR_MIP_LINEAR;
         } else if (draw->texture.min_filter == V9X_R3D_FILTER_LINEAR ||
                    draw->texture.mag_filter == V9X_R3D_FILTER_LINEAR) {
@@ -1593,7 +1609,7 @@ static int v9x_d3d_triangle(const V9X_R3D_DRAW *draw,
             }
         }
         v9x_mmio_write(V9X_VIRGE_3D_COMMAND, second_command);
-        if (draw->texture.op == V9X_R3D_TEXOP_MODULATE) {
+        if (v9x_d3d_virge_modulates(draw)) {
             v9x_mmio_write(V9X_VIRGE_3D_DGDX_DBDX,
                            ((DWORD)v9x_d3d_fixed_8_7(dgdx) << 16) |
                            (DWORD)v9x_d3d_fixed_8_7(dbdx));
@@ -2041,7 +2057,7 @@ static int v9x_d3d_virge_accepts(const V9X_R3D_DRAW *draw)
     }
     if (draw->texture.object != 0) {
         if (draw->texture.op != V9X_R3D_TEXOP_DECAL &&
-            draw->texture.op != V9X_R3D_TEXOP_MODULATE &&
+            !v9x_d3d_virge_modulates(draw) &&
             draw->texture.op != V9X_R3D_TEXOP_COPY) {
             return 0;
         }

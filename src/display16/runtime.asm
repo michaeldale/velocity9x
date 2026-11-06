@@ -4231,6 +4231,8 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     ; and its GTT at + 2 MiB as Ironlake's: intel-gtt.c i9xx_setup() takes
     ; IS_G4X down the "case 5" arm. From two DOS surveys only; nothing here
     ; has run on one (docs\decisions\2026-10-23-g4x-gma4500-from-surveys.md).
+    ; The GM45 (2A42) is IS_G4X too, from one survey with the G45's BARs
+    ; (docs\decisions\2026-11-04-gm45-gl40-from-a-survey.md).
     ; SI keeps the device id for the offset below; no BIOS call here uses it.
     mov     di, 0002h
     mov     ax, 0b109h
@@ -4246,6 +4248,8 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     cmp     cx, 2e22h
     je      V9xPciReadIntelGttConfigGen4
     cmp     cx, 2e12h
+    je      V9xPciReadIntelGttConfigGen4
+    cmp     cx, 2a42h
     je      V9xPciReadIntelGttConfigGen4
 
     mov     di, 0018h
@@ -4325,6 +4329,8 @@ V9xPciReadIntelGttConfigGen4:
     cmp     si, 2e22h
     je      short V9xPciReadIntelGttConfigGen5
     cmp     si, 2e12h
+    je      short V9xPciReadIntelGttConfigGen5
+    cmp     si, 2a42h
     je      short V9xPciReadIntelGttConfigGen5
     add     eax, 00080000h
     jmp     short V9xPciReadIntelGttConfigBar0Gtt

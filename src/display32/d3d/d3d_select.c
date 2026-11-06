@@ -67,6 +67,12 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
         if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
             return V9X_D3D_SELECT_NONE;
         }
+        /* Ivy Bridge runs the same builders with its own table: two
+         * stages in one pass stopped the HD 4000 in 3DMark 2000's Game 1
+         * (W9QI75E0, 2026-11-06), one stage did not. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul) {
+            return V9X_D3D_SELECT_GEN7;
+        }
         return V9X_D3D_SELECT_GEN75;
     case V9X_DD_ENGINE_TYPE_ATI_RAGE128:
         /* The Rage 128: rage128_hw16.c stamps CAP_D3D beside the 2D

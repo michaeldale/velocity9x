@@ -111,6 +111,8 @@ static void test_may_contradict(void)
     CCHECK(v9x_vbe_scan_may_contradict(
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_FAILED)) == V9X_FALSE);
     CCHECK(v9x_vbe_scan_may_contradict(
+               (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_UNAVAIL)) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict(
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_LIMIT)) == V9X_FALSE);
 
     /*
@@ -126,6 +128,49 @@ static void test_may_contradict(void)
                (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_EDID_VALID)) == V9X_TRUE);
     CCHECK(v9x_vbe_scan_may_contradict(
                (v9x_u16)(V9X_VBE_ST_EDID_VALID | V9X_VBE_ST_CTRL_VALID)) ==
+           V9X_FALSE);
+}
+
+static void test_may_contradict_version(void)
+{
+    const v9x_u16 failed = (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_FAILED);
+    const v9x_u16 unavail = (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_QUERY_UNAVAIL);
+
+    /* 2.0 and later: the rule of v9x_vbe_scan_may_contradict, unchanged -
+     * a 014Fh answer withdraws the scan as any other refusal does. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(STATUS_GOOD, 0x0200u) ==
+           V9X_TRUE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0200u) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0300u) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(unavail, 0x0200u) ==
+           V9X_FALSE);
+
+    /* 1.2: a 014Fh answer on a listed mode is "not available" (a Trio64
+     * BIOS that lists 0x0118-0x011B on 2 MiB), so it no longer withdraws the
+     * scan's authority. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(STATUS_GOOD, 0x0102u) ==
+           V9X_TRUE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(unavail, 0x0102u) == V9X_TRUE);
+
+    /* Any other refusal still does: a BIOS that does not handle 4F01h at all
+     * answers something other than 014Fh, and its walk saw nothing. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(failed, 0x0102u) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(unavail | V9X_VBE_ST_QUERY_FAILED), 0x0102u) ==
+           V9X_FALSE);
+
+    /* Every other completeness rule still holds for 1.2. */
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(unavail | V9X_VBE_ST_QUERY_LIMIT), 0x0102u) ==
+           V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(STATUS_GOOD | V9X_VBE_ST_LIST_OVERFLOW), 0x0102u) ==
+           V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(STATUS_GOOD & (v9x_u16)~V9X_VBE_ST_LIST_TERM),
+               0x0102u) == V9X_FALSE);
+    CCHECK(v9x_vbe_scan_may_contradict_version(
+               (v9x_u16)(unavail | V9X_VBE_ST_CACHE_FULL), 0x0102u) ==
            V9X_FALSE);
 }
 
@@ -172,5 +217,6 @@ unsigned int v9x_run_vbe_cache_tests(void)
 {
     test_usable_count();
     test_may_contradict();
+    test_may_contradict_version();
     return cache_failures;
 }

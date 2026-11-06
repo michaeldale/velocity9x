@@ -311,6 +311,9 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-26 Bay Trail's Valleyview graphics (8086:0F31) from one DOS survey: Ivy Bridge's layout with 32-bit BARs, so the Haswell decode would refuse it](2026-10-26-baytrail-valleyview-from-a-survey.md)
 - [2026-10-28 Write-combining the HD 4600's aperture through PAT: FbWrite 66 to 9,238 MB/s, 3DMark 2000 2344 to 3719, and the render engine is now the limit](2026-10-28-haswell-pat-write-combining.md)
 - [2026-10-28 The HD 4600's fixed cost a batch is not its flushes: seven variants measured, the first closing RT flush dropped](2026-10-28-haswell-flush-variants.md)
+- [2026-11-04 The GM45's GMA 4500MHD (8086:2A42, GL40 in an HP t5740) joins intel-gma on one DOS survey: the G45's path unchanged](2026-11-04-gm45-gl40-from-a-survey.md)
+- [2026-11-04 The G45 and Q45 run 0.28.0: issue 3's reporter's field report, 3DMark 2000 1942 and 1760](2026-11-04-g4x-g45-q45-field-report.md)
+- [2026-11-05 The GM45 (GL40, HP t5740) runs 0.35.0: Direct3D in hardware and 3DMark 99, issue 22's field report (V9X-EXR8BE)](2026-11-05-gm45-gl40-field-report.md)
 
 ## SiS
 
@@ -347,6 +350,9 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-09-11 The GD5430 reads its own memory size, and its BIOS mode table needs reading carefully](2026-09-11-cirrus-gd5430-memory-and-mode-table.md)
 - [2026-09-11 Two NVIDIA cards baselined, and what the VGA ports are not hiding](2026-09-11-nvidia-nv4-and-nv5-baselines.md)
 - [2026-10-26 NeoMagic MagicGraph 128ZV (NM2093) from a VOGONS survey: tier 0 is plain VBE, the blitter sits at BAR0 + 2 MiB, and the BIOS hides 64 KiB](2026-10-26-neomagic-128zv-from-a-vogons-survey.md)
+- [2026-11-04 GeForce2 Go (NV11) in a Dell Inspiron 2650 from a VOGONS survey: plain VBE 3.0, no family covers it, and the report cannot explain the stutter](2026-11-04-geforce2-go-nv11-from-a-vogons-survey.md)
+- [2026-11-05 W9QI2F4F now carries a Quadro FX 550 (NV43): PEG link at x8, the BIOS disables the IGD, and the 4 bpp screenshot garbage is not the IGD's](2026-11-05-w9qi2f4f-quadro-fx550-audit.md)
+- [2026-11-05 Tier-0 `vbe` on the Quadro FX 550 (NV43): enable-ok, GDI passes at 8 and 32 bpp, no EDID](2026-11-05-w9qi2f4f-quadro-fx550-tier0-vbe.md)
 - [2026-10-26 VIA VX855 Chrome9 HCM from a DOS survey: framebuffer BAR0, engine BAR1, VBE 3.0 to 1920x1200, and the M1 2D engine Linux already drives](2026-10-26-via-vx855-chrome9-hcm-from-a-survey.md)
 - [2026-10-26 Tier-0 `vbe` on a Radeon HD 5450 (Cedar, 1002:68F9): enable-ok, every mode and GDI test passes](2026-10-26-m-bxmfa8-radeon-68f9-first-look.md)
 - [2026-10-26 Radeon HD 5450 registers, read: 1 GiB at GPU address 0, the DMA engine idle and out of reset](2026-10-26-cedar-register-probe.md)
@@ -376,6 +382,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)
 - [2026-11-01 0.34.0 release checks: the HD 4600, the GMA 950, the HD 5770 and the HD 7470](2026-11-01-0.34.0-release-checks.md)
+- [2026-11-04 0.35.0 release checks: the HD 4600, the GMA 950, the HD 7660D, the HD 7470 and the RIVA 128ZX](2026-11-04-0.35.0-release-checks.md)
+- [2026-11-06 0.36.0 release checks: the HD 4600, the GMA 950 and the Rage 128 Pro](2026-11-06-0.36.0-release-checks.md)
 - [2026-11-01 The updater moves a card off vbe to its chip family (V9X-AW3C75)](2026-11-01-updater-moves-vbe-to-chip-family.md)
 - [2026-10-29 Write-combining the SiS 6326's frame buffer: FbWrite 49.9 to 89.3 MB/s](2026-10-29-sis6326-write-combining.md)
 - [2026-10-29 SiS 6326: the driver presteps U, so 1:1 text keeps every column](2026-10-29-sis6326-u-prestep.md)
@@ -402,6 +410,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-29 The Direct3D block splits into a chip-neutral core and one engine, and the probe cannot tell](2026-08-29-d3d-core-engine-split.md)
 - [2026-09-04 Four megabytes is what picks the resolution, and at 800x600 mipmapping is off](2026-09-04-four-megabytes-is-the-resolution-limit.md)
 - [2026-09-11 CR36 and the aperture base, confirmed on a physical ViRGE/DX](2026-09-11-virge-dx-registers-confirmed-on-silicon.md)
+- [2026-11-04 The ViRGE/DX's 3D on silicon: 86Box agrees, and two mip filter modes were swapped](2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)
 - [2026-10-03 Rage XL PCI on Velocity9x in A8U4I5: Half-Life 18.1, Quake 2 11.6, 3DMark 99 1225](2026-10-03-rage-xl-pci-benchmarks-a8u4i5.md)
 - [2026-10-04 Rage XL follow-ups: 4x4 and 2x2 textures measured, the mode sync, the DRV version, oversized GL textures](2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md)
 - [2026-10-04 Mach64: an alpha test that cannot discard is not sent, and Half-Life's HUD draws on the Rage XL](2026-10-04-mach64-alpha-test-that-cannot-discard.md)

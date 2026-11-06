@@ -68,7 +68,8 @@ const V9X_HW16_DEVICE v9x_trio_device = {
  * device_id out of this array into the table V9xFindPciDevice walks - and
  * because each carries its own name, so C:\V9XDIAG\V9XHW.INI reports the part
  * the machine has rather than the sibling whose code is running. Everything
- * after the identity is deliberately identical to v9x_trio_device: same clock
+ * after the identity is deliberately identical to v9x_trio_device (but for
+ * the Trio64V2's enable hook, below): same clock
  * detector, same 8514/A engine with no S3D core, same aperture enable.
  *
  * What separates these from the two chips is evidence, not code. No guest and
@@ -115,9 +116,20 @@ const V9X_HW16_DEVICE v9x_trio64uv_device = {
     V9X_TRIO_ALIAS_TAIL
 };
 
+/*
+ * The Trio64V2 differs from the alias tail in one hook: its enable also
+ * clears the blank pedestal, SR1A bit 5, which only its data book documents
+ * (v9x_s3_trio64v2_enable_aperture; docs\issues\2026-08-23-s3-pedestal-
+ * black-level.md). No Trio64V2 has run it.
+ */
 const V9X_HW16_DEVICE v9x_trio64v2_device = {
     0x5333u, 0x8901u,
     "S3 Trio64V2/DX or /GX 86C775/86C785",
     "5333", "8901",
-    V9X_TRIO_ALIAS_TAIL
+    "s3-virge-pll-v1",
+    "live-any-depth",
+    "directdraw-fill-blt",
+    "not-advertised",
+    v9x_s3_trio64v2_enable_aperture,
+    v9x_trio_fill_engine
 };

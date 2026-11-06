@@ -4,7 +4,9 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
-- [2026-11-05 M-GB8KRE (RS690, branch `ati-rs690`): under the register-write Direct3D HAL, Direct3D pixels land in physical RAM at 0600xxxxh (V9XD32 T15); cause: a 3D draw started while a 2D fill still ran, which MMIO WAIT_UNTIL does not prevent with the CP off; fixed by a CPU idle poll before each draw (boot 71, uncommitted); why that physical window is unknown](2026-11-05-rs690-t15-heap-words-zeroed-once.md)
+- [2026-11-05 M-GB8KRE (RS690, branch `ati-rs690`): under the register-write Direct3D HAL, Direct3D pixels land in physical RAM at 0600xxxxh (V9XD32 T15); cause: a 3D draw started while a 2D fill still ran, which MMIO WAIT_UNTIL does not prevent with the CP off; fixed by a CPU idle poll before a 3D draw that follows 2D work (42cfea26, narrowed in f6ed13f1); why that physical window is unknown](2026-11-05-rs690-t15-heap-words-zeroed-once.md)
+- [2026-11-05 HD 4000 mobile (W9QI75E0, M-ZJQ2DX): a hard lock a minute into 3DMark 2000's Game 1 on branch intel-ivb-mobile; seen once; likeliest cause Haswell-only 3D changes since 21 October that no Ivy Bridge has run; blocks the 0166 merge](2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)
+- [2026-11-04 ViRGE/DX: 3DMark 2000's CPU Speed test leaves streaks of stale video memory in the margins around its 640x480 view (A8U4I5; parked, minor)](2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)
 - [2026-10-26 Half-Life OpenGL on the GMA 950: starting a multiplayer game leaves the screen stuck or corrupt until Escape and resume (Michael; not blocking 0.30.0; not reproduced yet; the Millennium II's menu fault suspected)](2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)
 - [2026-10-25 A8U4I5: V9XD32 T15's bad words are bit 23 of RAM at 15C0h modulo 32 KiB in one 6.6 MiB physical window, under ATI's driver too; not the driver (DRAM inferred, unconfirmed); `MaxPhysPage=0A000` keeps Windows out of it](2026-10-25-rage128-t15-sentinel-corruption.md)
 - [2026-10-24 Haswell, a tester's HD 4600 (report V9X-YP59WN): Tux Racer's fogged, blended sky refused as GL_REPLACE on RGB565 (no Direct3D texture op); the ICD rewrites it as MODULATE by white vertices, seen fixed on the 4570](2026-10-24-haswell-tux-racer-sky-replace-rgb.md)
@@ -77,7 +79,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-08-30 Every package claims "GUEST ACTIVATION NOT YET TESTED", including ones activated on guests](2026-08-30-package-status-string-is-hardcoded.md)
 - [2026-08-30 V9XTRACE.EXE faults in KRNL386 once DirectDraw has run](2026-08-30-trace-dump-krnl386-flush-gpf.md)
 - [2026-08-30 XFree86 says the ViRGE cannot do 32 bpp at 1024 wide, and this driver ships that mode](2026-08-30-virge-1024x768x32-xfree86-limit.md)
-- [2026-08-30 The ViRGE needs a dummy blit after a 3D command, and this driver does not issue one](2026-08-30-virge-2d-after-3d-dummy-blit.md)
+- [2026-08-30 The ViRGE needs a dummy blit after a 3D command, and this driver does not issue one](2026-08-30-virge-2d-after-3d-dummy-blit.md) (fixed for fills 2026-11-05; copies clean; GDI open)
 - [2026-09-01 The D3D clipper loses the last row and column of any full-target triangle](2026-09-01-clipper-loses-last-row-and-column.md)
 - [2026-09-02 DxDiag's Direct3D test fails at step 44, EnumTextureFormats](2026-09-02-dxdiag-fails-at-enumtextureformats.md)
 - [2026-09-02 FlipPixelOk reads 0 on every target, including ones whose flips work](2026-09-02-flippixelok-is-uninterpretable.md)

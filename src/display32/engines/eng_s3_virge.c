@@ -305,6 +305,42 @@ int v9x_wait_idle(int wait)
  * from whichever corner keeps a same-surface copy correct, which is why the
  * scan direction is derived from the rectangles rather than fixed.
  */
+/*
+ * A 1x1 screen-to-screen copy of the pixel at video memory offset 0 onto
+ * itself, issued before every colour fill. The first fill after S3D
+ * triangle work writes the last triangle colour into every other eight-byte
+ * group of its first row; the next fill is clean. Measured on a ViRGE/DX
+ * (A8U4I5, 2026-11-05, V9XD32 /t4predraw: the strays follow the 3D colour,
+ * and an engine-idle wait first does not help). S3's DDK driver issues this
+ * same blit "in case we were called right after a 3D command"
+ * (98DDK src\display\mini\s3v\S3_DD32.C), before every blit. Not before
+ * copies here: with it, V9XDDP's right-shifted overlapping copy on a
+ * 256-byte-pitch surface read its leftmost pixel from 112 pixels along the
+ * row (boot 665, three runs), and without it that copy is right. A copy
+ * straight after 3D does not show the fill's fault (V9XD32 T4Copy, boot
+ * 666, on the engine path).
+ * Unconditional before fills: knowing whether 3D ran last would take state
+ * shared with the 3D engine, for seven register writes a fill.
+ */
+static int v9x_virge_after_3d_blit(DWORD bytes_per_pixel, DWORD pitch,
+                                   int wait)
+{
+    if (!v9x_wait_fifo(7ul, wait)) {
+        return 0;
+    }
+    v9x_mmio_write(V9X_VIRGE_SRC_BASE, 0ul);
+    v9x_mmio_write(V9X_VIRGE_DEST_BASE, 0ul);
+    v9x_mmio_write(V9X_VIRGE_DEST_SRC_STRIDE, (pitch << 16) | pitch);
+    v9x_mmio_write(V9X_VIRGE_RECT_WH, 1ul);
+    v9x_mmio_write(V9X_VIRGE_RECT_SRC_XY, 0ul);
+    v9x_mmio_write(V9X_VIRGE_RECT_DEST_XY, 0ul);
+    v9x_mmio_write(V9X_VIRGE_COMMAND,
+                   V9X_VIRGE_CMD_ROP_SRCCOPY | V9X_VIRGE_CMD_X_POSITIVE |
+                   V9X_VIRGE_CMD_Y_POSITIVE | V9X_VIRGE_CMD_DRAW_ENABLE |
+                   ((bytes_per_pixel - 1ul) << 2));
+    return 1;
+}
+
 static int v9x_virge_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
                           DWORD destination_offset, DWORD bytes_per_pixel,
                           int wait)
@@ -390,7 +426,10 @@ static int v9x_virge_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     if (bytes_per_pixel > 2ul) {
         return V9X_BLT_DECLINED;
     }
-    if (!v9x_wait_fifo(8ul, wait)) {
+    if (!v9x_virge_after_3d_blit(
+            bytes_per_pixel,
+            (DWORD)data->lpDDDestSurface->lpGbl->lPitch, wait) ||
+        !v9x_wait_fifo(8ul, wait)) {
         return V9X_BLT_BUSY;
     }
     command = V9X_VIRGE_CMD_ROP_PATCOPY |

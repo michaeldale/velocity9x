@@ -1,0 +1,35 @@
+os       product_name=Microsoft Windows 98  version_number=4.10.2222  sub_version=A  plus_version=IE 5 6.0.2800.1106  major=4  minor=10  build=2222  platform=1  csd=A  registered_owner=win98user  directx=4.09.00.0904  ie_version=6.0.2800.1106  clean_boot=0
+cpu      count=1  type=586  vendor=GenuineIntel  brand=Intel(R) Core(TM) i7-3632QM CPU @ 2.20GHz  family=6  model=58  stepping=9  features=fpu tsc cmov mmx sse sse2 sse3  mhz=2195  reg_vendor=GenuineIntel  reg_identifier=x86 Family 6 Model 10 Stepping 9
+memory   total_phys=2147479552  avail_phys=1915920384  total_page=0  avail_page=0  load=8
+drive    letter=C  type=fixed  fs=FAT32  serial=DEA5-8A00  total=68702633984  free=67603955712
+drive    letter=D  type=cdrom
+display  desc=Standard PCI Graphics Adapter (VGA)  provider=Microsoft  width=640  height=480  bpp=4
+net      hostname=w9qi75e0  ip=192.168.0.117
+bios     date=06/14/18  name=Phoenix  version=IDE HBA ver1.00 PHOENIX Tech Ltd                e~
+device   class=Display  desc=Standard PCI Graphics Adapter (VGA)  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_8086&DEV_0166&SUBSYS_500117AA&REV_09\BUS_00&DEV_02&FUNC_00
+device   class=Display  desc=Standard PCI Graphics Adapter (VGA)  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_10DE&DEV_0DE3&SUBSYS_500117AA&REV_A1\000800  problem=10
+device   class=Monitor  desc=Plug and Play Monitor  provider=Microsoft  driver_date=4-23-1999  id=MONITOR\LGD033B\PCI_VEN_8086&DEV_0166&SUBSYS_500117AA&REV_09_BUS_00&DEV_02&FUNC_00
+device   class=Net  desc=RTL8168/8111 Family Gigabit Ethernet Adapter  provider=??  driver_date=0- 0-1980  id=ROOT\NET\0000
+device   class=hdc  desc=Standard 6-Port PCI AHCI Controller  provider=RLoew  driver_date=3- 9-2026  id=PCI\VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04\BUS_00&DEV_1F&FUNC_02
+device   class=hdc  desc=AHCI Port 0  provider=RLoew  driver_date=3- 9-2026  id=MF\CHILD0000\PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_02
+device   class=hdc  desc=AHCI Port 1  provider=RLoew  driver_date=3- 9-2026  id=MF\CHILD0001\PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_02
+device   class=hdc  desc=AHCI Port 2  provider=RLoew  driver_date=3- 9-2026  id=MF\CHILD0002\PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_02
+device   class=hdc  desc=AHCI Port 3  provider=RLoew  driver_date=3- 9-2026  id=MF\CHILD0003\PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_02  problem=10
+device   class=hdc  desc=AHCI Port 4  provider=RLoew  driver_date=3- 9-2026  id=MF\CHILD0004\PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_02  problem=10
+device   class=hdc  desc=AHCI Port 5  provider=RLoew  driver_date=3- 9-2026  id=MF\CHILD0005\PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_02  problem=10
+device   class=CDROM  desc=(CD-Rom Drive)  provider=Microsoft  driver_date=4-23-1999  id=SCSI\PLDS____DVD-RW_DS8A8SH__K\MF&CHILD0001&PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_0200
+device   class=fdc  desc=Standard Floppy Disk Controller  provider=(Standard floppy disk controllers)  driver_date=4-23-1999  id=ROOT\*PNP0700\0000
+device   class=DiskDrive  desc=Disk drive  provider=(Standard disk drives)  driver_date=4-23-1999  id=ESDI\ST1000LM024_HN-M101MBB__2\MF&CHILD0000&PCI&VEN_8086&DEV_1E03&SUBSYS_500017AA&REV_04&BUS_00&DEV_1F&FUNC_0200
+device   class=Ports  desc=Communications Port  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0500\0000
+device   class=Ports  desc=Communications Port  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0500\0001
+device   class=USB  desc=Standard PCI to USB Enhanced Host Controller  provider=Microsoft  driver_date=3- 9-2026  id=PCI\VEN_8086&DEV_1E2D&SUBSYS_500017AA&REV_04\BUS_00&DEV_1A&FUNC_00
+device   class=USB  desc=Standard PCI to USB Enhanced Host Controller  provider=Microsoft  driver_date=3- 9-2026  id=PCI\VEN_8086&DEV_1E26&SUBSYS_500017AA&REV_04\BUS_00&DEV_1D&FUNC_00
+device   class=USB  desc=USB 2.0 Root Hub  provider=Microsoft  driver_date=3- 9-2026  id=USB\ROOT_HUB20\PCI&VEN_8086&DEV_1E2D&SUBSYS_500017AA&REV_04&BUS_00&DEV_1A&FUNC_00
+device   class=USB  desc=Generic USB Hub (EHCI)  provider=Microsoft  driver_date=3- 9-2026  id=USB\HUB_VID_8087&PID_0024\1USB&ROOT_HUB20&PCI&VEN_8086&DEV_1E2D&SUBSYS_500017AA&REV_04&BUS_00&DEV_1A&FUNC_00
+device   class=USB  desc=USB 2.0 Root Hub  provider=Microsoft  driver_date=3- 9-2026  id=USB\ROOT_HUB20\PCI&VEN_8086&DEV_1E26&SUBSYS_500017AA&REV_04&BUS_00&DEV_1D&FUNC_00
+device   class=USB  desc=Generic USB Hub (EHCI)  provider=Microsoft  driver_date=3- 9-2026  id=USB\HUB_VID_8087&PID_0024\1USB&ROOT_HUB20&PCI&VEN_8086&DEV_1E26&SUBSYS_500017AA&REV_04&BUS_00&DEV_1D&FUNC_00
+device   class=Mouse  desc=Standard PS/2 Port Mouse  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0F0E\0000
+device   class=Mouse  desc=HID-compliant mouse  provider=Microsoft  driver_date=4-23-1999  id=HID\VID_093A&PID_2510\0000USB&VID_093A&PID_2510&4USB&HUB_VID_8087&PID_0024&1USB&ROOT_HUB20&PCI&VEN_8086&DEV_1E26&SUBSYS_500017AA&REV_04&BUS_00&DEV_1D&FUNC_00
+device   class=Keyboard  desc=Standard 101/102-Key or Microsoft Natural Keyboard  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0303\0000
+device   class=Keyboard  desc=HID-compliant keyboard  provider=Microsoft  driver_date=4-23-1999  id=HID\VID_03F0&PID_0324\0000USB&VID_03F0&PID_0324&2USB&HUB_VID_8087&PID_0024&1USB&ROOT_HUB20&PCI&VEN_8086&DEV_1E2D&SUBSYS_500017AA&REV_04&BUS_00&DEV_1A&FUNC_00
+meta     devices=live  install_id=2d070c50-d19c-4240-8016-e55ceb415fdc  discovery=off

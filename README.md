@@ -14,8 +14,9 @@ HD 5770, HD 7660D and R7E (Carrizo), the ATI Rage 128 Pro, Rage Pro, Rage XL, Ra
 Trio3D, the Matrox Millennium II and Mystique, the SiS 6326, the NVIDIA RIVA 128ZX and the 3dfx Voodoo4 with
 hardware 3D. The S3 Trio32/64 and the Matrox Millennium get 2D
 acceleration, and other cards run through their VESA video BIOS. The
-Intel GMA 4500 and GMA X4500 are claimed: built from their surveys, not
-yet run.
+Intel GMA 4500 and GMA X4500 were built from their surveys and run, by
+one reporter's account, on 0.28.0. The GMA 4500MHD is claimed: built
+from a survey, not yet run.
 
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
 Direct3D HAL and OpenGL ICD contracts, rather than derived from anyone's
@@ -27,9 +28,27 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.34.0.** It adds the AMD Radeon HD 7470 (Caicos,
-`1002:6778`) and HD 5770 (Juniper, `1002:68B8`) to the `ati` package,
-each measured on one tester's machine: DirectDraw on the DMA engine,
+**Current version: 0.36.0.** It adds the Intel HD Graphics 4000 mobile
+(Ivy Bridge, `8086:0166`) with its laptop panel, measured on one tester's
+Lenovo laptop, and stops 3DMark 2000 locking the HD 4000 in its first game
+test. On a physical S3 ViRGE/DX, the first time its Direct3D has run on
+silicon: mipmapped textures are filtered again, Glide's 16-bit textures
+are drawn, and a fill straight after 3D no longer leaves stray pixels. The
+Trio64V2's black is now black, and the Trio32/64 hide the modes their
+VESA 1.2 BIOS lacks. From 0.35.0: the AMD Radeon HD 7660D (Trinity,
+`1002:9901`) to the `ati` package: DirectDraw on the DMA engine, page
+flips, and Direct3D and OpenGL on the 3D engine through AMD's `ARUBA`
+microcode, measured on one tester's machine. A new `nvidia` package runs
+the NVIDIA RIVA 128ZX (`12D2:0018`) on one tester's card: DirectDraw and
+GDI on the 2D engine, and Direct3D at 16 bpp with one texture stage, in
+which Half-Life, Unreal Tournament and Thief draw on the chip. **The
+RIVA 128ZX is not finished: 3DMark 2000 runs to the end, but the driver
+refuses almost all of its draws, so most of it is not drawn.** The Intel GMA 4500MHD (GM45, GS45 and GL40,
+`8086:2A42`) is claimed from one survey and not yet run on one. **Check
+for updates** now moves a card installed on the VESA package to its
+chip's own package, from the update after this one. From 0.34.0: the AMD
+Radeon HD 7470 (Caicos, `1002:6778`) and HD 5770 (Juniper, `1002:68B8`)
+on the `ati` package, each measured on one tester's machine: DirectDraw on the DMA engine,
 page flips, and Direct3D and OpenGL on the 3D engine through AMD's
 microcode. OpenGL at 1280x1024 and above at 32 bpp on the Evergreen
 cards, which ran at 1-2 fps, now runs at full speed. On the HD 4600,
@@ -39,7 +58,8 @@ frame on screen (3DMark 2000 flickered). DirectX 6 and 7 programs are
 now told about the bilinear and mipmap filtering each card draws, which
 they had been told was missing; measured on the HD 4600 and HD 5770.
 **Known issues: on the HD 4600, 3DMark 2001 SE's Nature draws its
-distant terrain white; nothing in this release has run on an HD 5450.**
+distant terrain white; nothing since 0.33.0 has run on an HD 5450, and
+0.35.0 has not run on an HD 5770.**
 From 0.33.0: the AMD Radeon R7E (Carrizo, `1002:9874`), not rerun on
 this release. **Known issue from 0.33.0: on the HD 5450, sets of trees
 vanish and reappear in 3DMark 2000's Helicopter test.** From 0.32.0: the
@@ -62,7 +82,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.34.0](releases/0.34.0/README.md).
+[releases/0.36.0](releases/0.36.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -101,14 +121,16 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
-| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
+| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
+| Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Claimed: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
-| Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | Claimed: the GM965's path with G4x's encodings, built from two reporters' surveys. Nothing has run on one |
+| Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
+| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | Claimed: the G45's path unchanged, built from one survey of an HP t5740. Nothing has run on one |
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
 | AMD Radeon HD 5770 (Juniper, `1002:68B8`), from 0.34.0 | `ati` | Evergreen, through AMD's Juniper CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 up to 1600x1200. One tester's machine through remote help; modes from the VBE. The Glide 2 probe passes |
@@ -118,12 +140,12 @@ serves every chip in it and picks the right one by PCI id at boot.
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
 | ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
-| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path). ViRGE/DX: GDI on the engine; its Direct3D and OpenGL on an emulator |
+| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path). ViRGE/DX: GDI on the engine; Direct3D and OpenGL measured on an emulator and, from 0.36.0, on one physical card (3DMark 2000 at 800x600x16) |
 | S3 Trio32/64 | `s3` | none | GDI and DirectDraw on the 8514/A engine, on PCI and on a VLB 486 under Windows 95 |
 | Matrox Millennium II (MGA-2164W) | `matrox` | MGA | Direct3D, OpenGL and Glide (the engine where exact, the CPU otherwise); GDI and DirectDraw on the engine |
 | Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it |
 | Matrox Millennium (MGA-2064W) | `matrox` | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
-| NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF not run |
+| NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. The OpenGL probe passes; no OpenGL game, Glide or 3DCIF run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
 | Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk |
@@ -157,12 +179,14 @@ from the records the [changelog](CHANGELOG.md) links.
 |---|---|---|---|---|---|---|---|
 | Intel HD Graphics 4600 | DirectDraw | Yes | Yes, with pixel shader 1.1 (0.34.0) | Yes | Yes | Probe only, no game | No (0.19.0) |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
+| Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
 | Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
 | Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
-| Intel GMA X4500, GMA 4500 | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
+| Intel GMA X4500, GMA 4500 (reported, 0.28.0) | Not recorded | Yes | Not run | Yes | Not recorded | Yes | Not run |
+| Intel GMA 4500MHD | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
@@ -174,12 +198,12 @@ from the records the [changelog](CHANGELOG.md) links.
 | ATI Rage 128 Pro | DirectDraw, flips | Yes | Not run | Yes | No | Yes | Not run |
 | ATI Mach64 VT2 | No | No | No | No | No | No | No |
 | S3 Trio3D/2X, Trio3D | No | Yes, narrow | Not run | Not run | No | Not run | Not run |
-| S3 ViRGE/DX | GDI | Emulator | Not run | Emulator | No | Not run | Not run |
+| S3 ViRGE/DX | GDI | Yes (0.36.0) | Not run | Probe | No | Probe fails | Not run |
 | S3 Trio32/64 | GDI, DirectDraw | No | No | No | No | No | No |
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium | GDI, DirectDraw, flips | No | No | No | No | No | No |
-| NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Not run | No | Not run | Not run |
+| NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Not run | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
@@ -212,7 +236,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 
 | Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
 |---|---|---|---|
-| Intel HD Graphics 4600 (i5-4570) | 137.0 fps (windowed) | not run; Half-Life `-gl` 174.7 fps (windowed); Quake 3 `demo001` 82.8 fps | 0.34.0 |
+| Intel HD Graphics 4600 (i5-4570) | 137.6 fps (windowed) | not run; Half-Life `-gl` 174.4 fps (windowed); Quake 3 `demo001` 56.9 fps | 0.36.0 |
 | AMD Radeon HD 5450 | not run | not run; Quake 3 `demo001` 63.6 fps | 0.32.0 |
 | AMD Radeon R7E (Carrizo, GX-420GI) | not run | not run; Quake 3 `demo001` 21.3 fps | 0.33.0 |
 | AMD Radeon HD 7470 (A10-5700) | not run | not run; Quake 3 `demo001` 34.6 fps | 0.34.0 build |

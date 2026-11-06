@@ -2,7 +2,9 @@
 
 Status: **open, not attempted.** Cause is known and externally confirmed, the
 fix is a single bit, and the register index is confirmed on one chip that is not
-one of ours. Nothing here has been run on our hardware.
+one of ours. Nothing here has been run on our hardware. **2026-11-04: the
+register is not the same across the family, and the plain Trio64 has none
+documented; see the section at the end before any write.**
 
 ## The symptom
 
@@ -148,3 +150,52 @@ settled.
 - Vogons, "S3 AGP Cards (and possibly others) Too Bright" - `https://www.vogons.org/viewtopic.php?t=43472`
 - Tom's Hardware coverage - `https://www.tomshardware.com/pc-components/gpus/enthusiast-fixes-30-year-issue-with-s3-graphics-card-hacking-the-vbios-fixes-black-levels-by-scalpelling-out-the-virge-dxs-pedestal-bit`
 - `docs\specifications\dos-vbe-conformance.md` - improvement S6 and the LCD colour cells this explains
+
+## 2026-11-04: the control is per chip, and the Trio64 has none documented
+
+Checked before writing anything, as the hazard section asks, with BARRY's
+Trio64 (86C764) fitted in A8U4I5:
+
+- S3's Trio32/Trio64 data book (DB014-B, March 1995) documents sequencer
+  registers SR1-SR4, SR8-SRD and SR10-SR18. There is no SR27 and no SR1A,
+  and the word "pedestal" does not appear. The Trio64V+ data book (DB018-A,
+  July 1995) adds only SR1C, and has no pedestal either.
+- The trio64-vbios-tools project (perchrh), which patches the reference
+  BIOSes of all three Trio64 chips, has the black level as **SR1A bit 5**:
+  - **Trio64V2 (86C775, our `8901`):** documented in its data book (section
+    4.2); its patched ROM clears it at POST (that project's issue 63,
+    `docs/775-changes.md`).
+  - **Trio64V+ (86C765, shares our `8811`):** S3's own reference BIOS
+    1.03-08 sets SR1A bit 5 through its POST flags, though the V+ data book
+    mentions neither SR1A nor a pedestal (`docs/765-rom.md`).
+  - **Trio64 (86C764, `8811`):** "does not apply ... SR1A is a Trio64V2
+    register" (`docs/764-rom.md`).
+- SR27 bit 3 remains the Bits und Bolts finding on the **Trio 3D/2X**
+  (`8A13`) only.
+
+So "reported affected: Trio64" above is not supported by either data book or
+by S3's reference BIOSes, and the issue's single-index plan would write an
+undocumented register on that chip. The work, if done, is per chip in the
+family's hw16 data: SR1A bit 5 on the Trio64V2 (documented) and the Trio64V+
+(by S3's BIOS, and `8811` would need the V+ told from the Trio64 by
+revision first), SR27 bit 3 on the Trio 3D/2X (one source), nothing on the
+Trio64. The ViRGE/DX and Trio3D are still unknown. Read-modify-write of the
+one bit, as above. No write was made to any card.
+
+## 2026-11-04 (later): the Trio64V2 clears it
+
+Done for the one chip whose data book documents the control: the
+Trio64V2's `enable_aperture` hook (`v9x_s3_trio64v2_enable_aperture`,
+`src\chipsets\s3\common\s3_regs16.c`) runs the shared aperture enable,
+then clears SR1A bit 5 by read-modify-write inside the SR08 unlock, saving
+and restoring the sequencer index and lock. It runs after every mode set,
+including the restore from a DOS box. The value found and left is
+published as `Sr1aFound`, `Sr1aLeft` and `BlankPedestal` in `V9XHW.INI`
+on the Trio64V2 only.
+
+Departures from the plan above, both deliberate: step 1 (publish before
+writing) was folded into the change, since no Trio64V2 is in the fleet to
+publish from; and it is on by default rather than opt-in, by the project's
+rule against gated defaults on the development driver (Michael,
+2026-09-18). The Trio64, Trio64V+, Trio 3D/2X, Trio3D and ViRGE are
+unchanged. Not run on any card.

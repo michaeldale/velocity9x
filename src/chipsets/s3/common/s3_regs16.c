@@ -42,6 +42,35 @@ static unsigned char v9x_s3_read_sequencer(unsigned char index)
     return v9x_port_in(0x03c5u);
 }
 
+/*
+ * The Trio64V2's blank pedestal: SR1A bit 5 (BP), "1 = Add BLANK Pedestal to
+ * RAMDAC output", which lifts black by 1.45 mA (typical) over the blank level
+ * (Trio64V2/DX & GX data book, 3.4 and 4.2 SR1A, pp. 3-5 and 4-5). Bit 4
+ * (FCTD) "must be set to 1 by the BIOS upon reset" and bits 3-0 are S3's PLL
+ * test adjustments, so the bit is cleared by read-modify-write and nothing
+ * else is written. Only the Trio64V2 documents SR1A; the Trio64's and
+ * Trio64V+'s data books do not (docs\issues\2026-08-23-s3-pedestal-black-
+ * level.md), so no other chip reaches this.
+ */
+#define V9X_S3_SEQ_UNLOCK_INDEX   0x08u
+#define V9X_S3_SEQ_UNLOCK_KEY     0x06u
+#define V9X_S3_SR1A_INDEX         0x1au
+#define V9X_S3_SR1A_BLANK_PEDESTAL 0x20u
+
+/* What the last Trio64V2 enable found in SR1A and left there, for the
+ * diagnostics; 0xFFFF before the first. */
+static unsigned short v9x_s3_sr1a_found = 0xffffu;
+static unsigned short v9x_s3_sr1a_left = 0xffffu;
+
+static void v9x_s3_format_hex2(char *text, unsigned short value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+
+    text[0] = digits[(value >> 4) & 0x0fu];
+    text[1] = digits[value & 0x0fu];
+    text[2] = '\0';
+}
+
 /* The CRTC pair follows the MISC output register's colour/mono bit. */
 static unsigned short v9x_crtc_index_port(void)
 {
@@ -276,6 +305,35 @@ unsigned short v9x_s3_enable_linear_aperture(void)
     return 1u;
 }
 
+unsigned short v9x_s3_trio64v2_enable_aperture(void)
+{
+    unsigned char saved_index;
+    unsigned char saved_unlock;
+    unsigned char value;
+
+    if (v9x_s3_enable_linear_aperture() == 0u) {
+        return 0u;
+    }
+
+    /* The pedestal is a picture setting, not a condition for the mode: a
+     * bit that does not clear is recorded, and the enable still succeeds. */
+    saved_index = v9x_port_in(0x03c4u);
+    v9x_port_out(0x03c4u, V9X_S3_SEQ_UNLOCK_INDEX);
+    saved_unlock = v9x_port_in(0x03c5u);
+    v9x_port_out(0x03c5u, V9X_S3_SEQ_UNLOCK_KEY);
+    value = v9x_s3_read_sequencer(V9X_S3_SR1A_INDEX);
+    v9x_s3_sr1a_found = value;
+    if ((value & V9X_S3_SR1A_BLANK_PEDESTAL) != 0u) {
+        v9x_port_out(0x03c5u,
+                     (unsigned char)(value & ~V9X_S3_SR1A_BLANK_PEDESTAL));
+    }
+    v9x_s3_sr1a_left = v9x_s3_read_sequencer(V9X_S3_SR1A_INDEX);
+    v9x_port_out(0x03c4u, V9X_S3_SEQ_UNLOCK_INDEX);
+    v9x_port_out(0x03c5u, saved_unlock);
+    v9x_port_out(0x03c4u, saved_index);
+    return 1u;
+}
+
 /*
  * The shared S3 diagnostics block.
  *
@@ -325,6 +383,20 @@ void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
         } else {
             write("VideoMemoryStatus", "unavailable");
         }
+    }
+
+    /* The Trio64V2's blank pedestal as the last enable found and left it
+     * (v9x_s3_trio64v2_enable_aperture). Only that chip writes SR1A. */
+    if (device->device_id == V9X_PCI_DEVICE_TRIO64V2 &&
+        v9x_s3_sr1a_found != 0xffffu) {
+        v9x_s3_format_hex2(number, v9x_s3_sr1a_found);
+        write("Sr1aFound", number);
+        v9x_s3_format_hex2(number, v9x_s3_sr1a_left);
+        write("Sr1aLeft", number);
+        write("BlankPedestal",
+              (v9x_s3_sr1a_left & V9X_S3_SR1A_BLANK_PEDESTAL) != 0u
+                  ? "on"
+                  : "off");
     }
 
     status = v9x_s3_virge_decode_clock_pll(sr10, sr11, &clocks);

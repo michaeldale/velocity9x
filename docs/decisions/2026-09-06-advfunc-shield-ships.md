@@ -3,8 +3,9 @@
 Date: 2026-09-06
 Status: **shipped in the default mini-VDD; measured working as the traced
 variant on the physical Trio64 (6/6) and harmless on a physical ViRGE/DX and
-two 86Box guests as the shipping form; not yet re-measured as the shipping
-form on a physical Trio64, because none is reachable tonight.**
+two 86Box guests as the shipping form. Re-measured as the shipping form on
+the physical Trio64 on 2026-11-04: five DOS boxes, no doubling (section at
+the end).**
 
 ## The finding this rests on
 
@@ -80,3 +81,22 @@ DOS-box issue.
 The A8U4I5 hard lock with the Trio64 fitted. That is the board against that
 card, under Microsoft's driver as much as this one, and no port trap reaches
 it.
+
+## 2026-11-04: the shipping form on the physical Trio64
+
+BARRY's Trio64 (`5333:8811`, 2 MiB) back in A8U4I5, running main
+`3a035cd0` (the shipping mini-VDD, shield on) at 800x600x16 with GDI
+acceleration on (`V9XGDI /stats` before: `Enabled=39`,
+`LastAdvFunc=0x00000401`, `AdvFuncRestores=0`). Michael opened five
+windowed DOS boxes by hand (Start, Run, `command`; not through the agent),
+leaving all five open. The OBS capture of the card's output shows the
+desktop drawn once at full size behind them, and VNC agreed: **no doubling,
+where 5 of 5 doubled before the shield**
+([evidence](../probe/trio64-a8u4i5-dosbox-and-timing-2026-11-04/)).
+
+The machine then hard-locked while a DOS window was being dragged, with
+the drag outline on screen; that is recorded with the board's other locks
+([issue](../issues/2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md)).
+The driver's counters went with it, so `AdvFuncRestores` after the DOS
+boxes was not read, and the shield's own count is not readable from outside
+the mini-VDD. The evidence for the shield is the capture alone.

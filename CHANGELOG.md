@@ -4,7 +4,98 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.35.0 - not yet released
+## 0.37.0 - not yet released
+
+## 0.36.0 - 2026-11-06
+
+- **Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`) on the
+  `intel-gma` package**, as the desktop HD 4000's (`8086:0162`) path. Its
+  laptop panel (LVDS, 1366x768) runs on pipe A behind the panel fitter,
+  which scales the smaller modes to the panel. Measured on one tester's
+  Lenovo laptop (i7-3632QM) through remote help: DirectDraw and page flips,
+  Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2
+  probes, and 3DMark 2000. Its NVIDIA GeForce (Optimus) is left alone. Not
+  run: a DOS box, the panel by eye
+  ([record](docs/decisions/2026-11-05-w9qi75e0-ivb-mobile-intel-gma.md)).
+
+- **Ivy Bridge (HD 4000): 3DMark 2000 no longer locks the machine in its
+  first game test.** Drawing two textures in one pass, which the HD 4600
+  does, hard-locked the HD 4000 mobile about a minute into the Helicopter
+  test. Ivy Bridge now draws one texture stage per pass, as it did before
+  0.30.0; the default benchmark then completes. Measured on the HD 4000
+  mobile; the desktop HD 4000 shares the change and has not run it. Which
+  stage pairing hangs is not known
+  ([issue](docs/issues/2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)).
+
+- **S3 ViRGE/DX, Trio3D and Trio3D/2X: mipmapped textures with bilinear
+  filtering are filtered again.** Two of the chip's filter modes had each
+  other's values, so a program asking for bilinear filtering within a mip
+  level got point sampling, and close-up textures such as 3DMark 2000's
+  sky were drawn in blocks. They now follow S3's ViRGE data book. Measured
+  on a physical ViRGE/DX, the first time its Direct3D has run on silicon
+  rather than an emulator: V9XDDP passes 197 of 227 checks, with none
+  that passes on 86Box failing there, and 3DMark 2000 runs a custom
+  800x600x16 benchmark with the sky filtered. Its default benchmark needs
+  16 MiB and does not start on a 4 MiB card. The Trio3D chips share the
+  code and have not run the fix
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
+- **S3 ViRGE/DX: Glide games' 16-bit and palettised textures are drawn.**
+  The chip has no RGB565 texture format and no software fallback, so those
+  textures were never drawn. The Glide driver now repacks them as
+  ARGB1555, and the ViRGE takes Glide's usual texture-times-colour combine
+  when every vertex is opaque. On the physical ViRGE/DX, the Glide probe
+  went from six failures to one, the known missing fog
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
+- **S3 ViRGE/DX, Trio3D and Trio3D/2X: a colour fill straight after 3D
+  drawing fills cleanly.** On a physical ViRGE/DX, the first fill after
+  Direct3D work painted the last triangle's colour into every other
+  eight-byte group of its first row. The driver now issues the one-pixel
+  blit S3's own driver uses before each fill. V9XD32 now passes on the
+  ViRGE/DX; V9XDDP is unchanged. The Trio3D chips share the code and have
+  not run it
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
+- **S3 Trio64V2 (`5333:8901`): black is now black, not dark grey.** Its BIOS
+  can leave the DAC's blank pedestal on, an NTSC-era lift of the black
+  level that shows as washed-out grey on a VGA monitor and most on an LCD.
+  The driver clears it after every mode set (SR1A bit 5, documented in
+  S3's Trio64V2 data book) and leaves the register's other bits alone.
+  `V9XHW.INI` reports what it found and left (`Sr1aFound`, `Sr1aLeft`,
+  `BlankPedestal`). **Not run on a Trio64V2**: none is in the fleet. The
+  Trio64 and Trio64V+ are unchanged: neither data book documents the
+  control ([issue](docs/issues/2026-08-23-s3-pedestal-black-level.md)).
+- **S3 Trio32, Trio64 and Trio64V+: the driver now asks the card's VBE 1.2
+  BIOS which modes it has** and hides a mode the BIOS lacks, instead of
+  offering it and failing at the mode set with a fall back to 640x480 and
+  the "problem with your display settings" message. On a 2 MiB Trio32 that
+  is 800x600x32, 1024x768x32 and 1280x1024x16 (86Box); on a 4 MiB Diamond
+  Stealth64 Graphics 2000 (BIOS 2.05, run in an emulator of that BIOS),
+  1024x768x32 and 1280x1024x16; on an older
+  2 MiB Trio64 BIOS, 640x400x8. It never adds a mode the driver did not
+  already offer. Contributed in pull request 19
+  ([record](docs/decisions/2026-11-01-trio64-vbe12-mode-query.md)).
+  - Cards on other packages with a VBE 1.2 BIOS now have their modes
+    queried at startup too; their mode lists are unchanged. No such card
+    has run it.
+
+- Probes: V9XD32 accepts a chip's ordered dither on its flat triangles
+  (reported as `DITHERED`, not `EXACT`) and expects triangles drawn in a
+  cull direction the device does not advertise. With the fill fix above,
+  the ViRGE/DX goes from ten failures to none; the Haswell control still
+  passes exactly
+  ([record](docs/decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)).
+
+## 0.35.0 - 2026-11-04
+
+- **Intel GMA 4500MHD (GM45, GS45 and GL40, `8086:2A42`): a test build,
+  not yet run on one.** The `intel-gma` package now binds it and drives it
+  exactly as the G45 and Q45, the same generation's desktop parts. It
+  reports itself to Direct3D and OpenGL as "Velocity9x GMA 4500". Built
+  from the survey of an HP t5740 thin client attached to issue 22; the
+  first boot on one is the first measurement
+  ([record](docs/decisions/2026-11-04-gm45-gl40-from-a-survey.md)).
 
 - **AMD Radeon HD 7660D (Trinity, the A10-5700's graphics, `1002:9901`)
   is claimed by the `ati` package**, measured on one tester's machine
@@ -59,10 +150,34 @@ build identifier so exact guest-tested binaries remain traceable.
     choice: SRCALPHA/ONE (exact for texels of full alpha without fog) and
     ONE/INVSRCCOLOR (brighter where both sides are bright). ONE/SRCALPHA
     is refused.
-  - OpenGL, Glide and 3DCIF have not been run on it.
+  - **Not finished.** 3DMark 2000 runs to the end at default settings,
+    but 513,441 of its 515,626 draws are refused, for textures not placed
+    in video memory and render targets the driver does not draw to. The
+    RIVA has no software fallback, so those draws are not drawn, and its
+    score (159) does not measure the card
+    ([record](docs/decisions/2026-11-04-0.35.0-release-checks.md)).
+  - The OpenGL probe passes on it; no OpenGL game, Glide or 3DCIF title
+    has been run.
   - `NOTICES.TXT` carries NVIDIA's notice from rivafb's `riva_tbl.h` and
     `riva_hw.c`, whose register tables and engine bring-up the package's
     2D code follows.
+- **Check for updates moves a card off the generic VESA package to its
+  chip's package.** Until now the updater kept whatever package the
+  driver was installed from, so a card set up on `vbe` before its chip
+  family existed stayed on `vbe` through every update (report V9X-AW3C75:
+  a Radeon R7E updated from 0.32.0 to 0.34.0 on `vbe` and lost Direct3D).
+  `SIGNED.TXT` now lists, under the release signature, the hardware IDs
+  each family claims. When the card is on `vbe` and exactly one other
+  family lists its ID, the updater downloads that family instead,
+  installs the model for the card's ID, and updates the name Device
+  Manager shows. It never moves a card from one chip family to another.
+  The move is the installed updater's, and updaters older than 0.35.0
+  ignore the new lines: a card on `vbe` today updates to 0.35.0's `vbe`
+  package and moves at the release after, unless its chip's package is
+  installed by hand. Measured on
+  an 86Box Mach64 VT2 against a locally signed test release; the update
+  server's handling of the new lines has not been checked
+  ([record](docs/decisions/2026-11-01-updater-moves-vbe-to-chip-family.md)).
 - `NOTICES.TXT` names every Evergreen microcode file the HAL carries:
   0.34.0's named only the HD 5450's `CEDAR` files, though the HD 7470's
   `CAICOS` and HD 5770's `JUNIPER` files, from the same linux-firmware

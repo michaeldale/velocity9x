@@ -38,8 +38,12 @@
 #define V9X_D3D_SELECT_VI        14ul
 /* The RIVA 128's D3D object (class 17h). */
 #define V9X_D3D_SELECT_NV3       15ul
+/* Ivy Bridge on the Gen7.5 engine: Haswell's draw code with one texture
+ * stage per pass (docs\issues\2026-11-05-ivb-mobile-hang-in-3dmark2000-
+ * game1.md). */
+#define V9X_D3D_SELECT_GEN7      16ul
 /* The RS690's R300-class 3D core, by register writes. */
-#define V9X_D3D_SELECT_RS690     16ul
+#define V9X_D3D_SELECT_RS690     17ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

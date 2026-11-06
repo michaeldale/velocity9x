@@ -1,0 +1,2 @@
+reset: boot 172 -> 173 desktop=True
+install check: 8 of 8 ok (mismatches 0)

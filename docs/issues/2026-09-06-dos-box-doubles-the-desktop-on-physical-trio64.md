@@ -5,8 +5,9 @@ Status: **root cause measured (see "What the I/O trace found"); the fix
 shipped in the default mini-VDD later the same day
 ([decision](../decisions/2026-09-06-advfunc-shield-ships.md)). Measured 6/6
 as the traced variant on this card; the shipping form is measured harmless
-on a ViRGE/DX and the 86Box Trio64 guest and still owes its first boot on a
-physical Trio64.** The paragraph below on the fix being held back describes
+on a ViRGE/DX and the 86Box Trio64 guest, and on 2026-11-04 on this card in
+A8U4I5: five DOS boxes open, no doubling (the decision record's last
+section).** The paragraph below on the fix being held back describes
 the afternoon; the hold was lifted once the hard locks were traced to the
 board.
 
