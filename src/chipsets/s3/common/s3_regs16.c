@@ -335,6 +335,30 @@ unsigned short v9x_s3_trio64v2_enable_aperture(void)
 }
 
 /*
+ * CR2F, which the Trio64V+ book says is the PCI revision. Unlocked and
+ * restored the same way as the CR36 read above. Only the 8811 publisher
+ * calls it.
+ */
+static unsigned char v9x_s3_read_chip_revision(void)
+{
+    unsigned short index_port = v9x_crtc_index_port();
+    unsigned char saved_index = v9x_port_in(index_port);
+    unsigned char saved_lock1;
+    unsigned char saved_lock2;
+    unsigned char cr2f;
+
+    saved_lock1 = v9x_s3_read_crtc(index_port, 0x38u);
+    saved_lock2 = v9x_s3_read_crtc(index_port, 0x39u);
+    v9x_s3_write_crtc(index_port, 0x38u, 0x48u);
+    v9x_s3_write_crtc(index_port, 0x39u, 0xa5u);
+    cr2f = v9x_s3_read_crtc(index_port, 0x2fu);
+    v9x_s3_write_crtc(index_port, 0x39u, saved_lock2);
+    v9x_s3_write_crtc(index_port, 0x38u, saved_lock1);
+    v9x_port_out(index_port, saved_index);
+    return cr2f;
+}
+
+/*
  * The shared S3 diagnostics block.
  *
  * Key order is the diagnostic contract: C:\V9XDIAG\V9XHW.INI is written by appending,
@@ -362,9 +386,21 @@ void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
     v9x_port_out(0x03c4u, saved_index);
 
     write("SchemaVersion", "1");
-    write("Adapter", device->adapter);
-    write("VendorId", device->vendor_text);
-    write("DeviceId", device->device_text);
+    if (device->device_id == V9X_PCI_DEVICE_TRIO64) {
+        unsigned char cr2f = v9x_s3_read_chip_revision();
+
+        /* Have Disk records whichever INF row was installed. This file
+         * records the chip: CR2F bit 6 set is the Trio64V+. */
+        write("Adapter", v9x_s3_trio64_adapter_name(cr2f));
+        write("VendorId", device->vendor_text);
+        write("DeviceId", device->device_text);
+        v9x_s3_format_hex2(number, cr2f);
+        write("PciRevision", number);
+    } else {
+        write("Adapter", device->adapter);
+        write("VendorId", device->vendor_text);
+        write("DeviceId", device->device_text);
+    }
     write("ClockDetector", device->clock_detector);
     write("ModeSwitching", device->mode_switching);
     /* What the DirectDraw HAL actually executes on the engine. Both S3

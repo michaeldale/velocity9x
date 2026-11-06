@@ -149,6 +149,12 @@ function New-V9xInfText {
         } else {
             '; Supported adapter: {0}, PCI {1}:{2}' -f $_.Name, $_.VendorId, $_.DeviceId
         }
+    }) + @(foreach ($chip in $chips) {
+        foreach ($model in @($chip.RevisionModels | Where-Object { $_ })) {
+            '; Supported adapter: {0}, PCI {1}:{2} revisions {3} (same install as {4})' -f `
+                $model.Name, $chip.VendorId, $chip.DeviceId, `
+                ($model.Revisions -join ','), $chip.Id
+        }
     }) + @(if ($manual) {
         '; Manual-select model, no hardware ID: {0} ({1} modes within {2} bytes)' -f
             $manual.Description, $manualModes.Count, $manual.VideoMemoryBytes
@@ -229,6 +235,17 @@ function New-V9xInfText {
         foreach ($alias in @($chip.Aliases | Where-Object { $_ })) {
             $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}' -f $alias.DeviceDesc,
                 $section, $chip.VendorId, $alias.DeviceId
+        }
+
+        # One Have Disk row per revision model, every REV_ id on that one
+        # line, the same install section as the chip. The first id is the
+        # hardware id; the rest are compatible ids. A separate line per
+        # revision would repeat the description once per stepping.
+        foreach ($model in @($chip.RevisionModels | Where-Object { $_ })) {
+            $ids = @($model.Revisions | ForEach-Object {
+                'PCI\VEN_{0}&DEV_{1}&REV_{2}' -f $chip.VendorId, $chip.DeviceId, $_
+            })
+            $lines += '"{0}"={1},{2}' -f $model.DeviceDesc, $section, ($ids -join ',')
         }
     }
 
@@ -513,6 +530,44 @@ function Assert-V9xInf {
                "found: $($actualIds -join ', ').")
     }
 
+    # Revision models add PCI\VEN_&DEV_&REV_ ids. The set check above strips
+    # the REV_ suffix, so it cannot see a missing or an extra stepping.
+    $declaredRev = @{}
+    foreach ($revEntry in @(Get-V9xFamilyRevisionModels -Family $Family)) {
+        $revId = 'PCI\VEN_{0}&DEV_{1}&REV_{2}' -f $revEntry.VendorId, `
+            $revEntry.DeviceId, $revEntry.Revision
+        $declaredRev[$revId] = $true
+        $section = if (@($Family.Chips).Count -eq 1) {
+            'Velocity9x.Install'
+        } else {
+            'V9x.Install.{0}' -f $revEntry.ChipId
+        }
+        $wanted = '"{0}"={1},' -f $revEntry.DeviceDesc, $section
+        $onLine = @($Lines | Where-Object {
+            $_.StartsWith($wanted) -and $_.Contains($revId)
+        })
+        if ($onLine.Count -ne 1) {
+            throw ("Family $($Family.Id) revision $revId is not on exactly " +
+                   "one model line for $($revEntry.DeviceDesc).")
+        }
+        # The bare device id stays on the chip's own line. A REV_ field
+        # contains that text as a prefix, so require the comma-terminated
+        # form, which a REV_ field does not have.
+        $bare = 'PCI\VEN_{0}&DEV_{1},' -f $revEntry.VendorId, $revEntry.DeviceId
+        $bareEnd = 'PCI\VEN_{0}&DEV_{1}' -f $revEntry.VendorId, $revEntry.DeviceId
+        if ($onLine[0].Contains($bare) -or $onLine[0].EndsWith($bareEnd)) {
+            throw ("Family $($Family.Id) revision model $($revEntry.DeviceDesc) " +
+                   "also lists the bare device id.")
+        }
+    }
+    foreach ($match in [regex]::Matches(
+            $text, 'PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}&REV_[0-9A-Fa-f]{2}')) {
+        $found = $match.Value.ToUpperInvariant()
+        if (-not $declaredRev.ContainsKey($found)) {
+            throw "The generated INF lists undeclared revision id $found."
+        }
+    }
+
     # MODES\24 and MODES\32 were forbidden here while the driver had no 24- or
     # 32-bpp support and an INF offering them would have advertised a mode
     # Enable then refused. They are generated from the manifest now, and the
@@ -609,6 +664,11 @@ function Assert-V9xInf {
     foreach ($line in (Get-V9xInfSectionBody -Lines $Lines -Section $modelsSection)) {
         if ($line -match ('^"[^"]+"=\S+,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}' +
                           '(&SUBSYS_[0-9A-Fa-f]{8},PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4})?$')) {
+            continue
+        }
+        # One Have Disk row whose every id is a PCI revision of one device.
+        if ($line -match ('^"[^"]+"=\S+' +
+                          '(,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}&REV_[0-9A-Fa-f]{2})+$')) {
             continue
         }
         if ($manualLine -and $line -eq $manualLine) {

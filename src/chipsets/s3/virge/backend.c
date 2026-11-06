@@ -173,3 +173,13 @@ const struct v9x_backend_ops *v9x_s3_virge_backend(void)
 {
     return &v9x_s3_virge_ops;
 }
+
+const char *v9x_s3_trio64_adapter_name(v9x_u8 pci_revision)
+{
+    /* Trio64V+ data book DB018-A, CR2F: the revision with bit 6 set.
+     * The Trio32/64 book's revision is 00h. */
+    if ((pci_revision & 0x40u) != 0u) {
+        return "S3 Trio64V+ 86C765";
+    }
+    return "S3 Trio32/64 86C764";
+}

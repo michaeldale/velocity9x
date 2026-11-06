@@ -214,6 +214,42 @@ function Test-V9xFamilyManifest {
                 }
             }
         }
+
+        # Revision models: the same PCI device id, distinguished by the PCI
+        # revision, so Windows Have Disk can name the part. They share this
+        # chip's install section. They are not aliases: an alias is a
+        # different device id and becomes a scan entry and a backend row.
+        foreach ($model in @($chip.RevisionModels | Where-Object { $_ })) {
+            Assert-V9xFamilyKeys -Table $model -Required @(
+                'Name', 'DeviceDesc', 'Revisions') `
+                -Context "Family $Id chip $($chip.Id) revision model"
+            foreach ($bad in @(',', '=', '%')) {
+                if ($model.DeviceDesc.Contains($bad)) {
+                    throw ("Family $Id chip $($chip.Id) revision model " +
+                           "$($model.Name) DeviceDesc may not contain " +
+                           "'$bad'; it is emitted inline into a SetupX model " +
+                           "line.")
+                }
+            }
+            $seenRevision = @{}
+            $revisions = @($model.Revisions)
+            if ($revisions.Count -eq 0) {
+                throw ("Family $Id chip $($chip.Id) revision model " +
+                       "$($model.Name) lists no revisions.")
+            }
+            foreach ($rev in $revisions) {
+                if ($rev -notmatch '^[0-9A-F]{2}$') {
+                    throw ("Family $Id chip $($chip.Id) revision model " +
+                           "$($model.Name) has a non-canonical revision " +
+                           "'$rev'; use two uppercase hex digits.")
+                }
+                if ($seenRevision.ContainsKey($rev)) {
+                    throw ("Family $Id chip $($chip.Id) revision model " +
+                           "$($model.Name) lists revision $rev twice.")
+                }
+                $seenRevision[$rev] = $true
+            }
+        }
         if (@($chip.Modes).Count -eq 0) {
             throw "Family $Id chip $($chip.Id) declares no modes."
         }
@@ -649,6 +685,16 @@ function Get-V9xFamilies {
             }
             $owners[$key] = $owner
         }
+        foreach ($revEntry in @(Get-V9xFamilyRevisionModels -Family $family)) {
+            $key = "{0}:{1}:{2}" -f $revEntry.VendorId, $revEntry.DeviceId, $revEntry.Revision
+            $owner = ("family '$($family.Id)' chip '$($revEntry.ChipId)' " +
+                      "revision $($revEntry.Revision)")
+            if ($owners.ContainsKey($key)) {
+                throw ("PCI revision $key is claimed by both $($owners[$key]) and " +
+                       "$owner.")
+            }
+            $owners[$key] = $owner
+        }
     }
 
     # A manual-select description may name exactly one model, for the same
@@ -674,6 +720,22 @@ function Get-V9xFamilies {
                        "already used by $($descriptions[$entry.DeviceDesc]).")
             }
             $descriptions[$entry.DeviceDesc] = $owner
+        }
+        # One description for the whole revision model, however many REV_
+        # ids share the line. A second model, or a chip, may not reuse it.
+        $namedRevisionModel = @{}
+        foreach ($revEntry in @(Get-V9xFamilyRevisionModels -Family $family)) {
+            if ($namedRevisionModel.ContainsKey($revEntry.DeviceDesc)) {
+                continue
+            }
+            $namedRevisionModel[$revEntry.DeviceDesc] = $true
+            $owner = ("family '$($family.Id)' chip '$($revEntry.ChipId)' " +
+                      "revision model")
+            if ($descriptions.ContainsKey($revEntry.DeviceDesc)) {
+                throw ("Model description '$($revEntry.DeviceDesc)' in $owner is " +
+                       "already used by $($descriptions[$revEntry.DeviceDesc]).")
+            }
+            $descriptions[$revEntry.DeviceDesc] = $owner
         }
     }
     foreach ($family in $families) {
@@ -721,6 +783,29 @@ function Get-V9xFamilyPciEntries {
                 IsAlias = $true
                 MeasuredOn = if ($alias.ContainsKey('MeasuredOn')) { $alias.MeasuredOn } else { $null }
             })
+        }
+    }
+    $entries
+}
+
+# PCI revision lines for Have Disk. Not scan entries and not backend rows:
+# the device id is already claimed by the chip. One object per revision.
+function Get-V9xFamilyRevisionModels {
+    param([Parameter(Mandatory = $true)]$Family)
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    foreach ($chip in @($Family.Chips)) {
+        foreach ($model in @($chip.RevisionModels | Where-Object { $_ })) {
+            foreach ($rev in @($model.Revisions)) {
+                $entries.Add([pscustomobject]@{
+                    ChipId = $chip.Id
+                    VendorId = $chip.VendorId
+                    DeviceId = $chip.DeviceId
+                    Revision = $rev
+                    Name = $model.Name
+                    DeviceDesc = $model.DeviceDesc
+                })
+            }
         }
     }
     $entries

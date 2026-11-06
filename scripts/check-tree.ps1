@@ -358,6 +358,16 @@ $families = @(Get-V9xFamilies -RepoRoot $repoRoot)
 if ($families.Count -eq 0) {
     throw "No family manifests found under packaging\families."
 }
+# A revision model exists only so the generated INF names it. Generating
+# that family's INF here is what fails the tree when the line is dropped.
+. (Join-Path $PSScriptRoot "lib\inf.ps1")
+foreach ($family in $families) {
+    if (@(Get-V9xFamilyRevisionModels -Family $family).Count -eq 0) {
+        continue
+    }
+    $infLines = @(New-V9xInfText -Family $family -DefaultMode $family.Inf.DefaultMode)
+    Assert-V9xInf -Lines $infLines -Family $family -DefaultMode $family.Inf.DefaultMode
+}
 foreach ($family in $families) {
     foreach ($source in @($family.Build.Sources)) {
         if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $source.Path))) {
