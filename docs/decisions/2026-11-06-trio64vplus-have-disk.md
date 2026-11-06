@@ -83,6 +83,16 @@ is left as the INF wrote it.
 No second `V9X_HW16_DEVICE`, no second backend-registry row, no CR53
 write, no SR1A write, no mode-table change, no clock change.
 
+The 86C764X and the 86C765 are not register-identical. The 765 has a
+larger display FIFO with a priority threshold (MM81EC); CR54 is counted
+in different units on the two chips; DDC on a PCI 765 uses the chip's
+serial port, while a 764X board uses external latches; and the 765's
+1-cycle EDO strap is reserved on the 764X, so the BIOS's memory-clock
+choice differs. Those are BIOS mode-set and POST concerns. This row
+assumes a matching PCI VBIOS on the card, takes modes through VBE, and
+does not program CR54, the display FIFO, DDC or the memory type. Wrong
+BIOS on the wrong chip is out of scope.
+
 ## Checked
 
 `scripts/check-tree.ps1` generates the S3 INF and accepts the revision
