@@ -3,8 +3,9 @@
 Date: 2026-11-06
 Branch: `cursor/trio64vplus-86c765-plan-d326`
 
-No guest and no card in this record. The host gates are what was run. A
-Windows boot of a Trio64V+ is still open.
+An 86Box guest boot with the released 0.37 driver is in this record. The
+new Have Disk row itself was not installed there. No card. The host gates
+are what was run on this branch.
 
 ## What was claimed before
 
@@ -91,7 +92,17 @@ for `v9x_release_pci_id` reducing `REV_40` and `REV_53` to the bare id
 are in the tree. They were not compiled here: this machine has no
 Open Watcom.
 
+On 86Box, a Trio64V+ device with the Cardex BIOS and Velocity9x 0.37
+(the S3 package before this row) installs and runs when Have Disk picks
+the existing Trio32/64 86C764 entry. The Cardex pick is required: the
+default Trio64V+ BIOS choice there is not a Trio64V+ image
+([86Box/86Box#8757](https://github.com/86Box/86Box/issues/8757)). That
+boot is the Trio64 install path on a revision-40h guest, not this
+branch's package and not the new row.
+
 ## Not checked
 
-No Windows boot. The preferred Have Disk row on a revision-40h guest, and
-on a revision-53h card, is unmeasured. So is the picture.
+This branch's S3 package was not built for that guest, so the new Have
+Disk name was not selected. Whether SetupX prefers `REV_40` over the
+bare 8811 id, and what the picture looks like under that row, is still
+open. So is a revision-53h card.
