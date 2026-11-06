@@ -44,12 +44,23 @@ param(
     # Write SUMMARY.md for an existing -OutDir without running anything:
     # after rerunning one machine, or to compare two earlier folders.
     [switch]$SummaryOnly,
+    # A machine that has not answered its first call by then is skipped and
+    # the run goes on with the ones that did. A remote-help machine takes up
+    # to 60 s to pick up a session (it checks in once a minute when idle).
+    [ValidateRange(30, 900)]
+    [int]$ReachSeconds = 65,
+    # Only find out which machines answer: every machine in the list,
+    # switched off or not, asked once in parallel, then a table. Nothing is
+    # built, installed or run. Pick from it with -Machine.
+    [switch]$List,
     # Internal: run one machine. The parent starts one process per machine.
     [string]$Worker
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+# powershell -File passes -Machine a,b as the single string "a,b".
+$Machine = @($Machine | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 . (Join-Path $PSScriptRoot "common.ps1")
 
 # The installed set: what WININIT.INI renames into C:\WINDOWS\SYSTEM. The
@@ -82,8 +93,8 @@ function Import-V9xMachineList {
     if (-not (Test-Path -LiteralPath $MachineList)) {
         throw "Machine list not found: $MachineList"
     }
-    $list = Import-PowerShellDataFile -LiteralPath $MachineList
-    foreach ($entry in $list.Machines) {
+    $machineSet = Import-PowerShellDataFile -LiteralPath $MachineList
+    foreach ($entry in $machineSet.Machines) {
         if (-not $entry.Name -or -not $entry.Family) {
             throw "Every machine in $MachineList needs Name and Family."
         }
@@ -91,7 +102,7 @@ function Import-V9xMachineList {
             throw "Machine $($entry.Name) needs exactly one of Host and Relay."
         }
     }
-    return $list
+    return $machineSet
 }
 
 # Every line of a probe report that is a verdict: the Result and Failures
@@ -129,12 +140,12 @@ if ($Worker) {
     # A v9xctl call that fails reports it in its result; the steps below check
     # what they need and throw themselves, as relcheck037.ps1 did.
     $ErrorActionPreference = "Continue"
-    $list = Import-V9xMachineList
-    $entry = @($list.Machines | Where-Object { $_.Name -eq $Worker })[0]
+    $machineSet = Import-V9xMachineList
+    $entry = @($machineSet.Machines | Where-Object { $_.Name -eq $Worker })[0]
     if (-not $entry) {
         throw "No machine $Worker in $MachineList."
     }
-    $controller = $list.ControllerPath
+    $controller = $machineSet.ControllerPath
     $package = Join-Path $repoRoot "build\win98se-$($entry.Family)"
     $machineDir = Join-Path $OutDir $(if ($Baseline) { "$Worker-before" } else { $Worker })
     New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
@@ -142,6 +153,7 @@ if ($Worker) {
     $status = [ordered]@{
         Name = $Worker; Family = $entry.Family; Baseline = [bool]$Baseline
         BootBefore = $null; BootAfter = $null; Installed = $null; Error = $null
+        Offline = $false; Agent = $null; Boot = $null; Desktop = $null; AnswerSeconds = $null
     }
 
     function Invoke-Ctl {
@@ -158,13 +170,13 @@ if ($Worker) {
     function Get-GuestFile {
         param([string]$From, [string]$To)
         & $controller get -Source $From -Destination $To @connection `
-            -ConnectTimeoutSeconds 120 | Out-Null
+            -ConnectTimeoutSeconds 60 | Out-Null
     }
     function Send-GuestFile {
         param([string]$From, [string]$To)
-        for ($try = 1; $try -le 4; ++$try) {
+        for ($try = 1; $try -le 2; ++$try) {
             & $controller put -Source $From -Destination $To @connection `
-                -ConnectTimeoutSeconds 120 | Out-Null
+                -ConnectTimeoutSeconds 60 | Out-Null
             $hash = Invoke-Ctl hash @{ Path = $To; Source = $From }
             if ($hash -and $hash.Matches) {
                 return
@@ -180,6 +192,26 @@ if ($Worker) {
     }
 
     try {
+        # One call first, so an offline machine costs one timeout. A relay
+        # call to a machine that has stopped checking in waits at least 150 s
+        # (v9xctl's relay open wait), and every later call would wait again:
+        # with the puts' retries, over an hour for that worker, and the
+        # parent waits for every worker.
+        $asked = Get-Date
+        $info = Invoke-Ctl info @{} 10
+        if (-not $info -or -not $info.Success) {
+            $status.Offline = $true
+            throw "Not reachable."
+        }
+        $status.Agent = $info.AgentVersion
+        $status.Boot = $info.BootCounter
+        $status.Desktop = $info.DesktopReady
+        $status.AnswerSeconds = [int]((Get-Date) - $asked).TotalSeconds
+        Write-Output "agent $($info.AgentVersion), boot $($info.BootCounter), desktop $($info.DesktopReady)"
+        if ($List) {
+            exit 0
+        }
+
         if (-not $Baseline) {
             $pending = Invoke-Ctl stat @{ Path = 'C:\WINDOWS\WININIT.INI' }
             if ($pending.Exists) {
@@ -195,11 +227,12 @@ if ($Worker) {
                 [Text.Encoding]::ASCII)
             & $controller put -Source $wininit -Destination 'C:\WINDOWS\WININIT.INI' `
                 @connection -ConnectTimeoutSeconds 60 | Out-Null
-            $reset = Invoke-Ctl reset @{} 300
+            $reset = Invoke-Ctl reset @{ WaitSeconds = 420 } 60
             $status.BootBefore = $reset.PreviousBootCounter
             $status.BootAfter = $reset.BootCounter
             Write-Output "reset: boot $($reset.PreviousBootCounter) -> $($reset.BootCounter)"
-            $null = Invoke-Ctl wait-desktop @{} 300
+            # The i5-4570 takes over five minutes to boot.
+            $null = Invoke-Ctl wait-desktop @{ WaitSeconds = 420 } 60
 
             $installed = 0
             foreach ($name in $installFiles.Keys) {
@@ -218,6 +251,15 @@ if ($Worker) {
             Write-Output "installed: $installed of $($installFiles.Count)"
             if ($installed -ne $installFiles.Count) {
                 throw "The package is not installed as built."
+            }
+        } elseif (-not $info.DesktopReady) {
+            # The probes need the desktop. A machine idle at its desktop
+            # reports ready at once; one that is not (RIVA 128ZX on
+            # 2026-11-06: a dialog, a locked screen) did not become ready in
+            # 120 s either, so fail fast and say so.
+            $desktop = Invoke-Ctl wait-desktop @{ WaitSeconds = 20 } 30
+            if (-not $desktop -or -not $desktop.Success) {
+                throw "Desktop not ready after 20 s; look at the machine."
             }
         }
 
@@ -247,8 +289,8 @@ if ($Worker) {
             Send-GuestFile $notRun 'C:\V9XDIAG\V9XD32.TXT'
             $result = Invoke-Ctl exec @{
                 Application = "$guestDir\V9XD32.EXE"; Arguments = $run
-                WorkingDirectory = $guestDir; TimeoutSeconds = 300
-            } 330
+                WorkingDirectory = $guestDir; TimeoutSeconds = 120
+            } 120
             Get-GuestFile 'C:\V9XDIAG\V9XD32.TXT' (Join-Path $machineDir "v9xd32-$tag-V9XD32.TXT")
             Write-Output "V9XD32 $tag exit=$($result.ExitCode)"
         }
@@ -256,8 +298,8 @@ if ($Worker) {
             Send-GuestFile $notRun "C:\V9XDIAG\$($probe.Report)"
             $result = Invoke-Ctl exec @{
                 Application = "$guestDir\$($probe.Exe)"
-                WorkingDirectory = $guestDir; TimeoutSeconds = 300
-            } 330
+                WorkingDirectory = $guestDir; TimeoutSeconds = 120
+            } 120
             Get-GuestFile "C:\V9XDIAG\$($probe.Report)" `
                 (Join-Path $machineDir "$($probe.Prefix)-$($probe.Report)")
             Write-Output "$($probe.Exe) exit=$($result.ExitCode)"
@@ -307,22 +349,31 @@ if ($Worker) {
 
 # ---------------------------------------------------------------- parent ---
 
-$list = Import-V9xMachineList
-if (-not (Test-Path -LiteralPath $list.ControllerPath)) {
-    throw "ControllerPath in $MachineList does not exist: $($list.ControllerPath)"
+$machineSet = Import-V9xMachineList
+if (-not (Test-Path -LiteralPath $machineSet.ControllerPath)) {
+    throw "ControllerPath in $MachineList does not exist: $($machineSet.ControllerPath)"
 }
-$machines = @($list.Machines | Where-Object { $_.Enabled -ne $false })
+$machines = @($machineSet.Machines | Where-Object { $_.Enabled -ne $false })
 if ($Machine) {
-    $unknown = @($Machine | Where-Object { $_ -notin @($list.Machines | ForEach-Object { $_.Name }) })
+    $unknown = @($Machine | Where-Object { $_ -notin @($machineSet.Machines | ForEach-Object { $_.Name }) })
     if ($unknown.Count -ne 0) {
         throw "Unknown machine(s): $($unknown -join ', ')."
     }
-    $machines = @($list.Machines | Where-Object { $_.Name -in $Machine })
+    $machines = @($machineSet.Machines | Where-Object { $_.Name -in $Machine })
+}
+if ($List -and -not $Machine) {
+    $machines = @($machineSet.Machines)
 }
 if ($machines.Count -eq 0) {
     throw "No machines to run."
 }
 
+if ($List) {
+    # Nothing is kept from a listing; the workers' status files go to a
+    # temporary folder.
+    $OutDir = Join-Path ([IO.Path]::GetTempPath()) ("v9x-release-list-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $SummaryOnly = $false
+} else {
 $indexPath = Join-Path $repoRoot "build\packages.json"
 if (-not (Test-Path -LiteralPath $indexPath)) {
     throw "No build\packages.json. Run scripts\build-all-packages.ps1 first."
@@ -339,12 +390,13 @@ if (-not $OutDir) {
     $OutDir = Join-Path $repoRoot ("docs\probe\{0}-release-checks-{1}" -f
         $index.Version, (Get-Date -Format 'yyyy-MM-dd'))
 }
+}
 $OutDir = [IO.Path]::GetFullPath($OutDir)
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 if ($SummaryOnly) {
     $processes = @()
-} elseif (-not $SkipProbeBuild) {
+} elseif (-not $SkipProbeBuild -and -not $List) {
     Write-Output "Building the probes with build id $buildId"
     & (Join-Path $PSScriptRoot "build-d3d32-probe.ps1") -BuildId $buildId | Out-Null
     & (Join-Path $PSScriptRoot "build-gl-probe.ps1") -BuildId $buildId | Out-Null
@@ -365,20 +417,116 @@ foreach ($entry in $machines) {
     )
     if ($Baseline) { $arguments += '-Baseline' }
     if ($ThreeDMark) { $arguments += '-ThreeDMark' }
+    if ($List) { $arguments += '-List' }
     $process = Start-Process -FilePath $powershell -ArgumentList $arguments `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err" `
         -WindowStyle Hidden -PassThru
     # Windows PowerShell 5.1 reports no ExitCode for a Start-Process child
     # unless its handle was opened while it ran.
     $null = $process.Handle
-    $processes += [pscustomobject]@{ Name = $entry.Name; Process = $process }
-    Write-Output "Started $($entry.Name) ($($entry.Family)): $log"
+    $processes += [pscustomobject]@{
+        Name = $entry.Name; Family = $entry.Family; Process = $process; Log = $log
+        Folder = $(if ($Baseline) { "$($entry.Name)-before" } else { $entry.Name })
+        Answered = $false; Skipped = $false
+    }
+    if (-not $List) {
+        Write-Output "Started $($entry.Name) ($($entry.Family)): $log"
+    }
 }
-foreach ($p in $processes) {
-    $p.Process.WaitForExit()
-    Write-Output ("{0} finished, exit {1}, {2:N0} min" -f $p.Name, $p.Process.ExitCode,
-        ((Get-Date) - $started).TotalMinutes)
+# Report each machine as it finishes, not in start order, and skip any that
+# has not answered within ReachSeconds: its worker prints "agent ..." after
+# its first call succeeds.
+function Read-V9xNewLines {
+    param([string]$Path, [int]$Skip)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return @()
+    }
+    # The worker still holds the file open for writing.
+    $stream = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite')
+    try {
+        $text = (New-Object IO.StreamReader($stream)).ReadToEnd()
+    }
+    finally {
+        $stream.Dispose()
+    }
+    $lines = @($text -split "`r?`n" | Where-Object { $_.Trim() })
+    return @($lines | Select-Object -Skip $Skip)
 }
+
+# One line per machine when it finishes: how long, how many probe runs
+# exited 0, and the error that stopped it, if any. The step-by-step detail
+# stays in <name>.log.
+function Write-V9xFinished {
+    param($Worker)
+    $lines = @(Read-V9xNewLines -Path $Worker.Log -Skip 0)
+    $runs = @($lines | Where-Object { $_ -match ' exit=-?\d+$' })
+    $clean = @($runs | Where-Object { $_ -match ' exit=0$' })
+    $errorLine = @($lines | Where-Object { $_ -like 'ERROR: *' }) | Select-Object -First 1
+    $text = "{0} finished in {1:N1} min: {2} of {3} probe runs exit 0" -f $Worker.Name,
+        ((Get-Date) - $started).TotalMinutes, $clean.Count, $runs.Count
+    if ($errorLine) {
+        $text += "; $errorLine"
+    }
+    Write-Output $text
+}
+
+$running = @($processes)
+while ($running.Count -gt 0) {
+    Start-Sleep -Seconds 1
+    $late = ((Get-Date) - $started).TotalSeconds -gt $ReachSeconds
+    foreach ($p in $running) {
+        if (-not $late -or $p.Answered -or $p.Process.HasExited) {
+            continue
+        }
+        if (Select-String -LiteralPath $p.Log -Pattern '^agent ' -Quiet) {
+            $p.Answered = $true
+            continue
+        }
+        Stop-Process -Id $p.Process.Id -Force -ErrorAction SilentlyContinue
+        $p.Process.WaitForExit()
+        $p.Skipped = $true
+        $statusDir = Join-Path $OutDir $p.Folder
+        New-Item -ItemType Directory -Force -Path $statusDir | Out-Null
+        [ordered]@{
+            Name = $p.Name; Family = $p.Family; Baseline = [bool]$Baseline
+            BootBefore = $null; BootAfter = $null; Installed = $null
+            Error = "skipped: no answer within $ReachSeconds s"; Offline = $true; Agent = $null
+        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $statusDir 'status.json') -Encoding Ascii
+        if (-not $List) {
+            Write-Output "$($p.Name) skipped: no answer within $ReachSeconds s"
+        }
+    }
+    $done = @($running | Where-Object { $_.Process.HasExited })
+    foreach ($p in @($done | Where-Object { -not $_.Skipped -and -not $List })) {
+        Write-V9xFinished $p
+    }
+    $running = @($running | Where-Object { $_ -notin $done })
+}
+}
+
+if ($List) {
+    $rows = foreach ($entry in $machines) {
+        $statusPath = Join-Path $OutDir "$($entry.Name)\status.json"
+        $s = if (Test-Path -LiteralPath $statusPath) {
+            Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+        }
+        $answered = ($s -and -not $s.Offline)
+        [pscustomobject]@{
+            Machine = $entry.Name
+            Family  = $entry.Family
+            Address = $(if ($entry.Relay) { $entry.Relay } else { $entry.Host })
+            Online  = $(if ($answered) { "yes, $($s.AnswerSeconds) s" } else { 'no' })
+            Agent   = $(if ($answered) { $s.Agent } else { '' })
+            Boot    = $(if ($answered) { $s.Boot } else { '' })
+            Desktop = $(if ($answered) { $(if ($s.Desktop) { 'ready' } else { 'NOT READY' }) } else { '' })
+            InList  = $(if ($entry.Enabled -eq $false) { 'off' } else { 'on' })
+        }
+    }
+    $rows | Sort-Object { $_.Online -eq 'no' }, Machine | Format-Table -AutoSize | Out-String -Width 200
+    $ready = @($rows | Where-Object { $_.Desktop -eq 'ready' } | ForEach-Object { $_.Machine })
+    Write-Output "Ready: -Machine $($ready -join ',')"
+    Remove-Item -LiteralPath $OutDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 0
 }
 
 # ---------------------------------------------------------------- summary ---
@@ -543,7 +691,11 @@ $summaryPath = Join-Path $OutDir 'SUMMARY.md'
 [IO.File]::WriteAllText($summaryPath, (($md -join "`r`n") + "`r`n"),
     (New-Object Text.UTF8Encoding $false))
 Write-Output "Wrote $summaryPath"
-$failed = @($processes | Where-Object { $_.Process.ExitCode -ne 0 })
+$skipped = @($processes | Where-Object { $_.Skipped })
+if ($skipped.Count -ne 0) {
+    Write-Output "Skipped, no answer: $(@($skipped | ForEach-Object { $_.Name }) -join ', ')"
+}
+$failed = @($processes | Where-Object { -not $_.Skipped -and $_.Process.ExitCode -ne 0 })
 if ($failed.Count -ne 0) {
     Write-Output "Machines that did not finish: $(@($failed | ForEach-Object { $_.Name }) -join ', ')"
     exit 1

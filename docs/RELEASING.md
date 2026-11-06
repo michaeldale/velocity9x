@@ -63,11 +63,23 @@ Commit: `Date the X.Y.Z changelog for release`.
 `run-checks.ps1` builds every family package (`build-all-packages.ps1`) and
 must pass. The tree must be clean: a `-dirty` build id is refused in step 3.
 
-Then check those packages on hardware:
+Then check those packages on hardware. First see which machines answer:
 
 ```powershell
-./scripts/run-release-checks.ps1 -MachineList <release-machines.psd1>
+./scripts/run-release-checks.ps1 -MachineList <release-machines.psd1> -List
 ```
+
+It asks every machine in the list once, in parallel, and prints which are
+online, their agent, boot and whether the desktop is ready, ending with a
+`-Machine` line for the ready ones. Pick from it and run:
+
+```powershell
+./scripts/run-release-checks.ps1 -MachineList <release-machines.psd1> -Machine <names>
+```
+
+A machine that has not answered within `-ReachSeconds` (65: a remote-help
+machine checks in once a minute when idle) is skipped and the run goes on.
+It prints one line per machine as each finishes.
 
 It rebuilds the four probes with the packages' build id, then on every
 machine at once installs the machine's family package by WININIT renames
