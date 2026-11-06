@@ -784,7 +784,9 @@ function Get-V9xCell {
     if ($failed.Count -gt 0) {
         $shown = @($failed | Select-Object -First 6)
         $more = if ($failed.Count -gt 6) { ", +$($failed.Count - 6)" } else { '' }
-        $result += ": $($shown -join ', ')$more"
+        # "failing:", not a bare colon: V9XGLP's Result ignores its own
+        # sub-results, so "PASS: Cva" read as Cva passing on the RS690.
+        $result += "; failing: $($shown -join ', ')$more"
     } elseif ($verdicts.Contains('Failures') -and $verdicts['Failures'] -notmatch '^0x0+$') {
         # Some V9XD32 tests (T21) fail only through the Failures mask.
         $result += " (Failures=$($verdicts['Failures']))"
@@ -932,6 +934,7 @@ if (-not $Previous) {
         }
         $old = Get-V9xMachineReports $previousDir
         $changes = @()
+        $newTests = @()
         foreach ($check in $column.Reports.Keys) {
             if (-not $old.Contains($check)) {
                 $changes += "$check is new"
@@ -943,6 +946,7 @@ if (-not $Previous) {
             $b = Get-V9xProbeVerdicts -Path $column.Reports[$check]
             $result = $null
             $moved = @()
+            $added = @()
             $mask = $null
             foreach ($key in @(@($a.Keys) + @($b.Keys) | Select-Object -Unique)) {
                 $was = if ($a.Contains($key)) { $a[$key] } else { '(absent)' }
@@ -955,6 +959,9 @@ if (-not $Previous) {
                     continue
                 }
                 $name = $key -replace 'Result$', ''
+                # A test the probe did not have last release is new, not a
+                # change, and needs no explanation.
+                if ($was -eq '(absent)') { $added += "$name $now"; continue }
                 if ($key -eq 'Result') { $result = "$was to $now" }
                 elseif ($key -eq 'Failures') { $mask = "Failures $was to $now" }
                 else { $moved += "$name $was to $now" }
@@ -968,17 +975,23 @@ if (-not $Previous) {
                 if ($moved) { $line += $(if ($result) { '; ' } else { ' ' }) + ($moved -join ', ') }
                 $changes += $line
             }
+            if ($added) {
+                $newTests += "${check} new: $($added -join ', ')"
+            }
         }
         foreach ($check in $old.Keys) {
             if (-not $column.Reports.Contains($check)) {
                 $changes += "$check not run this time"
             }
         }
+        $news = @($newTests | ForEach-Object { "  - $_" })
         if ($changes.Count -eq 0) {
             $md += "- **$label**: no verdict changed."
+            $md += $news
         } else {
             $md += "- **$label**:"
             $md += @($changes | ForEach-Object { "  - $_" })
+            $md += $news
             $md += "  - TODO: whether $($index.Version) caused this, and the evidence."
         }
     }

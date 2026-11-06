@@ -14,8 +14,12 @@ build identifier so exact guest-tested binaries remain traceable.
   draw is drawn exactly as an unlocked one, which the extension
   allows. It needs nothing from the 3D engine, so every package offers
   it, including those whose engine has one texture unit.
-  Checked by host tests; V9XGLP's new `Cva` case checks it on each
-  machine in the release checks.
+  Checked by host tests, and by V9XGLP's new `Cva` case on the HD 4600,
+  GMA 950 and Rage 128 Pro, where a locked draw reads back as drawn
+  ([checks](docs/decisions/2026-11-06-gl-ext-compiled-vertex-array-checks.md)).
+  On the Radeon X1200 (RS690) the extension's state and errors are
+  right, but its OpenGL draws nothing at all, as at 0.37.0: the 0.37.0
+  notes were wrong to call OpenGL unaffected there.
 
 ## 0.37.0 - 2026-11-06
 
