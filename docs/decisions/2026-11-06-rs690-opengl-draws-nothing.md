@@ -2,8 +2,8 @@
 
 Date: 2026-11-06
 
-Status: **cause found by probe and code; mixed-engine probe run; no fix
-applied.** M-GB8KRE (remote help, Radeon X1200 / RS690 `1002:791F`,
+Status: **fixed and measured** (option 3, below; resolution at the end).
+Before that: cause found by probe and code, mixed-engine probe run. M-GB8KRE (remote help, Radeon X1200 / RS690 `1002:791F`,
 desktop 16 bpp), boot 86, ati package `3faeae06`. Evidence:
 [`../probe/0.38.0-cva-checks-2026-11-06/rs690/`](../probe/0.38.0-cva-checks-2026-11-06/rs690/)
 (V9XGLP, V9XR3DP) and
@@ -99,3 +99,49 @@ later drew some explicit draws on the engine and refused others.
 3. Draw explicit draws on the RS690 engine, as the Evergreen does: the
    R300-class scissor and write-mask registers, probed first. Faster, and
    larger.
+
+## Resolution: option 3
+
+Michael chose option 3. Evidence:
+[`../probe/rs690-explicit-draws-2026-11-06/`](../probe/rs690-explicit-draws-2026-11-06/).
+
+**Registers first.** The builder (`rs690_3d.c`) gained a scissor,
+written to SC_SCISSOR0/1 inclusive and guard-offset as the target's own,
+and masked channels taken out of RB3D_COLOR_CHANNEL_MASK. V9XRS3D gained
+two cases on the builder's exact output, at 16 bpp with ati `3faeae06`
+installed:
+
+| Case | Result |
+|---|---|
+| ScissorTest: white over x 4-60, scissor (10,2)-(30,10) | PASS, 0 bytes differ |
+| ChannelMaskTest: white with red masked over A5A5h | PASS, 0 bytes differ (A7FFh) |
+
+Every earlier V9XRS3D case still passed. 32 bpp was not run.
+
+**Then the driver, in two steps.**
+
+1. `a3440f06`: the map draws explicit draws with that scissor and mask
+   (CPU levels and a second unit still refused), and describe names the
+   engine (14, "Velocity9x Radeon X1200"). Boot 87: V9XGLP's drawing
+   checks and `Cva` pass; V9XR3DP `DrawOk=1`, `MaskedOk=1`; Glide down
+   from 14 failures to 5, all five textured, reading black.
+2. `99c78398`: describe offers the interface video-memory textures (the
+   Direct3D path already placed them). Without that the ICD and Glide
+   kept every texture on the CPU, which the map refuses and nothing
+   draws. Boot 89:
+
+| Probe | `3faeae06` | `99c78398` |
+|---|---|---|
+| V9XGLP drawing checks (offset, fog, Cva) | black | pass |
+| V9XGLIDP (Glide 2) | FAIL, 14 failures | **PASS, 0 failures** |
+| V9XR3DP `DrawOk` / `MaskedOk` | 0 / 0 | 1 / 1 |
+| V9XD32 | PASS | PASS |
+
+V9XR3DP's `TexturedScissorOk` stays 0: that case uses a CPU texture on
+purpose, and reads 0 on every engine without a fallback (the HD 5450,
+5770 and 7470 and the Carrizo in their release checks).
+
+Not measured: 3DCIF on this chip (no probe for it in the checks), 32 bpp,
+any game, and speed. The mixed-engine depth difference above is
+unchanged and no longer matters to these draws: the engine draws them
+all, and the CPU none.

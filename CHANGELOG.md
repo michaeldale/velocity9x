@@ -15,11 +15,24 @@ build identifier so exact guest-tested binaries remain traceable.
   allows. It needs nothing from the 3D engine, so every package offers
   it, including those whose engine has one texture unit.
   Checked by host tests, and by V9XGLP's new `Cva` case on the HD 4600,
-  GMA 950 and Rage 128 Pro, where a locked draw reads back as drawn
+  GMA 950, Rage 128 Pro and Radeon X1200, where a locked draw reads back
+  as drawn
   ([checks](docs/decisions/2026-11-06-gl-ext-compiled-vertex-array-checks.md)).
-  On the Radeon X1200 (RS690) the extension's state and errors are
-  right, but its OpenGL draws nothing at all, as at 0.37.0: the 0.37.0
-  notes were wrong to call OpenGL unaffected there.
+
+- **Radeon X1200 (RS690): OpenGL and Glide now draw, on the 3D engine.**
+  In 0.37.0 they drew nothing on this chip. Every OpenGL, Glide and
+  3DCIF draw was refused by the engine and dropped, since the chip has
+  no software fallback. The 0.37.0 notes said OpenGL was unaffected;
+  that was wrong. Those draws now run on the engine with their scissor
+  and colour write mask. Both were measured in register probes first.
+  Their textures are placed in video memory, as Direct3D's already
+  were. The renderer is now named "Velocity9x Radeon X1200".
+  Measured on one tester's machine through remote help:
+  - the OpenGL probe's drawing checks pass, where all read black before;
+  - the Glide 2 probe passes with 0 failures, where it had 14.
+
+  Not yet tried: 3DCIF, 32 bpp, or any game
+  ([record](docs/decisions/2026-11-06-rs690-opengl-draws-nothing.md)).
 
 ## 0.37.0 - 2026-11-06
 
