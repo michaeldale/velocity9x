@@ -383,6 +383,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)
 - [2026-11-01 0.34.0 release checks: the HD 4600, the GMA 950, the HD 5770 and the HD 7470](2026-11-01-0.34.0-release-checks.md)
 - [2026-11-04 0.35.0 release checks: the HD 4600, the GMA 950, the HD 7660D, the HD 7470 and the RIVA 128ZX](2026-11-04-0.35.0-release-checks.md)
+- [2026-11-06 0.36.0 release checks: the HD 4600, the GMA 950 and the Rage 128 Pro](2026-11-06-0.36.0-release-checks.md)
 - [2026-11-01 The updater moves a card off vbe to its chip family (V9X-AW3C75)](2026-11-01-updater-moves-vbe-to-chip-family.md)
 - [2026-10-29 Write-combining the SiS 6326's frame buffer: FbWrite 49.9 to 89.3 MB/s](2026-10-29-sis6326-write-combining.md)
 - [2026-10-29 SiS 6326: the driver presteps U, so 1:1 text keeps every column](2026-10-29-sis6326-u-prestep.md)
