@@ -66,15 +66,19 @@ $Machine = @($Machine | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 # The installed set: what WININIT.INI renames into C:\WINDOWS\SYSTEM. The
 # staged names are 8.3 and distinct, so a half-finished install is visible
 # as a staged file that is still there.
+# They are staged in one folder so one push-tree call sends them all: over
+# the relay every call opens a session, and eight puts with a hash each
+# were 2.4 of an RS690 run's 8 minutes.
+$stageDir = 'C:\V9XSTAGE'
 $installFiles = [ordered]@{
-    'V9XDISP.DRV'  = 'C:\V9XNDRV.BIN'
-    'V9XMINI.VXD'  = 'C:\V9XNVXD.BIN'
-    'V9XHAL.DLL'   = 'C:\V9XNHAL.BIN'
-    'V9XSETP.DLL'  = 'C:\V9XNSTP.BIN'
-    'V9XGL.DLL'    = 'C:\V9XNGL.BIN'
-    'GLIDE2X.DLL'  = 'C:\V9XNG2.BIN'
-    'GLIDE3X.DLL'  = 'C:\V9XNG3.BIN'
-    'ATI3DCIF.DLL' = 'C:\V9XNCIF.BIN'
+    'V9XDISP.DRV'  = 'C:\V9XSTAGE\V9XNDRV.BIN'
+    'V9XMINI.VXD'  = 'C:\V9XSTAGE\V9XNVXD.BIN'
+    'V9XHAL.DLL'   = 'C:\V9XSTAGE\V9XNHAL.BIN'
+    'V9XSETP.DLL'  = 'C:\V9XSTAGE\V9XNSTP.BIN'
+    'V9XGL.DLL'    = 'C:\V9XSTAGE\V9XNGL.BIN'
+    'GLIDE2X.DLL'  = 'C:\V9XSTAGE\V9XNG2.BIN'
+    'GLIDE3X.DLL'  = 'C:\V9XSTAGE\V9XNG3.BIN'
+    'ATI3DCIF.DLL' = 'C:\V9XSTAGE\V9XNCIF.BIN'
 }
 $guestDir = 'C:\V9XREL'
 # Probe executable -> the report it leaves in C:\V9XDIAG and the local name
@@ -140,6 +144,14 @@ if ($Worker) {
     # A v9xctl call that fails reports it in its result; the steps below check
     # what they need and throw themselves, as relcheck037.ps1 did.
     $ErrorActionPreference = "Continue"
+    # Every log line carries the time since the worker started, so a run
+    # says where its minutes went (an RS690 run took 8 with no way to split
+    # the reset from the relay transfers).
+    $workerStart = Get-Date
+    function Note {
+        param([string]$Text)
+        Write-Output ("[+{0:m\:ss}] {1}" -f ((Get-Date) - $workerStart), $Text)
+    }
     $machineSet = Import-V9xMachineList
     $entry = @($machineSet.Machines | Where-Object { $_.Name -eq $Worker })[0]
     if (-not $entry) {
@@ -173,19 +185,39 @@ if ($Worker) {
         & $controller get -Source $From -Destination $To @connection `
             -ConnectTimeoutSeconds 60 | Out-Null
     }
+    # One file: put commits only after the machine has checked its size and
+    # CRC32 (host-cli.md), so a failed put is the exit code, and no hash
+    # call - another relay session - follows it.
     function Send-GuestFile {
         param([string]$From, [string]$To)
         for ($try = 1; $try -le 2; ++$try) {
             & $controller put -Source $From -Destination $To @connection `
                 -ConnectTimeoutSeconds 60 | Out-Null
-            $hash = Invoke-Ctl hash @{ Path = $To; Source = $From }
-            if ($hash -and $hash.Matches) {
+            if ($LASTEXITCODE -eq 0) {
                 return
             }
-            Write-Output "put $To attempt $try did not match"
+            Note "put $To attempt $try failed, exit $LASTEXITCODE"
         }
         throw "Could not put $To."
     }
+    # A folder in one call: push-tree sends every file over one session,
+    # each checked as a put is.
+    function Push-GuestTree {
+        param([string]$From, [string]$To)
+        for ($try = 1; $try -le 2; ++$try) {
+            & $controller push-tree -Source $From -Destination $To @connection `
+                -ConnectTimeoutSeconds 120 | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                return
+            }
+            Note "push-tree $To attempt $try failed, exit $LASTEXITCODE"
+        }
+        throw "Could not push $From to $To."
+    }
+    # Local folders for the trees, this worker's own.
+    $localTemp = Join-Path ([IO.Path]::GetTempPath()) `
+        ("v9xrc-{0}-{1}" -f $Worker, [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Force -Path $localTemp | Out-Null
     function Test-Installed {
         param([string]$Name)
         $hash = Invoke-Ctl hash @{ Path = "C:\WINDOWS\SYSTEM\$Name"; Source = (Join-Path $package $Name) }
@@ -208,7 +240,7 @@ if ($Worker) {
         $status.Boot = $info.BootCounter
         $status.Desktop = $info.DesktopReady
         $status.AnswerSeconds = [int]((Get-Date) - $asked).TotalSeconds
-        Write-Output "agent $($info.AgentVersion), boot $($info.BootCounter), desktop $($info.DesktopReady)"
+        Note "agent $($info.AgentVersion), boot $($info.BootCounter), desktop $($info.DesktopReady)"
         if ($List) {
             exit 0
         }
@@ -219,38 +251,48 @@ if ($Worker) {
                 throw "A WININIT.INI is already pending; not installing over it."
             }
             $lines = @('[Rename]')
+            $stageLocal = Join-Path $localTemp 'stage'
+            New-Item -ItemType Directory -Force -Path $stageLocal | Out-Null
             foreach ($name in $installFiles.Keys) {
-                Send-GuestFile (Join-Path $package $name) $installFiles[$name]
+                Copy-Item -LiteralPath (Join-Path $package $name) `
+                    -Destination (Join-Path $stageLocal (Split-Path -Leaf $installFiles[$name]))
                 $lines += "C:\WINDOWS\SYSTEM\$name=$($installFiles[$name])"
             }
+            Push-GuestTree $stageLocal $stageDir
             $wininit = Join-Path $machineDir 'WININIT.INI'
             [IO.File]::WriteAllText($wininit, (($lines -join "`r`n") + "`r`n"),
                 [Text.Encoding]::ASCII)
             & $controller put -Source $wininit -Destination 'C:\WINDOWS\WININIT.INI' `
                 @connection -ConnectTimeoutSeconds 60 | Out-Null
-            Write-Output "staged $($installFiles.Count) files; resetting"
+            Note "staged $($installFiles.Count) files; resetting"
             $reset = Invoke-Ctl reset @{ WaitSeconds = 420 } 60
             $status.BootBefore = $reset.PreviousBootCounter
             $status.BootAfter = $reset.BootCounter
-            Write-Output "reset: boot $($reset.PreviousBootCounter) -> $($reset.BootCounter)"
+            Note "reset: boot $($reset.PreviousBootCounter) -> $($reset.BootCounter)"
             # The i5-4570 takes over five minutes to boot.
             $null = Invoke-Ctl wait-desktop @{ WaitSeconds = 420 } 60
 
+            # WININIT renamed every staged file away, or it did not: one list
+            # of the staging folder says which, where eight stats did.
+            $left = @()
+            $listed = Invoke-Ctl list @{ Path = $stageDir }
+            if ($listed -and $listed.Entries) {
+                $left = @($listed.Entries | ForEach-Object { $_.Name.ToUpper() })
+            }
             $installed = 0
             foreach ($name in $installFiles.Keys) {
-                $staged = Invoke-Ctl stat @{ Path = $installFiles[$name] }
-                if ($staged.Exists) {
-                    Write-Output "staged file still present: $($installFiles[$name])"
+                if ((Split-Path -Leaf $installFiles[$name]).ToUpper() -in $left) {
+                    Note "staged file still present: $($installFiles[$name])"
                     continue
                 }
                 if ((Test-Installed $name) -or (Test-Installed $name)) {
                     $installed++
                 } else {
-                    Write-Output "hash mismatch: $name"
+                    Note "hash mismatch: $name"
                 }
             }
             $status.Installed = $installed
-            Write-Output "installed: $installed of $($installFiles.Count)"
+            Note "installed: $installed of $($installFiles.Count)"
             if ($installed -ne $installFiles.Count) {
                 throw "The package is not installed as built."
             }
@@ -273,9 +315,39 @@ if ($Worker) {
             'V9XR3DP.EXE'  = Join-Path $repoRoot 'build\r3d-probe\V9XR3DP.EXE'
             'V9XTRACE.EXE' = Join-Path $package 'V9XTRACE.EXE'
         }
-        foreach ($name in $probes.Keys) {
-            Send-GuestFile $probes[$name] "$guestDir\$name"
+        # Only the probes that changed are sent. V9XREL.SUM on the machine
+        # lists the SHA-256 of what the last run put there; one get of it
+        # replaces a hash call per file, and a rerun of the same build sends
+        # nothing. The probes' Build= lines still say which build ran.
+        $sumName = 'V9XREL.SUM'
+        $sumLocal = Join-Path $localTemp $sumName
+        Get-GuestFile "$guestDir\$sumName" $sumLocal
+        $had = @{}
+        if (Test-Path -LiteralPath $sumLocal) {
+            foreach ($line in [IO.File]::ReadAllLines($sumLocal)) {
+                if ($line -match '^([0-9A-F]{64}) (\S+)$') {
+                    $had[$Matches[2]] = $Matches[1]
+                }
+            }
         }
+        $probeLocal = Join-Path $localTemp 'probes'
+        New-Item -ItemType Directory -Force -Path $probeLocal | Out-Null
+        $sumLines = @()
+        $changed = 0
+        foreach ($name in $probes.Keys) {
+            $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $probes[$name]).Hash
+            $sumLines += "$sha $name"
+            if ($had[$name] -ne $sha) {
+                Copy-Item -LiteralPath $probes[$name] -Destination (Join-Path $probeLocal $name)
+                ++$changed
+            }
+        }
+        if ($changed -gt 0) {
+            [IO.File]::WriteAllText((Join-Path $probeLocal $sumName),
+                (($sumLines -join "`r`n") + "`r`n"), [Text.Encoding]::ASCII)
+            Push-GuestTree $probeLocal $guestDir
+        }
+        Note "probes in place: sent $changed of $($probes.Count)"
 
         # 3DMark before the probes: FilterMagSeen is a mask since boot and
         # cannot be subtracted, so a probe that asked for LINEAR first would
@@ -366,7 +438,7 @@ if ($Worker) {
             if (-not $started3d) {
                 Save-Stuck 'the start click did not leave the welcome dialog'
             }
-            Write-Output "3DMark started"
+            Note "3DMark started"
 
             # Then watch it: a score, the main window gone (crashed), a
             # dialog that is not 3DMark's own (a fault, MPREXE in 0.37.0), or
@@ -406,12 +478,12 @@ if ($Worker) {
                         $lastFlips = $beat['FlipHandled']
                         $flipsMoved = Get-Date
                     }
-                    Write-Output ("3DMark +{0:N1} min: FlipHandled {1}" -f $minute, $lastFlips)
+                    Note ("3DMark +{0:N1} min: FlipHandled {1}" -f $minute, $lastFlips)
                     if (((Get-Date) - $flipsMoved).TotalSeconds -gt 120) {
                         Save-Stuck "frozen: FlipHandled stayed at $lastFlips for 2 minutes"
                     }
                 } else {
-                    Write-Output ("3DMark +{0:N1} min: no beat" -f $minute)
+                    Note ("3DMark +{0:N1} min: no beat" -f $minute)
                 }
 
                 $windows = Get-GuestWindows
@@ -442,7 +514,7 @@ if ($Worker) {
             }
             $status.ThreeDMark = ("finished in {0:N1} min, last FlipHandled {1}" -f
                 ((Get-Date) - $began).TotalMinutes, $lastFlips)
-            Write-Output "3DMark $($status.ThreeDMark)"
+            Note "3DMark $($status.ThreeDMark)"
             & $controller screenshot -OutFile (Join-Path $machineDir '3dmark-score.png') `
                 @connection -ConnectTimeoutSeconds 120 | Out-Null
             $null = Invoke-Ctl kill @{ Name = '3DMARK2000.EXE' }
@@ -488,10 +560,10 @@ if ($Worker) {
                 $status.Counters = ("draws +{0}, into presented +{1}, refused batches +{2}, engine stalls +{3}, FilterMagSeen 0x{4:X}" -f
                     $draws, $intoPresented, $refused, $hangs, $mag)
                 $status.CounterFlags = ($flags -join '; ')
-                Write-Output "3DMark counters: $($status.Counters)$(if ($flags) { "; LOOK: $($status.CounterFlags)" })"
+                Note "3DMark counters: $($status.Counters)$(if ($flags) { "; LOOK: $($status.CounterFlags)" })"
             } else {
                 $status.Counters = 'no snapshot pair'
-                Write-Output '3DMark counters: no snapshot pair'
+                Note '3DMark counters: no snapshot pair'
             }
         }
 
@@ -503,34 +575,50 @@ if ($Worker) {
         $notRun = [IO.Path]::GetTempFileName()
         [IO.File]::WriteAllText($notRun, "; placeholder from run-release-checks.ps1`r`n",
             [Text.Encoding]::ASCII)
+        # Every report's placeholder in one push, before any probe runs; a
+        # second V9XD32 run gets its own put.
+        $placeLocal = Join-Path $localTemp 'placeholders'
+        New-Item -ItemType Directory -Force -Path $placeLocal | Out-Null
+        foreach ($report in @('V9XD32.TXT') + @($probeReports | ForEach-Object { $_.Report })) {
+            Copy-Item -LiteralPath $notRun -Destination (Join-Path $placeLocal $report)
+        }
+        Push-GuestTree $placeLocal 'C:\V9XDIAG'
 
+        $firstD32 = $true
         foreach ($run in @($entry.D32Runs)) {
             $tag = if ($run) { $run.TrimStart('/') } else { 'default' }
-            Send-GuestFile $notRun 'C:\V9XDIAG\V9XD32.TXT'
+            if (-not $firstD32) {
+                Send-GuestFile $notRun 'C:\V9XDIAG\V9XD32.TXT'
+            }
+            $firstD32 = $false
             $result = Invoke-Ctl exec @{
                 Application = "$guestDir\V9XD32.EXE"; Arguments = $run
                 WorkingDirectory = $guestDir; TimeoutSeconds = 120
             } 120
             Get-GuestFile 'C:\V9XDIAG\V9XD32.TXT' (Join-Path $machineDir "v9xd32-$tag-V9XD32.TXT")
-            Write-Output "V9XD32 $tag exit=$($result.ExitCode)"
+            Note "V9XD32 $tag exit=$($result.ExitCode)"
         }
         foreach ($probe in $probeReports) {
-            Send-GuestFile $notRun "C:\V9XDIAG\$($probe.Report)"
             $result = Invoke-Ctl exec @{
                 Application = "$guestDir\$($probe.Exe)"
                 WorkingDirectory = $guestDir; TimeoutSeconds = 120
             } 120
             Get-GuestFile "C:\V9XDIAG\$($probe.Report)" `
                 (Join-Path $machineDir "$($probe.Prefix)-$($probe.Report)")
-            Write-Output "$($probe.Exe) exit=$($result.ExitCode)"
+            Note "$($probe.Exe) exit=$($result.ExitCode)"
         }
     }
     catch {
         $status.Error = $_.Exception.Message
-        Write-Output "ERROR: $($status.Error)"
+        Note "ERROR: $($status.Error)"
     }
     finally {
         $status | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $machineDir 'status.json') -Encoding Ascii
+        # This worker's own temporary folder, and nothing else.
+        if ($localTemp -and (Split-Path -Leaf $localTemp) -like 'v9xrc-*' -and
+            (Test-Path -LiteralPath $localTemp)) {
+            Remove-Item -LiteralPath $localTemp -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
     if ($status.Error) {
         exit 1
@@ -652,7 +740,7 @@ function Write-V9xFinished {
     $lines = @(Read-V9xNewLines -Path $Worker.Log -Skip 0)
     $runs = @($lines | Where-Object { $_ -match ' exit=-?\d+$' })
     $clean = @($runs | Where-Object { $_ -match ' exit=0$' })
-    $errorLine = @($lines | Where-Object { $_ -like 'ERROR: *' }) | Select-Object -First 1
+    $errorLine = @($lines | Where-Object { $_ -like '*ERROR: *' }) | Select-Object -First 1
     $text = "{0} finished in {1:N1} min: {2} of {3} probe runs exit 0" -f $Worker.Name,
         ((Get-Date) - $started).TotalMinutes, $clean.Count, $runs.Count
     if ($errorLine) {
@@ -696,7 +784,7 @@ while ($running.Count -gt 0) {
             continue
         }
         if (-not $p.Answered) {
-            if (Select-String -LiteralPath $p.Log -Pattern '^agent ' -Quiet) {
+            if (Select-String -LiteralPath $p.Log -Pattern '\] agent ' -Quiet) {
                 $p.Answered = $true
             } elseif ($late) {
                 Stop-V9xWorker $p "skipped: no answer within $ReachSeconds s" $true
