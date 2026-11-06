@@ -135,9 +135,13 @@ the DMA object's flag bits; 86Box draws no 3D.
    (ONE/SRCALPHA). **Thief (2026-11-04, boot 36,
    [record](../decisions/2026-11-04-riva128-thief.md))** draws Lord
    Bafford's Manor fullscreen, seen through the flip-path frame grab: 719,438
-   draws, none refused. Left: the owner looks at a fullscreen game, and the
-   guest's other D3D games (Thief 2, Final Fantasy VII, Homeworld, 3DMark 99
-   Max).
+   draws, none refused. **3DMark 99 Max (2026-11-07, boots 42-43,
+   [record](../decisions/2026-11-07-riva128-3dmark99-unplaced-textures.md))**
+   at 800x600x16 refused 11,837 of 32,260 draws on textures DirectDraw had
+   placed when the NV3 had no room. A full heap now fails the create as
+   out of video memory: 40,951 draws, none refused. Left: the owner looks
+   at a fullscreen game, and the guest's other D3D games (Thief 2, Final
+   Fantasy VII, Homeworld).
 
 ## Unknowns
 

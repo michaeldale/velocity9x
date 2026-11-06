@@ -1299,6 +1299,7 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD level;
     DWORD levels;
     DWORD base;
+    DWORD place;
 
     if (v9x_hal == 0 || data == 0 || data->dwSCnt == 0ul ||
         data->dwSCnt > V9X_D3D_NV3_TEXTURE_LEVELS ||
@@ -1328,7 +1329,9 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         }
     }
     if (record == 0) {
-        return V9X_DDHAL_DRIVER_NOTHANDLED;
+        /* Out of video memory, not NOTHANDLED: see the placement below. */
+        data->ddRVal = V9X_DDERR_OUTOFVIDEOMEMORY;
+        return V9X_DDHAL_DRIVER_HANDLED;
     }
 
     for (level = 0ul; level < data->dwSCnt; ++level) {
@@ -1375,8 +1378,24 @@ static DWORD v9x_d3d_nv3_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         opaque = (bytes + align - 1ul) & ~(align - 1ul);
         bytes = opaque + v9x_nv3_3d_chain_bytes(log2_side, levels);
     }
-    if (v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
-                            &base) != 0ul) {
+    /*
+     * No room is out of video memory, not NOTHANDLED. Declined, the texture
+     * is placed by DirectDraw as linear levels alone, which other engines
+     * sample but this one cannot: it samples only its swizzled copy, so
+     * every draw with that texture was refused. The block here is about
+     * twice DirectDraw's, so under pressure DirectDraw still finds room:
+     * 3DMark 99 Max at 800x600x16 on M-7V636C had 3,701 of 15,430 textures
+     * not placed here and 11,837 of 32,260 draws refused as unplaced
+     * (boot 42, 2026-11-07). Told, the program manages its textures as it
+     * would on any full card.
+     */
+    place = v9x_d3d_place_chain(data, align, bytes, offsets, pitches,
+                                &base);
+    if (place == V9X_D3D_PLACE_ALLOC) {
+        data->ddRVal = V9X_DDERR_OUTOFVIDEOMEMORY;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (place != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
 

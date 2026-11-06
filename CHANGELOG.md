@@ -23,6 +23,16 @@ build identifier so exact guest-tested binaries remain traceable.
   Not yet tried: 3DCIF or any game
   ([record](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)).
 
+- **NVIDIA RIVA 128ZX: Direct3D no longer drops draws when texture memory
+  fills.** When the chip had no room for a texture, DirectDraw placed it
+  anyway in a layout the chip cannot read, and every draw using that
+  texture was silently dropped. 3DMark 99 Max lost 11,837 of 32,260 draws
+  this way at 800x600x16. Such a texture is now refused as out of video
+  memory, so the program manages its textures as on any full card.
+  3DMark 99 Max then completes with all 40,951 draws drawn. Measured on
+  one tester's card; the screen was not watched
+  ([record](docs/decisions/2026-11-07-riva128-3dmark99-unplaced-textures.md)).
+
 - **Correction, NVIDIA RIVA 128ZX: Glide did not regress in 0.37.0.** The
   0.37.0 notes said the Glide 2 probe drew no triangles on that release,
   against 1 failure on the build before. The earlier run had drawn on the
