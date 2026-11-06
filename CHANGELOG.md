@@ -4,7 +4,53 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.37.0 - not yet released
+## 0.37.0 - 2026-11-06
+
+- **ATI Radeon X1200 IGP (RS690, `1002:791F`) on the `ati` package.**
+  DirectDraw fills and copies run on the chip's Radeon 2D engine, with
+  page flips. Direct3D draws on its R300-class 3D core by register
+  writes, at 16 and 32 bpp with a 16-bit depth buffer and one texture
+  stage, covering:
+  - blending, alpha test and specular;
+  - vertex fog;
+  - the DECALALPHA and ADD blends;
+  - colour keys on RGB565 textures;
+  - mipmaps.
+
+  Each was measured in a register probe before the driver used it.
+  Measured on one tester's machine through remote help (Win98 SE,
+  1.5 GHz Sempron):
+  - the desktop, mode switching, DirectDraw and the OpenGL probe pass at
+    1024x768x16 and 1280x1024x32;
+  - the Rollcage demo races with nothing refused;
+  - 3DMark 2000 scores 1781, where the CPU renderer scored 7.
+
+  Texture memory is limited to 16 MiB of the chip's 128 MiB.
+  ([checks](docs/decisions/2026-11-06-rs690-0.37.0-checks.md),
+  [3DMark 2000](docs/decisions/2026-11-06-rs690-dx8-3dmark2000.md),
+  [Rollcage](docs/decisions/2026-11-06-rs690-rollcage-and-idle-wait.md),
+  [plan](docs/plans/ati-rs690-x1200.md)).
+
+  **Known issues on the X1200:**
+  - **Glide and 3DCIF draw nothing.** Clears and flips work, but no
+    triangle is drawn. Under the `vbe` package both run on the CPU, so
+    keep that package for Glide games on this chip.
+  - **3DMark 2000's first game test tints some distant hillside
+    triangles salmon-red**
+    ([issue](docs/issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)).
+
+  Not run: a DOS box, a game at 32 bpp, and the screen by eye.
+
+- **Known issue, NVIDIA RIVA 128ZX: the Glide 2 probe draws no triangles
+  on this release.** It failed 14 checks, against 1 on the development
+  build the tester's card ran before. Whether 0.36.0 does the same is not
+  known
+  ([issue](docs/issues/2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md)).
+  Direct3D and the OpenGL probe are unchanged.
+
+Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
+`vbe` machine ran the probes on this build
+([record](docs/decisions/2026-11-06-0.37.0-release-checks.md)).
 
 ## 0.36.0 - 2026-11-06
 
