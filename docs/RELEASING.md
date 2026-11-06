@@ -85,16 +85,20 @@ It rebuilds the four probes with the packages' build id, then on every
 machine at once installs the machine's family package by WININIT renames
 and `reset`, checks each installed file's hash, and runs V9XD32 (once per
 switch the list gives), V9XGLP, V9XGLIDP and V9XR3DP. The evidence goes to
-`docs/probe/<version>-release-checks-<date>/`, one folder per machine, with
-`SUMMARY.md`: the install table, the results table, and every verdict that
-changed since the previous release's checks folder. Add `-ThreeDMark` for a
-grabbed 3DMark 2000 run where the list gives the input sequence, and
-`-Baseline` first if the drivers the machines have now should be recorded.
+`docs/probe/<version>-release-checks-<date>/`, one folder per machine, and
+the record to `docs/decisions/<date>-<version>-release-checks.md` (never
+over an existing one): status, builds, results, every verdict that changed
+since the previous release's checks folder, and what was not covered. Add
+`-ThreeDMark` for a grabbed 3DMark 2000 run where the list gives the input
+sequence, and `-Baseline` first if the drivers the machines have now should
+be recorded (`-baseline` record).
+
+Finish the record by hand only where it says `TODO`: whether this release
+caused each change, with the evidence. `-SummaryOnly` rewrites it from the
+evidence folder after a machine is rerun (move the old one aside first).
 
 The machine list names hosts and remote-help machines, so it is kept
-outside this repository (`V9X_RELEASE_MACHINES` can name it). Write the
-release-checks record in `docs/decisions/` from `SUMMARY.md`, explaining
-each change it lists.
+outside this repository (`V9X_RELEASE_MACHINES` can name it).
 
 ## 3. Build the release folder
 
