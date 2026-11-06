@@ -28,7 +28,14 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.35.0.** It adds the AMD Radeon HD 7660D (Trinity,
+**Current version: 0.36.0.** It adds the Intel HD Graphics 4000 mobile
+(Ivy Bridge, `8086:0166`) with its laptop panel, measured on one tester's
+Lenovo laptop, and stops 3DMark 2000 locking the HD 4000 in its first game
+test. On a physical S3 ViRGE/DX, the first time its Direct3D has run on
+silicon: mipmapped textures are filtered again, Glide's 16-bit textures
+are drawn, and a fill straight after 3D no longer leaves stray pixels. The
+Trio64V2's black is now black, and the Trio32/64 hide the modes their
+VESA 1.2 BIOS lacks. From 0.35.0: the AMD Radeon HD 7660D (Trinity,
 `1002:9901`) to the `ati` package: DirectDraw on the DMA engine, page
 flips, and Direct3D and OpenGL on the 3D engine through AMD's `ARUBA`
 microcode, measured on one tester's machine. A new `nvidia` package runs
@@ -75,7 +82,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.35.0](releases/0.35.0/README.md).
+[releases/0.36.0](releases/0.36.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -114,7 +121,8 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
-| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
+| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
+| Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
@@ -171,6 +179,7 @@ from the records the [changelog](CHANGELOG.md) links.
 |---|---|---|---|---|---|---|---|
 | Intel HD Graphics 4600 | DirectDraw | Yes | Yes, with pixel shader 1.1 (0.34.0) | Yes | Yes | Probe only, no game | No (0.19.0) |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
+| Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
 | Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
@@ -227,7 +236,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 
 | Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
 |---|---|---|---|
-| Intel HD Graphics 4600 (i5-4570) | 137.8 fps (windowed) | not run; Half-Life `-gl` 174.3 fps (windowed); Quake 3 `demo001` 57.0 fps | 0.35.0 |
+| Intel HD Graphics 4600 (i5-4570) | 137.6 fps (windowed) | not run; Half-Life `-gl` 174.4 fps (windowed); Quake 3 `demo001` 56.9 fps | 0.36.0 |
 | AMD Radeon HD 5450 | not run | not run; Quake 3 `demo001` 63.6 fps | 0.32.0 |
 | AMD Radeon R7E (Carrizo, GX-420GI) | not run | not run; Quake 3 `demo001` 21.3 fps | 0.33.0 |
 | AMD Radeon HD 7470 (A10-5700) | not run | not run; Quake 3 `demo001` 34.6 fps | 0.34.0 build |

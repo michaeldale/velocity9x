@@ -4,7 +4,26 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.36.0 - not yet released
+## 0.36.0 - 2026-11-06
+
+- **Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`) on the
+  `intel-gma` package**, as the desktop HD 4000's (`8086:0162`) path. Its
+  laptop panel (LVDS, 1366x768) runs on pipe A behind the panel fitter,
+  which scales the smaller modes to the panel. Measured on one tester's
+  Lenovo laptop (i7-3632QM) through remote help: DirectDraw and page flips,
+  Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2
+  probes, and 3DMark 2000. Its NVIDIA GeForce (Optimus) is left alone. Not
+  run: a DOS box, the panel by eye
+  ([record](docs/decisions/2026-11-05-w9qi75e0-ivb-mobile-intel-gma.md)).
+
+- **Ivy Bridge (HD 4000): 3DMark 2000 no longer locks the machine in its
+  first game test.** Drawing two textures in one pass, which the HD 4600
+  does, hard-locked the HD 4000 mobile about a minute into the Helicopter
+  test. Ivy Bridge now draws one texture stage per pass, as it did before
+  0.30.0; the default benchmark then completes. Measured on the HD 4000
+  mobile; the desktop HD 4000 shares the change and has not run it. Which
+  stage pairing hangs is not known
+  ([issue](docs/issues/2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)).
 
 - **S3 ViRGE/DX, Trio3D and Trio3D/2X: mipmapped textures with bilinear
   filtering are filtered again.** Two of the chip's filter modes had each
