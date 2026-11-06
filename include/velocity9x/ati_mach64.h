@@ -52,6 +52,9 @@
 /* AMD Carrizo (Radeon R7E, GCN 3), the GX-420GI's GPU: tier-0 with no
  * hook; see carrizo_hw16.c. */
 #define V9X_PCI_DEVICE_CARRIZO_9874     ((v9x_u16)0x9874u)
+/* The Radeon X1200 IGP (RS690): the Radeon 2D engine behind DirectDraw;
+ * see rs690_hw16.c. */
+#define V9X_PCI_DEVICE_RS690_791F       ((v9x_u16)0x791Fu)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

@@ -552,6 +552,55 @@
             }
             MapSymbols = @('v9x_vi_carrizo_device')
         }
+        @{
+            Id = 'rs690'
+            Name = 'ATI Radeon X1200 (RS690)'
+            VendorId = '1002'
+            DeviceId = '791F'
+            # No SubsystemId: M-GB8KRE's reads 053A:1002, and the bare id
+            # binds every board built on the chipset.
+            DeviceDesc = 'Velocity9x ATI Radeon X1200 (RS690)'
+            Adapter = 'ATI Radeon X1200 (RS690)'
+            ClockDetector = 'ati-rs690-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # The Radeon 2D engine, driven by direct register writes with the
+            # CP's queues off. DirectDraw fill and copy on it, its builder
+            # values measured byte-exact at 8, 16 and 32 bpp on this chip
+            # (docs\decisions\2026-11-04-rs690-2d-write-probe.md); the rest
+            # is drawn by the CPU (docs\plans\ati-rs690-x1200.md).
+            Acceleration = 'directdraw-fill-copy'
+            # The R300-class 3D core by register writes, no CP: its state
+            # and TL vertices drawn as modelled at 16 and 32 bpp on this chip
+            # (docs\decisions\2026-11-05-rs690-z-blend-probe.md).
+            Direct3D = 'hardware-rs690-pio'
+            EngineType = 'ATI_RS690'
+            # FLIP: D1GRPH (docs\decisions\2026-11-05-rs690-flips.md).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            # What M-GB8KRE's VBE 4F00h reports; the carve-out is 128 MiB.
+            # The heap sizes from 4F00h, clamped to the family's 16 MiB
+            # mapping.
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c); M-GB8KRE's BIOS lists all seven
+            # (V9XBOOT.INI, boot 6).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('rs690_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_rs690_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -606,6 +655,7 @@
             @{ Name = 'rage128_hw16'; Path = 'src\chipsets\ati\rage128\rage128_hw16.c' }
             @{ Name = 'cedar_hw16'; Path = 'src\chipsets\ati\evergreen\cedar_hw16.c' }
             @{ Name = 'carrizo_hw16'; Path = 'src\chipsets\ati\vi\carrizo_hw16.c' }
+            @{ Name = 'rs690_hw16'; Path = 'src\chipsets\ati\rs690\rs690_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -619,9 +669,12 @@
             # runtime symbols it calls are declared.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        Defines = @()
+        # Temporary, branch ati-rs690 only: every boot stage committed to
+        # C:\V9XDIAG\V9XTRAIL.TXT while the RS690 black screen is open
+        # (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
+        Defines = @('V9X_DURABLE_TRAIL')
         # runtime.asm's BAR2 read and mini-VDD map for the Mobility engine.
-        RuntimeDefines = @('V9X_ATI_FAMILY')
+        RuntimeDefines = @('V9X_ATI_FAMILY', 'V9X_DURABLE_TRAIL')
         SkeletonOutput = 'build\win16-ddi-ati'
         PackageOutput = 'build\win98se-ati'
         VmStageDirectory = 'build\vm-probe\ATI'
@@ -731,6 +784,10 @@
             }
             @{
                 ChipId = 'carrizo'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rs690'
                 Emulator = 'none'
             }
         )

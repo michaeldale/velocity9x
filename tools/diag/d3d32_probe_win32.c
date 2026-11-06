@@ -42,6 +42,13 @@
  *   T8 sloped depth: two quads whose z runs in opposite directions across
  *      the same pixels, once along x and once along y, must cross at the
  *      centre.
+ *   T20 DX5 render states the others leave alone: vertex fog (full and
+ *      half), the ADD and DECALALPHA texture blends, and a source colour
+ *      key on an RGB565 texture, each at its quadrant centres within 8
+ *      (d32_t20_draw); only the parts the HAL's caps advertise count.
+ *   T21 a six-level RGB565 mip chain, each level its own colour, drawn
+ *      MIPNEAREST at four sizes: each quad the level its size selects
+ *      (d32_t21_draw); counted only when MIPNEAREST is advertised.
  *   T11 culling by every submit form the DX5 device has - a triangle list,
  *      an indexed list, a strip (its odd triangle's swap), a fan, an
  *      indexed strip and an indexed list over 260 vertices - each under
@@ -146,6 +153,13 @@
 #define D3DRENDERSTATE_ALPHABLENDENABLE 27ul
 #define D3DFILTER_NEAREST 1ul
 #define D3DTBLEND_DECAL 1ul
+#define D3DTBLEND_DECALALPHA 3ul
+#define D3DTBLEND_ADD 8ul
+#define D3DRENDERSTATE_FOGENABLE 28ul
+#define D3DRENDERSTATE_FOGCOLOR 34ul
+#define D3DRENDERSTATE_COLORKEYENABLE 41ul
+#define DDCKEY_SRCBLT 0x00000008ul
+#define DDS_SET_COLOR_KEY 29
 #define D3DBLEND_SRCALPHA 5ul
 #define D3DBLEND_INVSRCALPHA 6ul
 #define DDSD_PIXELFORMAT 0x00001000ul
@@ -250,6 +264,18 @@ typedef struct d32_object { void **vtbl; } D32_OBJECT;
 #define D3DDESC_TRI_MISC_CAPS 26
 #define D3DPMISCCAPS_CULLCW 0x00000020ul
 #define D3DPMISCCAPS_CULLCCW 0x00000040ul
+/* The rest of dpcTriCaps that T20 and T21 need: dwRasterCaps,
+ * dwTextureCaps, dwTextureFilterCaps and dwTextureBlendCaps follow
+ * dwMiscCaps at 1, 7, 8 and 9 DWORDs on (D3DPRIMCAPS in d3dcaps.h). */
+#define D3DDESC_TRI_RASTER_CAPS 27
+#define D3DDESC_TRI_TEXTURE_CAPS 33
+#define D3DDESC_TRI_FILTER_CAPS 34
+#define D3DDESC_TRI_BLEND_CAPS 35
+#define D3DPRASTERCAPS_FOGVERTEX 0x00000080ul
+#define D3DPTEXTURECAPS_TRANSPARENCY 0x00000008ul
+#define D3DPTFILTERCAPS_MIPNEAREST 0x00000004ul
+#define D3DPTBLENDCAPS_DECALALPHA 0x00000004ul
+#define D3DPTBLENDCAPS_ADD 0x00000080ul
 
 typedef HRESULT (WINAPI *d32_create_fn)(void *, D32_OBJECT **, void *);
 typedef ULONG (WINAPI *d32_release_fn)(D32_OBJECT *);
@@ -318,6 +344,14 @@ static DWORD d32_tolerance;
  * culling direction does not cull it (Direct3D leaves culling to the
  * driver), so T9 and T11 expect such triangles drawn, not gone. */
 static DWORD d32_tri_misc_caps;
+/* The HAL device's triangle raster, texture, filter and blend caps. T20
+ * and T21 judge only what the device advertises: a device that does not
+ * publish vertex fog, a blend, colour keying or mip filtering is not
+ * failed for drawing without it. */
+static DWORD d32_tri_raster_caps;
+static DWORD d32_tri_texture_caps;
+static DWORD d32_tri_filter_caps;
+static DWORD d32_tri_blend_caps;
 
 static void d32_hex(char *text, DWORD value)
 {
@@ -513,6 +547,10 @@ typedef struct d32_enum_result {
     DWORD render_depth;
     DWORD z_depth;
     DWORD tri_misc_caps;
+    DWORD tri_raster_caps;
+    DWORD tri_texture_caps;
+    DWORD tri_filter_caps;
+    DWORD tri_blend_caps;
 } D32_ENUM_RESULT;
 
 static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
@@ -530,6 +568,10 @@ static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
         result->render_depth = hardware[D3DDESC_RENDER_DEPTH];
         result->z_depth = hardware[D3DDESC_Z_DEPTH];
         result->tri_misc_caps = hardware[D3DDESC_TRI_MISC_CAPS];
+        result->tri_raster_caps = hardware[D3DDESC_TRI_RASTER_CAPS];
+        result->tri_texture_caps = hardware[D3DDESC_TRI_TEXTURE_CAPS];
+        result->tri_filter_caps = hardware[D3DDESC_TRI_FILTER_CAPS];
+        result->tri_blend_caps = hardware[D3DDESC_TRI_BLEND_CAPS];
     }
     return 1;   /* D3DENUMRET_OK */
 }
@@ -1312,12 +1354,14 @@ static void d32_zstats(D32_OBJECT *zbuffer, DWORD zbits, const char *prefix)
     ((d32_unlock_fn)zbuffer->vtbl[DDS_UNLOCK])(zbuffer, desc.lpSurface);
 }
 
-/* An 8x8 ARGB1555 texture in video memory, its four 4x4 quadrants the
- * given texels (top left, top right, bottom left, bottom right); null when
- * it could not be made. <prefix>CreateHr and LockHr are recorded. */
-static D32_OBJECT *d32_texture_surface(D32_OBJECT *ddraw,
-                                       const WORD quadrant[4],
-                                       const char *prefix)
+/* An 8x8 ARGB1555 texture in video memory (RGB565 with rgb565), its four
+ * 4x4 quadrants the given texels (top left, top right, bottom left, bottom
+ * right); null when it could not be made. <prefix>CreateHr and LockHr are
+ * recorded. */
+static D32_OBJECT *d32_texture_surface_format(D32_OBJECT *ddraw,
+                                              const WORD quadrant[4],
+                                              const char *prefix,
+                                              int rgb565)
 {
     D32_SURFACE_DESC desc;
     D32_OBJECT *surface = 0;
@@ -1338,6 +1382,13 @@ static D32_OBJECT *d32_texture_surface(D32_OBJECT *ddraw,
     desc.ddpfPixelFormat[5] = 0x000003e0ul;
     desc.ddpfPixelFormat[6] = 0x0000001ful;
     desc.ddpfPixelFormat[7] = 0x00008000ul;
+    if (rgb565) {
+        desc.ddpfPixelFormat[1] = DDPF_RGB;
+        desc.ddpfPixelFormat[4] = 0x0000f800ul;
+        desc.ddpfPixelFormat[5] = 0x000007e0ul;
+        desc.ddpfPixelFormat[6] = 0x0000001ful;
+        desc.ddpfPixelFormat[7] = 0ul;
+    }
     desc.ddsCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
     hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
         ddraw, &desc, &surface, 0);
@@ -1367,6 +1418,38 @@ static D32_OBJECT *d32_texture_surface(D32_OBJECT *ddraw,
     return surface;
 }
 
+static D32_OBJECT *d32_texture_surface(D32_OBJECT *ddraw,
+                                       const WORD quadrant[4],
+                                       const char *prefix)
+{
+    return d32_texture_surface_format(ddraw, quadrant, prefix, 0);
+}
+
+/* A texture surface's DX5 handle for device, 0 when it has none;
+ * <prefix>HandleHr is recorded. */
+static DWORD d32_handle_of(D32_OBJECT *surface, D32_OBJECT *device,
+                           const char *prefix)
+{
+    D32_OBJECT *texture = 0;
+    DWORD handle = 0ul;
+    HRESULT hr;
+    char key[32];
+
+    if (surface == 0) {
+        return 0ul;
+    }
+    hr = ((d32_query_fn)surface->vtbl[COM_QUERY_INTERFACE])(
+        surface, &d32_iid_d3d_texture2, (void **)&texture);
+    if (hr == 0 && texture != 0) {
+        hr = ((d32_texture_handle_fn)texture->vtbl[D3DTEX2_GET_HANDLE])(
+            texture, device, &handle);
+        ((d32_release_fn)texture->vtbl[COM_RELEASE])(texture);
+    }
+    wsprintfA(key, "%sHandleHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    return hr == 0 ? handle : 0ul;
+}
+
 /* T6's texture: red, green, blue and white quadrants, and its DX5 handle
  * for device. */
 static const WORD d32_quadrants[4] = { 0xfc00u, 0x83e0u, 0x801fu, 0xffffu };
@@ -1394,6 +1477,362 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
     d32_hx("T6HandleHr", (DWORD)hr);
     d32_hx("T6Handle", handle);
     return hr == 0 ? handle : 0ul;
+}
+
+/*
+ * T20: DX5 render states a DDI 5 device reaches and the earlier tests do
+ * not - vertex fog, the ADD and DECALALPHA texture blends and a source
+ * colour key - each a 48x48 quad in the band y 96-143, judged at its
+ * quadrant centres within 8 (one 16 bpp step widened, as T6):
+ *
+ *   FogFull  x 8:   red, fog on, colour blue, every specular alpha 0 - blue.
+ *   FogHalf  x 64:  the same at specular alpha 80h - red and blue each
+ *                   about half (80h, 7Fh).
+ *   Add      x 120: T6's quadrant texture, ADD over a diffuse of 004040h -
+ *                   red + diffuse FF4040h top left, blue + diffuse 0040FFh
+ *                   bottom left.
+ *   DecalAlpha x 176: an ARGB1555 texture whose left quadrants have alpha
+ *                   0 (red over green) and right ones alpha 1 (red over
+ *                   green), DECALALPHA over a blue diffuse - blue on the
+ *                   left, the texels on the right.
+ *   ColorKey x 232: an RGB565 quadrant texture keyed on its green, DECAL,
+ *                   over a grey quad drawn first - grey where green was,
+ *                   the other three texels.
+ *
+ * A device that refuses one of these draws leaves the band's clear colour
+ * there, which fails.
+ */
+#define D32_T20_TOP 96.0f
+#define D32_T20_SIZE 48.0f
+
+typedef HRESULT (WINAPI *d32_set_color_key_fn)(D32_OBJECT *, DWORD,
+                                               DWORD *);
+
+static const WORD d32_t20_decal_alpha[4] = { 0x7c00u, 0xfc00u,
+                                             0x03e0u, 0x83e0u };
+static const WORD d32_t20_keyed[4] = { 0xf800u, 0x07e0u,
+                                       0x001fu, 0xffffu };
+
+static void d32_t20_quad(D32_TLVERTEX *v, float x, DWORD colour,
+                         DWORD specular)
+{
+    DWORD index;
+
+    d32_vertex(&v[0], x, D32_T20_TOP, 0.5f, colour);
+    d32_vertex(&v[1], x + D32_T20_SIZE, D32_T20_TOP, 0.5f, colour);
+    d32_vertex(&v[2], x, D32_T20_TOP + D32_T20_SIZE, 0.5f, colour);
+    d32_vertex(&v[3], x + D32_T20_SIZE, D32_T20_TOP, 0.5f, colour);
+    d32_vertex(&v[4], x + D32_T20_SIZE, D32_T20_TOP + D32_T20_SIZE, 0.5f,
+               colour);
+    d32_vertex(&v[5], x, D32_T20_TOP + D32_T20_SIZE, 0.5f, colour);
+    v[1].tu = 1.0f;
+    v[2].tv = 1.0f;
+    v[3].tu = 1.0f;
+    v[4].tu = 1.0f;
+    v[4].tv = 1.0f;
+    v[5].tv = 1.0f;
+    for (index = 0ul; index < 6ul; ++index) {
+        v[index].specular = specular;
+    }
+}
+
+/* Draws T20 into the scene; surfaces[0..1] receive its textures for the
+ * caller to release. t6_handle is T6's texture, 0 when it had none. */
+static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
+                         DWORD t6_handle, D32_OBJECT *surfaces[2])
+{
+    D32_TLVERTEX v[6];
+    DWORD handle;
+    DWORD key[2];
+
+    d32_line("Stage", "8e-t20-dx5-states");
+
+    /* Fog: vertex fog by the specular alpha, table fog off. */
+    d32_state(device, D3DRENDERSTATE_FOGENABLE, 1ul);
+    d32_state(device, D3DRENDERSTATE_FOGCOLOR, 0x000000fful);
+    d32_t20_quad(v, 8.0f, 0xffff0000ul, 0x00000000ul);
+    d32_hx("T20FogFullHr", (DWORD)d32_draw(device, v, 6ul));
+    d32_t20_quad(v, 64.0f, 0xffff0000ul, 0x80000000ul);
+    d32_hx("T20FogHalfHr", (DWORD)d32_draw(device, v, 6ul));
+    d32_state(device, D3DRENDERSTATE_FOGENABLE, 0ul);
+
+    d32_state(device, D3DRENDERSTATE_TEXTUREMAG, D3DFILTER_NEAREST);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_NEAREST);
+
+    /* ADD on T6's texture. */
+    if (t6_handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, t6_handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_ADD);
+        d32_t20_quad(v, 120.0f, 0xff004040ul, 0ul);
+        d32_hx("T20AddHr", (DWORD)d32_draw(device, v, 6ul));
+    }
+
+    /* DECALALPHA over a blue diffuse. */
+    surfaces[0] = d32_texture_surface(ddraw, d32_t20_decal_alpha,
+                                      "T20DecalAlpha");
+    handle = d32_handle_of(surfaces[0], device, "T20DecalAlpha");
+    if (handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND,
+                  D3DTBLEND_DECALALPHA);
+        d32_t20_quad(v, 176.0f, 0xff0000fful, 0ul);
+        d32_hx("T20DecalAlphaHr", (DWORD)d32_draw(device, v, 6ul));
+    }
+
+    /* The colour key: grey first, untextured, then the keyed texture. */
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    d32_t20_quad(v, 232.0f, 0xff808080ul, 0ul);
+    d32_hx("T20KeyBackHr", (DWORD)d32_draw(device, v, 6ul));
+    surfaces[1] = d32_texture_surface_format(ddraw, d32_t20_keyed,
+                                             "T20ColorKey", 1);
+    if (surfaces[1] != 0) {
+        key[0] = 0x000007e0ul;
+        key[1] = 0x000007e0ul;
+        d32_hx("T20SetColorKeyHr",
+               (DWORD)((d32_set_color_key_fn)
+                       surfaces[1]->vtbl[DDS_SET_COLOR_KEY])(
+                   surfaces[1], DDCKEY_SRCBLT, key));
+    }
+    handle = d32_handle_of(surfaces[1], device, "T20ColorKey");
+    if (handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+        d32_state(device, D3DRENDERSTATE_COLORKEYENABLE, 1ul);
+        d32_t20_quad(v, 232.0f, 0xfffffffful, 0ul);
+        d32_hx("T20ColorKeyHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_COLORKEYENABLE, 0ul);
+    }
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+}
+
+/* One judged point: published, and 1 when within 8 of rgb. */
+static DWORD d32_t20_point(const D32_SURFACE_DESC *desc, const char *name,
+                           DWORD x, DWORD y, DWORD rgb)
+{
+    char key[40];
+    DWORD pixel = d32_pixel(desc, x, y);
+
+    wsprintfA(key, "T20%s", name);
+    d32_hx(key, pixel);
+    return d32_near(pixel, rgb, 8ul) ? 1ul : 0ul;
+}
+
+/* T20's judgement; returns 1 when any point is wrong. */
+static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
+{
+    DWORD ok = 0ul;
+    DWORD expected = 0ul;
+
+    ok |= d32_t20_point(desc, "FogFull", 32ul, 120ul, 0x000000fful);
+    ok |= d32_t20_point(desc, "FogHalf", 88ul, 120ul, 0x0080007ful) << 1;
+    ok |= d32_t20_point(desc, "AddRed", 132ul, 108ul, 0x00ff4040ul) << 2;
+    ok |= d32_t20_point(desc, "AddBlue", 132ul, 132ul, 0x000040fful) << 3;
+    ok |= d32_t20_point(desc, "DecalAlpha0", 188ul, 108ul, 0x000000fful) << 4;
+    ok |= d32_t20_point(desc, "DecalAlpha1", 212ul, 108ul, 0x00ff0000ul) << 5;
+    ok |= d32_t20_point(desc, "DecalAlphaG0", 188ul, 132ul, 0x000000fful)
+          << 6;
+    ok |= d32_t20_point(desc, "DecalAlphaG1", 212ul, 132ul, 0x0000ff00ul)
+          << 7;
+    ok |= d32_t20_point(desc, "KeyRed", 244ul, 108ul, 0x00ff0000ul) << 8;
+    ok |= d32_t20_point(desc, "KeyGone", 268ul, 108ul, 0x00808080ul) << 9;
+    ok |= d32_t20_point(desc, "KeyBlue", 244ul, 132ul, 0x000000fful) << 10;
+    ok |= d32_t20_point(desc, "KeyWhite", 268ul, 132ul, 0x00fffffful) << 11;
+    d32_hx("T20Ok", ok);
+
+    /* Only the parts the device advertises count: fog bits 0-1, ADD 2-3,
+     * DECALALPHA 4-7, the colour key 8-11. T20Ok still shows them all. */
+    if ((d32_tri_raster_caps & D3DPRASTERCAPS_FOGVERTEX) != 0ul) {
+        expected |= 0x003ul;
+    }
+    if ((d32_tri_blend_caps & D3DPTBLENDCAPS_ADD) != 0ul) {
+        expected |= 0x00cul;
+    }
+    if ((d32_tri_blend_caps & D3DPTBLENDCAPS_DECALALPHA) != 0ul) {
+        expected |= 0x0f0ul;
+    }
+    if ((d32_tri_texture_caps & D3DPTEXTURECAPS_TRANSPARENCY) != 0ul) {
+        expected |= 0xf00ul;
+    }
+    d32_hx("T20Expected", expected);
+    return (ok & expected) != expected ? 1ul : 0ul;
+}
+
+/*
+ * T21: a mipmapped texture through DX5. A 32x32 RGB565 texture created
+ * with DDSCAPS_MIPMAP | DDSCAPS_COMPLEX and six levels, each level filled
+ * with a colour of its own (red, green, blue, white, yellow, cyan) by
+ * walking the mipmap attachments, drawn MIPNEAREST (nearest within and
+ * between levels) as quads 32, 16, 8 and 4 pixels square at x 8, 48, 72
+ * and 88 in the band y 160-191: each quad is the level its size selects,
+ * its centre within 8 of that level's colour. A device that samples only
+ * the base draws red everywhere and fails.
+ */
+#define DDSD_MIPMAPCOUNT 0x00020000ul
+#define DDSCAPS_MIPMAP 0x00400000ul
+#define D3DFILTER_MIPNEAREST 3ul
+#define D32_T21_LEVELS 6ul
+#define D32_T21_DRAWN 4ul
+#define D32_T21_TOP 160.0f
+
+static const WORD d32_t21_colours[D32_T21_LEVELS] = {
+    0xf800u, 0x07e0u, 0x001fu, 0xffffu, 0xffe0u, 0x07ffu
+};
+static const DWORD d32_t21_rgb[D32_T21_DRAWN] = {
+    0x00ff0000ul, 0x0000ff00ul, 0x000000fful, 0x00fffffful
+};
+static const DWORD d32_t21_left[D32_T21_DRAWN] = { 8ul, 48ul, 72ul, 88ul };
+
+/* The chain: created, every level filled; null when any step fails. */
+static D32_OBJECT *d32_t21_texture(D32_OBJECT *ddraw)
+{
+    D32_SURFACE_DESC desc;
+    D32_OBJECT *surface = 0;
+    D32_OBJECT *level;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD caps;
+    HRESULT hr;
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT |
+                   DDSD_MIPMAPCOUNT;
+    desc.dwWidth = 32ul;
+    desc.dwHeight = 32ul;
+    desc.dwMipMapCount = D32_T21_LEVELS;
+    desc.ddpfPixelFormat[0] = 32ul;
+    desc.ddpfPixelFormat[1] = DDPF_RGB;
+    desc.ddpfPixelFormat[3] = 16ul;
+    desc.ddpfPixelFormat[4] = 0x0000f800ul;
+    desc.ddpfPixelFormat[5] = 0x000007e0ul;
+    desc.ddpfPixelFormat[6] = 0x0000001ful;
+    desc.ddsCaps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP | DDSCAPS_COMPLEX |
+                   DDSCAPS_VIDEOMEMORY;
+    hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+        ddraw, &desc, &surface, 0);
+    d32_hx("T21CreateHr", (DWORD)hr);
+    if (hr != 0 || surface == 0) {
+        return 0;
+    }
+
+    level = surface;
+    for (index = 0ul; index < D32_T21_LEVELS; ++index) {
+        D32_OBJECT *next = 0;
+
+        d32_zero(&desc, sizeof(desc));
+        desc.dwSize = sizeof(desc);
+        hr = ((d32_lock_fn)level->vtbl[DDS_LOCK])(level, 0, &desc,
+                                                  DDLOCK_WAIT, 0);
+        if (hr != 0 || desc.lpSurface == 0) {
+            d32_hx("T21LockHr", (DWORD)hr);
+            d32_hx("T21LockLevel", index);
+            break;
+        }
+        for (y = 0ul; y < desc.dwHeight; ++y) {
+            WORD *row = (WORD *)((BYTE *)desc.lpSurface +
+                                 y * (DWORD)desc.lPitch);
+
+            for (x = 0ul; x < desc.dwWidth; ++x) {
+                row[x] = d32_t21_colours[index];
+            }
+        }
+        ((d32_unlock_fn)level->vtbl[DDS_UNLOCK])(level, desc.lpSurface);
+        if (index + 1ul == D32_T21_LEVELS) {
+            ++index;
+            break;
+        }
+        caps = DDSCAPS_TEXTURE | DDSCAPS_MIPMAP;
+        hr = ((d32_get_attached_fn)level->vtbl[DDS_GET_ATTACHED_SURFACE])(
+            level, &caps, &next);
+        if (level != surface) {
+            ((d32_release_fn)level->vtbl[COM_RELEASE])(level);
+        }
+        if (hr != 0 || next == 0) {
+            d32_hx("T21AttachHr", (DWORD)hr);
+            level = surface;
+            break;
+        }
+        level = next;
+    }
+    if (level != surface) {
+        ((d32_release_fn)level->vtbl[COM_RELEASE])(level);
+    }
+    d32_hx("T21LevelsFilled", index);
+    if (index != D32_T21_LEVELS) {
+        ((d32_release_fn)surface->vtbl[COM_RELEASE])(surface);
+        return 0;
+    }
+    return surface;
+}
+
+static void d32_t21_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
+                         D32_OBJECT **surface_out)
+{
+    D32_TLVERTEX v[6];
+    DWORD handle;
+    DWORD quad;
+
+    d32_line("Stage", "8e2-t21-mipmaps");
+    *surface_out = d32_t21_texture(ddraw);
+    handle = d32_handle_of(*surface_out, device, "T21");
+    if (handle == 0ul) {
+        return;
+    }
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMAG, D3DFILTER_NEAREST);
+    d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_MIPNEAREST);
+    for (quad = 0ul; quad < D32_T21_DRAWN; ++quad) {
+        float x0 = (float)d32_t21_left[quad];
+        float size = (float)(32ul >> quad);
+
+        d32_vertex(&v[0], x0, D32_T21_TOP, 0.5f, 0xfffffffful);
+        d32_vertex(&v[1], x0 + size, D32_T21_TOP, 0.5f, 0xfffffffful);
+        d32_vertex(&v[2], x0, D32_T21_TOP + size, 0.5f, 0xfffffffful);
+        d32_vertex(&v[3], x0 + size, D32_T21_TOP, 0.5f, 0xfffffffful);
+        d32_vertex(&v[4], x0 + size, D32_T21_TOP + size, 0.5f, 0xfffffffful);
+        d32_vertex(&v[5], x0, D32_T21_TOP + size, 0.5f, 0xfffffffful);
+        v[1].tu = 1.0f;
+        v[2].tv = 1.0f;
+        v[3].tu = 1.0f;
+        v[4].tu = 1.0f;
+        v[4].tv = 1.0f;
+        v[5].tv = 1.0f;
+        d32_hx("T21DrawHr", (DWORD)d32_draw(device, v, 6ul));
+    }
+    d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_NEAREST);
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+}
+
+/* T21's judgement; 1 when any quad is not its level. */
+static DWORD d32_t21_judge(const D32_SURFACE_DESC *desc)
+{
+    DWORD ok = 0ul;
+    DWORD quad;
+    char key[24];
+
+    for (quad = 0ul; quad < D32_T21_DRAWN; ++quad) {
+        DWORD centre = (32ul >> quad) / 2ul;
+        DWORD pixel = d32_pixel(desc, d32_t21_left[quad] + centre,
+                                160ul + centre);
+
+        wsprintfA(key, "T21Level%lu", quad);
+        d32_hx(key, pixel);
+        if (d32_near(pixel, d32_t21_rgb[quad], 8ul)) {
+            ok |= 1ul << quad;
+        }
+    }
+    d32_hx("T21Ok", ok);
+
+    /* A device that advertises no mip filtering may sample the base
+     * alone; T21 counts only where MIPNEAREST is published. */
+    if ((d32_tri_filter_caps & D3DPTFILTERCAPS_MIPNEAREST) == 0ul) {
+        d32_line("T21Result", "SKIP-NO-MIP-CAPS");
+        return 0ul;
+    }
+    return ok != 0xful ? 1ul : 0ul;
 }
 
 static int d32_dominant(DWORD pixel, int channel)
@@ -5777,6 +6216,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_OBJECT *device = 0;
     D32_OBJECT *device2 = 0;
     D32_OBJECT *texture_surface = 0;
+    D32_OBJECT *t20_surfaces[2] = { 0, 0 };
+    D32_OBJECT *t21_surface = 0;
     DWORD handle = 0ul;
     D32_SURFACE_DESC desc;
     D32_ENUM_RESULT enumerated;
@@ -5927,6 +6368,14 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_hx("HalZDepth", enumerated.z_depth);
     d32_hx("HalTriMiscCaps", enumerated.tri_misc_caps);
     d32_tri_misc_caps = enumerated.tri_misc_caps;
+    d32_hx("HalTriRasterCaps", enumerated.tri_raster_caps);
+    d32_hx("HalTriTextureCaps", enumerated.tri_texture_caps);
+    d32_hx("HalTriFilterCaps", enumerated.tri_filter_caps);
+    d32_hx("HalTriBlendCaps", enumerated.tri_blend_caps);
+    d32_tri_raster_caps = enumerated.tri_raster_caps;
+    d32_tri_texture_caps = enumerated.tri_texture_caps;
+    d32_tri_filter_caps = enumerated.tri_filter_caps;
+    d32_tri_blend_caps = enumerated.tri_blend_caps;
     if (enumerated.hal_found == 0ul ||
         (enumerated.render_depth & (bpp == 32ul ? DDBD_32 : DDBD_16)) ==
             0ul) {
@@ -6175,6 +6624,9 @@ void WINAPI V9xD3d32ProbeEntry(void)
     }
     d32_hx("T7BlendHr", (DWORD)d32_draw(device, v, 6ul));
     d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+
+    d32_t20_draw(ddraw, device, handle, t20_surfaces);
+    d32_t21_draw(ddraw, device, &t21_surface);
 
     /* T9: DrawIndexedPrimitive under Direct3D's default culling (CCW).
      * With screen y down, a triangle whose (v1-v0) x (v2-v0) is positive
@@ -6453,6 +6905,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
         }
         d32_hx("T7Ok", caps);
         failures += caps != 1ul ? 1ul : 0ul;
+        failures += d32_t20_judge(&desc);
+        failures += d32_t21_judge(&desc);
         ((d32_unlock_fn)back->vtbl[DDS_UNLOCK])(back, desc.lpSurface);
     } else {
         ++failures;
@@ -6636,6 +7090,17 @@ void WINAPI V9xD3d32ProbeEntry(void)
     if (texture_surface != 0) {
         ((d32_release_fn)texture_surface->vtbl[COM_RELEASE])(
             texture_surface);
+    }
+    if (t20_surfaces[0] != 0) {
+        ((d32_release_fn)t20_surfaces[0]->vtbl[COM_RELEASE])(
+            t20_surfaces[0]);
+    }
+    if (t20_surfaces[1] != 0) {
+        ((d32_release_fn)t20_surfaces[1]->vtbl[COM_RELEASE])(
+            t20_surfaces[1]);
+    }
+    if (t21_surface != 0) {
+        ((d32_release_fn)t21_surface->vtbl[COM_RELEASE])(t21_surface);
     }
     if (zbuffer != 0) {
         ((d32_release_fn)zbuffer->vtbl[COM_RELEASE])(zbuffer);

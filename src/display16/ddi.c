@@ -340,11 +340,56 @@ static void v9x_dosbox_trace(const char FAR *step)
 #define v9x_dosbox_trace(step) ((void)0)
 #endif
 
+#ifdef V9X_DURABLE_TRAIL
+extern void FAR PASCAL V9xDosClock(DWORD FAR *date_time);
+extern WORD FAR PASCAL V9xTrailWrite(const char FAR *text, WORD length);
+
+/*
+ * One line of C:\V9XDIAG\V9XTRAIL.TXT, committed to disk before it returns:
+ * "hh:mm:ss.cc stage". The profile writes below leave Stage= in VCACHE, whose
+ * lazy writer a hang with interrupts off stops, so a boot that hangs keeps
+ * nothing of where it got to; M-GB8KRE's did exactly that
+ * (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md). External
+ * so a chip module can mark its own steps. A diagnostic build's only.
+ */
+void v9x_durable_trail(const char FAR *stage)
+{
+    static const char digits[] = "0123456789";
+    DWORD date_time[2];
+    char line[80];
+    WORD at;
+    WORD field;
+    BYTE parts[4];
+
+    V9xEnsureDiagDir();
+    V9xDosClock((DWORD FAR *)date_time);
+    parts[0] = (BYTE)(date_time[1] >> 24);
+    parts[1] = (BYTE)(date_time[1] >> 16);
+    parts[2] = (BYTE)(date_time[1] >> 8);
+    parts[3] = (BYTE)date_time[1];
+    at = 0u;
+    for (field = 0u; field < 4u; ++field) {
+        line[at++] = digits[parts[field] / 10u % 10u];
+        line[at++] = digits[parts[field] % 10u];
+        line[at++] = field == 3u ? ' ' : (field == 2u ? '.' : ':');
+    }
+    while (*stage != '\0' && at < sizeof(line) - 2u) {
+        line[at++] = *stage++;
+    }
+    line[at++] = '\r';
+    line[at++] = '\n';
+    (void)V9xTrailWrite((const char FAR *)line, at);
+}
+#endif
+
 #ifdef V9X_BOOT_TRACE
 static BOOL v9x_boot_trace(const char FAR *stage)
 {
     BOOL written;
 
+#ifdef V9X_DURABLE_TRAIL
+    v9x_durable_trail(stage);
+#endif
     V9xEnsureDiagDir();
     written = WritePrivateProfileString("Velocity9x", "Stage", stage,
                                         V9X_DIAG_BOOT_INI);

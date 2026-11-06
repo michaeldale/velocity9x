@@ -794,6 +794,9 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r128;
 /* NVIDIA RIVA 128, its D3D object, in d3d_nv3.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv3;
 
+/* ATI Radeon X1200 IGP (RS690), by register writes, in d3d_rs690.c. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rs690;
+
 
 /*
  * The core services an engine may use.

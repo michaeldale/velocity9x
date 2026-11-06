@@ -317,6 +317,14 @@ unsigned int v9x_run_tdfx_3d_tests(void);
  * values against xf86-video-r128's encodings. */
 unsigned int v9x_run_r128_2d_tests(void);
 
+/* tests\host\test_rs690_2d.c: RS690 2D init, fill and copy register
+ * values against xf86-video-ati 6.14.6's MMIO EXA encodings. */
+unsigned int v9x_run_rs690_2d_tests(void);
+
+/* tests\host\test_rs690_3d.c: RS690 3D init, colour-buffer state and draw
+ * register values against xf86-video-ati 6.14.6 and Mesa r300. */
+unsigned int v9x_run_rs690_3d_tests(void);
+
 /* tests\host\test_eg_dma.c: Evergreen DMA fill and copy packets, run
  * through a model of the engine the write probe measured and compared
  * with a CPU rectangle operation. */
@@ -363,6 +371,10 @@ unsigned int v9x_run_r128_3d_tests(void);
 /* tests\host\test_d3d_r128_map.c: V9X_R3D_DRAW to Rage 128 3D builder
  * state, and the refusals. */
 unsigned int v9x_run_d3d_r128_map_tests(void);
+
+/* tests\host\test_d3d_rs690_map.c: V9X_R3D_DRAW to RS690 3D builder
+ * state, and the refusals. */
+unsigned int v9x_run_d3d_rs690_map_tests(void);
 
 /* tests\host\test_mga_3d.c: MGA-2164W trapezoid register values against
  * the MGA-2164W specification's edge terms, and the engine model. */
@@ -1483,6 +1495,8 @@ int main(int argc, char **argv)
     failures += v9x_run_nv3_3d_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
+    failures += v9x_run_rs690_2d_tests();
+    failures += v9x_run_rs690_3d_tests();
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_vi_3d_tests();
@@ -1493,6 +1507,7 @@ int main(int argc, char **argv)
     failures += v9x_run_d3d_eg_map_tests();
     failures += v9x_run_d3d_vi_map_tests();
     failures += v9x_run_d3d_r128_map_tests();
+    failures += v9x_run_d3d_rs690_map_tests();
     failures += v9x_run_vram_probe_tests();
 
     if (failures != 0u) {

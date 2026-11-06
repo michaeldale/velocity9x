@@ -152,8 +152,10 @@
         # A fresh install therefore has to reach a 16 bpp mode before the
         # setting changes anything, which is the same condition the opt-in
         # route always had.
-        Defines = @('V9X_D3D_DEFAULT_REQUEST=2')
-        RuntimeDefines = @()
+        # V9X_DURABLE_TRAIL: temporary, branch ati-rs690 only, as in the ati
+        # manifest (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
+        Defines = @('V9X_D3D_DEFAULT_REQUEST=2', 'V9X_DURABLE_TRAIL')
+        RuntimeDefines = @('V9X_DURABLE_TRAIL')
         SkeletonOutput = 'build\win16-ddi-vbe'
         PackageOutput = 'build\win98se-vbe'
         VmStageDirectory = 'build\vm-probe\VBE'
