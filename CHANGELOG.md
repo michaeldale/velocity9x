@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.41.0 - not yet released
 
+- **AMD Radeon HD 5450, HD 5570, HD 5770, HD 7470 and HD 7660D: the
+  screen is written write-combined.** The CPU wrote these cards' frame
+  buffer uncached. On the HD 7660D, screen writes went from 313 to
+  2,720 MB/s; large fills and bitmap copies to the screen are about ten
+  times faster. Moving windows and scrolling read the screen back and
+  gain little. Measured on the HD 7660D only; an empty
+  `C:\V9XDIAG\NOWC.TXT` turns it off after a restart
+  ([record](docs/decisions/2026-11-08-trinity-write-combining.md)).
+
 - **AMD Radeon R3E (Mullins, GCN 2, `1002:9854`) is supported by the
   `ati` package.** DirectDraw fills, copies and page flips run on the
   chip's copy engine, and Direct3D on its 3D engine, at 16 and 32 bpp
