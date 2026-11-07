@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.41.0 - not yet released
 
+- **AMD Radeon R3E (Mullins, GCN 2, `1002:9854`) is supported by the
+  `ati` package for 2D.** DirectDraw fills, copies and page flips run
+  on the chip's copy engine, with AMD's Mullins microcode. Direct3D
+  still draws on the CPU. Tested on one remote-help machine with a
+  GX-412HC: four DirectDraw probe runs, one of which saw the engine
+  report busy once
+  ([record](docs/decisions/2026-11-08-mullins-directdraw-on-sdma.md),
+  [plan](docs/plans/ati-mullins-gfx7.md)).
+
 ## 0.40.0 - 2026-11-07
 
 - **Intel GMA 900, 950 and 3150: less geometry lost in Direct3D 8
