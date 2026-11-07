@@ -30,9 +30,11 @@ INSTALL
 1. Boot Windows 98 normally.
 2. Open Control Panel, System, Device Manager.
 3. Expand Display adapters and open the fitted display adapter.
-   Intel graphics also appear as a second device, an "(Unknown Device)"
-   or one under Other devices. Do not install on that one: the driver
-   cannot start there and Windows stays at 16 colours.
+   Intel graphics appear twice. If Display adapters lists "Standard PCI
+   Graphics Adapter" and "Standard PCI Graphics Adapter (VGA)", open the
+   one ending "(VGA)". Do not install on the other, or on an "(Unknown
+   Device)": the driver cannot start there and Windows stays at 16
+   colours.
 4. Select Driver, Update Driver, then choose a specific driver/location.
 5. Use Have Disk and browse to this package directory.
 @MODEL_SELECTION@

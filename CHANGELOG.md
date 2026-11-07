@@ -18,10 +18,13 @@ build identifier so exact guest-tested binaries remain traceable.
   [record](docs/decisions/2026-11-07-redwood-row-unmeasured.md)).
 
 - **INSTALL.TXT warns against installing on Intel's second graphics
-  device.** Intel graphics appear twice in Device Manager. Installed on
-  the "(Unknown Device)" one, the driver cannot start and Windows stays
-  at 16 colours. That is one possible cause of a VOGONS report of the
-  same symptom on two Eee PCs, which is open
+  device.** Intel graphics appear twice in Device Manager, often as
+  "Standard PCI Graphics Adapter" and "Standard PCI Graphics Adapter
+  (VGA)"; the driver belongs on the "(VGA)" one. Installed on the other,
+  it cannot start and Windows stays at 16 colours. This is the likely
+  cause of a VOGONS report of that symptom on two Eee PCs, still open:
+  a direct install on the right entry came up at 256 colours on the
+  first boot on our GMA 950 netbook
   ([record](docs/issues/2026-11-07-first-install-stays-at-16-colours.md)).
 
 ## 0.39.0 - 2026-11-07

@@ -198,10 +198,12 @@ registry-selected mode.
   start.** A good first boot is 256 colours. `C:\V9XDIAG\V9XBOOT.INI`
   says how far it got; include it in a report.
 - **Intel graphics show up twice; install on the Display adapters entry.**
-  The GMA 900, GMA 950 and later Intel chips are two PCI devices. The
-  second appears as an "(Unknown Device)" or under Other devices, and a
-  fresh Windows 98 may offer to find a driver for it. Leave that one
-  alone. Installed there by force (Windows warns that the driver was not
+  The GMA 900, GMA 950 and later Intel chips are two PCI devices.
+  Windows may list both under Display adapters, as "Standard PCI
+  Graphics Adapter" and "Standard PCI Graphics Adapter (VGA)": install
+  on the one ending "(VGA)". Elsewhere the second shows as an "(Unknown
+  Device)" or under Other devices, and Windows may offer to find a
+  driver for it. Leave that one alone. Installed there by force (Windows warns that the driver was not
   written for it), the driver stops before it can use the card
   (`VbeDetail=minivdd-no-api` in `V9XBOOT.INI`) and Windows stays at 16
   colours. Remove the Velocity9x entry from that device and install on

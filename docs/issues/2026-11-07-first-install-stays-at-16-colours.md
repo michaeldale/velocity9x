@@ -1,7 +1,8 @@
 # A first install on two Eee PCs stayed at 16 colours
 
 Date: 2026-11-07
-Status: open. Cause not established; the reporter's files are owed.
+Status: open. A direct install works on our GMA 950 (measured below).
+The reporter's files are owed.
 
 Source: a VOGONS post (2026-11-07,
 <https://www.vogons.org/viewtopic.php?p=1455551#p1455551>). The poster
@@ -46,12 +47,55 @@ the first boot after a direct install.
    Nothing points to one yet. `V9XBOOT.INI` from a failed first boot
    would show it.
 
+## Measured on the netbook (2026-11-07, boots 280-282)
+
+The netbook (MICHAEL-NETBOOK, W9QI2BE2, 945GSE, the Eee PC 901's
+chipset) was put back on Windows' driver and given the released 0.39.0
+`intel-gma` package the way a new user would install it. Evidence:
+[`../probe/netbook-direct-install-from-vga-2026-11-07/`](../probe/netbook-direct-install-from-vga-2026-11-07/).
+
+- **Before (boot 280).** Function 0 was bound to Velocity9x
+  (`Display\0001`, main `5d95df34`), at 1024x576x16. Function 1
+  (`8086:27A6`) was bound to Microsoft's `MSDISP.INF [PCIVID]`
+  "Standard PCI Graphics Adapter" through `PCI\CC_0380` (`Display\0002`).
+  So on this install, function 1 is no longer an "(Unknown Device)": it
+  sits under Display adapters.
+- **To VGA.** Device Manager, Update Driver, Show all hardware,
+  "Standard PCI Graphics Adapter (VGA)". Windows set
+  `HKCC\Display\Settings` to `BitsPerPixel=4`, `640,480` straight away,
+  before any restart. The VGA driver's key kept our `V9xFamily` and
+  `V9xSyncGeneration` values. Boot 281 came up on `vga.drv` at
+  640x480x4.
+- **What a new user sees.** Display adapters lists two entries,
+  "Standard PCI Graphics Adapter" (function 1) **first**, then
+  "Standard PCI Graphics Adapter (VGA)" (function 0)
+  (`boot281-devmgr-two-standard-adapters.png`).
+- **Direct install on function 0.** Update Driver, Have Disk
+  `C:\V9X039I`, which offered "Velocity9x Intel GMA 950 (945GSE)" alone.
+  Before the restart, `BitsPerPixel` was already `8` and
+  `DEFAULT,Mode` `8,640,480`. No `WININIT.INI` was queued. After the
+  agent's `reset`, boot 282 wrote `Stage=enable-ok`, `VbeDetail=ok`,
+  640x480x8, and the desktop drew.
+- `V9XMSW /set:1024x576x16` then passed, and the netbook was left on
+  0.39.0 at 1024x576x16.
+
+So on the GMA 950 a direct install on the right device works, and the
+class installer moves the stored depth off 4 bpp. Hypothesis 2 does not
+hold there, and hypothesis 3 does not reproduce on this machine. The
+Eee PC 901's BIOS and the 701's GMA 900 were not tested. Hypothesis 1
+gains weight: the two entries' names differ only by "(VGA)", and the
+wrong one is listed first.
+
+Unrelated, seen on boot 280 as Device Manager opened: MPREXE faulted
+in USER.EXE at 0004:1E66 (`boot280-mprexe-gpf-unrelated.png`).
+
 ## Done
 
 The two-function warning, which only the internal runbook carried, is
 now in the user-facing install steps: `packaging/win98se/INSTALL.TXT`
-step 3, and `docs/INSTALL.md`'s install-time gotchas. No driver or INF
-change is made until the cause is known.
+step 3, and `docs/INSTALL.md`'s install-time gotchas. Both now name
+the two Display adapters entries as well as the "(Unknown Device)".
+There is no driver or INF change.
 
 ## Owed
 
