@@ -235,4 +235,30 @@ v9x_u16 v9x_i9xx_float_in_span(v9x_u32 bits, v9x_u32 upper_bits,
     }
     return (bits <= upper_bits) ? V9X_TRUE : V9X_FALSE;
 }
+
+/*
+ * One Z16 depth step, 2^-16, as bits: the furthest a depth may lie outside
+ * [0, 1] and still be taken as the edge. A 16-bit depth buffer cannot tell
+ * such a vertex from one on the plane. Past it the vertex is a real
+ * out-of-range depth (UT99's 1.045 with a negative rhw), which the run
+ * builders go on refusing.
+ */
+#define V9X_I9XX_DEPTH_STEP_BITS 0x37800000ul
+/* 1 + 2^-16: 2^-16 is 128 ulps of a float in [1, 2). */
+#define V9X_I9XX_ONE_BITS        0x3f800000ul
+#define V9X_I9XX_ONE_STEP_BITS   0x3f800080ul
+
+v9x_u32 v9x_i9xx_float_depth_edge(v9x_u32 bits)
+{
+    /* Negative: its magnitude orders as an integer once the sign is
+     * cleared, and a NaN or infinity is above any finite bound. */
+    if ((bits & 0x80000000ul) != 0ul) {
+        return ((bits & 0x7ffffffful) <= V9X_I9XX_DEPTH_STEP_BITS) ? 0ul
+                                                                    : bits;
+    }
+    if (bits > V9X_I9XX_ONE_BITS && bits <= V9X_I9XX_ONE_STEP_BITS) {
+        return V9X_I9XX_ONE_BITS;
+    }
+    return bits;
+}
 #endif

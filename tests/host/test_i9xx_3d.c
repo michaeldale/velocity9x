@@ -1796,6 +1796,41 @@ static void test_band_holds(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * A vertex depth a rounding step outside [0, 1] goes to the edge, so the
+ * run builders' z check does not refuse its whole batch: 3DMark 2001 SE
+ * on the GMA 950 sent z = B5800020 (about -2^-20) and lost 293 batches
+ * (docs\decisions\2026-11-07-gen3-guard-band-merge.md). One Z16 step,
+ * 2^-16, is the limit; past it, and for infinities and NaNs, the bits are
+ * returned unchanged for the builders to refuse as before.
+ */
+static void test_depth_edge(void)
+{
+    const v9x_u32 one = 0x3f800000ul;
+
+    /* Inside: unchanged. */
+    CHECK(v9x_i9xx_float_depth_edge(0ul) == 0ul);
+    CHECK(v9x_i9xx_float_depth_edge(0x3f000000ul) == 0x3f000000ul);
+    CHECK(v9x_i9xx_float_depth_edge(one) == one);
+    /* Negative zero, the 3DMark value and -2^-16: to +0. */
+    CHECK(v9x_i9xx_float_depth_edge(0x80000000ul) == 0ul);
+    CHECK(v9x_i9xx_float_depth_edge(0xb5800020ul) == 0ul);
+    CHECK(v9x_i9xx_float_depth_edge(0xb7800000ul) == 0ul);
+    /* One ulp past -2^-16, and -1: unchanged. */
+    CHECK(v9x_i9xx_float_depth_edge(0xb7800001ul) == 0xb7800001ul);
+    CHECK(v9x_i9xx_float_depth_edge(0xbf800000ul) == 0xbf800000ul);
+    /* Just past 1, to 1 + 2^-16 (128 ulps of 1.0): to 1. */
+    CHECK(v9x_i9xx_float_depth_edge(one + 1ul) == one);
+    CHECK(v9x_i9xx_float_depth_edge(one + 0x80ul) == one);
+    /* Past that, UT99's 1.045, and the non-finite: unchanged. */
+    CHECK(v9x_i9xx_float_depth_edge(one + 0x81ul) == one + 0x81ul);
+    CHECK(v9x_i9xx_float_depth_edge(0x3f85c28ful) == 0x3f85c28ful);
+    CHECK(v9x_i9xx_float_depth_edge(0x7f800000ul) == 0x7f800000ul);
+    CHECK(v9x_i9xx_float_depth_edge(0xff800000ul) == 0xff800000ul);
+    CHECK(v9x_i9xx_float_depth_edge(0x7fc00000ul) == 0x7fc00000ul);
+    CHECK(v9x_i9xx_float_depth_edge(0xffc00000ul) == 0xffc00000ul);
+}
+
 static void test_guard_band(void)
 {
     struct v9x_i9xx_decode_limits limits;
@@ -6540,6 +6575,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_guard_band();
     test_two_unit_guard_band();
     test_band_holds();
+    test_depth_edge();
 #endif
     test_decoder_breadcrumb();
     test_probe_expectation_names();

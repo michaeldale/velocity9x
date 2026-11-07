@@ -1550,6 +1550,11 @@ v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits);
  * negative accepted, negative zero included. For the guard band
  * (docs\plans\intel-gen3-guard-band.md), in the flat builds
  * only (V9X_I9XX_TWO_UNITS, below); the 16-bit driver has no band. */
+/* A depth within one Z16 step (2^-16) outside [0, 1] as the nearest edge
+ * (negative zero as +0); any other bits, NaN and infinities included,
+ * unchanged for the run builders to judge. The flat builds only, as
+ * above. docs\decisions\2026-11-07-gen3-guard-band-merge.md. */
+v9x_u32 v9x_i9xx_float_depth_edge(v9x_u32 bits);
 v9x_u16 v9x_i9xx_float_in_span(v9x_u32 bits, v9x_u32 upper_bits,
                                v9x_u32 lower_bits);
 /*

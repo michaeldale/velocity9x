@@ -4072,6 +4072,13 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD i9xx_guard_cut;
     DWORD i9xx_guard_dropped;
+    /*
+     * Gen3 vertex depths a rounding step (up to 2^-16) outside [0, 1],
+     * drawn at the edge instead of refusing the batch
+     * (v9x_i9xx_float_depth_edge; docs\decisions\2026-11-07-gen3-guard-
+     * band-merge.md). Appended 2026-11-07 within ABI 2026102002.
+     */
+    DWORD i9xx_z_edged;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

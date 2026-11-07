@@ -2834,7 +2834,18 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
 
         xyzw[(vertex * 4ul) + 0ul] = bits[0];
         xyzw[(vertex * 4ul) + 1ul] = bits[1];
-        xyzw[(vertex * 4ul) + 2ul] = bits[2];
+        /*
+         * A depth a rounding step outside [0, 1] goes to the edge rather than
+         * refusing the batch. 3DMark 2001 SE sends z about -2^-20; with the
+         * core clipping, the cut at the screen edge happened to drop those
+         * vertices, and under the guard band they lost 293 batches
+         * (docs\decisions\2026-11-07-gen3-guard-band-merge.md). Anything
+         * further out is still refused by the run builders.
+         */
+        xyzw[(vertex * 4ul) + 2ul] = v9x_i9xx_float_depth_edge(bits[2]);
+        if (xyzw[(vertex * 4ul) + 2ul] != bits[2]) {
+            ++v9x_hal->d3d_diagnostics.i9xx_z_edged;
+        }
         xyzw[(vertex * 4ul) + 3ul] = bits[3];
         colors[vertex] = vertices[vertex].color;
         /* The specular dword, BGRA in memory as the primary is, whose alpha
