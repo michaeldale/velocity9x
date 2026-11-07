@@ -2,8 +2,16 @@
 
 Date: 2026-11-07. Seen by Michael on the netbook's panel (W9QI2BE2,
 945GSE / GMA 950), build `089a5e70`, boot 284, 3DMark 2001 SE default
-benchmark at 640x480, 16-bit colour and 16-bit textures. Status: open,
-investigated 2026-11-07, cause not found (below).
+benchmark at 640x480, 16-bit colour and 16-bit textures. Status:
+**parked 2026-11-07** at Michael's word, for a later version. 3DMark
+binds no texture for the white geometry (below), and the cause is not
+found.
+
+If it proves to be texture memory, the fix belongs to
+[`../plans/intel-gen3-system-memory-textures.md`](../plans/intel-gen3-system-memory-textures.md)
+(a 32 MiB texture pool in system memory through the GTT, for this
+part's ~6 MB heap). If it is not, it joins the HD 4600's parked Nature
+defect. The first test under Next decides which.
 
 ## What is known
 

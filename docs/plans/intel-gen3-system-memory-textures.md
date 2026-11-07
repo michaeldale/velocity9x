@@ -51,6 +51,12 @@ re-check the proposal against the code as it stands now (Gen3 has gained
 32 bpp Direct3D and 24-bit Z since it was written, both of which take more
 stolen memory) and settle the three decisions below, which are still open.
 
+**2026-11-07: a possible third case.** On the netbook, 3DMark 2001 SE
+declines about 7,500 mip trees a run for room. Dragothic's sky draws
+white because 3DMark binds no texture for it. Whether that is a texture
+that never fit is not measured; it is parked on its own issue
+([record](../issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
+
 ## What is proposed
 
 A **texture pool**: N MiB of locked system RAM, its pages written into GTT
