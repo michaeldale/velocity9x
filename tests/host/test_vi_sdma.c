@@ -4,6 +4,7 @@
 #include "velocity9x/eg_dma.h"
 #include "velocity9x/vi_sdma.h"
 #include "velocity9x/vi_sdma_microcode.h"
+#include "velocity9x/cik_sdma_microcode.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -219,6 +220,21 @@ static void test_microcode(void)
           0x01fc0529ul);
 }
 
+/* Mullins' image, the same way, from mullins_sdma.bin's payload (offset
+ * 100h): what V9XCKDMA loaded on M-JJN1ZZ, reported as version 4Ch and
+ * 4200 bytes. */
+typedef char v9x_cik_sdma_microcode_dwords[
+    V9X_CIK_SDMA_MICROCODE_DWORDS == 1050u ? 1 : -1];
+
+static void test_cik_microcode(void)
+{
+    CHECK(v9x_cik_sdma_microcode_version == 0x0000004cul);
+    CHECK(v9x_cik_sdma_microcode[0] == 0x00000000ul);
+    CHECK(v9x_cik_sdma_microcode[1] == 0xc811d240ul);
+    CHECK(v9x_cik_sdma_microcode[V9X_CIK_SDMA_MICROCODE_DWORDS - 1u] ==
+          0x000e02f7ul);
+}
+
 /* The packets word for word, as the write probe sent them. */
 static void test_packets(void)
 {
@@ -379,6 +395,7 @@ unsigned int v9x_run_vi_sdma_tests(void)
 {
     failures = 0u;
     test_microcode();
+    test_cik_microcode();
     test_packets();
     test_fill();
     test_copy();

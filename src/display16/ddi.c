@@ -194,9 +194,10 @@ DWORD v9x_vdd_info_result;
  * asserts every family's id count against this number so the manifest cannot
  * outgrow the array unnoticed. 40 since the ati family bound the Rage II and
  * Rage Pro classes (32 ids, 2026-10-03); the scan is one INT 1Ah B102h a
- * slot, at load.
+ * slot, at load. 48 since Mullins made the ati family's 41st id
+ * (2026-11-08).
  */
-#define V9X_PCI_ID_LIMIT 40u
+#define V9X_PCI_ID_LIMIT 48u
 WORD v9x_pci_vendor[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_device[V9X_PCI_ID_LIMIT];
 WORD v9x_pci_count = 0u;

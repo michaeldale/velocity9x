@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770, Radeon HD 5570, Radeon HD 7660D and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770, Radeon HD 5570, Radeon HD 7660D, Radeon R7E (Carrizo) and Radeon R3E (Mullins), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -594,6 +594,53 @@
             MapSymbols = @('v9x_vi_carrizo_device')
         }
         @{
+            Id = 'mullins'
+            Name = 'AMD Radeon R3E (Mullins)'
+            VendorId = '1002'
+            DeviceId = '9854'
+            # No SubsystemId: M-JJN1ZZ's reads 9854:1002, AMD's reference id,
+            # and the bare id binds every board built on the APU.
+            DeviceDesc = 'Velocity9x AMD Radeon R3E (Mullins)'
+            Adapter = 'AMD Radeon R3E (Mullins)'
+            ClockDetector = 'ati-cik-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # GCN 2. DirectDraw fill, copy and flips go to SDMA0 through
+            # Carrizo's engine with Mullins' microcode and CIK's golden
+            # values, measured byte-exact on this chip in the write probe
+            # (docs\decisions\2026-11-08-mullins-sdma-write-probe.md). The
+            # graphics CP is GFX7, not yet driven: Direct3D stays software
+            # (docs\plans\ati-mullins-gfx7.md).
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'not-advertised'
+            EngineType = 'ATI_VI'
+            # Flips through D1's surface address (eg_scanout.c): DCE 8's first
+            # controller sits at Evergreen's offsets. mullins_hw16.c adds the
+            # V9X_DD_ENGINE_CAP_VI_MULLINS identity bit.
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            # M-JJN1ZZ's VBE 4F00h reports 16 MiB, the family's mapping.
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c). Whether this BIOS lists 8 bpp modes is
+            # not known yet; the runtime scan hides any it does not.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('mullins_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_cik_mullins_device')
+        }
+        @{
             Id = 'rs690'
             Name = 'ATI Radeon X1200 (RS690)'
             VendorId = '1002'
@@ -696,6 +743,7 @@
             @{ Name = 'rage128_hw16'; Path = 'src\chipsets\ati\rage128\rage128_hw16.c' }
             @{ Name = 'cedar_hw16'; Path = 'src\chipsets\ati\evergreen\cedar_hw16.c' }
             @{ Name = 'carrizo_hw16'; Path = 'src\chipsets\ati\vi\carrizo_hw16.c' }
+            @{ Name = 'mullins_hw16'; Path = 'src\chipsets\ati\cik\mullins_hw16.c' }
             @{ Name = 'rs690_hw16'; Path = 'src\chipsets\ati\rs690\rs690_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
@@ -732,7 +780,8 @@
                            'v9x_evergreen_juniper_device',
                            'v9x_evergreen_redwood_device',
                            'v9x_evergreen_trinity_device',
-                           'v9x_vi_carrizo_device')
+                           'v9x_vi_carrizo_device',
+                           'v9x_cik_mullins_device')
     }
 
     Inf = @{
@@ -754,7 +803,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -830,6 +879,10 @@
             }
             @{
                 ChipId = 'carrizo'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'mullins'
                 Emulator = 'none'
             }
             @{

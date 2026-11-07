@@ -36,6 +36,9 @@ extern const V9X_HW16_DEVICE v9x_vi_carrizo_device;
 extern const V9X_HW16_DEVICE v9x_rs690_device;
 /* carrizo_hw16.c: the SDMA engine hook's outcome. */
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write);
+extern const V9X_HW16_DEVICE v9x_cik_mullins_device;
+/* mullins_hw16.c: the same, for the Mullins row. */
+void v9x_mullins_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
 extern const V9X_HW16_DEVICE v9x_mach64_vt4_device;
 extern const V9X_HW16_DEVICE v9x_ati_4754_device;
@@ -134,6 +137,8 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_evergreen_trinity_device,
     /* GCN 3: SDMA0 behind DirectDraw (carrizo_hw16.c). */
     &v9x_vi_carrizo_device,
+    /* GCN 2: the same SDMA engine with Mullins' microcode (mullins_hw16.c). */
+    &v9x_cik_mullins_device,
     /* RS690: the Radeon 2D engine behind DirectDraw (rs690_hw16.c). */
     &v9x_rs690_device,
     /* The aliases, each declared in its chip's module: the VT2's, the
@@ -272,6 +277,9 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     if (device == &v9x_vi_carrizo_device) {
         v9x_carrizo_publish_diagnostics(write);
+    }
+    if (device == &v9x_cik_mullins_device) {
+        v9x_mullins_publish_diagnostics(write);
     }
 }
 

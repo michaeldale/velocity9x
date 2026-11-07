@@ -160,6 +160,8 @@ $sources = @(
     "src\display32\engines\eng_vi.c",
     "src\chipsets\ati\vi\vi_sdma.c",
     "src\chipsets\ati\vi\vi_sdma_microcode.c",
+    # Mullins (GCN 2) runs the same engine with its own SDMA microcode.
+    "src\chipsets\ati\cik\cik_sdma_microcode.c",
     # The Carrizo 3D engine: the graphics CP and its microcode (licence in
     # NOTICES.TXT), gpu_init's list, the clear state, the PM4 streams and
     # shaders, the neutral draw to them, and the engine that submits them.

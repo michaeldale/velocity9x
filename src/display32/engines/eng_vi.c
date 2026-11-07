@@ -45,6 +45,7 @@
 #include "velocity9x/eg_dma.h"
 #include "velocity9x/vi_sdma.h"
 #include "velocity9x/vi_sdma_microcode.h"
+#include "velocity9x/cik_sdma_microcode.h"
 
 /* Bounded busy-wait. The probe's fences landed within 9 polls; this bound
  * only has to tell slow from stuck. */
@@ -222,23 +223,46 @@ static void v9x_vi_halt(void)
 static void v9x_vi_start(void)
 {
     DWORD index;
+    int mullins;
 
+    mullins = (v9x_hal->engine.engine_caps &
+               V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul;
     v9x_vi_halt();
     v9x_vi_modify32(V9X_VI_SDMA0_CNTL, V9X_VI_AUTO_CTXSW, 0ul);
-    v9x_vi_modify32(V9X_VI_SDMA0_CHICKEN_BITS, V9X_VI_CHICKEN_CLEAR,
-                    V9X_VI_CHICKEN_SET);
-    v9x_vi_modify32(V9X_VI_SDMA0_CLK_CTRL, V9X_VI_CLK_CLEAR, 0ul);
-    v9x_vi_modify32(V9X_VI_SDMA0_IB_CNTL, 0ul, V9X_VI_IB_CNTL_GOLDEN);
-    v9x_vi_modify32(V9X_VI_SDMA0_POWER_CNTL, V9X_VI_POWER_CLEAR,
-                    V9X_VI_POWER_SET);
-    v9x_vi_modify32(V9X_VI_SDMA0_RLC0_IB_CNTL, 0ul, V9X_VI_IB_CNTL_GOLDEN);
-    v9x_vi_modify32(V9X_VI_SDMA0_RLC1_IB_CNTL, 0ul, V9X_VI_IB_CNTL_GOLDEN);
 
-    v9x_vi_write32(V9X_VI_SDMA0_UCODE_ADDR, 0ul);
-    for (index = 0ul; index < V9X_VI_SDMA_MICROCODE_DWORDS; ++index) {
-        v9x_vi_write32(V9X_VI_SDMA0_UCODE_DATA, v9x_vi_sdma_microcode[index]);
+    /* Mullins: cik_sdma_start's settings and image; the registers are
+     * VI's, but not the values (vi_sdma.h). */
+    if (mullins) {
+        v9x_vi_modify32(V9X_VI_SDMA0_CHICKEN_BITS, V9X_CIK_CHICKEN_CLEAR,
+                        V9X_CIK_CHICKEN_SET);
+        v9x_vi_modify32(V9X_VI_SDMA0_CLK_CTRL, V9X_CIK_CLK_CLEAR,
+                        V9X_CIK_CLK_SET);
+        v9x_vi_write32(V9X_VI_SDMA0_UCODE_ADDR, 0ul);
+        for (index = 0ul; index < V9X_CIK_SDMA_MICROCODE_DWORDS; ++index) {
+            v9x_vi_write32(V9X_VI_SDMA0_UCODE_DATA,
+                           v9x_cik_sdma_microcode[index]);
+        }
+        v9x_vi_write32(V9X_VI_SDMA0_UCODE_ADDR,
+                       v9x_cik_sdma_microcode_version);
+    } else {
+        v9x_vi_modify32(V9X_VI_SDMA0_CHICKEN_BITS, V9X_VI_CHICKEN_CLEAR,
+                        V9X_VI_CHICKEN_SET);
+        v9x_vi_modify32(V9X_VI_SDMA0_CLK_CTRL, V9X_VI_CLK_CLEAR, 0ul);
+        v9x_vi_modify32(V9X_VI_SDMA0_IB_CNTL, 0ul, V9X_VI_IB_CNTL_GOLDEN);
+        v9x_vi_modify32(V9X_VI_SDMA0_POWER_CNTL, V9X_VI_POWER_CLEAR,
+                        V9X_VI_POWER_SET);
+        v9x_vi_modify32(V9X_VI_SDMA0_RLC0_IB_CNTL, 0ul,
+                        V9X_VI_IB_CNTL_GOLDEN);
+        v9x_vi_modify32(V9X_VI_SDMA0_RLC1_IB_CNTL, 0ul,
+                        V9X_VI_IB_CNTL_GOLDEN);
+        v9x_vi_write32(V9X_VI_SDMA0_UCODE_ADDR, 0ul);
+        for (index = 0ul; index < V9X_VI_SDMA_MICROCODE_DWORDS; ++index) {
+            v9x_vi_write32(V9X_VI_SDMA0_UCODE_DATA,
+                           v9x_vi_sdma_microcode[index]);
+        }
+        v9x_vi_write32(V9X_VI_SDMA0_UCODE_ADDR,
+                       v9x_vi_sdma_microcode_version);
     }
-    v9x_vi_write32(V9X_VI_SDMA0_UCODE_ADDR, v9x_vi_sdma_microcode_version);
 
     v9x_vi_write32(V9X_VI_SDMA0_TILING_CONFIG, 0ul);
     v9x_vi_write32(V9X_VI_SDMA0_SEM_WAIT_FAIL, 0ul);
@@ -259,7 +283,9 @@ static void v9x_vi_start(void)
                    (v9x_vi_ring_low >> 8) | (v9x_vi_gpu_high << 24));
     v9x_vi_write32(V9X_VI_SDMA0_RB_BASE_HI, 0ul);
     v9x_vi_write32(V9X_VI_SDMA0_RB_WPTR, 0ul);
-    v9x_vi_modify32(V9X_VI_SDMA0_DOORBELL, V9X_VI_DOORBELL_ENABLE, 0ul);
+    if (!mullins) {
+        v9x_vi_modify32(V9X_VI_SDMA0_DOORBELL, V9X_VI_DOORBELL_ENABLE, 0ul);
+    }
     v9x_vi_hdp_flush();
     v9x_vi_modify32(V9X_VI_SDMA0_RB_CNTL, 0ul, V9X_VI_RB_ENABLE);
     v9x_vi_modify32(V9X_VI_SDMA0_IB_CNTL, 0ul, V9X_VI_IB_ENABLE);

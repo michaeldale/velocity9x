@@ -87,6 +87,18 @@
 #define V9X_VI_POWER_CLEAR              0x00000800ul
 #define V9X_VI_POWER_SET                0x0003c800ul
 
+/* The Mullins (GCN 2, CIK) settings for the same engine, Linux cik.c:
+ * godavari_golden_registers' SDMA0_CHICKEN_BITS entry and
+ * kalindi_mgcg_cgcg_init's SDMA0_CLK_CTRL entry, applied the same way.
+ * CIK has no POWER_CNTL or IB_CNTL golden entries, no GFX_DOORBELL and
+ * no SDMA0_VERSION; every other register here is at VI's offset
+ * (oss_2_0_d.h against oss_3_0_d.h). Ran byte-exact on M-JJN1ZZ
+ * (docs\decisions\2026-11-08-mullins-sdma-write-probe.md). */
+#define V9X_CIK_CHICKEN_CLEAR           0x00010000ul
+#define V9X_CIK_CHICKEN_SET             0x00810001ul
+#define V9X_CIK_CLK_CLEAR               0xff000ff0ul
+#define V9X_CIK_CLK_SET                 0x00000100ul
+
 /* The ring window the mini-VDD maps: BAR0 + 240 MiB, 4 MiB, past the
  * 16 MiB the driver maps for the heap (V9XMINI_FN_VI_MAP), where the write
  * probe ran. The ring takes the first 32 KiB, the read-pointer writeback

@@ -138,6 +138,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\vi\vi_sdma.c',
         # Carrizo SDMA microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\vi\vi_sdma_microcode.c',
+        # Mullins SDMA microcode (generated from linux-firmware), data only.
+        'src\chipsets\ati\cik\cik_sdma_microcode.c',
         # Carrizo GCN 3 shader words and the bring-up shaders, no I/O.
         'src\chipsets\ati\vi\vi_shader.c',
         # Carrizo PM4 streams: CP start with the clear state, a solid draw.

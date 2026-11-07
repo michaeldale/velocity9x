@@ -374,5 +374,14 @@
  * (docs\decisions\2026-11-07-redwood-row-unmeasured.md).
  */
 #define V9X_DD_ENGINE_CAP_EG_REDWOOD    0x08000000ul
+/*
+ * AMD SDMA engine (V9X_DD_ENGINE_TYPE_ATI_VI) on Mullins (Radeon R3E,
+ * GCN 2, Linux's CIK), not Carrizo. SDMA0 takes Mullins' microcode and
+ * CIK's golden values, and has no doorbell register to clear (eng_vi.c).
+ * Its graphics CP is GFX7, which vi_cp.c does not drive, so the row never
+ * stamps V9X_DD_ENGINE_CAP_D3D beside it. A chip identity bit, stamped by
+ * mullins_hw16.c only (docs\decisions\2026-11-08-mullins-sdma-write-probe.md).
+ */
+#define V9X_DD_ENGINE_CAP_VI_MULLINS    0x10000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */
