@@ -127,7 +127,8 @@ serves every chip in it and picks the right one by PCI id at boot.
 
 Jump to: [Intel](#intel) · [AMD and ATI](#amd-and-ati) · [S3](#s3) ·
 [Matrox](#matrox) · [NVIDIA, SiS and 3dfx](#nvidia-sis-and-3dfx) ·
-[Any VESA card](#any-vesa-card). Within each, oldest chip first. To find
+[Any VESA card](#any-vesa-card). Within each, by GPU generation, then
+oldest chip first. To find
 a card by its PCI id, search the page for it (for example `8086:2592`).
 
 #### Intel
@@ -137,10 +138,10 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Claimed: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
+| Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
 | Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | Claimed: the G45's path unchanged, built from one survey of an HP t5740. Nothing has run on one |
-| Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
@@ -220,10 +221,10 @@ from the records the [changelog](CHANGELOG.md) links.
 |---|---|---|---|---|---|---|---|
 | Intel GMA 900 | Not run | Yes | Yes | Yes | Not run | Glide 2 probe only | Not run |
 | Intel GMA 950 | DirectDraw | Yes | Yes | Yes | Yes | Yes | Yes |
+| Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
 | Intel GMA X4500, GMA 4500 (reported, 0.28.0) | Not recorded | Yes | Not run | Yes | Not recorded | Yes | Not run |
 | Intel GMA 4500MHD | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
-| Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
