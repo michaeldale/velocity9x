@@ -30,7 +30,7 @@ build identifier so exact guest-tested binaries remain traceable.
   default setting, Game decides, was never affected
   ([record](docs/decisions/2026-11-07-gen3-unsynced-flip-held.md)).
 
-- **AMD Radeon HD 5570 (Redwood, `1002:68D9`) is claimed by the `ati`
+- **AMD Radeon HD 5570 (Redwood, `1002:68D9`) is recognised by the `ati`
   package.** It takes the HD 5770's path: DirectDraw on the DMA engine,
   page flips, and Direct3D and OpenGL on the 3D engine. It uses Redwood's
   ME microcode (its PFP is the HD 5450's, byte for byte), and Linux's
@@ -315,7 +315,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
   ([record](docs/decisions/2026-11-04-gm45-gl40-from-a-survey.md)).
 
 - **AMD Radeon HD 7660D (Trinity, the A10-5700's graphics, `1002:9901`)
-  is claimed by the `ati` package**, measured on one tester's machine
+  is supported by the `ati` package**, tested on one tester's machine
   through remote help. Modes come from the VBE
   ([record](docs/decisions/2026-11-03-trinity-tier0-and-registers.md)).
   - DirectDraw fills and copies run on the DMA engine, and page flips go
@@ -336,7 +336,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
   - The HD 7470 was re-run on this build in another machine: V9XD32,
     V9XDDP and Quake 3 pass as before. The HD 5450 and HD 5770, which
     share the changed engine code, were not.
-- **NVIDIA RIVA 128ZX (`12D2:0018`) is claimed by a new `nvidia`
+- **NVIDIA RIVA 128ZX (`12D2:0018`) is recognised by a new `nvidia`
   package**, measured on one tester's STB card (8 MiB) in a Windows 98
   first edition machine through remote help. Modes come from the VBE.
   The original RIVA 128 shares the id and has not run it
@@ -384,7 +384,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
   family existed stayed on `vbe` through every update (report V9X-AW3C75:
   a Radeon R7E updated from 0.32.0 to 0.34.0 on `vbe` and lost Direct3D).
   `SIGNED.TXT` now lists, under the release signature, the hardware IDs
-  each family claims. When the card is on `vbe` and exactly one other
+  each family recognises. When the card is on `vbe` and exactly one other
   family lists its ID, the updater downloads that family instead,
   installs the model for the card's ID, and updates the name Device
   Manager shows. It never moves a card from one chip family to another.
@@ -403,7 +403,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 
 ## 0.34.0 - 2026-11-01
 
-- **AMD Radeon HD 7470 (Caicos, `1002:6778`) is claimed by the `ati`
+- **AMD Radeon HD 7470 (Caicos, `1002:6778`) is recognised by the `ati`
   package**, measured on one tester's machine through remote help. Modes
   come from the VBE, up to 1400x1050 on its BIOS
   ([record](docs/decisions/2026-10-31-caicos-juniper-tier0-survey.md)).
@@ -420,7 +420,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
     timedemo runs at 34.6 fps at 640x480x16 with every batch in hardware
     ([record](docs/decisions/2026-10-31-caicos-cp-microcode.md),
     [record](docs/decisions/2026-11-01-caicos-direct3d-quake3.md)).
-- **AMD Radeon HD 5770 (Juniper, `1002:68B8`) is claimed by the `ati`
+- **AMD Radeon HD 5770 (Juniper, `1002:68B8`) is recognised by the `ati`
   package**, measured on one tester's machine through remote help:
   DirectDraw on the DMA engine, page flips, and Direct3D and OpenGL on the
   3D engine with Juniper's microcode, eight hardware contexts, four
@@ -490,7 +490,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
   ([record](docs/decisions/2026-10-29-sis6326-u-prestep.md)).
 ## 0.33.0 - 2026-10-29
 
-- **AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) is claimed by the `ati`
+- **AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) is recognised by the `ati`
   package**, measured on one tester's HP machine (AMD GX-420GI) through
   remote help. Modes come from the VBE: 16 and 32 bpp up to 1600x1200,
   with no 8 bpp mode on this BIOS
@@ -565,7 +565,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 
 0.31.0 was opened after 0.30.1 and never released; its work is here.
 
-- **AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) is claimed by the
+- **AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) is recognised by the
   `ati` package**, measured on one card. Modes still come from the VBE.
   - DirectDraw fills and copies run on the card's DMA engine
     ([record](docs/decisions/2026-10-26-cedar-directdraw-on-dma.md)).
@@ -630,12 +630,12 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 
 ## 0.30.1 - 2026-10-26
 
-- **Intel GMA 3100 (G33/G31, `8086:29C2`) is claimed by the `intel-gma`
+- **Intel GMA 3100 (G33/G31, `8086:29C2`) is recognised by the `intel-gma`
   package**, on the GMA 950's Gen3 path unchanged: Direct3D, DirectDraw
   blits and page flips. Built from one DOS survey of a G31 board; nothing
   has run on one
   ([record](docs/decisions/2026-10-26-g33-gma3100-from-a-survey.md)).
-  The Q35 and Q33 (`29B2`, `29D2`) share the core and are not claimed.
+  The Q35 and Q33 (`29B2`, `29D2`) share the core and are not recognised.
 
 ## 0.30.0 - 2026-10-26
 
@@ -897,7 +897,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 ## 0.24.0 - 2026-10-22
 
 - **Intel HD Graphics on Ironlake (Clarkdale, `8086:0042`): new chip.**
-  The `intel-gma` package claims it: the VBE display, DirectDraw fills and
+  The `intel-gma` package recognises it: the VBE display, DirectDraw fills and
   copies on the render ring, page flips on the plane, and hardware
   Direct3D, OpenGL and Glide on the GMA X3100's engine at 16 and 32 bpp.
   Measured on one Clarkdale desktop.
@@ -941,7 +941,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 ## 0.23.0 - 2026-10-21
 
 - **Intel GMA X3100 (GM965, `8086:2A02`): new chip.** The `intel-gma`
-  package now claims the first Gen4 part. On one HP laptop (Core 2 Duo
+  package now recognises the first Gen4 part. On one HP laptop (Core 2 Duo
   T7250) reached through remote help:
   - DirectDraw fills and copies ran on the GMA 950's ring and blitter
     and read back correctly. Gen4 keeps its page table in BAR0 instead
@@ -978,7 +978,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
     flips stay register writes.
 
 - **Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`): new chip.** The
-  `intel-gma` package now claims it. It was tested on one MSI B75MA-P45
+  `intel-gma` package now recognises it. It was tested on one MSI B75MA-P45
   desktop with an i5-3570K, reached through remote help.
   DirectDraw fills and copies run on the blitter ring, the same way as on
   the HD 4600, and read back correctly in 256 colours, 16-bit and
@@ -1003,7 +1003,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 ## 0.22.0 - 2026-10-20
 
 - **Intel GMA 3150 (Pineview, `8086:A011`): new chip.** The `intel-gma`
-  package now claims the Atom N4xx/N5xx netbook GPU with the GMA 950's
+  package now recognises the Atom N4xx/N5xx netbook GPU with the GMA 950's
   Gen3 engine. On one Lenovo (Atom N455) reached through remote help,
   the following were measured:
   - DirectDraw on the blitter, with page flips;
@@ -1014,7 +1014,7 @@ Release checks: the HD 4600, GMA 950, Rage 128 Pro, RIVA 128ZX and one
 
   3DMark 2000 runs at 1024x600x16 with no draw refused (755 3DMarks; its
   default 1024x768x32 needs 16 MB and is refused). Its second PCI function (`A012`) is left
-  alone. Desktop parts (`A001`) are not claimed
+  alone. Desktop parts (`A001`) are not recognised
   ([plan](docs/plans/intel-pineview-gma3150.md),
   [first run](docs/decisions/2026-10-20-pineview-tommo33-gen3-first-run.md),
   [tier-0](docs/decisions/2026-10-20-pineview-tommo33-tier0.md)).
@@ -1818,7 +1818,7 @@ Single-pass multitexture on the ATI Rage Pro class, and an OpenGL ICD
 that draws a two-texture batch in passes when no engine takes it whole.
 Measured on A8U4I5 (Rage XL PCI) and the HP Mini 110 netbook (GMA 950).
 The Gateway's Rage Mobility-M runs the same Mach64 code and was not run.
-The Intel GMA 900 (915GM) is claimed, untested on hardware.
+The Intel GMA 900 (915GM) is recognised, untested on hardware.
 
 ### ATI Rage Pro class (Mach64)
 
@@ -1862,7 +1862,7 @@ The Intel GMA 900 (915GM) is claimed, untested on hardware.
 
 ### Intel GMA 900 (915GM)
 
-- **The 915GM's GMA 900 (`8086:2592`) is claimed by the intel-gma
+- **The 915GM's GMA 900 (`8086:2592`) is recognised by the intel-gma
   package**, with the GMA 950's Gen3 Direct3D, blits and ring flips.
   From a DOS survey sent with GitHub issue 3; no 915 has run this
   driver. Its BARs, stolen memory, BSM and VBE size match the netbook's.
@@ -2998,9 +2998,9 @@ measurement of an option added here.
   per-chip `framebuffer_bar` (appended last and zero, so every other family
   reads BAR0 exactly as before), `V9XPCIREADBAR0` becomes `V9XPCIREADBAR` and
   computes its configuration offset from the index, and the policy backend
-  takes both Millennium ids. The manifest claims three modes rather than
+  takes both Millennium ids. The manifest lists three modes rather than
   four: this BIOS pads `0114h` to 1920 bytes per scan line where the driver's
-  table asks for 1600, so that mode is not claimed until someone has set it.
+  table asks for 1600, so that mode is not listed until someone has set it.
   `VideoMemoryBytes` is a 2 MiB floor, because the BIOS's 8 MiB figure is its
   own BAR window and the aperture probe refused to call anything installed
   memory
@@ -3474,7 +3474,7 @@ guests for this release. The error is in the safe direction and it is filed:
 
 It is not fixed here for the reason that issue gives - changing what goes inside
 the published artifacts on the run that publishes them is how a release ends up
-not being the thing that was audited - and because what each family should claim
+not being the thing that was audited - and because what each family should support
 is a statement about its testing history rather than a mechanism. The section
 above is the accurate record for this release.
 
@@ -3946,8 +3946,8 @@ comment predicts. Filed as
 `docs/issues/2026-08-29-trio32-lacks-vbe-0115.md`.
 
 Deliberately not added: the Vision864/868/964/968 and 86C928 ids, all measured
-and all unclaimed. Those are external-RAMDAC boards whose CR36 encoding differs
-from the Trio line, so binding them would be a claim rather than an alias.
+and none recognised. Those are external-RAMDAC boards whose CR36 encoding differs
+from the Trio line, so binding them would be a guess, not the same design.
 
 ## 0.6.1 - 2026-08-28
 

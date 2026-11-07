@@ -51,7 +51,7 @@ New in 0.40.0:
   package, built from one reporter's survey. It has not run on a card
   yet.
 
-Both Intel fixes were measured on the GMA 950 and reach the other chips
+Both Intel fixes were tested on the GMA 950 and reach the other chips
 by the same code.
 
 ### Known issues
@@ -122,7 +122,7 @@ Everything before that is in the [changelog](CHANGELOG.md).
 
 Cards are grouped into *families*, one package each. A family's driver
 serves every chip in it and picks the right one by PCI id at boot.
-"Measured" means run on the physical machine named; a card that is only
+"Tested" means run on the physical machine named; a card that is only
 "recognised" installs and binds by design and has not been run.
 
 Jump to: [Intel](#intel) · [AMD and ATI](#amd-and-ati) · [S3](#s3) ·
@@ -133,7 +133,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 #### Intel
 
-| Card | Package | 3D engine | Measured on hardware |
+| Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
@@ -149,7 +149,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 #### AMD and ATI
 
-| Card | Package | 3D engine | Measured on hardware |
+| Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | ATI Mach64 VT2 | `ati` | none | 2D through the BIOS, on an emulator |
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
@@ -165,14 +165,14 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 #### S3
 
-| Card | Package | 3D engine | Measured on hardware |
+| Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | S3 Trio32/64 | `s3` | none | GDI and DirectDraw on the 8514/A engine, on PCI and on a VLB 486 under Windows 95 |
-| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path). ViRGE/DX: GDI on the engine; Direct3D and OpenGL measured on an emulator and, from 0.36.0, on one physical card (3DMark 2000 at 800x600x16) |
+| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path). ViRGE/DX: GDI on the engine; Direct3D and OpenGL tested on an emulator and, from 0.36.0, on one physical card (3DMark 2000 at 800x600x16) |
 
 #### Matrox
 
-| Card | Package | 3D engine | Measured on hardware |
+| Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | Matrox Millennium (MGA-2064W) | `matrox` | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
 | Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it |
@@ -180,7 +180,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 #### NVIDIA, SiS and 3dfx
 
-| Card | Package | 3D engine | Measured on hardware |
+| Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
@@ -188,9 +188,9 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 #### Any VESA card
 
-| Card | Package | 3D engine | Measured on hardware |
+| Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
-| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Measured on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
 
 The driver also installs on some close relatives of the cards above,
 which nobody has run it on yet. Each one uses the code of a tested card
@@ -214,12 +214,12 @@ where the table says otherwise. No card has a hardware cursor.
 
 ### What each card runs
 
-The interfaces each card has been measured running on physical hardware,
+The interfaces each card has been tested running on physical hardware,
 from the records the [changelog](CHANGELOG.md) links.
 
-- **Yes:** measured.
-- **Emulator:** measured only on an emulator.
-- **Not run:** installed and expected to work, but nobody has measured
+- **Yes:** tested.
+- **Emulator:** tested only on an emulator.
+- **Not run:** installed and expected to work, but nobody has tested
   it.
 - **No:** not available on that card.
 
@@ -258,7 +258,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
 
-Measured limits:
+Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600 and the Millennium II (the Mystique, the HD 5450, HD 7470,
@@ -279,7 +279,7 @@ Measured limits:
   than drawing it wrong. The GMA 950, the two Matrox 3D chips and the
   Rage 128 Pro then draw it on the CPU.
 
-### Measured frame rates
+### Tested frame rates
 
 Recorded on each card as it shipped, at 640x480. They are not a
 like-for-like comparison: the machines differ, and so do the versions.
@@ -314,7 +314,7 @@ rasterizer is on by default in the `vbe` package at 16 bpp and opt-in
 elsewhere; nothing has timed it on a period machine, so expect it to be
 slow.
 
-Each engine draws what it was measured to draw exactly. A draw an engine
+Each engine draws only what testing showed it draws correctly. A draw an engine
 cannot express is refused rather than drawn wrong. On the GMA 950 a
 refused draw falls back to the CPU, into the same frame. Elsewhere it is
 not drawn: see each card's records for what that leaves out. The S3D
@@ -357,7 +357,7 @@ section of its own, by file name, `5` or `6`:
 HL.EXE=6
 ```
 
-What works so far, measured on the Rage XL and the GMA 950: DxDiag's
+What works so far, tested on the Rage XL and the GMA 950: DxDiag's
 Direct3D 8 test, and 3DMark 2001 SE to a full score (111 and 244 3DMarks
 at 640x480; its game tests are slow on cards of this age). Direct3D 8 is
 offered 16-bit colour only: 16-bit display modes, 16-bit textures and a
@@ -412,7 +412,7 @@ never over a newer copy, so a Voodoo add-on card keeps its own. The
 Voodoo4's package ships none: the card runs 3dfx's own Glide, and the
 driver hands the card to it and takes it back.
 
-Measured:
+Tested:
 - **Need for Speed II SE:** races on the GMA 950.
 - **Carmageddon II:** its Glide option runs, menus and races, on the
   GMA 950.
@@ -614,7 +614,7 @@ On the S3 cards, yes: True Color at 640x480, 800x600 and 1024x768, and
 packed 24-bpp modes. The 3D paths are 16-bit.
 
 **Can I run this on real hardware, or only in an emulator?**
-Both. Every card in the [table](#supported-cards) marked as measured ran on
+Both. Every card in the [table](#supported-cards) marked as tested ran on
 a physical machine. Development and regression testing also use
 [86Box](https://86box.net/) and QEMU. Read
 [docs/INSTALL.md](docs/INSTALL.md) first and have a recovery path.
