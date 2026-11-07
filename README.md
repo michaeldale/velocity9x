@@ -21,7 +21,7 @@ hardware 3D:
 The S3 Trio32/64 and the Matrox Millennium get 2D acceleration, and other
 cards run through their VESA video BIOS. The Intel GMA 4500 and GMA X4500
 were built from their surveys and run, by one reporter's account, on
-0.28.0. The GMA 4500MHD, GMA 3100 and Radeon HD 5570 are claimed: built
+0.28.0. The GMA 4500MHD, GMA 3100 and Radeon HD 5570 are recognised: built
 from a survey, not yet run.
 
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
@@ -47,7 +47,7 @@ New in 0.40.0:
   and loses none now.
 - **Intel GMA 900 to Ironlake:** the vertical sync setting's **Always
   off** no longer shows half-cleared frames.
-- **AMD Radeon HD 5570** (Redwood, `1002:68D9`) is claimed by the `ati`
+- **AMD Radeon HD 5570** (Redwood, `1002:68D9`) is recognised by the `ati`
   package, built from one reporter's survey. It has not run on a card
   yet.
 
@@ -96,7 +96,7 @@ Everything before that is in the [changelog](CHANGELOG.md).
 
 > This is an engineering driver. Each card's results come from **one
 > physical machine**: two for the Trio64, none for a card marked
-> "claimed". Read the [installation guide](docs/INSTALL.md), and keep a
+> "recognised, untested". Read the [installation guide](docs/INSTALL.md), and keep a
 > cold backup before installing.
 
 ## Start here
@@ -123,7 +123,7 @@ Everything before that is in the [changelog](CHANGELOG.md).
 Cards are grouped into *families*, one package each. A family's driver
 serves every chip in it and picks the right one by PCI id at boot.
 "Measured" means run on the physical machine named; a card that is only
-"claimed" binds by design and has not been run.
+"recognised" installs and binds by design and has not been run.
 
 Jump to: [Intel](#intel) · [AMD and ATI](#amd-and-ati) · [S3](#s3) ·
 [Matrox](#matrox) · [NVIDIA, SiS and 3dfx](#nvidia-sis-and-3dfx) ·
@@ -137,11 +137,11 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 |---|---|---|---|
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
-| Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Claimed: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
+| Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
-| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | Claimed: the G45's path unchanged, built from one survey of an HP t5740. Nothing has run on one |
+| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | Recognised, untested: the G45's path unchanged, built from one survey of an HP t5740. Nothing has run on one |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
@@ -157,7 +157,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
 | ATI Radeon X1200 IGP (RS690, `1002:791F`), from 0.37.0 | `ati` | R300-class, by register writes | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys and mipmaps; DirectDraw on the 2D engine and page flips. Rollcage and 3DMark 2000. From 0.38.0 OpenGL and Glide draw on the 3D engine: the OpenGL and Glide 2 probes pass; 3DCIF not run. One tester's Sempron machine through remote help; 16 MiB of the 128 MiB carve-out used; modes from the VBE |
 | AMD Radeon HD 5770 (Juniper, `1002:68B8`), from 0.34.0 | `ati` | Evergreen, through AMD's Juniper CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 up to 1600x1200. One tester's machine through remote help; modes from the VBE. The Glide 2 probe passes |
-| AMD Radeon HD 5570 (Redwood, `1002:68D9`), from 0.40.0 | `ati` | Evergreen, through AMD's Redwood CP microcode | Claimed: the HD 5770's path with Redwood's numbers, from one reporter's survey. Nothing has run on one yet |
+| AMD Radeon HD 5570 (Redwood, `1002:68D9`), from 0.40.0 | `ati` | Evergreen, through AMD's Redwood CP microcode | Recognised, untested: the HD 5770's path with Redwood's numbers, from one reporter's survey. Nothing has run on one yet |
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
 | AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. Glide not run |
@@ -236,7 +236,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | ATI Rage 128 Pro | DirectDraw, flips | Yes | Not run | Yes | No | Yes | Not run |
 | ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe (0.38.0) | No | Glide 2 probe only (0.38.0) | Not run |
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
-| AMD Radeon HD 5570 (0.40.0, claimed) | Not run | Not run | Not run | Not run | No | Not run | Not run |
+| AMD Radeon HD 5570 (0.40.0, recognised, untested) | Not run | Not run | Not run | Not run | No | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7660D (0.35.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
