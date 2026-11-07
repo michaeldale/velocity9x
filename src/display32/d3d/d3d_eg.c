@@ -653,7 +653,7 @@ int v9x_d3d_eg_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 
 /*
  * Placement. An offscreen render target gets its pitch rounded to 8
- * pixels, 256-aligned. A Z16 buffer gets its pitch rounded to 16 pixels,
+ * pixels and 32 bytes, 256-aligned. A Z16 buffer gets its pitch rounded to 16 pixels,
  * the bind alignment and whole 8-pixel tiles, and its rows to 8, the DB's
  * 1D tile, 256-aligned. A video-memory
  * texture of a format this engine samples gets each level in a block of
@@ -712,7 +712,14 @@ static DWORD v9x_d3d_eg_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         if (bytes != 2ul && bytes != 4ul) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
+        /* Whole 8-pixel tiles, and the row whole target_pitch_align
+         * bytes, which the core's target check asks: at 16 bpp, 8
+         * pixels are only 16 bytes. A 360-pixel 16 bpp OpenGL back
+         * buffer at 720 bytes was refused at every clear and draw on
+         * Trinity, which then read white (2026-11-08). */
         pitches[0] = ((width + 7ul) & ~7ul) * bytes;
+        pitches[0] = (pitches[0] + v9x_d3d_eg_limits.target_pitch_align -
+                      1ul) & ~(v9x_d3d_eg_limits.target_pitch_align - 1ul);
         rows[0] = height;
     } else if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (data->dwSCnt != 1ul ||

@@ -1021,7 +1021,8 @@ static int v9x_d3d_r128_texture_edge(DWORD edge)
  * packed: TEX_SIZE_PITCH_C takes the pitch as the width's log2 and every
  * level has its own offset register. A Z16 buffer gets 32-byte alignment
  * and a pitch of whole 8-pixel units, which Z_OFFSET_C and Z_PITCH_C need
- * and DirectDraw's 8-byte heap alignment does not give.
+ * and DirectDraw's 8-byte heap alignment does not give. An offscreen
+ * render target alone gets the same, as the Evergreen engine's does.
  */
 static DWORD v9x_d3d_r128_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
@@ -1047,7 +1048,28 @@ static DWORD v9x_d3d_r128_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
 
-    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+    if ((surface->ddsCaps & V9X_DDSCAPS_3DDEVICE) != 0ul &&
+        (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
+                             V9X_DDSCAPS_FLIP)) == 0ul) {
+        /* An offscreen render target alone: its base on 32 bytes and its
+         * pitch whole 8-pixel units. The heap had put V9XD32's 64x64 T4
+         * target at offset 2EF26Ch, 4 bytes past the 32, once the textures
+         * of T20 and T21 were placed before it (this file's blocks): its
+         * fill came back DDERR_UNSUPPORTED and its draw left nothing (A8U4I5,
+         * boot 679; placed here, both pass, boot 680, 2026-11-08). A flip chain's back buffers come with the
+         * primary, which this does not place. */
+        if (data->dwSCnt != 1ul || width == 0ul || height == 0ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        bytes = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul ?
+                surface->lpGbl->ddpfSurface.dwRGBBitCount / 8ul :
+                v9x_hal->info.vmiData.ddpfDisplay.dwRGBBitCount / 8ul;
+        if (bytes != 2ul && bytes != 4ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        pitches[0] = ((width + 7ul) & ~7ul) * bytes;
+        rows[0] = height;
+    } else if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (data->dwSCnt != 1ul ||
             v9x_d3d_depth_bytes_per_pixel(surface) != 2ul || width == 0ul ||
             height == 0ul) {

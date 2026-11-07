@@ -1,0 +1,130 @@
+712 pid=FFFD7785 glClear result=1 mask=00004000
+713 pid=FFFD7785 DrvReleaseContext context=2 -> 1
+714 pid=FFFD7785 paths batches/triangles untextured=8/26 hw=74/111 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+715 pid=FFFD7785 counters hwtex lost=0
+716 pid=FFFD7785 counters tnl batches=0 triangles=0 refused=0 failed=0
+717 pid=FFFD7785 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+718 pid=FFFD7785 counters hwtex live=0 creates=65 create-failed=0 evictions=0 uploads=68 partial=2 upload-kb=662 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=22
+719 pid=FFFD7785 DrvDeleteContext context=2 -> 1
+720 pid=FFFD7785 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+721 pid=FFFD7785 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+722 pid=FFFD7785 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+723 pid=FFFD7785 DrvSetContext hdc=00000776 context=2 -> 1
+724 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+725 pid=FFFD7785 glClear result=1 mask=00004000
+726 pid=FFFD7785 DrvReleaseContext context=2 -> 1
+727 pid=FFFD7785 paths batches/triangles untextured=8/26 hw=75/112 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+728 pid=FFFD7785 counters hwtex lost=0
+729 pid=FFFD7785 counters tnl batches=0 triangles=0 refused=0 failed=0
+730 pid=FFFD7785 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+731 pid=FFFD7785 counters hwtex live=0 creates=66 create-failed=0 evictions=0 uploads=69 partial=2 upload-kb=672 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=23
+732 pid=FFFD7785 DrvDeleteContext context=2 -> 1
+733 pid=FFFD7785 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+734 pid=FFFD7785 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+735 pid=FFFD7785 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+736 pid=FFFD7785 DrvSetContext hdc=00000776 context=2 -> 1
+737 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+738 pid=FFFD7785 glClear result=1 mask=00004000
+739 pid=FFFD7785 DrvReleaseContext context=2 -> 1
+740 pid=FFFD7785 paths batches/triangles untextured=8/26 hw=76/113 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+741 pid=FFFD7785 counters hwtex lost=0
+742 pid=FFFD7785 counters tnl batches=0 triangles=0 refused=0 failed=0
+743 pid=FFFD7785 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+744 pid=FFFD7785 counters hwtex live=0 creates=67 create-failed=0 evictions=0 uploads=70 partial=2 upload-kb=682 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=24
+745 pid=FFFD7785 DrvDeleteContext context=2 -> 1
+746 pid=FFFD7785 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+747 pid=FFFD7785 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+748 pid=FFFD7785 DrvCreateLayerContext hdc=00000776 layer=0 -> 2
+749 pid=FFFD7785 DrvSetContext hdc=00000776 context=2 -> 1
+750 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+751 pid=FFFD7785 glClear result=1 mask=00004000
+752 pid=FFFD7785 DrvReleaseContext context=2 -> 1
+753 pid=FFFD7785 paths batches/triangles untextured=8/26 hw=77/114 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+754 pid=FFFD7785 counters hwtex lost=0
+755 pid=FFFD7785 counters tnl batches=0 triangles=0 refused=0 failed=0
+756 pid=FFFD7785 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+757 pid=FFFD7785 counters hwtex live=0 creates=68 create-failed=0 evictions=0 uploads=71 partial=2 upload-kb=692 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=25
+758 pid=FFFD7785 DrvDeleteContext context=2 -> 1
+759 pid=FFFD7785 DrvSetContext hdc=00000776 context=1 -> 1
+760 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+761 pid=FFFD7785 glClear result=1 mask=00004000
+762 pid=FFFD7785 DrvGetProcAddress name=glSelectTextureSGIS -> NULL
+763 pid=FFFD7785 DrvGetProcAddress name=glMTexCoord2fSGIS -> NULL
+764 pid=FFFD7785 DrvGetProcAddress name=glActiveTextureARB -> NULL
+765 pid=FFFD7785 DrvGetProcAddress name=glClientActiveTextureARB -> NULL
+766 pid=FFFD7785 DrvGetProcAddress name=glMultiTexCoord2fARB -> NULL
+767 pid=FFFD7785 DrvGetProcAddress name=glSelectTextureSGIS -> NULL
+768 pid=FFFD7785 DrvGetProcAddress name=glMTexCoord2fSGIS -> NULL
+769 pid=FFFD7785 glClear result=1 mask=00004000
+770 pid=FFFD7785 state tex=15 size=00400040 tex=01010101 blend=00020100 depth=00020102 colour=FFFFFFFF mask=7 scissor=0,0,376,280 fog=0 tex1=0/00000000 env1=000000
+771 pid=FFFD7785 glClear result=1 mask=00004000
+772 pid=FFFD7785 glClear result=1 mask=00004000
+773 pid=FFFD7785 glClear result=1 mask=00004000
+774 pid=FFFD7785 glClear result=1 mask=00004000
+775 pid=FFFD7785 glClear result=1 mask=00004000
+776 pid=FFFD7785 glClear result=1 mask=00004000
+777 pid=FFFD7785 glClear result=1 mask=00004000
+778 pid=FFFD7785 glClear result=1 mask=00004000
+779 pid=FFFD7785 glClear result=1 mask=00004000
+780 pid=FFFD7785 glClear result=1 mask=00004000
+781 pid=FFFD7785 glClear result=1 mask=00004000
+782 pid=FFFD7785 glClear result=1 mask=00004000
+783 pid=FFFD7785 glClear result=1 mask=00004000
+784 pid=FFFD7785 glClear result=1 mask=00004000
+785 pid=FFFD7785 glClear result=1 mask=00004000
+786 pid=FFFD7785 glClear result=1 mask=00004000
+787 pid=FFFD7785 glClear result=1 mask=00004000
+788 pid=FFFD7785 glClear result=1 mask=00004000
+789 pid=FFFD7785 glClear result=1 mask=00004000
+790 pid=FFFD7785 glClear result=1 mask=00004100
+791 pid=FFFD7785 glClear result=1 mask=00004100
+792 pid=FFFD7785 DrvGetProcAddress name=glLockArraysEXT -> entry
+793 pid=FFFD7785 DrvGetProcAddress name=glUnlockArraysEXT -> entry
+794 pid=FFFD7785 cva first glLockArraysEXT first=4294967295 count=6
+795 pid=FFFD7785 glClear result=1 mask=00004000
+796 pid=FFFD7785 glClear result=1 mask=00004000
+797 pid=FFFD7785 glClear result=1 mask=00004000
+798 pid=FFFD7785 glClear result=1 mask=00004000
+799 pid=FFFD7785 glClear result=1 mask=00004000
+800 pid=FFFD7785 glClear result=1 mask=00004000
+801 pid=FFFD7785 glClear result=1 mask=00004000
+802 pid=FFFD7785 glClear result=1 mask=00004000
+803 pid=FFFD7785 glClear result=1 mask=00004000
+804 pid=FFFD7785 state tex=18 size=00040004 tex=01010100 blend=01050600 depth=00020101 colour=800000FF mask=7 scissor=0,0,376,280 fog=0 tex1=0/00000000 env1=000000
+805 pid=FFFD7785 glClear result=1 mask=00004000
+806 pid=FFFD7785 glClear result=1 mask=00004000
+807 pid=FFFD7785 state tex=19 size=00100010 tex=01010101 blend=00050600 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,376,280 fog=0 tex1=0/00000000 env1=000000
+808 pid=FFFD7785 glClear result=1 mask=00004000
+809 pid=FFFD7785 glClear result=1 mask=00004000
+810 pid=FFFD7785 glClear result=1 mask=00004000
+811 pid=FFFD7785 glClear result=1 mask=00004000
+812 pid=FFFD7785 glClear result=1 mask=00004000
+813 pid=FFFD7785 DrvReleaseContext context=1 -> 1
+814 pid=FFFD7785 DrvSetContext hdc=00000776 context=1 -> 1
+815 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+816 pid=FFFD7785 glClear result=1 mask=00004100
+817 pid=FFFD7785 glClear result=1 mask=00004100
+818 pid=FFFD7785 state tex=22 size=00000000 tex=00000000 blend=00050600 depth=01020100 colour=FF337359 mask=7 scissor=0,0,376,280 fog=0 tex1=0/00000000 env1=000000
+819 pid=FFFD7785 state tex=21 size=00080008 tex=01010200 blend=00050600 depth=01020101 colour=FFFFFFFF mask=7 scissor=0,0,376,280 fog=0 tex1=0/00000000 env1=000000
+820 pid=FFFD7785 state tex=22 size=00080008 tex=01010200 blend=00050600 depth=01020101 colour=FFFF99FF mask=7 scissor=0,0,376,280 fog=0 tex1=0/00000000 env1=000000
+821 pid=FFFD7785 DrvReleaseContext context=1 -> 1
+822 pid=FFFD7785 DrvSetContext hdc=00000776 context=1 -> 1
+823 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+824 pid=FFFD7785 glClear result=1 mask=00004100
+825 pid=FFFD7785 glClear result=1 mask=00004100
+826 pid=FFFD7785 DrvReleaseContext context=1 -> 1
+827 pid=FFFD7785 DrvSetContext hdc=00000776 context=1 -> 1
+828 pid=FFFD7785 tnl allowed=0 batches=0 triangles=0
+829 pid=FFFD7785 DrvReleaseContext context=1 -> 1
+830 pid=FFFD7785 paths batches/triangles untextured=23/152 hw=116/196 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+831 pid=FFFD7785 counters hwtex lost=0
+832 pid=FFFD7785 counters tnl batches=0 triangles=0 refused=0 failed=0
+833 pid=FFFD7785 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+834 pid=FFFD7785 counters hwtex live=0 creates=73 create-failed=0 evictions=0 uploads=76 partial=2 upload-kb=702 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=79
+835 pid=FFFD7785 DrvDeleteContext context=1 -> 1
+836 pid=FFFD7785 detach slots-called=1 stub-calls=1
+837 pid=FFFD7785 census glBegin=149 glColor3f=106 glColor3us=1 glColor4b=1 glColor4f=6 glColor4fv=40 glEdgeFlag=2 glEnd=149 glNormal3fv=40 glRecti=1 glTexCoord2f=426 glVertex2f=430 glVertex2s=4 glVertex3f=250 glVertex3fv=48 glColorMaterial=1 glCullFace=2 glFogf=5 glFogfv=1 glFogi=3 glFogiv=1 glFrontFace=2 glHint=1 glLightf=30 glLightfv=31 glLightModelfv=5 glLightModeli=5 glMaterialf=5 glMaterialfv=20 glScissor=2 glShadeModel=3
+838 pid=FFFD7785 census glTexParameteri=61 glTexImage2D=393 glTexEnvi=26 glDrawBuffer=7 glClear=120 glClearColor=30 glClearStencil=2 glClearDepth=6 glDepthMask=5 glDisable=140 glEnable=100 glFinish=186 glFlush=66 glPopAttrib=3 glPushAttrib=2 glAlphaFunc=1 glBlendFunc=7 glDepthFunc=8 glPixelStorei=592 glReadBuffer=8 glReadPixels=530 glGetBooleanv=1 glGetError=85 glGetFloatv=4 glGetIntegerv=9 glGetLightfv=1 glGetString=7
+839 pid=FFFD7785 census glGetTexEnviv=1 glGetTexLevelParameteriv=2 glIsEnabled=3 glDepthRange=5 glFrustum=5 glLoadIdentity=44 glMatrixMode=47 glOrtho=18 glPopMatrix=14 glPushMatrix=14 glRotatef=2 glTranslatef=16 glViewport=14 glBindTexture=89 glColorPointer=1 glDisableClientState=3 glDrawArrays=2 glDrawElements=1 glEnableClientState=3 glInterleavedArrays=1 glPolygonOffset=3 glVertexPointer=2 glDeleteTextures=15 glGenTextures=65
+840 pid=FFFD7785 census glTexSubImage2D=2 glPopClientAttrib=1 glPushClientAttrib=1
+841 pid=FFFD7785 census implemented-slots-called=85

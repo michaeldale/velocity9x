@@ -6,6 +6,21 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.42.0 - not yet released
 
+- **AMD Radeon HD 5450, HD 5570, HD 5770, HD 7470 and HD 7660D at
+  16 bpp: OpenGL windows of some widths draw again.** A window whose width was
+  an odd multiple of 8 pixels (360, say) got a back buffer the 3D engine
+  refused. Every clear and draw into it was dropped, and the window
+  showed whatever was there before. Tested on the HD 7660D
+  ([record](docs/decisions/2026-11-08-render-target-placement-trinity-rage128.md)).
+
+- **ATI Rage 128: offscreen Direct3D render targets made after
+  textures draw again.** Once Direct3D textures were in video memory, a
+  new offscreen render target could start 4 bytes off the alignment the
+  engine needs. Fills and draws into it were refused. This was the cause
+  of the Direct3D test program's T4 and T16 failures since 0.37.0, which
+  had been blamed on the program
+  ([record](docs/decisions/2026-11-08-render-target-placement-trinity-rage128.md)).
+
 ## 0.41.0 - 2026-11-08
 
 - **AMD Radeon HD 5450, HD 5570, HD 5770, HD 7470 and HD 7660D: the

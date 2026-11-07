@@ -44,11 +44,11 @@ item when a later record settles it.
   eight runs since have not reproduced it. Read those keys in the next
   release checks on any engine-backed chip.
 
-- **Trinity's OpenGL reads at 16 bpp**: from V9XGLP's SGIS mip sweep
-  on, every read is white or stale (`Cva` fails, `Offset*` and `Fog*`
-  read FFFFFF). The same with write-combining off, so not 0.41.0's
-  change ([record](../decisions/2026-11-08-0.41.0-release-checks.md)).
-  Next: the same probe at 32 bpp, then bisect the sweep.
+- ~~**Trinity's OpenGL reads at 16 bpp**~~: settled 2026-11-08. A
+  16 bpp target an odd number of 8 pixels wide was placed with a pitch
+  the target check refused; fixed in `d3d_eg.c` and measured on Trinity
+  ([record](../decisions/2026-11-08-render-target-placement-trinity-rage128.md)).
+  Owed: the same build on a Cedar, Juniper, Redwood or Caicos card.
 
 ## Not started
 

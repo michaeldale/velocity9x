@@ -74,6 +74,45 @@ static int v9x_glp_forced_format(void)
     return 0;
 }
 
+/* The N of a /resizew:N on the command line, 0 when there is none: the
+ * width the lifetime cycles resize the window to instead of 360. */
+static int v9x_glp_resize_width(void)
+{
+    static const char option[] = "/resizew:";
+    const char *line = GetCommandLineA();
+    unsigned int i;
+    int value = 0;
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        for (i = 0u; option[i] != '\0' && line[i] == option[i]; ++i) {
+        }
+        if (option[i] != '\0') {
+            continue;
+        }
+        for (line += i; *line >= '0' && *line <= '9'; ++line) {
+            value = value * 10 + (*line - '0');
+        }
+        return value;
+    }
+    return 0;
+}
+
+/* Whether the command line holds this switch (such as "/noresize"). */
+static int v9x_glp_switch(const char *option)
+{
+    const char *line = GetCommandLineA();
+    unsigned int i;
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        for (i = 0u; option[i] != '\0' && line[i] == option[i]; ++i) {
+        }
+        if (option[i] == '\0') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* One pixel through glReadPixels as 0xRRGGBB. GL rows count up from the
  * bottom, so (x, y) is in window coordinates, not GDI's. */
 static DWORD v9x_glp_read(GLint x, GLint y)
@@ -3756,8 +3795,10 @@ void __stdcall V9xGlProbeEntry(void)
                 int level;
                 int edge;
 
-                if (cycle == 25) {
-                    SetWindowPos(window, 0, 0, 0, 360, 280,
+                if (cycle == 25 && !v9x_glp_switch("/noresize")) {
+                    SetWindowPos(window, 0, 0, 0,
+                                 v9x_glp_resize_width() > 0 ?
+                                 v9x_glp_resize_width() : 360, 280,
                                  SWP_NOMOVE | SWP_NOZORDER);
                     v9x_glp_pump();
                 }
@@ -3806,6 +3847,28 @@ void __stdcall V9xGlProbeEntry(void)
             v9x_glp_uint("LifetimeVramFreeFirst", free_first);
             v9x_glp_uint("LifetimeVramFreeLast", free_last);
             wglMakeCurrent(hdc, context);
+
+            /* The first context again, after the cycles remade the
+             * drawable's surfaces: a blue clear must read blue. Trinity
+             * at 16 bpp read white in every test after this point
+             * (0.41.0 release checks). */
+            {
+                RECT client;
+
+                GetClientRect(window, &client);
+                glPushAttrib(GL_COLOR_BUFFER_BIT | GL_VIEWPORT_BIT);
+                glViewport(0, 0, client.right - client.left,
+                           client.bottom - client.top);
+                glClearColor(0.0f, 0.0f, 1.0f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glFinish();
+                v9x_glp_uint("LifetimeClientWidth",
+                             (DWORD)(client.right - client.left));
+                v9x_glp_hex("LifetimeClearAfter",
+                            v9x_glp_read((client.right - client.left) / 2,
+                                         (client.bottom - client.top) / 2));
+                glPopAttrib();
+            }
         }
         {
             RECT client;
