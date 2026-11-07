@@ -35,6 +35,13 @@ v9x_status v9x_s3_virge_validate_mode(struct v9x_backend_state *state,
                                       const struct v9x_mode_request *request,
                                       struct v9x_mode_layout *layout);
 const struct v9x_backend_ops *v9x_s3_virge_backend(void);
+/*
+ * Adapter name for PCI device 8811h from the PCI revision (CR2F).
+ * Bit 6 set is the Trio64V+ (DB018-A, CR2F). Otherwise the Trio32/64.
+ * The returned text is static.
+ */
+const char *v9x_s3_trio64_adapter_name(v9x_u8 pci_revision);
+
 v9x_status v9x_s3_virge_decode_clock_pll(
     v9x_u8 sr10,
     v9x_u8 sr11,

@@ -821,6 +821,23 @@ static void test_s3_virge_memory_decode(void)
           V9X_STATUS_UNSUPPORTED);
     CHECK(v9x_s3_virge_decode_memory_size(0u, 0) ==
           V9X_STATUS_INVALID_ARGUMENT);
+
+    /* CR2F bit 6 is the Trio64V+. 40h is 86Box, 53h is the Diamond card.
+     * 50h has the bit too: the name follows the data book's bit, not
+     * which revisions S3's INF happened to list. 3Fh is the widest value
+     * without it. */
+    CHECK(strcmp(v9x_s3_trio64_adapter_name(0x00u),
+                 "S3 Trio32/64 86C764") == 0);
+    CHECK(strcmp(v9x_s3_trio64_adapter_name(0x3Fu),
+                 "S3 Trio32/64 86C764") == 0);
+    CHECK(strcmp(v9x_s3_trio64_adapter_name(0x40u),
+                 "S3 Trio64V+ 86C765") == 0);
+    CHECK(strcmp(v9x_s3_trio64_adapter_name(0x53u),
+                 "S3 Trio64V+ 86C765") == 0);
+    CHECK(strcmp(v9x_s3_trio64_adapter_name(0x50u),
+                 "S3 Trio64V+ 86C765") == 0);
+    CHECK(strcmp(v9x_s3_trio64_adapter_name(0x60u),
+                 "S3 Trio64V+ 86C765") == 0);
 }
 
 static void test_backend_registry_and_millennium(void)

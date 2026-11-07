@@ -10,6 +10,10 @@
  * This object holds Trio64 code and no ViRGE code - notably not the CR53
  * new-MMIO poke, which this chip does not have. The per-object audit asserts
  * that in both directions.
+ *
+ * PCI 8811h is also the Trio64V+. Windows separates them by revision in the
+ * INF; this module does not. The diagnostics publisher renames the adapter
+ * from CR2F. docs\decisions\2026-11-06-trio64vplus-have-disk.md.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/s3_regs16.h"

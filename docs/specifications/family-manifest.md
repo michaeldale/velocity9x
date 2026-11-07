@@ -139,6 +139,30 @@ constant. `test_hw16_modes.c` asserts each family's device list has exactly one
 entry per manifest id, and `test_family_matrix.c` asserts every alias resolves
 to its own chip's backend.
 
+## Revision models
+
+A chip may declare `RevisionModels` when one PCI device id covers two parts
+that Windows can tell apart by the PCI revision register. Each listed
+revision is its own model line, with `PCI\VEN_&DEV_&REV_` as its only id
+and the model's description, as S3's own INF lists the Trio64V+. Every line
+uses the chip's install section, mode list and mini-VDD.
+
+```powershell
+RevisionModels = @(
+    @{ Name = 'S3 Trio64V+ 86C765'
+       DeviceDesc = 'Velocity9x S3 Trio64V+ 86C765'
+       Revisions = @('40','53') }
+)
+```
+
+A revision model does not add a device-table entry or a backend-registry row.
+The device id is already the chip's, and a second entry would either be
+rejected or never reached. `Get-V9xFamilies` keeps one owner of the bare id
+and one owner of each `vendor:device:revision`. The description is unique
+across chips, aliases and manual-select rows. The revisions themselves are
+the evidence for that chip, recorded in a decision, not invented to fill a
+range.
+
 ## Audit signatures and cross-family derivation
 
 `Chips[].Audit.Required` lists `wdis` patterns that must appear in this chip's

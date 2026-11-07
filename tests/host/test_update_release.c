@@ -232,6 +232,11 @@ static void test_pci_id(void)
     RLCHECK(strcmp(id, "PCI\\VEN_10DE&DEV_002C") == 0);
     RLCHECK(v9x_release_pci_id("PCI\\VEN_5333&DEV_8811", id));
     RLCHECK(strcmp(id, "PCI\\VEN_5333&DEV_8811") == 0);
+    /* A Trio64V+ Have Disk id still names the s3 family's bare device. */
+    RLCHECK(v9x_release_pci_id("PCI\\VEN_5333&DEV_8811&REV_40", id));
+    RLCHECK(strcmp(id, "PCI\\VEN_5333&DEV_8811") == 0);
+    RLCHECK(v9x_release_pci_id("PCI\\VEN_5333&DEV_8811&REV_53", id));
+    RLCHECK(strcmp(id, "PCI\\VEN_5333&DEV_8811") == 0);
 
     RLCHECK(!v9x_release_pci_id("ROOT\\*PNP0900\\0000", id));
     RLCHECK(!v9x_release_pci_id("PCI\\VEN_1002&DEV_98G4&SUBSYS_0", id));

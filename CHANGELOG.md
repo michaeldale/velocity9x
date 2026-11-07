@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.39.0 - not yet released
 
+- **S3 Trio64V+ 86C765 has its own Have Disk name.** It shares PCI id
+  `5333:8811` with the Trio64, so it installed as "S3 Trio32/64 86C764".
+  The S3 package now lists "Velocity9x S3 Trio64V+ 86C765" once for
+  each PCI revision S3's own Windows 95 INF named, on the same install as
+  the Trio64. `V9XHW.INI` names the chip from CR2F and records its
+  revision. Nothing about how the card is driven changes. Contributed by
+  perchrh ([PR 23](https://github.com/michaeldale/velocity9x/pull/23));
+  not yet installed on a guest or card
+  ([record](docs/decisions/2026-11-06-trio64vplus-have-disk.md)).
+
 - **NVIDIA RIVA 128ZX: OpenGL, Glide and 3DCIF now draw on the 3D
   engine.** Before, the engine refused every draw from these three, so
   Glide and 3DCIF drew nothing and OpenGL ran on the CPU. Now a draw is
