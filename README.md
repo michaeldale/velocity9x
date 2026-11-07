@@ -13,7 +13,7 @@ hardware 3D:
 - **Intel:** GMA 900, GMA 950, GMA 3150, GMA X3100, HD Graphics
   (Ironlake), HD 4000 and HD 4600;
 - **AMD and ATI:** Radeon HD 5450, HD 5770, HD 7470, HD 7660D, R3E
-  (Mullins, 2D only), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
+  (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
   Rage IIC;
 - **others:** S3 ViRGE and Trio3D, Matrox Millennium II and Mystique, SiS
   6326, NVIDIA RIVA 128ZX and 3dfx Voodoo4.
@@ -161,7 +161,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
 | AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. Glide not run |
-| AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | none yet: Direct3D draws on the CPU | DirectDraw on the SDMA engine, with AMD's Mullins microcode, and page flips; GDI by the CPU. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. The 3D engine is not driven yet |
+| AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU. The test programs only, no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. OpenGL and Glide not run |
 | AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips. 3DMark 2000 and Quake 3. One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only. Glide not run |
 
 #### S3
@@ -247,7 +247,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7660D (0.35.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
-| AMD Radeon R3E (Mullins, 0.41.0) | DirectDraw, flips | No | No | No | No | No | No |
+| AMD Radeon R3E (Mullins, 0.41.0) | DirectDraw, flips | Yes | Not run | Not run | No | Not run | Not run |
 | AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | S3 Trio32/64 | GDI, DirectDraw | No | No | No | No | No | No |
 | S3 ViRGE/DX | GDI | Yes (0.36.0) | Not run | Probe | No | Probe fails | Not run |

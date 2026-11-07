@@ -4,11 +4,12 @@ Date: 2026-11-08
 
 Status: Phases 0-5 done on M-JJN1ZZ (boot 14, `8e80796e`,
 [record](../decisions/2026-11-08-mullins-directdraw-on-sdma.md)); one
-`CANBLT` busy answer in four V9XDDP runs is open. Phase 6 started: the
-GFX7 CP runs the ring test and start preamble
-([record](../decisions/2026-11-08-mullins-cp-ring-test.md)). Next: GFX7
-gpu_init, the CIK clear state, and a GCN 2 shader encoder for a first
-draw.
+`CANBLT` busy answer in five V9XDDP runs is open. Phase 6 done for
+Direct3D: the GFX7 CP ([ring test](../decisions/2026-11-08-mullins-cp-ring-test.md)),
+every V9XCK3D draw mode ([record](../decisions/2026-11-08-mullins-first-3d-draws.md)),
+and V9XD32 through the HAL at 32 and 16 bpp on boot 15, `32318ecc`
+([record](../decisions/2026-11-08-mullins-direct3d-hal.md)). Next: a game
+(none installed on M-JJN1ZZ), and OpenGL and Glide on the engine.
 
 Target: the GPU in AMD's GX-412HC embedded APU, PCI `1002:9854` rev 01,
 subsystem `1002:9854`, which Linux binds as `CHIP_MULLINS` (9850-985F), a
