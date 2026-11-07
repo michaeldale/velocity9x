@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.39.0 - not yet released
+## 0.39.0 - 2026-11-07
 
 - **The generic VBE driver writes to the screen write-combined.** Any
   card running the `vbe` package now has the CPU's writes to its frame
@@ -68,6 +68,19 @@ build identifier so exact guest-tested binaries remain traceable.
   496,000 batches with none refused. Which surfaces these draws are was
   not identified; the scene looks the same as before
   ([record](docs/decisions/2026-11-07-riva128-a4r4g4b4-alpha-test.md)).
+
+- **ATI Radeon X1200: the red terrain in 3DMark 2000 is traced, not
+  fixed.** The tinted hillsides are one additive pass that 3DMark itself
+  sends with saturated red specular, which this driver adds as asked.
+  Whether Direct3D would show it is open: the next test is the same run
+  under Microsoft's software renderer. For that hunt V9XTRACE gains a
+  census of the distinct Direct3D draw states a program uses, off unless
+  asked for (`-omit:2147483648`), so it costs one bit test per batch.
+  The shared Direct3D code now keeps a texture stage's vertex alpha
+  (COLOROP MODULATE with ALPHAOP SELECTARG DIFFUSE) for drivers that are
+  handed stage states; on this machine the DirectX runtime never hands
+  them over, so nothing drawn changes there
+  ([record](docs/issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)).
 
 - **Correction, NVIDIA RIVA 128ZX: Glide did not regress in 0.37.0.** The
   0.37.0 notes said the Glide 2 probe drew no triangles on that release,

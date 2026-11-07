@@ -28,14 +28,20 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-**Current version: 0.38.0.** OpenGL offers `GL_EXT_compiled_vertex_array`
-on every card, which Quake 3 and engines built on it use. On the ATI
-Radeon X1200, OpenGL and Glide now draw on its 3D engine; in 0.37.0 they
-drew nothing there. Measured on one tester's machine: the OpenGL and
-Glide 2 probes pass. 3DCIF, 32 bpp and games have not been run on it.
-**Known issues: on the X1200, 3DMark 2000's first game test tints some
-distant terrain red. On the RIVA 128ZX, the Glide 2 probe draws no
-triangles.** From 0.37.0: the ATI Radeon X1200 IGP (RS690,
+**Current version: 0.39.0.** The generic `vbe` package now writes to the
+screen write-combined: fills, bitmaps and DirectDraw uploads are 5 to 80
+times faster on large areas, measured on a Radeon R3E, a Radeon HD 8570
+and a Rage 128 Pro. Moving windows and scrolling read the screen and gain
+little. On the NVIDIA RIVA 128ZX, OpenGL, Glide and 3DCIF now draw on the
+3D engine, Direct3D no longer drops draws when texture memory fills
+(3DMark 99) and draws opaque A4R4G4B4 textures under the alpha test
+(Half-Life). The S3 Trio64V+ installs under its own name. **Known issues:
+on the X1200, 3DMark 2000's first game test tints some distant terrain
+red (3DMark sends the red itself; whether it is meant to show is open).
+On the RIVA 128ZX, one Glide 2 probe check fails: a 50 % blend one step
+dark.** From 0.38.0: OpenGL offers `GL_EXT_compiled_vertex_array` on
+every card, and on the ATI Radeon X1200 OpenGL and Glide draw on its 3D
+engine. From 0.37.0: the ATI Radeon X1200 IGP (RS690,
 `1002:791F`) on the `ati` package. DirectDraw and page flips run on its
 2D engine, and Direct3D on its 3D core. Measured on one tester's
 machine: 3DMark 2000 scored 1781 there, where the CPU renderer scored 7.
@@ -93,7 +99,7 @@ full-screen DOS session still freezes the desktop, so keep DOS
 windowed. **Glide and 3DCIF DLLs from 0.23.0 or earlier still do not
 work with this driver: replace any copy in a game's folder.** See the
 [changelog](CHANGELOG.md), and download it from
-[releases/0.38.0](releases/0.38.0/README.md).
+[releases/0.39.0](releases/0.39.0/README.md).
 Installed copies from 0.15.0 on can update through **Check for
 updates** on the Velocity9x tab. [Current status](docs/STATUS.md) has what is verified where and what
 is open.
@@ -157,10 +163,10 @@ serves every chip in it and picks the right one by PCI id at boot.
 | Matrox Millennium II (MGA-2164W) | `matrox` | MGA | Direct3D, OpenGL and Glide (the engine where exact, the CPU otherwise); GDI and DirectDraw on the engine |
 | Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it |
 | Matrox Millennium (MGA-2064W) | `matrox` | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
-| NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. The OpenGL probe passes; no OpenGL game, Glide or 3DCIF run |
+| NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
-| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
 
 Unvalidated **aliases** bind to the measured chip of the same design: the
 other S3 Trio ids, the rest of the Rage II and Rage Pro lines, the
@@ -216,7 +222,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium | GDI, DirectDraw, flips | No | No | No | No | No | No |
-| NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Not run | Not run |
+| NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Glide 2 probe only | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
@@ -235,9 +241,9 @@ Measured limits:
 - **Write-combining:** the CPU writes video memory write-combined on the
   Rage 128 Pro, the GMA 950/900/3150 and the Ironlake, on the HD 4600
   through the page attribute table (from 0.33.0, its BIOS leaving no
-  memory-type range free), and on the SiS 6326 (0.34.0, where
-  `C:\V9XDIAG\NOWC.TXT` turns it off). `V9X3D OFF` turns it off on the
-  others.
+  memory-type range free), on the SiS 6326 (0.34.0), and on any card on
+  the `vbe` package (0.39.0); `C:\V9XDIAG\NOWC.TXT` turns it off on these
+  two. `V9X3D OFF` turns it off on the others.
 - **When an engine can't draw something:** it refuses the draw rather
   than drawing it wrong. The GMA 950, the two Matrox 3D chips and the
   Rage 128 Pro then draw it on the CPU.
@@ -389,7 +395,9 @@ Measured:
   game has been run on them yet.
 - **X1200:** from 0.38.0 the Glide 2 probe passes every check (0.37.0
   drew no triangles). No game has been run on it yet.
-- **RIVA 128ZX:** Glide draws no triangles.
+- **RIVA 128ZX:** from 0.39.0 Glide draws on the 3D engine; the Glide 2
+  probe has one failure, a 50 % blend one step dark at 5:5:5. No game has
+  been run on it yet.
 
 A game that carries its own Glide DLL in its folder loads that first.
 The logs are `C:\V9XDIAG\V9XGLIDE.LOG` and `V9XGLD3.LOG`.
