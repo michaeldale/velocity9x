@@ -198,6 +198,24 @@ and 3DMark 2001 SE run again with Michael watching: **"yes that has
 resolved it"**. So the flicker is the "Always off" path. Users on the
 default do not get it.
 
+The run's counters (`../probe/gen3-depth-edge-2026-11-07/vsync0-pre.INI`
+and `vsync0-post.INI`, differences):
+
+| | `VSync=2` run | `VSync=0` run |
+|---|---|---|
+| flips handled | about 4,615 (half of the boot's 9,230) | 2,983 |
+| flips forced unsynced (`FlipVSyncOverridden`) | all | 0 |
+| flips through the ring (`FlipRingIssued`) | 118 for the boot | 3,036 |
+| clears that waited for a flip (`BltFlipWaited`) | 0 | **2,477** |
+| draws that waited for a flip | 0 | 12 |
+| batches refused | 0 | 0 |
+| `DrawsIntoPresented` | +11 | +11 |
+
+With vsync left to the game, a clear waits for the pending flip 2,477
+times, where under "Always off" it never waited once. That is the
+mechanism above in numbers. `DrawsIntoPresented` rises by 11 in either
+mode, so it is not this flicker; what it counts is still open.
+
 Michael adds that cards of the period showed no such thing with vsync
 off: tearing between finished frames, not a frame being cleared. The
 fix owed is that: an unsynced Gen3 flip stays pending until the blank
