@@ -34,25 +34,22 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.40.0
+## Current version: 0.41.0
 
-[Download](releases/0.40.0/README.md) ·
+[Download](releases/0.41.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.40.0:
-- **Intel GMA 900, 950 and 3150:** Direct3D 8 games no longer lose
-  geometry. 3DMark 2001 SE lost 2,551 batches on the GMA 950 in 0.39.0
-  and loses none now.
-- **Intel GMA 900 to Ironlake:** the vertical sync setting's **Always
-  off** no longer shows half-cleared frames.
-- **AMD Radeon HD 5570** (Redwood, `1002:68D9`) is recognised by the `ati`
-  package, built from one reporter's survey. It has not run on a card
-  yet.
-
-Both Intel fixes were tested on the GMA 950 and reach the other chips
-by the same code.
+New in 0.41.0:
+- **AMD Radeon R3E** (Mullins, `1002:9854`, the GX-412HC's graphics) is
+  supported by the `ati` package: DirectDraw, Direct3D, OpenGL and Glide
+  on the chip. Tested with the test programs on one machine; no game has
+  run on it yet.
+- **AMD Radeon HD 5450, 5570, 5770, 7470 and 7660D:** the screen is
+  written write-combined. On the HD 7660D screen writes went from 313 to
+  2,720 MB/s, and large fills and image copies to the screen are about
+  ten times faster. Measured on the HD 7660D only.
 
 ### Known issues
 
@@ -81,6 +78,9 @@ by the same code.
 
 ### Recent releases
 
+- **0.40.0:** Intel GMA 900, 950 and 3150 Direct3D 8 games no longer
+  lose geometry; **Always off** vsync no longer shows half-cleared frames
+  on Intel GMA 900 to Ironlake; the HD 5570 recognised.
 - **0.39.0:** the `vbe` package writes to the screen write-combined (5 to
   80 times faster fills and uploads); the RIVA 128ZX's OpenGL, Glide and
   3DCIF draw on its 3D engine; the S3 Trio64V+ installs under its own
@@ -264,7 +264,7 @@ Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600 and the Millennium II (the Mystique, the HD 5450, HD 7470,
-  HD 5770, HD 7660D, the R7E and the X1200: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  HD 5770, HD 7660D, the R3E, the R7E and the X1200: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
