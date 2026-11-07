@@ -6,6 +6,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.40.0 - not yet released
 
+- **AMD Radeon HD 5570 (Redwood, `1002:68D9`) is claimed by the `ati`
+  package.** It takes the HD 5770's path: DirectDraw on the DMA engine,
+  page flips, and Direct3D and OpenGL on the 3D engine. It uses Redwood's
+  ME microcode (its PFP is the HD 5450's, byte for byte), and Linux's
+  configuration for the chip: two render backends and 42 stack entries a
+  stage. Under the `vbe` package the card could not flip pages, so
+  fullscreen games flickered. **Not yet run on a card**: built from one
+  reporter's survey
+  ([issue 16](https://github.com/michaeldale/velocity9x/issues/16),
+  [record](docs/decisions/2026-11-07-redwood-row-unmeasured.md)).
+
 ## 0.39.0 - 2026-11-07
 
 - **The generic VBE driver writes to the screen write-combined.** Any

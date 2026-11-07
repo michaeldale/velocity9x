@@ -180,6 +180,9 @@ const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
 const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

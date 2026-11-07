@@ -219,13 +219,22 @@ extern const struct v9x_eg_reg_update
 extern const struct v9x_eg_reg_update
     v9x_eg_juniper_gpu_init[V9X_EG_JUNIPER_GPU_INIT_COUNT];
 
+/* Redwood's: Juniper's table with Redwood's numbers where they differ (2
+ * backends, so the backend map for two, and 256 stack entries, Cedar's
+ * 42 a stage). Not yet run on a card. */
+#define V9X_EG_REDWOOD_GPU_INIT_COUNT 45u
+extern const struct v9x_eg_reg_update
+    v9x_eg_redwood_gpu_init[V9X_EG_REDWOOD_GPU_INIT_COUNT];
+
 /* The Evergreen chips whose state differs: the HAL picks by the engine's
- * V9X_DD_ENGINE_CAP_EG_CAICOS and V9X_DD_ENGINE_CAP_EG_JUNIPER. */
+ * V9X_DD_ENGINE_CAP_EG_CAICOS, _EG_JUNIPER and _EG_REDWOOD. */
 #define V9X_EG_CHIP_CEDAR   0ul
 #define V9X_EG_CHIP_CAICOS  1ul
 #define V9X_EG_CHIP_JUNIPER 2ul
+#define V9X_EG_CHIP_REDWOOD 3ul
 
-/* ME_INITIALIZE for the chip's hardware contexts (4, Juniper 8): 7 dwords. */
+/* ME_INITIALIZE for the chip's hardware contexts (4, Juniper and Redwood
+ * 8): 7 dwords. */
 #define V9X_EG_ME_INITIALIZE_DWORDS 7ul
 void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip);
 /* evergreen_cp_start after ME_INITIALIZE: the clear-state preamble. */

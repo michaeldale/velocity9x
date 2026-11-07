@@ -364,5 +364,15 @@
  * (docs\decisions\2026-11-03-trinity-dma-write-probe.md).
  */
 #define V9X_DD_ENGINE_CAP_EG_TRINITY    0x04000000ul
+/*
+ * AMD Evergreen: this part is Redwood (HD 5570/5550), not Cedar. Its CP
+ * takes Cedar's PFP microcode (identical) with REDWOOD_me, eight hardware
+ * contexts, Redwood's evergreen_gpu_init and default state (two backends,
+ * a vertex cache, eg_3d.c), and vertex buffers synced through the vertex
+ * cache, as Juniper's are. A chip identity bit, stamped by cedar_hw16.c's
+ * Redwood row only. Not yet run on a card
+ * (docs\decisions\2026-11-07-redwood-row-unmeasured.md).
+ */
+#define V9X_DD_ENGINE_CAP_EG_REDWOOD    0x08000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

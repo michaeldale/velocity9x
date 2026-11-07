@@ -158,6 +158,10 @@ static void test_cp_streams(void)
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
     v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_CAICOS);
     CHECK(buffer[3] == 3ul);
+    /* Redwood has Juniper's 8. */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_REDWOOD);
+    CHECK(stream.count == V9X_EG_ME_INITIALIZE_DWORDS && buffer[3] == 7ul);
 
     /* The preamble as V9XEG3D sent it: the default context (227 dwords)
      * between BEGIN and END_CLEAR_STATE, then 18 more. */
@@ -210,6 +214,16 @@ static void test_cp_streams(void)
     CHECK(buffer[16] == 0x14141480ul && buffer[17] == 0x00001414ul);
     CHECK(buffer[18] == 0x00550055ul && buffer[19] == 0x00550055ul &&
           buffer[20] == 0x00550055ul);
+
+    /* Redwood: Juniper's vertex cache and threads with 42 stack entries a
+     * stage (Linux 3.9's set_default_state, CHIP_REDWOOD). */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_default_state(&stream, V9X_EG_CHIP_REDWOOD);
+    CHECK(stream.overflow == 0ul && stream.count == 35ul + 227ul);
+    CHECK(buffer[10] == 0xe4000003ul && buffer[11] == 0x402e005dul);
+    CHECK(buffer[16] == 0x14141480ul && buffer[17] == 0x00001414ul);
+    CHECK(buffer[18] == 0x002a002aul && buffer[19] == 0x002a002aul &&
+          buffer[20] == 0x002a002aul);
 }
 
 static void test_gpu_init(void)
@@ -303,6 +317,31 @@ static void test_gpu_init_juniper(void)
         default: expected = cedar[index].set; break;
         }
         CHECK(juniper[index].set == expected);
+    }
+}
+
+/* Redwood's evergreen_gpu_init: Juniper's writes in Juniper's order, with
+ * Redwood's 2 backends and 256 stack entries. r6xx_remap_render_backend
+ * for 4 pipes and 2 of 8 backends gives each of RB 1 and RB 0 two pipes:
+ * 00001100h. */
+static void test_gpu_init_redwood(void)
+{
+    const struct v9x_eg_reg_update *juniper = v9x_eg_juniper_gpu_init;
+    const struct v9x_eg_reg_update *redwood = v9x_eg_redwood_gpu_init;
+    v9x_u32 index;
+    v9x_u32 expected;
+
+    for (index = 0ul; index < V9X_EG_REDWOOD_GPU_INIT_COUNT; ++index) {
+        CHECK(redwood[index].offset == juniper[index].offset &&
+              redwood[index].keep == juniper[index].keep);
+        switch (juniper[index].offset) {
+        case 0x98fcul: expected = 0x00001100ul; break; /* GB_BACKEND_MAP */
+        case 0x8c20ul:
+        case 0x8c24ul:
+        case 0x8c28ul: expected = 0x002a002aul; break; /* 42 entries */
+        default: expected = juniper[index].set; break;
+        }
+        CHECK(redwood[index].set == expected);
     }
 }
 
@@ -763,6 +802,7 @@ unsigned int v9x_run_eg_3d_tests(void)
     test_gpu_init();
     test_gpu_init_caicos();
     test_gpu_init_juniper();
+    test_gpu_init_redwood();
     test_words();
     test_state();
     test_state_high();

@@ -41,6 +41,15 @@
  * V9X_DD_ENGINE_CAP_EG_JUNIPER for its microcode, contexts, GPU
  * configuration and vertex cache.
  *
+ * The HD 5570, PCI 1002:68D9 (Redwood PRO), is the fifth row. It has not
+ * run here: GitHub issue 16's survey (a Gigabyte board, subsystem
+ * 1458:21E0, BAR0 at D0000000 and BAR2 EFFE0000 laid out as Juniper's,
+ * VBE 3.0 "REDWOOD") is all that is known of it
+ * (docs\decisions\2026-11-07-redwood-row-unmeasured.md). Its DMA engine
+ * and display controller are Evergreen's, so it claims what Juniper does,
+ * stamped V9X_DD_ENGINE_CAP_EG_REDWOOD for its ME microcode, contexts, GPU
+ * configuration and vertex cache.
+ *
  * The A10-5700's Radeon HD 7660D, PCI 1002:9901 (Trinity, Linux's
  * CHIP_ARUBA, Cayman's VLIW4 generation), is the fourth row (Michael,
  * 2026-11-03). Its target is M-D7TFW4 since the HD 7470 left it:
@@ -93,6 +102,11 @@ static unsigned long v9x_cedar_map_value;
                                   V9X_DD_ENGINE_CAP_FLIP | \
                                   V9X_DD_ENGINE_CAP_D3D | \
                                   V9X_DD_ENGINE_CAP_EG_JUNIPER)
+#define V9X_REDWOOD_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                  V9X_DD_ENGINE_CAP_FLIP | \
+                                  V9X_DD_ENGINE_CAP_D3D | \
+                                  V9X_DD_ENGINE_CAP_EG_REDWOOD)
 #define V9X_CAICOS_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
                                  V9X_DD_ENGINE_CAP_SCREEN_COPY | \
                                  V9X_DD_ENGINE_CAP_FLIP | \
@@ -184,6 +198,22 @@ static void v9x_juniper_fill_engine(unsigned long framebuffer_linear_base,
 {
     (void)framebuffer_linear_base;
     v9x_evergreen_fill_engine(V9X_JUNIPER_CLAIMED_CAPS, control_linear_base,
+                              mapped_aperture_bytes, engine_type,
+                              engine_caps, gtt_linear_base,
+                              ring_linear_base, ring_bytes);
+}
+
+static void v9x_redwood_fill_engine(unsigned long framebuffer_linear_base,
+                                    unsigned long *control_linear_base,
+                                    unsigned long *mapped_aperture_bytes,
+                                    unsigned long *engine_type,
+                                    unsigned long *engine_caps,
+                                    unsigned long *gtt_linear_base,
+                                    unsigned long *ring_linear_base,
+                                    unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_evergreen_fill_engine(V9X_REDWOOD_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -308,6 +338,22 @@ const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
     "hardware-evergreen-cp",
     0,
     v9x_juniper_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    V9X_CEDAR_MAP_BYTES
+};
+
+/* Not static, for the same audit. */
+const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
+    0x1002u, 0x68D9u,
+    "AMD Radeon HD 5570 (Redwood)",
+    "1002", "68D9",
+    "ati-evergreen-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-evergreen-cp",
+    0,
+    v9x_redwood_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES

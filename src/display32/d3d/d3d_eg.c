@@ -430,6 +430,9 @@ static v9x_u32 v9x_d3d_eg_chip(void)
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_JUNIPER) != 0ul) {
         return V9X_EG_CHIP_JUNIPER;
     }
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_REDWOOD) != 0ul) {
+        return V9X_EG_CHIP_REDWOOD;
+    }
     return V9X_EG_CHIP_CEDAR;
 }
 
@@ -545,8 +548,9 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
         state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
     }
     state.vertex_stride = V9X_EG_D3D_STRIDE;
-    /* Juniper has a vertex cache; Cedar and Caicos do not. */
-    state.vertex_cache = v9x_d3d_eg_chip() == V9X_EG_CHIP_JUNIPER ? 1ul : 0ul;
+    /* Juniper and Redwood have a vertex cache; Cedar and Caicos do not. */
+    state.vertex_cache = v9x_d3d_eg_chip() == V9X_EG_CHIP_JUNIPER ||
+                         v9x_d3d_eg_chip() == V9X_EG_CHIP_REDWOOD ? 1ul : 0ul;
 
     while (triangle_count != 0ul) {
         if (ps_dwords != 0ul) {

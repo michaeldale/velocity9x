@@ -9868,6 +9868,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
                     V9X_DD_ENGINE_CAP_EG_JUNIPER) != 0ul) {
             name = "Velocity9x Radeon HD 5770";
         } else if ((v9x_hal->engine.engine_caps &
+                    V9X_DD_ENGINE_CAP_EG_REDWOOD) != 0ul) {
+            name = "Velocity9x Radeon HD 5570";
+        } else if ((v9x_hal->engine.engine_caps &
                     V9X_DD_ENGINE_CAP_EG_TRINITY) != 0ul) {
             name = "Velocity9x Radeon HD 7660D";
         } else {

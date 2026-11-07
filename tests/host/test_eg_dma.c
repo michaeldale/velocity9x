@@ -551,6 +551,9 @@ static void test_cp_microcode(void)
     CHECK(v9x_eg_juniper_me_microcode[0] == 0x7c408000ul);
     CHECK(v9x_eg_juniper_pfp_microcode[1119] == 0x00000005ul);
     CHECK(v9x_eg_juniper_me_microcode[1375] == 0x000f04d3ul);
+    /* Redwood's ME (its PFP is Cedar's array), not yet run on a card. */
+    CHECK(v9x_eg_redwood_me_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_redwood_me_microcode[1375] == 0x000f04baul);
     /* Trinity's Aruba pair, which V9XEGCP and V9XCM3D ran on M-D7TFW4's
      * HD 7660D (PfpFirst 7C408001, MeFirst C4080031). */
     CHECK(v9x_cm_aruba_pfp_microcode[0] == 0x7c408001ul);

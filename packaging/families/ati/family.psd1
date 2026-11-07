@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770, Radeon HD 7660D and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770, Radeon HD 5570, Radeon HD 7660D and Radeon R7E (Carrizo, tier-0), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -462,6 +462,47 @@
             MapSymbols = @('v9x_evergreen_juniper_device')
         }
         @{
+            Id = 'redwood'
+            Name = 'AMD Radeon HD 5570 (Redwood)'
+            VendorId = '1002'
+            DeviceId = '68D9'
+            # No SubsystemId: the one known board, GitHub issue 16's,
+            # reads 1458:21E0, and the bare id binds every board built on
+            # the chip.
+            DeviceDesc = 'Velocity9x AMD Radeon HD 5570 (Redwood)'
+            Adapter = 'AMD Radeon HD 5570 (Redwood)'
+            ClockDetector = 'ati-evergreen-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # A fifth row in Cedar's module, claiming what Juniper's does
+            # with Redwood's ME microcode and configuration. Not yet run
+            # on a card (docs\decisions\2026-11-07-redwood-row-unmeasured.md).
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'hardware-evergreen-cp'
+            EngineType = 'ATI_EVERGREEN'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            # What issue 16's VBE 4F00h reports.
+            VideoMemoryBytes = 16777216
+
+            # Baseline modes issue 16's survey lists (V9XSURV.INI
+            # [VBEModes]); the rest come from the runtime VBE scan.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_evergreen_redwood_device')
+        }
+        @{
             Id = 'trinity'
             Name = 'AMD Radeon HD 7660D (Trinity)'
             VendorId = '1002'
@@ -689,6 +730,7 @@
                            'v9x_rage_iic_device', 'v9x_rage128_device',
                            'v9x_evergreen_cedar_device', 'v9x_evergreen_caicos_device',
                            'v9x_evergreen_juniper_device',
+                           'v9x_evergreen_redwood_device',
                            'v9x_evergreen_trinity_device',
                            'v9x_vi_carrizo_device')
     }
@@ -712,7 +754,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:9901, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -776,6 +818,10 @@
             }
             @{
                 ChipId = 'juniper'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'redwood'
                 Emulator = 'none'
             }
             @{
