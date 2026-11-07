@@ -190,7 +190,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 | Card | Package | 3D engine | Measured on hardware |
 |---|---|---|---|
-| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tier-0 on a GMA 950 and a Trio3D, through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Measured on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
 
 Unvalidated **aliases** bind to the measured chip of the same design: the
 other S3 Trio ids, the rest of the Rage II and Rage Pro lines, the
@@ -504,7 +504,7 @@ Bus under Windows 95, installed by hand without the mini-VDD
 
 ## Have an unsupported card?
 
-**Try the `vbe` package.** Tier-0 needs nothing but a VESA 2.0 BIOS and a
+**Try the `vbe` package.** It needs nothing but a VESA 2.0 BIOS and a
 linear framebuffer: the mode is set through the BIOS, and the CPU does all
 the drawing, so it stands a fair chance on a card nobody here has seen. It
 drove the GMA 950 at its panel's native 1024x576 on the first attempt,
