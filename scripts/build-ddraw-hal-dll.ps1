@@ -174,6 +174,15 @@ $sources = @(
     "src\chipsets\ati\vi\vi_shader.c",
     "src\display32\d3d\d3d_vi_map.c",
     "src\display32\d3d\d3d_vi.c",
+    # Mullins (GCN 2) on the same engine: its graphics microcode (licence
+    # in NOTICES.TXT), gpu_init's list, the CI clear state and start of
+    # stream, and the GCN 3 to GCN 2 shader rewrite.
+    "src\chipsets\ati\cik\cik_gfx_microcode.c",
+    "src\chipsets\ati\cik\cik_gpu_init.c",
+    "src\chipsets\ati\cik\cik_gpu_init_tables.c",
+    "src\chipsets\ati\cik\cik_clear_state.c",
+    "src\chipsets\ati\cik\cik_3d.c",
+    "src\chipsets\ati\cik\cik_shader.c",
     # The Haswell blitter: fill and copy on the BCS ring through the
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",

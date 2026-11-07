@@ -18,8 +18,10 @@
  * (engines\eng_vi.c, V9X_DD_ENGINE_TYPE_ATI_VI) with the Mullins identity
  * bit, through the same BAR read and mini-VDD map as carrizo_hw16.c. Its
  * display is DCE 8, whose first controller sits at Evergreen's offsets,
- * so eg_scanout.c's flips apply unchanged. Its graphics CP is GFX7, which
- * vi_cp.c does not drive: no Direct3D on the engine yet.
+ * so eg_scanout.c's flips apply unchanged. Its graphics CP is GFX7:
+ * vi_cp.c brings it up with Mullins' microcode, gpu_init, start of stream
+ * and GCN 2 shaders when the identity bit is set, and d3d_vi.c draws
+ * Carrizo's streams through it.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -33,6 +35,9 @@ extern unsigned short __far __pascal V9xMiniViMap(
 
 /* V9X_VI_MMIO_BYTES in vi_sdma.h and the mini-VDD: the register BAR. */
 #define V9X_MULLINS_MMIO_BYTES 0x00040000ul
+/* V9X_VI_RING_WINDOW_BYTES in vi_sdma.h: the window SDMA's ring and the
+ * graphics CP's ring, shaders and vertex arena share. */
+#define V9X_MULLINS_RING_WINDOW_BYTES 0x00400000ul
 
 /* How far the engine hook got, and the BARs it read, for
  * v9x_mullins_publish_diagnostics, as Carrizo's row records them. */
@@ -89,6 +94,13 @@ static void v9x_mullins_fill_engine(unsigned long framebuffer_linear_base,
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
                    V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_VI_MULLINS;
+    /* Direct3D through the GFX7 CP, which engines\vi_cp.c brings up with
+     * Mullins' microcode, gpu_init and start of stream and GCN 2 shaders
+     * (docs\decisions\2026-11-08-mullins-first-3d-draws.md): only when
+     * the mini-VDD mapped the whole window, as on Carrizo. */
+    if (bytes >= V9X_MULLINS_RING_WINDOW_BYTES) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+    }
     *ring_linear_base = ring;
     *ring_bytes = bytes;
 }
@@ -136,7 +148,7 @@ const V9X_HW16_DEVICE v9x_cik_mullins_device = {
     "ati-cik-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    "not-advertised",
+    "hardware-vi-cp",
     0,
     v9x_mullins_fill_engine
 };

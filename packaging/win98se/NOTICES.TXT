@@ -98,14 +98,16 @@ administered by the U.S. Department of State.  These laws include
 restrictions on destinations, end users and end use.
 
 
-AMD Carrizo SDMA and graphics microcode
----------------------------------------
+AMD Carrizo and Mullins SDMA and graphics microcode
+---------------------------------------------------
 
 The microcode V9XHAL.DLL loads into the AMD Radeon R7E's (Carrizo) SDMA
 engine, its RLC and its command processor's PFP, CE and ME microengines
 is the payload of linux-firmware's amdgpu/carrizo_sdma.bin,
 carrizo_rlc.bin, carrizo_pfp.bin, carrizo_ce.bin and carrizo_me.bin,
-carried unchanged as data. linux-firmware's WHENCE: "Licence:
+carried unchanged as data. For the AMD Radeon R3E (Mullins) it is the
+payload of amdgpu/mullins_sdma.bin, mullins_rlc.bin, mullins_pfp.bin,
+mullins_ce.bin and mullins_me.bin, the same way. linux-firmware's WHENCE: "Licence:
 Redistributable. See LICENSE.amdgpu for details." LICENSE.amdgpu follows.
 
 Copyright (C) 2024  Advanced Micro Devices, Inc. All rights reserved.

@@ -24,6 +24,7 @@
 #include "d3d_vi_map.h"
 #include "velocity9x/vi_3d.h"
 #include "velocity9x/vi_shader.h"
+#include "velocity9x/cik_shader.h"
 
 /* Triangles a batch takes from one call: the arena holds 2 MiB, this is
  * 48 KiB of vertices. */
@@ -531,6 +532,15 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     state.vs_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_VS);
     if (ps == V9X_D3D_VI_PS_BUILT) {
         ps_dwords = v9x_vi_shader_d3d_ps_built(&built, v9x_d3d_vi_built_ps);
+        /* Mullins runs GCN 2: the built shader is rewritten in place, and
+         * one the translation refuses goes to the software path. */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul &&
+            v9x_cik_shader_from_vi(v9x_d3d_vi_built_ps, ps_dwords, 0) !=
+                V9X_STATUS_OK) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
     } else {
         state.ps_low = v9x_vi_cp_shader_low(v9x_d3d_vi_ps_slot[ps]);
     }

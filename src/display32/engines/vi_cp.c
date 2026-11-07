@@ -37,6 +37,10 @@
 #include "velocity9x/vi_gpu_init.h"
 #include "velocity9x/vi_sdma.h"
 #include "velocity9x/vi_shader.h"
+#include "velocity9x/cik_3d.h"
+#include "velocity9x/cik_gfx_microcode.h"
+#include "velocity9x/cik_gpu_init.h"
+#include "velocity9x/cik_shader.h"
 
 /* The window's layout, from its start (vi_sdma.h: SDMA's ring and slots
  * take the first 33 KiB). The ring is the probe's 16 KiB; the shader slots
@@ -116,6 +120,92 @@
     (V9X_VI_CP_RING_LOG2_QWORDS | ((V9X_VI_CP_RING_LOG2_QWORDS - 2ul) << 8) | \
      (3ul << 15) | (1ul << 22))
 
+/* What differs between Carrizo's GFX8 bring-up and Mullins' GFX7 one
+ * (V9X_DD_ENGINE_CAP_VI_MULLINS). Mullins' offsets are gfx_7_2_d.h's (its
+ * RLC block keeps VI's internal layout from C300h; its CP microcode ports
+ * are laid out differently), its masks gfx_7_2_sh_mask.h's, its values
+ * gfx_v7_0.c's, as V9XCKCP and V9XCK3D ran them on M-JJN1ZZ
+ * (docs\decisions\2026-11-08-mullins-first-3d-draws.md). Everything else
+ * here, and every draw, is the same on both. */
+struct v9x_vi_cp_chip {
+    DWORD rlc_cntl;
+    DWORD rlc_pg_cntl;
+    DWORD rlc_cgcg_cgls;
+    DWORD serdes_cu;
+    DWORD serdes_noncu;
+    DWORD pfp_addr;
+    DWORD pfp_data;
+    DWORD me_addr;
+    DWORD me_data;
+    DWORD ce_addr;
+    DWORD ce_data;
+    DWORD rlc_addr;
+    DWORD rlc_data;
+    DWORD gui_idle_ints;
+    DWORD noncu_busy;
+    DWORD rb_cntl;
+    int doorbell;
+    int gcn2_shaders;
+    const v9x_u32 *rlc;
+    DWORD rlc_dwords;
+    const v9x_u32 *rlc_version;
+    const v9x_u32 *pfp;
+    DWORD pfp_dwords;
+    const v9x_u32 *pfp_version;
+    const v9x_u32 *ce;
+    DWORD ce_dwords;
+    const v9x_u32 *ce_version;
+    const v9x_u32 *me;
+    DWORD me_dwords;
+    const v9x_u32 *me_version;
+    v9x_u32 (*gpu_init_ops)(struct v9x_vi_reg_seq *ops, v9x_u32 capacity);
+    void (*start)(struct v9x_vi_pm4 *stream);
+};
+
+static const struct v9x_vi_cp_chip v9x_vi_cp_carrizo = {
+    V9X_VI_CP_RLC_CNTL, V9X_VI_CP_RLC_PG_CNTL, V9X_VI_CP_RLC_CGCG_CGLS_CTRL,
+    V9X_VI_CP_RLC_SERDES_CU_BUSY, V9X_VI_CP_RLC_SERDES_NONCU,
+    V9X_VI_CP_PFP_UCODE_ADDR, V9X_VI_CP_PFP_UCODE_DATA,
+    V9X_VI_CP_ME_RAM_WADDR, V9X_VI_CP_ME_RAM_DATA,
+    V9X_VI_CP_CE_UCODE_ADDR, V9X_VI_CP_CE_UCODE_DATA,
+    V9X_VI_CP_RLC_GPM_UCODE_ADDR, V9X_VI_CP_RLC_GPM_UCODE_DATA,
+    V9X_VI_CP_GUI_IDLE_INTS, V9X_VI_CP_NONCU_BUSY, V9X_VI_CP_RB_CNTL_VALUE,
+    1, 0,
+    v9x_vi_rlc_microcode, V9X_VI_RLC_MICROCODE_DWORDS,
+    &v9x_vi_rlc_microcode_version,
+    v9x_vi_pfp_microcode, V9X_VI_PFP_MICROCODE_DWORDS,
+    &v9x_vi_pfp_microcode_version,
+    v9x_vi_ce_microcode, V9X_VI_CE_MICROCODE_DWORDS,
+    &v9x_vi_ce_microcode_version,
+    v9x_vi_me_microcode, V9X_VI_ME_MICROCODE_DWORDS,
+    &v9x_vi_me_microcode_version,
+    v9x_vi_gpu_init_ops,
+    v9x_vi_3d_start
+};
+
+/* gfx_v7_0_cp_gfx_resume's CP_RB0_CNTL: RB_BUFSZ and RB_BLKSZ 9 (a 4 KiB
+ * GPU page in quadwords), nothing else. GUI-idle enables CNTX_BUSY and
+ * CNTX_EMPTY only; the non-CU SERDES busy bits 7FFFFh. */
+static const struct v9x_vi_cp_chip v9x_vi_cp_mullins = {
+    0x0c300ul, 0x0c40cul, 0x0c424ul, 0x0c484ul, 0x0c488ul,
+    0x0c150ul, 0x0c154ul,
+    0x0c15cul, 0x0c160ul,
+    0x0c168ul, 0x0c16cul,
+    0x0c388ul, 0x0c38cul,
+    0x00180000ul, 0x0007fffful, V9X_VI_CP_RING_LOG2_QWORDS | (9ul << 8),
+    0, 1,
+    v9x_cik_rlc_microcode, V9X_CIK_RLC_MICROCODE_DWORDS,
+    &v9x_cik_rlc_microcode_version,
+    v9x_cik_pfp_microcode, V9X_CIK_PFP_MICROCODE_DWORDS,
+    &v9x_cik_pfp_microcode_version,
+    v9x_cik_ce_microcode, V9X_CIK_CE_MICROCODE_DWORDS,
+    &v9x_cik_ce_microcode_version,
+    v9x_cik_me_microcode, V9X_CIK_ME_MICROCODE_DWORDS,
+    &v9x_cik_me_microcode_version,
+    v9x_cik_gpu_init_ops,
+    v9x_cik_3d_start
+};
+
 /* The ring test's values, as V9XCZ3D's. */
 #define V9X_VI_CP_SCRATCH_SEED  0xcafedeadul
 #define V9X_VI_CP_SCRATCH_TEST  0xdeadbeeful
@@ -138,6 +228,8 @@
 /* One CP, so one set of statics: V9XHAL's statics are shared by every
  * process, which is what these need. The write pointer is in dwords. */
 static int v9x_vi_cp_state = V9X_VI_CP_NOT_TRIED;
+/* The chip's bring-up table, chosen when the CP starts. */
+static const struct v9x_vi_cp_chip *v9x_vi_cp_chip = &v9x_vi_cp_carrizo;
 static DWORD v9x_vi_cp_wptr;
 static DWORD v9x_vi_cp_high;
 static DWORD v9x_vi_cp_heap_low;
@@ -256,7 +348,7 @@ static void v9x_vi_cp_write_record(DWORD tag)
     v9x_vi_cp_log_hex(file, "GRBM_STATUS=",
                       v9x_vi_cp_read32(V9X_VI_CP_GRBM_STATUS));
     v9x_vi_cp_log_hex(file, "RLC_CNTL=",
-                      v9x_vi_cp_read32(V9X_VI_CP_RLC_CNTL));
+                      v9x_vi_cp_read32(v9x_vi_cp_chip->rlc_cntl));
     v9x_vi_cp_log_hex(file, "SCRATCH_REG0=",
                       v9x_vi_cp_read32(V9X_VI_CP_SCRATCH_REG0));
     v9x_vi_cp_log_text(file, "[Ring]\r\n");
@@ -273,7 +365,7 @@ static void v9x_vi_cp_halt(void)
 {
     v9x_vi_cp_modify32(V9X_VI_CP_ME_CNTL, 0ul, V9X_VI_CP_HALTS);
     v9x_vi_cp_delay();
-    v9x_vi_cp_modify32(V9X_VI_CP_RLC_CNTL, V9X_VI_CP_RLC_ENABLE, 0ul);
+    v9x_vi_cp_modify32(v9x_vi_cp_chip->rlc_cntl, V9X_VI_CP_RLC_ENABLE, 0ul);
 }
 
 /* Gives the CP up for the HAL's life, the fault traced once with the
@@ -389,7 +481,7 @@ static void v9x_vi_cp_gpu_init(void)
     DWORD count;
     DWORD index;
 
-    count = v9x_vi_gpu_init_ops(ops, V9X_VI_GPU_INIT_OPS_MAX);
+    count = v9x_vi_cp_chip->gpu_init_ops(ops, V9X_VI_GPU_INIT_OPS_MAX);
     for (index = 0ul; index < count; ++index) {
         if (ops[index].clear == 0xfffffffful) {
             v9x_vi_cp_write32(ops[index].offset, ops[index].set);
@@ -419,23 +511,25 @@ static void v9x_vi_cp_load(DWORD address, DWORD data, const v9x_u32 *image,
  * rlc_start. The SERDES waits are wait_for_rlc_serdes's. */
 static int v9x_vi_cp_rlc_resume(void)
 {
-    v9x_vi_cp_modify32(V9X_VI_CP_RLC_CNTL, V9X_VI_CP_RLC_ENABLE, 0ul);
-    v9x_vi_cp_modify32(V9X_VI_CP_INT_CNTL_RING0, V9X_VI_CP_GUI_IDLE_INTS, 0ul);
-    if (!v9x_vi_cp_wait(V9X_VI_CP_RLC_SERDES_CU_BUSY, 0xfffffffful, 0ul) ||
-        !v9x_vi_cp_wait(V9X_VI_CP_RLC_SERDES_NONCU, V9X_VI_CP_NONCU_BUSY,
+    v9x_vi_cp_modify32(v9x_vi_cp_chip->rlc_cntl, V9X_VI_CP_RLC_ENABLE, 0ul);
+    v9x_vi_cp_modify32(V9X_VI_CP_INT_CNTL_RING0,
+                       v9x_vi_cp_chip->gui_idle_ints, 0ul);
+    if (!v9x_vi_cp_wait(v9x_vi_cp_chip->serdes_cu, 0xfffffffful, 0ul) ||
+        !v9x_vi_cp_wait(v9x_vi_cp_chip->serdes_noncu,
+                        v9x_vi_cp_chip->noncu_busy,
                         0ul)) {
         return 0;
     }
-    v9x_vi_cp_modify32(V9X_VI_CP_RLC_CGCG_CGLS_CTRL, V9X_VI_CP_CGCG_CGLS, 0ul);
-    v9x_vi_cp_write32(V9X_VI_CP_RLC_PG_CNTL, 0ul);
+    v9x_vi_cp_modify32(v9x_vi_cp_chip->rlc_cgcg_cgls, V9X_VI_CP_CGCG_CGLS, 0ul);
+    v9x_vi_cp_write32(v9x_vi_cp_chip->rlc_pg_cntl, 0ul);
     v9x_vi_cp_write32(V9X_VI_CP_GRBM_SOFT_RESET, V9X_VI_CP_SOFT_RESET_RLC);
     v9x_vi_cp_delay();
     v9x_vi_cp_write32(V9X_VI_CP_GRBM_SOFT_RESET, 0ul);
     v9x_vi_cp_delay();
-    v9x_vi_cp_load(V9X_VI_CP_RLC_GPM_UCODE_ADDR, V9X_VI_CP_RLC_GPM_UCODE_DATA,
-                   v9x_vi_rlc_microcode, V9X_VI_RLC_MICROCODE_DWORDS,
-                   v9x_vi_rlc_microcode_version);
-    v9x_vi_cp_modify32(V9X_VI_CP_RLC_CNTL, 0ul, V9X_VI_CP_RLC_ENABLE);
+    v9x_vi_cp_load(v9x_vi_cp_chip->rlc_addr, v9x_vi_cp_chip->rlc_data,
+                   v9x_vi_cp_chip->rlc, v9x_vi_cp_chip->rlc_dwords,
+                   *v9x_vi_cp_chip->rlc_version);
+    v9x_vi_cp_modify32(v9x_vi_cp_chip->rlc_cntl, 0ul, V9X_VI_CP_RLC_ENABLE);
     v9x_vi_cp_delay();
     return 1;
 }
@@ -449,31 +543,33 @@ static void v9x_vi_cp_ring_resume(void)
 
     v9x_vi_cp_modify32(V9X_VI_CP_ME_CNTL, 0ul, V9X_VI_CP_HALTS);
     v9x_vi_cp_delay();
-    v9x_vi_cp_load(V9X_VI_CP_PFP_UCODE_ADDR, V9X_VI_CP_PFP_UCODE_DATA,
-                   v9x_vi_pfp_microcode, V9X_VI_PFP_MICROCODE_DWORDS,
-                   v9x_vi_pfp_microcode_version);
-    v9x_vi_cp_load(V9X_VI_CP_CE_UCODE_ADDR, V9X_VI_CP_CE_UCODE_DATA,
-                   v9x_vi_ce_microcode, V9X_VI_CE_MICROCODE_DWORDS,
-                   v9x_vi_ce_microcode_version);
-    v9x_vi_cp_load(V9X_VI_CP_ME_RAM_WADDR, V9X_VI_CP_ME_RAM_DATA,
-                   v9x_vi_me_microcode, V9X_VI_ME_MICROCODE_DWORDS,
-                   v9x_vi_me_microcode_version);
+    v9x_vi_cp_load(v9x_vi_cp_chip->pfp_addr, v9x_vi_cp_chip->pfp_data,
+                   v9x_vi_cp_chip->pfp, v9x_vi_cp_chip->pfp_dwords,
+                   *v9x_vi_cp_chip->pfp_version);
+    v9x_vi_cp_load(v9x_vi_cp_chip->ce_addr, v9x_vi_cp_chip->ce_data,
+                   v9x_vi_cp_chip->ce, v9x_vi_cp_chip->ce_dwords,
+                   *v9x_vi_cp_chip->ce_version);
+    v9x_vi_cp_load(v9x_vi_cp_chip->me_addr, v9x_vi_cp_chip->me_data,
+                   v9x_vi_cp_chip->me, v9x_vi_cp_chip->me_dwords,
+                   *v9x_vi_cp_chip->me_version);
 
     v9x_vi_cp_write32(V9X_VI_CP_RB_WPTR_DELAY, 0ul);
     v9x_vi_cp_write32(V9X_VI_CP_RB_VMID, 0ul);
-    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL, V9X_VI_CP_RB_CNTL_VALUE);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL, v9x_vi_cp_chip->rb_cntl);
     v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL,
-                      V9X_VI_CP_RB_CNTL_VALUE | V9X_VI_CP_RB_RPTR_WR_ENA);
+                      v9x_vi_cp_chip->rb_cntl | V9X_VI_CP_RB_RPTR_WR_ENA);
     v9x_vi_cp_write32(V9X_VI_CP_RB0_WPTR, 0ul);
     v9x_vi_cp_write32(V9X_VI_CP_RB0_RPTR_ADDR,
                       v9x_vi_cp_window_low + V9X_VI_CP_WINDOW_WRITEBACK);
     v9x_vi_cp_write32(V9X_VI_CP_RB0_RPTR_ADDR_HI, v9x_vi_cp_high & 0xfful);
     v9x_vi_cp_delay();
-    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL, V9X_VI_CP_RB_CNTL_VALUE);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL, v9x_vi_cp_chip->rb_cntl);
     v9x_vi_cp_write32(V9X_VI_CP_RB0_BASE,
                       (ring_low >> 8) | ((v9x_vi_cp_high & 0xfful) << 24));
     v9x_vi_cp_write32(V9X_VI_CP_RB0_BASE_HI, 0ul);
-    v9x_vi_cp_modify32(V9X_VI_CP_RB_DOORBELL, V9X_VI_CP_DOORBELL_EN, 0ul);
+    if (v9x_vi_cp_chip->doorbell) {
+        v9x_vi_cp_modify32(V9X_VI_CP_RB_DOORBELL, V9X_VI_CP_DOORBELL_EN, 0ul);
+    }
 
     v9x_vi_cp_write32(V9X_VI_CP_MAX_CONTEXT, V9X_VI_CP_MAX_CONTEXT_VALUE);
     v9x_vi_cp_write32(V9X_VI_CP_ENDIAN_SWAP, 0ul);
@@ -485,8 +581,9 @@ static void v9x_vi_cp_ring_resume(void)
 }
 
 /* The Direct3D shaders into their slots (V9X_VI_CP_SLOT_*); each fits its
- * 64 dwords. */
-static void v9x_vi_cp_upload_shaders(void)
+ * 64 dwords. On Mullins each is rewritten as GCN 2 first; one the
+ * translation refuses fails the bring-up rather than reach the chip. */
+static int v9x_vi_cp_upload_shaders(void)
 {
     v9x_u32 words[V9X_VI_CP_SHADER_BYTES / 4ul];
     volatile DWORD *slot;
@@ -504,12 +601,17 @@ static void v9x_vi_cp_upload_shaders(void)
             count = v9x_vi_shader_d3d_ps(
                 which - V9X_VI_CP_SLOT_PS_SPECULAR_FIRST, 1, words);
         }
+        if (v9x_vi_cp_chip->gcn2_shaders &&
+            v9x_cik_shader_from_vi(words, count, 0) != V9X_STATUS_OK) {
+            return 0;
+        }
         slot = v9x_vi_cp_window(V9X_VI_CP_WINDOW_SHADERS +
                                 which * V9X_VI_CP_SHADER_BYTES);
         for (index = 0ul; index < count; ++index) {
             slot[index] = words[index];
         }
     }
+    return 1;
 }
 
 /* The bring-up, once. */
@@ -526,12 +628,17 @@ static int v9x_vi_cp_start(void)
         return 0;
     }
     v9x_vi_cp_state = V9X_VI_CP_FAILED;
+    v9x_vi_cp_chip = (v9x_hal->engine.engine_caps &
+                      V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul ?
+                     &v9x_vi_cp_mullins : &v9x_vi_cp_carrizo;
 
     /* The fence starts at a value no batch writes, so a fence the CP never
      * writes cannot read as landed. */
     v9x_vi_cp_sequence = 0ul;
     v9x_vi_cp_window(V9X_VI_CP_WINDOW_FENCE)[0] = 0xfffffffful;
-    v9x_vi_cp_upload_shaders();
+    if (!v9x_vi_cp_upload_shaders()) {
+        return 0;
+    }
     v9x_vi_cp_write32(V9X_VI_CP_SCRATCH_REG0, V9X_VI_CP_SCRATCH_SEED);
 
     v9x_vi_cp_gpu_init();
@@ -551,7 +658,7 @@ static int v9x_vi_cp_start(void)
     }
     v9x_vi_pm4_init(&stream, v9x_vi_cp_stream,
                     sizeof(v9x_vi_cp_stream) / sizeof(v9x_vi_cp_stream[0]));
-    v9x_vi_3d_start(&stream);
+    v9x_vi_cp_chip->start(&stream);
     if (!v9x_vi_cp_run_scratch(&stream, V9X_VI_CP_SCRATCH_START)) {
         v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
         return 0;

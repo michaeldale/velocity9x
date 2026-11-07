@@ -145,6 +145,53 @@ static void test_whole_shaders(void)
     CHECK(v9x_cik_shader_from_vi(words, count, &at) == V9X_STATUS_OK);
 }
 
+/* The Direct3D pixel shaders the HAL builds: the slot shaders for every
+ * op with and without specular, and the built one for every combination
+ * of op, specular, colour key, fog and alpha test, the test under each of
+ * the sixteen CMPX_*_F32 compares D3D's functions map to. */
+static void test_d3d_shaders(void)
+{
+    v9x_u32 words[V9X_VI_D3D_PS_DWORDS_MAX];
+    struct v9x_vi_d3d_ps ps;
+    v9x_u32 count;
+    v9x_u32 op;
+    v9x_u32 options;
+    v9x_u32 func;
+    v9x_u32 at;
+
+    for (op = V9X_VI_PS_COLOUR; op <= V9X_VI_PS_DECALALPHA; ++op) {
+        count = v9x_vi_shader_d3d_ps(op, 0, words);
+        CHECK(v9x_cik_shader_from_vi(words, count, &at) == V9X_STATUS_OK);
+        count = v9x_vi_shader_d3d_ps(op, 1, words);
+        CHECK(v9x_cik_shader_from_vi(words, count, &at) == V9X_STATUS_OK);
+        for (options = 0ul; options < 16ul; ++options) {
+            for (func = 0x50ul; func <= 0x5ful; ++func) {
+                ps.op = op;
+                ps.specular = options & 1ul;
+                ps.key = (options >> 1) & 1ul;
+                ps.key_colour[0] = 0x3f000000ul;
+                ps.key_colour[1] = 0ul;
+                ps.key_colour[2] = 0x3f800000ul;
+                ps.key_tolerance2 = 0x3a000000ul;
+                ps.fog = (options >> 2) & 1ul;
+                ps.fog_colour[0] = 0ul;
+                ps.fog_colour[1] = 0x3f800000ul;
+                ps.fog_colour[2] = 0ul;
+                ps.alpha_test = (options >> 3) & 1ul;
+                ps.alpha_func = func;
+                ps.alpha_ref = 0x3f000000ul;
+                count = v9x_vi_shader_d3d_ps_built(&ps, words);
+                CHECK(count != 0ul && count <= V9X_VI_D3D_PS_DWORDS_MAX);
+                CHECK(v9x_cik_shader_from_vi(words, count, &at) ==
+                      V9X_STATUS_OK);
+                if (ps.alpha_test == 0ul) {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 unsigned int v9x_run_cik_shader_tests(void)
 {
     failures = 0u;
@@ -153,5 +200,6 @@ unsigned int v9x_run_cik_shader_tests(void)
     test_literal();
     test_refusals();
     test_whole_shaders();
+    test_d3d_shaders();
     return failures;
 }
