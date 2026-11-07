@@ -73,7 +73,20 @@ const V9X_HW16_DEVICE v9x_vbe_device = {
     0,
     0,
     0,
-    0
+    0,
+    0u,
+    0u,
+    0ul,
+    0,
+    /*
+     * Write-combined over the video memory the BIOS reports, not the 16 MiB
+     * mapping: this entry stands in for any card the family is installed on,
+     * and its BAR is not known, while the memory 4F00h/4F01h hand out
+     * through the linear frame buffer has to be inside it. No engine reads
+     * or writes this memory behind the CPU, so nothing needs draining
+     * beyond the shared Unlock and Flip drains. NOWC.TXT turns it off.
+     */
+    V9X_HW16_WC_VRAM
 };
 
 static const V9X_HW16_DEVICE * const v9x_vbe_devices[] = {

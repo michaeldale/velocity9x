@@ -153,6 +153,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-16 The VBE tier-0 family](2026-08-16-vbe-tier0-family.md)
 - [2026-08-20 VBE mode inventory per target](2026-08-20-vbe-mode-inventory.md)
 - [2026-08-28 Pineview lists 36 VBE modes and describes 6](2026-08-28-pineview-vbe-mode-list.md)
+- [2026-11-07 Write-combining the vbe family's frame buffer: FbWrite 31.7 to 2,513 and 316 to 3,000 MB/s](2026-11-07-vbe-write-combining.md)
 
 ## S3 hardware baselines
 

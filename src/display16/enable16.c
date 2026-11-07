@@ -632,13 +632,16 @@ static DWORD v9x_map_bytes(void);
  * fill page (docs\decisions\2026-10-25-intel-gen3-write-combining.md).
  *
  * Every other chip keeps Stage A's report as it was: VRAM, rounded down,
- * since a family's mapping is not known to stop inside its BAR.
+ * since a family's mapping is not known to stop inside its BAR. A chip that
+ * opts in with V9X_HW16_WC_VRAM (the vbe family) writes that same window:
+ * the memory its BIOS exposes through the linear frame buffer, clamped to
+ * the mapping, which is what Stage A already planned on every machine.
  */
 static DWORD v9x_mtrr_aperture_bytes(void)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
 
-    if (device != 0 && device->write_combine != 0u) {
+    if (device != 0 && device->write_combine == V9X_HW16_WC_MAPPING) {
         return v9x_map_bytes();
     }
     return v9x_vbe_vram_bytes;

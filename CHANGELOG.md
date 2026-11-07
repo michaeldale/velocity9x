@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.39.0 - not yet released
 
+- **The generic VBE driver writes to the screen write-combined.** Any
+  card running the `vbe` package now has the CPU's writes to its frame
+  buffer combined, where the BIOS's memory ranges allow it. Drawing that
+  writes the screen (fills, bitmaps, text backgrounds, DirectDraw
+  uploads) is up to 80 times faster on large areas. Measured on a Radeon
+  R3E (FbWrite 31.7 to 2,513 MB/s) and a Radeon HD 8570 (316 to 3,000
+  MB/s). Moving windows and scrolling read the screen and are not faster;
+  that needs a chip's own engine. `C:\V9XDIAG\NOWC.TXT` turns it off
+  ([record](docs/decisions/2026-11-07-vbe-write-combining.md)).
+
 - **S3 Trio64V+ 86C765 has its own Have Disk name.** It shares PCI id
   `5333:8811` with the Trio64, so it installed as "S3 Trio32/64 86C764".
   The S3 package now lists "Velocity9x S3 Trio64V+ 86C765" once for

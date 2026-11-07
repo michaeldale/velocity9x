@@ -178,6 +178,14 @@ typedef struct v9x_hw16_device {
      * reported and nothing written, which is every chip but the ones that
      * opt in after being measured. Appended 2026-10-24, so every
      * initialiser that stops before it reads zero.
+     *
+     * V9X_HW16_WC_MAPPING (1) plans over the whole mapping, which the chip's
+     * maintainer has checked lies inside its BAR. V9X_HW16_WC_VRAM (2) plans
+     * over the video memory the BIOS reported, clamped to the mapping: the
+     * window Stage A plans for every chip. That is for a family that cannot
+     * know its BAR, the vbe family, whose 16 MiB mapping could run past a
+     * small card's BAR while the memory its BIOS hands out through the
+     * linear frame buffer cannot.
      */
     unsigned short write_combine;
 
@@ -195,6 +203,10 @@ typedef struct v9x_hw16_device {
                                    void (*write)(const char *key,
                                                  const char *value));
 } V9X_HW16_DEVICE;
+
+/* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */
+#define V9X_HW16_WC_MAPPING     1u
+#define V9X_HW16_WC_VRAM        2u
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
  * generic linear-framebuffer bit is what a tier-0 card needs. */
