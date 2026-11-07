@@ -194,6 +194,19 @@ registry-selected mode.
 
 ## Known install-time gotchas
 
+- **Still at 16 colours after the first boot means the driver did not
+  start.** A good first boot is 256 colours. `C:\V9XDIAG\V9XBOOT.INI`
+  says how far it got; include it in a report.
+- **Intel graphics show up twice; install on the Display adapters entry.**
+  The GMA 900, GMA 950 and later Intel chips are two PCI devices. The
+  second appears as an "(Unknown Device)" or under Other devices, and a
+  fresh Windows 98 may offer to find a driver for it. Leave that one
+  alone. Installed there by force (Windows warns that the driver was not
+  written for it), the driver stops before it can use the card
+  (`VbeDetail=minivdd-no-api` in `V9XBOOT.INI`) and Windows stays at 16
+  colours. Remove the Velocity9x entry from that device and install on
+  the one under Display adapters (measured on a GMA 950 netbook,
+  [runbook](specifications/intel-gma-bringup-runbook.md)).
 - **Do not install while a fullscreen DirectDraw application is running.** A
   modal dialog behind a fullscreen game can take the Win16 mutex and wedge the
   machine mid-install. Exit games first and confirm they have actually exited.
