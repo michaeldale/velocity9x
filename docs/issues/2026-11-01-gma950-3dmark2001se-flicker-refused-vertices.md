@@ -216,6 +216,19 @@ times, where under "Always off" it never waited once. That is the
 mechanism above in numbers. `DrawsIntoPresented` rises by 11 in either
 mode, so it is not this flicker; what it counts is still open.
 
+## 2026-11-07: fixed for VSync=2 on the GMA 950
+
+Build `efd2fa90` (boot 285) holds an unsynced Gen3 flip pending until
+its blank ([record](../decisions/2026-11-07-gen3-unsynced-flip-held.md)).
+With `VSync=2` restored, Michael watched 3DMark 2001 SE: **"no
+flicker"**. 2,963 flips were all unsynced and all held. 2,480 clears
+waited for a flip. 0 batches were refused.
+
+Status: **closed for the GMA 950**, with 0 batches refused and no
+flicker in either vsync mode. Open for the other parts: the GMA 900 and
+3150 are not run, and Haswell's and the other scanouts' unsynced paths
+are not looked at.
+
 Michael adds that cards of the period showed no such thing with vsync
 off: tearing between finished frames, not a frame being cleared. The
 fix owed is that: an unsynced Gen3 flip stays pending until the blank

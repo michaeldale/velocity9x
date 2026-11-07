@@ -10,14 +10,23 @@ build identifier so exact guest-tested binaries remain traceable.
   games.** On the GMA 950, 3DMark 2001 SE lost 2,551 batches of
   triangles in 0.39.0. It now loses none. Texture coordinates that were
   not numbers are drawn as 0, and a depth a rounding step outside the
-  depth range is drawn at its edge. Lost batches are the likely cause of
-  the flicker seen in every 3DMark 2001 SE test, but whether the flicker
-  is gone has not been checked by eye. The driver also clips less: triangles within
+  depth range is drawn at its edge. The driver also clips less: triangles within
   1,024 pixels of the screen go to the chip whole, as it was measured to
   draw them safely. Half-Life and 3DMark 2000 run with nothing lost.
   Measured on the GMA 950 only
   ([band](docs/decisions/2026-11-07-gen3-guard-band-merge.md),
   [depth](docs/decisions/2026-11-07-gen3-depth-edge.md)).
+
+- **Intel GMA 900, 950 and 3150, and GMA X3100 to Ironlake: "Always
+  off" vsync no longer flickers.** With the Velocity9x tab's vsync set
+  to Always off, 3DMark 2001 SE on the GMA 950 showed frames half
+  cleared, most of all as each test started. These chips take a new
+  screen address only at the vertical blank, but the driver handed the
+  old buffer back to the game as soon as it had written the address. It
+  now keeps that buffer until the blank, as it always did with vsync on.
+  Watched on the panel: no flicker. Measured on the GMA 950 only; the
+  default setting, Game decides, was never affected
+  ([record](docs/decisions/2026-11-07-gen3-unsynced-flip-held.md)).
 
 - **AMD Radeon HD 5570 (Redwood, `1002:68D9`) is claimed by the `ati`
   package.** It takes the HD 5770's path: DirectDraw on the DMA engine,
