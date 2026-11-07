@@ -192,12 +192,18 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 |---|---|---|---|
 | Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Measured on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
 
-Unvalidated **aliases** bind to the measured chip of the same design: the
-other S3 Trio ids, the rest of the Rage II and Rage Pro lines, the
-Voodoo5, which would run on one chip, and the Intel HD Graphics 4400
-(`8086:041E`) on the HD 4600's path. Treat them as "it should come up",
-not as supported. The ids are listed in each family's manifest under
-[packaging/families/](packaging/families/), and why each was bound in
+The driver also installs on some close relatives of the cards above,
+which nobody has run it on yet. Each one uses the code of a tested card
+built on the same chip design:
+
+- the other S3 Trio models;
+- the rest of the Rage II and Rage Pro lines;
+- the Voodoo5, using one of its two chips;
+- the Intel HD Graphics 4400 (`8086:041E`), using the HD 4600's code.
+
+These should start up, but are not supported. Their PCI ids are in each
+family's manifest under [packaging/families/](packaging/families/), and
+the reason for each is in
 [docs/specifications/family-manifest.md](docs/specifications/family-manifest.md).
 
 Modes come from each card's video BIOS, merged with the driver's own where
