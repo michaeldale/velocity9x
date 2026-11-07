@@ -142,3 +142,10 @@ The netbook was run on two builds
 
 Nobody watched the panel, so whether the flicker changed is not known.
 The unfinished-frame hypothesis above is still untested.
+
+**Later the same day, `089a5e70`** (boot 284,
+[record](../decisions/2026-11-07-gen3-depth-edge.md)): a depth within
+2^-16 of [0, 1] is drawn at the edge. **0 batches refused**; 317 depths
+moved. `DrawsIntoPresented` read 11 where both earlier runs read 0, and
+`DrawsToFront` stayed 0; what the 11 are is not established. The flicker
+still needs a watched run.
