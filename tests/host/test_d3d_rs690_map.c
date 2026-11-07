@@ -341,6 +341,24 @@ static void test_texture(void)
     draw.texture.op = V9X_R3D_TEXOP_COPY;
     CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
     CHECK(state.texture.combine == V9X_RS690_TEXCOMBINE_REPLACE);
+    /* A DX6+ stage whose alpha selects the vertex's (alpha_diffuse): the
+     * vertex's alpha over the texel's, for MODULATE and DECAL alike; a
+     * terrain layer faded by vertex alpha drew opaque before (3DMark 2000
+     * Game 1). MODULATEALPHA keeps its own. */
+    draw.texture.alpha_diffuse = 1ul;
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.combine == V9X_RS690_TEXCOMBINE_MODULATE);
+    CHECK(state.texture_alpha == V9X_RS690_TEXALPHA_DIFFUSE);
+    CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    draw.texture.op = V9X_R3D_TEXOP_DECAL;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.combine == V9X_RS690_TEXCOMBINE_REPLACE);
+    CHECK(state.texture_alpha == V9X_RS690_TEXALPHA_DIFFUSE);
+    draw.texture.op = V9X_R3D_TEXOP_MODULATEALPHA;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture_alpha == V9X_RS690_TEXALPHA_MODULATE);
+    draw.texture.alpha_diffuse = 0ul;
     /* DECALALPHA and ADD keep the diffuse alpha; the mask forms are
      * refused. */
     draw.texture.op = V9X_R3D_TEXOP_DECALALPHA;

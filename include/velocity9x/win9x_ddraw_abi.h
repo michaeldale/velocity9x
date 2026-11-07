@@ -1235,6 +1235,14 @@ typedef struct v9x_d3d_frame_cover {
  * frame_grab.h, which the HAL asserts equal. */
 #define V9X_D3D_FRAME_GRAB_FILES 10u
 
+/* The state census's slots (V9X_D3D_DIAGNOSTICS census_*). */
+#define V9X_D3D_STATE_CENSUS_SLOTS 16u
+
+/* The bit of the shared measurement mask (V9X_DD_SHARED hsw_flush_omit,
+ * V9XTRACE -omit:) that arms the state census. Clear at every boot, so a
+ * batch costs one test unless a run asks for the census. */
+#define V9X_DD_MEASURE_CENSUS 0x80000000ul
+
 /* How the one image write went. Anything but WRITTEN means V9XFRAME.PPM is
  * absent, stale or truncated, and the statistics stand alone. */
 #define V9X_D3D_IMAGE_NONE        0ul   /* not attempted yet              */
@@ -3986,6 +3994,51 @@ typedef struct v9x_d3d_diagnostics {
     DWORD ps11_kernels_refused;
     DWORD ps11_triangles_dropped;
     DWORD ps11_fogged;
+    /*
+     * Direct3D draws whose MODULATE or DECAL took the vertex's alpha over
+     * the alpha of a texture that has one, because stage 0's alpha selects
+     * the vertex's (r3d.h texture.alpha_diffuse), counted by the engines
+     * that honour it: draws the DX5 blend alone would have drawn with the
+     * texel's alpha. Appended 2026-11-07 within ABI 2026102002.
+     */
+    DWORD alpha_diffuse_draws;
+    /*
+     * The state census, while V9X_DD_MEASURE_CENSUS is set (V9XTRACE
+     * -omit:2147483648; zero cost otherwise): the first
+     * V9X_D3D_STATE_CENSUS_SLOTS distinct Direct3D draw states the engine
+     * was handed, each as the packed key
+     * of v9x_d3d_state_census_key (d3d_state.h), with how many batches
+     * carried it and, from the last of them, the fog colour, the first
+     * vertex's diffuse and specular (fog factor in its alpha), and the
+     * texture's red and alpha masks (0 untextured or for the display's
+     * format). Batches whose state found no free slot count in
+     * census_overflow. Added for the RS690's salmon terrain in 3DMark
+     * 2000 (2026-11-07). Appended within ABI 2026102002.
+     */
+    DWORD census_key[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_count[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_fog_color[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_diffuse[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_specular[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_texture_rmask[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_texture_amask[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_overflow;
+    /*
+     * And per slot: every vertex's specular ORed over all its batches;
+     * from the last batch, the first vertex's tu and tv (IEEE bits), the
+     * texture's width | height << 16, and the 16-bit texel at the first
+     * vertex's coordinates clamped into the texture (0 for other depths).
+     */
+    DWORD census_specular_or[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_tu[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_tv[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_texture_size[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_texel[V9X_D3D_STATE_CENSUS_SLOTS];
+    /* Per slot over all its batches: each specular channel's largest
+     * value (00RRGGBBh), and the whole specular of the vertex with the
+     * largest red. */
+    DWORD census_specular_max[V9X_D3D_STATE_CENSUS_SLOTS];
+    DWORD census_specular_reddest[V9X_D3D_STATE_CENSUS_SLOTS];
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */
@@ -4510,7 +4563,9 @@ typedef struct v9x_dd_shared {
      * the rest; the trace snapshot copies it whole. */
     struct v9x_diag_identity identity;
     /* The HD 4600 batch builder's omit mask, set by V9X_DDFLUSHVARIANT;
-     * zero at every boot. Measurement only. After identity, outside the
+     * zero at every boot. Measurement only. The RS690 engine reads it as
+     * the classes of draw to drop (d3d_rs690.c, v9x_d3d_rs690_omitted),
+     * and V9X_DD_MEASURE_CENSUS in it arms the state census. After identity, outside the
      * trace snapshot, so the snapshot a reader size-checks is unchanged.
      * Appended 2026-10-28 within ABI 2026102002. */
     DWORD hsw_flush_omit;

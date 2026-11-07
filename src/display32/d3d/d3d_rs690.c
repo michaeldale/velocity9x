@@ -515,6 +515,63 @@ static void v9x_d3d_rs690_count_refusal(const V9X_R3D_DRAW *draw,
     }
 }
 
+/*
+ * Measurement only: the classes of draw V9XTRACE -omit:<mask> asks this
+ * engine to drop (the shared omit mask the HD 4600 builder also reads;
+ * zero at every boot, so nothing is dropped unless a run sets it). Bits:
+ * 0 A4R4G4B4, 1 A8R8G8B8, 2 A1R5G5B5, 3 R5G6B5 textures; 4 specular on;
+ * blends 5 DESTCOLOR/ZERO, 6 ONE/ONE, 7 SRCALPHA/INVSRCALPHA; 8
+ * untextured. For bisecting which draws make 3DMark 2000's salmon
+ * terrain (docs\issues\2026-11-06-rs690-3dmark2000-pink-terrain.md).
+ */
+#define V9X_D3D_RS690_OMIT_4444        0x001ul
+#define V9X_D3D_RS690_OMIT_8888        0x002ul
+#define V9X_D3D_RS690_OMIT_1555        0x004ul
+#define V9X_D3D_RS690_OMIT_565         0x008ul
+#define V9X_D3D_RS690_OMIT_SPECULAR    0x010ul
+#define V9X_D3D_RS690_OMIT_DESTCOLOR   0x020ul
+#define V9X_D3D_RS690_OMIT_ADD         0x040ul
+#define V9X_D3D_RS690_OMIT_SRCALPHA    0x080ul
+#define V9X_D3D_RS690_OMIT_UNTEXTURED  0x100ul
+
+static int v9x_d3d_rs690_omitted(const V9X_R3D_DRAW *draw,
+                                 const V9X_D3D_RS690_TEXTURE *resolved)
+{
+    DWORD mask = v9x_hal->hsw_flush_omit;
+    DWORD classes = 0ul;
+
+    if (mask == 0ul) {
+        return 0;
+    }
+    if (draw->texture.object == 0) {
+        classes |= V9X_D3D_RS690_OMIT_UNTEXTURED;
+    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB4444) {
+        classes |= V9X_D3D_RS690_OMIT_4444;
+    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB8888) {
+        classes |= V9X_D3D_RS690_OMIT_8888;
+    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB1555) {
+        classes |= V9X_D3D_RS690_OMIT_1555;
+    } else if (resolved->format == V9X_RS690_TEXFMT_RGB565) {
+        classes |= V9X_D3D_RS690_OMIT_565;
+    }
+    if (draw->specular_enable != 0ul) {
+        classes |= V9X_D3D_RS690_OMIT_SPECULAR;
+    }
+    if (draw->blend_enable != 0ul) {
+        if (draw->src_blend == V9X_R3D_BLEND_DESTCOLOR &&
+            draw->dst_blend == V9X_R3D_BLEND_ZERO) {
+            classes |= V9X_D3D_RS690_OMIT_DESTCOLOR;
+        } else if (draw->src_blend == V9X_R3D_BLEND_ONE &&
+                   draw->dst_blend == V9X_R3D_BLEND_ONE) {
+            classes |= V9X_D3D_RS690_OMIT_ADD;
+        } else if (draw->src_blend == V9X_R3D_BLEND_SRCALPHA &&
+                   draw->dst_blend == V9X_R3D_BLEND_INVSRCALPHA) {
+            classes |= V9X_D3D_RS690_OMIT_SRCALPHA;
+        }
+    }
+    return (classes & mask) != 0ul;
+}
+
 /* The mapping, then the state into v9x_d3d_rs690_list. */
 static v9x_u32 v9x_d3d_rs690_map(const V9X_R3D_DRAW *draw)
 {
@@ -523,6 +580,9 @@ static v9x_u32 v9x_d3d_rs690_map(const V9X_R3D_DRAW *draw)
     v9x_u32 reason;
 
     v9x_d3d_rs690_resolve_texture(&draw->texture, &resolved);
+    if (v9x_d3d_rs690_omitted(draw, &resolved)) {
+        return V9X_D3D_RS690_REFUSE_OMITTED;
+    }
     reason = v9x_d3d_rs690_map_draw(draw, &resolved, v9x_d3d_rs690_fb_base,
                                     v9x_d3d_rs690_desktop,
                                     v9x_hal->fb.vram_bytes,
@@ -683,6 +743,20 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
     v9x_hal->d3d_diagnostics.m64_triangles += triangle_count;
     if (textured) {
         ++v9x_hal->d3d_diagnostics.m64_texture_draws;
+    }
+    /* A draw the vertex's alpha changed (v9x_d3d_rs690_map_texture): the
+     * stage asked for it, the blend is one that would have taken the
+     * texel's, and the texture has an alpha of its own. */
+    if (textured && draw->texture.alpha_diffuse != 0ul &&
+        (draw->texture.op == V9X_R3D_TEXOP_MODULATE ||
+         draw->texture.op == V9X_R3D_TEXOP_DECAL ||
+         draw->texture.op == V9X_R3D_TEXOP_COPY)) {
+        V9X_D3D_RS690_TEXTURE resolved;
+
+        v9x_d3d_rs690_resolve_texture(&draw->texture, &resolved);
+        if (resolved.has_alpha) {
+            ++v9x_hal->d3d_diagnostics.alpha_diffuse_draws;
+        }
     }
 
     /* The target, Z buffer and textures may hold CPU writes still in the

@@ -77,6 +77,7 @@ void v9x_d3d_state_fill(const V9X_D3D_STATE_RAW *raw, V9X_R3D_DRAW *draw)
     draw->fog_color = raw->fog_color;
     draw->color_key_enable = raw->color_key_enable;
     draw->alpha_force = raw->alpha_force;
+    draw->texture.alpha_diffuse = raw->texture_alpha_diffuse;
 }
 
 v9x_u32 v9x_d3d_state_depth_fill(v9x_u32 value, v9x_u32 depth_bits,
@@ -257,4 +258,82 @@ v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
     unit1->color_op = color1;
     unit1->alpha_op = alpha1;
     return V9X_D3D_STAGES_TWO;
+}
+
+/* A flag as bit `shift`, a field cut to `mask` at `shift`. */
+static v9x_u32 v9x_d3d_state_bit(v9x_u32 value, unsigned int shift)
+{
+    return (value != 0ul ? 1ul : 0ul) << shift;
+}
+
+static v9x_u32 v9x_d3d_state_field(v9x_u32 value, v9x_u32 mask,
+                                   unsigned int shift)
+{
+    return (value & mask) << shift;
+}
+
+v9x_u32 v9x_d3d_state_census_key(const V9X_R3D_DRAW *draw)
+{
+    v9x_u32 key = 0ul;
+
+    if (draw->texture.object != 0) {
+        key |= v9x_d3d_state_field(draw->texture.op, 0xful, 0) |
+               v9x_d3d_state_bit(1ul, 4);
+    }
+    key |= v9x_d3d_state_bit(draw->texture.alpha_diffuse, 5) |
+           v9x_d3d_state_bit(draw->blend_enable, 6) |
+           v9x_d3d_state_field(draw->src_blend, 0xful, 7) |
+           v9x_d3d_state_field(draw->dst_blend, 0xful, 11) |
+           v9x_d3d_state_bit(draw->fog_enable, 15) |
+           v9x_d3d_state_bit(draw->specular_enable, 16) |
+           v9x_d3d_state_bit(draw->shade_mode == V9X_R3D_SHADE_FLAT, 17) |
+           v9x_d3d_state_bit(draw->alpha_test_enable, 18) |
+           v9x_d3d_state_bit(draw->color_key_enable, 19) |
+           v9x_d3d_state_bit(draw->depth_enable, 20) |
+           v9x_d3d_state_bit(draw->depth_write, 21) |
+           v9x_d3d_state_field(draw->texture.address, 0x7ul, 22) |
+           v9x_d3d_state_field(draw->texture.min_filter, 0x7ul, 25) |
+           v9x_d3d_state_field(draw->texture.mag_filter, 0x3ul, 28) |
+           v9x_d3d_state_bit(draw->texture1.object != 0, 31);
+    return key;
+}
+
+v9x_u32 v9x_d3d_state_stage0_alpha_diffuse(const V9X_D3D_STATE_STAGE *stage0)
+{
+    int textured;
+    int vertex_alpha;
+
+    /* The colour the DX5 blend would draw with the texel's alpha:
+     * MODULATE of the texture with the input, or the texture selected. */
+    switch (stage0->color_op) {
+    case V9X_D3D_STATE_TOP_MODULATE:
+        textured = v9x_d3d_state_args_texture_input(stage0->color_arg1,
+                                                    stage0->color_arg2, 0);
+        break;
+    case V9X_D3D_STATE_TOP_SELECTARG1:
+        textured = v9x_d3d_state_arg_texture(stage0->color_arg1);
+        break;
+    case V9X_D3D_STATE_TOP_SELECTARG2:
+        textured = v9x_d3d_state_arg_texture(stage0->color_arg2);
+        break;
+    default:
+        textured = 0;
+        break;
+    }
+    if (!textured) {
+        return 0ul;
+    }
+
+    switch (stage0->alpha_op) {
+    case V9X_D3D_STATE_TOP_SELECTARG1:
+        vertex_alpha = v9x_d3d_state_arg_input(stage0->alpha_arg1, 0);
+        break;
+    case V9X_D3D_STATE_TOP_SELECTARG2:
+        vertex_alpha = v9x_d3d_state_arg_input(stage0->alpha_arg2, 0);
+        break;
+    default:
+        vertex_alpha = 0;
+        break;
+    }
+    return vertex_alpha ? 1ul : 0ul;
 }

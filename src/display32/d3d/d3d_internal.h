@@ -131,6 +131,10 @@ typedef struct v9x_d3d_context {
     DWORD texture_min;
     DWORD texture_mag;
     DWORD texture_blend;
+    /* Whether texture_blend, made from stage 0's states, wants the
+     * vertex's alpha (v9x_d3d_state_stage0_alpha_diffuse); 0 once the
+     * application sets TEXTUREMAPBLEND itself. */
+    DWORD texture_alpha_diffuse;
     DWORD texture_wrap;
     /*
      * D3DTADDRESS_*, from D3DRENDERSTATE_TEXTUREADDRESS and its two per-axis

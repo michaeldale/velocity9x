@@ -75,6 +75,9 @@ typedef struct v9x_d3d_rs690_texture {
                                                      V9XTRACE's numbers stay
                                                      put */
 #define V9X_D3D_RS690_REFUSE_STATE           16ul /* the builder refused */
+#define V9X_D3D_RS690_REFUSE_OMITTED         17ul /* a class V9XTRACE
+                                                   * -omit: asked to drop,
+                                                   * measurement only */
 
 /*
  * One draw's builder state. fb_gpu_base is the frame buffer's MC address
