@@ -1,0 +1,47 @@
+86Box 6.0 build 9001, Win98SE-Trio64 VM switched to gfxcard
+cardex_trio64vplus_pci (4 MB default). Package: build\win98se-s3 from
+b2791472 (stamped fd0618fc-dirty: the PR merged with main 8ad6bcab plus
+the merge fixes, before they were committed), mounted as the VM's CD.
+
+Devnode Enum\PCI\VEN_5333&DEV_8811&SUBSYS_00000000&REV_40\BUS_00&DEV_0C&FUNC_00
+
+HardwareID (as Windows wrote it, in order):
+  PCI\VEN_5333&DEV_8811&SUBSYS_00000000&REV_40
+  PCI\VEN_5333&DEV_8811&SUBSYS_00000000
+  PCI\VEN_5333&DEV_8811&REV_40
+  PCI\VEN_5333&DEV_8811
+  PCI\VEN_5333&DEV_8811&REV_40&CC_0300
+  PCI\VEN_5333&DEV_8811&CC_030000
+  PCI\VEN_5333&DEV_8811&CC_0300
+CompatibleIDs:
+  PCI\VEN_5333&CC_030000,PCI\VEN_5333&CC_0300,PCI\VEN_5333,PCI\CC_030000,PCI\CC_0300
+HWRevision=064
+
+Before our install (boot 375): Windows' own S3 INF installed it silently
+as "S3 Trio64V+ PCI (765)", s3mm.drv.
+
+After Have Disk (Update Device Driver, D:\), class key Display\0003:
+  DriverDesc        Velocity9x S3 Trio64V+ 86C765
+  MatchingDeviceId  PCI\VEN_5333&DEV_8811&REV_40
+  InfSection        V9x.Install.trio64
+  InfPath           VELOCI~1.INF
+  V9xFamily         s3
+
+Boots 376-377 ran VGA: Config\0001\Display\Settings BitsPerPixel=4 after
+the driver change, a depth this driver does not offer. Display
+Properties > Colors > High Color, restart.
+
+Boot 378, C:\V9XDIAG\V9XHW.INI (first lines):
+  Adapter=S3 Trio64V+ 86C765
+  VendorId=5333
+  DeviceId=8811
+  PciRevision=40
+  VideoMemoryBytes=4194304
+V9XBOOT.INI: Stage=enable-ok, 640x480 16 bpp, pitch 1280.
+
+V9XGDI.EXE from the CD did not start (exec returned -3); its INI on the
+guest is from an older run and is not evidence.
+
+The VM was restored from
+86Box VMs\Velocity9x Backups\Win98SE-Trio64-pre-trio64vplus-20261107
+afterwards (Trio64 card, original disk).

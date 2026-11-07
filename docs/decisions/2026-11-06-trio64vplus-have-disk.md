@@ -125,9 +125,37 @@ default Trio64V+ BIOS choice there is not a Trio64V+ image
 boot is the Trio64 install path on a revision-40h guest, not this
 branch's package and not the new row.
 
+## 86Box, 2026-11-07: the row installs and the name follows
+
+The Win98SE-Trio64 VM was switched to 86Box's `cardex_trio64vplus_pci`
+and given the merged S3 package as its CD
+([readings and screenshots](../probe/86box-trio64vplus-have-disk-2026-11-07/)).
+
+- Windows 98 SE found the card on its own and installed its built-in
+  S3 driver, "S3 Trio64V+ PCI (765)", without a wizard. The new row is
+  reached through Have Disk or Update Device Driver, as every Velocity9x
+  row is.
+- Windows lists `PCI\VEN_5333&DEV_8811&REV_40` as the device's third
+  **hardware** id, ahead of the bare `PCI\VEN_5333&DEV_8811` (fourth).
+  So the revision lines are hardware-id matches, not compatible-id ones.
+- Have Disk on `D:\` parsed the INF and offered two compatible models,
+  "Velocity9x S3 Trio32/64 86C764" and "Velocity9x S3 Trio64V+ 86C765".
+  Under Show all devices the Trio64V+ name appears **once**, not 29
+  times: SetupX folds lines with one description. Splitting the
+  revisions cost nothing in the list.
+- Installing it recorded `MatchingDeviceId=PCI\VEN_5333&DEV_8811&REV_40`
+  and `InfSection=V9x.Install.trio64`, and Display Properties named the
+  adapter "Velocity9x S3 Trio64V+ 86C765".
+- After the driver change Windows left `BitsPerPixel=4`, which this driver
+  does not offer, so two boots ran VGA. Choosing High Color and restarting
+  brought up the driver (boot 378): `Stage=enable-ok` at 640x480x16, and
+  `V9XHW.INI` wrote `Adapter=S3 Trio64V+ 86C765` and `PciRevision=40`. On
+  86Box, CR2F reads the PCI revision, as DB018-A says it does.
+
 ## Not checked
 
-This branch's S3 package was not built for that guest, so the new Have
-Disk name was not selected. Whether SetupX prefers `REV_40` over the
-bare 8811 id, and what the picture looks like under that row, is still
-open. So is a revision-53h card.
+Which model Windows ranks first when it chooses without being asked
+(Search for a better driver). The hardware-id order above says the
+`REV_40` line; it was not observed. A revision-53h card, and a real
+Trio64V+, are still owed. The GDI probe did not start in the guest and
+is not counted.

@@ -12,8 +12,10 @@ build identifier so exact guest-tested binaries remain traceable.
   each PCI revision S3's own Windows 95 INF named, on the same install as
   the Trio64. `V9XHW.INI` names the chip from CR2F and records its
   revision. Nothing about how the card is driven changes. Contributed by
-  perchrh ([PR 23](https://github.com/michaeldale/velocity9x/pull/23));
-  not yet installed on a guest or card
+  perchrh ([PR 23](https://github.com/michaeldale/velocity9x/pull/23)).
+  Installed on an 86Box Trio64V+ (revision 40h) through Have Disk: the
+  name is listed once, the driver starts, and `V9XHW.INI` names the
+  chip. Not yet tried on a real card
   ([record](docs/decisions/2026-11-06-trio64vplus-have-disk.md)).
 
 - **NVIDIA RIVA 128ZX: OpenGL, Glide and 3DCIF now draw on the 3D
