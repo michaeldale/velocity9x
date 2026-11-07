@@ -46,6 +46,7 @@ typedef struct v9x_d3d_state_raw {
     v9x_u32 alpha_ref;
     v9x_u32 alpha_force;
     v9x_u32 color_key_enable;
+    v9x_u32 texture_alpha_diffuse;
 } V9X_D3D_STATE_RAW;
 
 /* Fill every state field of draw from raw; the surfaces are left alone. */
@@ -79,6 +80,27 @@ typedef struct v9x_d3d_state_stage {
 v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
                              const V9X_D3D_STATE_STAGE *stage1,
                              V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1);
+
+/*
+ * 1 when stage 0, drawn as one DX5 texture blend, wants the vertex's alpha
+ * where that blend would take the texel's: its colour is MODULATE or a
+ * SELECTARG of the texture, and its alpha a SELECTARG of DIFFUSE or
+ * CURRENT (the vertex's at stage 0), uncomplemented. DX5's MODULATE and
+ * DECAL take the texel's alpha whenever the texture has one. 0 otherwise.
+ * The draw carries it as texture.alpha_diffuse (r3d.h).
+ */
+v9x_u32 v9x_d3d_state_stage0_alpha_diffuse(const V9X_D3D_STATE_STAGE *stage0);
+
+/*
+ * A draw's states packed into one word for the state census (V9XTRACE
+ * Census*): texture op 3:0 and textured 4 (op 0 when untextured),
+ * alpha_diffuse 5, blend enable 6, source 10:7 and destination 14:11, fog
+ * 15, specular 16, flat 17, alpha test 18, colour key 19, depth test 20
+ * and write 21, texture address 24:22, minification 27:25 and
+ * magnification 29:28 filters, a second unit 31. Fields past their width
+ * are cut to it.
+ */
+v9x_u32 v9x_d3d_state_census_key(const V9X_R3D_DRAW *draw);
 
 /*
  * Whether the depth unit is engaged: ZENABLE set, a depth surface bound,

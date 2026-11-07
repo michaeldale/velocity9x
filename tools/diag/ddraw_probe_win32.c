@@ -11339,6 +11339,7 @@ void __stdcall V9xDdrawProbeEntry(void)
             RECT source_rect;
             RECT destination_rect;
             V9X_DDCOLORKEY source_key;
+            V9X_DDBLTFX key_fill;
 
             v9x_fill_surface(stage, 0x001f001ful);
             v9x_fill_surface(backbuffer, 0xf800f800ul);
@@ -11380,6 +11381,35 @@ void __stdcall V9xDdrawProbeEntry(void)
                                        &source_rect,
                                        V9X_DDBLT_WAIT | V9X_DDBLT_KEYSRC, 0);
             v9x_write_hresult("KeySrcBltHr", hr);
+
+            /*
+             * The key over a stage the driver filled, not the CPU: the
+             * runtime emulates the keyed blit, and a driver whose fill
+             * writes bits the format leaves unused (the RIVA 128's engine
+             * sets bit 15 at 5:5:5) would make the stage's pixels miss the
+             * key if the emulation compares them. All the stage is the
+             * key, so the back buffer must keep its red.
+             */
+            v9x_zero(&key_fill, sizeof(key_fill));
+            key_fill.dwSize = sizeof(key_fill);
+            key_fill.dwFillColor = 0x001ful;
+            hr = stage->vtbl->Blt(stage, 0, 0, 0,
+                                  V9X_DDBLT_COLORFILL | V9X_DDBLT_WAIT,
+                                  &key_fill);
+            v9x_write_hresult("KeySrcFillHr", hr);
+            v9x_write_uint("KeySrcFillRaw",
+                           (DWORD)v9x_surface_pixel16(stage, 0ul, 0ul));
+            v9x_fill_surface(backbuffer, 0xf800f800ul);
+            hr = backbuffer->vtbl->Blt(backbuffer, &destination_rect, stage,
+                                       &source_rect,
+                                       V9X_DDBLT_WAIT | V9X_DDBLT_KEYSRC, 0);
+            v9x_write_hresult("KeySrcFillBltHr", hr);
+            v9x_write_uint("KeySrcFillRawAfter",
+                           (DWORD)v9x_surface_pixel16(backbuffer, 64ul, 64ul));
+            v9x_write_uint("KeySrcFillPixelOk",
+                           hr == 0 &&
+                           v9x_surface_pixel16_equals(backbuffer, 64ul, 64ul,
+                                                      0xf800u) ? 1ul : 0ul);
 
             stage->vtbl->Release(stage);
             stage = 0;

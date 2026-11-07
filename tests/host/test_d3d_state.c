@@ -78,6 +78,7 @@ static void test_every_field_routes(void)
     raw.specular_enable = 116ul; raw.fog_enable = 117ul; raw.fog_color = 118ul;
     raw.alpha_test_enable = 119ul; raw.alpha_func = 120ul; raw.alpha_ref = 121ul;
     raw.alpha_force = 122ul; raw.color_key_enable = 123ul;
+    raw.texture_alpha_diffuse = 124ul;
     v9x_d3d_state_fill(&raw, &draw);
     SCHECK(draw.depth_enable == 101ul);
     SCHECK(draw.depth_write == 102ul);
@@ -102,6 +103,7 @@ static void test_every_field_routes(void)
     SCHECK(draw.alpha_ref == 121ul);
     SCHECK(draw.alpha_force == 122ul);
     SCHECK(draw.color_key_enable == 123ul);
+    SCHECK(draw.texture.alpha_diffuse == 124ul);
     /* The surfaces are the core's and must be untouched. */
     SCHECK(draw.target.offset == 0xAAAAAAAAul);
     SCHECK(draw.depth.pitch == 0xAAAAAAAAul);
@@ -342,10 +344,99 @@ static void test_two_stages(void)
     SCHECK(unit0.alpha_op == V9X_R3D_ABI_ALPHAOP_FRAGMENT);
 }
 
+/*
+ * One stage's alpha as the vertex's: DX5's MODULATE and DECAL take the
+ * texel's alpha whenever the texture has one, so a DX6+ stage whose
+ * colour is MODULATE or SELECTARG of the texture and whose alpha selects
+ * DIFFUSE (or CURRENT, the vertex's at stage 0) needs saying so. A
+ * terrain layer faded by vertex alpha over an alpha-format texture drew
+ * opaque on the RS690 (3DMark 2000 Game 1, 2026-11-06).
+ */
+static void test_stage0_alpha_diffuse(void)
+{
+    V9X_D3D_STATE_STAGE stage0;
+
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_DIFFUSE,
+              T_SELECT2, A_TEXTURE, A_DIFFUSE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 1ul);
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_CURRENT,
+              T_SELECT1, A_CURRENT, A_TEXTURE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 1ul);
+    stage_set(&stage0, T_SELECT1, A_TEXTURE, A_DIFFUSE,
+              T_SELECT2, A_TEXTURE, A_DIFFUSE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 1ul);
+    /* The texel's alpha, or both multiplied: the DX5 blends say it. */
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_DIFFUSE,
+              T_SELECT1, A_TEXTURE, A_DIFFUSE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 0ul);
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_DIFFUSE,
+              T_MODULATE, A_TEXTURE, A_DIFFUSE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 0ul);
+    /* A complemented diffuse is not the diffuse. */
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_DIFFUSE,
+              T_SELECT2, A_TEXTURE, A_DIFFUSE | A_COMPLEMENT);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 0ul);
+    /* Colour ops the DX5 blend does not take from the texture this way:
+     * BLENDTEXTUREALPHA is DECALALPHA, already the vertex's alpha, and an
+     * untextured stage has no texel alpha to replace. */
+    stage_set(&stage0, T_BLENDTEX, A_TEXTURE, A_DIFFUSE,
+              T_SELECT2, A_TEXTURE, A_DIFFUSE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 0ul);
+    stage_set(&stage0, T_SELECT1, A_DIFFUSE, A_TEXTURE,
+              T_SELECT1, A_DIFFUSE, A_TEXTURE);
+    SCHECK(v9x_d3d_state_stage0_alpha_diffuse(&stage0) == 0ul);
+}
+
+/*
+ * The census key: each state in its own bits, so two draws share a key
+ * only when they share every state packed. 3DMark 2000's salmon terrain on
+ * the RS690 needed the states its draws carry (2026-11-07).
+ */
+static void test_census_key(void)
+{
+    V9X_R3D_DRAW draw;
+    v9x_u32 base;
+    int dummy = 0;
+
+    memset(&draw, 0, sizeof(draw));
+    SCHECK(v9x_d3d_state_census_key(&draw) == 0ul);
+
+    draw.texture.object = &dummy;
+    draw.texture.op = 2ul;                 /* MODULATE */
+    draw.texture.alpha_diffuse = 1ul;
+    draw.blend_enable = 1ul;
+    draw.src_blend = 5ul;                  /* SRCALPHA */
+    draw.dst_blend = 6ul;                  /* INVSRCALPHA */
+    draw.fog_enable = 1ul;
+    draw.specular_enable = 1ul;
+    draw.shade_mode = 1ul;                 /* FLAT */
+    draw.alpha_test_enable = 1ul;
+    draw.color_key_enable = 1ul;
+    draw.depth_enable = 1ul;
+    draw.depth_write = 1ul;
+    draw.texture.address = 3ul;            /* CLAMP */
+    draw.texture.min_filter = 6ul;         /* LINEARMIPLINEAR */
+    draw.texture.mag_filter = 2ul;         /* LINEAR */
+    base = v9x_d3d_state_census_key(&draw);
+    SCHECK(base == (2ul | 0x10ul | 0x20ul | 0x40ul | (5ul << 7) |
+                    (6ul << 11) | 0x8000ul | 0x10000ul | 0x20000ul |
+                    0x40000ul | 0x80000ul | 0x100000ul | 0x200000ul |
+                    (3ul << 22) | (6ul << 25) | (2ul << 28)));
+
+    /* A second unit sets the top bit; an untextured draw keeps no op. */
+    draw.texture1.object = &dummy;
+    SCHECK(v9x_d3d_state_census_key(&draw) == (base | 0x80000000ul));
+    draw.texture1.object = 0;
+    draw.texture.object = 0;
+    SCHECK((v9x_d3d_state_census_key(&draw) & 0x1ful) == 0ul);
+}
+
 unsigned int v9x_run_d3d_state_tests(void)
 {
     state_failures = 0u;
+    test_census_key();
     test_two_stages();
+    test_stage0_alpha_diffuse();
     test_values_match_d3dtypes();
     test_every_field_routes();
     test_undefined_address_is_clamp();

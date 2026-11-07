@@ -439,6 +439,18 @@ static DWORD v9x_pattern_byte(DWORD byte_index)
 #define V9X_COLOR_FORMAT_Y16    0x00000004ul
 
 /*
+ * /alpha, the third 16 bpp variant: every object's grobj ALPHA bit (3) set,
+ * nv3_pgraph.xml's X1R5G5B5_A1R5G5B5 read as A1R5G5B5, the rest rivafb's.
+ * The question (2026-11-07, boot 45): whether bit 15 then carries the
+ * fill colour's and the blit source's own bit instead of 1, which the
+ * HAL's 16 bpp fills need for DirectDraw's emulated colour keys.
+ */
+#define V9X_VARIANT_RIVAFB      0
+#define V9X_VARIANT_Y16         1
+#define V9X_VARIANT_ALPHA       2
+#define V9X_GROBJ_ALPHA         0x00000008ul
+
+/*
  * /d3d: rivafb's D3D pieces, which the 2D runs leave out. RAMHT entry
  * 80000013h with context 00D70347h (type 17h, the D3D textured triangle;
  * instance 347h), its instance words 10419208h (X1R5G5B5, zeta enabled,
@@ -493,7 +505,8 @@ static void v9x_bring_up(DWORD bytes, DWORD pitch, int y16)
         surf_config = 0x00001111ul;
     } else if (bytes == 2ul) {
         instance = v9x_instance_16;
-        surf_config = y16 ? V9X_SURF_CONFIG_Y16 : 0x00002222ul;
+        surf_config = y16 == V9X_VARIANT_Y16 ? V9X_SURF_CONFIG_Y16 :
+                      0x00002222ul;
     } else {
         instance = v9x_instance_32;
         surf_config = 0x00003333ul;
@@ -541,8 +554,10 @@ static void v9x_bring_up(DWORD bytes, DWORD pitch, int y16)
          index < sizeof(v9x_instances) / sizeof(v9x_instances[0]);
          ++index) {
         word = instance[index];
-        if (y16) {
+        if (y16 == V9X_VARIANT_Y16) {
             word = (word & ~V9X_COLOR_FORMAT_MASK) | V9X_COLOR_FORMAT_Y16;
+        } else if (y16 == V9X_VARIANT_ALPHA) {
+            word |= V9X_GROBJ_ALPHA;
         }
         v9x_op(V9X_OP_RAMIN_WRITE, v9x_instances[index], word, 0ul);
     }
@@ -866,8 +881,10 @@ static int v9x_run_depth(HANDLE device, DWORD bits, int y16,
     }
     lstrcpyA(section, "D");
     v9x_decimal(section + 1, bits);
-    if (y16) {
+    if (y16 == V9X_VARIANT_Y16) {
         lstrcatA(section, "Y16");
+    } else if (y16 == V9X_VARIANT_ALPHA) {
+        lstrcatA(section, "A1");
     }
     lstrcatA(section, suffix);
 
@@ -2048,8 +2065,26 @@ void __stdcall V9xNv32dEntry(void)
     }
 
     all_pass = v9x_run_depth(device, bits, 0, "");
-    if (bits == 16ul && !v9x_run_depth(device, bits, 1, "")) {
+    if (bits == 16ul && !v9x_run_depth(device, bits, V9X_VARIANT_Y16, "")) {
         all_pass = 0;
+    }
+    if (bits == 16ul && v9x_switch_given("/alpha")) {
+        if (!v9x_run_depth(device, bits, V9X_VARIANT_ALPHA, "")) {
+            all_pass = 0;
+        }
+        /* An overlapping move, whose source bits the blit reads back
+         * after writing some of them. */
+        v9x_blit_sx = 4ul;
+        v9x_blit_sy = 2ul;
+        v9x_blit_dx = 7ul;
+        v9x_blit_dy = 2ul;
+        if (!v9x_run_depth(device, bits, V9X_VARIANT_ALPHA, "OverlapRight")) {
+            all_pass = 0;
+        }
+        v9x_blit_sx = 4ul;
+        v9x_blit_sy = 1ul;
+        v9x_blit_dx = 120ul;
+        v9x_blit_dy = 1ul;
     }
     if (v9x_switch_given("/overlap")) {
         /* Down-right: the destination 4 right and 2 down of the source. */

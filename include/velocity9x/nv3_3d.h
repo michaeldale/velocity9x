@@ -135,6 +135,11 @@
  * (LESS and GREATER measured; the rest from nv3_3d.xml). */
 #define V9X_NV3_CMP_NEVER           1ul
 #define V9X_NV3_CMP_LESS            2ul
+#define V9X_NV3_CMP_EQUAL           3ul
+#define V9X_NV3_CMP_LESS_EQUAL      4ul
+#define V9X_NV3_CMP_GREATER         5ul
+#define V9X_NV3_CMP_NOT_EQUAL       6ul
+#define V9X_NV3_CMP_GREATER_EQUAL   7ul
 #define V9X_NV3_CMP_ALWAYS          8ul
 #define V9X_NV3_ALPHA_FUNC_SHIFT    8u
 
@@ -258,11 +263,12 @@ v9x_status v9x_nv3_3d_build_object(v9x_u32 vram_bytes,
 struct v9x_nv3_write v9x_nv3_3d_dma_entry(v9x_u32 page);
 /*
  * The render target: PGRAPH surfaces 2 (colour) and 3 (zeta), written
- * while the engine is idle, and the clip over the target's width and
- * height. The 2D fills and copies move the clip, so a 3D draw after them
- * sets it again. The probe drew inside a clip of the surface's size; that
- * the D3D object honours the clip is envytools' pgraph_prep_draw, not
- * measured.
+ * while the engine is idle, and the clip, a rectangle inside the target
+ * with right and bottom exclusive: the whole target for Direct3D, the
+ * scissor for the render interface. The 2D fills and copies move the clip,
+ * so a 3D draw after them sets it again. The probe drew inside a clip of
+ * the surface's size; that the D3D object honours a smaller one is
+ * envytools' pgraph_prep_draw until measured.
  */
 struct v9x_nv3_3d_target {
     v9x_u32 vram_bytes;
@@ -272,6 +278,10 @@ struct v9x_nv3_3d_target {
     v9x_u32 zeta_pitch_bytes;
     v9x_u32 width;
     v9x_u32 height;
+    v9x_u32 clip_left;
+    v9x_u32 clip_top;
+    v9x_u32 clip_right;
+    v9x_u32 clip_bottom;
 };
 
 v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
@@ -295,6 +305,16 @@ v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size);
  * (/d3dstate X1AlphaZero, boot 20).
  */
 v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444);
+
+/*
+ * The same texel as A1R5G5B5 with Direct3D's alpha test already applied:
+ * alpha 1 where the texel's alpha, widened to 8 bits (a x 11h), passes
+ * `func` (a V9X_NV3_CMP_ value) against `reference`, else 0. An opaque
+ * draw under the alpha test samples this copy and lets the chip test the
+ * one bit, so no partial alpha reaches the blend.
+ */
+v9x_u16 v9x_nv3_3d_tested_texel(v9x_u16 argb4444, v9x_u32 func,
+                                v9x_u32 reference);
 
 /*
  * Direct3D's specular, which the object has no input for: colour's R, G

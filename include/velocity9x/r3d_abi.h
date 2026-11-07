@@ -262,6 +262,9 @@ typedef struct v9x_r3d_abi_state {
 /* The RS690's R300-class engine (d3d_rs690.c), 2026-11-06, on the same
  * terms; it described as 0 until then. */
 #define V9X_R3D_ABI_ENGINE_RS690    14ul
+/* The RIVA 128's NV3 engine (d3d_nv3.c), 2026-11-07, on the same terms;
+ * it described as 0 until then. */
+#define V9X_R3D_ABI_ENGINE_NV3      15ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;

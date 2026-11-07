@@ -783,6 +783,7 @@ static void v9x_d3d_describe_draw(const V9X_D3D_ENGINE_OPS *ops,
     raw.texture_min = context->texture_min;
     raw.texture_mag = context->texture_mag;
     raw.texture_blend = context->texture_blend;
+    raw.texture_alpha_diffuse = context->texture_alpha_diffuse;
     raw.texture_address = context->texture_address;
     raw.texture_border = context->texture_border;
     raw.texture_wrap = context->texture_wrap;
@@ -925,6 +926,7 @@ static int v9x_d3d_describe_unit1(const V9X_D3D_ENGINE_OPS *ops,
                                                 context->stage1_mip);
     unit1->mag_filter = context->stage1_mag;
     unit1->op = 0ul;
+    unit1->alpha_diffuse = 0ul;
     unit1->address = address >= V9X_R3D_ADDRESS_WRAP &&
                      address <= V9X_R3D_ADDRESS_BORDER
                          ? address : V9X_R3D_ADDRESS_CLAMP;
@@ -949,6 +951,133 @@ static int v9x_d3d_describe_unit1(const V9X_D3D_ENGINE_OPS *ops,
 static const float *v9x_d3d_batch_uv1;
 
 /*
+ * The state census (V9X_D3D_DIAGNOSTICS census_*): the batch's state key
+ * into the first slot that holds it or is free, with the last batch's fog
+ * colour, first vertex colours and texture masks beside it. Diagnostics
+ * only; nothing here changes a draw.
+ */
+static DWORD v9x_d3d_census_float_bits(float value)
+{
+    union {
+        float f;
+        DWORD u;
+    } pun;
+
+    pun.f = value;
+    return pun.u;
+}
+
+/* A texture coordinate clamped into [0, side - 1] texels, rounded to the
+ * nearest by the FPU's own store (a cast would need Watcom's __CHP, which
+ * the HAL does not link). A sample for diagnostics, not a sampler. */
+static DWORD v9x_d3d_census_texel_index(float coordinate, DWORD side)
+{
+    float at = coordinate * (float)side;
+    LONG index;
+
+    if (!(at > 0.0f)) {
+        return 0ul;
+    }
+    if (at >= (float)side) {
+        return side - 1ul;
+    }
+    index = v9x_float_to_long(at);
+    if (index < 0l) {
+        return 0ul;
+    }
+    if ((DWORD)index >= side) {
+        return side - 1ul;
+    }
+    return (DWORD)index;
+}
+
+static void v9x_d3d_census_record(const V9X_R3D_DRAW *draw,
+                                  const V9X_D3DTLVERTEX *vertices,
+                                  DWORD triangle_count)
+{
+    V9X_D3D_DIAGNOSTICS *diag = &v9x_hal->d3d_diagnostics;
+    const V9X_DD_SURFACE_LCL *texture;
+    DWORD key;
+    DWORD slot;
+    DWORD vertex;
+
+    key = v9x_d3d_state_census_key(draw);
+    for (slot = 0ul; slot < V9X_D3D_STATE_CENSUS_SLOTS; ++slot) {
+        if (diag->census_count[slot] == 0ul || diag->census_key[slot] == key) {
+            break;
+        }
+    }
+    if (slot == V9X_D3D_STATE_CENSUS_SLOTS) {
+        ++diag->census_overflow;
+        return;
+    }
+    diag->census_key[slot] = key;
+    ++diag->census_count[slot];
+    diag->census_fog_color[slot] = draw->fog_color;
+    diag->census_diffuse[slot] = vertices != 0 ? vertices[0].color : 0ul;
+    diag->census_specular[slot] = vertices != 0 ? vertices[0].specular : 0ul;
+    diag->census_texture_rmask[slot] = 0ul;
+    diag->census_texture_amask[slot] = 0ul;
+    diag->census_texture_size[slot] = 0ul;
+    diag->census_texel[slot] = 0ul;
+    if (vertices != 0) {
+        for (vertex = 0ul; vertex < triangle_count * 3ul; ++vertex) {
+            DWORD specular = vertices[vertex].specular;
+            DWORD most = diag->census_specular_max[slot];
+            DWORD channel;
+
+            diag->census_specular_or[slot] |= specular;
+            for (channel = 0ul; channel < 24ul; channel += 8ul) {
+                if (((specular >> channel) & 0xfful) >
+                    ((most >> channel) & 0xfful)) {
+                    most = (most & ~(0xfful << channel)) |
+                           (specular & (0xfful << channel));
+                }
+            }
+            diag->census_specular_max[slot] = most;
+            if (((specular >> 16) & 0xfful) >
+                ((diag->census_specular_reddest[slot] >> 16) & 0xfful)) {
+                diag->census_specular_reddest[slot] = specular;
+            }
+        }
+        diag->census_tu[slot] = v9x_d3d_census_float_bits(vertices[0].tu);
+        diag->census_tv[slot] = v9x_d3d_census_float_bits(vertices[0].tv);
+    }
+    texture = (const V9X_DD_SURFACE_LCL *)draw->texture.object;
+    if (texture == 0 || texture->lpGbl == 0) {
+        return;
+    }
+    if ((texture->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        diag->census_texture_rmask[slot] =
+            texture->lpGbl->ddpfSurface.dwRBitMask;
+        diag->census_texture_amask[slot] =
+            texture->lpGbl->ddpfSurface.dwRGBAlphaBitMask;
+    }
+    diag->census_texture_size[slot] =
+        (DWORD)texture->lpGbl->wWidth | ((DWORD)texture->lpGbl->wHeight << 16);
+    /* The texel the first vertex samples, for a 16-bit texture in video
+     * memory: what the engine should read there. */
+    if (vertices != 0 && texture->lpGbl->wWidth != 0u &&
+        texture->lpGbl->wHeight != 0u && texture->lpGbl->lPitch > 0l &&
+        v9x_hal->fb.linear_base != 0ul &&
+        ((texture->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul
+             ? v9x_hal->fb.bits_per_pixel == 16ul
+             : texture->lpGbl->ddpfSurface.dwRGBBitCount == 16ul)) {
+        DWORD offset = v9x_surface_offset(texture);
+        DWORD x = v9x_d3d_census_texel_index(vertices[0].tu,
+                                             texture->lpGbl->wWidth);
+        DWORD y = v9x_d3d_census_texel_index(vertices[0].tv,
+                                             texture->lpGbl->wHeight);
+        DWORD at = offset + y * (DWORD)texture->lpGbl->lPitch + x * 2ul;
+
+        if (offset != 0xfffffffful && at + 2ul <= v9x_hal->fb.vram_bytes) {
+            diag->census_texel[slot] =
+                *(const v9x_u16 *)(v9x_hal->fb.linear_base + at);
+        }
+    }
+}
+
+/*
  * One batch to the engine, by whichever entry it serves. A batch with
  * pairs goes on two units when the engine accepts that draw; otherwise
  * it is drawn as stage 0 alone, which is what every build before this
@@ -965,6 +1094,11 @@ static int v9x_d3d_dispatch_engine(const V9X_D3D_ENGINE_OPS *ops,
         return ops->draw_triangles(context, vertices, triangle_count);
     }
     v9x_d3d_describe_draw(ops, context, &draw);
+    /* Measurement only, and only when a run arms it: off, the batch pays
+     * this one test. */
+    if ((v9x_hal->hsw_flush_omit & V9X_DD_MEASURE_CENSUS) != 0ul) {
+        v9x_d3d_census_record(&draw, vertices, triangle_count);
+    }
     if (v9x_d3d_batch_uv1 != 0) {
         if (v9x_d3d_describe_unit1(ops, context, &draw)) {
             draw.texcoords1 = v9x_d3d_batch_uv1;
@@ -2370,6 +2504,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->texture_min = V9X_D3DFILTER_NEAREST;
             context->texture_mag = V9X_D3DFILTER_NEAREST;
             context->texture_blend = V9X_D3DTBLEND_MODULATE;
+            context->texture_alpha_diffuse = 0ul;
             context->texture_wrap = 1ul;
             /* Direct3D's own default for D3DRENDERSTATE_TEXTUREADDRESS, so an
              * application that never sets it tiles rather than stretching. */
@@ -2531,6 +2666,7 @@ DWORD __stdcall V9xD3dContextDestroy(V9X_D3DHAL_CONTEXTDESTROYDATA *data)
     context->texture_min = 0ul;
     context->texture_mag = 0ul;
     context->texture_blend = 0ul;
+    context->texture_alpha_diffuse = 0ul;
     context->texture_wrap = 0ul;
     context->texture_address = V9X_D3DTADDRESS_WRAP;
     context->texture_border = 0ul;
@@ -2615,6 +2751,7 @@ DWORD __stdcall V9xD3dContextDestroyAll(
             v9x_d3d_contexts[index].texture_min = 0ul;
             v9x_d3d_contexts[index].texture_mag = 0ul;
             v9x_d3d_contexts[index].texture_blend = 0ul;
+            v9x_d3d_contexts[index].texture_alpha_diffuse = 0ul;
             v9x_d3d_contexts[index].texture_wrap = 0ul;
             v9x_d3d_contexts[index].texture_address = V9X_D3DTADDRESS_WRAP;
             v9x_d3d_contexts[index].texture_border = 0ul;
@@ -2854,6 +2991,9 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
         break;
     case V9X_D3DRENDERSTATE_TEXTUREMAPBLEND:
         context->texture_blend = argument;
+        /* A DX5 blend means its own alpha rule; v9x_d3d_dp2_express_stage
+         * sets the flag again after it applies the blend it made. */
+        context->texture_alpha_diffuse = 0ul;
         break;
     case V9X_D3DRENDERSTATE_TEXTUREADDRESS:
     case V9X_D3DRENDERSTATE_TEXTUREADDRESSU:
@@ -4714,6 +4854,23 @@ static void v9x_d3d_dp2_express_stage(V9X_D3D_CONTEXT *context)
     v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMAPBLEND, blend);
     v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREHANDLE,
                         textured ? context->stage_texture : 0ul);
+
+    /* MODULATE and DECAL take the texel's alpha when the texture has one;
+     * a stage whose alpha selects the vertex's says so beside the blend.
+     * Engines that read texture.alpha_diffuse honour it; the rest draw the
+     * DX5 blend as before. */
+    {
+        V9X_D3D_STATE_STAGE stage0;
+
+        stage0.color_op = context->stage_color_op;
+        stage0.color_arg1 = context->stage_color_arg1;
+        stage0.color_arg2 = context->stage_color_arg2;
+        stage0.alpha_op = context->stage_alpha_op;
+        stage0.alpha_arg1 = context->stage_alpha_arg1;
+        stage0.alpha_arg2 = context->stage_alpha_arg2;
+        context->texture_alpha_diffuse =
+            v9x_d3d_state_stage0_alpha_diffuse(&stage0);
+    }
 }
 
 /* Stage 1's states, raw, for v9x_d3d_stage_pair and describe_unit1. */
@@ -4870,17 +5027,17 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
         context->stage_texcoord = (DWORD)value & 0xfffful;
         break;
     case V9X_D3DTSS_ALPHAARG1:
-        /* Read only by the two-stage pairing: a one-stage engine's DX5
-         * blends have no use for them, and keeping them there would make
-         * contexts differ, and runs end, where they did not before. */
-        if (user->two_stages) {
-            context->stage_alpha_arg1 = (DWORD)value;
-        }
+        /* Kept for every engine since 2026-11-07: whether stage 0's alpha
+         * is the vertex's (texture.alpha_diffuse) reads them, as the
+         * two-stage pairing always did. Until then a one-stage engine
+         * dropped them so that contexts would not differ, and runs end,
+         * on a state its DX5 blends ignored. */
+        context->stage_alpha_arg1 = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
         break;
     case V9X_D3DTSS_ALPHAARG2:
-        if (user->two_stages) {
-            context->stage_alpha_arg2 = (DWORD)value;
-        }
+        context->stage_alpha_arg2 = (DWORD)value;
+        v9x_d3d_dp2_express_stage(context);
         break;
     default:
         /* LOD bias and the bump-map states: no engine here has a use for
@@ -6715,6 +6872,7 @@ static void v9x_d3d_ps_texture(V9X_D3D_CONTEXT *context,
                                               stage->mip_filter);
     out->mag_filter = stage->mag_filter;
     out->op = 0ul;
+    out->alpha_diffuse = 0ul;
     out->address = address >= V9X_R3D_ADDRESS_WRAP &&
                    address <= V9X_R3D_ADDRESS_BORDER
                        ? address : V9X_R3D_ADDRESS_CLAMP;
@@ -9721,6 +9879,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_rs690) {
         out->engine = V9X_R3D_ABI_ENGINE_RS690;
         name = "Velocity9x Radeon X1200";
+    } else if (ops == &v9x_d3d_engine_nv3) {
+        out->engine = V9X_R3D_ABI_ENGINE_NV3;
+        name = "Velocity9x RIVA 128";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -9857,6 +10018,16 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          * no fallback, so without this branch the ICD and Glide kept every
          * texture on the CPU and no textured draw was drawn (V9XGLIDP's
          * five texture checks, M-GB8KRE boot 87). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_nv3) {
+        /* The RIVA 128's: power-of-two edges, 1 to 256, square or not, all
+         * three formats, placed by v9x_d3d_nv3_create_surface with a
+         * swizzled square copy. CPU levels are refused (d3d_nv3.c) and
+         * there is no fallback, so without this branch the ICD and Glide
+         * would keep every texture on the CPU and no textured draw would
+         * be drawn, as on the RS690 before 99c78398. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

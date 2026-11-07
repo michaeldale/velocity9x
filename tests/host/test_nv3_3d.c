@@ -81,6 +81,10 @@ static void probe_target(struct v9x_nv3_3d_target *target)
     target->zeta_pitch_bytes = 1600ul;
     target->width = 800ul;
     target->height = 16ul;
+    target->clip_left = 0ul;
+    target->clip_top = 0ul;
+    target->clip_right = 800ul;
+    target->clip_bottom = 16ul;
 }
 
 static void test_target(void)
@@ -107,6 +111,31 @@ static void test_target(void)
     CHECK(op.methods[1].offset == V9X_NV3_USER + V9X_NV3_SUB_CLIP *
           V9X_NV3_SUBCHANNEL_STEP + V9X_NV3_M_CLIP_SIZE &&
           op.methods[1].value == (800ul | (16ul << 16)));
+
+    /* A scissor inside the target: the clip's point x | y << 16, its size
+     * width | height << 16, right and bottom exclusive. */
+    probe_target(&target);
+    target.clip_left = 10ul;
+    target.clip_top = 3ul;
+    target.clip_right = 110ul;
+    target.clip_bottom = 12ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) == V9X_STATUS_OK);
+    CHECK(op.methods[0].value == (10ul | (3ul << 16)));
+    CHECK(op.methods[1].value == (100ul | (9ul << 16)));
+    /* Empty, inverted or past the target: refused. */
+    target.clip_right = 10ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.clip_right = 9ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.clip_right = 801ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.clip_right = 110ul;
+    target.clip_bottom = 17ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 
     /* Alignment, the 4 MiB surface limit, the pitch field, the end. */
     probe_target(&target);
@@ -490,6 +519,38 @@ static void test_opaque_texel(void)
     CHECK(v9x_nv3_3d_opaque_texel(0x7777u) == 0x39ceu);
 }
 
+/* The opaque copy under the alpha test: the colour as above, bit 15 the
+ * test's verdict on the alpha widened to 8 bits (7h is 77h, 8h is 88h). */
+static void test_tested_texel(void)
+{
+    CHECK(v9x_nv3_3d_tested_texel(0x7fffu, V9X_NV3_CMP_GREATER, 0x77ul) ==
+          0x7fffu);
+    CHECK(v9x_nv3_3d_tested_texel(0x8fffu, V9X_NV3_CMP_GREATER, 0x77ul) ==
+          0xffffu);
+    CHECK(v9x_nv3_3d_tested_texel(0x0f00u, V9X_NV3_CMP_GREATER, 0ul) ==
+          0x7c00u);
+    CHECK(v9x_nv3_3d_tested_texel(0x1f00u, V9X_NV3_CMP_GREATER, 0ul) ==
+          0xfc00u);
+    CHECK(v9x_nv3_3d_tested_texel(0x7000u, V9X_NV3_CMP_GREATER_EQUAL,
+                                  0x77ul) == 0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x6000u, V9X_NV3_CMP_GREATER_EQUAL,
+                                  0x77ul) == 0x0000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x0000u, V9X_NV3_CMP_LESS, 0x11ul) ==
+          0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x1000u, V9X_NV3_CMP_LESS, 0x11ul) ==
+          0x0000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x1000u, V9X_NV3_CMP_LESS_EQUAL,
+                                  0x11ul) == 0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0xf000u, V9X_NV3_CMP_EQUAL, 0xfful) ==
+          0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0xf000u, V9X_NV3_CMP_NOT_EQUAL, 0xfful) ==
+          0x0000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x0000u, V9X_NV3_CMP_ALWAYS, 0xfful) ==
+          0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0xffffu, V9X_NV3_CMP_NEVER, 0ul) ==
+          0x7fffu);
+}
+
 unsigned int v9x_run_nv3_3d_tests(void)
 {
     failures = 0u;
@@ -499,5 +560,6 @@ unsigned int v9x_run_nv3_3d_tests(void)
     test_vertex();
     test_swizzle();
     test_opaque_texel();
+    test_tested_texel();
     return failures;
 }

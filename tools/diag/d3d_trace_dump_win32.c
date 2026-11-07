@@ -905,10 +905,12 @@ static DWORD v9x_parse_inject(void)
 }
 
 /*
- * "-omit:<decimal>": the HD 4600 batch builder's omit mask
- * (V9X_DDFLUSHVARIANT), for the variant runs of
- * docs\plans\intel-haswell-batch-cost.md; "-omit:0" restores the shipped
- * batch. Non-zero when the switch is present.
+ * "-omit:<decimal>": the shared measurement mask (V9X_DDFLUSHVARIANT):
+ * the HD 4600 batch builder's omit bits, for the variant runs of
+ * docs\plans\intel-haswell-batch-cost.md; the RS690's classes of draw to
+ * drop (d3d_rs690.c); and V9X_DD_MEASURE_CENSUS (2147483648), which arms
+ * the state census. "-omit:0" restores the shipped driver. Non-zero when
+ * the switch is present.
  */
 static int v9x_parse_omit(DWORD *mask)
 {
@@ -2017,6 +2019,57 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("Ps11TrianglesDropped",
                    snapshot.d3d.ps11_triangles_dropped);
     v9x_write_uint("Ps11Fogged", snapshot.d3d.ps11_fogged);
+    v9x_write_uint("AlphaDiffuseDraws", snapshot.d3d.alpha_diffuse_draws);
+    /* The state census, a line per used slot: Census<nn><Field>; the key's
+     * bits are in d3d_state.h, v9x_d3d_state_census_key. */
+    {
+        static const char * const fields[14] = {
+            "Key", "Count", "FogColor", "Diffuse", "Specular", "TexRMask",
+            "TexAMask", "SpecularOr", "Tu", "Tv", "TexSize", "Texel",
+            "SpecularMax", "SpecularReddest"
+        };
+        char key[32];
+        DWORD slot;
+        DWORD field;
+        DWORD value;
+
+        for (slot = 0ul; slot < V9X_D3D_STATE_CENSUS_SLOTS; ++slot) {
+            if (snapshot.d3d.census_count[slot] == 0ul) {
+                continue;
+            }
+            for (field = 0ul; field < 14ul; ++field) {
+                switch (field) {
+                case 0ul: value = snapshot.d3d.census_key[slot]; break;
+                case 1ul: value = snapshot.d3d.census_count[slot]; break;
+                case 2ul: value = snapshot.d3d.census_fog_color[slot]; break;
+                case 3ul: value = snapshot.d3d.census_diffuse[slot]; break;
+                case 4ul: value = snapshot.d3d.census_specular[slot]; break;
+                case 5ul: value = snapshot.d3d.census_texture_rmask[slot];
+                          break;
+                case 6ul: value = snapshot.d3d.census_texture_amask[slot];
+                          break;
+                case 7ul: value = snapshot.d3d.census_specular_or[slot];
+                          break;
+                case 8ul: value = snapshot.d3d.census_tu[slot]; break;
+                case 9ul: value = snapshot.d3d.census_tv[slot]; break;
+                case 10ul: value = snapshot.d3d.census_texture_size[slot];
+                           break;
+                case 11ul: value = snapshot.d3d.census_texel[slot]; break;
+                case 12ul: value = snapshot.d3d.census_specular_max[slot];
+                           break;
+                default:  value = snapshot.d3d.census_specular_reddest[slot];
+                          break;
+                }
+                wsprintfA(key, "Census%02lu%s", slot, fields[field]);
+                if (field == 1ul) {
+                    v9x_write_uint(key, value);
+                } else {
+                    v9x_write_hex(key, value);
+                }
+            }
+        }
+        v9x_write_uint("CensusOverflow", snapshot.d3d.census_overflow);
+    }
     v9x_write_hex("FlipStrideLast", snapshot.d3d.flip_stride_last);
     v9x_write_hex("FlipDspCntrLast", snapshot.d3d.flip_dspcntr_last);
     v9x_write_hex("FlipPipeSrcLast", snapshot.d3d.flip_pipesrc_last);

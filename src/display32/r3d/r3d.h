@@ -192,6 +192,13 @@ typedef struct v9x_r3d_texture {
     v9x_u32 color_op;
     v9x_u32 alpha_op;
     v9x_u32 env_color;
+    /*
+     * Direct3D only: 1 when `op`'s MODULATE or DECAL is to take the vertex's
+     * alpha even from a texture that has its own - a DX6+ stage 0 whose
+     * alpha selects DIFFUSE (v9x_d3d_state_stage0_alpha_diffuse). An engine
+     * that does not read it draws the DX5 blend as before.
+     */
+    v9x_u32 alpha_diffuse;
 } V9X_R3D_TEXTURE;
 
 /* A colour combine past the render interface's, which only the Direct3D

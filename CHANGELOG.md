@@ -4,6 +4,58 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.39.0 - not yet released
+
+- **NVIDIA RIVA 128ZX: OpenGL, Glide and 3DCIF now draw on the 3D
+  engine.** Before, the engine refused every draw from these three, so
+  Glide and 3DCIF drew nothing and OpenGL ran on the CPU. Now a draw is
+  taken when it covers the whole target and writes every colour channel.
+  Its textures are placed in video memory, as Direct3D's already were.
+  The renderer is named "Velocity9x RIVA 128". A scissor (3DCIF's, or a
+  direct caller's) now goes to the chip's clip rectangle, measured exact
+  on the card; OpenGL and Glide cut their geometry to it themselves. A
+  colour write mask is still refused, and those draws are dropped: the
+  chip has no channel mask.
+  Measured on one tester's card through remote help:
+  - the Glide 2 probe has 1 failure where it had 14. The one left is a
+    50 % blend one step dark at 5:5:5;
+  - the OpenGL probe passes, with ten fog, polygon-offset and blend checks
+    that failed on the CPU now passing;
+  - Direct3D's probe is unchanged.
+
+  Not yet tried: 3DCIF or any game
+  ([record](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)).
+
+- **NVIDIA RIVA 128ZX: Direct3D no longer drops draws when texture memory
+  fills.** When the chip had no room for a texture, DirectDraw placed it
+  anyway in a layout the chip cannot read, and every draw using that
+  texture was silently dropped. 3DMark 99 Max lost 11,837 of 32,260 draws
+  this way at 800x600x16. Such a texture is now refused as out of video
+  memory, so the program manages its textures as on any full card.
+  3DMark 99 Max then completes with all 40,951 draws drawn. Measured on
+  one tester's card; the screen was not watched
+  ([record](docs/decisions/2026-11-07-riva128-3dmark99-unplaced-textures.md)).
+
+- **NVIDIA RIVA 128ZX: Direct3D draws opaque A4R4G4B4 textures under the
+  alpha test.** These were refused and dropped: 2,204 of Half-Life's
+  batches in its first map. The chip cannot ignore a texel's partial
+  alpha, so the driver now keeps a copy of such a texture in which each
+  texel either passes the game's alpha test or does not, and the chip
+  tests that. On one tester's card, Half-Life's first map then drew about
+  496,000 batches with none refused. Which surfaces these draws are was
+  not identified; the scene looks the same as before
+  ([record](docs/decisions/2026-11-07-riva128-a4r4g4b4-alpha-test.md)).
+
+- **Correction, NVIDIA RIVA 128ZX: Glide did not regress in 0.37.0.** The
+  0.37.0 notes said the Glide 2 probe drew no triangles on that release,
+  against 1 failure on the build before. The earlier run had drawn on the
+  tester's second card, a Voodoo 1, through 3dfx's own Glide. Velocity9x's
+  Glide has never drawn on the RIVA: its render interface offers no 3D
+  engine there, so Glide and 3DCIF draw nothing on any release so far.
+  Direct3D and OpenGL are unaffected
+  ([record](docs/issues/2026-11-06-riva128-glide-draws-nothing-on-0.37.0-candidate.md),
+  [gap](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)).
+
 ## 0.38.0 - 2026-11-07
 
 - **OpenGL: `GL_EXT_compiled_vertex_array` on every card.** The ICD

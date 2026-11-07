@@ -117,6 +117,14 @@ v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
         target->height > V9X_NV3_EXTENT_MAX) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* An empty clip draws nothing, which the caller decides, not the
+     * chip: a clip of size 0 is not a state the probe measured. */
+    if (target->clip_left >= target->clip_right ||
+        target->clip_top >= target->clip_bottom ||
+        target->clip_right > target->width ||
+        target->clip_bottom > target->height) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     status = v9x_nv3_3d_surface(target->vram_bytes, target->colour_offset,
                                 target->colour_pitch_bytes, target->width,
                                 target->height);
@@ -145,10 +153,11 @@ v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
                    target->zeta_pitch_bytes);
     v9x_nv3_3d_put(op->methods, &op->method_count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_CLIP, V9X_NV3_M_CLIP_POINT),
-                   0ul);
+                   target->clip_left | (target->clip_top << 16));
     v9x_nv3_3d_put(op->methods, &op->method_count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_CLIP, V9X_NV3_M_CLIP_SIZE),
-                   target->width | (target->height << 16));
+                   (target->clip_right - target->clip_left) |
+                   ((target->clip_bottom - target->clip_top) << 16));
     return V9X_STATUS_OK;
 }
 
@@ -493,6 +502,45 @@ v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444)
     green = (v9x_u16)((green << 1) | (green >> 3));
     blue = (v9x_u16)((blue << 1) | (blue >> 3));
     return (v9x_u16)((red << 10) | (green << 5) | blue);
+}
+
+v9x_u16 v9x_nv3_3d_tested_texel(v9x_u16 argb4444, v9x_u32 func,
+                                v9x_u32 reference)
+{
+    v9x_u32 alpha;
+    int pass;
+
+    alpha = (v9x_u32)((argb4444 >> 12) & 0x0fu) * 0x11ul;
+    switch (func) {
+    case V9X_NV3_CMP_LESS:
+        pass = alpha < reference;
+        break;
+    case V9X_NV3_CMP_EQUAL:
+        pass = alpha == reference;
+        break;
+    case V9X_NV3_CMP_LESS_EQUAL:
+        pass = alpha <= reference;
+        break;
+    case V9X_NV3_CMP_GREATER:
+        pass = alpha > reference;
+        break;
+    case V9X_NV3_CMP_NOT_EQUAL:
+        pass = alpha != reference;
+        break;
+    case V9X_NV3_CMP_GREATER_EQUAL:
+        pass = alpha >= reference;
+        break;
+    case V9X_NV3_CMP_ALWAYS:
+        pass = 1;
+        break;
+    default:
+        pass = 0;
+        break;
+    }
+    if (pass) {
+        return (v9x_u16)(v9x_nv3_3d_opaque_texel(argb4444) | 0x8000u);
+    }
+    return v9x_nv3_3d_opaque_texel(argb4444);
 }
 
 /* Morton order, u in the even bits and v in the odd, measured for every

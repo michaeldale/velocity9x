@@ -1,0 +1,8 @@
+mask0    grabs 6 salmon [112, 1010, 4553, 936, 611, 1382] total 8604
+mask1    grabs 6 salmon [84, 830, 7043, 2800, 950, 2278] total 13985
+mask2    grabs 6 salmon [70, 568, 5484, 1498, 452, 2349] total 10421
+mask8    grabs 6 salmon [1, 7, 0, 0, 0, 0] total 8
+mask16   grabs 6 salmon [0, 0, 0, 0, 0, 1] total 1
+mask32   grabs 6 salmon [101, 971, 4601, 930, 690, 1826] total 9119
+mask64   grabs 6 salmon [0, 0, 0, 0, 0, 1] total 1
+mask128  grabs 6 salmon [49, 170, 7044, 7065, 2293, 675] total 17296

@@ -112,6 +112,15 @@ and 3D draw 5:5:5. There are three ways to go:
 
 The recommendation is A first, as a measurement, then B for 3D.
 
+B serves 3D but not 2D (2026-11-07, boots 45-46,
+[record](../decisions/2026-11-07-riva128-16bpp-2d-bit15-visible.md)). At
+5:5:5 the engine's bit 15 is still visible to software:
+- DirectDraw's emulated colour keys miss engine-filled pixels;
+- exact readbacks fail.
+
+Neither the ALPHA format bit nor any other register measured keeps bit
+15 clear, so 16 bpp 2D stays on the CPU.
+
 **Taken and measured (2026-11-02).** Michael chose A, then B. A is dead:
 the engine sets bit 15 on every 16 bpp pixel it writes, fills and blits
 alike, and the one other 16-bit format (Y16) converts colour to luminance
@@ -174,7 +183,9 @@ acceleration is B or nothing; 8 and 32 bpp need neither.
    and 8 bpp with the engine drawing, 16 bpp PASS with acceleration off,
    V9XDDP and GDI each fine after the other
    ([record](../decisions/2026-11-03-riva128-gdi-on-the-engine.md)). 16
-   bpp waits for B.
+   bpp stays on the CPU even under B: the engine's bit 15 is visible to
+   readbacks
+   ([record](../decisions/2026-11-07-riva128-16bpp-2d-bit15-visible.md)).
 7. **Direct3D**: its own plan, [nvidia-riva128-d3d.md](nvidia-riva128-d3d.md).
    The D3D0 object is DX5-level, so this is the S3 ViRGE and Rage Pro class
    of HAL, not the Evergreen one. Step 1 done: a textured, fogged triangle

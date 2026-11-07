@@ -204,6 +204,15 @@ static v9x_u32 v9x_d3d_rs690_map_texture(const V9X_R3D_DRAW *draw,
     if (!v9x_d3d_rs690_combine(sampler->op, resolved->has_alpha, state)) {
         return V9X_D3D_RS690_REFUSE_TEXTURE_OP;
     }
+    /* A DX6+ stage whose alpha selects the vertex's (r3d.h alpha_diffuse):
+     * MODULATE and DECAL take the vertex's alpha even from a texture that
+     * has its own, which the DX5 blend alone would not. */
+    if (sampler->alpha_diffuse != 0ul &&
+        (sampler->op == V9X_R3D_TEXOP_MODULATE ||
+         sampler->op == V9X_R3D_TEXOP_DECAL ||
+         sampler->op == V9X_R3D_TEXOP_COPY)) {
+        state->texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    }
     state->textured = 1ul;
     state->texture.offset = vram_base + resolved->offset;
     state->texture.pitch_bytes = resolved->pitch_bytes;
