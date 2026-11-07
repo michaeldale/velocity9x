@@ -340,6 +340,10 @@ unsigned int v9x_run_vi_sdma_tests(void);
  * translating whole. */
 unsigned int v9x_run_cik_shader_tests(void);
 
+/* tests\host\test_cik_gpu.c: Mullins' generated gpu_init list and CI
+ * clear state against the Linux values they come from. */
+unsigned int v9x_run_cik_gpu_tests(void);
+
 /* tests\host\test_vi_3d.c: Carrizo GCN 3 encoders against LLVM's GFX8
  * assembler bytes, the bring-up shaders word for word, and the PM4 start
  * and solid-rectangle streams. */
@@ -1522,6 +1526,7 @@ int main(int argc, char **argv)
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_cik_shader_tests();
+    failures += v9x_run_cik_gpu_tests();
     failures += v9x_run_vi_3d_tests();
     failures += v9x_run_eg_shader_tests();
     failures += v9x_run_cm_shader_tests();
