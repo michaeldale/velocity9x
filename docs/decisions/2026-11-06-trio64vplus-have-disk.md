@@ -42,8 +42,11 @@ S3's own Windows 95 driver, 4.10.01.2108-2.41.07, file `S3TRIO.INF` dated
 shipped a name for. Every Trio64V+ line is
 `PCI\VEN_5333&DEV_8811&REV_xx`, description "S3 Inc. Trio64V+", install
 section `S3_3`. The revisions are 40, 42-4F and 52-5F. 41h, 50h and 51h
-are absent. 50h and 51h do not have bit 6 set, so they fail the book's
-test. The Trio64V2 line in that file is only `PCI\VEN_5333&DEV_8901`,
+are absent. All three have bit 6 set, so the book's test does not
+explain the gap, and the INF does not say why. This row follows S3's
+list rather than widening it. (The PR as first submitted said 50h and
+51h lack bit 6; they do not, and its host test failed on it. Corrected
+on merge.) The Trio64V2 line in that file is only `PCI\VEN_5333&DEV_8901`,
 which this driver already has.
 
 That INF does not justify new desktop modes. The 765 section and the 775
@@ -64,14 +67,19 @@ does not either: it opens the aperture and clears SR1A.
 
 ## The choice
 
-One Have Disk row, `Velocity9x S3 Trio64V+ 86C765`, on
+One Have Disk name, `Velocity9x S3 Trio64V+ 86C765`, on
 `V9x.Install.trio64`, the Trio64 install section. The ids are S3's list,
-not every value from 40h to 5Fh. `REV_40` is the hardware id. The other
-revisions on that line are compatible ids, so the menu shows one name
-rather than one copy of the name per stepping. S3 used one line per
-revision with the same description. If a guest shows SetupX ignoring the
-compatible ids, the line should be split the way S3 split it. That has
-not been booted.
+not every value from 40h to 5Fh. Each revision gets its own model line
+with its `REV_` id as the hardware id, as S3's INF does, so "Show all
+hardware" lists the name once per stepping.
+
+The PR as submitted put all 29 ids on one line, `REV_40` as the hardware
+id and the rest as compatible ids, to show the name once. That line is
+891 characters. SetupX has not been seen to accept a line that long, and
+the family manifest's own note records that Win98 Have Disk does not
+always consult compatible ids. A parse failure would break every S3
+install for the sake of a name, so the merge splits it the way S3 did.
+Neither form has been booted.
 
 `C:\V9XDIAG\V9XHW.INI` records the chip from CR2F, not from the row that
 was installed. Bit 6 set writes `Adapter=S3 Trio64V+ 86C765` and
@@ -101,6 +109,13 @@ which this change does not touch. The host tests for the CR2F name and
 for `v9x_release_pci_id` reducing `REV_40` and `REV_53` to the bare id
 are in the tree. They were not compiled here: this machine has no
 Open Watcom.
+
+On merge (2026-11-07, main after `8ad6bcab`), the host tests compiled and
+two of them failed: they expected 50h and 51h to be named the Trio32/64,
+but both have bit 6 set, so the name function was right and the tests
+wrong. With the tests corrected and the INF split per revision,
+`scripts/run-checks.ps1` passes, family packages included, and the S3
+INF carries 29 Trio64V+ lines beside the bare 8811 line.
 
 On 86Box, a Trio64V+ device with the Cardex BIOS and Velocity9x 0.37
 (the S3 package before this row) installs and runs when Have Disk picks

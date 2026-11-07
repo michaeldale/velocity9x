@@ -233,9 +233,9 @@
             # tells it apart by the revision, so these are INF model lines
             # only: no second device-table entry and no second backend row.
             # The list is S3's Windows 95 driver 2.41.07 (S3TRIO.INF,
-            # 1997-12-17), which omits 41h, 50h and 51h. 50h and 51h do not
-            # have CR2F bit 6 set. 40h is what 86Box returns; 53h is the
-            # Diamond Stealth64 Video 2001 survey.
+            # 1997-12-17), which omits 41h, 50h and 51h for reasons it does
+            # not give (all three have CR2F bit 6 set). 40h is what 86Box
+            # returns; 53h is the Diamond Stealth64 Video 2001 survey.
             # docs\decisions\2026-11-06-trio64vplus-have-disk.md
             RevisionModels = @(
                 @{ Name = 'S3 Trio64V+ 86C765'

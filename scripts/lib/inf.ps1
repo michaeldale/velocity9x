@@ -237,15 +237,18 @@ function New-V9xInfText {
                 $section, $chip.VendorId, $alias.DeviceId
         }
 
-        # One Have Disk row per revision model, every REV_ id on that one
-        # line, the same install section as the chip. The first id is the
-        # hardware id; the rest are compatible ids. A separate line per
-        # revision would repeat the description once per stepping.
+        # One model line per revision, each with its REV_ id as the hardware
+        # id, all on the chip's install section. This is how S3's own
+        # S3TRIO.INF lists the Trio64V+. One line holding every revision as
+        # compatible ids would name the part once in Show all hardware, but
+        # it is about 900 characters long and SetupX has never been seen to
+        # take a line that long or to rank its compatible ids; a parse
+        # failure there would break every S3 install for the sake of a name.
         foreach ($model in @($chip.RevisionModels | Where-Object { $_ })) {
-            $ids = @($model.Revisions | ForEach-Object {
-                'PCI\VEN_{0}&DEV_{1}&REV_{2}' -f $chip.VendorId, $chip.DeviceId, $_
-            })
-            $lines += '"{0}"={1},{2}' -f $model.DeviceDesc, $section, ($ids -join ',')
+            foreach ($rev in @($model.Revisions)) {
+                $lines += '"{0}"={1},PCI\VEN_{2}&DEV_{3}&REV_{4}' -f $model.DeviceDesc,
+                    $section, $chip.VendorId, $chip.DeviceId, $rev
+            }
         }
     }
 
@@ -666,9 +669,9 @@ function Assert-V9xInf {
                           '(&SUBSYS_[0-9A-Fa-f]{8},PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4})?$')) {
             continue
         }
-        # One Have Disk row whose every id is a PCI revision of one device.
+        # A revision model line: exactly one id, a PCI revision of a device.
         if ($line -match ('^"[^"]+"=\S+' +
-                          '(,PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}&REV_[0-9A-Fa-f]{2})+$')) {
+                          ',PCI\\VEN_[0-9A-Fa-f]{4}&DEV_[0-9A-Fa-f]{4}&REV_[0-9A-Fa-f]{2}$')) {
             continue
         }
         if ($manualLine -and $line -eq $manualLine) {

@@ -142,9 +142,10 @@ to its own chip's backend.
 ## Revision models
 
 A chip may declare `RevisionModels` when one PCI device id covers two parts
-that Windows can tell apart by the PCI revision register. Each model is one
-Have Disk row. Every listed revision is an id on that row, and the row uses
-the chip's install section, mode list and mini-VDD.
+that Windows can tell apart by the PCI revision register. Each listed
+revision is its own model line, with `PCI\VEN_&DEV_&REV_` as its only id
+and the model's description, as S3's own INF lists the Trio64V+. Every line
+uses the chip's install section, mode list and mini-VDD.
 
 ```powershell
 RevisionModels = @(
