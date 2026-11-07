@@ -4,6 +4,18 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.41.0 - not yet released
+
+- **Blank the screen before Disable's text-mode switch on shutdown.**
+  Observed on Trio64V+ and Trio64V2/DX: every Windows shutdown with
+  0.39.0 flashed about a second of cyan/black vertical garbage before
+  the normal safe-to-turn-off screen. Those S3 mode sets leave VRAM
+  uncleared; Disable then did a bare INT 10h mode 03 and showed that
+  buffer as text-cell noise. `V9xHardwareDisable` now turns VGA Screen
+  Off around that mode set for every driver that shares this path. Fix
+  in source; not yet re-checked on a card
+  ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
+
 ## 0.40.0 - 2026-11-07
 
 - **Intel GMA 900, 950 and 3150: less geometry lost in Direct3D 8
