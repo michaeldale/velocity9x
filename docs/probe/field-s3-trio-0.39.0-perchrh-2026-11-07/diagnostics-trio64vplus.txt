@@ -1,0 +1,33 @@
+Velocity9x settings report
+Version: 0.39.0
+Build: 186b656c
+Adapter: S3 Trio64V+ 86C765
+PCI ID: 5333:8811
+Revision: 00
+Video memory: 2 MB
+Mini-VDD build: 186b656c
+2D (GDI): Engine: fill, copy, overlap
+Last DirectDraw test: Complete, 7 of 7 pixel checks pass
+Active mode: 800 x 600 x 16 bpp
+Core / engine clock: 50.113 MHz (shared with memory)
+Memory clock: 50.113 MHz
+Clock detector: s3-virge-pll-v1
+Driver stage: enable-ok
+Framebuffer: Active - linear aperture mapped
+Last GDI test: PASS - 800x600x16 (186b656c)
+Mode switching: Live, any depth
+Direct3D: Not advertised on this chip (SYSTEM.INI Direct3D=0)
+VSync: Not yet stamped by DirectDraw (SYSTEM.INI VSync=0)
+Direct3D DDI: Not yet stamped by DirectDraw (SYSTEM.INI Direct3DDdi=0)
+Baseline modes: 640x480, 800x600 and 1024x768 at 8/16/32 bpp, 1280x1024 at 8/16 bpp, 640x400 at 8 bpp, 60 Hz
+Runtime modes: 10 published, 2 hidden (scan/EDID-contradicted)
+Mode scan: state=1 listed=26 queried=26 cached=21 flags=0407
+Drop reasons: 6,0,0,0,0,5,0,0,0,0,10,0,0
+EDID recommendation: none reason=no-edid
+Inventory generation: 24
+Registry sync: ok (generation 20)
+Rendering: Windows DIB Engine (software GDI)
+DirectDraw: Engine fill and copy, page flip
+Direct3D: Not advertised on this chip
+Mini-VDD callbacks: VESA, monitor power
+Last report sent: none
