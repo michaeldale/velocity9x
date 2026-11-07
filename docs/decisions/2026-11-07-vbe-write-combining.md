@@ -101,6 +101,32 @@ dispbench `a8u4i5-rage128-v9x-vbe/20261107-174829` (off) and
 change). On this slower bus the screen-to-screen copy also gained, since
 half of it is the write.
 
+## 86Box: an emulated Pentium II
+
+Two 86Box 6.0 guests on the 686bx board with a Pentium II (Deschutes),
+whose MTRRs 86Box emulates; the Pentium MMX guests have none. Both had
+agent 0.5.2, updated to 0.16.0 by WININIT rename on the first boot. Both
+were restored from backups afterwards
+(`86Box VMs\Velocity9x Backups\*-pre-vbewc-20261107`).
+
+- **Win98SE-BX-Voodoo3** (Voodoo3 3000 AGP, VBE 3.0, 16 MiB). It ran
+  Windows' own VGA driver; the vbe package went on by Have Disk. Boot 286,
+  `NOWC.TXT`: `enable-ok` at 640x480x8, `MtrrWrite=off-marker`, plan
+  `r=0 s=3 b=da000000 z=01000000`. Boot 287: `MtrrWrite=ok s=3 b=da000001
+  m=ff000800`, `enable-ok`, the desktop drawn correctly
+  ([screenshot](../probe/86box-vbe-write-combining-2026-11-07/bx-voodoo3-desktop-wc-on-boot287.png)).
+  V9XGDI produced no report on this guest, run either way, as on the
+  Trio64V+ guest the same day; it is not counted. No timings: an
+  emulator's frame-buffer cost is the emulator's.
+- **Win98SE-BX-Trio64** (Trio64, 4 MiB). The plan line shows the window
+  shrinking to the BIOS's memory, `b=dd000000 z=00400000`, the one case the
+  three machines did not reach. It was never written: the vbe driver
+  stopped at `Stage=fail-hardware-vbe-mode`, because this BIOS sets no
+  linear-frame-buffer mode, which the family refuses
+  ([2026-11-06-vbe-family-refuses-banked-modes.md](../issues/2026-11-06-vbe-family-refuses-banked-modes.md)).
+  Unrelated to this change; the boot had `NOWC.TXT` and the failure is
+  the mode set.
+
 ## What it does not change
 
 The reads. Screen-to-screen copies are window moves and scrolling in GDI.
@@ -112,9 +138,10 @@ A8U4I5 (10.4 to 15.2) in one run each way; it is not claimed.
 
 ## Not checked
 
-- Any card but these three; a card whose BIOS reports less memory than the
-  16 MiB mapping, where the window shrinks (none of the three did); any CPU
-  without MTRRs or with a BIOS range over the frame buffer (the plan then
-  refuses and the driver stays uncached, as before); Windows 95.
+- Any card but these three and the emulated Voodoo3. A card whose BIOS
+  reports less memory than the 16 MiB mapping, where the window shrinks:
+  planned on the emulated Trio64, never written. Any CPU without MTRRs or
+  with a BIOS range over the frame buffer (the plan then refuses and the
+  driver stays uncached, as before). Windows 95.
 - A DOS box, a game, and the screen by eye. All three desktops came up
   `enable-ok` on the on boot and ran the three tools to completion.
