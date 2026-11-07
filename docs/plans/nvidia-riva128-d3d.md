@@ -89,7 +89,9 @@ the DMA object's flag bits; 86Box draws no 3D.
    desktop. Z works, all eight comparisons and the write mask (V9XDDP's
    step log, not its INI, which dropped keys). Opaque A4R4G4B4 draws from
    an alpha-free copy (boot 25). Open:
-   - Opaque A4R4G4B4 under the alpha test is refused.
+   - Opaque A4R4G4B4 under the alpha test is refused. **Done 2026-11-07,
+     boot 44 ([record](../decisions/2026-11-07-riva128-a4r4g4b4-alpha-test.md)):**
+     the opaque copy carries the test's verdict as A1R5G5B5's alpha.
    - DECALALPHA is refused.
    - After step 3, V9XDDP's 27 failing checks: mipmap level choice, colour
      key, specular, Z with perspective, mixed 2D/3D, 32-bit textures,
@@ -127,8 +129,8 @@ the DMA object's flag bits; 86Box draws no 3D.
    [record](../decisions/2026-11-04-riva128-half-life-d3d.md))** draws
    `c1a0` windowed on the HAL. SRCALPHA/ONE, a fifth of its batches, now
    goes to the chip's add with the vertex colour premultiplied (texels of
-   alpha 1, no fog); 0.3% of batches are still refused (opaque A4R4G4B4
-   under the alpha test). **Unreal Tournament (2026-11-04, boot 35,
+   alpha 1, no fog); 0.3% of batches were still refused (opaque A4R4G4B4
+   under the alpha test), none since boot 44. **Unreal Tournament (2026-11-04, boot 35,
    [record](../decisions/2026-11-04-riva128-unreal-tournament.md))**
    draws its intro windowed; its ONE/INVSRCCOLOR translucency is drawn as
    the add, by Michael's choice, and 137 of 32,740 batches are refused

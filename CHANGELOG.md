@@ -33,6 +33,16 @@ build identifier so exact guest-tested binaries remain traceable.
   one tester's card; the screen was not watched
   ([record](docs/decisions/2026-11-07-riva128-3dmark99-unplaced-textures.md)).
 
+- **NVIDIA RIVA 128ZX: Direct3D draws opaque A4R4G4B4 textures under the
+  alpha test.** These were refused and dropped: 2,204 of Half-Life's
+  batches in its first map. The chip cannot ignore a texel's partial
+  alpha, so the driver now keeps a copy of such a texture in which each
+  texel either passes the game's alpha test or does not, and the chip
+  tests that. On one tester's card, Half-Life's first map then drew about
+  496,000 batches with none refused. Which surfaces these draws are was
+  not identified; the scene looks the same as before
+  ([record](docs/decisions/2026-11-07-riva128-a4r4g4b4-alpha-test.md)).
+
 - **Correction, NVIDIA RIVA 128ZX: Glide did not regress in 0.37.0.** The
   0.37.0 notes said the Glide 2 probe drew no triangles on that release,
   against 1 failure on the build before. The earlier run had drawn on the

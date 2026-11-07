@@ -135,6 +135,11 @@
  * (LESS and GREATER measured; the rest from nv3_3d.xml). */
 #define V9X_NV3_CMP_NEVER           1ul
 #define V9X_NV3_CMP_LESS            2ul
+#define V9X_NV3_CMP_EQUAL           3ul
+#define V9X_NV3_CMP_LESS_EQUAL      4ul
+#define V9X_NV3_CMP_GREATER         5ul
+#define V9X_NV3_CMP_NOT_EQUAL       6ul
+#define V9X_NV3_CMP_GREATER_EQUAL   7ul
 #define V9X_NV3_CMP_ALWAYS          8ul
 #define V9X_NV3_ALPHA_FUNC_SHIFT    8u
 
@@ -295,6 +300,16 @@ v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size);
  * (/d3dstate X1AlphaZero, boot 20).
  */
 v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444);
+
+/*
+ * The same texel as A1R5G5B5 with Direct3D's alpha test already applied:
+ * alpha 1 where the texel's alpha, widened to 8 bits (a x 11h), passes
+ * `func` (a V9X_NV3_CMP_ value) against `reference`, else 0. An opaque
+ * draw under the alpha test samples this copy and lets the chip test the
+ * one bit, so no partial alpha reaches the blend.
+ */
+v9x_u16 v9x_nv3_3d_tested_texel(v9x_u16 argb4444, v9x_u32 func,
+                                v9x_u32 reference);
 
 /*
  * Direct3D's specular, which the object has no input for: colour's R, G

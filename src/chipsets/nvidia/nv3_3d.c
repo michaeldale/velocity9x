@@ -495,6 +495,45 @@ v9x_u16 v9x_nv3_3d_opaque_texel(v9x_u16 argb4444)
     return (v9x_u16)((red << 10) | (green << 5) | blue);
 }
 
+v9x_u16 v9x_nv3_3d_tested_texel(v9x_u16 argb4444, v9x_u32 func,
+                                v9x_u32 reference)
+{
+    v9x_u32 alpha;
+    int pass;
+
+    alpha = (v9x_u32)((argb4444 >> 12) & 0x0fu) * 0x11ul;
+    switch (func) {
+    case V9X_NV3_CMP_LESS:
+        pass = alpha < reference;
+        break;
+    case V9X_NV3_CMP_EQUAL:
+        pass = alpha == reference;
+        break;
+    case V9X_NV3_CMP_LESS_EQUAL:
+        pass = alpha <= reference;
+        break;
+    case V9X_NV3_CMP_GREATER:
+        pass = alpha > reference;
+        break;
+    case V9X_NV3_CMP_NOT_EQUAL:
+        pass = alpha != reference;
+        break;
+    case V9X_NV3_CMP_GREATER_EQUAL:
+        pass = alpha >= reference;
+        break;
+    case V9X_NV3_CMP_ALWAYS:
+        pass = 1;
+        break;
+    default:
+        pass = 0;
+        break;
+    }
+    if (pass) {
+        return (v9x_u16)(v9x_nv3_3d_opaque_texel(argb4444) | 0x8000u);
+    }
+    return v9x_nv3_3d_opaque_texel(argb4444);
+}
+
 /* Morton order, u in the even bits and v in the odd, measured for every
  * texel of an 8x8 texture; coordinates wrap inside the side. */
 v9x_u32 v9x_nv3_3d_swizzle(v9x_u32 u, v9x_u32 v, v9x_u32 log2_size)

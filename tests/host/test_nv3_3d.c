@@ -490,6 +490,38 @@ static void test_opaque_texel(void)
     CHECK(v9x_nv3_3d_opaque_texel(0x7777u) == 0x39ceu);
 }
 
+/* The opaque copy under the alpha test: the colour as above, bit 15 the
+ * test's verdict on the alpha widened to 8 bits (7h is 77h, 8h is 88h). */
+static void test_tested_texel(void)
+{
+    CHECK(v9x_nv3_3d_tested_texel(0x7fffu, V9X_NV3_CMP_GREATER, 0x77ul) ==
+          0x7fffu);
+    CHECK(v9x_nv3_3d_tested_texel(0x8fffu, V9X_NV3_CMP_GREATER, 0x77ul) ==
+          0xffffu);
+    CHECK(v9x_nv3_3d_tested_texel(0x0f00u, V9X_NV3_CMP_GREATER, 0ul) ==
+          0x7c00u);
+    CHECK(v9x_nv3_3d_tested_texel(0x1f00u, V9X_NV3_CMP_GREATER, 0ul) ==
+          0xfc00u);
+    CHECK(v9x_nv3_3d_tested_texel(0x7000u, V9X_NV3_CMP_GREATER_EQUAL,
+                                  0x77ul) == 0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x6000u, V9X_NV3_CMP_GREATER_EQUAL,
+                                  0x77ul) == 0x0000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x0000u, V9X_NV3_CMP_LESS, 0x11ul) ==
+          0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x1000u, V9X_NV3_CMP_LESS, 0x11ul) ==
+          0x0000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x1000u, V9X_NV3_CMP_LESS_EQUAL,
+                                  0x11ul) == 0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0xf000u, V9X_NV3_CMP_EQUAL, 0xfful) ==
+          0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0xf000u, V9X_NV3_CMP_NOT_EQUAL, 0xfful) ==
+          0x0000u);
+    CHECK(v9x_nv3_3d_tested_texel(0x0000u, V9X_NV3_CMP_ALWAYS, 0xfful) ==
+          0x8000u);
+    CHECK(v9x_nv3_3d_tested_texel(0xffffu, V9X_NV3_CMP_NEVER, 0ul) ==
+          0x7fffu);
+}
+
 unsigned int v9x_run_nv3_3d_tests(void)
 {
     failures = 0u;
@@ -499,5 +531,6 @@ unsigned int v9x_run_nv3_3d_tests(void)
     test_vertex();
     test_swizzle();
     test_opaque_texel();
+    test_tested_texel();
     return failures;
 }
