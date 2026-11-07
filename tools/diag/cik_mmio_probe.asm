@@ -104,6 +104,7 @@ CKWindows label dword
     dd 2024h, 2040h     ; MC_VM_FB_LOCATION, AGP_TOP/BOT/BASE, SYSTEM_APERTURE_*
     dd 2064h, 206ch     ; MC_VM_MX_L1_TLB_CNTL, MC_VM_FB_OFFSET
     dd 2760h, 2764h     ; MC_ARB_RAMCFG
+    dd 2844h, 284ch     ; MC_FUS_DRAM0/1_BANK_ADDR_MAPPING (gmc_7_0_d.h)
     dd 2c04h, 2c10h     ; HDP_NONSURFACE_BASE/INFO/SIZE
     dd 5428h, 542ch     ; CONFIG_MEMSIZE
     dd 5490h, 5494h     ; BIF_FB_EN
@@ -168,7 +169,7 @@ CKWindows label dword
     dd 7aa0h, 7aa4h
     dd 7ad4h, 7ad8h
     dd 7af4h, 7afch
-CK_WINDOW_COUNT         equ 76
+CK_WINDOW_COUNT         equ 77
 
 CKResult label dword
     dd CK_MAGIC                 ; 00 magic

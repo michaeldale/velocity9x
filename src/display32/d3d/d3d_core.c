@@ -9886,7 +9886,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         }
     } else if (ops == &v9x_d3d_engine_vi) {
         out->engine = V9X_R3D_ABI_ENGINE_VI;
-        name = "Velocity9x Radeon R7E";
+        /* The same engine on Mullins, named by its identity bit; it read
+         * "R7E" there until 2026-11-08 (V9XGLP on M-JJN1ZZ). */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul) {
+            name = "Velocity9x Radeon R3E";
+        } else {
+            name = "Velocity9x Radeon R7E";
+        }
     } else if (ops == &v9x_d3d_engine_rs690) {
         out->engine = V9X_R3D_ABI_ENGINE_RS690;
         name = "Velocity9x Radeon X1200";

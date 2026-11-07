@@ -66,6 +66,9 @@
 #define V9X_CK_MC_VM_L1_TLB_CNTL   0x2064ul
 #define V9X_CK_MC_VM_FB_OFFSET     0x2068ul
 #define V9X_CK_CONFIG_MEMSIZE      0x5428ul
+#define V9X_CK_MC_FUS_DRAM0        0x2844ul
+#define V9X_CK_MC_FUS_DRAM1        0x2848ul
+#define V9X_CK_GB_ADDR_CONFIG      0x98f8ul
 #define V9X_CK_GRBM_STATUS         0x8010ul
 #define V9X_CK_GRBM_SOFT_RESET     0x8020ul
 #define V9X_CK_CP_MEC_CNTL         0x8234ul
@@ -179,6 +182,8 @@ static const struct v9x_ckmm_register v9x_global[] = {
     { 0x02064ul, "MC_VM_MX_L1_TLB_CNTL" },
     { 0x02068ul, "MC_VM_FB_OFFSET" },
     { 0x02760ul, "MC_ARB_RAMCFG" },
+    { 0x02844ul, "MC_FUS_DRAM0_BANK_ADDR_MAPPING" },
+    { 0x02848ul, "MC_FUS_DRAM1_BANK_ADDR_MAPPING" },
     { 0x02c04ul, "HDP_NONSURFACE_BASE" },
     { 0x02c08ul, "HDP_NONSURFACE_INFO" },
     { 0x02c0cul, "HDP_NONSURFACE_SIZE" },
@@ -545,11 +550,47 @@ static void v9x_decode_engine(const char *prefix, DWORD offset)
  * are the field's low byte shifted up and bits 39:32 its high byte.
  * FB_OFFSET is in 4 MiB units, so bits 9:0 give the low 32 bits of the
  * carve-out's system address and the rest bits 63:32. */
+/*
+ * gfx_v7_0_gpu_early_init's APU row size: each DIMM's bank address map
+ * (MC_FUS_DRAMn_BANK_ADDR_MAPPING, DIMM0ADDRMAP 3:0 and DIMM1ADDRMAP 7:4,
+ * gmc_7_0_sh_mask.h), invalid values (0, 3, 4, above 12) read as 0; any
+ * map of 11 (8 GB) means a 2 KiB row, otherwise 1 KiB. That decides
+ * GB_ADDR_CONFIG's ROW_SIZE and one tile entry's split.
+ */
+static void v9x_decode_row_size(void)
+{
+    static const char * const keys[4] = {
+        "Dram0Dimm0AddrMap", "Dram0Dimm1AddrMap",
+        "Dram1Dimm0AddrMap", "Dram1Dimm1AddrMap"
+    };
+    DWORD maps[4];
+    DWORD index;
+    int row_2k = 0;
+
+    maps[0] = v9x_value(V9X_CK_MC_FUS_DRAM0) & 0xful;
+    maps[1] = (v9x_value(V9X_CK_MC_FUS_DRAM0) >> 4) & 0xful;
+    maps[2] = v9x_value(V9X_CK_MC_FUS_DRAM1) & 0xful;
+    maps[3] = (v9x_value(V9X_CK_MC_FUS_DRAM1) >> 4) & 0xful;
+    for (index = 0ul; index < 4ul; ++index) {
+        if (maps[index] == 0ul || maps[index] == 3ul || maps[index] == 4ul ||
+            maps[index] > 12ul) {
+            maps[index] = 0ul;
+        }
+        v9x_number("Decode", keys[index], maps[index]);
+        if (maps[index] == 11ul) {
+            row_2k = 1;
+        }
+    }
+    v9x_number("Decode", "RowSizeKiB", row_2k ? 2ul : 1ul);
+    v9x_key("Decode", "GbAddrConfig", v9x_value(V9X_CK_GB_ADDR_CONFIG));
+}
+
 static void v9x_decode_global(void)
 {
     DWORD value;
 
     v9x_number("Decode", "MemoryMiB", v9x_value(V9X_CK_CONFIG_MEMSIZE));
+    v9x_decode_row_size();
 
     value = v9x_value(V9X_CK_MC_VM_FB_LOCATION);
     v9x_key("Decode", "FbStartHigh",
