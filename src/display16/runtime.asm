@@ -4766,18 +4766,54 @@ V9XHARDWAREBASE ENDP
 ; the VBE mode and re-enables the linear aperture before that point, so
 ; holding one descriptor and one mapping for the driver's lifetime keeps the
 ; value stable without changing what Enable does.
+;
+; Before INT 10h mode 03, set VGA SR1 bit 5 (Screen Off). Families that leave
+; VRAM uncleared across mode sets (S3 uses VBE no-clear) otherwise flash that
+; buffer as text-cell garbage on shutdown. Blanking is shared Disable policy,
+; not a per-chip poke: generic VGA sequencer only. Clear Screen Off after
+; mode 03 so a BIOS that leaves the bit set cannot hide the shutdown bitmap.
+; See docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md.
 PUBLIC V9XHARDWAREDISABLE
 V9XHARDWAREDISABLE PROC FAR
+    push    ax
     push    bx
     push    cx
     push    dx
 
+    ; VGA SR1 bit 5 = Screen Off. Preserve the caller's sequencer index.
+    mov     dx, 03c4h
+    in      al, dx
+    mov     bl, al
+    mov     al, 01h
+    out     dx, al
+    inc     dx
+    in      al, dx
+    or      al, 20h
+    out     dx, al
+    dec     dx
+    mov     al, bl
+    out     dx, al
+
     mov     ax, 0003h
     int     10h
+
+    mov     dx, 03c4h
+    in      al, dx
+    mov     bl, al
+    mov     al, 01h
+    out     dx, al
+    inc     dx
+    in      al, dx
+    and     al, 0dfh
+    out     dx, al
+    dec     dx
+    mov     al, bl
+    out     dx, al
 
     pop     dx
     pop     cx
     pop     bx
+    pop     ax
     retf
 V9XHARDWAREDISABLE ENDP
 

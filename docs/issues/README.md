@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-07 S3 shutdown flashes cyan/black garbage before the Win98 safe screen (fix in shared Disable; hardware confirmation owed)](2026-11-07-s3-shutdown-garble-before-safe-screen.md)
 - [2026-11-07 The settings page may report a removed card's PCI revision: it takes the first Enum\PCI key for the id (field report, two 5333:8811 cards); found by reading, not reproduced](2026-11-07-settings-page-revision-from-stale-enum-key.md)
 - [2026-11-06 Feature gap: Intel video BIOSes lack the panel's native mode (netbook 1024x600, GM965 1280x800, GM45 1920x1080); no BIOS mode-table patch exists](2026-11-06-intel-vbios-mode-table-lacks-panel-modes.md)
 - [2026-11-06 Feature gap: DirectDraw offers no YUV surfaces (YUY2, UYVY, YV12) and no overlay, emulated or hardware](2026-11-06-no-yuv-surfaces-or-overlay.md)
