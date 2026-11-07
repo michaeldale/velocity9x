@@ -1,0 +1,17 @@
+{
+    "Name":  "hd8570",
+    "Family":  "vbe",
+    "Baseline":  false,
+    "BootBefore":  52,
+    "BootAfter":  53,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  52,
+    "Desktop":  true,
+    "AnswerSeconds":  6,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

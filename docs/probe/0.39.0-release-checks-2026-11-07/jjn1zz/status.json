@@ -1,0 +1,17 @@
+{
+    "Name":  "jjn1zz",
+    "Family":  "vbe",
+    "Baseline":  false,
+    "BootBefore":  11,
+    "BootAfter":  12,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  11,
+    "Desktop":  true,
+    "AnswerSeconds":  6,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
