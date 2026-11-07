@@ -57,6 +57,21 @@ answering 0. Not explained. The poll reads the fence 16 times
 (`V9X_VI_QUICK_READS`), which the slower CPU here (1.2 GHz) may cover in
 less time than the engine takes to finish the previous submission.
 
+### Later the same day: the probe, not the driver
+
+Run 3's CANBLT was V9XDDP's first engine call after it set 640x480x16 and
+created its surfaces; the probe had submitted nothing. CANBLT is the
+engine's non-blocking poll (`v9x_vi_can_blt`, 16 fence reads), and fills
+are queued without waiting, so a fill the runtime or GDI queued during the
+mode change, most likely the new screen's clear, can still be running
+when it asks. WASSTILLDRAWING is then the right answer; V9XDDP counted it
+as a failed fill. V9XDDP now asks again for up to 100 ms, as an
+application would, and records `BltCanFirstHr`, `BltCanTries` and
+`BltCanWaitMs`; `BltCanHr` stays the final answer. Eight runs on boot 16
+(`23112218` plus this change) answered free on the first try, so the
+retry has not yet been seen to fire and the source of the queued work is
+still a hypothesis. No driver change.
+
 ## Not measured
 
 - Direct3D: the CP is GFX7 and not driven, so Direct3D stays on the

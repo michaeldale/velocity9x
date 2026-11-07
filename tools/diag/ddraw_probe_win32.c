@@ -59,6 +59,9 @@
 #define V9X_DDBLT_WAIT               0x01000000ul
 #define V9X_DDGBS_CANBLT              0x00000001ul
 #define V9X_DDGBS_ISBLTDONE          0x00000002ul
+/* How long the fill test asks CANBLT again while it answers busy: far
+ * longer than any fill the driver queues, and still bounded. */
+#define V9X_CANBLT_RETRY_MS         100ul
 #define V9X_DDWAITVB_BLOCKBEGIN     0x00000001ul
 #define V9X_DDLOCK_WAIT             0x00000001ul
 #define V9X_DDPCAPS_8BIT            0x00000004ul
@@ -11037,11 +11040,39 @@ void __stdcall V9xDdrawProbeEntry(void)
     if (backbuffer != 0) {
         HRESULT fill_done;
         HRESULT fill_can;
+        DWORD can_tries;
+        DWORD can_started;
+        DWORD can_waited;
+        HRESULT can_first;
 
         started = 0ul;
+        /*
+         * CANBLT asks whether a blit can start now, and WASSTILLDRAWING is a
+         * legal answer: the driver may still be running work it was given
+         * (here, most likely the clear of the new 640x480 screen; one run
+         * in five on the R3E answered busy, docs\decisions\
+         * 2026-11-08-mullins-directdraw-on-sdma.md). An application asks
+         * again, so the probe does too, for at most V9X_CANBLT_RETRY_MS,
+         * and records the first answer and how long the engine took to be
+         * free. BltCanHr is the final answer, as before.
+         */
+        can_started = GetTickCount();
         fill_can = backbuffer->vtbl->GetBltStatus(backbuffer,
                                                   V9X_DDGBS_CANBLT);
+        can_first = fill_can;
+        can_tries = 1ul;
+        while (fill_can == (HRESULT)V9X_DDERR_WASSTILLDRAWING &&
+               GetTickCount() - can_started < V9X_CANBLT_RETRY_MS) {
+            fill_can = backbuffer->vtbl->GetBltStatus(backbuffer,
+                                                      V9X_DDGBS_CANBLT);
+            ++can_tries;
+        }
+        /* Measured before any report write: those flush to disk. */
+        can_waited = GetTickCount() - can_started;
+        v9x_write_hresult("BltCanFirstHr", can_first);
         v9x_write_hresult("BltCanHr", fill_can);
+        v9x_write_uint("BltCanTries", can_tries);
+        v9x_write_uint("BltCanWaitMs", can_waited);
         if (v9x_has_switch("/status-only")) {
             if (d3d_target != 0) {
                 d3d_target->vtbl->Release(d3d_target);
