@@ -103,3 +103,62 @@ Not run: any game through OpenGL or Glide, 3DCIF, 32 bpp (the NV3 map
 draws only 16-bit targets), the screen by eye.
 
 Status: drawn. Open for the scissor and channel mask.
+
+## 2026-11-07: the scissor as the NV3 clip (boot 47)
+
+The paragraph above was wrong about OpenGL. Both clients cut geometry to
+the scissor themselves and hand the HAL the whole target:
+
+- the ICD on its CPU path (`gl_prim.h`, `v9x_gl_prim_tnl_scissor`; only
+  hardware T&L batches carry a scissor, and the NV3 has none);
+- Glide, to its clip window (`glide_core.c`,
+  `v9x_glide_queue_clipped`).
+
+So a smaller glScissor or grClipWindow was never dropped on this chip.
+3DCIF does pass its scissor through (`cif_state.c`). So do direct users
+of the interface, such as V9XR3DP.
+
+The HAL change: `v9x_nv3_3d_build_target` takes a clip rectangle
+(`clip_left`, `clip_top`, `clip_right`, `clip_bottom`; right and bottom
+exclusive), host-tested, and programs the CLIP object's point and size
+with it. For Direct3D that is the whole target, as before; for an
+explicit draw, the scissor. The map no longer refuses a partial scissor.
+An empty scissor is drawn as nothing without the chip.
+
+The map still refuses two kinds of draw:
+
+- a write mask other than RGB, because the chip has no channel mask;
+- CPU texture levels.
+
+2D fills and copies set their own clip on each operation (`nv3_2d.c`),
+so a 3D scissor cannot carry over into them.
+
+Measured, HAL `1921EF2B...` installed by WININIT and `reset`, with the hash
+checked (`docs/probe/m7v636c-riva128-scissor-2026-11-07/`):
+
+- **V9XR3DP's new draw F.** Untextured yellow over the whole target,
+  scissored to x 8..39, y 20..43. It read `ScissorOk=1`:
+  - inside and both inner corners read 7FE0h;
+  - the pixel just past each of the four edges kept its value.
+
+  It went through the engine: draws went from 2,353 to 2,357 across the
+  run, with no new refusal. The NV3's D3D object honours the clip exactly,
+  and its right and bottom edges are exclusive. This is the measurement
+  the builder's header was waiting for.
+- **The other probes are unchanged:**
+  - V9XR3DP's D (CPU texture) and E (red-only mask) are still refused.
+  - V9XGLP passes. Its scissor keys are identical to boot 42's, as
+    expected, since the ICD clips geometry itself. Its AlphaSolid keys now
+    read red as the probe expects (green on boot 42): the A4R4G4B4
+    alpha-test change of `c11dfd78`.
+  - V9XGLIDP: 1 failure (BlendHalf).
+  - V9XD32 `/bpp16`: as boot 42.
+  - V9XDDP: 83 of 99, as boot 46.
+
+Seen in passing, not chased: V9XGLP's ScissorGeomInFar, the scissor's
+far inside corner (79,69), reads black on boot 42 and 47 alike. The ICD's
+own geometry cut appears to lose the last row or column. It is not a
+HAL matter.
+
+Status: drawn, scissor included. The channel mask stays refused: the chip
+has none.

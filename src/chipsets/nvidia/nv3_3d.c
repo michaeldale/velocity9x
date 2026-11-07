@@ -117,6 +117,14 @@ v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
         target->height > V9X_NV3_EXTENT_MAX) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* An empty clip draws nothing, which the caller decides, not the
+     * chip: a clip of size 0 is not a state the probe measured. */
+    if (target->clip_left >= target->clip_right ||
+        target->clip_top >= target->clip_bottom ||
+        target->clip_right > target->width ||
+        target->clip_bottom > target->height) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     status = v9x_nv3_3d_surface(target->vram_bytes, target->colour_offset,
                                 target->colour_pitch_bytes, target->width,
                                 target->height);
@@ -145,10 +153,11 @@ v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
                    target->zeta_pitch_bytes);
     v9x_nv3_3d_put(op->methods, &op->method_count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_CLIP, V9X_NV3_M_CLIP_POINT),
-                   0ul);
+                   target->clip_left | (target->clip_top << 16));
     v9x_nv3_3d_put(op->methods, &op->method_count,
                    v9x_nv3_3d_method(V9X_NV3_SUB_CLIP, V9X_NV3_M_CLIP_SIZE),
-                   target->width | (target->height << 16));
+                   (target->clip_right - target->clip_left) |
+                   ((target->clip_bottom - target->clip_top) << 16));
     return V9X_STATUS_OK;
 }
 

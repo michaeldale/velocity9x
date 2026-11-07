@@ -81,6 +81,10 @@ static void probe_target(struct v9x_nv3_3d_target *target)
     target->zeta_pitch_bytes = 1600ul;
     target->width = 800ul;
     target->height = 16ul;
+    target->clip_left = 0ul;
+    target->clip_top = 0ul;
+    target->clip_right = 800ul;
+    target->clip_bottom = 16ul;
 }
 
 static void test_target(void)
@@ -107,6 +111,31 @@ static void test_target(void)
     CHECK(op.methods[1].offset == V9X_NV3_USER + V9X_NV3_SUB_CLIP *
           V9X_NV3_SUBCHANNEL_STEP + V9X_NV3_M_CLIP_SIZE &&
           op.methods[1].value == (800ul | (16ul << 16)));
+
+    /* A scissor inside the target: the clip's point x | y << 16, its size
+     * width | height << 16, right and bottom exclusive. */
+    probe_target(&target);
+    target.clip_left = 10ul;
+    target.clip_top = 3ul;
+    target.clip_right = 110ul;
+    target.clip_bottom = 12ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) == V9X_STATUS_OK);
+    CHECK(op.methods[0].value == (10ul | (3ul << 16)));
+    CHECK(op.methods[1].value == (100ul | (9ul << 16)));
+    /* Empty, inverted or past the target: refused. */
+    target.clip_right = 10ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.clip_right = 9ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.clip_right = 801ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.clip_right = 110ul;
+    target.clip_bottom = 17ul;
+    CHECK(v9x_nv3_3d_build_target(&target, &op) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 
     /* Alignment, the 4 MiB surface limit, the pitch field, the end. */
     probe_target(&target);

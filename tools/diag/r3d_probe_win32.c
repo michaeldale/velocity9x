@@ -419,6 +419,59 @@ void __stdcall V9xRenderInterfaceProbeEntry(void)
                       ? 1ul : 0ul);
     (void)iface->finish(describe.generation);
 
+    /*
+     * F: untextured yellow over everything, depth off, every channel,
+     * scissored to x 8..39, y 20..43 (right and bottom exclusive): the
+     * scissor alone, which an engine that clips in hardware can take
+     * (the RIVA 128's clip, 2026-11-07). Both inner corners turn yellow;
+     * the pixel just past each edge keeps what it had.
+     */
+    {
+        static const DWORD outside_x[4] = { 7ul, 40ul, 24ul, 24ul };
+        static const DWORD outside_y[4] = { 32ul, 32ul, 19ul, 44ul };
+        static const char * const outside_key[4] = {
+            "ScissorFLeftKept", "ScissorFRightKept", "ScissorFAboveKept",
+            "ScissorFBelowKept"
+        };
+        DWORD kept[4];
+        DWORD yellow;
+        DWORD all_kept = 1ul;
+        unsigned int i;
+
+        yellow = v9x_r3dp_pack(&desc.ddpfPixelFormat, 255ul, 255ul, 0ul);
+        for (i = 0u; i < 4u; ++i) {
+            kept[i] = v9x_r3dp_read(target, outside_x[i], outside_y[i]);
+        }
+        v9x_r3dp_quad(quad, 0.0f, (float)V9X_R3DP_EDGE, 0.0f, 0xffffff00ul);
+        v9x_r3dp_draw_reset(&draw, describe.generation, target, depth, quad);
+        draw.state.depth_enable = 0ul;
+        draw.state.scissor_left = 8ul;
+        draw.state.scissor_top = 20ul;
+        draw.state.scissor_right = 40ul;
+        draw.state.scissor_bottom = 44ul;
+        result = iface->draw(&draw, &outcome);
+        (void)iface->finish(describe.generation);
+        v9x_r3dp_uint("DrawScissorResult", result);
+        v9x_r3dp_hex("ScissorFInsideRaw", v9x_r3dp_read(target, 24ul, 32ul));
+        v9x_r3dp_hex("ScissorFTopLeftRaw", v9x_r3dp_read(target, 8ul, 20ul));
+        v9x_r3dp_hex("ScissorFBottomRightRaw",
+                     v9x_r3dp_read(target, 39ul, 43ul));
+        for (i = 0u; i < 4u; ++i) {
+            DWORD now = v9x_r3dp_read(target, outside_x[i], outside_y[i]);
+
+            v9x_r3dp_uint(outside_key[i], now == kept[i] ? 1ul : 0ul);
+            if (now != kept[i]) {
+                all_kept = 0ul;
+            }
+        }
+        v9x_r3dp_uint("ScissorOk",
+                      result == V9X_R3D_RESULT_OK &&
+                      v9x_r3dp_read(target, 24ul, 32ul) == yellow &&
+                      v9x_r3dp_read(target, 8ul, 20ul) == yellow &&
+                      v9x_r3dp_read(target, 39ul, 43ul) == yellow &&
+                      all_kept ? 1ul : 0ul);
+    }
+
     IDirectDrawSurface_Release(depth);
     IDirectDrawSurface_Release(target);
     IDirectDraw_Release(dd);

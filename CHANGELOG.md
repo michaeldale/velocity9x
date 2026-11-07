@@ -11,8 +11,11 @@ build identifier so exact guest-tested binaries remain traceable.
   Glide and 3DCIF drew nothing and OpenGL ran on the CPU. Now a draw is
   taken when it covers the whole target and writes every colour channel.
   Its textures are placed in video memory, as Direct3D's already were.
-  The renderer is named "Velocity9x RIVA 128". A smaller OpenGL scissor
-  or a colour mask is still refused, and those draws are dropped.
+  The renderer is named "Velocity9x RIVA 128". A scissor (3DCIF's, or a
+  direct caller's) now goes to the chip's clip rectangle, measured exact
+  on the card; OpenGL and Glide cut their geometry to it themselves. A
+  colour write mask is still refused, and those draws are dropped: the
+  chip has no channel mask.
   Measured on one tester's card through remote help:
   - the Glide 2 probe has 1 failure where it had 14. The one left is a
     50 % blend one step dark at 5:5:5;

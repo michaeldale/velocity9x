@@ -712,23 +712,20 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     }
     /*
      * The render interface's draws (OpenGL, Glide, 3DCIF) state a scissor
-     * and a channel mask, and may carry texture levels in CPU memory.
-     * Nothing here programs a scissor or a mask, and the chip samples only
-     * surfaces placed by v9x_d3d_nv3_create_surface. So an explicit draw is
-     * drawn when it changes nothing Direct3D's would not: the whole target,
-     * every channel, a surface texture or none, as the ViRGE takes them.
-     * CPU levels with no surface must be refused here, not read below as
-     * untextured and drawn white. Until 2026-11-07 every explicit draw was
-     * refused, and with no fallback for this chip Glide and 3DCIF drew
-     * nothing (docs\issues\2026-11-07-riva128-render-interface-has-no-
-     * engine.md).
+     * and a channel mask, and may carry texture levels in CPU memory. The
+     * scissor is the clip (below). The chip has no channel mask, and it
+     * samples only surfaces placed by v9x_d3d_nv3_create_surface. So an
+     * explicit draw is drawn when it writes every channel from a surface
+     * texture or none. CPU levels with no surface must be refused here,
+     * not read below as untextured and drawn white. Until 2026-11-07 every
+     * explicit draw was refused, and with no fallback for this chip Glide
+     * and 3DCIF drew nothing (docs\issues\2026-11-07-riva128-render-
+     * interface-has-no-engine.md); until the scissor went to the clip,
+     * those with a smaller scissor were.
      */
     if (draw->explicit_state != 0ul &&
         (draw->texture.levels != 0 || draw->texture.level_count != 0ul ||
-         draw->write_mask != V9X_D3D_NV3_WRITE_RGB ||
-         draw->scissor_left != 0ul || draw->scissor_top != 0ul ||
-         draw->scissor_right != draw->target.width ||
-         draw->scissor_bottom != draw->target.height)) {
+         draw->write_mask != V9X_D3D_NV3_WRITE_RGB)) {
         return V9X_D3D_NV3_REFUSE_EXPLICIT;
     }
     if (draw->target.format != V9X_R3D_FORMAT_RGB565 &&
@@ -752,6 +749,19 @@ static DWORD v9x_d3d_nv3_map(const V9X_R3D_DRAW *draw,
     target->zeta_pitch_bytes = draw->target.pitch;
     target->width = draw->target.width;
     target->height = draw->target.height;
+    /* The clip: the scissor for the render interface (validated inside
+     * the target, r3d_validate.c; an empty one never gets here, see
+     * v9x_d3d_nv3_scissor_empty), the whole target for Direct3D. */
+    target->clip_left = 0ul;
+    target->clip_top = 0ul;
+    target->clip_right = draw->target.width;
+    target->clip_bottom = draw->target.height;
+    if (draw->explicit_state != 0ul) {
+        target->clip_left = draw->scissor_left;
+        target->clip_top = draw->scissor_top;
+        target->clip_right = draw->scissor_right;
+        target->clip_bottom = draw->scissor_bottom;
+    }
     if (draw->depth.object != 0) {
         target->zeta_offset = draw->depth.offset;
         target->zeta_pitch_bytes = draw->depth.pitch;
@@ -971,6 +981,19 @@ static void v9x_d3d_nv3_record_after(DWORD *at)
     v9x_d3d_nv3_record(reads, 4ul, at);
 }
 
+/*
+ * A render-interface draw whose scissor holds no pixel: it is drawn, as
+ * nothing, without the chip, whose clip of size 0 nobody measured.
+ * Accepted rather than refused, since a refusal is counted and, on a chip
+ * with a fallback, would send the draw there.
+ */
+static int v9x_d3d_nv3_scissor_empty(const V9X_R3D_DRAW *draw)
+{
+    return draw->explicit_state != 0ul &&
+           (draw->scissor_left >= draw->scissor_right ||
+            draw->scissor_top >= draw->scissor_bottom);
+}
+
 static int v9x_d3d_nv3_accepts(const V9X_R3D_DRAW *draw)
 {
     struct v9x_nv3_3d_target target;
@@ -983,6 +1006,9 @@ static int v9x_d3d_nv3_accepts(const V9X_R3D_DRAW *draw)
 
     if (draw == 0 || !v9x_d3d_nv3_ready()) {
         return 0;
+    }
+    if (v9x_d3d_nv3_scissor_empty(draw)) {
+        return 1;
     }
     return v9x_d3d_nv3_map(draw, &target, &state, &texture, &opaque,
                            &decal_alpha) == V9X_D3D_NV3_REFUSE_NONE &&
@@ -1156,6 +1182,9 @@ static int v9x_d3d_nv3_draw(const V9X_R3D_DRAW *draw,
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul) {
         return 0;
+    }
+    if (v9x_d3d_nv3_scissor_empty(draw)) {
+        return 1;
     }
     if (!v9x_d3d_nv3_ready()) {
         if (v9x_hal != 0) {

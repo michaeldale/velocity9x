@@ -263,11 +263,12 @@ v9x_status v9x_nv3_3d_build_object(v9x_u32 vram_bytes,
 struct v9x_nv3_write v9x_nv3_3d_dma_entry(v9x_u32 page);
 /*
  * The render target: PGRAPH surfaces 2 (colour) and 3 (zeta), written
- * while the engine is idle, and the clip over the target's width and
- * height. The 2D fills and copies move the clip, so a 3D draw after them
- * sets it again. The probe drew inside a clip of the surface's size; that
- * the D3D object honours the clip is envytools' pgraph_prep_draw, not
- * measured.
+ * while the engine is idle, and the clip, a rectangle inside the target
+ * with right and bottom exclusive: the whole target for Direct3D, the
+ * scissor for the render interface. The 2D fills and copies move the clip,
+ * so a 3D draw after them sets it again. The probe drew inside a clip of
+ * the surface's size; that the D3D object honours a smaller one is
+ * envytools' pgraph_prep_draw until measured.
  */
 struct v9x_nv3_3d_target {
     v9x_u32 vram_bytes;
@@ -277,6 +278,10 @@ struct v9x_nv3_3d_target {
     v9x_u32 zeta_pitch_bytes;
     v9x_u32 width;
     v9x_u32 height;
+    v9x_u32 clip_left;
+    v9x_u32 clip_top;
+    v9x_u32 clip_right;
+    v9x_u32 clip_bottom;
 };
 
 v9x_status v9x_nv3_3d_build_target(const struct v9x_nv3_3d_target *target,
