@@ -2,9 +2,10 @@
 
 Date: 2026-11-07
 
-Status: implemented on main after `77b45a4a`. Measured on two remote-help
-machines running the `vbe` package, build `77b45a4a-dirty` (this change, not
-yet committed), at 1024x768x16. One build per machine, one run each way.
+Status: implemented in `aadde512`. Measured on two remote-help AMD
+machines running the `vbe` package at 1024x768x16, and on A8U4I5's
+Pentium III at 800x600x16, build `77b45a4a-dirty` (the change, before
+it was committed). One build per machine, one run each way.
 
 Precedents, same mechanism: [Rage 128](2026-10-24-rage128-write-combining.md),
 [SiS 6326](2026-10-29-sis6326-write-combining.md).
@@ -73,19 +74,47 @@ write-combined stores reach memory speed (MemFill is 2,457 MB/s there).
 The HD 8570 is behind PCIe, where the uncached figure was already ten times
 the R3E's, and WC still gives 9.5 times.
 
+## An Intel CPU: A8U4I5, Pentium III, Rage 128 Pro on the vbe package
+
+Both machines above are AMD. A8U4I5 (Pentium III 1 GHz, 440BX, Rage 128
+Pro 1002:5046 on AGP, VBE 2.0 reporting 32 MiB, LFB `dc000000`) ran the
+same package in place of its `ati` driver, by WININIT rename, at
+800x600x16, then went back to the `ati` files it had (boot 677,
+hash-checked). Its BIOS ranges: write-back RAM, an uncached hole at
+`d8000000`, a write-combined 32 MiB at `da000000`; none covers
+`dc000000`. The plan was the window the 16 MiB mapping clamps 32 MiB to.
+
+| | off (boot 675) | on (boot 676) |
+|---|---:|---:|
+| Boot record | `MtrrWrite=off-marker` | `MtrrWrite=ok s=3 b=dc000001 m=ff000800` |
+| FbWrite MB/s | 49.9 | **240.1** |
+| FbRead MB/s | 10.4 | 15.2 |
+| FillRect 256x256 | 49.8 | 237.7 |
+| FillRect 16x16 | 37.3 | 111.0 |
+| BitBlt bitmap to screen 256x256 | 49.8 | 212.4 |
+| BitBlt screen to screen 256x256 | 7.2 | 12.7 |
+| Ellipse 128x128 | 38.9 | 103.9 |
+| DirectDraw Blt system to video 512x512 | 92.1 | 250.3 |
+
+dispbench `a8u4i5-rage128-v9x-vbe/20261107-174829` (off) and
+`20261107-175220` (on), tools rebuilt at dispbench `2d62b16` (no code
+change). On this slower bus the screen-to-screen copy also gained, since
+half of it is the write.
+
 ## What it does not change
 
-Anything that reads the frame buffer. Screen-to-screen copies are window
-moves and scrolling in GDI, and stay at 4.7 and 5.9 MB/s, because WC memory
-is not cached for reads. On this family, with no engine, that is the part of
-"the desktop feels slow" this change leaves. FbRead on M-D7TFW4 read 11.3
-against 5.8 off; one run each way, and screen-to-screen did not move, so
-that difference is not claimed.
+The reads. Screen-to-screen copies are window moves and scrolling in GDI.
+On the two AMD machines they stay at 4.7 and 5.9 MB/s, because WC memory is
+not cached for reads; on the Pentium III they gain only the write half (7.2
+to 12.7). On this family, with no engine, that is the part of "the desktop
+feels slow" this change leaves. FbRead moved on M-D7TFW4 (5.8 to 11.3) and
+A8U4I5 (10.4 to 15.2) in one run each way; it is not claimed.
 
 ## Not checked
 
-- Any card but these two, any CPU without MTRRs or with a BIOS range over
-  the frame buffer (the plan then refuses and the driver stays uncached, as
-  before), and Windows 95.
-- A DOS box, a game, and the screen by eye. Both desktops came up
+- Any card but these three; a card whose BIOS reports less memory than the
+  16 MiB mapping, where the window shrinks (none of the three did); any CPU
+  without MTRRs or with a BIOS range over the frame buffer (the plan then
+  refuses and the driver stays uncached, as before); Windows 95.
+- A DOS box, a game, and the screen by eye. All three desktops came up
   `enable-ok` on the on boot and ran the three tools to completion.

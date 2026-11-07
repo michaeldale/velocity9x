@@ -11,9 +11,10 @@ build identifier so exact guest-tested binaries remain traceable.
   buffer combined, where the BIOS's memory ranges allow it. Drawing that
   writes the screen (fills, bitmaps, text backgrounds, DirectDraw
   uploads) is up to 80 times faster on large areas. Measured on a Radeon
-  R3E (FbWrite 31.7 to 2,513 MB/s) and a Radeon HD 8570 (316 to 3,000
-  MB/s). Moving windows and scrolling read the screen and are not faster;
-  that needs a chip's own engine. `C:\V9XDIAG\NOWC.TXT` turns it off
+  R3E (FbWrite 31.7 to 2,513 MB/s), a Radeon HD 8570 (316 to 3,000
+  MB/s) and, on a Pentium III, a Rage 128 Pro (49.9 to 240 MB/s).
+  Moving windows and scrolling read the screen and gain little or
+  nothing; that needs a chip's own engine. `C:\V9XDIAG\NOWC.TXT` turns it off
   ([record](docs/decisions/2026-11-07-vbe-write-combining.md)).
 
 - **S3 Trio64V+ 86C765 has its own Have Disk name.** It shares PCI id
