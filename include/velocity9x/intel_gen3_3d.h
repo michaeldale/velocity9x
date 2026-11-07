@@ -1499,11 +1499,12 @@ v9x_status v9x_i9xx_build_runtime_run(
     const v9x_u32 *xyzw, const v9x_u32 *colors, v9x_u32 triangles,
     v9x_u32 width, v9x_u32 height,
     v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
-/* Measurement only: the runtime run builders accept a vertex up to `band`
- * pixels off the target on every side. Zero, the default and the shipped
- * rule, is on the target only. docs\plans\intel-gen3-guard-band.md. */
+/* The guard band: the runtime run builders accept a vertex up to `band`
+ * pixels off the target on every side. The HAL sets the measured 1,024
+ * before each run; zero, the initial value, is on the target only.
+ * docs\plans\intel-gen3-guard-band.md. */
 void v9x_i9xx_vertex_set_band(v9x_u32 band);
-/* The same measurement band for the two-unit runtime run builder. */
+/* The same band, for the two-unit runtime run builder. */
 v9x_u32 v9x_i9xx_vertex_get_band(void);
 
 /*
@@ -1546,8 +1547,8 @@ v9x_u16 v9x_i9xx_float_finite(v9x_u32 bits);
 v9x_u16 v9x_i9xx_float_in_range(v9x_u32 bits, v9x_u32 limit_bits);
 /* Finite and in [-lower, upper], both bounds given as the bit patterns of
  * non-negative floats. lower_bits zero is v9x_i9xx_float_in_range: no
- * negative accepted, negative zero included. For the measurement-only
- * guard band (docs\plans\intel-gen3-guard-band.md), in the flat builds
+ * negative accepted, negative zero included. For the guard band
+ * (docs\plans\intel-gen3-guard-band.md), in the flat builds
  * only (V9X_I9XX_TWO_UNITS, below); the 16-bit driver has no band. */
 v9x_u16 v9x_i9xx_float_in_span(v9x_u32 bits, v9x_u32 upper_bits,
                                v9x_u32 lower_bits);
@@ -1984,12 +1985,13 @@ struct v9x_i9xx_decode_limits {
      */
     v9x_u32 target_format;
     /*
-     * Measurement only (docs\plans\intel-gen3-guard-band.md): a runtime
-     * stream's vertices may lie up to this many pixels off the target on
-     * every side, and its DRAW_RECT must be the target less draw_inset
-     * pixels on every side. Zero - every scene, every caller that clears
-     * the limits - is the shipped rule: vertices on the target, the
-     * rectangle the whole target. Append-only, as above. The flat builds
+     * The guard band (docs\plans\intel-gen3-guard-band.md): a runtime
+     * stream's vertices may lie up to guard_band pixels off the target on
+     * every side; the HAL passes the measured 1,024. Its DRAW_RECT must be
+     * the target less draw_inset pixels on every side; the inset is
+     * measurement only, and zero in every shipped draw. Zero for both -
+     * every scene, every caller that clears the limits - is vertices on
+     * the target and the rectangle the whole target. Append-only, as above. The flat builds
      * only: the 16-bit driver has no band, and the eight bytes on its
      * callers' stacks were enough to push its code segment over budget.
      */

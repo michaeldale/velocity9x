@@ -4601,7 +4601,7 @@ typedef struct v9x_dd_shared {
      * and V9X_DD_MEASURE_CENSUS in it arms the state census. After identity, outside the
      * trace snapshot, so the snapshot a reader size-checks is unchanged.
      * Appended 2026-10-28 within ABI 2026102002. The Gen3 draw path reads
-     * it too, for bits 0x40 and up (d3d_i9xx.c, 2026-11-01). */
+     * it too, for its guard-band override (d3d_i9xx.c, 2026-11-04). */
     DWORD hsw_flush_omit;
 } V9X_DD_SHARED;
 

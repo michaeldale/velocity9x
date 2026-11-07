@@ -15,8 +15,8 @@
 #include "velocity9x/intel_gma.h"
 
 /*
- * The measurement-only guard band and inset rectangle, read in the flat
- * builds only. The 16-bit driver decodes its own scenes and never a band;
+ * The guard band and the measurement-only inset rectangle, read in the
+ * flat builds only. The 16-bit driver decodes its own scenes and never a band;
  * there both are the constant zero, the checks fold to the old ones, and
  * its code segment, which has no room, does not grow.
  */
@@ -466,8 +466,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     v9x_u32 width_bits = 0ul;
     v9x_u32 height_bits = 0ul;
 #if V9X_I9XX_TWO_UNITS
-    /* The measurement-only band's negative bound; zero refuses a negative
-     * coordinate, as always. */
+    /* The guard band's negative bound; zero refuses a negative
+     * coordinate, as before the band. */
     v9x_u32 band_bits = 0ul;
 #endif
     v9x_u16 saw_buf_info_color = V9X_FALSE;
@@ -565,7 +565,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     }
 #if V9X_I9XX_TWO_UNITS
     /*
-     * The measurement-only guard band and inset rectangle
+     * The guard band and the measurement-only inset rectangle
      * (docs\plans\intel-gen3-guard-band.md) are a runtime stream's alone,
      * bounded so the sums below cannot wrap, and the inset leaves a
      * rectangle at least one pixel each way.

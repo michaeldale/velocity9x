@@ -431,11 +431,12 @@ v9x_u32 v9x_i9xx_fogged_run_dwords(v9x_u32 triangles, v9x_u16 textured)
 }
 
 /*
- * Measurement only (docs\plans\intel-gen3-guard-band.md): how far off the
- * target, in pixels, the runtime run builders accept a vertex. Zero, the
- * shipped rule, is on the target only; the HAL sets it before each run from
- * the variant mask, and nothing else does. The flat builds only: in the
- * 16-bit driver it is the constant zero and the checks are the old ones.
+ * The guard band (docs\plans\intel-gen3-guard-band.md): how far off the
+ * target, in pixels, the runtime run builders accept a vertex. The HAL
+ * sets it before each run, to the measured 1,024 or to the GUARD
+ * variant's override, and nothing else does; zero is on the target only.
+ * The flat builds only: in the 16-bit driver it is the constant zero and
+ * the checks are the old ones.
  */
 #if V9X_I9XX_TWO_UNITS
 static v9x_u32 v9x_i9xx_vertex_band = 0ul;
@@ -575,7 +576,7 @@ static v9x_status v9x_i9xx_build_runtime_run_common(
          * consequence is not a wrong picture, it is a write outside the
          * surface. On this part that is a write to a page that may not be
          * ours, which is the failure everything else here is arranged to
-         * prevent. Under the measurement-only band, within it on every side.
+         * prevent. Under the guard band, within it on every side.
          */
         if (V9X_I9XX_IN_BAND(xyzw[base], width_bits, band_bits) ==
                 V9X_FALSE ||
