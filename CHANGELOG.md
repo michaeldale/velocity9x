@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.40.0 - not yet released
+## 0.40.0 - 2026-11-07
 
 - **Intel GMA 900, 950 and 3150: less geometry lost in Direct3D 8
   games.** On the GMA 950, 3DMark 2001 SE lost 2,551 batches of
@@ -48,6 +48,12 @@ build identifier so exact guest-tested binaries remain traceable.
   a direct install on the right entry came up at 256 colours on the
   first boot on our GMA 950 netbook
   ([record](docs/issues/2026-11-07-first-install-stays-at-16-colours.md)).
+
+- **Known issue, GMA 950: Dragothic's sky draws white** in 3DMark 2001
+  SE. 3DMark binds no texture for it, as for the HD 4600's Nature
+  terrain. Whether this is the GMA 950's small texture memory is not
+  measured; parked for a later version
+  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
 
 ## 0.39.0 - 2026-11-07
 
