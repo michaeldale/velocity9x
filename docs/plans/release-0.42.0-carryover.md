@@ -44,6 +44,12 @@ item when a later record settles it.
   eight runs since have not reproduced it. Read those keys in the next
   release checks on any engine-backed chip.
 
+- **Trinity's OpenGL reads at 16 bpp**: from V9XGLP's SGIS mip sweep
+  on, every read is white or stale (`Cva` fails, `Offset*` and `Fog*`
+  read FFFFFF). The same with write-combining off, so not 0.41.0's
+  change ([record](../decisions/2026-11-08-0.41.0-release-checks.md)).
+  Next: the same probe at 32 bpp, then bisect the sweep.
+
 ## Not started
 
 - **The settings page can show a removed card's PCI revision**: it takes
