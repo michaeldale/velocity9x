@@ -149,3 +149,58 @@ The unfinished-frame hypothesis above is still untested.
 moved. `DrawsIntoPresented` read 11 where both earlier runs read 0, and
 `DrawsToFront` stayed 0; what the 11 are is not established. The flicker
 still needs a watched run.
+
+## 2026-11-07: watched run on 089a5e70 - still flicker, and what it is
+
+Michael watched the panel through a second 3DMark 2001 SE run (same
+boot): "still flicker". Mostly in the menu transition into a game test,
+some in the game, and more when the frame rate is higher. His phone video
+is `Y:\MWD\videos\obs\IMG_0437.mov` (46 s, 60 fps). It is not copied into
+the repo. Its per-frame mean brightness
+(`../probe/gen3-depth-edge-2026-11-07/watched-video-yavg.txt`) has
+single-frame dips of 30-38 levels, and cropped frames around them show
+what they are:
+
+- **17.9 s, Car Chase** (`watched-video-17.890s-crop.png`, last frame):
+  above a horizontal line about 45 % down the panel, the finished frame.
+  Below it, flat fog colour with only a faint ghost of the car: a buffer
+  that has just been cleared and is being drawn.
+- **6.5 s, a test's start** (`watched-video-6.470s-crop.png`, first frame
+  and second to last): the same split, with the bottom quarter (the HUD
+  band) cleared.
+
+So the panel is showing a buffer while its next frame is being drawn
+into it, from wherever the beam is down.
+
+The run's counters, for both runs of the boot:
+- `FlipVSyncOverridden` 9,230 of `FlipHandled` 9,230. The netbook's
+  SYSTEM.INI has `[Velocity9x] VSync=2` ("Always off", set 2026-10-18 for
+  3D WinBench and left there), so every flip was unsynced.
+- `FlipBaseImmediate` 9,348 against `FlipRingIssued` 118: unsynced flips
+  are plane-base register writes (`v9x_set_display_start_now`,
+  `i9xx_scanout.c`), not MI_DISPLAY_FLIP.
+- `BltFlipWaited` 0, `DrawsFlipWaited` 0. `FlipIssueLine` ran from 15 to
+  633: the writes land anywhere in the frame.
+
+**Hypothesis (not yet tested):** Gen3's plane base is double-buffered and
+takes effect at the start of vertical blank. That is the latch model in
+`i9xx_scanout.c`, from the intel7x video, and intel89 read back the
+pending value. An unsynced flip is counted as done the moment it is
+written. So the buffer it takes off the screen is handed back at once,
+and the game's next clear (a Blt, which intel91 found racing the flip)
+lands in it while the panel is still scanning it, until the next blank.
+Higher frame rates give more flips a frame, so more such clears, as
+Michael saw.
+
+**Tested, same boot and build:** the netbook's SYSTEM.INI was set to
+`VSync=0` (Game decides, the default; the `VSync=2` file kept off-tree)
+and 3DMark 2001 SE run again with Michael watching: **"yes that has
+resolved it"**. So the flicker is the "Always off" path. Users on the
+default do not get it.
+
+Michael adds that cards of the period showed no such thing with vsync
+off: tearing between finished frames, not a frame being cleared. The
+fix owed is that: an unsynced Gen3 flip stays pending until the blank
+that takes it, so no Blt, Lock or draw reaches the buffer still being
+scanned, rather than being treated as done when written. Then measure
+with `VSync=2` on the panel. The netbook is left on `VSync=0`.
