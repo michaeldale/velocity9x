@@ -1264,6 +1264,14 @@ static int v9x_d3d_draw_indexed_whole(
     int submitted;
 
     v9x_d3d_describe_draw(ops, context, &draw);
+    /* The state census, as v9x_d3d_dispatch_engine takes it: without this
+     * an engine that draws indices whole (Gen3, 3DMark 2001 SE) recorded
+     * nothing. Its per-vertex fields read the pool, so "first vertex" is
+     * the pool's, not necessarily one the indices draw. Measurement only. */
+    if ((v9x_hal->hsw_flush_omit & V9X_DD_MEASURE_CENSUS) != 0ul) {
+        v9x_d3d_census_record(&draw, (const V9X_D3DTLVERTEX *)pool,
+                              vertex_count / 3ul);
+    }
     result = ops->draw_indexed(&draw, pool, vertex_count, indices,
                                index_count, strip, cull);
     if (result < 0) {
