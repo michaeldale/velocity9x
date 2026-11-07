@@ -156,6 +156,16 @@ static int v9x_i9xx_scanout_flip_outstanding = 0;
 static DWORD v9x_i9xx_scanout_framehigh_reg = 0ul;
 static DWORD v9x_i9xx_scanout_framepixel_reg = 0ul;
 static DWORD v9x_i9xx_scanout_flip_frame = 0ul;
+/*
+ * Frame ticks the flip in hand needs before its old buffer is free. One for
+ * a write made in the flip window, before the latch at the first blank line,
+ * as every synced flip is. Two for an unsynced write made after that point:
+ * it is latched only at the next blank, and the tick of this one (line 671,
+ * after the latch) would release the buffer a frame early.
+ */
+#define V9X_I9XX_FLIP_TICKS_TO_COMPLETE      1ul
+#define V9X_I9XX_FLIP_TICKS_PAST_THE_LATCH   2ul
+static DWORD v9x_i9xx_scanout_flip_ticks = V9X_I9XX_FLIP_TICKS_TO_COMPLETE;
 /* The display line when set_display_start was entered, against which the
  * line at issue gives the cost of the write path in scanlines. */
 static DWORD v9x_i9xx_scanout_entry_line = 0ul;
@@ -1442,6 +1452,13 @@ static int v9x_i9xx_set_display_start(DWORD byte_offset, int use_ring)
             *v9x_i9xx_scanout_reg(V9X_I9XX_REG_ISR);
     }
     v9x_i9xx_scanout_flip_frame = v9x_i9xx_scanout_frame_now();
+    /* A synced flip is written in the window by construction (v9x_flip_body
+     * asked first); an unsynced one wherever the beam is, and past the latch
+     * it is taken a blank later. */
+    v9x_i9xx_scanout_flip_ticks =
+        (use_ring || v9x_scanout_flip_window_open())
+            ? V9X_I9XX_FLIP_TICKS_TO_COMPLETE
+            : V9X_I9XX_FLIP_TICKS_PAST_THE_LATCH;
     if (use_ring && v9x_i9xx_ring_flip_active()) {
         DWORD ring_base = byte_offset;
         int ring = 1;
@@ -1777,6 +1794,22 @@ int v9x_scanout_flip_queued(void)
     return 0;
 }
 
+/*
+ * Gen3 to Gen5's plane base is double-buffered and taken at the start of
+ * the vertical blank, however it is written (the latch model below; the
+ * readback is the pending value, intel89). So an unsynced write leaves the
+ * old buffer on the panel until that blank. Treated as done at once, it let
+ * 3DMark 2001 SE's next clear be scanned out on the netbook under VSync=2,
+ * and VSync=0 cured it on the panel
+ * (docs\issues\2026-11-01-gma950-3dmark2001se-flicker-refused-vertices.md).
+ * Only the i9xx plane is claimed: Haswell's write is said to latch at the
+ * blank too, but this was not measured there, and neither were the others.
+ */
+int v9x_scanout_unsynced_base_latches(void)
+{
+    return v9x_i9xx_scanout_active();
+}
+
 int v9x_scanout_hw_flip(void)
 {
     return v9x_hsw_scanout_active() || v9x_r128_scanout_active() ||
@@ -1829,8 +1862,9 @@ int v9x_scanout_hw_flip(void)
  * One tick is the frame the latch is in: the write lands in active video
  * short of the blank-start latch, and the counter ticks at line 671 of
  * the same frame, after the panel has stopped fetching the old buffer.
+ * V9X_I9XX_FLIP_TICKS_TO_COMPLETE is defined beside the flip frame, with
+ * the two-tick case an unsynced write past the latch needs.
  */
-#define V9X_I9XX_FLIP_TICKS_TO_COMPLETE 1ul
 
 int v9x_scanout_hw_flip_pending(void)
 {
@@ -1864,7 +1898,7 @@ int v9x_scanout_hw_flip_pending(void)
     if (!v9x_i9xx_scanout_frame_valid) {
         return 1;
     }
-    return ticks < V9X_I9XX_FLIP_TICKS_TO_COMPLETE;
+    return ticks < v9x_i9xx_scanout_flip_ticks;
 }
 
 int v9x_scanout_writes_in_blank(void)

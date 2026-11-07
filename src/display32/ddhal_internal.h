@@ -779,6 +779,10 @@ int v9x_scanout_hw_flip_pending(void);
  * command stream behind the frame, so Flip need not wait for the drawing
  * (only the Rage 128 on its CCE ring, today). */
 int v9x_scanout_flip_queued(void);
+/* Non-zero when the active scanout takes a new base only at the vertical
+ * blank even when it is written unsynced, so an unsynced flip is pending
+ * until then (v9x_vsync_flip_stays_pending). Gen3 to Gen5's plane today. */
+int v9x_scanout_unsynced_base_latches(void);
 /* The flip state machine has just declared a flip done: read the plane base
  * back and count whether it holds the offset that was flipped to. A no-op
  * on the VGA path. */

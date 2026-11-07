@@ -763,12 +763,12 @@ static void v9x_flip_abandon(void)
     }
 }
 
-static void v9x_flip_arm(int novsync)
+/* nothing_pending is v9x_vsync_flip_stays_pending's answer inverted: an
+ * unsynced flip on a scanout that applies the write at once. */
+static void v9x_flip_arm(int nothing_pending)
 {
     v9x_flip_pending_polls = 0ul;
-    /* Nothing is pending: an unsynced flip was written with
-     * v9x_set_display_start_now, which queues nothing, on every scanout. */
-    if (novsync) {
+    if (nothing_pending) {
         v9x_flip_state = V9X_FLIP_IDLE;
         return;
     }
@@ -1023,6 +1023,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
     v9x_u16 application_novsync =
         (data->dwFlags & V9X_DDFLIP_NOVSYNC) != 0ul ? V9X_TRUE : V9X_FALSE;
     v9x_u16 novsync;
+    v9x_u16 held;
     /* An engine that queues the flip in its command stream, behind the
      * frame's drawing, needs no wait for that drawing here: the CPU goes
      * on to the next frame while the GPU finishes this one
@@ -1154,7 +1155,18 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         if (novsync != application_novsync) {
             ++v9x_hal->d3d_diagnostics.flip_vsync_overridden;
         }
-        v9x_flip_arm(novsync != V9X_FALSE);
+        /* Unsynced on a scanout that takes the base only at the blank, the
+         * old buffer is still on the panel until then: the flip is pending
+         * as a synced one is, so no clear lands in it while it is scanned
+         * (docs\issues\2026-11-01-gma950-3dmark2001se-flicker-refused-
+         * vertices.md). Elsewhere an unsynced flip leaves nothing pending. */
+        held = v9x_vsync_flip_stays_pending(
+            novsync,
+            v9x_scanout_unsynced_base_latches() ? V9X_TRUE : V9X_FALSE);
+        if (novsync != V9X_FALSE && held != V9X_FALSE) {
+            ++v9x_hal->d3d_diagnostics.flip_unsynced_held;
+        }
+        v9x_flip_arm(held == V9X_FALSE);
     }
     data->ddRVal = V9X_DD_OK;
     ++v9x_hal->d3d_diagnostics.flip_handled;

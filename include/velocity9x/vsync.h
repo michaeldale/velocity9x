@@ -47,12 +47,27 @@ v9x_u16 v9x_vsync_resolve(v9x_u16 requested);
 
 /*
  * Whether this flip skips the blank: V9X_TRUE to write the start address
- * now and leave nothing pending.
+ * now, without waiting for the flip window. Whether anything is left
+ * pending after the write is v9x_vsync_flip_stays_pending's answer.
  *
  * application_novsync is V9X_TRUE when the flip carried DDFLIP_NOVSYNC.
  * ON overrides it; OFF overrides its absence.
  */
 v9x_u16 v9x_vsync_flip_novsync(v9x_u16 state, v9x_u16 application_novsync);
+
+/*
+ * Whether the core tracks an accepted flip as pending, so that no Blt, Lock
+ * or draw reaches the buffer it took off the screen, and no second flip is
+ * issued, until the scanout has taken it.
+ *
+ * novsync is v9x_vsync_flip_novsync's answer. base_latches is V9X_TRUE for
+ * a scanout that takes a new base only at the vertical blank, however it
+ * was written: there an unsynced write still leaves the old buffer on the
+ * panel until that blank, and releasing it at once let the next frame's
+ * clear be scanned out (Gen3 under VSync=2, 2026-11-07). Unsynced on a
+ * scanout that applies the write at once, nothing is pending, as before.
+ */
+v9x_u16 v9x_vsync_flip_stays_pending(v9x_u16 novsync, v9x_u16 base_latches);
 
 /*
  * The state as the string written to C:\V9XDIAG\V9XHW.INI as VSync= and

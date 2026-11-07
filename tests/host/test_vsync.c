@@ -62,6 +62,21 @@ static void test_an_unknown_state_follows_the_application(void)
     VSCHECK(v9x_vsync_flip_novsync((v9x_u16)7u, V9X_TRUE) == V9X_TRUE);
 }
 
+/*
+ * Whether the core tracks a flip as pending. A synced flip always is. An
+ * unsynced one is too wherever the scanout takes a new base only at the
+ * blank (Gen3: 3DMark 2001 SE's clears landed in the buffer still on the
+ * panel under VSync=2, docs\issues\2026-11-01-gma950-3dmark2001se-flicker-
+ * refused-vertices.md), and is not where the write applies at once.
+ */
+static void test_which_flips_stay_pending(void)
+{
+    VSCHECK(v9x_vsync_flip_stays_pending(V9X_FALSE, V9X_FALSE) == V9X_TRUE);
+    VSCHECK(v9x_vsync_flip_stays_pending(V9X_FALSE, V9X_TRUE) == V9X_TRUE);
+    VSCHECK(v9x_vsync_flip_stays_pending(V9X_TRUE, V9X_TRUE) == V9X_TRUE);
+    VSCHECK(v9x_vsync_flip_stays_pending(V9X_TRUE, V9X_FALSE) == V9X_FALSE);
+}
+
 /* settings_status.c compares against these spellings. */
 static void test_state_text_is_stable(void)
 {
@@ -78,6 +93,7 @@ unsigned int v9x_run_vsync_tests(void)
     test_unknown_requests_leave_the_application_in_charge();
     test_the_flip_table();
     test_an_unknown_state_follows_the_application();
+    test_which_flips_stay_pending();
     test_state_text_is_stable();
     return vsync_failures;
 }

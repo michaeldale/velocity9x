@@ -33,6 +33,18 @@ v9x_u16 v9x_vsync_flip_novsync(v9x_u16 state, v9x_u16 application_novsync)
     return application_novsync != V9X_FALSE ? V9X_TRUE : V9X_FALSE;
 }
 
+v9x_u16 v9x_vsync_flip_stays_pending(v9x_u16 novsync, v9x_u16 base_latches)
+{
+    if (novsync == V9X_FALSE) {
+        return V9X_TRUE;
+    }
+
+    /* Unsynced: the write is made now either way. Where the scanout takes
+     * it only at the blank, the old buffer is on the panel until then, so
+     * the flip is pending exactly as a synced one is. */
+    return base_latches != V9X_FALSE ? V9X_TRUE : V9X_FALSE;
+}
+
 const char *v9x_vsync_text(v9x_u16 state)
 {
     if (state == V9X_VSYNC_STATE_ON) {

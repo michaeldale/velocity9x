@@ -4079,6 +4079,13 @@ typedef struct v9x_d3d_diagnostics {
      * band-merge.md). Appended 2026-11-07 within ABI 2026102002.
      */
     DWORD i9xx_z_edged;
+    /*
+     * Unsynced flips (DDFLIP_NOVSYNC, or VSync=2) the core kept pending
+     * because the scanout takes the base only at the blank
+     * (v9x_vsync_flip_stays_pending), counted at acceptance. Appended
+     * 2026-11-07 within ABI 2026102002.
+     */
+    DWORD flip_unsynced_held;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */
