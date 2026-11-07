@@ -1,0 +1,17 @@
+{
+    "Name":  "rs690",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  99,
+    "BootAfter":  100,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  99,
+    "Desktop":  true,
+    "AnswerSeconds":  4,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
