@@ -6,6 +6,18 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.40.0 - not yet released
 
+- **Intel GMA 900, 950 and 3150: less geometry lost in Direct3D 8
+  games.** On the GMA 950, 3DMark 2001 SE lost 2,551 batches of
+  triangles in 0.39.0. Most had texture coordinates that were not
+  numbers; those are now drawn as 0. It now loses 293, all with a depth
+  a rounding step below 0. That is the likely cause of the flicker seen
+  in every 3DMark 2001 SE test, but whether the flicker is gone has not
+  been checked by eye. The driver also clips less: triangles within
+  1,024 pixels of the screen go to the chip whole, as it was measured to
+  draw them safely. Half-Life and 3DMark 2000 run with nothing lost.
+  Measured on the GMA 950 only
+  ([record](docs/decisions/2026-11-07-gen3-guard-band-merge.md)).
+
 - **AMD Radeon HD 5570 (Redwood, `1002:68D9`) is claimed by the `ati`
   package.** It takes the HD 5770's path: DirectDraw on the DMA engine,
   page flips, and Direct3D and OpenGL on the 3D engine. It uses Redwood's

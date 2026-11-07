@@ -128,3 +128,17 @@ At Michael's word, on branch `park/gen3-batch-cost`. Hypotheses left:
   2026-10-01 build) under 3DMark 2001 SE would test it.
 - **A regression.** Not run on 0.34.0 or earlier releases.
 - Not every flicker need be one cause: the menu transitions flicker too.
+
+## 2026-11-07: the release refuses too; the merge refuses 293
+
+The netbook was run on two builds
+([record](../decisions/2026-11-07-gen3-guard-band-merge.md)).
+- **0.39.0 as released** (boot 282): 2,551 batches refused for a vertex.
+  So the release carries what this record found on 2026-11-01.
+- **The merged branch, `6f581a9f`** (boot 283): 293 refused, all for z
+  just below 0 (last z `B5800020`, rhw 1.0). Texture coordinates zeroed:
+  7,100. The guard band likely lets these near-zero vertices through
+  where core clipping had cut them off; see the record.
+
+Nobody watched the panel, so whether the flicker changed is not known.
+The unfinished-frame hypothesis above is still untested.

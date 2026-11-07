@@ -16,6 +16,15 @@ the band ships at 1,024 with the classifier; V9XD32 both DDIs PASS,
 V9XDDP unchanged against a band-0 control, 3DMark 2000 and UT99's intro
 clean. Half-Life was not run.
 
+**Merged 2026-11-07** ([record](../decisions/2026-11-07-gen3-guard-band-merge.md)),
+rebased onto 0.40.0-dev main. On the netbook, V9XD32 passes at both
+DDIs, Half-Life mwd5 D3D runs with nothing refused or cut, and 3DMark
+2000 completes. 3DMark 2001 SE refuses 293 batches against 0.39.0's
+2,551, all for z just below 0. The branch refused 0 there before step 3,
+so the band lets those vertices through where core clipping cut them
+off; the merge record says what to do next. 3DMark 2000's frames were
+not grabbed. The parked state below is history.
+
 **Parked 2026-11-04** at Michael's word, again, on branch
 `park/gen3-batch-cost` (not merged), rebased onto main `aa030a33` with
 step 3 committed on top. The branch also holds the census-per-flip
