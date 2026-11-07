@@ -5,8 +5,8 @@
 ; changed: the device id (1002:9854); the RLC at C300h and its microcode
 ; port at C388h, and the CP's microcode ports at C150h-C16Fh
 ; (gfx_7_2_d.h); no CP_RB_DOORBELL_CONTROL, which CIK's gfx ring does not
-; have; and the gpu_init table's windows cut to GRBM_CNTL until CIK's are
-; listed. The scratch window, 248 MiB in, is inside M-JJN1ZZ's 256 MiB
+; have; and the gpu_init table's windows, which are CIK's list (see
+; CCInitWindows), not VI's. The scratch window, 248 MiB in, is inside M-JJN1ZZ's 256 MiB
 ; BAR0 and carve-out.
 ;
 ; Loaded dynamically by
@@ -212,12 +212,78 @@ CCWriteOffsets label dword
     dd 0c388h           ; RLC_GPM_UCODE_ADDR
 CC_WRITE_OFFSET_COUNT   equ 24
 
-; The table op's registers: start, limit (exclusive). Empty for now but for
-; GRBM_CNTL: the ring test needs no table, and CIK's gpu_init writes
-; (gfx_v7_0.c) are not yet listed.
+; The table op's registers: start, limit (exclusive). Every offset
+; v9x_cik_gpu_init_ops writes (cik_gpu_init.c and its generated tables:
+; Linux cik.c's CHIP_MULLINS golden registers less the PCIe/SMC index
+; pairs, gfx_v7_0's tile tables and constants_init), coalesced, and
+; nothing else.
 CCInitWindows label dword
-    dd 08000h, 08004h   ; GRBM_CNTL
-CC_INIT_WINDOW_COUNT    equ 1
+    dd 04d8h, 04dch
+    dd 0e44h, 0e48h
+    dd 020a8h, 020ach
+    dd 02408h, 0240ch
+    dd 02f48h, 02f4ch
+    dd 030cch, 030d0h
+    dd 03e78h, 03e7ch
+    dd 055e4h, 055e8h
+    dd 05bb0h, 05bb4h
+    dd 05bc0h, 05bc4h
+    dd 06130h, 06134h
+    dd 06ed8h, 06edch
+    dd 08000h, 08004h
+    dd 08030h, 08034h
+    dd 08708h, 0870ch
+    dd 08764h, 08768h
+    dd 088c4h, 088c8h
+    dd 088d4h, 088d8h
+    dd 08a14h, 08a18h
+    dd 08b24h, 08b28h
+    dd 08bcch, 08bd0h
+    dd 08bf0h, 08bf4h
+    dd 08c00h, 08c04h
+    dd 08c28h, 08c38h
+    dd 09060h, 09064h
+    dd 09100h, 09104h
+    dd 0913ch, 09140h
+    dd 09508h, 0950ch
+    dd 09604h, 09608h
+    dd 09830h, 0983ch
+    dd 098f8h, 09900h
+    dd 09910h, 099ach
+    dd 099b0h, 099d0h
+    dd 09a10h, 09a14h
+    dd 0c1e4h, 0c1e8h
+    dd 0c420h, 0c428h
+    dd 0c700h, 0c704h
+    dd 0c768h, 0c76ch
+    dd 0c770h, 0c778h
+    dd 0c798h, 0c7a0h
+    dd 0d00ch, 0d010h
+    dd 0d014h, 0d018h
+    dd 0d80ch, 0d810h
+    dd 0d814h, 0d818h
+    dd 02015ch, 020160h
+    dd 021498h, 02149ch
+    dd 0214f8h, 0214fch
+    dd 028a4ch, 028a50h
+    dd 030800h, 030804h
+    dd 030934h, 030938h
+    dd 030a04h, 030a08h
+    dd 036020h, 036024h
+    dd 03c000h, 03c004h
+    dd 03c020h, 03c048h
+    dd 03c200h, 03c20ch
+    dd 03c210h, 03c21ch
+    dd 03c220h, 03c228h
+    dd 03c230h, 03c238h
+    dd 03c250h, 03c264h
+    dd 03c270h, 03c284h
+    dd 03c290h, 03c294h
+    dd 03c2a0h, 03c2a4h
+    dd 03c2b0h, 03c2b8h
+    dd 03c2c0h, 03c2cch
+    dd 03c2e0h, 03c2e4h
+CC_INIT_WINDOW_COUNT    equ 65
 
 CCResult label dword
     dd CC_MAGIC                 ; 00 magic

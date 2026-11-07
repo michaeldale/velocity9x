@@ -2,6 +2,7 @@
 
 #include "velocity9x/cik_gpu_init.h"
 #include "velocity9x/cik_clear_state.h"
+#include "velocity9x/cik_3d.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -33,10 +34,11 @@ static void test_gpu_init(void)
     v9x_u32 index;
 
     count = v9x_cik_gpu_init_ops(ops, CIK_OPS_MAX);
-    /* 91 golden entries, then constants_init: 3, 32 tile, 15 macrotile,
-     * 3, 16 VMIDs of 5, 1, and 20 more; godavari's 260C0h entry is
-     * left out (gen-mullins-gpu-init.ps1). */
-    CHECK(count == 245ul);
+    /* 87 golden entries, then constants_init: 3, 32 tile, 15 macrotile,
+     * 3, 16 VMIDs of 5, 1, and 20 more; godavari's 260C0h entry and
+     * mgcg's four PCIe/SMC index-port entries are left out
+     * (gen-mullins-gpu-init.ps1). */
+    CHECK(count == 241ul);
     CHECK(v9x_cik_gpu_init_ops(ops, 10ul) == 0ul);
     CHECK(v9x_cik_gpu_init_ops(0, CIK_OPS_MAX) == 0ul);
     count = v9x_cik_gpu_init_ops(ops, CIK_OPS_MAX);
@@ -95,10 +97,47 @@ static void test_clear_state(void)
     CHECK(v9x_cik_clear_state_values[at + 1ul] == 0x00000010ul);
 }
 
+static v9x_u32 stream_dwords[2048];
+
+/* gfx_v7_0_cp_gfx_start's order, word for word at the ends. */
+static void test_start(void)
+{
+    struct v9x_vi_pm4 stream;
+    v9x_u32 n;
+
+    v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
+    v9x_cik_3d_start(&stream);
+    CHECK(stream.overflow == 0ul);
+    n = stream.count;
+    /* SET_BASE first: PACKET3(11h, 2), CE_PARTITION_BASE, 8000h, 8000h. */
+    CHECK(stream_dwords[0] == V9X_VI_PACKET3(V9X_VI_P3_SET_BASE, 2ul));
+    CHECK(stream_dwords[1] == 3ul && stream_dwords[2] == 0x8000ul &&
+          stream_dwords[3] == 0x8000ul);
+    CHECK(stream_dwords[4] == V9X_VI_PACKET3(V9X_VI_P3_PREAMBLE_CNTL, 0ul));
+    CHECK(stream_dwords[5] == 0x20000000ul);
+    /* Seven clear-state runs of 885 values, one header and one index
+     * each, plus the 23 dwords around them. */
+    CHECK(n == 4ul + 2ul + 3ul + (885ul + 7ul * 2ul) + 4ul + 2ul + 2ul + 4ul);
+    /* The end: CLEAR_STATE, then the VGT pair at A316h. */
+    CHECK(stream_dwords[n - 6ul] == V9X_VI_PACKET3(V9X_VI_P3_CLEAR_STATE, 0ul));
+    CHECK(stream_dwords[n - 4ul] == V9X_VI_PACKET3(V9X_VI_P3_SET_CONTEXT_REG, 2ul));
+    CHECK(stream_dwords[n - 3ul] == 0xa316ul - 0xa000ul);
+    CHECK(stream_dwords[n - 2ul] == 0x0000000eul &&
+          stream_dwords[n - 1ul] == 0x00000010ul);
+    /* PA_SC_RASTER_CONFIG 0, 0 just before PREAMBLE_CNTL end: from the
+     * end, the VGT pair (4), CLEAR_STATE (2), PREAMBLE_CNTL end (2), then
+     * the raster pair's SET_CONTEXT_REG (4). */
+    CHECK(stream_dwords[n - 12ul] == V9X_VI_PACKET3(V9X_VI_P3_SET_CONTEXT_REG, 2ul));
+    CHECK(stream_dwords[n - 11ul] == 0xa0d4ul - 0xa000ul);
+    CHECK(stream_dwords[n - 10ul] == 0ul && stream_dwords[n - 9ul] == 0ul);
+    CHECK(stream_dwords[n - 7ul] == 0x30000000ul);
+}
+
 unsigned int v9x_run_cik_gpu_tests(void)
 {
     failures = 0u;
     test_gpu_init();
     test_clear_state();
+    test_start();
     return failures;
 }

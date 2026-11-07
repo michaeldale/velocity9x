@@ -16,7 +16,7 @@
 
 #include "velocity9x/vi_gpu_init.h"
 
-#define V9X_CIK_KALINDI_MGCG_CGCG_COUNT     55u
+#define V9X_CIK_KALINDI_MGCG_CGCG_COUNT     51u
 #define V9X_CIK_GODAVARI_GOLDEN_COUNT       31u
 #define V9X_CIK_KALINDI_GOLDEN_COMMON_COUNT 4u
 #define V9X_CIK_KALINDI_GOLDEN_SPM_COUNT    1u

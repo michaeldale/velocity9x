@@ -146,6 +146,7 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\cik\cik_gpu_init.c',
         'src\chipsets\ati\cik\cik_gpu_init_tables.c',
         'src\chipsets\ati\cik\cik_clear_state.c',
+        'src\chipsets\ati\cik\cik_3d.c',
         # Carrizo GCN 3 shader words and the bring-up shaders, no I/O.
         'src\chipsets\ati\vi\vi_shader.c',
         # Carrizo PM4 streams: CP start with the clear state, a solid draw.

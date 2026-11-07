@@ -88,10 +88,22 @@ if (-not [Text.Encoding]::ASCII.GetString($vxdBytes).Contains('CKCP_DDB')) {
     throw 'CKCP.VXD is missing its exported device descriptor.'
 }
 
-# The publisher: the CP bring-up.
+# The publishers: the CP bring-up and the first draw.
 $publishers = @(
     @{ Source = 'cik_cp_win32.c'; Name = 'v9xckcp'; Entry = '_V9xMullinsCpEntry@0'
        Description = 'Velocity9x Mullins CP bring-up probe'; Extra = @() }
+    # V9XCK3D: Carrizo's streams and GCN 3 shaders, the shaders rewritten
+    # as GCN 2, and Mullins' own start of stream, clear state and gpu_init.
+    @{ Source = 'cik_3d_win32.c'; Name = 'v9xck3d'; Entry = '_V9xMullins3dEntry@0'
+       Description = 'Velocity9x Mullins first 3D draw probe'
+       Extra = @('src\chipsets\ati\vi\vi_shader.c',
+                 'src\chipsets\ati\vi\vi_3d.c',
+                 'src\chipsets\ati\vi\vi_clear_state.c',
+                 'src\chipsets\ati\cik\cik_shader.c',
+                 'src\chipsets\ati\cik\cik_3d.c',
+                 'src\chipsets\ati\cik\cik_clear_state.c',
+                 'src\chipsets\ati\cik\cik_gpu_init.c',
+                 'src\chipsets\ati\cik\cik_gpu_init_tables.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

@@ -41,7 +41,7 @@
  */
 #include "velocity9x/cik_gpu_init.h"
 
-const struct v9x_vi_reg_seq v9x_cik_kalindi_mgcg_cgcg_init[55] = {
+const struct v9x_vi_reg_seq v9x_cik_kalindi_mgcg_cgcg_init[51] = {
     { 0x0c420ul, 0xfffffffful, 0xfffffffcul },
     { 0x30800ul, 0xfffffffful, 0xe0000000ul },
     { 0x3c2a0ul, 0xfffffffful, 0x00000100ul },
@@ -87,10 +87,6 @@ const struct v9x_vi_reg_seq v9x_cik_kalindi_mgcg_cgcg_init[55] = {
     { 0x3c000ul, 0xfffffffful, 0x96e00200ul },
     { 0x08708ul, 0xfffffffful, 0x00900100ul },
     { 0x0c424ul, 0xfffffffful, 0x0020003ful },
-    { 0x00038ul, 0xfffffffful, 0x0140001cul },
-    { 0x0003cul, 0x000f0000ul, 0x000f0000ul },
-    { 0x00220ul, 0xfffffffful, 0xc060000cul },
-    { 0x00224ul, 0xc0000ffful, 0x00000100ul },
     { 0x020a8ul, 0xfffffffful, 0x00000104ul },
     { 0x055e4ul, 0xff000ffful, 0x00000100ul },
     { 0x030ccul, 0xc0000ffful, 0x00000104ul },

@@ -1,0 +1,1964 @@
+/*
+ * V9XCK3D.EXE: the Mullins (Radeon R3E, GCN 2) copy of V9XCZ3D
+ * (carrizo_3d_win32.c), Phase 6 of docs\plans\ati-mullins-gfx7.md. What
+ * changed: the CP and RLC as V9XCKCP brings them up (CIK's offsets, masks
+ * and ring control, no doorbell, RLC header 1); gpu_init is
+ * v9x_cik_gpu_init_ops (Linux cik.c and gfx_v7_0.c); the start of stream
+ * is v9x_cik_3d_start (CI's clear state and order); and every shader
+ * vi_shader.c builds is rewritten as GCN 2 by v9x_cik_shader_from_vi
+ * before it goes in. The draws themselves are Carrizo's, unchanged: every
+ * register vi_3d.c writes has the same index on CIK. The microcode is
+ * linux-firmware's amdgpu/mullins_{pfp,ce,me,rlc}.bin. Described below
+ * as it was written for Carrizo.
+ *
+ * V9XCZ3D.EXE: AMD Carrizo (Radeon R7E, GCN 3) first 3D draw: the CP
+ * brought up as V9XCKCP does, the full clear state, then a solid rectangle
+ * through the shader core into a linear colour buffer, checked pixel by
+ * pixel.
+ *
+ * Phases 2 and 3 of docs\plans\ati-carrizo-gfx8-3d.md. CKCP.VXD executes
+ * the op lists built here. Writes C:\V9XDIAG\V9XCK3D.INI. The microcode is
+ * PFP.BIN, CE.BIN, ME.BIN and RLC.BIN in the working directory, as for
+ * V9XCKCP. The streams and shaders come from the host-tested vi_3d.c and
+ * vi_shader.c; the clear state from vi_clear_state.c, generated from
+ * Linux's clearstate_vi.h. Everything that differs from V9XCKCP
+ * (carrizo_cp_win32.c) is the third submission and its check.
+ *
+ * Call 1 is read-only: the CP's and RLC's registers this run writes, and
+ * their status. The run goes ahead only if the CP's three microengines are
+ * halted, the RLC stopped and nothing held in reset, as the register probe
+ * read them (docs\decisions\2026-10-28-carrizo-register-probe.md).
+ * /readonly stops there.
+ *
+ * Call 2 checks the CPU reaches the scratch window (BAR0 + 248 MiB, 64 KiB).
+ *
+ * Call 3 does what Linux v4.9 gfx_v8_0.c does with smc_load_fw=0, in its
+ * order: the golden registers and gpu_init (vi_gpu_init.c, through
+ * CKCP.VXD's table op; left as written after the run), rlc_resume (stop with the GUI-idle interrupts off and the SERDES
+ * idle, coarse-grain clock gating and light sleep off, power gating off,
+ * an RLC soft reset, the RLC microcode, start; init_pg does nothing with
+ * power gating off), cp_gfx_load_microcode (halt, PFP, CE, ME),
+ * cp_gfx_resume's ring registers (VMID 0, a 16 KiB ring, the read-pointer
+ * writeback in the window, no doorbell) and cp_gfx_start's CP registers
+ * and unhalt. Then two submissions:
+ *
+ *   1. Linux's ring test: SET_UCONFIG_REG writing DEADBEEF to SCRATCH_REG0,
+ *      over the CAFEDEAD the CPU wrote;
+ *   2. cp_gfx_start's whole stream, vi_cs_data included, and a second
+ *      scratch write, 600DCAFE, behind it;
+ *   3. a solid rectangle (8,4)-(40,12) into a 64x16 32 bpp target
+ *      (COLOR_8_8_8_8, tile index 8, linear-aligned) and an end-of-pipe
+ *      event that flushes the caches and writes a fence. The shaders are
+ *      vi_shader.c's probe variants: each stores a marker beside the
+ *      target first, so the report shows whether the VS and PS ran.
+ *      With /gouraud instead: two triangles of Direct3D TL vertices over
+ *      the whole target from a vertex buffer in the window, a red ramp
+ *      checked pixel by pixel (Phase 4 step 1). With /depth: a Z16
+ *      buffer and three rectangles, LESS with writes, the colour and the
+ *      Z buffer checked (step 2). With /zlinear: the same draw into a
+ *      linear Z16 buffer, GB_TILE_MODE7 written ARRAY_LINEAR_ALIGNED after
+ *      gpu_init and DB_Z_INFO naming it, the buffer checked row by row:
+ *      whether the DB takes a layout the CPU can lock as it is. With
+ *      /ztile: the 1D Z16 buffer under one rectangle whose Z is the plane
+ *      (X + 64 Y) / 2048, every pixel's sample distinct, each stored
+ *      sample decoded back to its pixel: the order of samples inside an
+ *      8x8 tile, which a detiling Lock needs. With
+ *      /texture or /modulate: a pattern
+ *      texture mapped 1:1, point-sampled, alone or times a diffuse colour
+ *      (step 3). With /mip:N: a 64x16 chain's level N alone (BASE_LEVEL
+ *      = LAST_LEVEL = N) over a pattern that numbers every dword, so the
+ *      texels read say where the sampler finds the level and its rows.
+ *
+ * Each is padded to 16 dwords with PACKET3(NOP, 3FFFh), v4.9's gfx ring
+ * NOP and alignment. Then the CP is halted and the RLC stopped, every
+ * CP and RLC register written is put back as call 1 read it, HDP is flushed and
+ * invalidated, the writeback, the fence and the target are read back and
+ * the window restored.
+ *
+ * Packets: vid.h PACKET3 (type 31:30, count 29:16, opcode 15:8) and its
+ * opcodes; register offsets gfx_8_0_d.h and _sh_mask.h
+ * (build\external\carrizo\linux\), dword indices times four.
+ */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <stddef.h>
+
+#include "velocity9x/diagpaths.h"
+#include "velocity9x/vi_3d.h"
+#include "velocity9x/vi_gpu_init.h"
+#include "velocity9x/vi_shader.h"
+#include "velocity9x/cik_3d.h"
+#include "velocity9x/cik_gpu_init.h"
+#include "velocity9x/cik_shader.h"
+
+#ifndef V9X_BUILD_ID
+#define V9X_BUILD_ID "local"
+#endif
+
+#define V9X_CKCP_PATH        V9X_DIAG_PATH("V9XCK3D.INI")
+#define V9X_CKCP_VXD         "\\\\.\\CKCP.VXD"
+#define V9X_CKCP_MAGIC       0x50435a43ul
+#define V9X_CKCP_RUN         1u
+#define V9X_CKCP_OP_MAX      512u
+#define V9X_CKCP_DATA_MAX    16384u
+#define V9X_CKCP_BLOCK       4096u
+#define V9X_CKCP_HEADER      16u
+#define V9X_CKCP_TIMEOUT     0xfffffffful
+
+#define V9X_ST_COMPLETE  0x00000010ul
+
+#define V9X_OP_MMIO_READ    1ul
+#define V9X_OP_MMIO_WRITE   2ul
+#define V9X_OP_VRAM_WRITE   3ul
+#define V9X_OP_VRAM_FILL    5ul
+#define V9X_OP_VRAM_BLOCK   6ul
+#define V9X_OP_WAIT_MMIO    8ul
+#define V9X_OP_SAVE         9ul
+#define V9X_OP_RESTORE      10ul
+#define V9X_OP_VRAM_PATTERN 11ul
+#define V9X_OP_DELAY        12ul
+#define V9X_OP_MMIO_RMW     13ul
+#define V9X_OP_UCODE        14ul
+#define V9X_OP_WAIT_VRAM    7ul
+#define V9X_OP_VRAM_DATA    15ul
+#define V9X_OP_MMIO_TABLE   16ul
+
+#define V9X_CK_GB_ADDR_CONFIG       0x098f8ul
+#define V9X_CK_GB_TILE_MODE8        0x09930ul
+
+/* CKCP.VXD's CC_PATTERN_STEP. */
+#define V9X_PATTERN_STEP    0x9e3779b9ul
+
+/* SRBM_STATUS reads standing in for Linux's udelay(50) after the RLC
+ * reset, start and the CP's halt and unhalt: an uncached PCIe read takes
+ * on the order of a microsecond. */
+#define V9X_DELAY_READS     2000ul
+
+/* Registers: gfx_8_0_d.h, oss_3_0_d.h, bif_5_0_d.h, gmc_8_1_d.h. */
+#define V9X_CK_SRBM_STATUS          0x00e50ul
+#define V9X_CK_MC_VM_FB_LOCATION    0x02024ul
+#define V9X_CK_HDP_DEBUG0           0x02f30ul
+#define V9X_CK_HDP_MEM_FLUSH        0x05480ul
+#define V9X_CK_GRBM_STATUS2         0x08008ul
+#define V9X_CK_GRBM_STATUS          0x08010ul
+#define V9X_CK_GRBM_STATUS_SE0      0x08014ul
+#define V9X_CK_CC_SHADER_ARRAY      0x089bcul
+#define V9X_CK_USER_SHADER_ARRAY    0x089c0ul
+#define V9X_CK_CC_RB_DISABLE        0x098f4ul
+#define V9X_CK_USER_RB_DISABLE      0x09b7cul
+#define V9X_CK_GRBM_SOFT_RESET      0x08020ul
+#define V9X_CK_CP_MEC_CNTL          0x08234ul
+#define V9X_CK_CP_STALLED_STAT1     0x08674ul
+#define V9X_CK_CP_BUSY_STAT         0x0867cul
+#define V9X_CK_CP_STAT              0x08680ul
+#define V9X_CK_CP_ME_CNTL           0x086d8ul
+#define V9X_CK_CP_RB0_RPTR          0x08700ul
+#define V9X_CK_CP_RB_WPTR_DELAY     0x08704ul
+#define V9X_CK_CP_RB0_BASE          0x0c100ul
+#define V9X_CK_CP_RB0_CNTL          0x0c104ul
+#define V9X_CK_CP_RB0_RPTR_ADDR     0x0c10cul
+#define V9X_CK_CP_RB0_RPTR_ADDR_HI  0x0c110ul
+#define V9X_CK_CP_RB0_WPTR          0x0c114ul
+#define V9X_CK_CP_DEVICE_ID         0x0c12cul
+#define V9X_CK_CP_ENDIAN_SWAP       0x0c140ul
+#define V9X_CK_CP_RB_VMID           0x0c144ul
+#define V9X_CK_CP_INT_CNTL_RING0    0x0c1a8ul
+#define V9X_CK_CP_MAX_CONTEXT       0x0c2b8ul
+#define V9X_CK_CP_RB0_BASE_HI       0x0c2c4ul
+#define V9X_CK_SCRATCH_REG0         0x30100ul
+#define V9X_CK_RLC_CNTL             0x0c300ul
+#define V9X_CK_RLC_STAT             0x0c310ul
+#define V9X_CK_RLC_GPM_STAT         0x0c400ul
+#define V9X_CK_RLC_PG_CNTL          0x0c40cul
+#define V9X_CK_RLC_CGCG_CGLS_CTRL   0x0c424ul
+#define V9X_CK_RLC_SERDES_CU_BUSY   0x0c484ul
+#define V9X_CK_RLC_SERDES_NONCU     0x0c488ul
+#define V9X_CK_CP_PFP_UCODE_ADDR    0x0c150ul
+#define V9X_CK_CP_PFP_UCODE_DATA    0x0c154ul
+#define V9X_CK_CP_ME_RAM_WADDR      0x0c15cul
+#define V9X_CK_CP_ME_RAM_DATA       0x0c160ul
+#define V9X_CK_CP_CE_UCODE_ADDR     0x0c168ul
+#define V9X_CK_CP_CE_UCODE_DATA     0x0c16cul
+#define V9X_CK_RLC_GPM_UCODE_ADDR   0x0c388ul
+#define V9X_CK_RLC_GPM_UCODE_DATA   0x0c38cul
+
+/* Fields: gfx_8_0_sh_mask.h. CP_ME_CNTL CE_HALT bit 24, PFP_HALT 26,
+ * ME_HALT 28. RLC_CNTL RLC_ENABLE_F32 bit 0. RLC_CGCG_CGLS_CTRL CGCG_EN
+ * bit 0, CGLS_EN bit 1. GRBM_SOFT_RESET SOFT_RESET_RLC bit 2.
+ * CP_INT_CNTL_RING0's four GUI-idle interrupt enables, bits 18-21.
+ * RLC_SERDES_NONCU_MASTER_BUSY's SE, GC, TC0 and TC1 busy bits.
+ * CP_RB0_CNTL RB_BUFSZ 5:0 (log2 of the ring's quadwords), RB_BLKSZ
+ * 13:8, MTYPE 16:15, MIN_IB_AVAILSZ 23:22, RB_RPTR_WR_ENA 31.
+ * CP_RB_DOORBELL_CONTROL DOORBELL_EN bit 30. */
+#define V9X_CK_CP_HALTS             0x15000000ul
+#define V9X_CK_RLC_ENABLE           0x00000001ul
+#define V9X_CK_CGCG_CGLS            0x00000003ul
+#define V9X_CK_SOFT_RESET_RLC       0x00000004ul
+#define V9X_CK_GUI_IDLE_INTS        0x00180000ul
+#define V9X_CK_NONCU_BUSY           0x0007fffful
+#define V9X_CK_RB_RPTR_WR_ENA       0x80000000ul
+#define V9X_CK_FB_START_MASK        0x0000fffful
+
+/* gfx_v8_0_gpu_init: max_hw_contexts 8 for Carrizo; cp_gfx_start writes
+ * one less. */
+#define V9X_CK_MAX_CONTEXT          7ul
+
+/* PM4: vid.h. */
+#define V9X_PACKET3(op, n) \
+    ((3ul << 30) | (((DWORD)(n) & 0x3ffful) << 16) | (((DWORD)(op) & 0xfful) << 8))
+#define V9X_P3_NOP                  0x10ul
+#define V9X_P3_SET_BASE             0x11ul
+#define V9X_P3_CLEAR_STATE          0x12ul
+#define V9X_P3_CONTEXT_CONTROL      0x28ul
+#define V9X_P3_PREAMBLE_CNTL        0x4aul
+#define V9X_P3_SET_CONTEXT_REG      0x69ul
+#define V9X_P3_SET_UCONFIG_REG      0x79ul
+#define V9X_PREAMBLE_BEGIN          0x20000000ul
+#define V9X_PREAMBLE_END            0x30000000ul
+#define V9X_CE_PARTITION_BASE       3ul
+#define V9X_CONTEXT_REG_START       0xa000ul
+#define V9X_UCONFIG_REG_START       0xc000ul
+/* Dword index: mmSCRATCH_REG0. The raster configuration is in
+ * v9x_cik_3d_start. */
+#define V9X_SCRATCH_REG0_INDEX      0xc040ul
+#define V9X_CK_RING_NOP             V9X_PACKET3(V9X_P3_NOP, 0x3ffful)
+
+/* The firmware images: common_firmware_header in amdgpu_ucode.h. */
+#define V9X_FW_SIZE_BYTES       0x00ul
+#define V9X_FW_VERSION          0x08ul
+#define V9X_FW_UCODE_VERSION    0x10ul
+#define V9X_FW_UCODE_BYTES      0x14ul
+#define V9X_FW_ARRAY_OFFSET     0x18ul
+#define V9X_FW_HEADER_BYTES     0x20ul
+#define V9X_FW_FILE_MAX         0x8000ul
+
+/* The scratch window and its layout: a 16 KiB ring, the read-pointer
+ * writeback behind it. */
+#define V9X_SCRATCH_GPU_OFFSET  0x0f800000ul
+#define V9X_SCRATCH_DWORDS      16384ul
+#define V9X_RING                0x0000ul
+#define V9X_RING_BYTES          0x4000ul
+#define V9X_RING_LOG2_QWORDS    11ul
+#define V9X_RING_ALIGN_DWORDS   16ul
+#define V9X_VS                  0x4000ul
+#define V9X_PS                  0x4100ul
+#define V9X_WRITEBACK           0x8000ul
+#define V9X_FENCE               0x8100ul
+#define V9X_TARGET              0x9000ul
+/* The probe shaders' markers (vi_shader.h): the VS's VertexID at +0, the
+ * PS's red at +4, then for each vertex its VertexID at +16, x at +32, y
+ * at +48, v2 at +64 and the first compare's VCC at +80, plus 4 x
+ * (VertexID & 3). */
+#define V9X_PROBE               0xa000ul
+#define V9X_PROBE_PS            (V9X_PROBE + 4ul)
+#define V9X_PROBE_DWORDS        24ul
+#define V9X_PROBE_AT_VS         0u
+#define V9X_PROBE_AT_PS         1u
+#define V9X_PROBE_AT_VERTEX     4u
+#define V9X_PROBE_AT_X          8u
+#define V9X_PROBE_AT_Y          12u
+
+/* /gouraud: two triangles of TL vertices over the whole target, red 0 at
+ * the left edge to FFh at the right, green 80h, blue 40h, alpha FFh;
+ * every pixel within +-2 per channel of the ramp at its centre. */
+#define V9X_VERTICES            0xb000ul
+#define V9X_TL_DWORDS           8ul
+#define V9X_GOURAUD_VERTICES    6ul
+/* /depth: a Z16 buffer the target's size cleared to 1.0, then three
+ * rectangles in one draw, LESS with writes: red over the whole target at
+ * z 0.5, green over the left half at 0.75 (behind it), blue over the right
+ * half at 0.25 (in front). Red left, blue right; the Z buffer 8000h in the
+ * left half's tiles, 4000h in the right's. */
+#define V9X_DEPTH               0xd000ul
+#define V9X_DEPTH_DWORDS        (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT / 2ul)
+#define V9X_DEPTH_CLEAR         0xfffffffful
+#define V9X_DEPTH_VERTICES      18ul
+#define V9X_TL_MAX_VERTICES     48ul
+/* /seams: the target covered by a 4x2 grid of cells, two triangles each,
+ * every inner edge shared; the inner nodes and the border nodes along
+ * their border moved by fractions of a pixel, Direct3D pixel centres as
+ * the HAL draws. A pixel left at the guard is a crack between two
+ * triangles. */
+#define V9X_SEAMS_COLUMNS       4ul
+#define V9X_SEAMS_ROWS          2ul
+#define V9X_SEAMS_VERTICES      48ul
+#define V9X_DEPTH_RED           0xffff0000ul
+#define V9X_DEPTH_GREEN         0xff00ff00ul
+#define V9X_DEPTH_BLUE          0xff0000fful
+/* Red and blue at full alpha as the target holds them: the D3DCOLORs, the
+ * colour path keeping memory byte order (vi_shader.h). */
+#define V9X_PIXEL_RED           V9X_DEPTH_RED
+#define V9X_PIXEL_BLUE          V9X_DEPTH_BLUE
+#define V9X_Z16_HALF            0x8000ul
+#define V9X_Z16_QUARTER         0x4000ul
+/* A 1D-tiled Z16 tile: 8x8 samples, 128 bytes; the tiles in rows. */
+#define V9X_Z16_TILE_DWORDS     32ul
+/* /texture and /modulate: a 64x16 A8R8G8B8 texture, linear aligned, the
+ * VxD's pattern (texel n = seed + n x 9E3779B9h), mapped 1:1 onto the
+ * target with point sampling: u 0 to 1 across, v 0 to 1 down. /texture
+ * exports the texel; /modulate multiplies it by a D3DCOLOR of R FFh,
+ * G 80h, B 40h, A FFh. */
+#define V9X_TEXTURE             0xe000ul
+#define V9X_TEXTURE_DWORDS      (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT)
+#define V9X_SEED_TEXTURE        0x7e57ab1eul
+/* /mip:N: the chain in the free space behind the shaders, 12 KiB of the
+ * pattern (a 64x16 32 bpp chain is about 5.4 KiB packed, more padded);
+ * levels 0 to 6, 64x16 down to 1x1. */
+#define V9X_MIP                 0x5000ul
+#define V9X_MIP_DWORDS          3072ul
+#define V9X_MIP_LEVELS          7ul
+#define V9X_WHITE               0xfffffffful
+#define V9X_MODULATE_COLOUR     0xffff8040ul
+/* /blend and /blendspec: V9XD32's T7 as one draw - the target filled
+ * opaque green, then red at alpha 80h over all of it, SRCALPHA and
+ * INVSRCALPHA; /blendspec with the specular PS Direct3D draws take.
+ * Every pixel the same blend, about FF7F8000 in memory order. */
+#define V9X_BLEND_TARGET        0xff00ff00ul
+#define V9X_BLEND_SOURCE        0x80ff0000ul
+#define V9X_FLOAT_QUARTER       0x3e800000ul
+#define V9X_FLOAT_THREE_QUARTERS 0x3f400000ul
+#define V9X_FLOAT_32            0x42000000ul
+#define V9X_GOURAUD_LEFT        0xff008040ul
+#define V9X_GOURAUD_RIGHT       0xffff8040ul
+#define V9X_GOURAUD_TOLERANCE   2ul
+#define V9X_FLOAT_HALF          0x3f000000ul
+#define V9X_FLOAT_ONE           0x3f800000ul
+#define V9X_FLOAT_16            0x41800000ul
+#define V9X_FLOAT_64            0x42800000ul
+#define V9X_CANARY              0xc000ul
+#define V9X_CANARY_DWORDS       16ul
+#define V9X_SEED_CANARY         0x50000005ul
+
+/* The target: 64 pixels a row (a linear-aligned pitch is a multiple of 64
+ * elements), 16 rows, 32 bpp, 4 KiB; the rectangle inside it. */
+#define V9X_TARGET_PITCH        64ul
+#define V9X_TARGET_HEIGHT       16ul
+#define V9X_TARGET_DWORDS       (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT)
+#define V9X_RECT_LEFT           8ul
+#define V9X_RECT_TOP            4ul
+#define V9X_RECT_RIGHT          40ul
+#define V9X_RECT_BOTTOM         12ul
+#define V9X_GUARD_VALUE         0x5a5a5a5aul
+#define V9X_FENCE_VALUE         0x3d3d3d3dul
+#define V9X_FENCE_WAIT_LIMIT    20000000ul
+
+/* R 1.0, G 0.5, B 0.25, A 0.75: four different bytes, so where each lands
+ * shows the channel order. */
+static const DWORD v9x_colour[4] = {
+    0x3f800000ul, 0x3f000000ul, 0x3e800000ul, 0x3f400000ul
+};
+
+#define V9X_SCRATCH_BEFORE      0xcafedeadul
+#define V9X_SCRATCH_TEST        0xdeadbeeful
+#define V9X_SCRATCH_PREAMBLE    0x600dcafeul
+
+struct v9x_ckcp_op {
+    DWORD op;
+    DWORD a;
+    DWORD b;
+    DWORD c;
+};
+
+/* The ops, then the data array: CKCP.VXD reads the data at ops[count]. */
+struct v9x_ckcp_request {
+    DWORD count;
+    DWORD data_count;
+    struct v9x_ckcp_op ops[V9X_CKCP_OP_MAX];
+};
+
+struct v9x_ckcp_result {
+    DWORD magic;
+    DWORD status;
+    DWORD id;
+    DWORD bar0;
+    DWORD bar0_high;
+    DWORD bar5;
+    DWORD reserved0;
+    DWORD memsize;
+    DWORD executed;
+    DWORD refused_index;
+    DWORD block_used;
+    DWORD config;
+    DWORD ucode_written;
+    DWORD reserved[3];
+    DWORD op_results[V9X_CKCP_OP_MAX];
+    DWORD block[V9X_CKCP_BLOCK];
+};
+
+/* The header must be the VxD's CC_HEADER_DWORDS long. */
+typedef char v9x_ckcp_header_matches[
+    offsetof(struct v9x_ckcp_result, op_results) ==
+    sizeof(DWORD) * V9X_CKCP_HEADER ? 1 : -1];
+
+/* The registers call 1 reads and the run puts back, in this order: the
+ * ring first, the RLC's controls next, the CP's halts last, so the CP is
+ * put back halted after everything it reads. */
+static const DWORD v9x_saved_offsets[] = {
+    V9X_CK_CP_RB0_CNTL, V9X_CK_CP_RB0_BASE, V9X_CK_CP_RB0_BASE_HI,
+    V9X_CK_CP_RB0_RPTR_ADDR, V9X_CK_CP_RB0_RPTR_ADDR_HI, V9X_CK_CP_RB0_WPTR,
+    V9X_CK_CP_RB_WPTR_DELAY, V9X_CK_CP_RB_VMID,
+    V9X_CK_CP_MAX_CONTEXT, V9X_CK_CP_ENDIAN_SWAP, V9X_CK_CP_DEVICE_ID,
+    V9X_CK_CP_INT_CNTL_RING0, V9X_CK_SCRATCH_REG0, V9X_CK_RLC_PG_CNTL,
+    V9X_CK_RLC_CGCG_CGLS_CTRL, V9X_CK_RLC_CNTL, V9X_CK_CP_ME_CNTL
+};
+#define V9X_SAVED_COUNT (sizeof(v9x_saved_offsets) / sizeof(v9x_saved_offsets[0]))
+#define V9X_SAVED_RLC_CNTL  (V9X_SAVED_COUNT - 2u)
+#define V9X_SAVED_ME_CNTL   (V9X_SAVED_COUNT - 1u)
+
+static const char * const v9x_saved_names[V9X_SAVED_COUNT] = {
+    "CP_RB0_CNTL", "CP_RB0_BASE", "CP_RB0_BASE_HI", "CP_RB0_RPTR_ADDR",
+    "CP_RB0_RPTR_ADDR_HI", "CP_RB0_WPTR", "CP_RB_WPTR_DELAY", "CP_RB_VMID",
+    "CP_MAX_CONTEXT", "CP_ENDIAN_SWAP",
+    "CP_DEVICE_ID", "CP_INT_CNTL_RING0", "SCRATCH_REG0", "RLC_PG_CNTL",
+    "RLC_CGCG_CGLS_CTRL", "RLC_CNTL", "CP_ME_CNTL"
+};
+
+/* Read-only extras for the report, before and after. */
+static const DWORD v9x_extra_offsets[] = {
+    V9X_CK_GRBM_STATUS, V9X_CK_GRBM_STATUS2, V9X_CK_GRBM_SOFT_RESET,
+    V9X_CK_CP_STAT, V9X_CK_CP_BUSY_STAT, V9X_CK_CP_STALLED_STAT1,
+    V9X_CK_CP_RB0_RPTR, V9X_CK_CP_MEC_CNTL, V9X_CK_RLC_STAT,
+    V9X_CK_RLC_GPM_STAT, V9X_CK_RLC_SERDES_CU_BUSY, V9X_CK_RLC_SERDES_NONCU,
+    V9X_CK_SRBM_STATUS, V9X_CK_MC_VM_FB_LOCATION, V9X_CK_GB_TILE_MODE8,
+    V9X_CK_GRBM_STATUS_SE0, V9X_CK_CC_SHADER_ARRAY, V9X_CK_USER_SHADER_ARRAY,
+    V9X_CK_CC_RB_DISABLE, V9X_CK_USER_RB_DISABLE
+};
+#define V9X_EXTRA_COUNT (sizeof(v9x_extra_offsets) / sizeof(v9x_extra_offsets[0]))
+#define V9X_EXTRA_RESET  2u
+#define V9X_EXTRA_FB     13u
+#define V9X_EXTRA_TILE8  14u
+
+static const char * const v9x_extra_names[V9X_EXTRA_COUNT] = {
+    "GRBM_STATUS", "GRBM_STATUS2", "GRBM_SOFT_RESET", "CP_STAT",
+    "CP_BUSY_STAT", "CP_STALLED_STAT1", "CP_RB0_RPTR", "CP_MEC_CNTL",
+    "RLC_STAT", "RLC_GPM_STAT", "RLC_SERDES_CU_MASTER_BUSY",
+    "RLC_SERDES_NONCU_MASTER_BUSY", "SRBM_STATUS", "MC_VM_FB_LOCATION",
+    "GB_TILE_MODE8", "GRBM_STATUS_SE0", "CC_GC_SHADER_ARRAY_CONFIG",
+    "GC_USER_SHADER_ARRAY_CONFIG", "CC_RB_BACKEND_DISABLE",
+    "GC_USER_RB_BACKEND_DISABLE"
+};
+
+/* The four images, in the order the data array holds them. */
+struct v9x_ckcp_image {
+    const char *file;
+    const char *name;
+    DWORD header_major;
+    DWORD first;
+    DWORD dwords;
+    DWORD version;
+};
+
+#define V9X_IMAGE_PFP 0u
+#define V9X_IMAGE_CE  1u
+#define V9X_IMAGE_ME  2u
+#define V9X_IMAGE_RLC 3u
+#define V9X_IMAGE_COUNT 4u
+
+static struct v9x_ckcp_image v9x_images[V9X_IMAGE_COUNT] = {
+    { "PFP.BIN", "Pfp", 1ul, 0ul, 0ul, 0ul },
+    { "CE.BIN", "Ce", 1ul, 0ul, 0ul, 0ul },
+    { "ME.BIN", "Me", 1ul, 0ul, 0ul, 0ul },
+    { "RLC.BIN", "Rlc", 1ul, 0ul, 0ul, 0ul }
+};
+
+/* The request, then room for the data array right after count ops. */
+static struct {
+    struct v9x_ckcp_request request;
+    DWORD spill[V9X_CKCP_DATA_MAX];
+} v9x_buffer;
+#define v9x_request (v9x_buffer.request)
+
+static struct v9x_ckcp_result v9x_result;
+static DWORD v9x_saved[V9X_SAVED_COUNT];
+static DWORD v9x_ring[V9X_RING_BYTES / 4ul];
+static DWORD v9x_shader[64];
+static BYTE v9x_file[V9X_FW_FILE_MAX];
+static DWORD v9x_data[V9X_CKCP_DATA_MAX];
+static DWORD v9x_data_dwords;
+/* /gouraud, /depth, /texture or /modulate: a TL-vertex draw in place of
+ * the rectangle. */
+static int v9x_gouraud;
+static int v9x_depth;
+static int v9x_zlinear;
+static int v9x_ztile;
+static int v9x_texture;
+static int v9x_modulate;
+static int v9x_blend;
+static int v9x_seams;
+static int v9x_blend_specular;
+static int v9x_mip;
+static DWORD v9x_mip_level;
+static DWORD v9x_vertex_count;
+static DWORD v9x_vertices[V9X_TL_MAX_VERTICES * V9X_TL_DWORDS];
+static struct v9x_vi_reg_seq v9x_init_ops[V9X_VI_GPU_INIT_OPS_MAX];
+
+/* Indices into v9x_result.op_results of the values the report needs. */
+static DWORD v9x_at_cu_busy;
+static DWORD v9x_at_noncu_busy;
+static DWORD v9x_at_rlc_stat;
+static DWORD v9x_at_rlc_gpm;
+static DWORD v9x_at_rlc_cntl;
+static DWORD v9x_at_me_cntl_halted;
+static DWORD v9x_at_me_cntl_running;
+static DWORD v9x_at_rb_cntl;
+static DWORD v9x_at_wait_1;
+static DWORD v9x_at_rptr_1;
+static DWORD v9x_at_stat_1;
+static DWORD v9x_at_grbm_1;
+static DWORD v9x_at_wait_2;
+static DWORD v9x_at_rptr_2;
+static DWORD v9x_at_stat_2;
+static DWORD v9x_at_grbm_2;
+static DWORD v9x_at_scratch_2;
+static DWORD v9x_at_after_extra;
+static DWORD v9x_at_after_me_cntl;
+static DWORD v9x_at_after_rlc_cntl;
+static DWORD v9x_at_tile_mode8_written;
+static DWORD v9x_at_init;
+static DWORD v9x_at_fifo_before;
+static DWORD v9x_at_fifo_after;
+static DWORD v9x_at_sh_mem_before;
+static DWORD v9x_at_sh_mem_after;
+static DWORD v9x_at_addr_config_after;
+static DWORD v9x_at_wait_3;
+static DWORD v9x_at_rptr_3;
+static DWORD v9x_at_stat_3;
+static DWORD v9x_at_grbm_3;
+static DWORD v9x_at_tile_mode8;
+static DWORD v9x_at_addr_config;
+
+static void v9x_hex(char *text, DWORD value, int digits)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    int index;
+
+    for (index = 0; index < digits; ++index) {
+        text[index] = hex[(value >> ((digits - 1 - index) * 4)) & 15ul];
+    }
+    text[digits] = '\0';
+}
+
+static void v9x_decimal(char *text, DWORD value)
+{
+    char digits[11];
+    int count;
+    int at;
+
+    count = 0;
+    do {
+        digits[count++] = (char)('0' + (int)(value % 10ul));
+        value /= 10ul;
+    } while (value != 0ul);
+    at = 0;
+    while (count != 0) {
+        text[at++] = digits[--count];
+    }
+    text[at] = '\0';
+}
+
+static void v9x_text(const char *section, const char *key, const char *value)
+{
+    WritePrivateProfileStringA(section, key, value, V9X_CKCP_PATH);
+}
+
+static void v9x_key(const char *section, const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_hex(text, value, 8);
+    v9x_text(section, key, text);
+}
+
+static void v9x_number(const char *section, const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_decimal(text, value);
+    v9x_text(section, key, text);
+}
+
+static void v9x_pass(const char *key, int pass)
+{
+    v9x_text("Result", key, pass ? "PASS" : "FAIL");
+}
+
+static DWORD v9x_le32(const BYTE *at)
+{
+    return (DWORD)at[0] | ((DWORD)at[1] << 8) | ((DWORD)at[2] << 16) |
+           ((DWORD)at[3] << 24);
+}
+
+/* Appends an op; returns its index. */
+static DWORD v9x_op(DWORD op, DWORD a, DWORD b, DWORD c)
+{
+    DWORD index;
+
+    index = v9x_request.count++;
+    v9x_request.ops[index].op = op;
+    v9x_request.ops[index].a = a;
+    v9x_request.ops[index].b = b;
+    v9x_request.ops[index].c = c;
+    return index;
+}
+
+static void v9x_begin(void)
+{
+    v9x_request.count = 0ul;
+    v9x_request.data_count = 0ul;
+}
+
+/* Sends count ops and, after them, the microcode if with_data. */
+static int v9x_dioc(HANDLE device, int with_data)
+{
+    DWORD returned;
+    DWORD bytes;
+    DWORD *data;
+    DWORD index;
+    BOOL ok;
+
+    bytes = 8ul + v9x_request.count * sizeof(struct v9x_ckcp_op);
+    if (with_data) {
+        data = (DWORD *)&v9x_request.ops[v9x_request.count];
+        for (index = 0ul; index < v9x_data_dwords; ++index) {
+            data[index] = v9x_data[index];
+        }
+        v9x_request.data_count = v9x_data_dwords;
+        bytes += v9x_data_dwords * 4ul;
+    }
+    returned = 0ul;
+    ok = DeviceIoControl(device, V9X_CKCP_RUN, &v9x_buffer, bytes,
+                         &v9x_result, sizeof(v9x_result), &returned, 0);
+    if (!ok || returned != sizeof(v9x_result) ||
+        v9x_result.magic != V9X_CKCP_MAGIC) {
+        v9x_text("Report", "Result", "DIOC-FAILED");
+        v9x_key("Report", "Returned", returned);
+        return 0;
+    }
+    v9x_key("Report", "Status", v9x_result.status);
+    if ((v9x_result.status & V9X_ST_COMPLETE) == 0ul) {
+        v9x_text("Report", "Result", "REFUSED");
+        v9x_number("Report", "RefusedIndex", v9x_result.refused_index);
+        return 0;
+    }
+    return 1;
+}
+
+/* One image from the working directory into the data array: a
+ * common_firmware_header whose sizes agree with the file and whose major
+ * version is the one Linux reads it with. */
+static int v9x_load_image(struct v9x_ckcp_image *image)
+{
+    HANDLE file;
+    DWORD length;
+    DWORD read;
+    DWORD offset;
+    DWORD bytes;
+    DWORD index;
+    char key[24];
+
+    file = CreateFileA(image->file, GENERIC_READ, FILE_SHARE_READ, 0,
+                       OPEN_EXISTING, 0, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        v9x_text("Ucode", image->name, "not-found");
+        return 0;
+    }
+    length = GetFileSize(file, 0);
+    read = 0ul;
+    if (length < V9X_FW_HEADER_BYTES || length > V9X_FW_FILE_MAX ||
+        !ReadFile(file, v9x_file, length, &read, 0) || read != length) {
+        CloseHandle(file);
+        v9x_text("Ucode", image->name, "unreadable");
+        return 0;
+    }
+    CloseHandle(file);
+
+    offset = v9x_le32(v9x_file + V9X_FW_ARRAY_OFFSET);
+    bytes = v9x_le32(v9x_file + V9X_FW_UCODE_BYTES);
+    image->version = v9x_le32(v9x_file + V9X_FW_UCODE_VERSION);
+    if (v9x_le32(v9x_file + V9X_FW_SIZE_BYTES) != length ||
+        (v9x_le32(v9x_file + V9X_FW_VERSION) & 0xfffful) !=
+            image->header_major ||
+        (bytes % 4ul) != 0ul || bytes == 0ul || offset > length ||
+        bytes > length - offset ||
+        bytes / 4ul > V9X_CKCP_DATA_MAX - v9x_data_dwords) {
+        v9x_text("Ucode", image->name, "bad-header");
+        return 0;
+    }
+    image->first = v9x_data_dwords;
+    image->dwords = bytes / 4ul;
+    for (index = 0ul; index < image->dwords; ++index) {
+        v9x_data[v9x_data_dwords++] = v9x_le32(v9x_file + offset + index * 4ul);
+    }
+    lstrcpyA(key, image->name);
+    lstrcatA(key, "Dwords");
+    v9x_number("Ucode", key, image->dwords);
+    lstrcpyA(key, image->name);
+    lstrcatA(key, "Version");
+    v9x_key("Ucode", key, image->version);
+    return 1;
+}
+
+/* An image through its port: address 0, the data, then the version in
+ * the address register, as Linux does for each. */
+static void v9x_load(DWORD which, DWORD address, DWORD data)
+{
+    const struct v9x_ckcp_image *image = &v9x_images[which];
+
+    v9x_op(V9X_OP_MMIO_WRITE, address, 0ul, 0ul);
+    v9x_op(V9X_OP_UCODE, data, image->first, image->dwords);
+    v9x_op(V9X_OP_MMIO_WRITE, address, image->version, 0ul);
+}
+
+static void v9x_ring_scratch(struct v9x_vi_pm4 *stream, DWORD value)
+{
+    v9x_vi_pm4_set_uconfig(stream, V9X_SCRATCH_REG0_INDEX, value);
+}
+
+/* Appends dwords to the data array; returns where they start. */
+static DWORD v9x_data_append(const DWORD *dwords, DWORD count)
+{
+    DWORD first = v9x_data_dwords;
+    DWORD index;
+
+    for (index = 0ul; index < count && v9x_data_dwords < V9X_CKCP_DATA_MAX;
+         ++index) {
+        v9x_data[v9x_data_dwords++] = dwords[index];
+    }
+    return first;
+}
+
+static DWORD v9x_pattern(DWORD seed, DWORD index)
+{
+    return seed + index * V9X_PATTERN_STEP;
+}
+
+/* One TL vertex: sx, sy, sz, rhw, D3DCOLOR, specular, tu, tv. */
+static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD z,
+                          DWORD colour, DWORD u, DWORD v)
+{
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = V9X_FLOAT_ONE;
+    out[4] = colour;
+    out[5] = 0ul;
+    out[6] = u;
+    out[7] = v;
+}
+
+/* A rectangle as two triangles: top-left, top-right, bottom-left, then
+ * top-right, bottom-right, bottom-left. The left vertices take left, the
+ * right ones right; (u, v) runs (0, 0) to (1, 1) corner to corner. Six
+ * vertices to out. */
+static void v9x_tl_rect(DWORD *out, DWORD x0, DWORD y0, DWORD x1, DWORD y1,
+                        DWORD z, DWORD left, DWORD right)
+{
+    v9x_tl_vertex(out + 0, x0, y0, z, left, 0ul, 0ul);
+    v9x_tl_vertex(out + 8, x1, y0, z, right, V9X_FLOAT_ONE, 0ul);
+    v9x_tl_vertex(out + 16, x0, y1, z, left, 0ul, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 24, x1, y0, z, right, V9X_FLOAT_ONE, 0ul);
+    v9x_tl_vertex(out + 32, x1, y1, z, right, V9X_FLOAT_ONE, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 40, x0, y1, z, left, 0ul, V9X_FLOAT_ONE);
+}
+
+static DWORD v9x_float_bits(float value)
+{
+    union {
+        float f;
+        DWORD d;
+    } bits;
+
+    bits.f = value;
+    return bits.d;
+}
+
+/* /seams' node (column, row): on the border it stays on the border, moved
+ * along it; inside, moved both ways. The fractions are odd 256ths and
+ * plain decimals, so edges pass between and through quantised centres. */
+static void v9x_seams_node(DWORD column, DWORD row, float *x, float *y)
+{
+    static const float dx[3] = { 0.37f, -0.4609375f, 0.5f };
+    static const float dy[3] = { -0.29f, 0.25f, 0.3359375f };
+
+    *x = (float)(long)(column * (V9X_TARGET_PITCH / V9X_SEAMS_COLUMNS));
+    *y = (float)(long)(row * (V9X_TARGET_HEIGHT / V9X_SEAMS_ROWS));
+    if (column != 0ul && column != V9X_SEAMS_COLUMNS) {
+        *x += dx[(column + row) % 3ul];
+    }
+    if (row != 0ul && row != V9X_SEAMS_ROWS) {
+        *y += dy[column % 3ul];
+    }
+}
+
+static void v9x_seams_vertex(DWORD *out, DWORD column, DWORD row)
+{
+    float x;
+    float y;
+
+    v9x_seams_node(column, row, &x, &y);
+    v9x_tl_vertex(out, v9x_float_bits(x), v9x_float_bits(y), V9X_FLOAT_HALF,
+                  V9X_PIXEL_RED, 0ul, 0ul);
+}
+
+/* Each cell two triangles, the diagonal alternating, every edge between
+ * two cells or triangles drawn from the same two nodes. */
+static void v9x_seams_vertices(DWORD *v)
+{
+    DWORD column;
+    DWORD row;
+    DWORD at = 0ul;
+
+    for (row = 0ul; row < V9X_SEAMS_ROWS; ++row) {
+        for (column = 0ul; column < V9X_SEAMS_COLUMNS; ++column) {
+            if (((column + row) & 1ul) == 0ul) {
+                v9x_seams_vertex(v + at, column, row);
+                v9x_seams_vertex(v + at + 8ul, column + 1ul, row);
+                v9x_seams_vertex(v + at + 16ul, column, row + 1ul);
+                v9x_seams_vertex(v + at + 24ul, column + 1ul, row);
+                v9x_seams_vertex(v + at + 32ul, column + 1ul, row + 1ul);
+                v9x_seams_vertex(v + at + 40ul, column, row + 1ul);
+            } else {
+                v9x_seams_vertex(v + at, column, row);
+                v9x_seams_vertex(v + at + 8ul, column + 1ul, row + 1ul);
+                v9x_seams_vertex(v + at + 16ul, column, row + 1ul);
+                v9x_seams_vertex(v + at + 24ul, column, row);
+                v9x_seams_vertex(v + at + 32ul, column + 1ul, row);
+                v9x_seams_vertex(v + at + 40ul, column + 1ul, row + 1ul);
+            }
+            at += 6ul * V9X_TL_DWORDS;
+        }
+    }
+}
+
+static void v9x_tl_vertices(void)
+{
+    DWORD *v = v9x_vertices;
+    DWORD rect = 6ul * V9X_TL_DWORDS;
+    DWORD colour;
+
+    if (v9x_ztile) {
+        /* The plane z = (X + 64 Y) / 2048 at the four corners. */
+        DWORD z_tr = v9x_float_bits(64.0f / 2048.0f);
+        DWORD z_bl = v9x_float_bits(1024.0f / 2048.0f);
+        DWORD z_br = v9x_float_bits(1088.0f / 2048.0f);
+
+        v9x_tl_vertex(v + 0, 0ul, 0ul, 0ul, V9X_DEPTH_RED, 0ul, 0ul);
+        v9x_tl_vertex(v + 8, V9X_FLOAT_64, 0ul, z_tr, V9X_DEPTH_RED, 0ul, 0ul);
+        v9x_tl_vertex(v + 16, 0ul, V9X_FLOAT_16, z_bl, V9X_DEPTH_RED, 0ul,
+                      0ul);
+        v9x_tl_vertex(v + 24, V9X_FLOAT_64, 0ul, z_tr, V9X_DEPTH_RED, 0ul,
+                      0ul);
+        v9x_tl_vertex(v + 32, V9X_FLOAT_64, V9X_FLOAT_16, z_br, V9X_DEPTH_RED,
+                      0ul, 0ul);
+        v9x_tl_vertex(v + 40, 0ul, V9X_FLOAT_16, z_bl, V9X_DEPTH_RED, 0ul,
+                      0ul);
+        v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
+    if (v9x_depth) {
+        v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                    V9X_DEPTH_RED, V9X_DEPTH_RED);
+        v9x_tl_rect(v + rect, 0ul, 0ul, V9X_FLOAT_32, V9X_FLOAT_16,
+                    V9X_FLOAT_THREE_QUARTERS, V9X_DEPTH_GREEN,
+                    V9X_DEPTH_GREEN);
+        v9x_tl_rect(v + 2ul * rect, V9X_FLOAT_32, 0ul, V9X_FLOAT_64,
+                    V9X_FLOAT_16, V9X_FLOAT_QUARTER, V9X_DEPTH_BLUE,
+                    V9X_DEPTH_BLUE);
+        v9x_vertex_count = V9X_DEPTH_VERTICES;
+        return;
+    }
+    if (v9x_blend) {
+        v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                    V9X_BLEND_SOURCE, V9X_BLEND_SOURCE);
+        v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
+    if (v9x_seams) {
+        v9x_seams_vertices(v);
+        v9x_vertex_count = V9X_SEAMS_VERTICES;
+        return;
+    }
+    if (v9x_texture) {
+        colour = v9x_modulate ? V9X_MODULATE_COLOUR : V9X_WHITE;
+        v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                    colour, colour);
+        v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
+    v9x_tl_rect(v, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                V9X_GOURAUD_LEFT, V9X_GOURAUD_RIGHT);
+    v9x_vertex_count = V9X_GOURAUD_VERTICES;
+}
+
+/* Call 3's op list. lo/hi are the scratch window's GPU address. */
+static int v9x_build_run(DWORD lo, DWORD hi)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_solid_rect rect;
+    DWORD wptr_1;
+    DWORD wptr_2;
+    DWORD wptr_3;
+    DWORD rb_cntl;
+    DWORD index;
+    DWORD ring_first;
+    DWORD vs_first;
+    DWORD vs_count;
+    DWORD ps_first;
+    DWORD ps_count;
+    DWORD init_first;
+    DWORD init_count;
+    DWORD vertex_first;
+
+    /* The ring: the ring test; the full start stream and a scratch write
+     * behind it; the draw and its end-of-pipe fence. */
+    v9x_vi_pm4_init(&stream, v9x_ring, V9X_RING_BYTES / 4ul);
+    v9x_ring_scratch(&stream, V9X_SCRATCH_TEST);
+    v9x_vi_pm4_pad(&stream);
+    wptr_1 = stream.count;
+    v9x_cik_3d_start(&stream);
+    v9x_ring_scratch(&stream, V9X_SCRATCH_PREAMBLE);
+    v9x_vi_pm4_pad(&stream);
+    wptr_2 = stream.count;
+
+    for (index = 0ul; index < 4ul; ++index) {
+        rect.color[index] = v9x_colour[index];
+    }
+    rect.target_low = lo + V9X_TARGET;
+    rect.target_high = hi;
+    rect.pitch_pixels = V9X_TARGET_PITCH;
+    rect.height = V9X_TARGET_HEIGHT;
+    rect.format = V9X_VI_CB_FORMAT_8_8_8_8;
+    rect.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    rect.vs_low = lo + V9X_VS;
+    rect.ps_low = lo + V9X_PS;
+    rect.shader_high = hi;
+    rect.left = V9X_RECT_LEFT;
+    rect.top = V9X_RECT_TOP;
+    rect.right = V9X_RECT_RIGHT;
+    rect.bottom = V9X_RECT_BOTTOM;
+    rect.fence_low = lo + V9X_FENCE;
+    rect.fence_high = hi;
+    rect.fence_value = V9X_FENCE_VALUE;
+    rect.probe_vs_low = lo + V9X_PROBE;
+    rect.probe_ps_low = lo + V9X_PROBE_PS;
+    rect.probe_high = hi;
+    if (v9x_gouraud) {
+        struct v9x_vi_tl_draw draw;
+        unsigned char *bytes = (unsigned char *)&draw;
+
+        /* Zero first: a field this probe does not set keeps the builder's
+         * default meaning. */
+        for (index = 0ul; index < sizeof(draw); ++index) {
+            bytes[index] = 0u;
+        }
+        draw.target_low = rect.target_low;
+        draw.target_high = hi;
+        draw.pitch_pixels = V9X_TARGET_PITCH;
+        draw.height = V9X_TARGET_HEIGHT;
+        draw.format = V9X_VI_CB_FORMAT_8_8_8_8;
+        draw.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+        draw.vs_low = rect.vs_low;
+        draw.ps_low = rect.ps_low;
+        draw.shader_high = hi;
+        draw.vertex_low = lo + V9X_VERTICES;
+        draw.vertex_high = hi;
+        draw.vertex_count = v9x_vertex_count;
+        draw.fence_low = rect.fence_low;
+        draw.fence_high = hi;
+        draw.fence_value = V9X_FENCE_VALUE;
+        draw.depth_low = v9x_depth ? lo + V9X_DEPTH : 0ul;
+        draw.depth_high = hi;
+        draw.depth_func = V9X_VI_ZFUNC_LESS;
+        draw.depth_write = 1ul;
+        draw.depth_linear = v9x_zlinear ? 1ul : 0ul;
+        draw.texture_low = v9x_texture ? lo + V9X_TEXTURE : 0ul;
+        draw.texture_high = hi;
+        draw.texture_width = V9X_TARGET_PITCH;
+        draw.texture_height = V9X_TARGET_HEIGHT;
+        draw.texture_pitch = V9X_TARGET_PITCH;
+        draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+        draw.texture_bilinear = 0ul;
+        draw.d3d_pixel_centres = v9x_seams ? 1ul : 0ul;
+        if (v9x_mip) {
+            draw.texture_low = lo + V9X_MIP;
+            draw.texture_base_level = v9x_mip_level;
+            draw.texture_last_level = v9x_mip_level;
+            draw.texture_mip_filter = V9X_VI_MIP_FILTER_POINT;
+        }
+        draw.ps_vgprs = v9x_modulate ? V9X_VI_MODULATE_PS_VGPRS :
+                                       V9X_VI_TEXTURE_PS_VGPRS;
+        if (v9x_blend) {
+            draw.blend_control =
+                v9x_vi_3d_blend(V9X_VI_BLEND_SRC_ALPHA,
+                                V9X_VI_BLEND_ONE_MINUS_SRC_ALPHA);
+            draw.ps_vgprs = v9x_blend_specular ?
+                            V9X_VI_GOURAUD_PS_SPECULAR_VGPRS : 0ul;
+        }
+        if (v9x_vi_3d_tl_draw(&stream, &draw) != V9X_STATUS_OK) {
+            return 0;
+        }
+    } else if (v9x_vi_3d_solid_rect(&stream, &rect) != V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_vi_pm4_pad(&stream);
+    wptr_3 = stream.count;
+    if (stream.overflow != 0ul) {
+        return 0;
+    }
+
+    /* The ring and the shaders go behind the microcode in the data array. */
+    ring_first = v9x_data_append(v9x_ring, stream.count);
+    /* Each shader is built as GCN 3 and rewritten as GCN 2 before it goes
+     * into the data array; one the translation refuses stops the run. */
+    vs_count = v9x_gouraud ? v9x_vi_shader_tl_vs(v9x_shader) :
+                             v9x_vi_shader_probe_vs(v9x_shader);
+    if (v9x_cik_shader_from_vi(v9x_shader, vs_count, 0) != V9X_STATUS_OK) {
+        return 0;
+    }
+    vs_first = v9x_data_append(v9x_shader, vs_count);
+    if (v9x_modulate) {
+        ps_count = v9x_vi_shader_modulate_ps(v9x_shader);
+    } else if (v9x_blend) {
+        ps_count = v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, v9x_blend_specular,
+                                        v9x_shader);
+    } else if (v9x_texture) {
+        ps_count = v9x_vi_shader_texture_ps(v9x_shader);
+    } else if (v9x_gouraud) {
+        ps_count = v9x_vi_shader_gouraud_ps(v9x_shader);
+    } else {
+        ps_count = v9x_vi_shader_probe_ps(v9x_shader);
+    }
+    if (v9x_cik_shader_from_vi(v9x_shader, ps_count, 0) != V9X_STATUS_OK) {
+        return 0;
+    }
+    ps_first = v9x_data_append(v9x_shader, ps_count);
+    vertex_first = v9x_data_append(v9x_vertices,
+                                   v9x_vertex_count * V9X_TL_DWORDS);
+    if (v9x_data_dwords != vertex_first + v9x_vertex_count * V9X_TL_DWORDS) {
+        return 0;
+    }
+
+    /* gpu_init's list, three dwords an entry, as CKCP.VXD's table op reads
+     * it. */
+    init_count = v9x_cik_gpu_init_ops(v9x_init_ops, V9X_VI_GPU_INIT_OPS_MAX);
+    if (init_count == 0ul) {
+        return 0;
+    }
+    /* /zlinear: tile mode 7, which Linux leaves unwritten, as mode 8. */
+    if (v9x_zlinear) {
+        if (init_count >= V9X_VI_GPU_INIT_OPS_MAX) {
+            return 0;
+        }
+        v9x_init_ops[init_count].offset = V9X_VI_GB_TILE_MODE0 +
+                                          V9X_VI_TILE_DEPTH_LINEAR * 4ul;
+        v9x_init_ops[init_count].clear = 0xfffffffful;
+        v9x_init_ops[init_count].set = V9X_VI_TILE_MODE_LINEAR_ALIGNED;
+        ++init_count;
+    }
+    init_first = v9x_data_dwords;
+    for (index = 0ul; index < init_count; ++index) {
+        v9x_data_append(&v9x_init_ops[index].offset, 1ul);
+        v9x_data_append(&v9x_init_ops[index].clear, 1ul);
+        v9x_data_append(&v9x_init_ops[index].set, 1ul);
+    }
+    if (v9x_data_dwords != init_first + init_count * 3ul) {
+        return 0;
+    }
+
+    /* cp_gfx_resume's CP_RB0_CNTL for a 16 KiB ring. */
+    /* gfx_v7_0's form: RB_BUFSZ and RB_BLKSZ 9, as V9XCKCP ran. */
+    rb_cntl = V9X_RING_LOG2_QWORDS | (9ul << 8);
+
+    v9x_begin();
+    v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
+    v9x_op(V9X_OP_VRAM_FILL, 0ul, V9X_SCRATCH_DWORDS, 0ul);
+    v9x_op(V9X_OP_VRAM_DATA, V9X_RING, ring_first, stream.count);
+    v9x_op(V9X_OP_VRAM_DATA, V9X_VS, vs_first, vs_count);
+    v9x_op(V9X_OP_VRAM_DATA, V9X_PS, ps_first, ps_count);
+    v9x_op(V9X_OP_VRAM_DATA, V9X_VERTICES, vertex_first,
+           v9x_vertex_count * V9X_TL_DWORDS);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH, V9X_DEPTH_DWORDS, V9X_DEPTH_CLEAR);
+    v9x_op(V9X_OP_VRAM_PATTERN, V9X_TEXTURE, V9X_TEXTURE_DWORDS,
+           V9X_SEED_TEXTURE);
+    if (v9x_mip) {
+        v9x_op(V9X_OP_VRAM_PATTERN, V9X_MIP, V9X_MIP_DWORDS,
+               V9X_SEED_TEXTURE);
+    }
+    v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS,
+           v9x_blend ? V9X_BLEND_TARGET : V9X_GUARD_VALUE);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_PROBE, V9X_PROBE_DWORDS, V9X_GUARD_VALUE);
+    v9x_at_tile_mode8 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GB_TILE_MODE8, 0ul,
+                               0ul);
+    v9x_at_addr_config = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GB_ADDR_CONFIG, 0ul,
+                                0ul);
+    v9x_at_fifo_before = v9x_op(V9X_OP_MMIO_READ, V9X_VI_PA_SC_FIFO_SIZE,
+                                0ul, 0ul);
+    v9x_at_sh_mem_before = v9x_op(V9X_OP_MMIO_READ, V9X_VI_SH_MEM_CONFIG,
+                                  0ul, 0ul);
+
+    /* gfx_v8_0_hw_init's order: the golden registers and gpu_init before
+     * rlc_resume and cp_resume. None of it is put back after the run: it
+     * is the configuration Linux leaves the engine in, and the BIOS left
+     * none (the tile table read unprogrammed). */
+    v9x_at_init = v9x_op(V9X_OP_MMIO_TABLE, init_first, init_count, 0ul);
+    v9x_at_tile_mode8_written = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GB_TILE_MODE8,
+                                       0ul, 0ul);
+    v9x_at_addr_config_after = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GB_ADDR_CONFIG,
+                                      0ul, 0ul);
+    v9x_at_fifo_after = v9x_op(V9X_OP_MMIO_READ, V9X_VI_PA_SC_FIFO_SIZE,
+                               0ul, 0ul);
+    v9x_at_sh_mem_after = v9x_op(V9X_OP_MMIO_READ, V9X_VI_SH_MEM_CONFIG,
+                                 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_SCRATCH_REG0, V9X_SCRATCH_BEFORE, 0ul);
+
+    /* rlc_resume: rlc_stop, CG off, PG off, rlc_reset, the microcode,
+     * rlc_start. The SERDES waits are wait_for_rlc_serdes's, read through
+     * the GRBM_GFX_INDEX the BIOS left (broadcast; one SE, one SH). */
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_RLC_CNTL, V9X_CK_RLC_ENABLE, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_CP_INT_CNTL_RING0, V9X_CK_GUI_IDLE_INTS,
+           0ul);
+    v9x_at_cu_busy = v9x_op(V9X_OP_WAIT_MMIO, V9X_CK_RLC_SERDES_CU_BUSY,
+                            0xfffffffful, 0ul);
+    v9x_at_noncu_busy = v9x_op(V9X_OP_WAIT_MMIO, V9X_CK_RLC_SERDES_NONCU,
+                               V9X_CK_NONCU_BUSY, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_RLC_CGCG_CGLS_CTRL, V9X_CK_CGCG_CGLS, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_RLC_PG_CNTL, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_GRBM_SOFT_RESET, V9X_CK_SOFT_RESET_RLC,
+           0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_GRBM_SOFT_RESET, 0ul, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_load(V9X_IMAGE_RLC, V9X_CK_RLC_GPM_UCODE_ADDR,
+             V9X_CK_RLC_GPM_UCODE_DATA);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_RLC_CNTL, 0ul, V9X_CK_RLC_ENABLE);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_rlc_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CK_RLC_CNTL, 0ul, 0ul);
+    v9x_at_rlc_stat = v9x_op(V9X_OP_MMIO_READ, V9X_CK_RLC_STAT, 0ul, 0ul);
+    v9x_at_rlc_gpm = v9x_op(V9X_OP_MMIO_READ, V9X_CK_RLC_GPM_STAT, 0ul, 0ul);
+
+    /* cp_gfx_load_microcode: halt, then PFP, CE, ME. */
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_CP_ME_CNTL, 0ul, V9X_CK_CP_HALTS);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_me_cntl_halted = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_ME_CNTL,
+                                   0ul, 0ul);
+    v9x_load(V9X_IMAGE_PFP, V9X_CK_CP_PFP_UCODE_ADDR,
+             V9X_CK_CP_PFP_UCODE_DATA);
+    v9x_load(V9X_IMAGE_CE, V9X_CK_CP_CE_UCODE_ADDR, V9X_CK_CP_CE_UCODE_DATA);
+    v9x_load(V9X_IMAGE_ME, V9X_CK_CP_ME_RAM_WADDR, V9X_CK_CP_ME_RAM_DATA);
+
+    /* cp_gfx_resume's ring registers. The ring's 40-bit address >> 8: bits
+     * 39:32 land in RB0_BASE 31:24, and RB0_BASE_HI takes what is above,
+     * nothing. */
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB_WPTR_DELAY, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB_VMID, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_CNTL, rb_cntl, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_CNTL,
+           rb_cntl | V9X_CK_RB_RPTR_WR_ENA, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_WPTR, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_RPTR_ADDR, lo + V9X_WRITEBACK,
+           0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_RPTR_ADDR_HI, hi & 0xfful, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_CNTL, rb_cntl, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_BASE,
+           ((lo + V9X_RING) >> 8) | (hi << 24), 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_BASE_HI, 0ul, 0ul);
+    v9x_at_rb_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_RB0_CNTL, 0ul, 0ul);
+
+    /* cp_gfx_start's registers and the unhalt; the ring was written
+     * through BAR0, so HDP is flushed before the CP reads it. */
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_MAX_CONTEXT, V9X_CK_MAX_CONTEXT, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_ENDIAN_SWAP, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_DEVICE_ID, 1ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_HDP_MEM_FLUSH, 1ul, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_CP_ME_CNTL, V9X_CK_CP_HALTS, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_me_cntl_running = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_ME_CNTL,
+                                    0ul, 0ul);
+
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_WPTR, wptr_1, 0ul);
+    v9x_at_wait_1 = v9x_op(V9X_OP_WAIT_MMIO, V9X_CK_SCRATCH_REG0,
+                           0xfffffffful, V9X_SCRATCH_TEST);
+    v9x_at_rptr_1 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_RB0_RPTR, 0ul, 0ul);
+    v9x_at_stat_1 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_STAT, 0ul, 0ul);
+    v9x_at_grbm_1 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GRBM_STATUS, 0ul, 0ul);
+
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_WPTR, wptr_2, 0ul);
+    v9x_at_wait_2 = v9x_op(V9X_OP_WAIT_MMIO, V9X_CK_SCRATCH_REG0,
+                           0xfffffffful, V9X_SCRATCH_PREAMBLE);
+    v9x_at_rptr_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_RB0_RPTR, 0ul, 0ul);
+    v9x_at_stat_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_STAT, 0ul, 0ul);
+    v9x_at_grbm_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GRBM_STATUS, 0ul, 0ul);
+    v9x_at_scratch_2 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_SCRATCH_REG0, 0ul, 0ul);
+
+    /* The draw: done when the end-of-pipe event has written the fence. */
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_CP_RB0_WPTR, wptr_3, 0ul);
+    v9x_at_wait_3 = v9x_op(V9X_OP_WAIT_VRAM, V9X_FENCE, V9X_FENCE_VALUE,
+                           V9X_FENCE_WAIT_LIMIT);
+    v9x_at_rptr_3 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_RB0_RPTR, 0ul, 0ul);
+    v9x_at_stat_3 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_STAT, 0ul, 0ul);
+    v9x_at_grbm_3 = v9x_op(V9X_OP_MMIO_READ, V9X_CK_GRBM_STATUS, 0ul, 0ul);
+
+    /* Halt the CP and stop the RLC, then put back what call 1 read,
+     * CP_ME_CNTL (halted) last. */
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_CP_ME_CNTL, 0ul, V9X_CK_CP_HALTS);
+    v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_RMW, V9X_CK_RLC_CNTL, V9X_CK_RLC_ENABLE, 0ul);
+    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_WRITE, v9x_saved_offsets[index], v9x_saved[index],
+               0ul);
+    }
+    v9x_at_after_me_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CK_CP_ME_CNTL,
+                                  0ul, 0ul);
+    v9x_at_after_rlc_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_CK_RLC_CNTL,
+                                   0ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_HDP_MEM_FLUSH, 1ul, 0ul);
+    v9x_op(V9X_OP_MMIO_WRITE, V9X_CK_HDP_DEBUG0, 1ul, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_WRITEBACK, 1ul, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_FENCE, 1ul, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_TARGET, V9X_TARGET_DWORDS, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_PROBE, V9X_PROBE_DWORDS, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_DEPTH, V9X_DEPTH_DWORDS, 0ul);
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+
+    v9x_at_after_extra = v9x_request.count;
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_READ, v9x_extra_offsets[index], 0ul, 0ul);
+    }
+
+    v9x_number("Run", "Ops", v9x_request.count);
+    v9x_number("Run", "RingDwords", stream.count);
+    v9x_number("Run", "DataDwords", v9x_data_dwords);
+    v9x_key("Run", "Wptr1", wptr_1);
+    v9x_key("Run", "Wptr2", wptr_2);
+    v9x_key("Run", "Wptr3", wptr_3);
+    v9x_key("Run", "RbCntl", rb_cntl);
+    return 1;
+}
+
+/* The target, against the rectangle: every pixel inside one value, every
+ * pixel outside still the guard. The value inside is reported, not
+ * judged: which byte each channel lands in is what the run shows. */
+static void v9x_verify(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD inside_value;
+    DWORD inside_other;
+    DWORD outside_changed;
+    DWORD pixel;
+
+    inside_value = target[V9X_RECT_TOP * V9X_TARGET_PITCH + V9X_RECT_LEFT];
+    inside_other = 0ul;
+    outside_changed = 0ul;
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            if (x >= V9X_RECT_LEFT && x < V9X_RECT_RIGHT &&
+                y >= V9X_RECT_TOP && y < V9X_RECT_BOTTOM) {
+                if (pixel != inside_value) {
+                    ++inside_other;
+                }
+            } else if (pixel != V9X_GUARD_VALUE) {
+                ++outside_changed;
+            }
+        }
+    }
+    v9x_key("Result", "InsidePixel", inside_value);
+    v9x_number("Result", "InsideOther", inside_other);
+    v9x_number("Result", "OutsideChanged", outside_changed);
+    v9x_pass("Drew", inside_value != V9X_GUARD_VALUE && inside_other == 0ul &&
+                     outside_changed == 0ul);
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        char key[16];
+        char text[V9X_TARGET_PITCH + 1u];
+
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            text[x] = pixel == V9X_GUARD_VALUE ? '.' :
+                      (pixel == inside_value ? '#' : '?');
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        v9x_text("Map", key, text);
+    }
+}
+
+static int v9x_near(DWORD got, DWORD want)
+{
+    return (got > want ? got - want : want - got) <= V9X_GOURAUD_TOLERANCE;
+}
+
+/* The ramp: red round(255 (x + 0.5) / 64) at each pixel centre, green 80h,
+ * blue 40h, alpha FFh, in the D3DCOLOR's own bytes (blue the low one: the
+ * colour path keeps memory order). Within +-2 per channel. */
+static void v9x_verify_gouraud(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD red;
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            red = ((2ul * x + 1ul) * 255ul + V9X_TARGET_PITCH) /
+                  (2ul * V9X_TARGET_PITCH);
+            if (v9x_near((pixel >> 16) & 0xfful, red) &&
+                v9x_near((pixel >> 8) & 0xfful, 0x80ul) &&
+                v9x_near(pixel & 0xfful, 0x40ul) &&
+                v9x_near(pixel >> 24, 0xfful)) {
+                text[x] = '#';
+            } else {
+                text[x] = pixel == V9X_GUARD_VALUE ? '.' : '?';
+                if (bad++ == 0ul) {
+                    first_bad = y * V9X_TARGET_PITCH + x;
+                }
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    for (x = 0ul; x < V9X_TARGET_PITCH; x += 8ul) {
+        lstrcpyA(key, "Row0X");
+        v9x_decimal(key + 5, x);
+        v9x_key("Gouraud", key, target[x]);
+    }
+    v9x_key("Gouraud", "Row0X63", target[V9X_TARGET_PITCH - 1ul]);
+    v9x_number("Result", "GouraudBad", bad);
+    if (bad != 0ul) {
+        v9x_number("Result", "GouraudFirstBadIndex", first_bad);
+        v9x_key("Result", "GouraudFirstBad", target[first_bad]);
+    }
+    v9x_pass("Gouraud", bad == 0ul);
+}
+
+/*
+ * /ztile: each stored sample back to its pixel. A sample at pixel centre
+ * (x + 0.5, y + 0.5) holds (x + 0.5 + 64 y + 32) / 2048 of 65535, so
+ * Z16 x 2048 / 65535 - 32.5 rounds to x + 64 y. Tile 0's 64 samples in
+ * buffer order are reported as "xy" pairs; every buffer sample s is
+ * checked against tile s / 64 at (s / 64 % 8, s / 64 / 8) in 8x8 tiles,
+ * with tile 0's order inside it.
+ */
+static void v9x_verify_ztile(const DWORD *depth)
+{
+    DWORD sample;
+    DWORD value;
+    DWORD pixel;
+    DWORD tile;
+    DWORD within;
+    DWORD bad = 0ul;
+    DWORD order_x[64];
+    DWORD order_y[64];
+    char text[64u * 3u + 1u];
+
+    for (sample = 0ul; sample < V9X_DEPTH_DWORDS * 2ul; ++sample) {
+        value = (depth[sample / 2ul] >> ((sample & 1ul) * 16ul)) & 0xfffful;
+        /* Integers only: the probe has no float-to-int helper. The
+         * rounding is floor((Z x 4096 - 64 x 65535) / 131070). */
+        pixel = value * 4096ul < 64ul * 65535ul ? 0xfffffffful :
+                (value * 4096ul - 64ul * 65535ul) / 131070ul;
+        tile = sample / 64ul;
+        within = sample % 64ul;
+        if (tile == 0ul) {
+            order_x[within] = pixel % V9X_TARGET_PITCH;
+            order_y[within] = pixel / V9X_TARGET_PITCH;
+            text[within * 3ul] = (char)('0' + (order_x[within] & 7ul));
+            text[within * 3ul + 1ul] = (char)('0' + (order_y[within] & 7ul));
+            text[within * 3ul + 2ul] = ' ';
+            if (order_x[within] > 7ul || order_y[within] > 7ul) {
+                ++bad;
+            }
+            continue;
+        }
+        if (pixel == 0xfffffffful ||
+            pixel % V9X_TARGET_PITCH != (tile % 8ul) * 8ul + order_x[within] ||
+            pixel / V9X_TARGET_PITCH != (tile / 8ul) * 8ul + order_y[within]) {
+            ++bad;
+        }
+    }
+    text[64u * 3u - 1u] = '\0';
+    v9x_text("Depth", "Tile0Order", text);
+    v9x_key("Depth", "Sample0", depth[0]);
+    v9x_key("Depth", "Sample1", depth[1]);
+    v9x_number("Result", "ZTileBadSamples", bad);
+    v9x_pass("ZTileOrder", bad == 0ul);
+}
+
+/* /depth's two halves: red left of x 32, blue right of it, within +-2;
+ * then the Z16 buffer, a tile at a time, every sample 8000h in the left
+ * half's tiles and 4000h in the right's. The regions are whole tiles, so
+ * the order of samples inside a tile does not matter. */
+static void v9x_verify_depth(const DWORD *target, const DWORD *depth)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD want;
+    DWORD tile;
+    DWORD index;
+    DWORD sample;
+    DWORD colour_bad = 0ul;
+    DWORD depth_bad = 0ul;
+    DWORD tiles_across = V9X_TARGET_PITCH / 8ul;
+    DWORD tiles = V9X_DEPTH_DWORDS / V9X_Z16_TILE_DWORDS;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            want = x < V9X_TARGET_PITCH / 2ul ? V9X_PIXEL_RED : V9X_PIXEL_BLUE;
+            if (v9x_near(pixel & 0xfful, want & 0xfful) &&
+                v9x_near((pixel >> 8) & 0xfful, (want >> 8) & 0xfful) &&
+                v9x_near((pixel >> 16) & 0xfful, (want >> 16) & 0xfful) &&
+                v9x_near(pixel >> 24, want >> 24)) {
+                text[x] = x < V9X_TARGET_PITCH / 2ul ? 'R' : 'B';
+            } else {
+                text[x] = pixel == V9X_GUARD_VALUE ? '.' :
+                          (pixel == 0xff00ff00ul ? 'G' : '?');
+                ++colour_bad;
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+
+    /* /zlinear: rows of the target's pitch, two samples a dword, the left
+     * half's dwords first. */
+    for (tile = 0ul; v9x_zlinear && tile < V9X_TARGET_HEIGHT; ++tile) {
+        for (index = 0ul; index < V9X_TARGET_PITCH / 2ul; ++index) {
+            want = index < V9X_TARGET_PITCH / 4ul ? V9X_Z16_HALF
+                                                  : V9X_Z16_QUARTER;
+            sample = depth[tile * (V9X_TARGET_PITCH / 2ul) + index];
+            if ((sample & 0xfffful) != want || (sample >> 16) != want) {
+                ++depth_bad;
+            }
+        }
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, tile);
+        v9x_key("Depth", key, depth[tile * (V9X_TARGET_PITCH / 2ul)]);
+        lstrcpyA(key, "RowRight");
+        v9x_decimal(key + 8, tile);
+        v9x_key("Depth", key, depth[tile * (V9X_TARGET_PITCH / 2ul) +
+                                    V9X_TARGET_PITCH / 4ul]);
+    }
+    for (tile = 0ul; !v9x_zlinear && tile < tiles; ++tile) {
+        want = (tile % tiles_across) < tiles_across / 2ul ? V9X_Z16_HALF :
+                                                            V9X_Z16_QUARTER;
+        for (index = 0ul; index < V9X_Z16_TILE_DWORDS; ++index) {
+            sample = depth[tile * V9X_Z16_TILE_DWORDS + index];
+            if ((sample & 0xfffful) != want || (sample >> 16) != want) {
+                ++depth_bad;
+            }
+        }
+        lstrcpyA(key, "Tile");
+        v9x_decimal(key + 4, tile);
+        v9x_key("Depth", key, depth[tile * V9X_Z16_TILE_DWORDS]);
+    }
+    v9x_number("Result", "ColourBad", colour_bad);
+    v9x_number("Result", "DepthBadDwords", depth_bad);
+    v9x_pass("DepthColour", colour_bad == 0ul);
+    v9x_pass("DepthBuffer", depth_bad == 0ul);
+}
+
+/* round(a x b / 255) for bytes, the modulate the CB should store. */
+static DWORD v9x_scale(DWORD a, DWORD b)
+{
+    return (a * b + 127ul) / 255ul;
+}
+
+/* /texture: every pixel the texel under it, byte for byte (the colour path
+ * keeps memory order), exact. /modulate: each byte times the diffuse's
+ * byte in the same place, within +-2. */
+static void v9x_verify_texture(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD index;
+    DWORD texel;
+    DWORD pixel;
+    DWORD want[4];
+    DWORD got[4];
+    DWORD chan;
+    DWORD bad = 0ul;
+    DWORD exact = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    int ok;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            index = y * V9X_TARGET_PITCH + x;
+            texel = v9x_pattern(V9X_SEED_TEXTURE, index);
+            pixel = target[index];
+            for (chan = 0ul; chan < 4ul; ++chan) {
+                want[chan] = (texel >> (chan * 8ul)) & 0xfful;
+                if (v9x_modulate) {
+                    want[chan] = v9x_scale(want[chan],
+                                           (V9X_MODULATE_COLOUR >>
+                                            (chan * 8ul)) & 0xfful);
+                }
+            }
+            ok = 1;
+            for (chan = 0ul; chan < 4ul; ++chan) {
+                got[chan] = (pixel >> (chan * 8ul)) & 0xfful;
+                if (v9x_modulate ? !v9x_near(got[chan], want[chan]) :
+                                   got[chan] != want[chan]) {
+                    ok = 0;
+                }
+            }
+            if (got[0] == want[0] && got[1] == want[1] &&
+                got[2] == want[2] && got[3] == want[3]) {
+                ++exact;
+            }
+            text[x] = ok ? '#' : (pixel == V9X_GUARD_VALUE ? '.' : '?');
+            if (!ok && bad++ == 0ul) {
+                first_bad = index;
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    for (index = 0ul; index < 4ul; ++index) {
+        lstrcpyA(key, "Texel");
+        v9x_decimal(key + 5, index);
+        v9x_key("Texture", key, v9x_pattern(V9X_SEED_TEXTURE, index));
+        lstrcpyA(key, "Pixel");
+        v9x_decimal(key + 5, index);
+        v9x_key("Texture", key, target[index]);
+    }
+    v9x_number("Result", "TextureBad", bad);
+    v9x_number("Result", "TextureExact", exact);
+    if (bad != 0ul) {
+        v9x_number("Result", "TextureFirstBadIndex", first_bad);
+        v9x_key("Result", "TextureFirstBad", target[first_bad]);
+    }
+    v9x_pass(v9x_modulate ? "Modulate" : "Texture", bad == 0ul);
+}
+
+/* /seams: a pixel the grid left at the guard is a crack. The map shows
+ * '#' drawn, '.' a crack, '?' anything else. */
+static void v9x_verify_seams(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD cracks = 0ul;
+    DWORD other = 0ul;
+    DWORD first = 0xfffffffful;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            if (pixel == V9X_GUARD_VALUE) {
+                text[x] = '.';
+                if (cracks++ == 0ul) {
+                    first = y * V9X_TARGET_PITCH + x;
+                }
+            } else if (pixel != V9X_PIXEL_RED) {
+                text[x] = '?';
+                ++other;
+            } else {
+                text[x] = '#';
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    v9x_number("Result", "SeamCracks", cracks);
+    v9x_number("Result", "SeamOther", other);
+    if (cracks != 0ul) {
+        v9x_number("Result", "SeamFirstCrack", first);
+    }
+    v9x_pass("Seams", cracks == 0ul && other == 0ul);
+}
+
+/* The pattern's dword index of a value: the step is odd, so it has an
+ * inverse mod 2^32; Newton's iteration doubles the correct low bits from
+ * the three a * a = 1 (mod 8) gives. */
+static DWORD v9x_pattern_index(DWORD value)
+{
+    DWORD inverse = V9X_PATTERN_STEP;
+    DWORD round;
+
+    for (round = 0ul; round < 4ul; ++round) {
+        inverse *= 2ul - V9X_PATTERN_STEP * inverse;
+    }
+    return (value - V9X_SEED_TEXTURE) * inverse;
+}
+
+/* /mip:N: level N's origin from pixel (0, 0), its row pitch from the first
+ * pixel on texel row 1, then every pixel checked against origin + row x
+ * pitch + column at that level's size. */
+static void v9x_verify_mip(const DWORD *target)
+{
+    DWORD width = V9X_TARGET_PITCH >> v9x_mip_level;
+    DWORD height = V9X_TARGET_HEIGHT >> v9x_mip_level;
+    DWORD origin;
+    DWORD pitch = 0ul;
+    DWORD x;
+    DWORD y;
+    DWORD want;
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+
+    if (width == 0ul) {
+        width = 1ul;
+    }
+    if (height == 0ul) {
+        height = 1ul;
+    }
+    origin = v9x_pattern_index(target[0]);
+    v9x_number("Mip", "Level", v9x_mip_level);
+    v9x_number("Mip", "Width", width);
+    v9x_number("Mip", "Height", height);
+    v9x_key("Mip", "Pixel0", target[0]);
+    v9x_number("Mip", "OriginBytes", origin * 4ul);
+    if (height > 1ul) {
+        pitch = v9x_pattern_index(target[(V9X_TARGET_HEIGHT / height) *
+                                         V9X_TARGET_PITCH]) - origin;
+        v9x_number("Mip", "RowPitchBytes", pitch * 4ul);
+    }
+    if (width > 1ul) {
+        v9x_number("Mip", "Column1",
+                   v9x_pattern_index(target[V9X_TARGET_PITCH / width]) -
+                   origin);
+    }
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            want = origin + (y * height / V9X_TARGET_HEIGHT) * pitch +
+                   x * width / V9X_TARGET_PITCH;
+            if (origin >= V9X_MIP_DWORDS ||
+                v9x_pattern_index(target[y * V9X_TARGET_PITCH + x]) != want) {
+                if (bad++ == 0ul) {
+                    first_bad = y * V9X_TARGET_PITCH + x;
+                }
+            }
+        }
+    }
+    v9x_number("Result", "MipBad", bad);
+    if (bad != 0ul) {
+        v9x_number("Result", "MipFirstBadIndex", first_bad);
+        v9x_key("Result", "MipFirstBad", target[first_bad]);
+    }
+    v9x_pass("Mip", bad == 0ul);
+}
+
+/* /blend: every pixel alike, the first eight of the first two rows shown,
+ * and how many differ from pixel 0. */
+static void v9x_verify_blend(const DWORD *target)
+{
+    DWORD index;
+    DWORD differ = 0ul;
+    char key[16];
+
+    for (index = 0ul; index < V9X_TARGET_DWORDS; ++index) {
+        if (target[index] != target[0]) {
+            ++differ;
+        }
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        lstrcpyA(key, "Row0X");
+        v9x_decimal(key + 5, index);
+        v9x_key("Blend", key, target[index]);
+        lstrcpyA(key, "Row1X");
+        v9x_decimal(key + 5, index);
+        v9x_key("Blend", key, target[V9X_TARGET_PITCH + index]);
+    }
+    v9x_number("Result", "BlendDiffer", differ);
+    v9x_key("Result", "BlendPixel", target[0]);
+    v9x_pass("Blend", differ == 0ul &&
+                      v9x_near((target[0] >> 16) & 0xfful, 0x80ul) &&
+                      v9x_near((target[0] >> 8) & 0xfful, 0x7ful) &&
+                      v9x_near(target[0] & 0xfful, 0ul));
+}
+
+static int v9x_switch_given(const char *switch_text)
+{
+    const char *line;
+    int length;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            return 1;
+        }
+        ++line;
+    }
+    return 0;
+}
+
+/* The digit after a switch such as /mip:, or 0xFFFFFFFF without one. */
+static DWORD v9x_switch_digit(const char *switch_text)
+{
+    const char *line;
+    int length;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            if (line[length] >= '0' && line[length] <= '9') {
+                return (DWORD)(line[length] - '0');
+            }
+            return 0xfffffffful;
+        }
+        ++line;
+    }
+    return 0xfffffffful;
+}
+
+static void v9x_finish(const char *result, UINT code)
+{
+    v9x_text("Report", "Result", result);
+    WritePrivateProfileStringA(0, 0, 0, V9X_CKCP_PATH);
+    ExitProcess(code);
+}
+
+void __stdcall V9xMullins3dEntry(void)
+{
+    HANDLE device;
+    DWORD index;
+    DWORD first_extra;
+    DWORD fb;
+    DWORD lo;
+    DWORD hi;
+    const DWORD *r;
+    const DWORD *probe;
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    DeleteFileA(V9X_CKCP_PATH);
+    v9x_text("Report", "Tool", "V9XCK3D");
+    v9x_text("Report", "Build", V9X_BUILD_ID);
+    v9x_zlinear = v9x_switch_given("/zlinear");
+    v9x_ztile = v9x_switch_given("/ztile");
+    v9x_depth = v9x_zlinear || v9x_ztile || v9x_switch_given("/depth");
+    v9x_blend_specular = v9x_switch_given("/blendspec");
+    v9x_blend = v9x_blend_specular || v9x_switch_given("/blend");
+    v9x_modulate = v9x_switch_given("/modulate");
+    v9x_mip_level = v9x_switch_digit("/mip:");
+    v9x_mip = v9x_mip_level < V9X_MIP_LEVELS;
+    v9x_texture = v9x_mip || v9x_modulate || v9x_switch_given("/texture");
+    v9x_seams = v9x_switch_given("/seams");
+    v9x_gouraud = v9x_depth || v9x_texture || v9x_blend || v9x_seams ||
+                  v9x_switch_given("/gouraud");
+    if (v9x_seams) {
+        v9x_text("Report", "Draw", "seams");
+    } else if (v9x_blend) {
+        v9x_text("Report", "Draw", v9x_blend_specular ? "blendspec" : "blend");
+    } else if (v9x_mip) {
+        v9x_text("Report", "Draw", "mip");
+    } else if (v9x_modulate) {
+        v9x_text("Report", "Draw", "modulate");
+    } else if (v9x_texture) {
+        v9x_text("Report", "Draw", "texture");
+    } else {
+        v9x_text("Report", "Draw", v9x_ztile ? "ztile" :
+                                   v9x_zlinear ? "zlinear" :
+                                   v9x_depth ? "depth" :
+                                   (v9x_gouraud ? "gouraud" : "rectangle"));
+    }
+    v9x_tl_vertices();
+
+    v9x_data_dwords = 0ul;
+    for (index = 0ul; index < V9X_IMAGE_COUNT; ++index) {
+        if (!v9x_load_image(&v9x_images[index])) {
+            v9x_finish("NO-UCODE", 6u);
+        }
+    }
+
+    device = CreateFileA(V9X_CKCP_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        v9x_key("Report", "LoadError", GetLastError());
+        v9x_finish("VXD-LOAD-FAILED", 1u);
+    }
+
+    /* Call 1: read-only. */
+    v9x_begin();
+    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_READ, v9x_saved_offsets[index], 0ul, 0ul);
+    }
+    first_extra = v9x_request.count;
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_op(V9X_OP_MMIO_READ, v9x_extra_offsets[index], 0ul, 0ul);
+    }
+    if (!v9x_dioc(device, 0)) {
+        CloseHandle(device);
+        v9x_finish("REFUSED", 2u);
+    }
+    v9x_key("Report", "Id", v9x_result.id);
+    v9x_key("Report", "Bar0", v9x_result.bar0);
+    v9x_key("Report", "Bar5", v9x_result.bar5);
+    v9x_number("Report", "MemoryMiB", v9x_result.memsize);
+    r = v9x_result.op_results;
+    for (index = 0ul; index < V9X_SAVED_COUNT; ++index) {
+        v9x_saved[index] = r[index];
+        v9x_key("Before", v9x_saved_names[index], r[index]);
+    }
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_key("Before", v9x_extra_names[index], r[first_extra + index]);
+    }
+
+    if ((v9x_saved[V9X_SAVED_ME_CNTL] & V9X_CK_CP_HALTS) != V9X_CK_CP_HALTS ||
+        (v9x_saved[V9X_SAVED_RLC_CNTL] & V9X_CK_RLC_ENABLE) != 0ul ||
+        r[first_extra + V9X_EXTRA_RESET] != 0ul) {
+        CloseHandle(device);
+        v9x_finish("ENGINE-NOT-AS-READ", 3u);
+    }
+    /* FB_LOCATION's start: bits 39:32 its high byte, 31:24 its low byte;
+     * a low byte the window offset would carry out of is refused. */
+    fb = r[first_extra + V9X_EXTRA_FB] & V9X_CK_FB_START_MASK;
+    if ((fb & 0xfful) > 0xf0ul) {
+        CloseHandle(device);
+        v9x_finish("FB-START-UNSUPPORTED", 4u);
+    }
+    lo = ((fb & 0xfful) << 24) + V9X_SCRATCH_GPU_OFFSET;
+    hi = fb >> 8;
+    v9x_key("Run", "ScratchGpuHigh", hi);
+    v9x_key("Run", "ScratchGpuLow", lo);
+
+    if (v9x_switch_given("/readonly")) {
+        CloseHandle(device);
+        v9x_finish("READONLY", 0u);
+    }
+
+    /* Call 2: the CPU reaches the window through BAR0. */
+    v9x_begin();
+    v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
+    v9x_op(V9X_OP_VRAM_PATTERN, V9X_CANARY, V9X_CANARY_DWORDS,
+           V9X_SEED_CANARY);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_CANARY, V9X_CANARY_DWORDS, 0ul);
+    v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
+    if (!v9x_dioc(device, 0)) {
+        CloseHandle(device);
+        v9x_finish("CANARY-REFUSED", 5u);
+    }
+    for (index = 0ul; index < V9X_CANARY_DWORDS; ++index) {
+        if (v9x_result.block[index] != v9x_pattern(V9X_SEED_CANARY, index)) {
+            v9x_key("Report", "CanaryGot", v9x_result.block[index]);
+            CloseHandle(device);
+            v9x_finish("SCRATCH-NOT-REACHED", 7u);
+        }
+    }
+
+    /* Call 3: the run. */
+    if (!v9x_build_run(lo, hi)) {
+        CloseHandle(device);
+        v9x_finish("STREAM-BUILD-FAILED", 8u);
+    }
+    if (!v9x_dioc(device, 1)) {
+        CloseHandle(device);
+        v9x_number("Report", "Executed", v9x_result.executed);
+        v9x_finish("RUN-REFUSED", 5u);
+    }
+    CloseHandle(device);
+    r = v9x_result.op_results;
+    v9x_number("During", "UcodeDwordsWritten", v9x_result.ucode_written);
+    v9x_key("During", "SerdesCuWait", r[v9x_at_cu_busy]);
+    v9x_key("During", "SerdesNonCuWait", r[v9x_at_noncu_busy]);
+    v9x_key("During", "RlcCntlStarted", r[v9x_at_rlc_cntl]);
+    v9x_key("During", "RlcStat", r[v9x_at_rlc_stat]);
+    v9x_key("During", "RlcGpmStat", r[v9x_at_rlc_gpm]);
+    v9x_key("During", "MeCntlHalted", r[v9x_at_me_cntl_halted]);
+    v9x_key("During", "RbCntl", r[v9x_at_rb_cntl]);
+    v9x_key("During", "MeCntlRunning", r[v9x_at_me_cntl_running]);
+    v9x_key("During", "Wait1", r[v9x_at_wait_1]);
+    v9x_key("During", "Rptr1", r[v9x_at_rptr_1]);
+    v9x_key("During", "CpStat1", r[v9x_at_stat_1]);
+    v9x_key("During", "GrbmStatus1", r[v9x_at_grbm_1]);
+    v9x_key("During", "Wait2", r[v9x_at_wait_2]);
+    v9x_key("During", "Rptr2", r[v9x_at_rptr_2]);
+    v9x_key("During", "CpStat2", r[v9x_at_stat_2]);
+    v9x_key("During", "GrbmStatus2", r[v9x_at_grbm_2]);
+    v9x_key("During", "Scratch2", r[v9x_at_scratch_2]);
+    v9x_key("After", "CP_ME_CNTL", r[v9x_at_after_me_cntl]);
+    v9x_key("After", "RLC_CNTL", r[v9x_at_after_rlc_cntl]);
+    for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
+        v9x_key("After", v9x_extra_names[index],
+                r[v9x_at_after_extra + index]);
+    }
+    v9x_key("Result", "WritebackRptr", v9x_result.block[0]);
+    v9x_pass("RingTest", r[v9x_at_wait_1] != V9X_CKCP_TIMEOUT);
+    v9x_pass("Preamble", r[v9x_at_wait_2] != V9X_CKCP_TIMEOUT);
+    v9x_key("During", "GbTileMode8", r[v9x_at_tile_mode8]);
+    v9x_key("During", "GbTileMode8Written", r[v9x_at_tile_mode8_written]);
+    v9x_key("During", "GbAddrConfig", r[v9x_at_addr_config]);
+    v9x_number("During", "InitEntries", r[v9x_at_init]);
+    v9x_key("During", "GbAddrConfigWritten", r[v9x_at_addr_config_after]);
+    v9x_key("During", "PaScFifoSize", r[v9x_at_fifo_before]);
+    v9x_key("During", "PaScFifoSizeWritten", r[v9x_at_fifo_after]);
+    v9x_key("During", "ShMemConfig", r[v9x_at_sh_mem_before]);
+    v9x_key("During", "ShMemConfigWritten", r[v9x_at_sh_mem_after]);
+    v9x_key("During", "Wait3", r[v9x_at_wait_3]);
+    v9x_key("During", "Rptr3", r[v9x_at_rptr_3]);
+    v9x_key("During", "CpStat3", r[v9x_at_stat_3]);
+    v9x_key("During", "GrbmStatus3", r[v9x_at_grbm_3]);
+    v9x_key("Result", "Fence", v9x_result.block[1]);
+    v9x_pass("DrawFence", r[v9x_at_wait_3] != V9X_CKCP_TIMEOUT);
+    /* The markers: the guard where a stage never stored. Vertex n's dword
+     * reads n if a VS invocation had VertexID n. */
+    probe = v9x_result.block + 2ul + V9X_TARGET_DWORDS;
+    for (index = 0ul; index < V9X_PROBE_DWORDS; ++index) {
+        char key[16];
+
+        lstrcpyA(key, "Probe");
+        v9x_decimal(key + 5, index);
+        v9x_key("Result", key, probe[index]);
+    }
+    v9x_pass("VsRan", probe[V9X_PROBE_AT_VS] != V9X_GUARD_VALUE);
+    v9x_pass("VertexIds", probe[V9X_PROBE_AT_VERTEX] == 0ul &&
+                          probe[V9X_PROBE_AT_VERTEX + 1u] == 1ul &&
+                          probe[V9X_PROBE_AT_VERTEX + 2u] == 2ul);
+    /* The RECTLIST's corners: (x1, y1), (x2, y1), (x1, y2). */
+    v9x_pass("Positions",
+             probe[V9X_PROBE_AT_X] == 0x41000000ul &&
+             probe[V9X_PROBE_AT_X + 1u] == 0x42200000ul &&
+             probe[V9X_PROBE_AT_X + 2u] == 0x41000000ul &&
+             probe[V9X_PROBE_AT_Y] == 0x40800000ul &&
+             probe[V9X_PROBE_AT_Y + 1u] == 0x40800000ul &&
+             probe[V9X_PROBE_AT_Y + 2u] == 0x41400000ul);
+    v9x_pass("PsRan", probe[V9X_PROBE_AT_PS] != V9X_GUARD_VALUE);
+    if (v9x_seams) {
+        v9x_verify_seams(v9x_result.block + 2);
+    } else if (v9x_blend) {
+        v9x_verify_blend(v9x_result.block + 2);
+    } else if (v9x_mip) {
+        v9x_verify_mip(v9x_result.block + 2);
+    } else if (v9x_texture) {
+        v9x_verify_texture(v9x_result.block + 2);
+    } else if (v9x_ztile) {
+        v9x_verify_ztile(v9x_result.block + 2ul + V9X_TARGET_DWORDS +
+                         V9X_PROBE_DWORDS);
+    } else if (v9x_depth) {
+        v9x_verify_depth(v9x_result.block + 2,
+                         v9x_result.block + 2ul + V9X_TARGET_DWORDS +
+                         V9X_PROBE_DWORDS);
+    } else if (v9x_gouraud) {
+        v9x_verify_gouraud(v9x_result.block + 2);
+    } else {
+        v9x_verify(v9x_result.block + 2);
+    }
+    v9x_finish("COMPLETE", 0u);
+}

@@ -85,6 +85,15 @@ function Get-V9xSequence([string]$Name) {
         # is left out rather than guessed at. Any other entry past the BAR
         # stops the script.
         $offset = [Convert]::ToUInt32($row.Groups[1].Value, 16) * 4
+        # kalindi_mgcg_cgcg_init's Eh/Fh and 88h/89h pairs are
+        # PCIE_INDEX/PCIE_DATA and SMC_IND_INDEX_4/SMC_IND_DATA_4: clock
+        # gating set through the PCIe and SMU index ports, outside the
+        # graphics block. Not written: nothing here needs clock gating, and
+        # no probe writes those spaces.
+        if ($Name -eq 'kalindi_mgcg_cgcg_init' -and
+            @('e', 'f', '88', '89') -contains $row.Groups[1].Value) {
+            continue
+        }
         if ($offset -ge 0x40000) {
             if ($Name -eq 'godavari_golden_registers' -and $row.Groups[1].Value -eq '260c0') {
                 continue
