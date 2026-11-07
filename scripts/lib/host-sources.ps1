@@ -140,6 +140,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\vi\vi_sdma_microcode.c',
         # Mullins SDMA microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\cik\cik_sdma_microcode.c',
+        # Mullins: GCN 3 shader words rewritten as GCN 2, no I/O.
+        'src\chipsets\ati\cik\cik_shader.c',
         # Carrizo GCN 3 shader words and the bring-up shaders, no I/O.
         'src\chipsets\ati\vi\vi_shader.c',
         # Carrizo PM4 streams: CP start with the clear state, a solid draw.
@@ -371,6 +373,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_cm_shader.c',
         'tests\host\test_cm_3d.c',
         'tests\host\test_vi_sdma.c',
+        'tests\host\test_cik_shader.c',
         'tests\host\test_vi_3d.c',
         'tests\host\test_main.c'
     )
