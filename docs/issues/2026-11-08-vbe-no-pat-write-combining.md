@@ -1,8 +1,10 @@
 # Feature gap: the VBE family has no PAT route to write-combining
 
-Date: 2026-11-08. Status: implemented, unreleased; measured on the
-i5-4570 ([record](../decisions/2026-11-08-vbe-pat-write-combining.md)),
-field machines not yet run. Raised by a field report
+Date: 2026-11-08. Status: **closed 2026-11-09.** Released in 0.43.0;
+measured on the i5-4570
+([record](../decisions/2026-11-08-vbe-pat-write-combining.md)) and on two
+field machines on 0.44.0 (below). AMD CPUs still unmeasured. Raised by a
+field report
 ([GitHub issue 15](https://github.com/michaeldale/velocity9x/issues/15),
 also filed as
 [issue 25](https://github.com/michaeldale/velocity9x/issues/25)).
@@ -111,3 +113,34 @@ E0000000-FFFFFFFF).
 
 - Whether PAT behaves the same on AMD CPUs and on the other chipsets
   `vbe` runs on. Only the i5-4570 has measured it.
+
+## Field reports on 0.44.0 (2026-11-08/09)
+
+Both machines updated through the settings page and sent `V9XBOOT.INI`.
+
+| | GTX 970 `10DE:13C2` (issue 25) | FirePro W9000 (issue 15) |
+|---|---|---|
+| CPU | Intel (Sandy Bridge, per issue 17) | Xeon E5 v4 |
+| `Mtrr=` reason | `r=11`, frame buffer `EF000000` | `r=7`, frame buffer `E0000000` |
+| `MtrrWrite=` | `refused` | `refused` |
+| `PatWrite=` | `ok pages=00001000 hi=00070101` | `ok pages=00001000 hi=00070101` |
+| Desktop | 1600x1200x32, intact | 1920x1080x32, intact |
+
+The W9000 is the first `r=7` machine to run the route the PAT plan was
+widened for. Neither reporter ran dispbench, so the gain there is the
+reporters' account, not a measurement: on the W9000 scrolling down
+"very responsive", scrolling up still slow, DirectDraw quicker; on the
+GTX 970 BltTest faster but "real impact on graphics performance is zero",
+ReverseBlt still slow. Both are what write-combining predicts: writes
+fast, reads of video memory unchanged. The read side is planned in
+[`../plans/vbe-shadow-framebuffer.md`](../plans/vbe-shadow-framebuffer.md).
+
+Also in the GTX 970's `V9XGL.LOG`, not part of this record: GLQuake
+fullscreen at 1600x1200x32 failed to create its surface (`8876017C`,
+out of video memory; the BIOS reports 16 MiB), and the windowed 800x600
+run on the software path spent `present-ms=5895` on 4 swaps. That present
+time is about 1000 times other soft-GL logs and is not explained.
+
+Still not known: AMD CPUs. Closed because the three "Done when" points
+are met and two field machines confirm the route; an AMD result goes here
+when one arrives.

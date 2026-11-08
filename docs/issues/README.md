@@ -4,8 +4,8 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-09 The ati family's gamma hook writes Mach64 DAC offsets (04C0h-04C4h) into the register window of every row with an engine descriptor; on Evergreen the gamma table is DC_LUT at 69E0h, so ramps are accepted and change nothing (Rage 128, RS690, Carrizo, Mullins not checked); found by reading, not measured](2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)
 - [2026-11-08 Gen4: colour-keyed draws with depth writes are refused (the GM965 alpha-test+Z hang guard) and the Direct3D path has no fallback, so they are dropped; Forsaken's world geometry vanishes on the GM45 (M-6B21TJ, 0.40.0; reason 7, 140k-166k refusals per title run); fixed in source by a depth pre-pass and an EQUAL keyed colour pass, measured on the GM45 menu with 0 refusals; gameplay and the GM965 not run](2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)
-- [2026-11-08 Feature gap: the VBE family write-combines only through an MTRR; no PAT fallback when the BIOS's ranges refuse it (`MtrrWrite=refused` on a FirePro W9000, Xeon E5 v4, GitHub issue 15); the HD 4600's PAT route and the shared policy exist. Implemented, unreleased: the i5-4570 on vbe goes 66 to 11,357 MB/s](2026-11-08-vbe-no-pat-write-combining.md)
 - [2026-11-07 The settings page may report a removed card's PCI revision: it takes the first Enum\PCI key for the id (field report, two 5333:8811 cards); found by reading, not reproduced](2026-11-07-settings-page-revision-from-stale-enum-key.md)
 - [2026-11-06 Feature gap: Intel video BIOSes lack the panel's native mode (netbook 1024x600, GM965 1280x800, GM45 1920x1080); no BIOS mode-table patch exists](2026-11-06-intel-vbios-mode-table-lacks-panel-modes.md)
 - [2026-11-06 Feature gap: DirectDraw offers no YUV surfaces (YUY2, UYVY, YV12) and no overlay, emulated or hardware](2026-11-06-no-yuv-surfaces-or-overlay.md)
@@ -100,6 +100,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-11-08 Feature gap: the VBE family write-combines only through an MTRR; no PAT fallback when the BIOS's ranges refuse it (`MtrrWrite=refused` on a FirePro W9000, Xeon E5 v4, GitHub issue 15); the HD 4600's PAT route and the shared policy exist. Released in 0.43.0: the i5-4570 on vbe goes 66 to 11,357 MB/s; PatWrite=ok on two field machines (GTX 970 r=11, W9000 r=7); AMD CPUs unmeasured](2026-11-08-vbe-no-pat-write-combining.md)
 - [2026-11-05 M-GB8KRE (RS690): Direct3D colour-cache lines landed in physical RAM at 0600xxxxh (V9XD32 T15) when a 3D draw started during a 2D fill; fixed by a CPU idle poll after 2D work (42cfea26, f6ed13f1, merged in 815741e0), T15 clean since; why that physical window is not known](2026-11-05-rs690-t15-heap-words-zeroed-once.md)
 - [2026-11-05 HD 4000 mobile (M-ZJQ2DX): 3DMark 2000's Game 1 hard-locked with two texture stages per pass; Ivy Bridge now draws one stage per pass (efef10e0) and the run completes (boot 13); merged in 5d95df34; the stage pairing that stops Gen7 is not found](2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)
 - [2026-10-25 A8U4I5: V9XD32 T15's bad words were bit 23 of RAM at 15C0h modulo 32 KiB in one physical window, under ATI's driver too; not the driver; gone since the stick was moved to another slot (boot 627), cap removed](2026-10-25-rage128-t15-sentinel-corruption.md)

@@ -385,6 +385,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 Carrizo runs Quake 3 through the OpenGL ICD in hardware, once its Z16 rows were whole 64 bytes](2026-10-29-carrizo-opengl-quake3.md)
 - [2026-10-29 Cedar's Z16 rows on 32 bytes: a 360-pixel GL window lost every clear and draw](2026-10-29-cedar-z16-row-align.md)
 - [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
+- [2026-11-07 The HD 5570 (Redwood) row: built from a survey; first run on the reporter's card (0.40.0): claimed, Direct3D draws, V9XDDP fails only Caicos's five; OpenGL and many game reports unexplained](2026-11-07-redwood-row-unmeasured.md)
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)
 - [2026-11-01 0.34.0 release checks: the HD 4600, the GMA 950, the HD 5770 and the HD 7470](2026-11-01-0.34.0-release-checks.md)
 - [2026-11-04 0.35.0 release checks: the HD 4600, the GMA 950, the HD 7660D, the HD 7470 and the RIVA 128ZX](2026-11-04-0.35.0-release-checks.md)
