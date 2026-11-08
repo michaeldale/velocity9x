@@ -10,8 +10,7 @@ also filed as
 On a FirePro W9000 in an X99 board (Xeon E5 v4), the 0.39.0 `vbe`
 package booted with `MtrrWrite=refused` in `V9XBOOT.INI`, so the screen
 stayed uncached. The reporter says the desktop still feels responsive at
-1920x1080x32. Their `Mtrr=` lines were asked for on 2026-11-08, so the
-refusal reason (`r=`) is not known yet.
+1920x1080x32. Their `Mtrr=` lines came the same day: `r=7`, see below.
 
 ## Why
 
@@ -56,9 +55,39 @@ cannot.
 
 The i5-4570 (`r=11`) can test the `vbe` package for the first point.
 
+## The W9000's refusal reason (reply of 2026-11-08 02:08 UTC)
+
+    Mtrr=cpu=000f cap=00002d0a def=00000c06 n=8 r=7 s=0 b=00000000 z=00000000
+    Mtrr0=80000000 80000800
+    Mtrr1=60000000 e0000800
+    Mtrr2=00000000 00000800 hi
+    Mtrr3=5f000000 ff000800
+    Mtrr4=e0000004 f0000800
+    Mtrr5..7 unused
+    MtrrWrite=refused
+
+`r=7` is `V9X_MTRR_DEFAULT_NOT_UC`: `def=c06` enables the MTRRs with a
+default type of WB (6). The BIOS describes memory as "everything is WB
+unless a range says otherwise" and carves out the holes with UC pairs:
+2 GiB at 8000_0000 (pair 0), 512 MiB at 6000_0000 (pair 1), 16 MiB at
+5F00_0000 (pair 3), and a WT pair over E000_0000-EFFF_FFFF (pair 4),
+which pair 0's UC overrides. The frame buffer address was not in the
+reply, but a PCI BAR on this board sits in the 2-4 GiB hole, so the
+frame buffer is almost certainly inside pair 0's UC range. Three pairs
+are free, yet the plan refuses before it reaches the overlap test,
+because the default-type test comes first.
+
+So the W9000 is the same shape as the HD 4600 (an explicit UC range over
+the window), reported under a different reason. **`v9x_pat_plan_wc` as
+written would not act on it**: it only accepts 11 and 12. By the SDM's
+effective-type table a PAT WC page is WC whatever the MTRR type, so a
+`vbe` PAT route should also accept 7. Whether to add 7 to the PAT plan
+or to reorder the MTRR plan so an explicit UC overlap reports 11 first
+is a design choice still open; either needs a host test first.
+
 ## Not known
 
 - Whether PAT behaves the same on AMD CPUs and on the other chipsets
   `vbe` runs on. Only the i5-4570 has measured it.
-- The W9000 machine's refusal reason. If it is not 11 or 12, PAT does not
-  apply to it.
+- The W9000's frame buffer base (the `Lfb`/aperture line of its
+  `V9XBOOT.INI`), which would confirm it lies in pair 0's range.

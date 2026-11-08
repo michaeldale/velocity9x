@@ -28,6 +28,9 @@
  *     family's V9xFamily value; zero or more than one marked instance is a
  *     recorded no-op, and so is a marked instance no hardware devnode under
  *     HKLM\Enum currently points at;
+ *   - with no marked instance at all, the target is the one unmarked
+ *     instance a present device uses whose DEFAULT\drv is this driver,
+ *     and none or several of those is a recorded no-op;
  *   - only keys stamped V9xDynamic=1 are ever deleted, and only when a
  *     complete current inventory does not publish their geometry. INF
  *     baseline keys, MODES\4, and anything unstamped are never touched;
@@ -354,9 +357,98 @@ static BOOL v9x_instance_is_live(const char *instance)
 }
 
 /*
+ * No instance carries the marker, yet this driver is running: Windows can
+ * reinstall a removed card from its cached copy of an older Velocity9x
+ * INF that has since been overwritten in INF\OTHER (every package lands
+ * there under one name), and that section writes no V9xFamily. Reproduced
+ * on the BX-Voodoo3 guest, 2026-11-08
+ * (docs\decisions\2026-11-08-mode-sync-after-device-manager-reinstall.md).
+ *
+ * Take the one unmarked instance a present device uses whose DEFAULT\drv
+ * is v9xdisp.drv. A key marked for another family is not taken: that is a
+ * family the updater may still act on. The key is not stamped either:
+ * its InfSection and MatchingDeviceId came from the stale section, and a
+ * marker would hand the updater an install whose model the new INF does
+ * not list. The fallback simply repeats each boot.
+ */
+static BOOL v9x_find_unmarked_live_instance(char *instance,
+                                            DWORD instance_size)
+{
+    HKEY display;
+    DWORD index = 0ul;
+    WORD live = 0u;
+    char name[16];
+
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, V9X_DISPLAY_CLASS_KEY, 0,
+                      KEY_READ, &display) != ERROR_SUCCESS) {
+        v9x_sync_fail("no-display-class-key");
+        return FALSE;
+    }
+    for (;;) {
+        char family[32];
+        char subkey[32];
+        char drv[32];
+        DWORD size = sizeof(name);
+        DWORD type;
+        DWORD family_size = sizeof(family);
+        DWORD drv_size = sizeof(drv);
+        HKEY candidate;
+        HKEY defaults;
+        BOOL marked;
+        BOOL ours = FALSE;
+
+        if (RegEnumKeyExA(display, index++, name, &size, 0, 0, 0, 0) !=
+            ERROR_SUCCESS) {
+            break;
+        }
+        if (RegOpenKeyExA(display, name, 0, KEY_READ, &candidate) !=
+            ERROR_SUCCESS) {
+            continue;
+        }
+        marked = RegQueryValueExA(candidate, "V9xFamily", 0, &type,
+                                  (BYTE *)family, &family_size) ==
+                 ERROR_SUCCESS;
+        RegCloseKey(candidate);
+        if (marked) {
+            continue;
+        }
+
+        wsprintfA(subkey, "%s\\DEFAULT", name);
+        if (RegOpenKeyExA(display, subkey, 0, KEY_READ, &defaults) !=
+            ERROR_SUCCESS) {
+            continue;
+        }
+        if (RegQueryValueExA(defaults, "drv", 0, &type, (BYTE *)drv,
+                             &drv_size) == ERROR_SUCCESS &&
+            type == REG_SZ && lstrcmpiA(drv, "v9xdisp.drv") == 0) {
+            ours = TRUE;
+        }
+        RegCloseKey(defaults);
+        if (!ours || !v9x_instance_is_live(name)) {
+            continue;
+        }
+
+        if (live == 0u && (DWORD)lstrlenA(name) < instance_size) {
+            lstrcpyA(instance, name);
+        }
+        ++live;
+    }
+    RegCloseKey(display);
+
+    if (live != 1u) {
+        v9x_sync_fail(live == 0u ? "no-marked-instance"
+                                 : "multiple-unmarked-live-instances");
+        return FALSE;
+    }
+    v9x_sync_write("Chose", "unmarked-live-instance");
+    return TRUE;
+}
+
+/*
  * The one display class instance the INF marked for this family, as its
  * four-digit subkey name: the only marked one, or of several the only one
- * a present device uses. FALSE - already reported - otherwise.
+ * a present device uses; with none marked, the fallback above. FALSE -
+ * already reported - otherwise.
  */
 static BOOL v9x_find_marked_instance(char *instance, DWORD instance_size)
 {
@@ -403,8 +495,7 @@ static BOOL v9x_find_marked_instance(char *instance, DWORD instance_size)
     RegCloseKey(display);
 
     if (matches == 0u) {
-        v9x_sync_fail("no-marked-instance");
-        return FALSE;
+        return v9x_find_unmarked_live_instance(instance, instance_size);
     }
     if (matches > V9X_SYNC_MAX_MARKED) {
         v9x_sync_fail("multiple-marked-instances");
