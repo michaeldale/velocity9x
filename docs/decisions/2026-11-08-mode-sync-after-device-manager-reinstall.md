@@ -4,8 +4,8 @@ Date: 2026-11-08
 
 Status: reproduced on one 86Box guest, one run; fixed in
 `settings_syncmodes.c` and the fix verified on the same guest, one run
-(see "The fix"). Whether this is the cause on the reporter's machine is
-not established; the questions below were posted on issue 15.
+(see "The fix"). The reporter's answers rule this route out for their
+machine (see "The reporter's answers").
 
 Field report: [GitHub issue 15](https://github.com/michaeldale/velocity9x/issues/15),
 comment of 2026-11-08 02:08 UTC (FirePro W9000, X99, `vbe` 0.39.0 build
@@ -101,13 +101,29 @@ the marker, both fail when Windows picks a stale entry.
 - "Have Disk over another vendor's driver breaks the sync": not on this
   guest. It worked on the first boot.
 
+## The reporter's answers (issue 15, 2026-11-08 04:57 UTC)
+
+They dispute that this reproduction is what happened on their machine:
+
+1. After step 2, Device Manager showed the same Velocity9x name as in
+   the INF, not another model.
+2. That was the first Velocity9x install on that Windows; before it,
+   only SoftGPU's VESA driver.
+3. `INF\OTHER` holds one Velocity9x INF, the current one.
+
+With no earlier Velocity9x package there was no stale Velocity9x entry
+to reinstall from, so the route reproduced here is not theirs. Their
+step 2 is unexplained and cannot be recovered: there are no logs from
+it. They also report that after a later boot every resolution is listed,
+not only the ones they added, and consider it resolved. The fix above
+still covers the route this guest showed (an older package's entry in
+Windows' cache); it is not their explanation.
+
 ## Not known
 
-- Whether the reporter's step 2 went the same way. It needs a stale
-  Velocity9x entry, which means an earlier Velocity9x package on that
-  machine. Ask: the adapter's name in Device Manager after step 2,
-  whether another Velocity9x package was ever installed, and
-  `DIR C:\WINDOWS\INF\OTHER`.
+- What happened in the reporter's step 2. The SoftGPU-specific path
+  (replace SoftGPU's VESA driver from Display Properties, then remove
+  the broken device in Device Manager) has not been reproduced.
 - Whether SoftGPU's INF matters. This run started from Windows' VGA
   driver, not SoftGPU; SoftGPU was not downloaded.
 - Why the reporter's step 1 left a broken install. Not reproduced.
