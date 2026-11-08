@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.44.0 - not yet released
+
 ## 0.43.0 - 2026-11-08
 
 - **`vbe` package: the screen is written write-combined on machines
