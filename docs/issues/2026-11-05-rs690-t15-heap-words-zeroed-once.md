@@ -224,3 +224,7 @@ either.
   confirm coverage first.
 - A mechanism unknown to Linux and Mesa is possible: they never run
   two clients' 3D on this chip without the CP.
+
+## Status 2026-11-08 (closed)
+
+The idle poll is committed (42cfea26, narrowed in f6ed13f1) and merged to main in 815741e0. T15 has stayed clean since, in [the Rollcage record](../decisions/2026-11-06-rs690-rollcage-and-idle-wait.md) and in V9XD32 in the [0.42.0 release checks](../decisions/2026-11-08-0.42.0-release-checks.md). Why the misdirected lines land at 06000000h is still not explained. Closed.

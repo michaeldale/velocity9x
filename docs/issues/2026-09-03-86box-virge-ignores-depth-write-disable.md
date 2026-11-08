@@ -64,3 +64,7 @@ will look wrong on the emulator and not on the card. A regression seen only on
 1. ~~Confirm on A8U4I5 with a 5:5:5 desktop.~~ Done: 1.
 2. Read 86Box's S3D depth-update path against this: if `Z_UP_EN` is not
    consulted there, this is a one-line report upstream.
+
+## Status 2026-11-08 (audit)
+
+The physical ViRGE/DX passes `D3DZWriteMaskOk` (2026-11-04, [record](../decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)), as the Trio3D/2X did: two silicon parts against the emulator. `docs/probe/expectations/virge-dx-86box.txt` accepts the key and its raw value as varying run to run on 86Box. The emulator-side mechanism is not established, and nothing was reported upstream.

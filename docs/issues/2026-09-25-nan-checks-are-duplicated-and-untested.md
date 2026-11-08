@@ -37,3 +37,7 @@ and precedes the first `fcomp`. None of them was run.
    the tables cover what the engines ship, not just the predicate.
 5. Grep for new comparison-based NaN guards when this is picked up; the
    decision note lists what was found on 2026-09-25.
+
+## Status 2026-11-08 (audit)
+
+The core's check moved into the render core (`r3d_clip.c`, e4024a03), and `test_r3d_clip.c` covers it with a NaN. Each new engine since has added its own static copy, about fifteen in all (HSW, i9xx, R128, RS690, SiS, tdfx, Mach64, Rage II, MGA, the r3d line and validate code, soft, zfixed). To-do items 1-5 stand, over the larger set.

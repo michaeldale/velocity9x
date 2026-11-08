@@ -56,3 +56,7 @@ and usable by, every other DirectDraw process:
 3. Fix by keying on the process id, forgetting on context creation, or
    per-process storage; measure two concurrent Direct3D processes before
    and after.
+
+## Status 2026-11-08 (audit)
+
+The sharing is by design and measured. The build marks every V9XHAL.DLL section shared (`scripts/build-ddraw-hal-dll.ps1`), and on the i5-4570 a flip offset left by V9XDDP was seen by Half-Life ([record](../decisions/2026-10-20-haswell-pipelined-gdi-rule.md)). Still open: list the statics that hold per-process pointers or handles, and run two Direct3D processes at once.

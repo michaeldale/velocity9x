@@ -223,3 +223,7 @@ Prioritize reliable completion and ownership first. The display-layout discrepan
 The repository host suite (`scripts/build-host.ps1`) and tree check (`scripts/check-tree.ps1`) both passed during this review. A focused decoder probe, stored locally under `build/review-flicker`, also built and ran, reproducing the three acceptance cases above. No GPU commands were executed on the netbook during this review. No driver fixes are included in this document change.
 
 Host decoder tests validate the software's rules. They cannot establish that hardware accepts a packet or that a completion write orders the intended rendering. Passing `run-checks` must therefore remain separate from hardware validation in the boot record.
+
+## Status 2026-11-08 (audit)
+
+The store-only round trip passed on hardware in intel86 (2026-09-19): `HwsSelfTest=1`, then 575,868 batches with no timeout, late arrival or abandonment, and the drain never found rendering outstanding at a Flip ([record](../decisions/2026-09-19-intel86-the-completion-channel-works-and-the-flicker-is-not-unfinished-drawing.md)). H4 and H5 are not addressed. Final Reality has not been recorded running flicker-free; see [the state of play](2026-09-19-the-flicker-state-of-play.md).

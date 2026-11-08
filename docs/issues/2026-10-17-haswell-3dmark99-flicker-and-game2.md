@@ -188,3 +188,7 @@ Each needs a design. **Parked at Michael's word (2026-10-18): "Performance
 is ok for now."** No design is written for any of the three. Why
 DirectDraw calls Flip about 140 times a frame when it is declined is not
 established; the scanout (Phase F3) removes the declined path.
+
+## Status 2026-11-08 (audit)
+
+Since 2026-10-28 the HD 4600's aperture is write-combined through PAT ([record](../decisions/2026-10-28-haswell-pat-write-combining.md)), so the UC reading above is out of date. The per-batch cost is tracked in [the batch-cost plan](../plans/intel-haswell-batch-cost.md). Game 2 has not been re-timed since. Michael's "performance is ok" still stands.

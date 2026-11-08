@@ -205,3 +205,7 @@ favoured one over suspects 2 and 3.
 
 Also worth recording for whoever picks this up: the nine reboot-entered modes
 tested the same day were all clean, so the reboot/live asymmetry is unchanged.
+
+## Status 2026-11-08 (audit)
+
+The card left BARRY on 2026-11-04 and ran main 3a035cd0 in A8U4I5 (boot 655), where `V9XMSW` switched 800x600x16, 1024x768x8/16 and 1280x1024x8 live for refresh timing ([record](../decisions/2026-11-01-trio64-vbe12-mode-query.md)). Repaint was not recorded, so the defect is neither confirmed nor cleared. A8U4I5 now carries a Rage 128 Pro.

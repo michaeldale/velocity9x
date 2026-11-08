@@ -793,3 +793,7 @@ expect if **the main VDD requires the full banking and latch set** -
 `ACCESS_VGA_MEMORY_MODE`, `VIRTUALIZE_CRTC_IN`/`OUT` - before it will manage
 this transition at all. The DDK's framebuffer driver gates its own request on
 exactly that capability, per chip.
+
+## Status 2026-11-08 (audit)
+
+The netbook's corruption on entry was measured on 2026-09-24 as the VGA plane taking the panel after any DOS VM, and on 2026-10-23 traced to the VM's video BIOS writing the GMA through its I/O BAR; windowed boxes are fixed ([record](../decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)). The full-screen exit fault on emulated ViRGE and Mach64 under s3 and tier-0 is unchanged, tracked in [the DOS-box plan](../plans/dos-box-vdd-virtualization.md).

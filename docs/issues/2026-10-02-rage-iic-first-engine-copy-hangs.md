@@ -99,3 +99,7 @@ restart; that was not done.
 
 Status: resolved for these workloads. Still open from the plan's Phase 1
 gate: 1,000 alternating fills and copies (66 so far), and a second boot.
+
+## Status 2026-11-08 (closed)
+
+The Phase 1 gate in [the plan](../plans/ati-rage-iic-hardware-3d.md) was met: boot 135 drew 1,026 blits over 171 probe runs and boot 136 drew 120 over 20, all pixel-correct, with no FIFO or idle timeouts and no resets. The engine has since run the card's Direct3D, OpenGL and Glide. Which of the three changes in 06f760b cured the hang was not isolated. Closed.

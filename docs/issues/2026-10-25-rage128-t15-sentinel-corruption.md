@@ -193,3 +193,7 @@ cleared; which is not known, and it may return. The cap is off. If T15
 fails on A8U4I5 again, run `/t15bare /t15hunt=12 /t15mb=128 /t15fresh`
 first: a hit at a fixed physical address class is this fault, and
 Michael has a 128 MiB stick to swap in.
+
+## Status 2026-11-08 (closed)
+
+Since the stick was moved (boot 627) and `MaxPhysPage` removed, T15 has passed (boots 628-630), and V9XD32 passes on A8U4I5 in the [0.42.0 release checks](../decisions/2026-11-08-0.42.0-release-checks.md). The fault was the stick or the slot, not the driver. If it returns, the hunt recipe above still applies. Closed.

@@ -45,3 +45,7 @@ software fallback, so they draw, but GLQuake's `-nomtex +gl_texsort 0`
 timedemo then runs at 3.5 fps against 52.8 for its default path. The gap
 is in the core's Direct3D-op mapping, not one engine, so the title's
 "Mach64" is narrower than the defect.
+
+## Status 2026-11-08 (audit)
+
+Since 61b58b8a (2026-10-24) the ICD rewrites REPLACE/FRAGMENT on RGB565 as MODULATE with white vertex colours that keep their alpha. On the i5-4570 this cleared Tux Racer's refusals and V9XGLP's ReplaceRgbBlend checks. GLQuake `-nomtex +gl_texsort 0` has not been re-run on the Rage XL or the GMA 950. The core's Direct3D-op mapping is unchanged.

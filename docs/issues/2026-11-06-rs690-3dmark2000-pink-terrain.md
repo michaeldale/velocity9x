@@ -132,3 +132,7 @@ Next: the same run on this machine under Direct3D's software renderer
 `docs/decisions/2026-11-06-rs690-dx8-3dmark2000.md`). Salmon there means
 3DMark's one-stage path and no driver defect. None means the HAL is adding
 specular where Direct3D does not.
+
+## Status 2026-11-08 (audit)
+
+The salmon was located on 2026-11-07 (8ad6bcab, [evidence](../probe/rs690-3dmark2000-salmon-2026-11-07/)). It is census state 02, an additive pass in which 3DMark itself sends red specular 00FF0000h. The run that would settle it, the same benchmark with `Direct3D=2`, has not been done. Parked.

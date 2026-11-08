@@ -199,3 +199,7 @@ publish from; and it is on by default rather than opt-in, by the project's
 rule against gated defaults on the development driver (Michael,
 2026-09-18). The Trio64, Trio64V+, Trio 3D/2X, Trio3D and ViRGE are
 unchanged. Not run on any card.
+
+## Status 2026-11-08 (audit)
+
+The Trio64V2 now clears SR1A bit 5 after every mode set (69bb160c) and publishes `Sr1aFound`/`Sr1aLeft`/`BlankPedestal` in `V9XHW.INI`. No Trio64V2 is in the fleet, so it is unmeasured. The plain Trio64 has no documented control and is left alone; the Trio64V+, Trio 3D/2X, Trio3D and ViRGE are unchanged.

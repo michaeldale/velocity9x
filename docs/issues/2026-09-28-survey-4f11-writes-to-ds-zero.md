@@ -156,3 +156,7 @@ not.
 
 The test is still a B490, an E460 or an X61 - the three machines whose BIOSes
 answered `4F11h` with `0x004F`. Nothing else seen so far does.
+
+## Status 2026-11-08 (closed)
+
+The ThinkPad E460, one of the machines whose BIOS answers 4F11h, re-ran the survey on build `19d7a18-dirty` on 2026-10-18: complete, `FlatPanelStatus=ok`, `[Result] Status=PASS` ([report](../probe/references/thinkpad-e460-vgasurv-2026-10-18-19d7a18.ini)). Surveys from four more 4F11h-answering BIOSes (915GM, 852GM, Bay Trail, GL40) also arrived whole. Closed.

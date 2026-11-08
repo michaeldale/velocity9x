@@ -84,3 +84,7 @@ The host side has the same boundary pinned as a number:
 `test_depth_full_height_interpolation` in `tests\host\test_d3d_raster.c`
 asserts that a 2048-tall quad covers 2047 rows and not 2048, so changing the
 clipper without changing that test fails the host gate.
+
+## Status 2026-11-08 (closed)
+
+Fixed in f9e6a01f (2026-09-23): the clipper cuts at width and height, and the engine's clip rectangle discards the pixel past the edge (`r3d_clip.c`, host-tested). The edge probe reads the drawn colour at the right and bottom on the 86Box ViRGE/DX (31744, [phase 1a](../decisions/2026-09-26-phase1a-the-clipper-moves-to-the-render-core-and-the-virge-draws-the-same.md)) and on the netbook's Gen3 (63488). The physical Trio3D has not re-run the edge rung. Closed.

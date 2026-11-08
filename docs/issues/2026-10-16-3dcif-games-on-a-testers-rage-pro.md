@@ -155,3 +155,7 @@ a 68-byte `C3D_TMAP` the DLL refused
 registers the 88-byte Rage PRO form and was not affected. Assault Rigs' 400x300 menu mode
 has no 15 bpp sibling and runs 5:6:5, which is one way for a title to
 meet a 5:6:5 display on an ATI card set to 5:5:5.
+
+## Status 2026-11-08 (audit)
+
+On 2026-10-16, A8U4I5's Rage XL ran the keyed-draw fix in Formula 1: the race drew textured, with 3 % of triangles refused, all of them blended draws under the alpha mask ([gap](2026-10-14-3dcif-blended-sprites-refused.md)). The tester has not re-run either game. A8U4I5 now carries a Rage 128 Pro.

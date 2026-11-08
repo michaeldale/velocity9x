@@ -161,3 +161,7 @@ Reproduce once with the flushing build, after the mode and DPMS rows have
 been copied off, and photograph both the initial corruption and the final
 state. Then hypothesis 1 first, since it is the only one this project
 introduced.
+
+## Status 2026-11-08 (audit)
+
+Leaving a full-screen DOS box was reproduced on the netbook (boots 229-232) and on the HD 4600 (boot 71, original mini-VDD), so the INT 10h guard is not the cause (ba81ce11). Windowed DOS VMs are fixed: the mini-VDD defers their mode set ([record](../decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)). The "Next" section above is superseded; the full-screen return is the open half.

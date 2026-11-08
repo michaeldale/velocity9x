@@ -55,3 +55,7 @@ Neither is a reason to keep it this way.
 The core path should stay for engines with no cull hardware - the ViRGE's
 S3D unit and the software rasterizer - where it is the only way to offer
 the caps.
+
+## Status 2026-11-08 (audit)
+
+Gen3 still programs S4_CULLMODE_NONE, and the core culls for it; the To-do list stands. The HD 4600 culls its indexed and T&L draws in hardware since 8574abcc and c216b995 (3DMark 2000 2032 on the i5-4570), so this record now covers Gen3 (GMA 900, 950, 3150) only.

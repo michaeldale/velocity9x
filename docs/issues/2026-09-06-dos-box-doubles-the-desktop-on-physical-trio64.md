@@ -211,3 +211,7 @@ loss of the desktop), `GdiAccelText` absent. The installed mini-VDD is the
 `-NoDpms` build was made and never deployed. `C:\V9XTC32.EXE` and
 `C:\V9XGDI.EXE` are the current builds. BARRY: hung with `GdiAccelText=1`,
 awaiting a reset; on its next boot the same DOS-box fault applies to it.
+
+## Status 2026-11-08 (closed)
+
+The shipping mini-VDD swallows a DOS VM's write to 4AE8H (96f16f5c). On 2026-11-04 the card in A8U4I5 (main 3a035cd0, GDI acceleration on) showed no doubling with five windowed DOS boxes open, against 5 of 5 doubled before the shield ([record](../decisions/2026-09-06-advfunc-shield-ships.md)). The hard lock that followed belongs to [the board's record](2026-09-06-a8u4i5-trio64-hard-locks-on-framebuffer-readback.md). Closed.

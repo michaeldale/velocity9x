@@ -20,3 +20,7 @@ ATI3DCIF.DLL (`src/cif/cif_dll.c`) does not yet handle:
 
 No demo in the census needs these beyond what is noted, so each waits for
 a title that does.
+
+## Status 2026-11-08 (audit)
+
+Lines have been drawn since 5b44485b (2026-10-16), each as two triangles. Assault Rigs on A8U4I5's Rage XL (boot 482) went from 50,097 skipped line draws to none over 2,877 frames. Points, rectangles, RenderPrimMesh, RenderIndexedPrim, TLVERTEX, mipmaps and tiled textures are still not drawn. The comment at `src/cif/cif_dll.c` still lists lines as not drawn.

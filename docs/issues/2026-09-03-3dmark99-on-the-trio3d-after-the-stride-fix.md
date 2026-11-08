@@ -212,3 +212,7 @@ Frames: `../images/3dmark99-trio3d-2026-09-04-800x600-race.png`,
 `../images/3dmark99-trio3d-2026-09-04-640x480-race.png`,
 `../images/3dmark99-trio3d-2026-09-04-640x480-corridor.png`,
 `../images/3dmark99-trio3d-2026-09-04-640x480-score.png`.
+
+## Status 2026-11-08 (audit)
+
+Since then the DX5 draw paths clip, so fill-rate planes are drawn (f9e6a01f); textures use the perspective command types; the unlit-blend texture loss is fixed. The tunnel's missing checker is investigated but not explained ([record](../decisions/2026-09-23-the-tunnel-texture-has-no-checker.md)). The black sprite boxes and magenta panels (items 1, 3, 5, 7) are still unexplained. The Trio3D/2X is not currently in A8U4I5.

@@ -67,3 +67,7 @@ interpolation produced it.
 It does **not** block Phase 6's early steps. A texture upload, a texture-stage
 operation and a depth test can each be judged by whether the expected pixels
 appear, using the colours already measured.
+
+## Status 2026-11-08 (audit)
+
+Phase 6 scene 1 (build 4510fc4, f7a0f6cd) drew green byte 3 and stored 1, so green rounds; "green never separates rounding from truncation" no longer holds ([record](../decisions/2026-09-16-intel-phase6-five-scenes-green-rounds-edges-clean.md)). Rounding is now uniform across nine channel values in three colours. The other byte values per channel, texture sampling and 8888 formats are still unmeasured.

@@ -275,3 +275,7 @@ first card in the fleet where the two differ by 2x.
   `claude/personal/v9x-intel950/V9XINTL.TXT` exactly, same six mode numbers
   (0101, 0111, 0112, 0160, 0161, 0162). The 30 zeroed modes are steady state,
   not a scan artifact.
+
+## Status 2026-11-08 (audit)
+
+Items 1, 2, 3 and 5 shipped in 0.6.0 (200cd31e). Item 4 is open: `dd16.c` still publishes the heap with `ddsCaps`/`ddsCapsAlt` zero. Item 4's "nothing in the tree touches MTRRs or the PAT" is out of date: the vbe family has write-combined through an MTRR since 0.39.0 (aadde512), which helps writes, not the read-back measured here. The netbook now runs the `intel-gma` family.

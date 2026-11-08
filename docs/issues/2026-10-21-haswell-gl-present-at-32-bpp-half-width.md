@@ -116,3 +116,7 @@ Bridge shares `eng_hsw.c` and has the change, unmeasured there. Gen3
 already flushes (MI_FLUSH before its store in `i9xx_blt.c`).
 
 Status: fixed on the HD 4600, boot 62.
+
+## Status 2026-11-08 (closed)
+
+The fix was measured at boot 62, and V9XGLP has passed on the i5-4570 in every release check since, the latest being the [0.42.0 checks](../decisions/2026-11-08-0.42.0-release-checks.md). Not measured: whether the settle wait is still needed once the flush is in. Closed.

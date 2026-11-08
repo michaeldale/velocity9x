@@ -59,3 +59,7 @@ blocked, on the strength of one QEMU image reporting "display adapter is not
 configured properly". That was corrected at the time: the family had been tested
 and was working, and the guest image is the suspect part. This issue is about
 the **guest**, and should not be read as a statement about the family.
+
+## Status 2026-11-08 (closed)
+
+Later on 2026-08-27 the same guest booted Windows and passed the vbe enable gate (`Stage=enable-ok`, `/accel` `Result=PASS`; b4b78860), so this no longer blocks the gate ([reset-hang record](2026-08-27-qemu-vbe-guest-hangs-in-seabios-on-reset.md)). How the registry error cleared was not recorded. Closed.

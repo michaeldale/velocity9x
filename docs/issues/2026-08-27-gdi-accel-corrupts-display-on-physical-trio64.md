@@ -319,3 +319,7 @@ down until one can.
 
 The ViRGE/DX is untested on real silicon. Only the Trio64 exists physically here,
 so nothing in this issue says anything about whether the ViRGE path is affected.
+
+## Status 2026-11-08 (closed)
+
+The cause was a DOS VM's video BIOS writing 4AE8H with ENB EHFC clear. The per-operation re-assert was verified on BARRY in 0.6.x ([changelog](../changelog/0.1-to-0.6.0.md)), and the mini-VDD's shield has swallowed that write since 96f16f5c. On 2026-11-04 the same card, in A8U4I5 with GDI acceleration on, kept a correct desktop through five DOS boxes ([record](../decisions/2026-09-06-advfunc-shield-ships.md)). Closed.

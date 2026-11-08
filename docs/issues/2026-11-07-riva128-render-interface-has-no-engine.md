@@ -162,3 +162,7 @@ HAL matter.
 
 Status: drawn, scissor included. The channel mask stays refused: the chip
 has none.
+
+## Status 2026-11-08 (audit)
+
+Boot 47 (16bce7db) programs the NV3 CLIP object from the scissor. V9XR3DP's scissored draw read `ScissorOk=1`, with exclusive right and bottom edges. What is still refused is a hardware limit (no channel mask) plus CPU texture levels.

@@ -115,3 +115,7 @@ call) so the desktop itself never draws through the path. Then the first
 string on silicon is the probe's, its `V9X_GDITEXTDUMP` and stats are read
 before anything else runs, and a hang is attributable to one operation with
 known arguments.
+
+## Status 2026-11-08 (audit)
+
+The card left BARRY and ran in A8U4I5 on 2026-11-04 (boot 655, main 3a035cd0, shield mini-VDD, `Enabled=39`). Text acceleration accepted 425 calls (244 bitmaps), and five windowed DOS boxes did not hang or double the desktop ([evidence](../probe/trio64-a8u4i5-dosbox-and-timing-2026-11-04/)). The machine then hard-locked while a window was dragged; that was not repeated with `GdiAccel=0`, so text is not cleared. The S3 default for `GdiAccelText` is still 0.

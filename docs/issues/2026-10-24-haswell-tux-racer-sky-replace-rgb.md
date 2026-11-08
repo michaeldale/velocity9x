@@ -95,3 +95,7 @@ whether the sky looks right is not checked.
   16. Lighting, materials, texgen and display lists are still stubs (3.8
   million stub calls in this race).
 - The stutter in the other GL games, and Re-Volt's wheels.
+
+## Status 2026-11-08 (audit)
+
+Wording only: the 4570 run showed the sky's batches drawn in `V9XGL.LOG`; nobody looked at the picture, so "seen fixed" in the index overstated it. No later run.

@@ -136,3 +136,7 @@ now the limit
 - Re-Volt. The tester's counters explain nothing (no refusals or state
   drops; MipTreeDeclined and MipChainGaps now 0). A screenshot is owed.
 - Tux and Quake 3 on a 32 bpp desktop, and on the 0.25.0 package.
+
+## Status 2026-11-08 (audit)
+
+On 2026-10-23, draws outside the GDI primary stopped waiting for the engine ([record](../decisions/2026-10-23-haswell-gl-draws-run-on.md)). Michael judged Quake 3 and Tux Racer good enough. The remaining cost is tracked in [the batch-cost plan](../plans/intel-haswell-batch-cost.md), where write-combining was done on 2026-10-28. Still not done: Re-Volt, and Tux and Quake 3 on a 32 bpp desktop.

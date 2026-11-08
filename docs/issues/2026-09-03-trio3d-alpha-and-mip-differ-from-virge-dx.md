@@ -152,3 +152,7 @@ alpha 8 of 15, all sizes, all layouts - whose right half reads 15871
 (`0x3DFF`) where a half-blended blue is wanted. And the open question is now a
 better one than the old ones: **what does this card carry across a warm restart
 that breaks its blend, and what clears it?**
+
+## Status 2026-11-08 (audit)
+
+Mip selection no longer differs (third round). The warm-boot explanation in the fourth round was refuted on 2026-09-05: a power cycle does not clear the bad blend state, and the card later flipped to good on its own ([record](../decisions/2026-09-05-a-register-capture-of-both-trio3d-blend-states.md)); CR32 bit 7 and CR3E bits 1-3 differed between one capture of each, unconfirmed. Even in the good state partial alpha is wrong: the source term saturates ([record](../decisions/2026-09-04-the-halfa-cells-were-right.md)).

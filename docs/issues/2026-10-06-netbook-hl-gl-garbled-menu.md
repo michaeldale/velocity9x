@@ -67,3 +67,7 @@ the programs and builds in the snapshot.
 The same picture appears every time on A8U4I5's MGA-2164W under
 Half-Life OpenGL, and not under its Direct3D renderer. Followed up in
 [2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md](2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md).
+
+## Status 2026-11-08 (audit)
+
+The picture reproduces every time on A8U4I5's MGA-2164W under Half-Life OpenGL; the work continues in [the Millennium II record](2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md), with the netbook's multiplayer-start fault in [its own record](2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md). Nothing new has been seen on the netbook.

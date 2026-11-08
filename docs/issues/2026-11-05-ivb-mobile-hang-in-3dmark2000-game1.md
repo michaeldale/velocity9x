@@ -121,3 +121,7 @@ the HAL file's own id; the hash is what identifies the file.
 
 Left open: which stage pairing stops the GPU on Gen7, and whether boot
 11 recovered by itself (the owner has not answered).
+
+## Status 2026-11-08 (closed)
+
+The fix (efef10e0) was measured at boot 13: 3DMark 2000 completed with 2711, with no engine resets or timeouts. The 0166 branch was merged to main in 5d95df34, so nothing is blocked. Which two-stage pairing stops the GPU on Gen7 is still not explained. Closed.
