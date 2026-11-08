@@ -1,0 +1,29 @@
+﻿os       product_name=Microsoft Windows 98  version_number=4.10.2222  sub_version=A  plus_version=IE 5 6.0.2800.1106  major=4  minor=10  build=2222  platform=1  csd=A  registered_owner=win98user  directx=4.09.00.0904  ie_version=6.0.2800.1106  clean_boot=0
+cpu      count=1  type=586  vendor=GenuineIntel  brand=Intel(R) Atom(TM) CPU N280   @ 1.66GHz  family=6  model=28  stepping=2  features=fpu tsc cmov mmx sse sse2 sse3  mhz=1662  reg_vendor=GenuineIntel  reg_identifier=Intel(R) Atom(TM) CPU N280   @ 1.66GHz
+memory   total_phys=2076344320  avail_phys=1697398784  total_page=71135232  avail_page=0  load=21
+drive    letter=C  type=fixed  fs=FAT32  serial=29CA-00EF  total=15914893312  free=13795917824
+display  desc=Velocity9x Intel GMA 4500MHD (GM45)  provider=Velocity9x Project  width=1024  height=768  bpp=16
+net      hostname=win98user  ip=192.168.68.60
+bios     date=03/22/11  name=American Megatrends  version=BBS V3.21 0203
+device   class=Display  desc=Velocity9x Intel GMA 4500MHD (GM45)  provider=Velocity9x Project  driver_date=11- 8-2026  id=PCI\VEN_8086&DEV_2A42&SUBSYS_2A428086&REV_09\BUS_00&DEV_02&FUNC_00
+device   class=Monitor  desc=Plug and Play Monitor  provider=Microsoft  driver_date=4-23-1999  id=MONITOR\VSCE343\PCI_VEN_8086&DEV_2A42&SUBSYS_2A428086&REV_09_BUS_00&DEV_02&FUNC_00
+device   class=MEDIA  desc=HD Audio Controller (WDM)  provider=DrewHoffman  driver_date=10-24-2026  id=PCI\VEN_8086&DEV_293E&SUBSYS_293E8086&REV_03\BUS_00&DEV_1B&FUNC_00
+device   class=MEDIA  desc=Microsoft Kernel System Renderer  provider=Microsoft  driver_date=4-23-1999  id=SW\{A7C7A5B0-5AF3-11D1-9CED-00A024BF0407}\{9B365890-165F-11D0-A195-0020AFD156E4}
+device   class=MEDIA  desc=Microsoft Kernel Audio Mixer  provider=Microsoft  driver_date=4-23-1999  id=SW\{B7EAFDC0-A680-11D0-96D8-00AA0051E51D}\{9B365890-165F-11D0-A195-0020AFD156E4}
+device   class=Net  desc=NETGEAR WG111v3 54Mbps Wireless USB 2.0 Adapter  provider=NETGEAR Inc.  driver_date=12-28-2007  id=USB\VID_0846&PID_4260\00223FF13005
+device   class=hdc  desc=Standard Bus Master PCI ATA Controller in Native Mode (switchable)  provider=SweetLow  driver_date=2-10-2026  id=PCI\VEN_8086&DEV_2928&SUBSYS_29288086&REV_03\BUS_00&DEV_1F&FUNC_02
+device   class=hdc  desc=Primary ATA Channel (shared IRQ)  provider=SweetLow  driver_date=2-10-2026  id=MF\CHILD0000\PCI&VEN_8086&DEV_2928&SUBSYS_29288086&REV_03&BUS_00&DEV_1F&FUNC_02
+device   class=hdc  desc=Secondary ATA Channel (shared IRQ)  provider=SweetLow  driver_date=2-10-2026  id=MF\CHILD0001\PCI&VEN_8086&DEV_2928&SUBSYS_29288086&REV_03&BUS_00&DEV_1F&FUNC_02
+device   class=DiskDrive  desc=Disk drive  provider=(Standard disk drives)  driver_date=4-23-1999  id=ESDI\GENERIC_IDE__DISK_TYPE95_\MF&CHILD0001&PCI&VEN_8086&DEV_2928&SUBSYS_29288086&REV_03&BUS_00&DEV_1F&FUNC_0200
+device   class=USB  desc=Standard Universal PCI to USB Host Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_8086&DEV_2937&SUBSYS_29378086&REV_03\BUS_00&DEV_1A&FUNC_00
+device   class=USB  desc=Standard PCI to USB Enhanced Host Controller  provider=Microsoft  driver_date=9-18-2026  id=PCI\VEN_8086&DEV_293C&SUBSYS_293C8086&REV_03\BUS_00&DEV_1A&FUNC_07
+device   class=USB  desc=Standard Universal PCI to USB Host Controller  provider=Microsoft  driver_date=4-23-1999  id=PCI\VEN_8086&DEV_2935&SUBSYS_29358086&REV_03\BUS_00&DEV_1D&FUNC_01
+device   class=USB  desc=USB Root Hub  provider=Microsoft  driver_date=4-23-1999  id=USB\ROOT_HUB\PCI&VEN_8086&DEV_2937&SUBSYS_29378086&REV_03&BUS_00&DEV_1A&FUNC_00
+device   class=USB  desc=Composite Device  provider=Microsoft  driver_date=9-18-2026  id=USB\VID_1A2C&PID_7FFF\EB60121120042302
+device   class=USB  desc=USB 2.0 Root Hub  provider=Microsoft  driver_date=9-18-2026  id=USB\ROOT_HUB20\PCI&VEN_8086&DEV_293C&SUBSYS_293C8086&REV_03&BUS_00&DEV_1A&FUNC_07
+device   class=USB  desc=USB Root Hub  provider=Microsoft  driver_date=4-23-1999  id=USB\ROOT_HUB\PCI&VEN_8086&DEV_2935&SUBSYS_29358086&REV_03&BUS_00&DEV_1D&FUNC_01
+device   class=Mouse  desc=HID-compliant mouse  provider=Microsoft  driver_date=4-23-1999  id=HID\VID_1EA7&PID_0064\0001USB&VID_1EA7&PID_0064&INST_0
+device   class=Keyboard  desc=Standard 101/102-Key or Microsoft Natural Keyboard  provider=Microsoft  driver_date=4-23-1999  id=ROOT\*PNP0303\0000
+device   class=Keyboard  desc=HID-compliant keyboard  provider=Microsoft  driver_date=4-23-1999  id=HID\VID_1A2C&PID_7FFF&MI_00\0000USB&VID_1A2C&PID_7FFF&MI_00&0000USB&VID_1A2C&PID_7FFF&EB60121120042302
+device   class=Keyboard  desc=HID-compliant keyboard  provider=Microsoft  driver_date=4-23-1999  id=HID\VID_1A2C&PID_7FFF&MI_01\0000USB&VID_1A2C&PID_7FFF&MI_01&0001USB&VID_1A2C&PID_7FFF&EB60121120042302
+meta     devices=live  install_id=d3dfce60-71af-4366-81fb-8f1e1ca09b7c  discovery=off

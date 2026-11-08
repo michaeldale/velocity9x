@@ -1,0 +1,3 @@
+[Velocity9x]
+IntelEnableThisBoot=0
+IntelIncomplete=0

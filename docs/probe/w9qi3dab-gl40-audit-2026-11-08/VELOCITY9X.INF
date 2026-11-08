@@ -1,0 +1,235 @@
+; Velocity9x Windows 98SE bring-up package
+; Family intel-gma: Intel GMA and HD Graphics
+; Supported adapter: Intel GMA 950 (945GSE), PCI 8086:27AE
+; Supported adapter: Intel GMA 900 (915GM), PCI 8086:2592
+; Supported adapter: Intel GMA 3150 (Pineview), PCI 8086:A011
+; Supported adapter: Intel GMA 3100 (G33/G31), PCI 8086:29C2
+; Supported adapter: Intel GMA X3100 (GM965), PCI 8086:2A02
+; Supported adapter: Intel GMA X4500 (G45), PCI 8086:2E22
+; Supported adapter: Intel GMA 4500 (Q45), PCI 8086:2E12
+; Supported adapter: Intel GMA 4500MHD (GM45), PCI 8086:2A42
+; Supported adapter: Intel HD Graphics (Ironlake), PCI 8086:0042
+; Supported adapter: Intel HD Graphics 4600 (Haswell), PCI 8086:0412
+; Supported adapter: Intel HD Graphics 4400 (Haswell), PCI 8086:041E (alias of hd4600-hsw, not validated)
+; Supported adapter: Intel HD Graphics 4000 (Ivy Bridge), PCI 8086:0162
+; Supported adapter: Intel HD Graphics 4000 (Ivy Bridge mobile), PCI 8086:0166 (alias of hd4000-ivb, not validated)
+
+[Version]
+Signature="$CHICAGO$"
+Class=DISPLAY
+Provider="Velocity9x Project"
+
+[DestinationDirs]
+DefaultDestDir=11
+Velocity9x.Copy=11
+
+[SourceDisksNames]
+1="Velocity9x Intel GMA driver-stage disk",,0
+
+[SourceDisksFiles]
+v9xdisp.drv=1
+v9xmini.vxd=1
+v9xsetp.dll=1
+v9xhal.dll=1
+v9xgl.dll=1
+glide2x.dll=1
+glide3x.dll=1
+ati3dcif.dll=1
+v9xtrace.exe=1
+v9xupd.exe=1
+
+[Manufacturer]
+Velocity9x=Velocity9x.Models
+
+[Velocity9x.Models]
+"Velocity9x Intel GMA 950 (945GSE)"=V9x.Install.gma950-945gse,PCI\VEN_8086&DEV_27AE
+"Velocity9x Intel GMA 900 (915GM)"=V9x.Install.gma900-915gm,PCI\VEN_8086&DEV_2592
+"Velocity9x Intel GMA 3150 (Pineview)"=V9x.Install.gma3150-pineview,PCI\VEN_8086&DEV_A011
+"Velocity9x Intel GMA 3100 (G33/G31)"=V9x.Install.gma3100-g33,PCI\VEN_8086&DEV_29C2
+"Velocity9x Intel GMA X3100 (GM965)"=V9x.Install.gma-x3100-gm965,PCI\VEN_8086&DEV_2A02
+"Velocity9x Intel GMA X4500 (G45)"=V9x.Install.gma-x4500-g45,PCI\VEN_8086&DEV_2E22
+"Velocity9x Intel GMA 4500 (Q45)"=V9x.Install.gma-4500-q45,PCI\VEN_8086&DEV_2E12
+"Velocity9x Intel GMA 4500MHD (GM45)"=V9x.Install.gma-4500mhd-gm45,PCI\VEN_8086&DEV_2A42
+"Velocity9x Intel HD Graphics (Ironlake)"=V9x.Install.hd-ironlake,PCI\VEN_8086&DEV_0042
+"Velocity9x Intel HD Graphics 4600 (Haswell)"=V9x.Install.hd4600-hsw,PCI\VEN_8086&DEV_0412
+"Velocity9x Intel HD Graphics 4400 (Haswell)"=V9x.Install.hd4600-hsw,PCI\VEN_8086&DEV_041E
+"Velocity9x Intel HD Graphics 4000 (Ivy Bridge)"=V9x.Install.hd4000-ivb,PCI\VEN_8086&DEV_0162
+"Velocity9x Intel HD Graphics 4000 (Ivy Bridge mobile)"=V9x.Install.hd4000-ivb,PCI\VEN_8086&DEV_0166
+
+[V9x.Install.gma950-945gse]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma950-945gse
+
+[V9x.Install.gma900-915gm]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma900-915gm
+
+[V9x.Install.gma3150-pineview]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma3150-pineview
+
+[V9x.Install.gma3100-g33]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma3100-g33
+
+[V9x.Install.gma-x3100-gm965]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma-x3100-gm965
+
+[V9x.Install.gma-x4500-g45]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma-x4500-g45
+
+[V9x.Install.gma-4500-q45]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma-4500-q45
+
+[V9x.Install.gma-4500mhd-gm45]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.gma-4500mhd-gm45
+
+[V9x.Install.hd-ironlake]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.hd-ironlake
+
+[V9x.Install.hd4600-hsw]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.hd4600-hsw
+
+[V9x.Install.hd4000-ivb]
+CopyFiles=Velocity9x.Copy
+DelReg=Velocity9x.Previous
+AddReg=Velocity9x.Registry,V9x.Registry.hd4000-ivb
+
+[Velocity9x.Copy]
+v9xdisp.drv,,,12
+v9xmini.vxd,,,12
+v9xsetp.dll,,,12
+v9xhal.dll,,,12
+v9xgl.dll,,,12
+glide2x.dll,,,40
+glide3x.dll,,,40
+ati3dcif.dll,,,12
+v9xtrace.exe,,,12
+v9xupd.exe,,,12
+
+[Velocity9x.Previous]
+HKR,,Ver
+HKR,,DevLoader
+HKR,DEFAULT
+HKR,MODES
+HKR,CURRENT
+
+[Velocity9x.Registry]
+HKR,,Ver,,4.0
+HKR,,DevLoader,,*vdd
+HKR,,V9xFamily,,"intel-gma"
+HKR,DEFAULT,Mode,,"8,640,480"
+HKR,DEFAULT,drv,,v9xdisp.drv
+HKR,DEFAULT,drv2,,v9xdisp.drv
+HKR,DEFAULT,vdd,,"*vdd,*vflatd"
+HKR,DEFAULT,minivdd,,v9xmini.vxd
+HKR,DEFAULT,RefreshRate,,0
+HKR,DEFAULT,ExtModeSwitch,,0
+HKR,"MODES\4\640,480",drv,,vga.drv
+HKR,"MODES\4\640,480",vdd,,*vdd
+HKCR,CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1},,,"Velocity9x Settings Page"
+HKCR,CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}\InProcServer32,,,"v9xsetp.dll"
+HKCR,CLSID\{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}\InProcServer32,ThreadingModel,,"Apartment"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Controls Folder\Display\shellex\PropertySheetHandlers\Velocity9x",,,"{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\Shell Extensions\Approved",{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1},,"Velocity9x Settings Page"
+HKLM,Software\Microsoft\Windows\CurrentVersion\RunOnce,V9xSettingsPage,,"rundll32.exe v9xsetp.dll,V9xRegisterPage"
+HKLM,"Software\Microsoft\Windows\CurrentVersion\OpenGLDrivers",Velocity9x,,"v9xgl.dll"
+HKLM,Software\Microsoft\Windows\CurrentVersion\Run,V9xSyncModes,,"rundll32.exe v9xsetp.dll,V9xSyncModes"
+
+[V9x.Registry.gma950-945gse]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma900-915gm]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma3150-pineview]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma3100-g33]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma-x3100-gm965]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma-x4500-g45]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma-4500-q45]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.gma-4500mhd-gm45]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.hd-ironlake]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.hd4600-hsw]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[V9x.Registry.hd4000-ivb]
+HKR,"MODES\8\640,480",,,60
+HKR,"MODES\8\1024,576",,,60
+HKR,"MODES\16\640,480",,,60
+HKR,"MODES\16\1024,576",,,60
+
+[Strings]
+Provider="Velocity9x Project"
+Manufacturer="Velocity9x"
+DeviceDesc.gma950-945gse="Velocity9x Intel GMA 950 (945GSE)"
+DeviceDesc.gma900-915gm="Velocity9x Intel GMA 900 (915GM)"
+DeviceDesc.gma3150-pineview="Velocity9x Intel GMA 3150 (Pineview)"
+DeviceDesc.gma3100-g33="Velocity9x Intel GMA 3100 (G33/G31)"
+DeviceDesc.gma-x3100-gm965="Velocity9x Intel GMA X3100 (GM965)"
+DeviceDesc.gma-x4500-g45="Velocity9x Intel GMA X4500 (G45)"
+DeviceDesc.gma-4500-q45="Velocity9x Intel GMA 4500 (Q45)"
+DeviceDesc.gma-4500mhd-gm45="Velocity9x Intel GMA 4500MHD (GM45)"
+DeviceDesc.hd-ironlake="Velocity9x Intel HD Graphics (Ironlake)"
+DeviceDesc.hd4600-hsw="Velocity9x Intel HD Graphics 4600 (Haswell)"
+DeviceDesc.hd4000-ivb="Velocity9x Intel HD Graphics 4000 (Ivy Bridge)"
+DiskName="Velocity9x Intel GMA driver-stage disk"

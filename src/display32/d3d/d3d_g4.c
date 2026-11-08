@@ -145,6 +145,9 @@ typedef struct v9x_d3d_g4_state {
     v9x_u8 depth_format;
     v9x_u32 scissor[4];
     int scissor_empty;
+    /* A keyed draw that writes depth, drawn as two passes
+     * (v9x_d3d_g4_draw_keyed_depth). */
+    int depth_prepass;
 } V9X_D3D_G4_STATE;
 
 /* Set on a timeout; nothing is submitted again in this process. */
@@ -661,6 +664,7 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
     state->depth_pitch = 0ul;
     state->depth_format = 0u;
     state->write_disable = 0u;
+    state->depth_prepass = 0;
 
     if (!v9x_d3d_hsw_target(draw->target.format, &state->target_format,
                             &state->write_disable)) {
@@ -816,11 +820,22 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
      * source depth, and TOMMOHP boot 16 hung the 3D pipe on the first GL
      * draw with the alpha test, a depth test and depth writes (V9XGLP;
      * BreadcrumbAbandoned=1). Until the kernel carries depth, such a draw
-     * is refused and drawn by the fallback. Without depth writes the
-     * depth test stays early and the result is the same.
+     * is refused. Without depth writes the depth test stays early and the
+     * result is the same.
+     *
+     * Direct3D has no fallback engine for Gen4 (v9x_r3d_fallback), so a
+     * refusal here drops the draw. Forsaken keys every texture of its
+     * depth-writing world geometry and rendered almost nothing (GM45,
+     * M-6B21TJ, 2026-11-08). A keyed draw is therefore drawn in two passes
+     * that each avoid the hanging combination; see
+     * v9x_d3d_g4_draw_keyed_depth. An application's own alpha test with
+     * depth writes stays refused.
      */
     if (state->cc.alpha_test != 0u && state->cc.depth_write != 0u) {
-        return keyed ? V9X_D3D_G4_REFUSE_KEY : V9X_D3D_G4_REFUSE_ALPHA;
+        if (!keyed) {
+            return V9X_D3D_G4_REFUSE_ALPHA;
+        }
+        state->depth_prepass = 1;
     }
     return V9X_D3D_G4_REFUSE_NONE;
 }
@@ -1234,6 +1249,57 @@ static int v9x_d3d_g4_submit(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/*
+ * A colour-keyed draw that writes depth, as two passes. The key's alpha
+ * test together with depth writes hangs the 3D pipe (v9x_d3d_g4_map), but
+ * each half alone does not: depth writes without the alpha test, and the
+ * alpha test without depth writes, both ran on the GM965.
+ *
+ * 1. Depth only: no texture, no alpha test, every colour channel's write
+ *    disabled, the draw's own depth test with writes. This leaves the
+ *    depth the draw would leave, except over keyed texels.
+ * 2. Colour: the keyed texture and its alpha test, depth writes off, the
+ *    depth test EQUAL. A pixel takes its colour from the triangle whose
+ *    depth won pass 1, so triangles that overlap inside one batch still
+ *    occlude each other as the application asked. ALWAYS stays ALWAYS
+ *    (the last triangle wins, as it would have) and NEVER stays NEVER.
+ *
+ * The cost: depth is also written where a texel is keyed out, so geometry
+ * drawn later behind a keyed hole is hidden. Colour drawn before shows
+ * through the hole as it should.
+ */
+static int v9x_d3d_g4_draw_keyed_depth(const V9X_R3D_DRAW *draw,
+                                       const V9X_D3D_G4_STATE *state,
+                                       const V9X_R3D_VERTEX *vertices,
+                                       DWORD triangle_count)
+{
+    V9X_D3D_G4_STATE pass;
+
+    pass = *state;
+    pass.textured = 0;
+    pass.desc.stage0 = V9X_G4_PS_DIFFUSE;
+    pass.desc.stage1 = V9X_G4_PS_STAGE1_NONE;
+    pass.desc.specular = 0u;
+    pass.desc.fog = 0u;
+    pass.texture.sampler.chroma_key = 0u;
+    pass.texture1.sampler.chroma_key = 0u;
+    pass.cc.alpha_test = 0u;
+    pass.cc.blend = 0u;
+    pass.write_disable = 0xfu;
+    pass.cc.depth_write = 1u;
+    if (!v9x_d3d_g4_submit(draw, &pass, vertices, triangle_count)) {
+        return 0;
+    }
+
+    pass = *state;
+    pass.cc.depth_write = 0u;
+    if (draw->depth_func != V9X_R3D_CMP_ALWAYS &&
+        draw->depth_func != V9X_R3D_CMP_NEVER) {
+        pass.cc.depth_function = v9x_d3d_g4_compare(V9X_R3D_CMP_EQUAL);
+    }
+    return v9x_d3d_g4_submit(draw, &pass, vertices, triangle_count);
+}
+
 static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
                                  const V9X_R3D_VERTEX *vertices,
                                  DWORD triangle_count)
@@ -1257,6 +1323,10 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
     }
     if (state.scissor_empty) {
         return 1;
+    }
+    if (state.depth_prepass) {
+        return v9x_d3d_g4_draw_keyed_depth(draw, &state, vertices,
+                                           triangle_count);
     }
     return v9x_d3d_g4_submit(draw, &state, vertices, triangle_count);
 }

@@ -6,6 +6,18 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.44.0 - not yet released
 
+- **`intel-gma` package, GMA X3000 to GMA HD (Gen4 and Gen5): colour-keyed
+  3D that writes depth is drawn.** These draws were refused, because the
+  alpha test that implements the key hangs these chips when depth writes
+  are on. Direct3D has no fallback on these chips, so a refused draw
+  never reached the screen. Forsaken lost all its level geometry, in both
+  its Direct3D and its "software" executable. Such a draw is now done in
+  two passes: depth first, then the keyed colour against that depth. One
+  difference remains: depth is also written where a texel is keyed out.
+  On a GM45 (HP t5740) Forsaken's menu room and credits backdrops draw,
+  with no draw refused and no engine timeout. Gameplay was not run
+  ([issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)).
+
 ## 0.43.0 - 2026-11-08
 
 - **`vbe` package: the screen is written write-combined on machines

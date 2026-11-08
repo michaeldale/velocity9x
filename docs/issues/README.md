@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-08 Gen4: colour-keyed draws with depth writes are refused (the GM965 alpha-test+Z hang guard) and the Direct3D path has no fallback, so they are dropped; Forsaken's world geometry vanishes on the GM45 (M-6B21TJ, 0.40.0; reason 7, 140k-166k refusals per title run); fixed in source by a depth pre-pass and an EQUAL keyed colour pass, measured on the GM45 menu with 0 refusals; gameplay and the GM965 not run](2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)
 - [2026-11-08 Feature gap: the VBE family write-combines only through an MTRR; no PAT fallback when the BIOS's ranges refuse it (`MtrrWrite=refused` on a FirePro W9000, Xeon E5 v4, GitHub issue 15); the HD 4600's PAT route and the shared policy exist. Implemented, unreleased: the i5-4570 on vbe goes 66 to 11,357 MB/s](2026-11-08-vbe-no-pat-write-combining.md)
 - [2026-11-07 The settings page may report a removed card's PCI revision: it takes the first Enum\PCI key for the id (field report, two 5333:8811 cards); found by reading, not reproduced](2026-11-07-settings-page-revision-from-stale-enum-key.md)
 - [2026-11-06 Feature gap: Intel video BIOSes lack the panel's native mode (netbook 1024x600, GM965 1280x800, GM45 1920x1080); no BIOS mode-table patch exists](2026-11-06-intel-vbios-mode-table-lacks-panel-modes.md)

@@ -1,0 +1,8 @@
+
+
+ ****** BEGIN NEW RECORDING ***** 
+
+NETDI: ##################################################
+NETDI: EnumComplete Start
+NETDI: SetupFlags=509(SUF_FIRSTTIME) BootCount=3 NetSetupFlags=1 (RETAIL)
+NETDI: ExecuteQueuedAPIs
