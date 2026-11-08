@@ -17,6 +17,21 @@ column says what this driver would have to do about each fact - most need
 nothing, and the two that matter most are the interlaced modes and the
 refresh defaults.
 
+## Why this is here
+
+This driver sets modes through the card's video BIOS (4F02h, 4F06h), asks
+it for the monitor's EDID (4F15h), and leaves rates and palette width to
+the BIOS's defaults. Every fact in this set is a place where that trust
+has a measured cost or a measured limit: a mode number that comes up
+interlaced, a rate a monitor refuses, an init call that stops interrupts,
+a palette that comes out grey. Most records ask for no change - they are
+recorded so the next change in this area starts from a measured fact
+instead of a guess, and so a bug report that matches one of these facts
+is recognised instead of investigated from scratch. The two that do ask
+for a decision are marked in the table: the interlaced modes (a mode
+can be set successfully and still be wrong) and the refresh defaults
+(a 60 Hz choice exists on the V2 through 4F14h).
+
 | Fact | File | Owed here |
 |---|---|---|
 | Modes the stock BIOSes only offer interlaced, and interlaced defaults | [2026-11-08-stock-s3-interlaced-modes.md](2026-11-08-stock-s3-interlaced-modes.md) | a gap in the mode table, not urgent |
