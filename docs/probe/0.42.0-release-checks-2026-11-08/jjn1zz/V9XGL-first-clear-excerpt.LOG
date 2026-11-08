@@ -1,0 +1,42 @@
+1 pid=FFFEA099 attach instance=00610000 tls=2 version=0.41.0 V9XGL build=a5f26008 time=2026-11-07 23:03:06 uptime-ms=259467 exe=C:\V9XREL\V9XGLP.EXE
+2 pid=FFFEA099 DrvValidateVersion version=1
+3 pid=FFFEA099 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFEA099 describe result=0 engine=13 formats=00000020
+59 pid=FFFEA099 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+60 pid=FFFEA099 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+61 pid=FFFEA099 DrvSetPixelFormat hdc=00000782 index=1 recorded=1
+62 pid=FFFEA099 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+63 pid=FFFEA099 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+64 pid=FFFEA099 DrvCreateLayerContext hdc=00000782 layer=0 -> 1
+65 pid=FFFEA099 drawable window=00000130 400x300
+66 pid=FFFEA099   depth cell=16 bits=16
+67 pid=FFFEA099 DrvSetContext hdc=00000782 context=1 -> 1
+68 pid=FFFEA099 tnl allowed=0 batches=0 triangles=0
+69 pid=FFFEA099 glClear result=9 mask=00004100
+70 pid=FFFEA099 stub first-call slot=213 glAccum
+71 pid=FFFEA099 state tex=0 size=00000000 tex=00000000 blend=00020100 depth=01020100 colour=FF00FF00 mask=7 scissor=0,0,400,300 fog=0 tex1=0/00000000 env1=000000
+...
+1 pid=FFFE739B attach instance=00610000 tls=2 version=0.42.0 V9XGL build=19c2c2ca-dirty time=2026-11-08 00:59:41 uptime-ms=1279485 exe=C:\V9XREL\V9XGLP.EXE
+2 pid=FFFE739B DrvValidateVersion version=1
+3 pid=FFFE739B DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFE739B describe result=0 engine=13 formats=00000020
+...
+1 pid=FFFE49FD attach instance=00610000 tls=2 version=0.42.0 V9XGL build=59b93e48 time=2026-11-08 01:16:14 uptime-ms=256236 exe=C:\V9XREL\V9XGLP.EXE
+2 pid=FFFE49FD DrvValidateVersion version=1
+3 pid=FFFE49FD DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFE49FD describe result=0 engine=13 formats=00000020
+59 pid=FFFE49FD DrvDescribePixelFormat index=1 bytes=40 -> count=1
+60 pid=FFFE49FD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+61 pid=FFFE49FD DrvSetPixelFormat hdc=00000776 index=1 recorded=1
+62 pid=FFFE49FD DrvDescribePixelFormat index=1 bytes=0 -> count=1
+63 pid=FFFE49FD DrvDescribePixelFormat index=1 bytes=40 -> count=1
+64 pid=FFFE49FD DrvCreateLayerContext hdc=00000776 layer=0 -> 1
+65 pid=FFFE49FD drawable window=00000130 400x300
+66 pid=FFFE49FD   depth cell=16 bits=16
+67 pid=FFFE49FD DrvSetContext hdc=00000776 context=1 -> 1
+68 pid=FFFE49FD tnl allowed=0 batches=0 triangles=0
+69 pid=FFFE49FD glClear result=9 mask=00004100
+70 pid=FFFE49FD stub first-call slot=213 glAccum
+71 pid=FFFE49FD state tex=0 size=00000000 tex=00000000 blend=00020100 depth=01020100 colour=FF00FF00 mask=7 scissor=0,0,400,300 fog=0 tex1=0/00000000 env1=000000
+72 pid=FFFE49FD time interval-ms=259284 swaps=2 present-ms=2 draw-ms=141 upload-ms=0
+73 pid=FFFE49FD tsc frames=2 wall-ms=259284 vertex-ms=102 flush-in-vertex-ms=0 flush-other-ms=340 bind-ms=4 iface-ms=141 beginend-ms=93 swap-ms=4478 vertices=12 flushes=1 draws=1 sink-ms=39 sink-prep-ms=36 sinks=1

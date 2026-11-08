@@ -46,11 +46,13 @@ item when a later record settles it.
   ([record](../decisions/2026-11-08-mullins-directdraw-on-sdma.md));
   eight runs since have not reproduced it. Read those keys in the next
   release checks on any engine-backed chip.
-- **The R3E's one R3D clear timeout**: V9XR3DP, run last after 3DMark
-  and the other probes, got `ClearResult=9` (TIMEOUT), and every read
-  after it was 0. Its rerun passed, and the engine timeout counters stayed
-  at 0 ([record](../decisions/2026-11-08-mullins-3dmark2000.md)). It may
-  be the same as the busy CANBLT answer.
+- **The R3E's first-clear timeout**: the first R3D clear of a process
+  sometimes returns TIMEOUT. V9XGLP's first `glClear` did on 0.41.0
+  and 0.42.0, and V9XR3DP's did twice on 2026-11-08. Every later call
+  works, and the engine timeout counters stay at 0
+  ([record](../decisions/2026-11-08-0.42.0-release-checks.md)). Shipped
+  in 0.41.0 and 0.42.0 as a known issue. It may be the same as the busy
+  CANBLT answer.
 
 - ~~**Trinity's OpenGL reads at 16 bpp**~~: settled 2026-11-08. A
   16 bpp target an odd number of 8 pixels wide was placed with a pitch
