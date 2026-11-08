@@ -96,9 +96,9 @@ the mini-VDD's PAT verbs were Intel-only (behind
 `runtime.asm`'s callers; both are now built for vbe too. On the i5-4570
 the `vbe` package boots with `MtrrWrite=refused` and
 `PatWrite=ok pages=00001000`, and FbWrite goes from 66 to 11,357 MB/s
-against `NOWC.TXT`. The first two "Done when" points are met there; the
-third (an MTRR-route machine unchanged) rests on the code: the fallback
-is only called after a refusal.
+against `NOWC.TXT`. The first two "Done when" points are met there. The
+third was measured on A8U4I5 (Pentium III, Rage 128 Pro): the `vbe`
+package boots with `MtrrWrite=ok s=3` and no `PatWrite=` line.
 
 Two more field machines fit: the W9000 (`r=7`, its reply gave
 `Aperture=... b=e0000000`, inside pair 0's UC range and pair 4's WT

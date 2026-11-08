@@ -92,8 +92,27 @@ Not repeated. The GDI rows above come from the complete sections.
 The machine was put back on its intel-gma files afterwards (boot 192,
 hashes match the boot 189 copies, `PatWrite=ok pages=00004000` and
 `PatReserve` as before). That intel-gma image predates this change; the
-rebuilt intel-gma package, whose only difference is the runtime define,
-passed `run-checks.ps1` but has not been booted.
+rebuilt one was booted later the same day (below).
+
+## Other families and an MTRR-route machine (same day, after the commit)
+
+Packages from the same `45136383-dirty` tree, DRV/VXD/HAL by WININIT
+rename, SHA-256 checked, each machine put back afterwards and checked:
+
+- **i5-4570, rebuilt intel-gma** (boot 193): `PatWrite=ok pages=00004000
+  hi=00070101`, `PatReserve=ok pages=00000050`, and `V9XHW.INI`
+  line-for-line the same as boot 189's. The `V9X_PAT_ROUTE` move did not
+  change the HD 4600's route. Back on the boot 189 files at boot 194.
+- **A8U4I5, Pentium III, Rage 128 Pro, rebuilt ati** (boot 683): the
+  mini-VDD now carries the PAT code (15,476 bytes against 0.42.0's
+  14,452) and loads; `MtrrWrite=ok s=3 b=dc000001 m=ff000800` as on
+  0.42.0, no `PatWrite=` line (ati has no fallback), the Rage 128 engine
+  up (`EngineStamp=type=0000000A`).
+- **A8U4I5, vbe** (boot 684): `MtrrWrite=ok s=3`, no `PatWrite=` line,
+  desktop drawn. Where the MTRR route works the fallback is not called:
+  the third "Done when" point of issue 25, measured.
+
+A8U4I5 back on the released 0.42.0 ati files (`59b93e48`) at boot 685.
 
 ## Not known
 
