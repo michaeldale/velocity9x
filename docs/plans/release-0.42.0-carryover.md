@@ -16,9 +16,11 @@ item when a later record settles it.
   (GitLab), downloads on the GitHub pre-release `test-pr24-shutdown`.
   Neither has run on a card. Its issue record and probe files are in the
   PR, not yet on main.
-- **A game on the R3E** (M-JJN1ZZ). The owner was asked on 2026-11-08 to
-  install a Direct3D game or 3DMark. Nothing real has run on Mullins,
-  and nobody has looked at its screen.
+- ~~**A game on the R3E** (M-JJN1ZZ)~~: settled 2026-11-08. The owner
+  installed 3DMark 2000, and it ran to its score (1667) on this build,
+  watched, with clean counters and the first game test's frames grabbed
+  ([record](../decisions/2026-11-08-mullins-3dmark2000.md)). No other
+  game is installed.
 
 ## Unmeasured, shipped in 0.41.0
 
@@ -28,8 +30,9 @@ item when a later record settles it.
   such card is online. The first boot of one should read
   `MtrrWrite=ok` with an `f8000800` mask in `V9XBOOT.INI`, and the
   desktop should be intact.
-- **The R3E's OpenGL renderer string** now reads "Velocity9x Radeon R3E"
-  (`d3d_core.c`); not run on the machine since the change.
+- ~~**The R3E's OpenGL renderer string**~~: reads "Velocity9x Radeon
+  R3E" on the machine (V9XGLP, 2026-11-08,
+  [record](../decisions/2026-11-08-mullins-3dmark2000.md)).
 - **3DCIF on the R3E**: not run.
 
 ## Open, not explained
@@ -43,6 +46,11 @@ item when a later record settles it.
   ([record](../decisions/2026-11-08-mullins-directdraw-on-sdma.md));
   eight runs since have not reproduced it. Read those keys in the next
   release checks on any engine-backed chip.
+- **The R3E's one R3D clear timeout**: V9XR3DP, run last after 3DMark
+  and the other probes, got `ClearResult=9` (TIMEOUT), and every read
+  after it was 0. Its rerun passed, and the engine timeout counters stayed
+  at 0 ([record](../decisions/2026-11-08-mullins-3dmark2000.md)). It may
+  be the same as the busy CANBLT answer.
 
 - ~~**Trinity's OpenGL reads at 16 bpp**~~: settled 2026-11-08. A
   16 bpp target an odd number of 8 pixels wide was placed with a pitch
