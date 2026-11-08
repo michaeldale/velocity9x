@@ -164,6 +164,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-29 The Trio64V+ and Trio32 already publish 8811, so the driver has been binding them all along](2026-08-29-s3-device-id-survey.md)
 - [2026-08-29 86Box's Trio32 publishes 8811, so the shipping driver already drove it - and its BIOS is not the Trio64's](2026-08-29-s3-trio32-alias-guest.md)
 - [2026-11-06 The Trio64V+ gets its own Have Disk row, by PCI revision, on the Trio64 install](2026-11-06-trio64vplus-have-disk.md)
+- [2026-11-08 Stock Trio64-family BIOS behaviour that reaches this driver, measured in trio64-vbios-tools](2026-11-08-stock-trio64-bios-findings.md)
 
 ## ATI
 
