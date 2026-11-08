@@ -2045,12 +2045,15 @@ V9xMiniHswEngineCloseDone:
     pop     ebx
     retf
 V9XMINIHSWENGINECLOSE ENDP
+ENDIF
 
+IFDEF V9X_PAT_ROUTE
 ; WORD FAR PASCAL V9xMiniPatInfo(DWORD FAR *low, DWORD FAR *high,
 ;                                WORD FAR *flags)
 ;
 ; PAT_INFO (V9XMAPI.INC): IA32_PAT and the V9X_PAT_CPU_* flags. Returns the
-; verb's AX; with no mini-VDD API everything is 0.
+; verb's AX; with no mini-VDD API everything is 0. Only in the families
+; whose manifest sets V9X_PAT_ROUTE (intel-gma for the HD 4600, vbe).
 PUBLIC V9XMINIPATINFO
 V9XMINIPATINFO PROC FAR
     push    bp

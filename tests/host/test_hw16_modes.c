@@ -313,6 +313,33 @@ void __far __pascal V9xNv3Write(unsigned long offset, unsigned long value)
     (void)value;
 }
 
+/* runtime.asm's PAT verbs for the vbe write-combining fallback; the
+ * decision is test_pat.c's, and no fallback runs here. */
+unsigned short __far __pascal V9xMiniPatInfo(unsigned long __far *low,
+                                             unsigned long __far *high,
+                                             unsigned short __far *flags)
+{
+    (void)low;
+    (void)high;
+    (void)flags;
+    return 0u;
+}
+
+unsigned short __far __pascal V9xMiniPatCover(
+    unsigned long linear, unsigned long bytes, unsigned long old_high,
+    unsigned long new_high, unsigned long __far *pages,
+    unsigned long __far *back, unsigned short __far *why)
+{
+    (void)linear;
+    (void)bytes;
+    (void)old_high;
+    (void)new_high;
+    (void)pages;
+    (void)back;
+    (void)why;
+    return 0u;
+}
+
 /* ddi.c's selected mode and modes16.c's layout, which that switch reads;
  * no mode is selected here. */
 unsigned short v9x_selected_mode_geometry(unsigned short *width,

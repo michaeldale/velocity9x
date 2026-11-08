@@ -93,10 +93,13 @@ struct v9x_pat_plan {
  * filled in; returns non-zero when reason is V9X_PAT_OK.
  *
  * The route comes first: only an MTRR refusal for ALREADY_COVERED (a valid
- * range covers the aperture) or NO_SLOT (every pair is in use) is answered.
- * Every other refusal (no MTRRs, MTRRs off, a default type that is not UC, a
- * bad aperture) is left alone, so PAT is taken only where the MTRR route was
- * possible in principle and the BIOS's ranges are what stop it.
+ * range covers the aperture), NO_SLOT (every pair is in use) or
+ * DEFAULT_NOT_UC (the BIOS describes memory as WB by default and carves the
+ * PCI hole out with UC pairs) is answered. All three are the BIOS's ranges
+ * standing in the way; the last stops the MTRR plan before it reaches the
+ * overlap test, and PAT WC is WC whatever MTRR type the page falls in (the
+ * X99 W9000 of GitHub issue 15: def=c06, frame buffer inside a UC pair).
+ * Every other refusal (no MTRRs, MTRRs off, a bad aperture) is left alone.
  */
 v9x_u16 v9x_pat_plan_wc(v9x_u16 mtrr_reason, v9x_u16 cpu_flags,
                         v9x_u32 pat_high, v9x_u32 linear, v9x_u32 bytes,

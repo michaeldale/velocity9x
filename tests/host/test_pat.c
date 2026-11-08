@@ -35,7 +35,7 @@ static void test_route(void)
 {
     struct v9x_pat_plan plan;
     static const v9x_u16 refused[] = {
-        V9X_MTRR_OK, V9X_MTRR_DISABLED, V9X_MTRR_DEFAULT_NOT_UC,
+        V9X_MTRR_OK, V9X_MTRR_DISABLED,
         V9X_MTRR_NO_APERTURE, V9X_MTRR_APERTURE_LOW, V9X_MTRR_NO_MTRR,
         V9X_MTRR_NO_WC, V9X_MTRR_WINDOW_SMALL
     };
@@ -47,6 +47,14 @@ static void test_route(void)
                             &plan) == V9X_TRUE);
     PTCHECK(v9x_pat_plan_wc(V9X_MTRR_NO_SLOT, CPU_ALL, PAT_HIGH_RESET,
                             LINEAR_FB, BYTES_FB, &plan) == V9X_TRUE);
+    /* The X99 W9000 of GitHub issue 15: default type WB (def=c06) and the
+     * frame buffer at E0000000 inside an explicit UC pair over 2-4 GiB. The
+     * MTRR plan stops at the default type before it reaches the overlap,
+     * but PAT WC is WC over any MTRR type, so the route is open. */
+    PTCHECK(v9x_pat_plan_wc(V9X_MTRR_DEFAULT_NOT_UC, CPU_ALL,
+                            PAT_HIGH_RESET, LINEAR_FB, BYTES_FB,
+                            &plan) == V9X_TRUE);
+    PTCHECK(plan.reason == V9X_PAT_OK);
     /* The MTRR route worked, or failed for a reason that is not the BIOS's
      * ranges: PAT is not taken, and nothing is planned. */
     for (index = 0u; index < sizeof(refused) / sizeof(refused[0]); ++index) {

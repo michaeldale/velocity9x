@@ -136,9 +136,9 @@ V9xMtrrWhy          dd 0
 V9xMtrrBackBase     dd 0
 V9xMtrrBackMask     dd 0
 
-IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; PAT_COVER (V9xMini_Pat_Cover): the request, the answer, the page directory
-; as mapped once, and where its self-reference puts the page tables.
+; as mapped once, and where its self-reference puts the page tables. Every
+; family: the vbe device takes the PAT route too (GitHub issue 25).
 V9xPatReqLinear     dd 0
 V9xPatReqBytes      dd 0
 V9xPatReqOld        dd 0
@@ -152,7 +152,6 @@ V9xPatWindow        dd 0
 V9xPatCopy          dd 0
 V9xPatSaveCr0       dd 0
 V9xPatSaveCr4       dd 0
-ENDIF
 
 IFDEF V9X_ATI_MOBILITY_MMIO
 ; ATI Rage Mobility-M and Rage IIC: the 4 KiB MMIO register BAR, mapped once
@@ -3609,7 +3608,6 @@ ENDIF
 ; The PAT facts, reported and not interpreted. See V9XMINI_FN_PAT_INFO in
 ; V9XMAPI.INC.
 V9xMini_Api_PatInfo:
-IFDEF V9X_INTEL_MMIO_FINGERPRINT
     pushad
     call    V9xMini_Pat_Cpu
     mov     [ebp.Client_EDX], eax
@@ -3630,17 +3628,10 @@ V9xMini_Api_PatInfo_Out:
     mov     [ebp.Client_AX], si
     popad
     ret
-ENDIF
-    mov     [ebp.Client_EBX], 0
-    mov     [ebp.Client_ECX], 0
-    mov     [ebp.Client_EDX], 0
-    mov     [ebp.Client_AX], 0
-    ret
 
 ; Type a linear range write-combining through PAT entry 4. See
 ; V9XMINI_FN_PAT_COVER in V9XMAPI.INC.
 V9xMini_Api_PatCover:
-IFDEF V9X_INTEL_MMIO_FINGERPRINT
     pushad
     mov     eax, [ebp.Client_EBX]
     mov     V9xPatReqLinear, eax
@@ -3664,12 +3655,6 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
 V9xMini_Api_PatCover_Refused:
     mov     [ebp.Client_AX], cx
     popad
-    ret
-ENDIF
-    mov     [ebp.Client_EBX], 0
-    mov     [ebp.Client_ECX], 0
-    mov     [ebp.Client_EDX], 1
-    mov     [ebp.Client_AX], 0
     ret
 
 ; EBX = BAR2 physical. See V9XMINI_FN_ATI_MMIO_MAP in V9XMAPI.INC.
@@ -5003,7 +4988,6 @@ V9xMini_Mtrr_Write_Done:
     ret
 EndProc V9xMini_Mtrr_Write
 
-IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; What the CPU admits to for the PAT, as V9X_PAT_CPU_* flags in EAX. CPUID
 ; is used only when the init-time inspection found it (V9X_MTRR_CPU_CPUID).
 BeginProc V9xMini_Pat_Cpu
@@ -5265,7 +5249,6 @@ V9xMini_Pat_Cover_Done:
     popad
     ret
 EndProc V9xMini_Pat_Cover
-ENDIF
 
 VxD_LOCKED_CODE_ENDS
 

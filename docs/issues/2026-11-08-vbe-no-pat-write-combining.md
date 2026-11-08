@@ -1,6 +1,8 @@
 # Feature gap: the VBE family has no PAT route to write-combining
 
-Date: 2026-11-08. Status: open, feature gap. Raised by a field report
+Date: 2026-11-08. Status: implemented, unreleased; measured on the
+i5-4570 ([record](../decisions/2026-11-08-vbe-pat-write-combining.md)),
+field machines not yet run. Raised by a field report
 ([GitHub issue 15](https://github.com/michaeldale/velocity9x/issues/15),
 also filed as
 [issue 25](https://github.com/michaeldale/velocity9x/issues/25)).
@@ -85,9 +87,27 @@ effective-type table a PAT WC page is WC whatever the MTRR type, so a
 or to reorder the MTRR plan so an explicit UC overlap reports 11 first
 is a design choice still open; either needs a host test first.
 
+## Implemented (same day)
+
+See the [record](../decisions/2026-11-08-vbe-pat-write-combining.md).
+The PAT plan now also accepts 7. Two statements above were wrong:
+the mini-VDD's PAT verbs were Intel-only (behind
+`V9X_INTEL_MMIO_FINGERPRINT`), not linked by every family, and so were
+`runtime.asm`'s callers; both are now built for vbe too. On the i5-4570
+the `vbe` package boots with `MtrrWrite=refused` and
+`PatWrite=ok pages=00001000`, and FbWrite goes from 66 to 11,357 MB/s
+against `NOWC.TXT`. The first two "Done when" points are met there; the
+third (an MTRR-route machine unchanged) rests on the code: the fallback
+is only called after a refusal.
+
+Two more field machines fit: the W9000 (`r=7`, its reply gave
+`Aperture=... b=e0000000`, inside pair 0's UC range and pair 4's WT
+range) and the GTX 970 of
+[issue 17](https://github.com/michaeldale/velocity9x/issues/17)
+(Sandy Bridge, `r=11`, frame buffer at EF000000 inside a UC pair over
+E0000000-FFFFFFFF).
+
 ## Not known
 
 - Whether PAT behaves the same on AMD CPUs and on the other chipsets
   `vbe` runs on. Only the i5-4570 has measured it.
-- The W9000's frame buffer base (the `Lfb`/aperture line of its
-  `V9XBOOT.INI`), which would confirm it lies in pair 0's range.

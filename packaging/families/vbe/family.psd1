@@ -110,6 +110,9 @@
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            # The PAT write-combining decision behind vbe_hw16.c's fallback,
+            # for when the BIOS's MTRRs refuse the MTRR route.
+            @{ Name = 'pat'; Path = 'src\common\pat.c' }
             # The Direct3D back-end decision behind [Velocity9x] Direct3D.
             # Pure policy, host-tested; dd16.c resolves it at Enable and every
             # family publishes the result as Direct3DMode= whether or not it
@@ -155,7 +158,10 @@
         # V9X_DURABLE_TRAIL: temporary, branch ati-rs690 only, as in the ati
         # manifest (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
         Defines = @('V9X_D3D_DEFAULT_REQUEST=2', 'V9X_DURABLE_TRAIL')
-        RuntimeDefines = @('V9X_DURABLE_TRAIL')
+        # V9X_PAT_ROUTE: runtime.asm's PAT verbs, for vbe_hw16.c's
+        # write-combining fallback. Only the families with a PAT fallback
+        # carry them: every byte counts against a full _TEXT elsewhere.
+        RuntimeDefines = @('V9X_DURABLE_TRAIL', 'V9X_PAT_ROUTE')
         SkeletonOutput = 'build\win16-ddi-vbe'
         PackageOutput = 'build\win98se-vbe'
         VmStageDirectory = 'build\vm-probe\VBE'

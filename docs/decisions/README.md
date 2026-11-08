@@ -155,6 +155,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-28 Pineview lists 36 VBE modes and describes 6](2026-08-28-pineview-vbe-mode-list.md)
 - [2026-11-07 Write-combining the vbe family's frame buffer: FbWrite 31.7 to 2,513 and 316 to 3,000 MB/s](2026-11-07-vbe-write-combining.md)
 - [2026-11-08 Mode sync after a Device Manager reinstall: Windows reinstalls from a stale INF entry, and the sync finds no marked key](2026-11-08-mode-sync-after-device-manager-reinstall.md)
+- [2026-11-08 The vbe family write-combines through PAT when the BIOS's MTRRs refuse: FbWrite 66 to 11,357 MB/s on the i5-4570](2026-11-08-vbe-pat-write-combining.md)
 
 ## S3 hardware baselines
 

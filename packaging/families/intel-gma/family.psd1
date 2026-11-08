@@ -445,7 +445,8 @@
                     # one-shot token transfer.
                     'V9X_I9XX_PHASE5_EXECUTOR',
                     'V9X_I9XX_PHASE5_SUBMIT')
-        RuntimeDefines = @('V9X_INTEL_GMA_FAMILY')
+        # V9X_PAT_ROUTE: runtime.asm's PAT verbs (hsw_hw16.c).
+        RuntimeDefines = @('V9X_INTEL_GMA_FAMILY', 'V9X_PAT_ROUTE')
         SkeletonOutput = 'build\win16-ddi-intel-gma'
         PackageOutput = 'build\win98se-intel-gma'
         VmStageDirectory = 'build\vm-probe\INTELGMA'

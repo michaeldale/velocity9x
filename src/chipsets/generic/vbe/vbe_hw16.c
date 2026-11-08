@@ -19,9 +19,25 @@
  * stage 3 rather than rendering wrongly. See hw16.h.
  */
 #include "velocity9x/hw16.h"
+#include "velocity9x/pat.h"
 
 /* enable16.c, filled in by the tier-0 stage-3 default from VBE 4F00h. */
 extern unsigned long v9x_vbe_vram_reported;
+
+/* runtime.asm, the mini-VDD's PAT verbs. PASCAL, so the first argument is
+ * the farthest on the stack. */
+extern unsigned short __far __pascal V9xMiniPatInfo(
+    unsigned long __far *low, unsigned long __far *high,
+    unsigned short __far *flags);
+extern unsigned short __far __pascal V9xMiniPatCover(
+    unsigned long linear, unsigned long bytes, unsigned long old_high,
+    unsigned long new_high, unsigned long __far *pages,
+    unsigned long __far *back, unsigned short __far *why);
+
+static void v9x_vbe_write_combine(unsigned long linear, unsigned long bytes,
+                                  unsigned short mtrr_reason,
+                                  void (*write)(const char *key,
+                                                const char *value));
 
 /* ddi.c: the index V9xFindPciDevice matched, or 0xFFFF when nothing did.
  * This family runs either way, so the diagnostics have to say which. */
@@ -86,7 +102,10 @@ const V9X_HW16_DEVICE v9x_vbe_device = {
      * or writes this memory behind the CPU, so nothing needs draining
      * beyond the shared Unlock and Flip drains. NOWC.TXT turns it off.
      */
-    V9X_HW16_WC_VRAM
+    V9X_HW16_WC_VRAM,
+    /* When the BIOS's MTRRs refuse that, the same window through the page
+     * attribute table (GitHub issue 25). */
+    v9x_vbe_write_combine
 };
 
 static const V9X_HW16_DEVICE * const v9x_vbe_devices[] = {
@@ -145,6 +164,80 @@ static void v9x_vbe_format_hex16(char *text, unsigned short value)
     text[2] = digits[(value >> 4) & 0x0fu];
     text[3] = digits[value & 0x0fu];
     text[4] = '\0';
+}
+
+/* Eight uppercase hex digits into a caller-owned buffer of at least 8. */
+static void v9x_vbe_format_hex32(char *text, unsigned long value)
+{
+    v9x_vbe_format_hex16(text, (unsigned short)(value >> 16));
+    v9x_vbe_format_hex16(text + 4, (unsigned short)(value & 0xffffu));
+}
+
+/* key = head, eight hex digits, mid, eight hex digits. */
+static void v9x_vbe_pat_record(void (*write)(const char *key,
+                                             const char *value),
+                               const char *head, unsigned long first,
+                               const char *mid, unsigned long second)
+{
+    char text[48];
+    unsigned short at = 0u;
+
+    while (*head != '\0') {
+        text[at++] = *head++;
+    }
+    v9x_vbe_format_hex32(text + at, first);
+    at += 8u;
+    while (*mid != '\0') {
+        text[at++] = *mid++;
+    }
+    v9x_vbe_format_hex32(text + at, second);
+    at += 8u;
+    text[at] = '\0';
+    write("PatWrite", text);
+}
+
+/*
+ * V9X_HW16_DEVICE.write_combine_fallback: write-combine the linear frame
+ * buffer through PAT entry 4 when the MTRR plan refused for a reason the
+ * BIOS's ranges caused (include\velocity9x\pat.h). The HD 4600's route
+ * (hsw_hw16.c), with no engine reserve to cover.
+ *
+ * Only the video memory the BIOS reported is typed, not the whole mapping
+ * enable16.c hands in: as for the MTRR window (V9X_HW16_WC_VRAM), this
+ * family does not know the card's BAR, and the mapping past a small card's
+ * memory may not be the card's. Rounded down to whole pages; an unknown
+ * size leaves zero bytes, which the plan refuses as a bad range.
+ */
+static void v9x_vbe_write_combine(unsigned long linear, unsigned long bytes,
+                                  unsigned short mtrr_reason,
+                                  void (*write)(const char *key,
+                                                const char *value))
+{
+    struct v9x_pat_plan plan;
+    unsigned long low = 0ul;
+    unsigned long high = 0ul;
+    unsigned long pages = 0ul;
+    unsigned long back = 0ul;
+    unsigned long vram = v9x_vbe_vram_reported & ~(V9X_PAT_PAGE_BYTES - 1ul);
+    unsigned short flags = 0u;
+    unsigned short why = 0u;
+
+    if (vram < bytes) {
+        bytes = vram;
+    }
+    (void)V9xMiniPatInfo(&low, &high, &flags);
+    if (v9x_pat_plan_wc(mtrr_reason, flags, high, linear, bytes,
+                        &plan) == V9X_FALSE) {
+        v9x_vbe_pat_record(write, "plan=", (unsigned long)plan.reason,
+                           " hi=", high);
+        return;
+    }
+    if (V9xMiniPatCover(linear, bytes, plan.old_high, plan.new_high,
+                        &pages, &back, &why) == 0u) {
+        v9x_vbe_pat_record(write, "why=", (unsigned long)why, " hi=", back);
+        return;
+    }
+    v9x_vbe_pat_record(write, "ok pages=", pages, " hi=", back);
 }
 
 /*

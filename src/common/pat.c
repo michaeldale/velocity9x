@@ -19,7 +19,8 @@ v9x_u16 v9x_pat_plan_wc(v9x_u16 mtrr_reason, v9x_u16 cpu_flags,
     plan->new_high = 0ul;
 
     if (mtrr_reason != V9X_MTRR_ALREADY_COVERED &&
-        mtrr_reason != V9X_MTRR_NO_SLOT) {
+        mtrr_reason != V9X_MTRR_NO_SLOT &&
+        mtrr_reason != V9X_MTRR_DEFAULT_NOT_UC) {
         return V9X_FALSE;
     }
 
