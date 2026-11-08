@@ -34,24 +34,21 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.42.0
+## Current version: 0.43.0
 
-[Download](releases/0.42.0/README.md) ·
+[Download](releases/0.43.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.42.0:
-- **AMD Radeon HD 5450, 5570, 5770, 7470 and 7660D at 16 bpp:** OpenGL
-  windows whose width is an odd multiple of 8 pixels draw again. Tested on
-  the HD 7660D.
-- **ATI Rage 128:** a Direct3D render target made after textures draws
-  again. The Direct3D test program now passes on the card.
-- **OpenGL, every card:** a window the 3D engine refuses is no longer
-  left blank. The driver remakes its buffers and draws. Tested on the
-  HD 7660D.
-- **AMD Radeon R3E:** 3DMark 2000 runs to its score on the one test
-  machine.
+New in 0.43.0:
+- **`vbe` package:** the screen is written write-combined through the
+  page attribute table when the BIOS's memory ranges block the usual
+  route. Screen writes went from 66 to 11,357 MB/s on an i5-4570. Not yet
+  tested on an AMD CPU.
+- **Every card:** after a Device Manager reinstall from an older
+  package's cached entry, Display Properties lists every mode again, not
+  only the basic seven. Tested in an emulator.
 
 ### Known issues
 
@@ -82,6 +79,9 @@ New in 0.42.0:
 
 ### Recent releases
 
+- **0.42.0:** OpenGL windows of some widths draw again at 16 bpp on the
+  AMD Radeon HD 5450 to 7660D; Rage 128 render targets made after
+  textures draw; OpenGL remakes a window the engine refuses.
 - **0.41.0:** the AMD Radeon R3E (Mullins); write-combined screen writes
   on the Radeon HD 5450, 5570, 5770, 7470 and 7660D.
 - **0.40.0:** Intel GMA 900, 950 and 3150 Direct3D 8 games no longer
@@ -197,7 +197,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
-| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro) |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro), through the page attribute table from 0.43.0 when the BIOS blocks that (HD 4600) |
 
 The driver also installs on some close relatives of the cards above,
 which nobody has run it on yet. Each one uses the code of a tested card
@@ -281,8 +281,9 @@ Limits found in testing:
   Rage 128 Pro, the GMA 950/900/3150 and the Ironlake, on the HD 4600
   through the page attribute table (from 0.33.0, its BIOS leaving no
   memory-type range free), on the SiS 6326 (0.34.0), and on any card on
-  the `vbe` package (0.39.0); `C:\V9XDIAG\NOWC.TXT` turns it off on these
-  two. `V9X3D OFF` turns it off on the others.
+  the `vbe` package (0.39.0; through the page attribute table when the
+  BIOS's ranges refuse, 0.43.0); `C:\V9XDIAG\NOWC.TXT` turns it off on
+  these two. `V9X3D OFF` turns it off on the others.
 - **When an engine can't draw something:** it refuses the draw rather
   than drawing it wrong. The GMA 950, the two Matrox 3D chips and the
   Rage 128 Pro then draw it on the CPU.

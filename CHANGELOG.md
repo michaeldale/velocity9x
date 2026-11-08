@@ -4,7 +4,29 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.43.0 - not yet released
+## 0.43.0 - 2026-11-08
+
+- **`vbe` package: the screen is written write-combined on machines
+  whose BIOS memory ranges blocked it.** 0.39.0 write-combined the frame
+  buffer through an MTRR, which many BIOSes refuse: they cover the PCI
+  hole with uncached ranges, or make write-back the default and carve
+  the hole out (`MtrrWrite=refused` in `C:\V9XDIAG\V9XBOOT.INI`). The
+  driver now falls back to the page attribute table, as the HD 4600
+  package does, and records `PatWrite=` in the same file. On an
+  i5-4570 running the `vbe` package, screen writes went from 66 to
+  11,357 MB/s, and large fills, bitmap copies and DirectDraw uploads
+  rose with them. A machine where the MTRR route works is unchanged
+  (checked on a Pentium III with a Rage 128 Pro). `C:\V9XDIAG\NOWC.TXT`
+  still turns write-combining off. Not yet tested on an AMD CPU
+  ([record](docs/decisions/2026-11-08-vbe-pat-write-combining.md)).
+
+- **The full mode list returns after a Device Manager reinstall.** If
+  Windows reinstalled the card from its cached copy of an older
+  Velocity9x package, Display Properties showed only the package's seven
+  basic modes, because the mode list's registry entry carried no family
+  mark. The driver now finds the entry it is running on without the
+  mark. Reproduced and tested in an emulator
+  ([record](docs/decisions/2026-11-08-mode-sync-after-device-manager-reinstall.md)).
 
 ## 0.42.0 - 2026-11-08
 
