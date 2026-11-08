@@ -164,7 +164,18 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-29 The Trio64V+ and Trio32 already publish 8811, so the driver has been binding them all along](2026-08-29-s3-device-id-survey.md)
 - [2026-08-29 86Box's Trio32 publishes 8811, so the shipping driver already drove it - and its BIOS is not the Trio64's](2026-08-29-s3-trio32-alias-guest.md)
 - [2026-11-06 The Trio64V+ gets its own Have Disk row, by PCI revision, on the Trio64 install](2026-11-06-trio64vplus-have-disk.md)
-- [2026-11-08 Stock Trio64-family BIOS behaviour that reaches this driver, measured in trio64-vbios-tools](2026-11-08-stock-trio64-bios-findings.md)
+- [2026-11-08 Stock Trio64-family BIOS findings from trio64-vbios-tools: the overview](2026-11-08-stock-trio64-bios-findings-overview.md)
+- [2026-11-08 The stock Trio64-family BIOSes offer some modes only interlaced](2026-11-08-stock-s3-interlaced-modes.md)
+- [2026-11-08 The stock 2.04.07 refresh defaults, and the 4F14h rate interface](2026-11-08-stock-775-refresh-defaults.md)
+- [2026-11-08 Stock 4F15h (DDC): interrupts off for the whole call, and a PIT write](2026-11-08-stock-ddc-4f15-interrupts-off.md)
+- [2026-11-08 The stock POST monitor sense can switch grey-scale summing on](2026-11-08-stock-post-grey-scale-summing.md)
+- [2026-11-08 4F02h clears all of video memory unless bit 15 is set](2026-11-08-4f02-clears-all-video-memory.md)
+- [2026-11-08 The S3 RAMDAC has no 8-bit LUT; 4F08h always answers 6](2026-11-08-s3-ramdac-6-bit-4f08.md)
+- [2026-11-08 The stock 4F04h save/restore covers ADVFUNC_CNTL](2026-11-08-4f04-d3-covers-advfunc-cntl.md)
+- [2026-11-08 4F03h never returns bit 15, even when the mode was set with it](2026-11-08-4f03-bit15-never-returned.md)
+- [2026-11-08 The stock mode set leaves the 3C0h attribute flip-flop unknown](2026-11-08-stock-mode-set-3c0-flip-flop.md)
+- [2026-11-08 The stock 1.03-08 4F02h accepts modes that do not fit the memory](2026-11-08-4f02-accepts-over-memory-modes.md)
+- [2026-11-08 The stock 1.03-08 4F06h changes the upper halves of EAX, ECX and EDX](2026-11-08-4f06-upper-halves.md)
 
 ## ATI
 
