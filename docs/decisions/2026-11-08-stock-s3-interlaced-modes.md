@@ -5,6 +5,16 @@ Date: 2026-11-08. Contributed by perchrh, from the measurements behind
 [#138](https://github.com/perchrh/trio64-vbios-tools/issues/138). Facts
 about the stock BIOSes, the chips and 86Box only.
 
+## Summary
+
+Some VESA mode numbers exist on the stock Trio64-family BIOSes only as
+interlaced modes, and some resolutions default to an interlaced refresh
+rate. A driver that sets one of these numbers gets an interlaced picture
+without any error reported. The driver's mode table contains two of these
+numbers, and nothing in the driver can tell the difference today.
+
+## The measurement
+
 Measured on the stock Phoenix 1.5-07 (Trio64), emulator, every refresh index
 walked ([#68](https://github.com/perchrh/trio64-vbios-tools/issues/68)):
 
@@ -28,3 +38,15 @@ comes up interlaced; `ValidateMode` and the runtime scan cannot see it. A
 bit 5 read after the set would catch it. Not urgent: every stock BIOS
 measured either refuses 0x0118 on 2 MB cards or runs it interlaced on 4 MB
 ones.
+
+## References
+
+- trio64-vbios-tools issue
+  [#68](https://github.com/perchrh/trio64-vbios-tools/issues/68): every
+  mode set at every refresh index in the emulator, the interlaced entries
+  found that way.
+- S3 Trio64 data book: CR42 bit 5, the interlace enable (with CR3C, the
+  interlace retrace start, used only with it).
+- VBE 1.2 (VS911022), section 6.2: ModeAttributes bit 3, "interlaced mode".
+- trio64-vbios-tools `docs/765-rom.md`: the S3COMPAT run on the 1.03-08
+  base that warns of the interlaced 1600x1200 entry.

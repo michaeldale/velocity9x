@@ -7,6 +7,16 @@ about the stock BIOSes, the chips and 86Box only, each with the record that
 carries it. One file per fact, so any subset can be taken upstream on its
 own.
 
+## Introduction
+
+These records are written for a reader that has not seen the measurements:
+each one states the fact in a summary a human can read on its own, then
+gives the evidence and what it means for this driver in the parts after
+that. Take any subset; no record depends on another. The "Owed here"
+column says what this driver would have to do about each fact - most need
+nothing, and the two that matter most are the interlaced modes and the
+refresh defaults.
+
 | Fact | File | Owed here |
 |---|---|---|
 | Modes the stock BIOSes only offer interlaced, and interlaced defaults | [2026-11-08-stock-s3-interlaced-modes.md](2026-11-08-stock-s3-interlaced-modes.md) | a gap in the mode table, not urgent |

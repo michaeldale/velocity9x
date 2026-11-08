@@ -5,6 +5,17 @@ Date: 2026-11-08. Contributed by perchrh, from the measurements behind
 [#138](https://github.com/perchrh/trio64-vbios-tools/issues/138). Facts
 about the stock BIOSes, the chips and 86Box only.
 
+## Summary
+
+The VGA attribute controller at 3C0h takes index and data writes in
+alternation, and a flip-flop inside the chip tracks which one is next. The
+stock BIOSes may leave that flip-flop pointing at "data" after a mode set,
+so a program writing 3C0h immediately afterwards sends its index as data
+- usually seen as a wrong palette. Reading the input status register (3DAh)
+first resets the flip-flop.
+
+## The measurement
+
 The VGA attribute controller at port 3C0h alternates between index and data
 on every write; a flip-flop inside the chip decides which one the next write
 is, and a read of the input status register (3DAh, or 3BAh in the mono
@@ -19,3 +30,11 @@ symptom is a wrong palette.
 
 No module here writes 3C0h directly today, so this is a footnote for
 whoever does: read 3DAh first after any 4F02h.
+
+## References
+
+- IBM VGA documentation: the attribute controller flip-flop and its reset by
+  a read of the input status register (3DAh, 3BAh in the mono modes).
+- trio64-vbios-tools issue
+  [#52](https://github.com/perchrh/trio64-vbios-tools/issues/52), the
+  emulator runs behind the claim.
