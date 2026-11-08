@@ -44,6 +44,10 @@ v9x_u32 v9x_gl_drawable_depth_bits(const V9X_GL_DRAWABLE *drawable);
  * client area and remade when that has changed. `resized` is set non-zero
  * when the surfaces were (re)made. Null when the surfaces cannot be made. */
 V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized);
+/* After the HAL refused the drawable's surfaces as a target: made again
+ * wider than the window, once per size, everything GL sees unchanged.
+ * Non-zero when they were; the caller then names them again and retries. */
+int v9x_gl_drawable_pad(V9X_GL_DRAWABLE *drawable);
 void v9x_gl_drawable_size(const V9X_GL_DRAWABLE *drawable,
                           v9x_u32 *width, v9x_u32 *height);
 /* The IDirectDrawSurface pointers the render interface names. */

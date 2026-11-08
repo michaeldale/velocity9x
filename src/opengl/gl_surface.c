@@ -30,6 +30,10 @@ struct v9x_gl_drawable {
     LPDIRECTDRAWSURFACE front;
     DWORD width;
     DWORD height;
+    /* The width the surfaces were made at: the window's, or wider once
+     * the HAL refused them as a target (v9x_gl_drawable_pad). Everything
+     * GL sees - viewport, reads, the presented rectangle - stays `width`. */
+    DWORD surface_width;
     /* The depth cell the window's pixel format asked for: 32 for the
      * deeper format, 16 (or 0, unset) for the first. */
     DWORD depth_cell;
@@ -171,6 +175,7 @@ static void v9x_gl_drawable_release_surfaces(struct v9x_gl_drawable *drawable)
     }
     drawable->width = 0ul;
     drawable->height = 0ul;
+    drawable->surface_width = 0ul;
 }
 
 /*
@@ -332,6 +337,82 @@ v9x_u32 v9x_gl_drawable_depth_bits(const V9X_GL_DRAWABLE *drawable)
                : 16ul;
 }
 
+/*
+ * The drawable's back and depth buffers made again, `surface_width`
+ * pixels wide for a window `width` wide. Any surfaces it had are released
+ * first, the front copy with them (made again on its next use). Zero, and
+ * no surfaces, when either cannot be made.
+ */
+static int v9x_gl_drawable_make(struct v9x_gl_drawable *drawable,
+                                DWORD width, DWORD height,
+                                DWORD surface_width)
+{
+    v9x_gl_drawable_release_surfaces(drawable);
+    drawable->back = v9x_gl_make_surface(DDSCAPS_OFFSCREENPLAIN |
+                                         DDSCAPS_VIDEOMEMORY |
+                                         DDSCAPS_3DDEVICE,
+                                         surface_width, height, 0ul);
+    /* dwZBufferBitDepth 32 is how V9XD32 made the Z24 and 32-bit Z
+     * surfaces the HAL measured (2026-10-18); the HAL reads the cell from
+     * the surface's own pixel format. */
+    drawable->depth = v9x_gl_make_surface(DDSCAPS_ZBUFFER |
+                                          DDSCAPS_VIDEOMEMORY,
+                                          surface_width, height,
+                                          v9x_gl_drawable_cell(drawable));
+    if (drawable->back == 0 || drawable->depth == 0) {
+        v9x_gl_drawable_release_surfaces(drawable);
+        return 0;
+    }
+    drawable->width = width;
+    drawable->height = height;
+    drawable->surface_width = surface_width;
+    return 1;
+}
+
+/*
+ * The drawable's surfaces made again wider, for a HAL that refused them as
+ * a target: the window's width rounded up to whole V9X_GL_PAD_PIXELS. That
+ * is 128 bytes a row at 16 bpp and 256 at 32, past every row alignment an
+ * engine has asked so far. Trinity refused a 360-pixel 16 bpp buffer (rows
+ * of 720 bytes) at every clear and draw, and the ICD dropped them all
+ * (2026-11-08); the HAL now places it, and this is for the next such
+ * engine. Once per size: a padded drawable is not padded again, and the
+ * next resize starts from the window's width. Non-zero when the drawable
+ * now has padded surfaces; on a failure it is made again at the window's
+ * width, as it was.
+ */
+#define V9X_GL_PAD_PIXELS 64ul
+
+int v9x_gl_drawable_pad(V9X_GL_DRAWABLE *drawable)
+{
+    DWORD width;
+    DWORD height;
+    DWORD padded;
+
+    if (drawable == 0 || drawable->back == 0 ||
+        drawable->surface_width != drawable->width) {
+        return 0;
+    }
+    width = drawable->width;
+    height = drawable->height;
+    padded = (width + V9X_GL_PAD_PIXELS - 1ul) & ~(V9X_GL_PAD_PIXELS - 1ul);
+    if (padded == width ||
+        padded > (DWORD)GetSystemMetrics(SM_CXSCREEN)) {
+        v9x_gl_log3("drawable %lux%lu refused as a target, not padded",
+                    width, height, 0ul);
+        return 0;
+    }
+    if (!v9x_gl_drawable_make(drawable, width, height, padded)) {
+        v9x_gl_log3("drawable %lux%lu: padded surfaces %lu wide failed",
+                    width, height, padded);
+        (void)v9x_gl_drawable_make(drawable, width, height, width);
+        return 0;
+    }
+    v9x_gl_log3("drawable %lux%lu refused as a target, surfaces now %lu wide",
+                width, height, padded);
+    return 1;
+}
+
 V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
 {
     struct v9x_gl_drawable *drawable;
@@ -368,24 +449,9 @@ V9X_GL_DRAWABLE *v9x_gl_drawable_bind(void *window, int *resized)
         IDirectDrawSurface_IsLost(drawable->back) != DDERR_SURFACELOST) {
         return drawable;
     }
-    v9x_gl_drawable_release_surfaces(drawable);
-    drawable->back = v9x_gl_make_surface(DDSCAPS_OFFSCREENPLAIN |
-                                         DDSCAPS_VIDEOMEMORY |
-                                         DDSCAPS_3DDEVICE,
-                                         width, height, 0ul);
-    /* dwZBufferBitDepth 32 is how V9XD32 made the Z24 and 32-bit Z
-     * surfaces the HAL measured (2026-10-18); the HAL reads the cell from
-     * the surface's own pixel format. */
-    drawable->depth = v9x_gl_make_surface(DDSCAPS_ZBUFFER |
-                                          DDSCAPS_VIDEOMEMORY,
-                                          width, height,
-                                          v9x_gl_drawable_cell(drawable));
-    if (drawable->back == 0 || drawable->depth == 0) {
-        v9x_gl_drawable_release_surfaces(drawable);
+    if (!v9x_gl_drawable_make(drawable, width, height, width)) {
         return 0;
     }
-    drawable->width = width;
-    drawable->height = height;
     *resized = 1;
     v9x_gl_log3("drawable window=%08lX %lux%lu", (DWORD)window, width, height);
     v9x_gl_log3("  depth cell=%lu bits=%lu", v9x_gl_drawable_cell(drawable),
@@ -724,9 +790,22 @@ static void v9x_gl_drawable_screen_rect(const struct v9x_gl_drawable *drawable,
     rect->bottom = origin.y + (LONG)drawable->height;
 }
 
+/* The part of a drawable's surfaces GL draws in: the window's size, from
+ * the top left. Wider surfaces (v9x_gl_drawable_pad) are blitted from it,
+ * never whole, which would scale the padding into the window. */
+static void v9x_gl_drawable_image_rect(const struct v9x_gl_drawable *drawable,
+                                       RECT *rect)
+{
+    rect->left = 0;
+    rect->top = 0;
+    rect->right = (LONG)drawable->width;
+    rect->bottom = (LONG)drawable->height;
+}
+
 void *v9x_gl_drawable_front(V9X_GL_DRAWABLE *drawable)
 {
     RECT screen;
+    RECT image;
     HRESULT hr;
 
     if (drawable == 0 || drawable->back == 0) {
@@ -735,11 +814,12 @@ void *v9x_gl_drawable_front(V9X_GL_DRAWABLE *drawable)
     if (drawable->front != 0) {
         return drawable->front;
     }
+    /* A target as the back buffer is, so as wide as its surfaces. */
     drawable->front = v9x_gl_make_surface(DDSCAPS_OFFSCREENPLAIN |
                                           DDSCAPS_VIDEOMEMORY |
                                           DDSCAPS_3DDEVICE,
-                                          drawable->width, drawable->height,
-                                          0ul);
+                                          drawable->surface_width,
+                                          drawable->height, 0ul);
     if (drawable->front == 0) {
         v9x_gl_log("front: surface refused");
         return 0;
@@ -748,8 +828,9 @@ void *v9x_gl_drawable_front(V9X_GL_DRAWABLE *drawable)
      * of other windows over it are ones this context does not own, whose
      * values GL leaves undefined). */
     v9x_gl_drawable_screen_rect(drawable, &screen);
-    hr = IDirectDrawSurface_Blt(drawable->front, 0, v9x_gl_primary, &screen,
-                                DDBLT_WAIT, 0);
+    v9x_gl_drawable_image_rect(drawable, &image);
+    hr = IDirectDrawSurface_Blt(drawable->front, &image, v9x_gl_primary,
+                                &screen, DDBLT_WAIT, 0);
     v9x_gl_log3("front: made %lux%lu, copy from screen hr=%08lX",
                 drawable->width, drawable->height, (DWORD)hr);
     return drawable->front;
@@ -763,15 +844,17 @@ void *v9x_gl_drawable_front_existing(const V9X_GL_DRAWABLE *drawable)
 int v9x_gl_drawable_show_front(V9X_GL_DRAWABLE *drawable)
 {
     RECT target;
+    RECT image;
     HRESULT hr;
 
     if (drawable == 0 || drawable->front == 0 || v9x_gl_primary == 0) {
         return 0;
     }
     v9x_gl_drawable_screen_rect(drawable, &target);
+    v9x_gl_drawable_image_rect(drawable, &image);
     IDirectDrawSurface_SetClipper(v9x_gl_primary, drawable->clipper);
-    hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->front, 0,
-                                DDBLT_WAIT, 0);
+    hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->front,
+                                &image, DDBLT_WAIT, 0);
     if (hr != DD_OK) {
         v9x_gl_log3("show front hr=%08lX", (DWORD)hr, 0ul, 0ul);
         return 0;
@@ -782,6 +865,7 @@ int v9x_gl_drawable_show_front(V9X_GL_DRAWABLE *drawable)
 int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
 {
     RECT target;
+    RECT image;
     POINT origin;
     HRESULT hr;
 
@@ -795,11 +879,12 @@ int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
     target.top = origin.y;
     target.right = origin.x + (LONG)drawable->width;
     target.bottom = origin.y + (LONG)drawable->height;
+    v9x_gl_drawable_image_rect(drawable, &image);
     /* One primary, one clipper per window: attach this window's before the
      * Blt so DirectDraw cuts to its visible region. */
     IDirectDrawSurface_SetClipper(v9x_gl_primary, drawable->clipper);
-    hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->back, 0,
-                                DDBLT_WAIT, 0);
+    hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->back,
+                                &image, DDBLT_WAIT, 0);
     if (hr == DDERR_SURFACELOST) {
         if (IDirectDrawSurface_IsLost(drawable->back) == DDERR_SURFACELOST) {
             IDirectDrawSurface_Restore(drawable->back);
@@ -807,7 +892,7 @@ int v9x_gl_drawable_present(V9X_GL_DRAWABLE *drawable)
         if (v9x_gl_primary_recover()) {
             IDirectDrawSurface_SetClipper(v9x_gl_primary, drawable->clipper);
             hr = IDirectDrawSurface_Blt(v9x_gl_primary, &target, drawable->back,
-                                        0, DDBLT_WAIT, 0);
+                                        &image, DDBLT_WAIT, 0);
         }
     }
     if (hr != DD_OK) {

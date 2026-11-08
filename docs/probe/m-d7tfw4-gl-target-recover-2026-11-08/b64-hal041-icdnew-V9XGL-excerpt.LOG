@@ -1,0 +1,80 @@
+65 pid=FFFE279D drawable window=0000014C 400x300
+83 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+120 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+133 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+146 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+159 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+172 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+185 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+198 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+211 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+224 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+237 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+250 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+263 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+276 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+289 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+302 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+315 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+328 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+341 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+354 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+367 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+380 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+393 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+400 pid=FFFE279D DrvReleaseContext context=2 -> 1
+401 pid=FFFE279D paths batches/triangles untextured=8/26 hw=50/87 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+402 pid=FFFE279D counters hwtex lost=0
+403 pid=FFFE279D counters tnl batches=0 triangles=0 refused=0 failed=0
+404 pid=FFFE279D counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+405 pid=FFFE279D counters hwtex live=0 creates=41 create-failed=0 evictions=0 uploads=44 partial=2 upload-kb=422 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+406 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+407 pid=FFFE279D DrvDeleteContext context=2 -> 1
+410 pid=FFFE279D DrvCreateLayerContext hdc=0000077E layer=0 -> 2
+411 pid=FFFE279D DrvSetContext hdc=0000077E context=2 -> 1
+412 pid=FFFE279D tnl allowed=0 batches=0 triangles=0
+413 pid=FFFE279D DrvReleaseContext context=2 -> 1
+414 pid=FFFE279D paths batches/triangles untextured=8/26 hw=51/88 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+415 pid=FFFE279D counters hwtex lost=0
+416 pid=FFFE279D counters tnl batches=0 triangles=0 refused=0 failed=0
+417 pid=FFFE279D counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+418 pid=FFFE279D counters hwtex live=0 creates=42 create-failed=0 evictions=0 uploads=45 partial=2 upload-kb=432 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+419 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+420 pid=FFFE279D DrvDeleteContext context=2 -> 1
+423 pid=FFFE279D DrvCreateLayerContext hdc=0000077E layer=0 -> 2
+424 pid=FFFE279D DrvSetContext hdc=0000077E context=2 -> 1
+425 pid=FFFE279D tnl allowed=0 batches=0 triangles=0
+426 pid=FFFE279D DrvReleaseContext context=2 -> 1
+427 pid=FFFE279D paths batches/triangles untextured=8/26 hw=52/89 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+428 pid=FFFE279D counters hwtex lost=0
+429 pid=FFFE279D counters tnl batches=0 triangles=0 refused=0 failed=0
+430 pid=FFFE279D counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+431 pid=FFFE279D counters hwtex live=0 creates=43 create-failed=0 evictions=0 uploads=46 partial=2 upload-kb=442 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+432 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+433 pid=FFFE279D DrvDeleteContext context=2 -> 1
+436 pid=FFFE279D DrvCreateLayerContext hdc=0000077E layer=0 -> 2
+437 pid=FFFE279D drawable window=0000014C 360x280
+438 pid=FFFE279D   depth cell=16 bits=16
+439 pid=FFFE279D DrvSetContext hdc=0000077E context=2 -> 1
+440 pid=FFFE279D tnl allowed=0 batches=0 triangles=0
+441 pid=FFFE279D drawable 360x280 refused as a target, surfaces now 384 wide
+442 pid=FFFE279D DrvReleaseContext context=2 -> 1
+443 pid=FFFE279D paths batches/triangles untextured=8/26 hw=53/90 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+444 pid=FFFE279D counters hwtex lost=0
+445 pid=FFFE279D counters tnl batches=0 triangles=0 refused=0 failed=0
+446 pid=FFFE279D counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+447 pid=FFFE279D counters hwtex live=0 creates=44 create-failed=0 evictions=0 uploads=47 partial=2 upload-kb=452 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+448 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=1 targets-padded=1
+449 pid=FFFE279D DrvDeleteContext context=2 -> 1
+452 pid=FFFE279D DrvCreateLayerContext hdc=0000077E layer=0 -> 2
+453 pid=FFFE279D DrvSetContext hdc=0000077E context=2 -> 1
+454 pid=FFFE279D tnl allowed=0 batches=0 triangles=0
+455 pid=FFFE279D DrvReleaseContext context=2 -> 1
+456 pid=FFFE279D paths batches/triangles untextured=8/26 hw=54/91 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+457 pid=FFFE279D counters hwtex lost=0
+458 pid=FFFE279D counters tnl batches=0 triangles=0 refused=0 failed=0
+459 pid=FFFE279D counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+460 pid=FFFE279D counters hwtex live=0 creates=45 create-failed=0 evictions=0 uploads=48 partial=2 upload-kb=462 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+461 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=1 targets-padded=1
+474 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=1 targets-padded=1
+487 pid=FFFE279D counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=1 targets-padded=1

@@ -241,6 +241,13 @@ static int v9x_gl_arb_coord_seen;
 #define V9X_GL_RESULT_SLOTS 10u
 static DWORD v9x_gl_draw_failures[V9X_GL_RESULT_SLOTS];
 static DWORD v9x_gl_failures_dumped;
+/* Clears the interface did not do, by result, and how many were logged. */
+static DWORD v9x_gl_clear_failures[V9X_GL_RESULT_SLOTS];
+static DWORD v9x_gl_clear_failures_logged;
+/* Drawable surfaces the HAL refused as a target (v9x_gl_target_recover),
+ * and of those, the ones made again wider. */
+static DWORD v9x_gl_targets_refused;
+static DWORD v9x_gl_targets_padded;
 static DWORD v9x_gl_report_last;
 #define V9X_GL_REPORT_MS 10000ul
 
@@ -879,6 +886,47 @@ static int v9x_gl_flush_tnl(V9X_GL_CONTEXT *context, V9X_GL_PENDING *pending);
 static void *v9x_gl_drawable_target(V9X_GL_DRAWABLE *drawable,
                                     unsigned int which);
 
+/*
+ * After a clear or draw came back INVALID: whether the HAL refuses the
+ * drawable's surface as a target, and if so its surfaces made again wider
+ * (v9x_gl_drawable_pad), for the caller to retry. Non-zero when they were.
+ *
+ * INVALID is the interface's answer to a malformed request, and also the
+ * HAL's to a target its engine will not bind (v9x_r3d_bind); Trinity's
+ * 360-pixel 16 bpp back buffer got it at every clear and draw, all
+ * dropped (2026-11-08). The two are told apart by a clear that writes
+ * nothing: no colour, no depth, the target alone, which the HAL binds and
+ * then leaves untouched (r3d_clear.c). Only a refusal of that pads, so a
+ * malformed batch never costs the back buffer's contents.
+ */
+static int v9x_gl_target_recover(V9X_GL_DRAWABLE *drawable, unsigned int which)
+{
+    const V9X_R3D_INTERFACE *iface = v9x_gl_device_interface();
+    const V9X_R3D_ABI_DESCRIBE *description = v9x_gl_device_description();
+    V9X_R3D_ABI_CLEAR probe;
+    unsigned int i;
+
+    if (iface == 0 || description == 0 || drawable == 0) {
+        return 0;
+    }
+    for (i = 0u; i < sizeof(probe); ++i) {
+        ((BYTE *)&probe)[i] = 0u;
+    }
+    probe.struct_bytes = sizeof(probe);
+    probe.generation = description->generation;
+    probe.target.surface = v9x_gl_drawable_target(drawable, which);
+    if (probe.target.surface == 0 ||
+        iface->clear(&probe) != V9X_R3D_RESULT_INVALID) {
+        return 0;
+    }
+    ++v9x_gl_targets_refused;
+    if (!v9x_gl_drawable_pad(drawable)) {
+        return 0;
+    }
+    ++v9x_gl_targets_padded;
+    return 1;
+}
+
 static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
@@ -966,9 +1014,26 @@ static void V9X_GL_API v9x_gl_clear(GLbitfield mask)
             result = clear.target.surface != 0 ? iface->clear(&clear)
                                                : V9X_R3D_RESULT_NO_MEMORY;
         }
+        if (result == V9X_R3D_RESULT_INVALID &&
+            v9x_gl_target_recover(drawable, colour ? which
+                                                   : V9X_GL_DRAW_BACK)) {
+            clear.target.surface = colour
+                ? v9x_gl_drawable_target(drawable, which)
+                : v9x_gl_drawable_back(drawable);
+            clear.depth.surface = v9x_gl_drawable_depth(drawable);
+            result = clear.target.surface != 0 ? iface->clear(&clear)
+                                               : V9X_R3D_RESULT_NO_MEMORY;
+        }
         if (result != V9X_R3D_RESULT_OK) {
-            v9x_gl_log3("glClear result=%lu mask=%08lX", result,
-                        (v9x_u32)mask, 0ul);
+            /* Counted, and the first few logged: a clear the HAL refuses
+             * is refused every frame. */
+            ++v9x_gl_clear_failures[result < V9X_GL_RESULT_SLOTS ? result
+                                                                 : 0u];
+            if (v9x_gl_clear_failures_logged < V9X_GL_FAILURES_DUMPED_MAX) {
+                ++v9x_gl_clear_failures_logged;
+                v9x_gl_log3("glClear result=%lu mask=%08lX", result,
+                            (v9x_u32)mask, 0ul);
+            }
             continue;
         }
         depth_pending = 0ul;
@@ -2030,6 +2095,19 @@ static void v9x_gl_counters_log(void)
                   v9x_gl_draw_failures[5] + v9x_gl_draw_failures[6] +
                   v9x_gl_draw_failures[9]);
     v9x_gl_log(text);
+    /* What used to be dropped unseen: draws failed INVALID (a target the
+     * HAL refused, until v9x_gl_target_recover), clears that failed, and
+     * the targets refused and padded. */
+    wsprintfA(text, "counters refused draw-invalid=%lu clear-invalid=%lu "
+              "clear-other=%lu targets-refused=%lu targets-padded=%lu",
+              v9x_gl_draw_failures[1], v9x_gl_clear_failures[1],
+              v9x_gl_clear_failures[0] + v9x_gl_clear_failures[2] +
+                  v9x_gl_clear_failures[3] + v9x_gl_clear_failures[4] +
+                  v9x_gl_clear_failures[5] + v9x_gl_clear_failures[6] +
+                  v9x_gl_clear_failures[7] + v9x_gl_clear_failures[8] +
+                  v9x_gl_clear_failures[9],
+              v9x_gl_targets_refused, v9x_gl_targets_padded);
+    v9x_gl_log(text);
 }
 
 /* Every ten seconds while drawing: a game that runs slowly is measured
@@ -2321,6 +2399,20 @@ static v9x_u32 v9x_gl_draw_into(V9X_GL_CONTEXT *context,
         if (two_units) {
             draw.texture1 = pending->texture1;
             draw.texcoords1 = pending->texcoords1;
+        }
+        draw_start = v9x_gl_tsc_begin();
+        result = iface->draw(&draw, outcome);
+        v9x_gl_tsc_end(V9X_GL_TSC_IFACE, draw_start);
+        ++v9x_gl_count_draws;
+    }
+    /* A target the HAL will not bind: the same draw into wider surfaces.
+     * INVALID is a refusal before submission, so nothing is drawn twice. */
+    if (result == V9X_R3D_RESULT_INVALID &&
+        v9x_gl_target_recover(drawable, which)) {
+        draw.target.surface = v9x_gl_drawable_target(drawable, which);
+        draw.depth.surface = v9x_gl_drawable_depth(drawable);
+        if (draw.target.surface == 0) {
+            return V9X_R3D_RESULT_NO_MEMORY;
         }
         draw_start = v9x_gl_tsc_begin();
         result = iface->draw(&draw, outcome);

@@ -119,7 +119,8 @@ then an offscreen render target.
 
 - **The ICD drops a refused clear or draw.** On Trinity, every refused
   clear was logged and skipped, with no software fallback and no GL
-  error. A refused target now shows only in `V9XGL.LOG`.
+  error. Since fixed: the ICD now pads a refused drawable and retries
+  ([record](2026-11-08-gl-icd-refused-target-recovery.md)).
 - **Other engines.** Only Evergreen and Rage 128 were checked for this
   mismatch. The VI and GCN placement already rounds rows to its alignment
   (`d3d_vi.c`). The rest were not audited.

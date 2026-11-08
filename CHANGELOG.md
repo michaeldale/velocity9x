@@ -21,6 +21,14 @@ build identifier so exact guest-tested binaries remain traceable.
   had been blamed on the program
   ([record](docs/decisions/2026-11-08-render-target-placement-trinity-rage128.md)).
 
+- **OpenGL: a window the 3D engine refuses as a target is no longer
+  left blank.** The OpenGL driver dropped every clear and draw into such
+  a window without a word. It now makes the window's buffers again,
+  wider than the window, and retries; `V9XGL.LOG` counts refused and
+  remade targets. Tested on the HD 7660D against 0.41.0's display driver,
+  which refuses some 16 bpp window widths
+  ([record](docs/decisions/2026-11-08-gl-icd-refused-target-recovery.md)).
+
 ## 0.41.0 - 2026-11-08
 
 - **AMD Radeon HD 5450, HD 5570, HD 5770, HD 7470 and HD 7660D: the
