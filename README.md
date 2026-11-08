@@ -21,7 +21,8 @@ hardware 3D:
 The S3 Trio32/64 and the Matrox Millennium get 2D acceleration, and other
 cards run through their VESA video BIOS. The Intel GMA 4500 and GMA X4500
 were built from their surveys and run, by one reporter's account, on
-0.28.0; the GMA 4500MHD likewise on 0.35.0. The GMA 3100 and Radeon
+0.28.0; the GMA 4500MHD likewise on 0.35.0, and from 0.44.0 on a tester's
+machine through remote help. The GMA 3100 and Radeon
 HD 5570 are recognised: built from a survey, not yet run.
 
 It is written against the Windows 98 DDI, DIB Engine, DirectDraw HAL,
@@ -34,21 +35,21 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.43.0
+## Current version: 0.44.0
 
-[Download](releases/0.43.0/README.md) ·
+[Download](releases/0.44.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.43.0:
-- **`vbe` package:** the screen is written write-combined through the
-  page attribute table when the BIOS's memory ranges block the usual
-  route. Screen writes went from 66 to 11,357 MB/s on an i5-4570. Not yet
-  tested on an AMD CPU.
-- **Every card:** after a Device Manager reinstall from an older
-  package's cached entry, Display Properties lists every mode again, not
-  only the basic seven. Tested in an emulator.
+New in 0.44.0:
+- **Intel GMA X3100, GMA 4500, X4500 and 4500MHD, and HD Graphics
+  (Ironlake):** colour-keyed
+  Direct3D geometry that writes depth is drawn. Before this release it
+  was not drawn at all, and Forsaken showed almost nothing. It is now
+  drawn in two passes. Where a texel is keyed out, depth is still written,
+  so geometry drawn later behind that hole is hidden. Tested on a
+  GMA 4500MHD (Forsaken's menu); gameplay and the GMA X3100 not run.
 
 ### Known issues
 
@@ -145,9 +146,9 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
-| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes falls back to software |
+| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes is refused, so Direct3D does not draw it; from 0.44.0 colour keys with depth writes are drawn in two passes instead (not run on this machine) |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
-| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report. No OpenGL or Glide result; no later release run ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)) |
+| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)). From 0.44.0 the same machine is reached through remote help: Direct3D, OpenGL and Glide 2 probes pass, two-unit REPLACE and DECAL fail as on the GMA X3100 and Ironlake, and Forsaken's menu draws ([audit](docs/decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md), [issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)) |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
@@ -237,7 +238,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel GMA 3150 | DirectDraw | Yes | Not run | Yes | Probe | Glide 2 probe only | Not run |
 | Intel GMA X3100 | DirectDraw | Yes | Not run | Yes | Yes | Glide 2 probe only | Not run |
 | Intel GMA X4500, GMA 4500 (reported, 0.28.0) | Not recorded | Yes | Not run | Yes | Not recorded | Yes | Not run |
-| Intel GMA 4500MHD (reported, 0.35.0) | Not recorded | Yes | Not run | Not run | Not recorded | Not run | Not run |
+| Intel GMA 4500MHD | Not recorded | Yes | Not run | Probe | Probe, MODULATE and BLEND only | Glide 2 probe only | Not run |
 | Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
