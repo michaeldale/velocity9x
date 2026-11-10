@@ -1077,6 +1077,12 @@ V9X_INT10_SET_MODE       equ 00h
 V9X_INT10_VBE_SET_MODE   equ 4f02h
 V9X_INT10_VBE_REFUSED    equ 034fh
 V9X_INT10_NO_CLEAR       equ 80h        ; AL bit 7: keep video memory
+V9X_INT10_SET_CURSOR_SHAPE equ 01h
+V9X_INT10_SET_CURSOR_POS   equ 02h
+; BIOS data area, linear offsets in a VM (IBM PC/AT BIOS data area layout).
+V9X_BDA_CURSOR           equ 450h       ; 8 words, row:column per page
+V9X_BDA_CURSOR_SHAPE     equ 460h       ; start and end scan lines
+V9X_BDA_ACTIVE_PAGE      equ 462h
 
 BeginProc V9xMini_Int10_Hook
     push    ebx
@@ -1090,7 +1096,7 @@ BeginProc V9xMini_Int10_Hook
     VxDCall VDD_Get_VM_Info             ; EDI = CRTC owner, ESI = MemC owner
     pop     esi
     cmp     edi, ebx
-    je      short V9xMini_Int10_Windowed
+    je      V9xMini_Int10_Windowed
     cmp     edi, esi
     jne     V9xMini_Int10_Pass
 
@@ -1104,7 +1110,23 @@ BeginProc V9xMini_Int10_Hook
     jz      V9xMini_Int10_Pass
     mov     word ptr [esi + edi], 0
     cmp     [ebp.Client_AH], V9X_INT10_SET_MODE
-    je      short V9xMini_Int10_Pass
+    je      V9xMini_Int10_Pass
+
+    ; A BIOS mode set homes the cursor even with AL bit 7 set, and this one
+    ; runs at the box's first output, long after DOS put its prompt
+    ; somewhere else: the first thing typed in full screen landed at row 0
+    ; over the banner, and the next command was appended to it after the
+    ; return (Win86SE, 2026-11-10). So the BIOS data area's cursor state is
+    ; kept across it - the eight pages' positions (40:50h-40:5Fh), the shape
+    ; (40:60h), the active page (40:62h), and 40:63h with them, the CRTC base
+    ; the same text mode sets again - and the hardware cursor is put back
+    ; with AH=01h and AH=02h, which re-enter this hook and pass.
+    mov     edx, [esi.CB_High_Linear]
+    push    dword ptr [edx + V9X_BDA_CURSOR + 16]
+    push    dword ptr [edx + V9X_BDA_CURSOR + 12]
+    push    dword ptr [edx + V9X_BDA_CURSOR + 8]
+    push    dword ptr [edx + V9X_BDA_CURSOR + 4]
+    push    dword ptr [edx + V9X_BDA_CURSOR]
 
     ; The nested INT 10h re-enters this hook as a mode set from the CRTC
     ; owner with nothing deferred, and passes.
@@ -1115,8 +1137,38 @@ BeginProc V9xMini_Int10_Hook
     mov     [ebp.Client_AX], ax
     mov     eax, 10h
     VMMcall Exec_Int
+
+    ; Client state was pushed below the saved BDA bytes; reach them past it.
+    mov     edx, [esi.CB_High_Linear]
+    lea     edi, [esp + SIZE Client_Reg_Struc]
+    mov     ecx, [edi]
+    mov     [edx + V9X_BDA_CURSOR], ecx
+    mov     ecx, [edi + 4]
+    mov     [edx + V9X_BDA_CURSOR + 4], ecx
+    mov     ecx, [edi + 8]
+    mov     [edx + V9X_BDA_CURSOR + 8], ecx
+    mov     ecx, [edi + 12]
+    mov     [edx + V9X_BDA_CURSOR + 12], ecx
+    mov     ecx, [edi + 16]
+    mov     [edx + V9X_BDA_CURSOR + 16], ecx
+
+    mov     [ebp.Client_AH], V9X_INT10_SET_CURSOR_SHAPE
+    mov     cx, word ptr [edx + V9X_BDA_CURSOR_SHAPE]
+    mov     [ebp.Client_CX], cx
+    mov     eax, 10h
+    VMMcall Exec_Int
+    mov     edx, [esi.CB_High_Linear]
+    movzx   ecx, byte ptr [edx + V9X_BDA_ACTIVE_PAGE]
+    and     ecx, 7
+    mov     [ebp.Client_AH], V9X_INT10_SET_CURSOR_POS
+    mov     [ebp.Client_BH], cl
+    mov     cx, word ptr [edx + V9X_BDA_CURSOR + ecx * 2]
+    mov     [ebp.Client_DX], cx
+    mov     eax, 10h
+    VMMcall Exec_Int
     VMMcall End_Nest_Exec
     Pop_Client_State
+    add     esp, 20
     inc     V9xInt10DeferredCount
     jmp     short V9xMini_Int10_Pass
 

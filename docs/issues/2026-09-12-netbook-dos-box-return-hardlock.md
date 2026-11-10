@@ -178,3 +178,14 @@ that hook, the desktop came back repainted (boots 684-685). The August
 file write inside the VDD's callback is the probable hang. Not run on
 any Intel machine yet
 ([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+
+## 2026-11-10, later: the HD 4600 returns too
+
+On the 4570, the 0.44.0 driver reproduced the freeze (boot 198: GDI reads
+black after the return). With this tree's display driver and mini-VDD
+(boot 199) the desktop came back, commands typed before, during and after
+the trip ran in order, a second trip and `exit` worked, V9XD32 passed,
+and the live display registers were the desktop's (VGA plane disabled,
+plane A on at 800x600). The panel was not looked at. The GMA 950 netbook,
+whose return was a hard lock, is not yet run
+([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).

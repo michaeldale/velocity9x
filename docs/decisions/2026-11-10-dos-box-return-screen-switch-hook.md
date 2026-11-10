@@ -122,16 +122,66 @@ registered callback with no such test.
 
 ## Not known
 
-- Whether the Intel family (GMA 950, HD 4600) comes back the same way.
-  The netbook's return was a hard lock, not a freeze, in 2026-09.
+- Whether the GMA 950 comes back the same way; the netbook's return was
+  a hard lock, not a freeze, in 2026-09. The HD 4600 does (below).
+- What the 4570's panel shows: nobody looked; the registers say the
+  desktop plane.
 - Whether the striped band at boot 680 is the VDD's restore, or memory
   the DIB Engine drew into while it should have been busy.
 - Tier-0 (`vbe`) on the Mach64 guest: not rerun.
-- The DOS session's cursor after a trip. Typed in full screen, `ver`
-  lands on row 0 over the banner, and after the return the next command
-  is appended to it (`verexit`, "Bad command or file name"). Main's build
-  showed the same row 0 at boot 680, so it predates this change. The INT
-  10h guard's deferred mode set (ba81ce11), which runs before the VM's
-  first INT 10h in full screen, is a suspect; not checked.
+- Why the full-screen screen is blank until the box's first output: the
+  guard's deferred mode set runs at the VM's first INT 10h, not at the
+  switch. Running it at the switch would take a mini-VDD screen-switch
+  callback, which the August records measured as making things worse.
+
+## Later the same day: the cursor out of step, two causes
+
+Typed in full screen, `ver` landed on row 0 over the banner, and after
+the return the next command was appended to it (`verexit`, "Bad command
+or file name"); main's build did the same at boot 680. A marker test
+(scratchpad `dos\cursor.ps1`: `echo AAA` windowed, `echo BBB` in full
+screen, `echo CCC` after the return, each line typed with delays)
+separates two causes.
+
+1. **The INT 10h guard homed the cursor.** Its deferred mode set
+   (ba81ce11) runs at the VM's first INT 10h in full screen, and a BIOS
+   mode set resets the cursor even with AL bit 7 set. Boot 685: `echo BBB`
+   at row 0, column 0 ([capture](../probe/86box-virge-dos-box-2026-11-10/sswitch2-cursor-homed.png)). The guard now saves the BIOS data area's cursor
+   state (40:50h-40:63h) across the set, writes it back, and restores the
+   hardware cursor with nested AH=01h and AH=02h
+   (`src\minivdd32\loader.asm`). Boot 686 (`cursor1`): `echo BBB` lands
+   after the prompt ([capture](../probe/86box-virge-dos-box-2026-11-10/cursor1-fullscreen.png)).
+2. **The agent's Enter does not reach a full-screen VM.** `key RETURN`
+   and `key ENTER` typed in full screen never ended the line, on every
+   build; `key CTRL+M` did (`echo DDD` ran, `echo EEE` with RETURN did
+   not, [capture](../probe/86box-virge-dos-box-2026-11-10/cursor1-ctrlm-vs-return.png)).
+   The agent sends VK_RETURN with its scan code
+   (`v9x-remote-agent\src\guest\input.c`); why the keyboard VxD drops it
+   for a full-screen VM is not known. Windowed, RETURN works. This is a
+   test-harness limit, not a driver fault, and it explains the joined
+   commands (`echo BBBecho CCC`).
+
+## The HD 4600 (4570), the same evening
+
+W9QI5A83, intel-gma, desktop 800x600x16, agent 0.13.1. No host-side view
+of this machine, so the evidence is the agent's GDI screenshot, the window
+list, a pointer move, the live display registers and V9XD32. Round trip
+as on 86Box, through Start > Run, with `echo AAA` windowed, `echo BBB` in
+full screen ended by CTRL+M, `echo CCC` after the return (scratchpad
+`dos\roundtrip-remote.ps1`).
+
+| Boot | Build | After the return |
+|---|---|---|
+| 198 | 0.44.0 (`24ecd14e`) | GDI reads black with stray pixel rows, the boot 71 signature; agent up |
+| 199 | `hswdos1`: V9XDISP.DRV and V9XMINI.VXD from this tree (the repaint fix and the cursor fix), the 0.44.0 HAL kept | desktop drawn, all three markers in order; a second trip (`echo DDD`, `echo EEE`) and `exit` work; V9XD32 `/bpp16 /ddi6` PASS, `Failures=0` |
+
+Live registers after the return at boot 199 (V9XHSWMM, read-only):
+VGA_CONTROL `8000298E` (VGA plane disabled), DSPACNTR `94000000` (plane
+A on, 5:6:5), stride `00000640`, pipe A source `031F0257` (800x600): the
+desktop's. In full screen ba81ce11 had recorded `0000298E`. Files:
+[`docs/probe/hd4600-dos-box-2026-11-10/`](../probe/hd4600-dos-box-2026-11-10/).
+The screenshots show the wifi network's name and are not kept. The
+4570 was left on `hswdos1`; its boot 198 pair is in the session
+scratchpad `dos\hsw-b198-before`.
 
 Gates: check-tree and run-checks pass.

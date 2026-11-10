@@ -56,7 +56,7 @@ New in 0.44.0:
 - **Every card:** returning from a full-screen DOS session can freeze the
   desktop or leave it black. Keep DOS windowed. The next release repaints
   the desktop on the way back; so far that is measured on an emulated S3
-  ViRGE only ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+  ViRGE and an Intel HD 4600 ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
 - **Glide and 3DCIF DLLs from 0.23.0 or earlier** do not work with this
   driver. Replace any copy in a game's folder with this release's.
 - **GMA 950:** 3DMark 2001 SE's Dragothic draws its sky white

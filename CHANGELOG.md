@@ -17,8 +17,9 @@ build identifier so exact guest-tested binaries remain traceable.
   DDK's display samples: it stops drawing while DOS has the screen, and
   asks Windows to repaint every window when the screen comes back.
   Before, the desktop came back frozen and unrepainted. Measured on an
-  emulated S3 ViRGE/DX (86Box); not yet run on a real card, including
-  the Intel machines where the fault was first seen
+  emulated S3 ViRGE/DX (86Box) and on an Intel HD 4600; the GMA 950,
+  whose return hard-locked, is not yet run. Text typed in a full-screen
+  DOS box also no longer lands at the top-left corner
   ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
 
 ## 0.44.0 - 2026-11-08
