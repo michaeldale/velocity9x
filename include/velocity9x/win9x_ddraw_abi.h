@@ -4617,6 +4617,20 @@ typedef struct v9x_dd_shared {
      * Appended 2026-10-28 within ABI 2026102002. The Gen3 draw path reads
      * it too, for its guard-band override (d3d_i9xx.c, 2026-11-04). */
     DWORD hsw_flush_omit;
+    /*
+     * The vbe screen shadow (src\display16\shadow16.c,
+     * docs\plans\vbe-shadow-framebuffer.md): the linear address of the copy
+     * of the desktop GDI draws into, laid out exactly as the primary (fb
+     * pitch, width, height, depth). 0 when GDI draws to the frame buffer: on
+     * every other family, with NOSHADOW.TXT, and while fb is not valid.
+     *
+     * The HAL keeps it current where something other than GDI writes the
+     * primary - option B of the plan: a CPU blit to the primary writes the
+     * shadow too, and an Unlock of the primary copies the locked rectangle
+     * from the frame buffer into it. Appended 2026-11-11 within ABI
+     * 2026102002, after everything a reader size-checks.
+     */
+    DWORD shadow_linear;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)

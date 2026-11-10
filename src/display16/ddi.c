@@ -28,6 +28,9 @@
  * guard here. */
 #include "dd16.h"
 #include "gdi_accel.h"
+#ifdef V9X_SCREEN_SHADOW
+#include "shadow16.h"
+#endif
 
 #define V9X_BITMAP_HEADER_SIZE     40u
 #define V9X_PALETTE_ENTRIES       256u
@@ -56,6 +59,12 @@ extern DWORD FAR PASCAL V9xCreateDibPDeviceCall(LPBITMAPINFO, LPVOID,
                                                 LPVOID, WORD);
 extern void FAR PASCAL V9xDibBeginAccess(void);
 extern void FAR PASCAL V9xDibEndAccess(void);
+#ifdef V9X_SCREEN_SHADOW
+static WORD v9x_shadow_bits_selector(void);
+/* What the last Enable did about the screen shadow, for V9XHW.INI
+ * ScreenShadow=: on, off-marker, or alloc-failed. */
+static const char *v9x_shadow_state = "off";
+#endif
 extern DWORD FAR PASCAL V9xDibSetPaletteCall(WORD, WORD, LPVOID, LPVOID);
 extern DWORD FAR PASCAL V9xDibSetPaletteTranslateCall(LPVOID, LPVOID);
 extern WORD FAR PASCAL V9xHardwarePresent(void);
@@ -708,6 +717,9 @@ static void v9x_publish_hardware_diagnostics(void)
      * it off", and neither key can express both.
      */
     v9x_write_hardware_info("Direct3DMode", v9x_dd_d3d_state_text());
+#ifdef V9X_SCREEN_SHADOW
+    v9x_write_hardware_info("ScreenShadow", v9x_shadow_state);
+#endif
     /*
      * And what this build reads an absent Direct3D= key as, which the page
      * cannot work out for itself.
@@ -1407,6 +1419,7 @@ static WORD v9x_build_pdevice(LPVOID device_info,
 {
     BITMAPINFO FAR *bitmap_info;
     DWORD created;
+    WORD bits_selector;
     WORD pdevice_flags = V9X_DE_MINIDRIVER | V9X_DE_VRAM;
 
     if (v9x_dib_pdevice_size == 0u) {
@@ -1537,22 +1550,35 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     } else {
         v9x_color_table = 0;
     }
+    /*
+     * Where the DIB Engine draws. The frame buffer, or on a family with the
+     * screen shadow a copy of the same layout in system memory: the flag
+     * stays V9X_DE_VRAM either way, because the DIB Engine has to keep
+     * calling deBeginAccess, and that call is what says what to copy out.
+     */
+    bits_selector = v9x_screen_selector;
+#ifdef V9X_SCREEN_SHADOW
+    bits_selector = v9x_shadow_bits_selector();
+#endif
     /* A family supplies build_screen_pdevice only when its BIOS-selected
      * scan-line layout is not reconstructed reliably by CreateDIBPDevice.
      * The proven S3 path leaves the hook null and uses the DIB Engine. */
     if (v9x_hw16.build_screen_pdevice != 0) {
         created = v9x_hw16.build_screen_pdevice(device_info, bitmap_info,
                                                 v9x_selected_mode,
-                                                v9x_screen_selector,
+                                                bits_selector,
                                                 pdevice_flags);
     } else {
         created = V9xCreateDibPDeviceCall(bitmap_info, device_info,
-                                         MAKELP(v9x_screen_selector, 0u),
+                                         MAKELP(bits_selector, 0u),
                                          pdevice_flags);
     }
     if (created == 0ul) {
         v9x_boot_trace("fail-create-pdevice");
         v9x_serial_write("V9X-DRV enable-fail stage=create-pdevice\r\n");
+#ifdef V9X_SCREEN_SHADOW
+        v9x_shadow16_disable();
+#endif
         if (v9x_reenabling == 0u) {
             V9xVddUnregister();
             V9xHardwareDisable();
@@ -1588,6 +1614,16 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     }
     v9x_driver_pdevice->deBeginAccess = V9xDibBeginAccess;
     v9x_driver_pdevice->deEndAccess = V9xDibEndAccess;
+#ifdef V9X_SCREEN_SHADOW
+    /* The same DIB Engine routines behind them, plus the copy out of the
+     * shadow when an access ends (shadow16.c). */
+    if (v9x_shadow16_active() != V9X_FALSE) {
+        v9x_driver_pdevice->deBeginAccess =
+            (V9X_ACCESS_PROC)V9xShadowBeginAccess;
+        v9x_driver_pdevice->deEndAccess =
+            (V9X_ACCESS_PROC)V9xShadowEndAccess;
+    }
+#endif
     v9x_driver_pdevice->deVersion = V9X_DE_VERSION;
     /*
      * Resolve GDI acceleration against the mode and the chip now that both are
@@ -1705,6 +1741,9 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     V9xUnhookScreenSwitch();
     V9xDdInvalidate();
     V9xVddUnregister();
+#ifdef V9X_SCREEN_SHADOW
+    v9x_shadow16_disable();
+#endif
     v9x_dosbox_trace("disable-pre-hardware");
     V9xHardwareDisable();
     v9x_screen_selector = 0u;
@@ -1834,6 +1873,10 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
             return 0u;
         }
         v9x_dosbox_trace("reenable-hardware-ok");
+#ifdef V9X_SCREEN_SHADOW
+        /* The mode set lost the desktop; the shadow kept it. */
+        v9x_shadow16_flush_all();
+#endif
         device->deFlags &= (WORD)~V9X_DE_BUSY;
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
@@ -1977,6 +2020,13 @@ void __loadds FAR PASCAL ResetHiResMode(void)
     v9x_dosbox_trace("reset-enter");
     if (V9xHardwareReset() != 0u) {
         v9x_dosbox_trace("reset-hardware-ok");
+#ifdef V9X_SCREEN_SHADOW
+        /* The DOS screen overwrote the frame buffer and not the shadow, so
+         * the desktop comes back before USER's repaint does. A memory copy,
+         * which is all this nested VDD callback may do (no file I/O here:
+         * docs\decisions\2026-11-10-dos-box-return-screen-switch-hook.md). */
+        v9x_shadow16_flush_all();
+#endif
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
         } else if (v9x_gamma_loaded != 0u && v9x_gamma_available()) {
@@ -1992,6 +2042,37 @@ void __loadds FAR PASCAL ResetHiResMode(void)
     V9xVddSaveState();
     v9x_dosbox_trace("reset-exit");
 }
+
+#ifdef V9X_SCREEN_SHADOW
+/*
+ * The screen PDEVICE's bits selector on a family with the screen shadow: the
+ * shadow's, or the frame buffer's when C:\V9XDIAG\NOSHADOW.TXT exists or the
+ * memory cannot be had. Sized from the mode's pitch, which is the stride the
+ * PDEVICE is given below, so a shadow offset and a frame buffer offset name
+ * the same pixel.
+ */
+static WORD v9x_shadow_bits_selector(void)
+{
+    OFSTRUCT marker;
+    WORD selector;
+
+    if (OpenFile(V9X_DIAG_NOSHADOW_TXT, &marker, OF_EXIST) != HFILE_ERROR) {
+        v9x_shadow16_disable();
+        v9x_shadow_state = "off-marker";
+        return v9x_screen_selector;
+    }
+    selector = v9x_shadow16_enable(v9x_selected_mode->width,
+                                   v9x_selected_mode->height,
+                                   v9x_selected_mode->bits_per_pixel,
+                                   (DWORD)v9x_selected_mode->pitch);
+    if (selector == 0u) {
+        v9x_shadow_state = "alloc-failed";
+        return v9x_screen_selector;
+    }
+    v9x_shadow_state = "on";
+    return selector;
+}
+#endif
 
 /*
  * A repaint request for sswitch16.c, which sits in another code segment and

@@ -113,6 +113,13 @@
             # The PAT write-combining decision behind vbe_hw16.c's fallback,
             # for when the BIOS's MTRRs refuse the MTRR route.
             @{ Name = 'pat'; Path = 'src\common\pat.c' }
+            # The screen shadow: GDI draws into system memory and what it
+            # draws is copied to the write-combined frame buffer, so GDI's
+            # reads stop crossing the bus (docs\plans\vbe-shadow-
+            # framebuffer.md). shadow is the host-tested rectangle
+            # arithmetic, shadow16 the state and the copies.
+            @{ Name = 'shadow'; Path = 'src\common\shadow.c' }
+            @{ Name = 'shadow16'; Path = 'src\display16\shadow16.c' }
             # The Direct3D back-end decision behind [Velocity9x] Direct3D.
             # Pure policy, host-tested; dd16.c resolves it at Enable and every
             # family publishes the result as Direct3DMode= whether or not it
@@ -158,11 +165,16 @@
         # route always had.
         # V9X_DURABLE_TRAIL: temporary, branch ati-rs690 only, as in the ati
         # manifest (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
-        Defines = @('V9X_D3D_DEFAULT_REQUEST=2', 'V9X_DURABLE_TRAIL')
+        # V9X_SCREEN_SHADOW: the screen shadow above, in ddi.c, dd16.c,
+        # runtime.asm and the cursor thunks. This family only: the others
+        # read the screen through an engine or have not been measured.
+        Defines = @('V9X_D3D_DEFAULT_REQUEST=2', 'V9X_DURABLE_TRAIL',
+                    'V9X_SCREEN_SHADOW')
         # V9X_PAT_ROUTE: runtime.asm's PAT verbs, for vbe_hw16.c's
         # write-combining fallback. Only the families with a PAT fallback
         # carry them: every byte counts against a full _TEXT elsewhere.
-        RuntimeDefines = @('V9X_DURABLE_TRAIL', 'V9X_PAT_ROUTE')
+        RuntimeDefines = @('V9X_DURABLE_TRAIL', 'V9X_PAT_ROUTE',
+                           'V9X_SCREEN_SHADOW')
         SkeletonOutput = 'build\win16-ddi-vbe'
         PackageOutput = 'build\win98se-vbe'
         VmStageDirectory = 'build\vm-probe\VBE'

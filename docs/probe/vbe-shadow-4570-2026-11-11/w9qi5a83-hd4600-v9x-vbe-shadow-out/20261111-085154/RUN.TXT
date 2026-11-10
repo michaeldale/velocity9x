@@ -1,0 +1,17 @@
+ConfigId=w9qi5a83-hd4600-v9x-vbe-shadow-out
+Environment=metal
+Endpoint=10.0.1.254:9869
+Guest=W9QI5A83
+GuestUptimeMs=197836
+GuestBootCounter=203
+Agent=0.13.1 v0.13.1
+Build=a80e784
+Version=v0.12.0+10
+Mode=1024x768x16
+ToolOrder=DBGDI
+Arguments=/env:metal /config:w9qi5a83-hd4600-v9x-vbe-shadow-out /mode:1024x768x16
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=
+Tool.DBGDI ok 37.2s 20261111-085154\DBGDI.INI

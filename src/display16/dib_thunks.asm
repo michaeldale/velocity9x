@@ -81,7 +81,25 @@ V9X_FORWARD ColorInfo,                 DIB_ColorInfo
 ; and forwards non-DirectDraw functions to DIB_Control itself.
 V9X_FORWARD EnumDFonts,                DIB_EnumDFonts
 V9X_FORWARD_PDEVICE EnumObj,           DIB_EnumObjExt
+IFNDEF V9X_SCREEN_SHADOW
 V9X_FORWARD Output,                    DIB_Output
+ELSE
+; The vbe screen shadow: shadow16.c's V9xShadowOutput takes Output's own
+; frame, bounds what the call can draw from its points, and calls DIB_Output
+; through the typed forward below. The DIB Engine's deBeginAccess rectangle
+; does not bound an Output call (shadow.h).
+PUBLIC Output
+EXTRN V9XSHADOWOUTPUT:FAR
+Output PROC FAR
+    jmp V9XSHADOWOUTPUT
+Output ENDP
+
+PUBLIC V9XDIBOUTPUTCALL
+EXTRN DIB_Output:FAR
+V9XDIBOUTPUTCALL PROC FAR
+    jmp DIB_Output
+V9XDIBOUTPUTCALL ENDP
+ENDIF
 V9X_FORWARD Pixel,                     DIB_Pixel
 V9X_FORWARD_PDEVICE RealizeObject,     DIB_RealizeObjectExt
 V9X_FORWARD StrBlt,                    DIB_StrBlt
@@ -108,6 +126,7 @@ V9X_FORWARD StretchDIBits,             DIB_StretchDIBits
 V9X_FORWARD SelectBitmap,              DIB_SelectBitmap
 V9X_FORWARD BitmapBits,                DIB_BitmapBits
 V9X_FORWARD Inquire,                   DIB_Inquire
+IFNDEF V9X_SCREEN_SHADOW
 V9X_FORWARD_PDEVICE_GUARDED SetCursor,  DIB_SetCursorExt
 V9X_FORWARD_PDEVICE_GUARDED MoveCursor, DIB_MoveCursorExt
 
@@ -127,5 +146,72 @@ CheckCursor PROC FAR
 V9xCheckCursorDone:
     retf
 CheckCursor ENDP
+ELSE
+; The vbe screen shadow (src\display16\shadow16.c). The DIB Engine draws the
+; software cursor into the shadow, outside any deBeginAccess bracket, so each
+; cursor entry calls the DIB Engine and then has shadow16.c copy the cursor's
+; rectangles to the frame buffer. Same guard as the forwards above, and the
+; same frames: the DIB Engine's extended entries take the original arguments
+; followed by the screen PDevice and pop both.
+EXTRN V9XSHADOWSETCURSOR:FAR
+EXTRN V9XSHADOWMOVECURSOR:FAR
+EXTRN V9XSHADOWCHECKCURSOR:FAR
+
+; SetCursor(LPVOID lpCursorShape): the pointer at [bp+6].
+PUBLIC SetCursor
+EXTRN DIB_SetCursorExt:FAR
+SetCursor PROC FAR
+    mov ax,DGROUP
+    mov es,ax
+    cmp dword ptr es:_v9x_driver_pdevice,0
+    je short V9xSetCursorDone
+    push bp
+    mov bp,sp
+    push dword ptr [bp+6]
+    push dword ptr es:_v9x_driver_pdevice
+    call DIB_SetCursorExt
+    push dword ptr [bp+6]
+    call V9XSHADOWSETCURSOR
+    pop bp
+V9xSetCursorDone:
+    retf 4
+SetCursor ENDP
+
+; MoveCursor(WORD absX, WORD absY): absY at [bp+6], absX at [bp+8].
+PUBLIC MoveCursor
+EXTRN DIB_MoveCursorExt:FAR
+MoveCursor PROC FAR
+    mov ax,DGROUP
+    mov es,ax
+    cmp dword ptr es:_v9x_driver_pdevice,0
+    je short V9xMoveCursorDone
+    push bp
+    mov bp,sp
+    push word ptr [bp+8]
+    push word ptr [bp+6]
+    push dword ptr es:_v9x_driver_pdevice
+    call DIB_MoveCursorExt
+    push word ptr [bp+8]
+    push word ptr [bp+6]
+    call V9XSHADOWMOVECURSOR
+    pop bp
+V9xMoveCursorDone:
+    retf 4
+MoveCursor ENDP
+
+PUBLIC CheckCursor
+EXTRN DIB_CheckCursorExt:FAR
+CheckCursor PROC FAR
+    mov ax,DGROUP
+    mov es,ax
+    cmp dword ptr es:_v9x_driver_pdevice,0
+    je short V9xCheckCursorDone
+    push dword ptr es:_v9x_driver_pdevice
+    call DIB_CheckCursorExt
+    call V9XSHADOWCHECKCURSOR
+V9xCheckCursorDone:
+    retf
+CheckCursor ENDP
+ENDIF
 
 END

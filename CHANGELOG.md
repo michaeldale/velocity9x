@@ -6,6 +6,23 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.46.0 - not yet released
 
+- **`vbe` package: moving windows, scrolling, and anything else that
+  reads the screen is many times faster.** Windows now draws the
+  desktop into a copy in system memory, and the driver copies each change
+  to the screen. Since 0.39.0 the screen has been fast to write and stays
+  slow to read: about 150 MB/s on an Intel HD 4600, 5 to 6 MB/s on the
+  AMD cards measured. On the HD 4600, a 256x256 window move went from 103
+  to 2,124 MB/s, an overlapping copy (what scrolling does) from 24 to
+  2,665 MB/s, and ScrollDC from 153 to 6,957 MB/s; small areas gain
+  less (2.5 times at 8x8). The cost is the extra
+  copy: drawing that only writes runs at 0.3 to 0.8 of its old speed,
+  text costs 1.3 times as much and lines 1.35 to 1.9 times. After a
+  full-screen DOS box the desktop is back at once. Not yet run on an AMD
+  machine, at a depth other than 16 bpp, or with a windowed program that
+  writes straight to the screen through DirectDraw. A file
+  `C:\V9XDIAG\NOSHADOW.TXT` turns it off
+  ([record](docs/decisions/2026-11-11-vbe-screen-shadow-phase1.md)).
+
 ## 0.45.0 - 2026-11-10
 
 - **Withdrawn known issue, every card: a program that crashes or is

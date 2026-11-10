@@ -76,11 +76,26 @@ static void v9x_copy_row(BYTE *destination, const BYTE *source, DWORD bytes)
 void v9x_cpu_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
                   DWORD destination_offset, DWORD bytes_per_pixel)
 {
+    BYTE *base = (BYTE *)v9x_hal->fb.linear_base;
+
+    v9x_cpu_copy_in(data, base, source_offset, base, destination_offset,
+                    bytes_per_pixel);
+}
+
+/*
+ * The same copy with each offset relative to its own base. With two
+ * different bases the rectangles cannot overlap, and the row order chosen
+ * for the equal-base case is then merely harmless.
+ */
+void v9x_cpu_copy_in(V9X_DDHAL_BLTDATA *data,
+                     const BYTE *source_base, DWORD source_offset,
+                     BYTE *destination_base, DWORD destination_offset,
+                     DWORD bytes_per_pixel)
+{
     DWORD source_pitch = (DWORD)data->lpDDSrcSurface->lpGbl->lPitch;
     DWORD destination_pitch = (DWORD)data->lpDDDestSurface->lpGbl->lPitch;
     DWORD row_bytes = (DWORD)(data->rSrc[2] - data->rSrc[0]) * bytes_per_pixel;
     DWORD height = (DWORD)(data->rSrc[3] - data->rSrc[1]);
-    BYTE *base = (BYTE *)v9x_hal->fb.linear_base;
     DWORD row;
 
     source_offset += (DWORD)data->rSrc[1] * source_pitch +
@@ -90,21 +105,42 @@ void v9x_cpu_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
 
     if (destination_offset > source_offset) {
         for (row = height; row-- != 0ul;) {
-            v9x_copy_row(base + destination_offset + row * destination_pitch,
-                         base + source_offset + row * source_pitch,
+            v9x_copy_row(destination_base + destination_offset +
+                             row * destination_pitch,
+                         source_base + source_offset + row * source_pitch,
                          row_bytes);
         }
     } else {
         for (row = 0ul; row < height; ++row) {
-            v9x_copy_row(base + destination_offset + row * destination_pitch,
-                         base + source_offset + row * source_pitch,
+            v9x_copy_row(destination_base + destination_offset +
+                             row * destination_pitch,
+                         source_base + source_offset + row * source_pitch,
                          row_bytes);
         }
     }
 }
 
+void v9x_cpu_rect_copy(BYTE *destination_base, const BYTE *source_base,
+                       DWORD offset, DWORD row_bytes, DWORD rows,
+                       DWORD pitch)
+{
+    DWORD row;
+
+    for (row = 0ul; row < rows; ++row) {
+        v9x_copy_row(destination_base + offset + row * pitch,
+                     source_base + offset + row * pitch, row_bytes);
+    }
+}
+
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
-                         DWORD bytes_per_pixel)
+                  DWORD bytes_per_pixel)
+{
+    v9x_cpu_fill_in(data, (BYTE *)v9x_hal->fb.linear_base, offset,
+                    bytes_per_pixel);
+}
+
+void v9x_cpu_fill_in(V9X_DDHAL_BLTDATA *data, BYTE *base, DWORD offset,
+                     DWORD bytes_per_pixel)
 {
     DWORD pitch = (DWORD)data->lpDDDestSurface->lpGbl->lPitch;
     DWORD width = (DWORD)(data->rDest[2] - data->rDest[0]);
@@ -115,7 +151,7 @@ void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
      * red channel of every high-colour fill.
      */
     DWORD colour = data->bltFX.dwFillColor;
-    BYTE *row = (BYTE *)v9x_hal->fb.linear_base + offset +
+    BYTE *row = base + offset +
                 (DWORD)data->rDest[1] * pitch +
                 (DWORD)data->rDest[0] * bytes_per_pixel;
 

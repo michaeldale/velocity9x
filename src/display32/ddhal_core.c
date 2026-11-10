@@ -679,6 +679,124 @@ int v9x_present_gdi_may_draw(void)
     return !v9x_present_exclusive || v9x_present_gdi_flipped;
 }
 
+/*
+ * The vbe screen shadow, the HAL's half (option B of
+ * docs\plans\vbe-shadow-framebuffer.md).
+ *
+ * On the vbe family the 16-bit driver has GDI draw into a copy of the
+ * desktop in system memory and copies each change to the frame buffer
+ * (src\display16\shadow16.c). Whatever else writes the visible primary has
+ * to write that copy too, or GDI's next read of the area - a window moved,
+ * a menu closed over it - brings back what was there before. Two writers
+ * pass through here: this DLL's CPU blits, which draw into the shadow and
+ * copy the rectangle out, and an application holding a Lock, whose
+ * rectangle is read back from the frame buffer at Unlock.
+ *
+ * Not while exclusive mode keeps GDI off the screen: the desktop is
+ * repainted when it ends, through GDI and so through the shadow. The base,
+ * or null when the shadow does not apply to an offset into the aperture.
+ */
+static BYTE *v9x_shadow_for(DWORD aperture_offset)
+{
+    if (v9x_hal == 0 || v9x_hal->shadow_linear == 0ul ||
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        aperture_offset >= v9x_hal->fb.visible_bytes ||
+        !v9x_present_gdi_may_draw()) {
+        return 0;
+    }
+    return (BYTE *)v9x_hal->shadow_linear;
+}
+
+/* Copy one rectangle of a surface at surface_offset between the frame
+ * buffer and the shadow, clipped to the visible primary. */
+static void v9x_shadow_sync_rect(BYTE *shadow, int to_frame_buffer,
+                                 DWORD surface_offset, const LONG *rect,
+                                 DWORD pitch, DWORD bytes_per_pixel)
+{
+    BYTE *frame_buffer = (BYTE *)v9x_hal->fb.linear_base;
+    DWORD offset;
+    DWORD row_bytes;
+    DWORD rows;
+    DWORD visible = v9x_hal->fb.visible_bytes;
+
+    if (rect[0] < 0l || rect[1] < 0l || rect[2] <= rect[0] ||
+        rect[3] <= rect[1] || pitch == 0ul) {
+        return;
+    }
+    offset = surface_offset + (DWORD)rect[1] * pitch +
+             (DWORD)rect[0] * bytes_per_pixel;
+    row_bytes = (DWORD)(rect[2] - rect[0]) * bytes_per_pixel;
+    rows = (DWORD)(rect[3] - rect[1]);
+    if (offset >= visible) {
+        return;
+    }
+    if ((visible - offset) / pitch < rows) {
+        rows = (visible - offset) / pitch;
+    }
+    if (to_frame_buffer) {
+        v9x_cpu_rect_copy(frame_buffer, shadow, offset, row_bytes, rows,
+                          pitch);
+    } else {
+        v9x_cpu_rect_copy(shadow, frame_buffer, offset, row_bytes, rows,
+                          pitch);
+    }
+}
+
+/* The primary rectangle a Lock handed out, for its Unlock. One at a time:
+ * DirectDraw holds the Win16 lock across a lock of the primary, so GDI does
+ * not draw in between, and a second lock before the first's Unlock widens
+ * the copy to the whole surface rather than losing either. Shared by every
+ * process, as all of this DLL's statics are. */
+static const V9X_DD_SURFACE_LCL *v9x_shadow_lock_surface;
+static DWORD v9x_shadow_lock_offset;
+static LONG v9x_shadow_lock_rect[4];
+
+static void v9x_shadow_note_lock(const V9X_DDHAL_LOCKDATA *data)
+{
+    const V9X_DD_SURFACE_LCL *surface = data->lpDDSurface;
+    DWORD offset = v9x_surface_offset(surface);
+    int whole = !data->bHasRect;
+
+    if (offset == 0xfffffffful || v9x_shadow_for(offset) == 0) {
+        return;
+    }
+    if (v9x_shadow_lock_surface != 0) {
+        whole = 1;
+    }
+    v9x_shadow_lock_surface = surface;
+    v9x_shadow_lock_offset = offset;
+    if (whole) {
+        v9x_shadow_lock_rect[0] = 0l;
+        v9x_shadow_lock_rect[1] = 0l;
+        v9x_shadow_lock_rect[2] = (LONG)surface->lpGbl->wWidth;
+        v9x_shadow_lock_rect[3] = (LONG)surface->lpGbl->wHeight;
+        return;
+    }
+    v9x_shadow_lock_rect[0] = data->rArea[0];
+    v9x_shadow_lock_rect[1] = data->rArea[1];
+    v9x_shadow_lock_rect[2] = data->rArea[2];
+    v9x_shadow_lock_rect[3] = data->rArea[3];
+}
+
+/* The application has written the frame buffer; read its rectangle back. */
+static void v9x_shadow_note_unlock(const V9X_DD_SURFACE_LCL *surface)
+{
+    BYTE *shadow;
+
+    if (v9x_shadow_lock_surface == 0 || surface != v9x_shadow_lock_surface) {
+        return;
+    }
+    v9x_shadow_lock_surface = 0;
+    shadow = v9x_shadow_for(v9x_shadow_lock_offset);
+    if (shadow == 0 || surface->lpGbl == 0 || surface->lpGbl->lPitch <= 0l) {
+        return;
+    }
+    v9x_shadow_sync_rect(shadow, 0, v9x_shadow_lock_offset,
+                         v9x_shadow_lock_rect,
+                         (DWORD)surface->lpGbl->lPitch,
+                         v9x_hal->fb.bits_per_pixel >> 3);
+}
+
 int v9x_present_draw_record(int submitted)
 {
     return v9x_draw_note_should_record(&v9x_present_draw_note, submitted);
@@ -1560,6 +1678,7 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
     /* Drained: an engine that keeps the surface in its own layout makes
      * it linear for the CPU now (d3d_internal.h, lock_surface). */
     v9x_d3d_lock_surface((const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
+    v9x_shadow_note_lock(data);
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_LOCK, data->ddRVal);
     return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1573,6 +1692,8 @@ DWORD __stdcall V9xHalUnlock(V9X_DDHAL_UNLOCKDATA *data)
      * read it. */
     v9x_d3d_unlock_surface((const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
     v9x_wc_drain();
+    /* After the drain, so the read-back sees the application's writes. */
+    v9x_shadow_note_unlock((const V9X_DD_SURFACE_LCL *)data->lpDDSurface);
     V9X_DP2_RING_EVENT(V9X_DP2R_UNLOCK, data != 0 ? data->lpDDSurface : 0ul, 0ul);
     if (v9x_lock_held_started != 0ul) {
         V9X_TIME_END(V9X_TIME_LOCK_HELD, v9x_lock_held_started);
@@ -2002,6 +2123,7 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     DWORD destination_offset;
     int wait;
     const V9X_ENGINE32_OPS *ops;
+    BYTE *shadow;
 
     data->ddRVal = V9X_DD_OK;
     if ((data->dwFlags & ~allowed) != 0ul ||
@@ -2058,8 +2180,22 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         return V9X_DDHAL_DRIVER_HANDLED;
     }
 
-    v9x_cpu_copy(data, source_offset, destination_offset,
-                 bytes_per_pixel);
+    shadow = v9x_shadow_for(destination_offset);
+    if (shadow == 0) {
+        v9x_cpu_copy(data, source_offset, destination_offset,
+                     bytes_per_pixel);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    /* Into the shadow, reading a visible source from the shadow as well
+     * rather than across the bus, then the rectangle out to the screen. */
+    v9x_cpu_copy_in(data,
+                    v9x_shadow_for(source_offset) != 0 ?
+                        shadow : (const BYTE *)v9x_hal->fb.linear_base,
+                    source_offset, shadow, destination_offset,
+                    bytes_per_pixel);
+    v9x_shadow_sync_rect(shadow, 1, destination_offset, data->rDest,
+                         (DWORD)data->lpDDDestSurface->lpGbl->lPitch,
+                         bytes_per_pixel);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
@@ -2081,6 +2217,7 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     int wait;
     int outcome = V9X_BLT_DECLINED;
     const V9X_ENGINE32_OPS *ops;
+    BYTE *shadow;
 
     if ((data->dwFlags & V9X_DDBLT_COLORFILL) == 0ul ||
         (data->dwFlags & ~allowed) != 0ul ||
@@ -2124,6 +2261,12 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     v9x_cpu_fill(data, offset, bytes_per_pixel);
+    /* A fill is all writes, so the shadow's copy is a second fill rather
+     * than a copy out (see v9x_shadow_for). */
+    shadow = v9x_shadow_for(offset);
+    if (shadow != 0) {
+        v9x_cpu_fill_in(data, shadow, offset, bytes_per_pixel);
+    }
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 

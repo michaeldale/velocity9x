@@ -374,7 +374,7 @@ foreach ($instruction in @('pop\s+dword ptr .*',
 
 $thunkDisassembly = (& $disassembler "-a" $thunkObject 2>&1) -join "`n"
 if ($thunkDisassembly -notmatch
-    '(?s)CheckCursor:.*?cmp\s+dword ptr es:_v9x_driver_pdevice,0.*?jmp\s+far ptr DIB_CheckCursorExt.*?retf') {
+    '(?s)CheckCursor:.*?cmp\s+dword ptr es:_v9x_driver_pdevice,0.*?(?:jmp|call)\s+far ptr DIB_CheckCursorExt.*?retf') {
     throw "The DIB CheckCursor thunk is missing its disabled-state guard."
 }
 foreach ($cursorThunk in @(
@@ -383,7 +383,7 @@ foreach ($cursorThunk in @(
 )) {
     if ($thunkDisassembly -notmatch
         ("(?s)$($cursorThunk[0]):.*?cmp\s+dword ptr " +
-         "es:_v9x_driver_pdevice,0.*?jmp\s+far ptr " +
+         "es:_v9x_driver_pdevice,0.*?(?:jmp|call)\s+far ptr " +
          "$($cursorThunk[1]).*?retf\s+(?:4|0004H)")) {
         throw "The DIB $($cursorThunk[0]) thunk is missing its disabled-state guard."
     }

@@ -59,6 +59,9 @@
  * is: the driver reads this directory at every load and never SYSTEM.INI.
  */
 #define V9X_DIAG_NOWC_TXT    V9X_DIAG_PATH("NOWC.TXT")      /* enable16.c */
+/* Present: the vbe screen shadow is not allocated and GDI draws to the frame
+ * buffer, as before 0.46.0. For A/B runs and as a way out. */
+#define V9X_DIAG_NOSHADOW_TXT V9X_DIAG_PATH("NOSHADOW.TXT") /* ddi.c */
 
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */

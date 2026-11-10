@@ -25,6 +25,8 @@ function Get-V9xHostSourceNames {
         'src\common\mtrr.c',
         # The PAT route to write-combining, where every MTRR pair is taken.
         'src\common\pat.c',
+        # The vbe screen shadow's rectangle arithmetic.
+        'src\common\shadow.c',
         'src\common\vram_probe.c',
         # V9XUPD.EXE's protocol text handling; the network half is Win32.
         'src\common\update_proto.c',
@@ -289,6 +291,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_edid.c',
         'tests\host\test_mtrr.c',
         'tests\host\test_pat.c',
+        'tests\host\test_shadow.c',
         'tests\host\test_vram_probe.c',
         'tests\host\test_update_proto.c',
         'tests\host\test_crypto.c',

@@ -81,6 +81,10 @@ unsigned int v9x_run_d3dmode_tests(void);
  * decision the HAL asks of it, same convention. */
 unsigned int v9x_run_vsync_tests(void);
 
+/* tests\host\test_shadow.c: the vbe screen shadow's rectangle arithmetic,
+ * same convention. */
+unsigned int v9x_run_shadow_tests(void);
+
 /* tests\host	est_vbe_crtc.c: the full EDID detailed timing and the VBE 3.0
  * CRTC block built from it, same convention. */
 unsigned int v9x_run_vbe_crtc_tests(void);
@@ -1430,6 +1434,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_dispatch_tests();
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vsync_tests();
+    failures += v9x_run_shadow_tests();
     failures += v9x_run_vbe_crtc_tests();
 #ifdef __WATCOMC__
     failures += v9x_run_d3d_zfixed_tests();

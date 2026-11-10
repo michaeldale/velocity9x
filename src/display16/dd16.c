@@ -22,6 +22,9 @@
 #include "velocity9x/probe_counts.h"
 #include "dd16.h"
 #include "gdi_accel.h"
+#ifdef V9X_SCREEN_SHADOW
+#include "shadow16.h"
+#endif
 
 extern void v9x_serial_write(const char FAR *message);
 extern LONG FAR PASCAL V9xDibControlCall(LPVOID device, WORD function,
@@ -737,6 +740,9 @@ static void v9x_dd_refresh_framebuffer(void)
     shared->fb.screen_selector = (DWORD)v9x_dd_screen_selector();
     shared->fb.enable_count = (DWORD)v9x_dd_enable_count();
     shared->fb.disable_count = (DWORD)v9x_dd_disable_count();
+#ifdef V9X_SCREEN_SHADOW
+    shared->shadow_linear = v9x_shadow16_linear();
+#endif
     shared->fb.flags |= V9X_DD_FB_VALID;
 
     /* V9xHardwareEnable maps the complete 64-MiB ViRGE linear aperture.
@@ -1099,6 +1105,8 @@ void FAR PASCAL V9xDdInvalidate(void)
     if (v9x_dd_shared != 0) {
         v9x_dd_shared->fb.flags &= ~V9X_DD_FB_VALID;
         v9x_dd_shared->engine.flags &= ~V9X_DD_ENGINE_VALID;
+        /* Disable frees the shadow right after this. */
+        v9x_dd_shared->shadow_linear = 0ul;
 #ifdef V9X_TDFX_FAMILY
         v9x_hwc_restamp();
 #endif

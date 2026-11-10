@@ -806,11 +806,25 @@ int v9x_d3d_i9xx_submit_blt(DWORD *stream, DWORD dwords, DWORD capacity,
 int v9x_d3d_i9xx_submit_g4_batch(DWORD batch_address, int wait,
                                  DWORD *sequence);
 
-/* CPU blit fallbacks, in blt_cpu.c. */
+/* CPU blit fallbacks, in blt_cpu.c. The plain pair works in the aperture;
+ * the _in forms take the base each offset is relative to, which is how the
+ * vbe screen shadow's half of a blit to the primary is drawn (option B of
+ * docs\plans\vbe-shadow-framebuffer.md). */
 void v9x_cpu_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                   DWORD bytes_per_pixel);
 void v9x_cpu_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
                   DWORD destination_offset, DWORD bytes_per_pixel);
+void v9x_cpu_fill_in(V9X_DDHAL_BLTDATA *data, BYTE *base, DWORD offset,
+                     DWORD bytes_per_pixel);
+void v9x_cpu_copy_in(V9X_DDHAL_BLTDATA *data,
+                     const BYTE *source_base, DWORD source_offset,
+                     BYTE *destination_base, DWORD destination_offset,
+                     DWORD bytes_per_pixel);
+/* Copy rows of row_bytes at offset, stepping by pitch, from one base to
+ * another of the same layout. */
+void v9x_cpu_rect_copy(BYTE *destination_base, const BYTE *source_base,
+                       DWORD offset, DWORD row_bytes, DWORD rows,
+                       DWORD pitch);
 
 /*
  * The Direct3D block, in d3d\d3d_core.c.

@@ -143,7 +143,14 @@ foreach ($source in $sources) {
 
 $thunkSource = Join-Path $repoRoot "src\display16\dib_thunks.asm"
 $thunkObject = Join-Path $outputDir "dib_thunks.obj"
-& $assembler "-zq" "-fo=$thunkObject" $thunkSource
+# The family's runtime defines reach the thunks too: V9X_SCREEN_SHADOW swaps
+# the cursor forwards for ones that copy the cursor out of the shadow.
+$thunkAssemblerArguments = @("-zq", "-fo=$thunkObject")
+foreach ($define in $familyRuntimeDefines) {
+    $thunkAssemblerArguments += "-d$define"
+}
+$thunkAssemblerArguments += $thunkSource
+& $assembler @thunkAssemblerArguments
 if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom failed to assemble the DIB Engine forwarding thunks."
 }

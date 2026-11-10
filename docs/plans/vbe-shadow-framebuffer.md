@@ -1,6 +1,8 @@
 # vbe: a system-memory shadow of the screen, so GDI reads stop crossing the bus
 
-Date: 2026-11-09. Status: proposed; nothing coded or measured. Raised by
+Date: 2026-11-09. Status: Phase 1 built 2026-11-11 with option B and run
+on an 86Box guest and the i5-4570 ([Phase 1 as built](#phase-1-as-built-2026-11-11));
+Phases 2 and 3 not started. Raised by
 [GitHub issue 25](https://github.com/michaeldale/velocity9x/issues/25)
 (GTX 970: write-combining on, "real impact on graphics performance is
 zero", ReverseBlt still slow) and
@@ -113,7 +115,91 @@ The 16-bit wrappers and the HAL apply it. No register is touched.
 
 **Scope.** The `vbe` family only. Families with an engine read through
 the engine or have their own paths; whether they would gain is not
-examined here.
+examined here. Decided 2026-11-11 (Michael): the shadow stays `vbe`-only.
+`intel-gma`, `ati` and `sis`, which draw GDI with the CPU today, get
+their GDI work done properly on the chip later rather than this shadow.
+
+## Phase 0 status (2026-11-10)
+
+Most of the GDI baseline exists already, in dispbench's 2026-11-07/08
+`vbe` runs (`dispbench\docs\results\<config>\<stamp>`, 1024x768x16; DBGDI
+measures screen-to-screen at sizes from 8x8 to full screen, overlapping
+copies, ScrollDC, ScrollBitBlt and screen-to-bitmap). MB/s, 256x256:
+
+| Config, WC | FbWrite | FbRead | ScreenToBitmap | ScreenToScreen | ScreenToScreenOverlap |
+|---|---:|---:|---:|---:|---:|
+| i5-4570, off (boot 191) | 66.0 | 35.4 | 35.3 | 24.4 | 23.9 |
+| i5-4570, on (boot 190) | 11,357 | 228.8 | 148.8 | 103.7 | 23.9 |
+| M-JJN1ZZ R3E, off | 31.7 | 5.3 | 5.3 | 4.7 | 4.7 |
+| M-JJN1ZZ R3E, on | 2,513 | 5.3 | 5.3 | 4.7 | 4.7 |
+| M-D7TFW4 HD 8570, off | 315.7 | 5.8 | 5.8 | 5.9 | 5.9 |
+| M-D7TFW4 HD 8570, on | 3,000 | 11.3 | 5.8 | 5.8 | 5.8 |
+
+Two things the plan did not know. On the AMD machines every read-bound
+copy sits at the read ceiling, 5-6 MB/s, with WC on or off. On the 4570,
+WC lifted the plain copy fourfold and left the overlapping one, which is
+what scrolling does, where it was: 23.9 MB/s either way. The same
+machine's system-memory DIB-to-DIB copy is 8,679 MB/s, so a shadow turns
+a read-bound copy into one at memory speed plus a WC flush.
+
+Still owed from Phase 0: overlap in both directions (DBGDI's Overlap row
+is one direction; issue 15's "up is slower than down" may be exactly
+that), and the issue 25 GLQuake present time.
+
+## Phase 1 as built (2026-11-11)
+
+Four departures from the design above, each for a reason found in the
+code:
+
+- **The copy is driven by deBeginAccess, not by a table per entry point.**
+  The DIB Engine brackets its screen work with the PDEVICE's
+  `deBeginAccess(device, left, top, right, bottom, flags)` and
+  `deEndAccess(device, flags)`, the callback it also lifts the software
+  cursor with (`98DDK\src\display\mini\s3v\ACCESS.ASM:55-120`), so the
+  rectangle has to bound what it touches. `shadow16.c` collects the
+  rectangles of a bracket and copies their union when the outermost one
+  ends. One hook covers every entry point, including ones the table did
+  not list. The rectangle is read as inclusive, which costs a row and a
+  column if it is not. The one exception measured is `Output`, whose
+  bracket spans the whole screen (a whole-screen copy per line on the
+  4570). It is the table's row for `Output`, made exact: the call is
+  bounded by its own points (OS_POLYLINE, OS_SCANLINES, OS_POLYSCANLINE),
+  and a scanline series' begin and end, which draw nothing, by an empty
+  rectangle.
+- **The cursor thunks copy the cursor.** The DIB Engine draws the software
+  cursor into the shadow from the mouse interrupt, outside any bracket.
+  `SetCursor`, `MoveCursor` and `CheckCursor` in `dib_thunks.asm` call the
+  DIB Engine and then copy the old and new cursor rectangles (position
+  less hot spot, `WINDEFS.INC:110-116`).
+- **The memory is DPMI, allocated by the 16-bit driver.** 0501h, locked
+  with 0600h, one LDT descriptor (`runtime.asm`, `V9XSHADOWALLOC`). The
+  DirectDraw shared block is the same kind of memory reached the same two
+  ways, so the mini-VDD needs no new service. The HAL learns the linear
+  address from `V9X_DD_SHARED.shadow_linear`.
+- **Option B, but blits do not read back.** A CPU blit to the visible
+  primary draws into the shadow, reading a visible source from the shadow
+  too, and copies the rectangle out; a fill fills both. Only an Unlock of
+  the primary reads back, the locked rectangle, or the whole surface
+  without one. All of it is skipped while exclusive mode keeps GDI off
+  the screen (`v9x_present_gdi_may_draw`).
+
+Also: a mode restore (`ResetHiResMode`, the unchanged-mode `ReEnable`)
+copies the whole shadow out, so the desktop is back before USER repaints;
+a copy is all that nested VDD callback may do. Decision 3: the PDEVICE
+keeps `V9X_DE_VRAM`, since the bracket is what says what to copy; the
+86Box run shows the bracket arriving with it set. The off switch is
+`C:\V9XDIAG\NOSHADOW.TXT` (decision 1); V9XHW.INI `ScreenShadow=` says
+`on`, `off-marker` or `alloc-failed`.
+
+Results ([record](../decisions/2026-11-11-vbe-screen-shadow-phase1.md)):
+on the i5-4570 against the off marker, screen-to-screen 256x256 went from
+103 to 2,124 MB/s, the overlapping copy from 23.8 to 2,665, ScrollDC from
+153 to 6,957. Write-only operations run at 0.3 to 0.8 of their speed, text
+costs 1.3 times as much and lines 1.35 to 1.9 times. On 86Box the frame buffer
+matched the shadow after GDI, cursor, DirectDraw, exclusive mode and
+full-screen DOS exercises. Phase 1's gate is met on one machine; the AMD
+machine it also asks for has not been run, and nor has a windowed Lock of
+the primary.
 
 ## Phases
 
@@ -139,11 +225,13 @@ examined here.
 
 1. **Off switch.** A marker file (`C:\V9XDIAG\NOSHADOW.TXT`, as
    `NOWC.TXT`) for A/B runs and as a user's way out. The shadow itself is
-   the default, not an option.
-2. **DirectDraw**: A or B above.
+   the default, not an option. Built so in Phase 1.
+2. **DirectDraw**: A or B above. B for Phase 1 (Michael, 2026-11-11).
 3. **`V9X_DE_VRAM`.** Whether the screen PDEVICE keeps that flag once its
-   bits are in system memory. What the DIB Engine does differently with
-   it was not looked up.
+   bits are in system memory. Kept in Phase 1 (above). DIBENG.INC defines
+   it as "physical surface (video memory)" and says nothing about what
+   the DIB Engine does with it; whether clearing it would stop the
+   deBeginAccess bracket was not tried.
 
 ## Done when
 
