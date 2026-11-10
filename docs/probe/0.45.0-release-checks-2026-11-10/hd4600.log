@@ -1,0 +1,13 @@
+[+0:00] agent 0.13.1, boot 199, desktop True
+[+0:09] staged 8 files; resetting
+[+1:07] reset: boot 199 -> 200
+[+1:08] installed: 8 of 8
+[+1:11] push-tree C:\V9XREL attempt 1 failed, exit 20
+[+1:15] probes in place: sent 5 of 5
+[+1:22] V9XD32 default exit=0
+[+1:27] V9XD32 ddi7 exit=0
+[+1:31] V9XD32 ddi6 exit=0
+[+1:36] V9XD32 ddi5 exit=0
+[+1:43] V9XGLP.EXE exit=0
+[+1:45] V9XGLIDP.EXE exit=0
+[+1:46] V9XR3DP.EXE exit=0

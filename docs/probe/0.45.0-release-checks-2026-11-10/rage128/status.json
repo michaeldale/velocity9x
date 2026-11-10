@@ -1,0 +1,17 @@
+{
+    "Name":  "rage128",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  687,
+    "BootAfter":  688,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  687,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
