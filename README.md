@@ -53,10 +53,6 @@ New in 0.44.0:
 
 ### Known issues
 
-- **Every card:** if a DirectDraw or Direct3D program crashes or is
-  killed, restart Windows before starting another, or the next one
-  crashes
-  ([issue](docs/issues/2026-10-25-next-program-crashes-after-one-dies-holding-surfaces.md)).
 - **Every card:** returning from a full-screen DOS session can freeze the
   desktop or leave it black. Keep DOS windowed.
 - **Glide and 3DCIF DLLs from 0.23.0 or earlier** do not work with this

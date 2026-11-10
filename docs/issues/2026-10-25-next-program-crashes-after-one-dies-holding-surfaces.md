@@ -1,5 +1,10 @@
 # A program that dies holding surfaces crashes the next DirectDraw program
 
+Status, 2026-11-10: fixed. The fix below was committed as `5dcbdb32` the
+same day and has shipped since 0.30.0; T14 has passed on committed builds
+on the netbook and A8U4I5 since. The status line that follows is the
+original and went stale. See "2026-11-10: status check and an 86Box run".
+
 Date: 2026-10-25. Reported by Michael on the Rage 128 ("switch between
 3d programs ... the program either crashes or has graphical issues,
 reboot fixes it"); reproduced by V9XD32 T14 on the GMA 950 netbook and
@@ -204,3 +209,61 @@ Not done: the `/t14*` control variants with the fix, and ATI's driver. Why ATI's
 above predicts that any driver whose `GUID_D3DExtendedCaps` answer does
 not depend on the calling process does, and makes the earlier guess
 (ATI places surfaces itself) unnecessary.
+
+## 2026-11-10: status check and an 86Box run
+
+The README still listed this as a known issue on every card, and
+docs/STATUS.md and the issue index repeated this record's opening line
+("not yet committed"). Git says otherwise:
+
+- `5dcbdb32` (2026-10-25) is the fix described above. It is on main and
+  in every tag from v0.30.0. `src/display32/d3d/d3d_core.c` still decides
+  the level per object (`v9x_d3d_object_ddi6`, `v9x_d3d_ddi_for_object`);
+  the DDI 8 work extended it (`v9x_d3d_get_driver_info2` latches DDI 8 the
+  same way) and did not undo it.
+- The 0.30.0 changelog does not mention the fix; the 0.29.0 known-issue
+  entry was never withdrawn.
+- T14 on committed builds: netbook, 0.30.0 checks, `/ddi6` and `/ddi5`
+  PASS with the default child
+  ([record](../decisions/2026-10-26-0.30.0-release-checks.md)); A8U4I5,
+  0.32.0 checks, PASS at `/ddi6` and `/ddi5`, and the `-t14nomode` in the
+  report names did nothing, so the default child ran
+  ([record](../decisions/2026-10-27-0.32.0-release-checks-ati-ironlake.md)).
+  Since then V9XD32, T14 included, is in every release check. That is the
+  exit criterion docs/STATUS.md set for this row.
+
+Then an attempt to reproduce it on the 86Box ViRGE/DX guest (Win86SE,
+`virge_dx_pci`, Win98 SE, port 9869, agent updated 0.9.1 to 0.16.0 first),
+`s3` family, 1024x768x16 desktop, V9XD32 `/bpp16 /ddi6`. Reports in
+[`../probe/86box-virge-dead-program-2026-11-10/`](../probe/86box-virge-dead-program-2026-11-10/).
+
+| Boot | Driver set | Probe | Dying program | Next program |
+|---|---|---|---|---|
+| 674 | the guest's own, an 0.15.x-era set | `852e8a1d` | T14 child | T14 PASS, but `RunDdi=unknown`: the probe could not read that HAL's counters, so the DDI level is unknown. Not counted. |
+| 675 | `6bcfac9a` (the fix's parent), WININIT rename, hashes checked | `6bcfac9a` | T14 child, mid-scene, `ExitProcess` | opens DirectDraw, flip chain, device, draws, reads back. `RunDdi=6`, 248 DrawPrimitives2 calls |
+| 675 | same | same | V9XD32 killed with the agent's `kill` (`TerminateProcess`) at T13, exclusive flip chain and device held | runs to the end; every result line equals the undisturbed run's |
+| 676 | `852e8a1d` (main) | `852e8a1d` | T14 child | T14 PASS (`DITHERED`), `RunDdi=6`, 259 DrawPrimitives2 calls |
+| 676 | same | same | killed at T13, as above | runs to the end; every result line equals the undisturbed run's |
+
+The `6bcfac9a` probe reports T14 `FAIL` with 374 mismatches. That is T1's
+count, the ViRGE's 16-bit ordered dither, which that probe did not yet
+classify (`DITHERED` came on 2026-11-05,
+[record](../decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md));
+the next program did not die. Main's two failures on this guest are T20
+(`T20Ok=0x8A0`) and T21 (`T21Ok=0x8`), not looked into here.
+
+So on this guest the defect does not reproduce even without the fix: a
+DDI 6 program that dies, by `ExitProcess` or by `TerminateProcess`, does
+not break the next one. The guest runs DirectX 6.1 (DDRAW.DLL
+4.06.03.0518; `HKLM\Software\Microsoft\DirectX` `Version`), not the
+4.07.00.0700 DDRAW.DLL read above; the netbook has DirectX 7 and A8U4I5
+DirectX 8 or later. The likely difference is that DirectX 6.1's reset
+does not re-ask `GUID_D3DExtendedCaps` or does not refuse the short
+answer; that was not read from its DDRAW.DLL, so it is a guess. The 86Box
+guest is therefore not a regression test for this defect as it stands. A
+DirectX 8.0 redistributable is on the host (`DX80ENG.EXE`); installing it
+on the guest would change the VM for good and was not done.
+
+Win86SE was left on main's set (`852e8a1d`), boot 676, with V9XD32 at
+`C:\V9XD32.EXE`. Its previous set is saved outside the tree in the session
+notes.

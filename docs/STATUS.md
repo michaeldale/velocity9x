@@ -106,7 +106,6 @@ re-checked.
 
 | Priority | Next step | Acceptance evidence |
 |---|---|---|
-| A program that dies holding surfaces | Every card: the next DirectDraw program crashes until Windows restarts. The cause is found and a fix was measured on the netbook; the record says it was not committed or run on A8U4I5 ([issue](issues/2026-10-25-next-program-crashes-after-one-dies-holding-surfaces.md)) | V9XD32 T14 passes on the netbook and A8U4I5 on a committed build, and the README's known issue goes |
 | The full-screen DOS box | Returning from one freezes the GMA 950 and the HD 4600; entry destroys the picture on others ([return](issues/2026-09-12-netbook-dos-box-return-hardlock.md), [entry](issues/2026-08-28-dos-box-entry-hang-gma950.md), [plan](plans/dos-box-vdd-virtualization.md)) | A round trip on the netbook and one S3 card, recorded |
 | RIVA 128ZX, unfinished | 3DMark 2000 rerun on the 0.39.0 texture-room change; BlendHalf and the 16 bpp V9XD32 check ([plan](plans/nvidia-riva128-d3d.md)) | 3DMark 2000's refusals counted on the current build; both probe checks explained |
 | What 0.41.0 left unmeasured | Write-combining on Cedar, Juniper, Redwood and Caicos; 3DCIF on the R3E; `GB_ADDR_CONFIG` on Mullins; the S3 shutdown flash with a tester ([carry-over](plans/release-0.42.0-carryover.md)) | Each item struck in the carry-over list |

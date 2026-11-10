@@ -6,6 +6,13 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.45.0 - not yet released
 
+- **Withdrawn known issue, every card: a program that crashes or is
+  killed while it has DirectDraw surfaces no longer crashes the next
+  DirectDraw or Direct3D program.** The fix shipped in 0.30.0 and was
+  never announced; since then the README and this changelog's 0.29.0
+  entry told users to restart Windows after such a crash, which is not
+  needed ([issue](docs/issues/2026-10-25-next-program-crashes-after-one-dies-holding-surfaces.md)).
+
 ## 0.44.0 - 2026-11-08
 
 - **`intel-gma` package, GMA X3100, 4500, X4500, 4500MHD and Ironlake HD
