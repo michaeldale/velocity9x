@@ -35,28 +35,29 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.44.0
+## Current version: 0.45.0
 
-[Download](releases/0.44.0/README.md) ·
+[Download](releases/0.45.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.44.0:
-- **Intel GMA X3100, GMA 4500, X4500 and 4500MHD, and HD Graphics
-  (Ironlake):** colour-keyed
-  Direct3D geometry that writes depth is drawn. Before this release it
-  was not drawn at all, and Forsaken showed almost nothing. It is now
-  drawn in two passes. Where a texel is keyed out, depth is still written,
-  so geometry drawn later behind that hole is hidden. Tested on a
-  GMA 4500MHD (Forsaken's menu); gameplay and the GMA X3100 not run.
+New in 0.45.0:
+- **Every card: leaving a full-screen DOS box brings the desktop back.**
+  Before, it came back frozen and unrepainted, and on the GMA 950 the
+  machine hung. Text typed in full screen also no longer lands at the
+  top-left corner. Tested on an Intel GMA 950, an Intel HD 4600 and an
+  emulated S3 ViRGE/DX; other cards not yet run
+  ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+- **Withdrawn known issue:** a program that dies holding DirectDraw
+  surfaces no longer crashes the next one, and has not since 0.30.0. No
+  restart is needed after such a crash.
 
 ### Known issues
 
-- **Every card:** returning from a full-screen DOS session can freeze the
-  desktop or leave it black. Keep DOS windowed. The next release repaints
-  the desktop on the way back; so far that is measured on an emulated S3
-  ViRGE, an Intel HD 4600 and an Intel GMA 950 ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+- **Full-screen DOS on cards other than the GMA 950, HD 4600 and S3
+  ViRGE/DX:** the 0.45.0 fix is in every package but has not been run
+  on them. If the desktop does not come back, keep DOS windowed.
 - **Glide and 3DCIF DLLs from 0.23.0 or earlier** do not work with this
   driver. Replace any copy in a game's folder with this release's.
 - **GMA 950:** 3DMark 2001 SE's Dragothic draws its sky white
@@ -78,6 +79,11 @@ New in 0.44.0:
 
 ### Recent releases
 
+- **0.44.0:** colour-keyed Direct3D that writes depth is drawn on the
+  Intel GMA X3100 to Ironlake (Forsaken).
+- **0.43.0:** the `vbe` package write-combines the screen through the
+  page attribute table where the BIOS blocks an MTRR; the full mode list
+  returns after a Device Manager reinstall.
 - **0.42.0:** OpenGL windows of some widths draw again at 16 bpp on the
   AMD Radeon HD 5450 to 7660D; Rage 128 render targets made after
   textures draw; OpenGL remakes a window the engine refuses.
