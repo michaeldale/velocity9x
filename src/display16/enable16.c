@@ -343,8 +343,26 @@ WORD v9x_hardware_acceptable(void)
  * missing, which would turn every diagnostic below into a no-op. */
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 
+/*
+ * Non-zero while V9xHardwareReset runs, which drops every write below.
+ *
+ * The VDD calls ResetHiResMode, and so V9xHardwareReset, nested inside its
+ * own critical section on the way back from a full-screen DOS box (read from
+ * VDD.VXD, docs\decisions\2026-11-10-dos-box-return-screen-switch-hook.md).
+ * A profile write there is file I/O through DOS, and it hung the GMA 950
+ * netbook at the first one, the stride trace after 4F06h - the only chip
+ * that sets its stride on every reset, because Gen3 scans 1024x576x16 out
+ * at an unaliased 2112 bytes (netbook boot 294, step marks: mode set
+ * returned, stride step never did). The traces on this path describe a
+ * stride Enable has already recorded, so nothing is lost.
+ */
+static WORD v9x_ini_writes_held;
+
 static void v9x_write_ini_key(const char FAR *key, const char FAR *value)
 {
+    if (v9x_ini_writes_held != 0u) {
+        return;
+    }
     V9xEnsureDiagDir();
     WritePrivateProfileString("Velocity9x", key, value, V9X_DIAG_BOOT_INI);
     /*
@@ -1327,7 +1345,7 @@ WORD FAR PASCAL V9xHardwareEnable(void)
  * replaced: a failed mode set stops there, and otherwise the family's own
  * follow-up decides.
  */
-WORD FAR PASCAL V9xHardwareReset(void)
+static WORD v9x_hardware_reset_steps(void)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
 
@@ -1358,4 +1376,16 @@ WORD FAR PASCAL V9xHardwareReset(void)
         return device->enable_aperture();
     }
     return 1u;
+}
+
+/* The reset itself, with profile writes held for its whole length: see
+ * v9x_ini_writes_held for why none may happen on this path. */
+WORD FAR PASCAL V9xHardwareReset(void)
+{
+    WORD result;
+
+    v9x_ini_writes_held = 1u;
+    result = v9x_hardware_reset_steps();
+    v9x_ini_writes_held = 0u;
+    return result;
 }

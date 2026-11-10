@@ -189,3 +189,32 @@ and the live display registers were the desktop's (VGA plane disabled,
 plane A on at 800x600). The panel was not looked at. The GMA 950 netbook,
 whose return was a hard lock, is not yet run
 ([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+
+## 2026-11-10, later still: the GMA 950 still dies on the return
+
+The netbook (boot 292) ran the same `hswdos1` display driver and mini-VDD
+over its 0.44.0 set: enable-ok, V9XD32 `/bpp16 /ddi6` PASS. Round trip as
+on the 4570: `echo AAA` windowed ran, full screen was entered and `echo
+BBB` typed. On Alt+Enter back the agent refused one connection, then
+answered nothing, and the machine had to be power-cycled. Michael's photo
+([`gma950-dos-box-2026-11-10/`](../probe/gma950-dos-box-2026-11-10/)):
+the desktop at 1024x576 with the DOS window still showing only `echo
+AAA`, the pointer drawn, and a striped band across the top - the frozen,
+unrepainted picture, not the old hard-locked one. So the mode came back
+and the repaint did not happen. Where it stopped is not known; nothing on
+the return path leaves a record that survives a power cycle. Whether the
+0.44.0 driver does the same on this machine today is not measured (boots
+229-232 recorded a freeze).
+
+## 2026-11-10, last: the GMA 950 returns too
+
+Step marks painted into the frame buffer (boot 294, photographed by
+Michael) put the stop in the stride step: `ResetHiResMode` entered, the
+mode set returned, the step after 4F06h never ran. That step ends in a
+profile write to V9XBOOT.INI, file I/O inside the VDD's critical section;
+only Gen3, with its unaliased 2112-byte stride, reaches it. With profile
+writes held during `V9xHardwareReset`, boots 296-298 came back
+repainted, commands before, during and after the trip ran in order, live
+switches to 640x480 and back worked, and V9XD32 passed. Status: fixed on
+the GMA 950, the HD 4600 and the 86Box ViRGE/DX
+([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).

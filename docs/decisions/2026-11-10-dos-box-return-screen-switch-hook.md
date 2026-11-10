@@ -122,8 +122,7 @@ registered callback with no such test.
 
 ## Not known
 
-- Whether the GMA 950 comes back the same way; the netbook's return was
-  a hard lock, not a freeze, in 2026-09. The HD 4600 does (below).
+- The GMA 950 needed one more fix; see the netbook section below.
 - What the 4570's panel shows: nobody looked; the registers say the
   desktop plane.
 - Whether the striped band at boot 680 is the VDD's restore, or memory
@@ -183,5 +182,44 @@ desktop's. In full screen ba81ce11 had recorded `0000298E`. Files:
 The screenshots show the wifi network's name and are not kept. The
 4570 was left on `hswdos1`; its boot 198 pair is in the session
 scratchpad `dos\hsw-b198-before`.
+
+## The GMA 950 (netbook), later: a profile write inside the VDD's callback
+
+W9QI2BE2, 1024x576x16, the same `hswdos1` pair over its 0.44.0 set (boot
+292): enable-ok, V9XD32 PASS, but the return froze and the agent died.
+Michael's photo: the pre-switch picture with a striped band, not
+repainted. ICMP still answered and the agent's port refused, so Windows
+was running and the System VM was stuck.
+
+A measurement build (`nbmark1`, boot 294, not committed) painted a 16x8
+white block per step at row 20, x = 600 + 20 x step: 1 `ResetHiResMode`
+entered, 2-5 after the mode set, the stride, the desktop placement and
+the aperture hook, 6-8 after palette, busy clear and the VDD save, 9 the
+4001h notification, 10-12 the 4002h handler. The photo of the hung screen
+([`nbmark1-boot294-step-marks-photo.jpg`](../probe/gma950-dos-box-2026-11-10/nbmark1-boot294-step-marks-photo.jpg))
+shows 1, 2 and 9: the hook ran, the mode set returned, and the stride
+step never did.
+
+The stride step (`v9x_vbe_default_pitch`) ends in `v9x_vbe_trace`, a
+`WritePrivateProfileString` to V9XBOOT.INI with a flush: file I/O through
+DOS, from the VDD's nested execution inside its critical section - the
+`-DosBoxTrace` hang again. Only Gen3 gets there: it scans 1024x576x16 out
+at an unaliased 2112 bytes and sets the stride on every reset, where the
+HD 4600 and the ViRGE are packed and return before any trace. The marks
+cannot separate the 4F06h set from the write after it; the write is the
+only file I/O on the path, which is why it was taken first.
+
+The fix: `v9x_write_ini_key` drops writes while `V9xHardwareReset` runs
+(`v9x_ini_writes_held`, `src\display16\enable16.c`); the palette, gamma,
+desktop placement and VBE helpers on the path write nothing. Boot 296
+(`nbmark2`, marks kept) and boot 297 (`nbfix1`, marks removed): the
+desktop comes back repainted, `echo AAA`, `echo BBB` (full screen) and
+`echo CCC` run in order, the agent stays up. The panel was looked at by
+Michael only on the failing runs.
+
+This put ati's `_TEXT` 17 bytes over budget (57,361), so the three VDD
+calls that make no near call - re-registration, post-mode-change and
+unregister - moved into SSWCODE with the hook. After the move: ati `_TEXT`
+57,181, intel-gma 56,075, s3 51,425, vbe 49,661; SSWCODE 426 bytes.
 
 Gates: check-tree and run-checks pass.

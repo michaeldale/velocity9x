@@ -2455,6 +2455,18 @@ V9xVddRegisterDone:
     retf
 V9XVDDREGISTER ENDP
 
+; From here to SSWCODE ENDS: the VDD calls that make no near call (the
+; re-registration, post-mode-change and unregister) and the screen-switch
+; hook with its helpers, in SSWCODE with sswitch16.c, to keep _TEXT under
+; budget (docs\decisions\2026-11-10-dos-box-return-screen-switch-hook.md).
+; V9XVDDREGISTER stays in _TEXT: it calls two near helpers. Every entry
+; here is FAR, so callers in _TEXT reach them by far calls. The class name
+; must end in CODE or wlink links the segment as DATA; it matches the -nc=
+; that sswitch16.c is compiled with, so the two contributions combine into
+; one NE segment.
+SSWCODE SEGMENT WORD PUBLIC 'SSWCODE'
+    ASSUME CS:SSWCODE
+
 ; Re-issue VDD_DRIVER_REGISTER with the new visible-byte count during a live
 ; mode switch. The VDD accepts a repeated registration and updates its
 ; save/restore state; I/O trapping stays stopped because the driver never
@@ -2535,15 +2547,6 @@ V9xVddUnregisterDone:
     pop     bx
     retf
 V9XVDDUNREGISTER ENDP
-
-; The screen-switch hook and its helpers live in SSWCODE, with sswitch16.c,
-; to keep _TEXT under budget (docs\decisions\2026-11-10-dos-box-return-
-; screen-switch-hook.md). Every entry is FAR, so callers in _TEXT reach them
-; by far calls. The class name must end in CODE or wlink links the segment
-; as DATA; it matches the -nc= that sswitch16.c is compiled with, so the
-; two contributions combine into one NE segment.
-SSWCODE SEGMENT WORD PUBLIC 'SSWCODE'
-    ASSUME CS:SSWCODE
 
 ; VDD_SAVE_DRIVER_STATE alone, for ResetHiResMode: the DDK's framebuffer
 ; ResetHiResMode asks the VDD to save the restored register state, and
