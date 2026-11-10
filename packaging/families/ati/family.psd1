@@ -751,6 +751,7 @@
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
+            @{ Name = 'sswitch16'; Path = 'src\display16\sswitch16.c'; CodeSegment = 'SSWCODE' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
             # Ordinal 1. Every family links it, and three of the four take its
             # decline branch on every blit for ever - see the header comment in

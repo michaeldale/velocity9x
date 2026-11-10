@@ -12,6 +12,14 @@ build identifier so exact guest-tested binaries remain traceable.
   never announced; since then the README and this changelog's 0.29.0
   entry told users to restart Windows after such a crash, which is not
   needed ([issue](docs/issues/2026-10-25-next-program-crashes-after-one-dies-holding-surfaces.md)).
+- **Every card: leaving a full-screen DOS box repaints the desktop.**
+  The driver now follows the screen-switch protocol of the Windows 98
+  DDK's display samples: it stops drawing while DOS has the screen, and
+  asks Windows to repaint every window when the screen comes back.
+  Before, the desktop came back frozen and unrepainted. Measured on an
+  emulated S3 ViRGE/DX (86Box); not yet run on a real card, including
+  the Intel machines where the fault was first seen
+  ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
 
 ## 0.44.0 - 2026-11-08
 

@@ -1,6 +1,9 @@
 # Making the main VDD willing to manage the DOS-box round trip
 
-> Status: Open. The fullscreen DOS return fault remains under investigation.
+> Status: Closed 2026-11-10. Its hypothesis was wrong: the VDD does call
+> the registered `ResetHiResMode`, and what the driver lacked was the DDK
+> samples' INT 2Fh screen-switch hook. See
+> [`2026-11-10-dos-box-return-screen-switch-hook.md`](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md).
 
 Branch: `dos-box-vdd-virtualization`
 Issue: [`docs/issues/2026-08-28-dos-box-entry-hang-gma950.md`](../issues/2026-08-28-dos-box-entry-hang-gma950.md)

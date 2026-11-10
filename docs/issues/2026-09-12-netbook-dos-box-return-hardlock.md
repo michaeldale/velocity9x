@@ -165,3 +165,16 @@ introduced.
 ## Status 2026-11-08 (audit)
 
 Leaving a full-screen DOS box was reproduced on the netbook (boots 229-232) and on the HD 4600 (boot 71, original mini-VDD), so the INT 10h guard is not the cause (ba81ce11). Windowed DOS VMs are fixed: the mini-VDD defers their mode set ([record](../decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)). The "Next" section above is superseded; the full-screen return is the open half.
+
+## 2026-11-10: the return repaints on 86Box once the driver hooks INT 2Fh
+
+On the 86Box ViRGE/DX guest, main's build came back from full screen
+frozen (pre-switch desktop, striped band, GDI reads black), the HD 4600's
+boot 71 picture. Read from Windows' VDD.VXD: the VDD does call the
+registered `ResetHiResMode` on the way back; nothing repaints Windows
+unless the driver hooks INT 2Fh 4001h/4002h as the DDK samples do. With
+that hook, the desktop came back repainted (boots 684-685). The August
+"nothing of ours runs" result came from `-DosBoxTrace` builds, whose
+file write inside the VDD's callback is the probable hang. Not run on
+any Intel machine yet
+([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).

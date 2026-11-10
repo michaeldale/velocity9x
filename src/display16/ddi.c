@@ -108,6 +108,11 @@ extern WORD FAR PASCAL V9xVddRegister(void);
 extern WORD FAR PASCAL V9xVddReregister(void);
 extern void FAR PASCAL V9xVddPostMode(void);
 extern void FAR PASCAL V9xVddUnregister(void);
+extern void FAR PASCAL V9xVddSaveState(void);
+extern void FAR PASCAL V9xHookScreenSwitch(void);
+extern void FAR PASCAL V9xUnhookScreenSwitch(void);
+/* Called by sswitch16.c's screen-switch handler, from SSWCODE. */
+void FAR PASCAL V9xRequestRepaint(void);
 extern WORD FAR PASCAL V9xVddGetDisplayConfig(V9X_DISPLAY_INFO FAR *);
 
 /* The PCI identity and the C:\V9XDIAG\V9XHW.INI strings are family data, supplied by
@@ -253,6 +258,7 @@ static WORD v9x_depth_changed;
 #define V9X_USER_REPAINT_ORDINAL 275
 static FARPROC v9x_user_repaint;
 static WORD v9x_repaint_resolved;
+static void v9x_resolve_user_repaint(void);
 /*
  * The DDK's deferred-repaint protocol. USER calls UserRepaintDisable (every
  * DDK display sample exports it at ordinal 500) to say whether the driver may
@@ -1622,6 +1628,10 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_enabled = 1u;
     v9x_ever_enabled = 1u;
     ++v9x_enable_count;
+    /* The screen-switch hook asks USER to repaint at interrupt time, so
+     * USER's repaint entry is looked up now, where GetProcAddress may run. */
+    v9x_resolve_user_repaint();
+    V9xHookScreenSwitch();
     v9x_active_mode = v9x_selected_mode;
     v9x_serial_write("V9X-DRV lfb=0x");
     v9x_serial_write_hex32(V9xHardwareBase());
@@ -1692,6 +1702,7 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     v9x_active_mode = 0;
     v9x_driver_pdevice = 0;
     v9x_color_table = 0;
+    V9xUnhookScreenSwitch();
     V9xDdInvalidate();
     V9xVddUnregister();
     v9x_dosbox_trace("disable-pre-hardware");
@@ -1723,7 +1734,7 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
  * resolve the export is exactly as correct as this driver was before, so the
  * lookup failing must not fail the mode switch.
  */
-static void v9x_force_repaint(void)
+static void v9x_resolve_user_repaint(void)
 {
     if (v9x_repaint_resolved == 0u) {
         HMODULE user;
@@ -1738,6 +1749,11 @@ static void v9x_force_repaint(void)
             v9x_serial_write("V9X-DRV repaint-export-missing\r\n");
         }
     }
+}
+
+static void v9x_force_repaint(void)
+{
+    v9x_resolve_user_repaint();
     if (v9x_user_repaint != 0) {
         (*(void (FAR PASCAL *)(void))v9x_user_repaint)();
     }
@@ -1967,5 +1983,22 @@ void __loadds FAR PASCAL ResetHiResMode(void)
             (void)v9x_program_gamma();
         }
     }
+    /* What the DDK's framebuffer ResetHiResMode does after the mode set
+     * (98DDK\src\display\mini\framebuf\VGA.ASM): let the DIB Engine draw
+     * again, and have the VDD save the restored state as the System VM's. */
+    if (v9x_driver_pdevice != 0) {
+        v9x_driver_pdevice->deFlags &= (WORD)~V9X_DE_BUSY;
+    }
+    V9xVddSaveState();
     v9x_dosbox_trace("reset-exit");
+}
+
+/*
+ * A repaint request for sswitch16.c, which sits in another code segment and
+ * so needs a far entry: now if USER allows repaints, otherwise when it next
+ * enables them.
+ */
+void FAR PASCAL V9xRequestRepaint(void)
+{
+    v9x_request_repaint();
 }

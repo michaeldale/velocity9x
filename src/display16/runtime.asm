@@ -120,6 +120,12 @@ V9xMiniApiEntry  dd 0
 V9xMiniApiState  dw 0
 V9xVmHandle       dw 0
 V9xVddRegistered dw 0
+; The INT 2Fh vector the screen-switch hook displaced, and whether the hook
+; is installed (V9XHOOKSCREENSWITCH). In DGROUP, not the code segment the
+; DDK samples keep it in: the hook chains with a far return built on the
+; stack, so it needs no writable code alias.
+V9xPrevInt2F     dd 0
+V9xInt2FHooked   dw 0
 V9xHardwareStageCode dw 0
 V9xCreateDibReturn dd 0
 V9xDdSharedSel   dw 0
@@ -2529,6 +2535,139 @@ V9xVddUnregisterDone:
     pop     bx
     retf
 V9XVDDUNREGISTER ENDP
+
+; The screen-switch hook and its helpers live in SSWCODE, with sswitch16.c,
+; to keep _TEXT under budget (docs\decisions\2026-11-10-dos-box-return-
+; screen-switch-hook.md). Every entry is FAR, so callers in _TEXT reach them
+; by far calls. The class name must end in CODE or wlink links the segment
+; as DATA; it matches the -nc= that sswitch16.c is compiled with, so the
+; two contributions combine into one NE segment.
+SSWCODE SEGMENT WORD PUBLIC 'SSWCODE'
+    ASSUME CS:SSWCODE
+
+; VDD_SAVE_DRIVER_STATE alone, for ResetHiResMode: the DDK's framebuffer
+; ResetHiResMode asks the VDD to save the restored register state, and
+; sends no POST_MODE_CHANGE (98DDK\src\display\mini\framebuf\VGA.ASM).
+PUBLIC V9XVDDSAVESTATE
+V9XVDDSAVESTATE PROC FAR
+    push    bx
+    cmp     V9xVddRegistered, 0
+    je      short V9xVddSaveStateDone
+    mov     eax, VDD_SAVE_DRIVER_STATE
+    movzx   ebx, V9xVmHandle
+    call    dword ptr V9xVddEntryPoint
+V9xVddSaveStateDone:
+    pop     bx
+    retf
+V9XVDDSAVESTATE ENDP
+
+; The screen-switch notifications every DDK display sample hooks
+; (98DDK\src\display\mini\framebuf\SSWITCH.ASM): INT 2Fh AX=4001h when a
+; full-screen DOS box takes the display, 4002h when Windows gets it back.
+; The driver marks its PDEVICE busy on the first, so the DIB Engine stops
+; drawing to a screen it does not own, and repaints on the second. Without
+; them a full-screen round trip left the desktop frozen and unrepainted
+; (Win86SE boot 680, 2026-11-10).
+SCREEN_SWITCH_OUT EQU 4001h
+SCREEN_SWITCH_IN  EQU 4002h
+EXTRN V9XSCREENSWITCH:FAR
+
+V9xScreenSwitchHook PROC FAR
+    cmp     ax, SCREEN_SWITCH_IN
+    je      short V9xScreenSwitchHandle
+    cmp     ax, SCREEN_SWITCH_OUT
+    je      short V9xScreenSwitchHandle
+
+    ; Not ours: chain to the previous handler by building its address as a
+    ; far return over the caller's interrupt frame, which stays intact.
+    sub     sp, 4
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    ax
+    mov     ax, DGROUP
+    mov     ds, ax
+    mov     ax, word ptr V9xPrevInt2F
+    mov     [bp+2], ax
+    mov     ax, word ptr V9xPrevInt2F+2
+    mov     [bp+4], ax
+    pop     ax
+    pop     ds
+    pop     bp
+    retf
+
+V9xScreenSwitchHandle:
+    ; Handled here and not passed on, as the samples do. Carry clear in the
+    ; returned flags says the switch may proceed.
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    es
+    pushad
+    mov     bx, DGROUP
+    mov     ds, bx
+    push    ax
+    call    V9XSCREENSWITCH
+    popad
+    pop     es
+    pop     ds
+    and     word ptr [bp+6], NOT 1
+    pop     bp
+    iret
+V9xScreenSwitchHook ENDP
+
+; Install the hook once; later Enables find it installed. DS is DGROUP.
+PUBLIC V9XHOOKSCREENSWITCH
+V9XHOOKSCREENSWITCH PROC FAR
+    push    bx
+    push    dx
+    push    ds
+    push    es
+    cmp     V9xInt2FHooked, 0
+    jne     short V9xHookScreenSwitchDone
+    cli
+    mov     ax, 352Fh
+    int     21h
+    mov     word ptr V9xPrevInt2F, bx
+    mov     word ptr V9xPrevInt2F+2, es
+    mov     V9xInt2FHooked, 1
+    mov     dx, OFFSET V9xScreenSwitchHook
+    mov     ax, SEG V9xScreenSwitchHook
+    mov     ds, ax
+    mov     ax, 252Fh
+    int     21h
+    sti
+V9xHookScreenSwitchDone:
+    pop     es
+    pop     ds
+    pop     dx
+    pop     bx
+    retf
+V9XHOOKSCREENSWITCH ENDP
+
+; Put the displaced vector back. Like the samples, this assumes nobody
+; hooked INT 2Fh after the driver did.
+PUBLIC V9XUNHOOKSCREENSWITCH
+V9XUNHOOKSCREENSWITCH PROC FAR
+    push    dx
+    push    ds
+    cmp     V9xInt2FHooked, 0
+    je      short V9xUnhookScreenSwitchDone
+    cli
+    mov     V9xInt2FHooked, 0
+    lds     dx, V9xPrevInt2F
+    mov     ax, 252Fh
+    int     21h
+    sti
+V9xUnhookScreenSwitchDone:
+    pop     ds
+    pop     dx
+    retf
+V9XUNHOOKSCREENSWITCH ENDP
+
+SSWCODE ENDS
+
+.code
 
 V9xFindPciDevice PROC NEAR
     push    di

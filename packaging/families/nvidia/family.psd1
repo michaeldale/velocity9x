@@ -103,6 +103,7 @@
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
+            @{ Name = 'sswitch16'; Path = 'src\display16\sswitch16.c'; CodeSegment = 'SSWCODE' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
             # The HAL's 2D builder, for gdi_accel.c's NV3 arm.
             @{ Name = 'nv3_2d'; Path = 'src\chipsets\nvidia\nv3_2d.c' }

@@ -797,3 +797,16 @@ exactly that capability, per chip.
 ## Status 2026-11-08 (audit)
 
 The netbook's corruption on entry was measured on 2026-09-24 as the VGA plane taking the panel after any DOS VM, and on 2026-10-23 traced to the VM's video BIOS writing the GMA through its I/O BAR; windowed boxes are fixed ([record](../decisions/2026-10-23-a-dos-vm-reprograms-the-gma-through-its-io-bar.md)). The full-screen exit fault on emulated ViRGE and Mach64 under s3 and tier-0 is unchanged, tracked in [the DOS-box plan](../plans/dos-box-vdd-virtualization.md).
+
+## 2026-11-10: the return repaints on 86Box once the driver hooks INT 2Fh
+
+On the 86Box ViRGE/DX guest, main's build came back from full screen
+frozen (pre-switch desktop, striped band, GDI reads black), the HD 4600's
+boot 71 picture. Read from Windows' VDD.VXD: the VDD does call the
+registered `ResetHiResMode` on the way back; nothing repaints Windows
+unless the driver hooks INT 2Fh 4001h/4002h as the DDK samples do. With
+that hook, the desktop came back repainted (boots 684-685). The August
+"nothing of ours runs" result came from `-DosBoxTrace` builds, whose
+file write inside the VDD's callback is the probable hang. Not run on
+any Intel machine yet
+([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).

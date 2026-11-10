@@ -135,12 +135,27 @@ foreach ($attributeLine in $codeAttributeLines) {
 # throwaway s3 branch: 'S3PROOF' and 'S3PRFCOD' linked as DATA, 'S3CODE' and
 # 'I9XXCODE' as CODE. family.ps1 now refuses such a name; this is the backstop
 # for one that slips past it, or a toolchain that changes the rule.
-$expectedCodeSegmentCount = 1 + @(@($target.Build.Sources |
+#
+# Counted as PHYSICAL segments, from the segment numbers the map gives each
+# code row, not one per manifest name. wlink packs small code segments of
+# different classes into one NE segment: on intel-gma, HSWCODE (05E1h bytes)
+# and SSWCODE (00F6h) both map to segment 0004 (2026-11-10). A demoted DATA
+# segment still has its own number in the map, so it still fails here.
+$codeSegmentNames = @('_TEXT') + @(@($target.Build.Sources |
     Where-Object { $_.ContainsKey('CodeSegment') } |
-    ForEach-Object { $_.CodeSegment }) | Sort-Object -Unique).Count
+    ForEach-Object { $_.CodeSegment }) | Sort-Object -Unique)
+$physicalCodeSegments = @(foreach ($line in
+        ((Get-Content -LiteralPath $mapPath -Raw) -split "`r?`n")) {
+    if ($line -match '^(\S+)\s+\S+\s+\S+\s+([0-9A-Fa-f]{4}):[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s*$' -and
+        $Matches[1] -in $codeSegmentNames) {
+        $Matches[2]
+    }
+}) | Sort-Object -Unique
+$expectedCodeSegmentCount = @($physicalCodeSegments).Count
 if ($codeAttributeLines.Count -ne $expectedCodeSegmentCount) {
     throw ("The $($target.Id) image has $($codeAttributeLines.Count) executable " +
-           "code segment(s); the manifest asks for $expectedCodeSegmentCount. " +
+           "code segment(s); the map places its code rows in " +
+           "$expectedCodeSegmentCount. " +
            "A CodeSegment whose class name does not end in CODE links as a " +
            "non-executable DATA segment and faults on the first call into it.")
 }
