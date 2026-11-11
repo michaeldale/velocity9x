@@ -63,6 +63,26 @@ static v9x_u32 v9x_i9xx_shader_bits(float value)
     return u.bits;
 }
 
+/*
+ * Float to long, rounding to nearest. The HAL links no runtime, so a cast
+ * would pull in Watcom's __CHP helper; this is d3d_fog.c's and
+ * r3d_clip.c's fistp. The host form rounds a tie up where fistp rounds it
+ * to even, a step of one in a colour byte.
+ */
+#ifdef __WATCOMC__
+static long v9x_i9xx_shader_round(float value);
+#pragma aux v9x_i9xx_shader_round = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long v9x_i9xx_shader_round(float value)
+{
+    return (long)(value + 0.5f);
+}
+#endif
+
 /* A colour channel as a byte: [0, 1] to 0-255, rounded; NaN as 0. */
 static v9x_u32 v9x_i9xx_shader_byte(float value)
 {
@@ -72,7 +92,7 @@ static v9x_u32 v9x_i9xx_shader_byte(float value)
     if (value >= 1.0f) {
         return 255ul;
     }
-    return (v9x_u32)(value * 255.0f + 0.5f);
+    return (v9x_u32)v9x_i9xx_shader_round(value * 255.0f);
 }
 
 /* r g b a floats as the vertex's ARGB dword, the order the D3DTLVERTEX

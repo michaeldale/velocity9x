@@ -297,10 +297,34 @@ CreatePixelShader, as any other untranslatable program is.
      - every step 3 test program in a stream is licensed, except
        texm3x3tex on a non-cube stage. That one is declared VOLUME and
        refused, as this plan says.
-   - **5e. `draw_shader`** in `d3d_i9xx.c`: the program cached by the
-     shader's serial and the draw's cube, projected, unbound and fog
-     bits; four textures bound; triangles gathered; submitted. The
-     ops-table entry turns it on, with no INI key.
+   - **5e. `draw_shader`.** Written 2026-11-11 in `d3d_i9xx.c` and in
+     the ops table, with no INI key. It builds and links in the HAL, and
+     run-checks is green. **Not run on any machine.**
+     - **Stages.** Each sampled stage is a placed cube (as its block,
+       clamped) or bound through the fixed-function bind, or else it is
+       unbound.
+     - **Program.** Translated once per shader and its cube, projected,
+       unbound and fog bits, in an eight-entry cache. Its own
+       declarations give the stages and sets the state block and licence
+       follow.
+     - **State and constants.** The target, depth, blend and alpha test
+       are bound as the fixed-function draw binds them; the 18 constants
+       come from `v9x_i9xx_ps11_constants`, with the draw's fog colour.
+     - **Vertices.** Triangles wholly on the target go as they are; any
+       other is cut to the target by `v9x_r3d_clip_wide` or dropped and
+       counted (`ps11_triangles_dropped`). A vertex is made what the run
+       builder takes: +0.0, depth at the edge, coordinates finite, and a
+       triangle with no legal rhw dropped.
+     - **Submission.** Runs as large as the 2,304-dword buffer holds
+       after the head (about 26 triangles at four sets), each licensed by
+       `v9x_i9xx_decode_shader_stream`, then submitted with the
+       breadcrumb.
+     - **Build fix.** The colour bytes convert by `fistp`, as `d3d_fog.c`
+       does: the HAL links no runtime, and a cast called `__CHP`.
+
+     With `draw_shader` set, the core claims PS 1.1, four stages, cube
+     maps, Q8W8V8U8 and V8U8 for every Gen3 machine. **0.47.0 must not
+     ship this without 5f.**
    - **5f. Netbook** (W9QI2BE2, GMA 950): V9XD32 T19 at 16 and 32 bpp.
      This is old step 4's evidence: it settles the bump formats, cube
      sampling with an unscaled direction, and whether DDI 8 is offered

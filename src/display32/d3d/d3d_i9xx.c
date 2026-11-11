@@ -20,6 +20,7 @@
  */
 #include "d3d_internal.h"
 #include "velocity9x/i9xx_depth.h"
+#include "velocity9x/i9xx_ps11.h"
 #include "velocity9x/intel_g4_3d.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/intel_gen3_3d.h"
@@ -3610,6 +3611,597 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
 }
 
 /*
+ * PIXEL SHADERS, step 5e of docs\plans\gen3-ps11-pixel-shaders.md: a list
+ * of triangles under a DirectX 8 pixel shader (d3d_internal.h,
+ * draw_shader). The program is v9x_i9xx_ps11_build's, cached by the
+ * shader and what of the draw it depends on; the stream is the step 5c
+ * builders', licensed by v9x_i9xx_decode_shader_stream before the ring,
+ * as every other stream here is licensed by its decoder.
+ *
+ * The core hands wide vertices unclipped. A triangle wholly on the target
+ * is drawn as it is; any other is cut to the target by the wide clipper
+ * and drawn as its fan, or dropped and counted when it cannot be (a
+ * vertex past the coordinate limit). A vertex with no legal rhw drops its
+ * triangle; a depth a step outside [0, 1] goes to the edge, a coordinate
+ * that is not finite to 0, as the fixed-function path does for each.
+ */
+typedef char v9x_assert_i9xx_wide_floats[
+    V9X_R3D_SHADER_FLOATS == V9X_I9XX_WIDE_FLOATS ? 1 : -1];
+
+/* Translated programs kept, by shader and draw bits. A program is at most
+ * 64 ALU, 32 texture and 27 declaration instructions and its header. */
+#define V9X_D3D_I9XX_PS_CACHE         8u
+#define V9X_D3D_I9XX_PS_PROGRAM_MAX   (1ul + 3ul * (64ul + 32ul + 27ul))
+/* MI_FLUSH, the breadcrumb and a pad dword after each run. */
+#define V9X_D3D_I9XX_PS_TAIL_DWORDS   (2ul + V9X_I9XX_BREADCRUMB_STREAM_DWORDS)
+
+typedef struct v9x_d3d_i9xx_ps_entry {
+    const V9X_PS11_PROGRAM *program;
+    DWORD serial;
+    DWORD cube;
+    DWORD projected;
+    DWORD unbound;
+    DWORD fog;
+    DWORD dwords;           /* 0: an empty entry */
+    DWORD units;            /* the samplers the program declares */
+    DWORD sets;             /* coordinate sets it reads, 0 to 4 */
+    DWORD words[V9X_D3D_I9XX_PS_PROGRAM_MAX];
+} V9X_D3D_I9XX_PS_ENTRY;
+
+static V9X_D3D_I9XX_PS_ENTRY v9x_d3d_i9xx_ps_cache[V9X_D3D_I9XX_PS_CACHE];
+static DWORD v9x_d3d_i9xx_ps_next;
+/* A run's wide vertices, and the clipper's buffers: statics, because HAL
+ * callbacks run under the Win16 lock, one at a time, on small stacks. */
+static float v9x_d3d_i9xx_ps_wide[V9X_I9XX_RUNTIME_MAX_TRIANGLES * 3ul *
+                                  V9X_R3D_SHADER_FLOATS];
+static float v9x_d3d_i9xx_ps_scratch[2u * V9X_R3D_CLIP_MAX_VERTICES *
+                                     V9X_R3D_SHADER_FLOATS];
+static float v9x_d3d_i9xx_ps_clipped[V9X_R3D_CLIP_MAX_VERTICES *
+                                     V9X_R3D_SHADER_FLOATS];
+static v9x_u32 v9x_d3d_i9xx_ps_constants[V9X_I9XX_PS11_CONST_REGS * 4u];
+
+/* The placed cube whose +X top is at offset, or null. */
+static const V9X_D3D_I9XX_CUBE *v9x_d3d_i9xx_cube_at(DWORD offset)
+{
+    DWORD n;
+
+    for (n = 0ul; offset != 0ul && n < V9X_D3D_I9XX_CUBES; ++n) {
+        if (v9x_d3d_i9xx_cubes[n].base == offset) {
+            return &v9x_d3d_i9xx_cubes[n];
+        }
+    }
+    return 0;
+}
+
+/*
+ * One sampled stage's map and its declaration for the licence: a cube
+ * create_surface placed, as its block, clamped (Mesa's cube sampler); any
+ * other texture through the fixed-function bind. 0 when the stage cannot
+ * be sampled.
+ */
+static int v9x_d3d_i9xx_shader_unit(const V9X_R3D_TEXTURE *texture,
+                                    struct v9x_i9xx_texture *map,
+                                    struct v9x_i9xx_decode_unit1 *declared,
+                                    DWORD *is_cube)
+{
+    const V9X_DD_SURFACE_LCL *surface =
+        (const V9X_DD_SURFACE_LCL *)texture->object;
+    const V9X_D3D_I9XX_CUBE *cube;
+    struct v9x_d3d_i9xx_cubetree tree;
+    DWORD offset;
+    DWORD address = 0ul;
+    DWORD bytes = 0ul;
+    DWORD mag_mip;
+    DWORD mip_filter;
+
+    *is_cube = 0ul;
+    if (surface == 0 || surface->lpGbl == 0) {
+        return 0;
+    }
+    offset = v9x_surface_offset(surface);
+    cube = offset != 0xfffffffful ? v9x_d3d_i9xx_cube_at(offset) : 0;
+    if (cube == 0) {
+        if (!v9x_d3d_i9xx_bind_texture(texture, map, &bytes)) {
+            return 0;
+        }
+    } else {
+        if (v9x_d3d_i9xx_layout_cube(cube->side, cube->levels, cube->bytes,
+                                     &tree) == V9X_FALSE ||
+            v9x_d3d_i9xx_bind_map_at(offset, tree.pitch,
+                                     tree.pitch / cube->bytes, tree.rows,
+                                     cube->bytes, v9x_hal->fb.vram_bytes,
+                                     &address) == V9X_FALSE) {
+            return 0;
+        }
+        map->offset = address;
+        map->width = cube->side;
+        map->height = cube->side;
+        map->pitch = tree.pitch;
+        map->format = cube->format;
+        map->wrap = V9X_I9XX_ADDRESS_CLAMP;
+        v9x_d3d_i9xx_filter(texture->mag_filter, &map->mag_linear, &mag_mip);
+        v9x_d3d_i9xx_filter(texture->min_filter, &map->min_linear,
+                            &mip_filter);
+        map->mip_filter = cube->levels > 1ul ? mip_filter
+                                             : V9X_I9XX_MIPFILTER_NONE;
+        map->max_lod = cube->levels - 1ul;
+        bytes = tree.pitch * tree.rows;
+        *is_cube = 1ul;
+    }
+    declared->offset = map->offset;
+    declared->bytes = bytes;
+    declared->width = map->width;
+    declared->height = map->height;
+    declared->pitch = map->pitch;
+    declared->format = map->format;
+    declared->wrap = map->wrap;
+    declared->mag_linear = map->mag_linear;
+    declared->min_linear = map->min_linear;
+    declared->mip_filter = map->mip_filter;
+    declared->max_lod = map->max_lod;
+    declared->constants_mask = 0ul;
+    return 1;
+}
+
+/* The program for this shader and these draw bits, translated once. */
+static const V9X_D3D_I9XX_PS_ENTRY *v9x_d3d_i9xx_ps_program(
+    const V9X_R3D_SHADER *shader, const struct v9x_i9xx_ps11_desc *desc)
+{
+    V9X_D3D_I9XX_PS_ENTRY *entry;
+    DWORD n;
+    DWORD at;
+
+    for (n = 0ul; n < V9X_D3D_I9XX_PS_CACHE; ++n) {
+        entry = &v9x_d3d_i9xx_ps_cache[n];
+        if (entry->dwords != 0ul && entry->program == shader->program &&
+            entry->serial == shader->serial && entry->cube == desc->cube &&
+            entry->projected == desc->projected &&
+            entry->unbound == desc->unbound && entry->fog == desc->fog) {
+            return entry;
+        }
+    }
+    entry = &v9x_d3d_i9xx_ps_cache[v9x_d3d_i9xx_ps_next];
+    v9x_d3d_i9xx_ps_next = (v9x_d3d_i9xx_ps_next + 1ul) %
+                           V9X_D3D_I9XX_PS_CACHE;
+    entry->dwords = 0ul;
+    if (v9x_i9xx_ps11_build(entry->words, V9X_D3D_I9XX_PS_PROGRAM_MAX,
+                            shader->program, desc, &entry->dwords) !=
+            V9X_STATUS_OK) {
+        entry->dwords = 0ul;
+        ++v9x_hal->d3d_diagnostics.ps11_kernels_refused;
+        return 0;
+    }
+    entry->program = shader->program;
+    entry->serial = shader->serial;
+    entry->cube = desc->cube;
+    entry->projected = desc->projected;
+    entry->unbound = desc->unbound;
+    entry->fog = desc->fog;
+    /* The samplers it declares and the sets it reads, from its own
+     * declarations: the state block and the licence follow the program. */
+    entry->units = 0ul;
+    entry->sets = 0ul;
+    for (at = 1ul; at + 2ul < entry->dwords; at += 3ul) {
+        DWORD d0 = entry->words[at];
+        DWORD type = (d0 >> V9X_I9XX_FS_TYPE_SHIFT) & 7ul;
+        DWORD nr = (d0 >> V9X_I9XX_FS_NR_SHIFT) & 0x1ful;
+
+        if ((d0 & 0x1f000000ul) != V9X_I9XX_FS_D0_DCL) {
+            continue;
+        }
+        if (type == V9X_I9XX_FS_REG_TYPE_S && nr < V9X_I9XX_SHADER_STAGES) {
+            entry->units |= 1ul << nr;
+        } else if (type == V9X_I9XX_FS_REG_TYPE_T &&
+                   nr < V9X_I9XX_SHADER_STAGES && nr + 1ul > entry->sets) {
+            entry->sets = nr + 1ul;
+        }
+    }
+    ++v9x_hal->d3d_diagnostics.ps11_kernels_built;
+    return entry;
+}
+
+/* A wide vertex made what the run builder takes, or 0 to drop its
+ * triangle: x and y a positive zero rather than a negative one, depth a
+ * step outside [0, 1] at the edge, coordinates not finite at 0. */
+static int v9x_d3d_i9xx_ps_vertex(float *v)
+{
+    DWORD *bits = (DWORD *)v;
+    DWORD k;
+
+    if (v[0] == 0.0f) {
+        v[0] = 0.0f;
+    }
+    if (v[1] == 0.0f) {
+        v[1] = 0.0f;
+    }
+    bits[2] = v9x_i9xx_float_depth_edge(bits[2]);
+    if (v9x_i9xx_float_in_range(bits[2], 0x3f800000ul) == V9X_FALSE ||
+        v9x_i9xx_float_positive_finite(bits[3]) == V9X_FALSE) {
+        return 0;
+    }
+    for (k = 12ul; k < V9X_R3D_SHADER_FLOATS; ++k) {
+        if (v9x_i9xx_float_finite(bits[k]) == V9X_FALSE) {
+            bits[k] = 0ul;
+            ++v9x_hal->d3d_diagnostics.i9xx_uv_zeroed;
+        }
+    }
+    return 1;
+}
+
+/* Append triangle to the run at wide[count], whole or as its clipped fan.
+ * The triangles appended, at most V9X_R3D_MAX_FAN_TRIANGLES. */
+static DWORD v9x_d3d_i9xx_ps_append(const float *triangle, DWORD count,
+                                    float width, float height)
+{
+    float *out = &v9x_d3d_i9xx_ps_wide[count * 3ul * V9X_R3D_SHADER_FLOATS];
+    DWORD appended = 0ul;
+    DWORD vertex;
+    DWORD k;
+    int inside = 1;
+    int corners;
+    int fan;
+
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        float x = triangle[vertex * V9X_R3D_SHADER_FLOATS];
+        float y = triangle[vertex * V9X_R3D_SHADER_FLOATS + 1ul];
+
+        if (!(x >= 0.0f && x <= width && y >= 0.0f && y <= height)) {
+            inside = 0;
+        }
+    }
+    if (inside) {
+        for (k = 0ul; k < 3ul * V9X_R3D_SHADER_FLOATS; ++k) {
+            out[k] = triangle[k];
+        }
+        appended = 1ul;
+    } else {
+        corners = v9x_r3d_clip_wide(triangle, v9x_d3d_i9xx_limits.
+                                        coordinate_limit,
+                                    width, height, v9x_d3d_i9xx_ps_scratch,
+                                    v9x_d3d_i9xx_ps_clipped);
+        if (corners < 0) {
+            ++v9x_hal->d3d_diagnostics.ps11_triangles_dropped;
+            return 0ul;
+        }
+        for (fan = 1; fan + 1 < corners; ++fan) {
+            const float *pick[3];
+
+            pick[0] = v9x_d3d_i9xx_ps_clipped;
+            pick[1] = v9x_d3d_i9xx_ps_clipped +
+                      (DWORD)fan * V9X_R3D_SHADER_FLOATS;
+            pick[2] = v9x_d3d_i9xx_ps_clipped +
+                      (DWORD)(fan + 1) * V9X_R3D_SHADER_FLOATS;
+            for (vertex = 0ul; vertex < 3ul; ++vertex) {
+                for (k = 0ul; k < V9X_R3D_SHADER_FLOATS; ++k) {
+                    out[(appended * 3ul + vertex) * V9X_R3D_SHADER_FLOATS +
+                        k] = pick[vertex][k];
+                }
+            }
+            ++appended;
+        }
+    }
+    /* Each appended vertex made legal; a triangle that cannot be is
+     * taken back, the ones after it moved down. */
+    {
+        DWORD kept = 0ul;
+        DWORD t;
+
+        for (t = 0ul; t < appended; ++t) {
+            float *tri = &out[t * 3ul * V9X_R3D_SHADER_FLOATS];
+
+            if (!v9x_d3d_i9xx_ps_vertex(tri) ||
+                !v9x_d3d_i9xx_ps_vertex(tri + V9X_R3D_SHADER_FLOATS) ||
+                !v9x_d3d_i9xx_ps_vertex(tri +
+                                        2ul * V9X_R3D_SHADER_FLOATS)) {
+                ++v9x_hal->d3d_diagnostics.ps11_triangles_dropped;
+                continue;
+            }
+            if (kept != t) {
+                for (k = 0ul; k < 3ul * V9X_R3D_SHADER_FLOATS; ++k) {
+                    out[kept * 3ul * V9X_R3D_SHADER_FLOATS + k] = tri[k];
+                }
+            }
+            ++kept;
+        }
+        return kept;
+    }
+}
+
+/*
+ * One run of `count` triangles from v9x_d3d_i9xx_ps_wide behind the stream
+ * head already at stream[0 .. head): the run, MI_FLUSH, the breadcrumb, the
+ * licence, the ring. 1 when submitted.
+ */
+static int v9x_d3d_i9xx_ps_submit(DWORD head, DWORD count, DWORD sets,
+                                  const V9X_R3D_DRAW *draw,
+                                  struct v9x_i9xx_decode_limits *limits,
+                                  const struct v9x_i9xx_decode_shader *decl,
+                                  int depthed)
+{
+    DWORD *stream = v9x_d3d_i9xx_stream;
+    DWORD at = head;
+    DWORD produced = 0ul;
+    DWORD rejected = 0ul;
+
+    if (v9x_i9xx_build_shader_run(v9x_d3d_i9xx_ps_wide, count, sets,
+                                  draw->target.width, draw->target.height,
+                                  stream + at, V9X_I9XX_SUBMIT_DWORDS - at -
+                                      V9X_D3D_I9XX_PS_TAIL_DWORDS,
+                                  &produced) != V9X_STATUS_OK) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_VERTICES);
+    }
+    at += produced;
+    stream[at++] = V9X_I9XX_MI_FLUSH;
+    limits->breadcrumb_offset = 0ul;
+    if (v9x_d3d_i9xx_hws_open()) {
+        (void)v9x_d3d_i9xx_render_drain(0);
+        v9x_d3d_i9xx_breadcrumb_expected = v9x_d3d_i9xx_allocate_sequence();
+        if (v9x_d3d_i9xx_breadcrumb_expected == 0ul ||
+            v9x_i9xx_build_breadcrumb_stream(
+                v9x_d3d_i9xx_breadcrumb_offset(),
+                v9x_d3d_i9xx_breadcrumb_expected, stream + at,
+                V9X_I9XX_SUBMIT_DWORDS - at, &produced) != V9X_STATUS_OK) {
+            v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
+        }
+        at += produced;
+        limits->breadcrumb_offset = v9x_d3d_i9xx_breadcrumb_offset();
+    } else {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    }
+    if ((at & 1ul) != 0ul) {
+        stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+    if (v9x_i9xx_decode_shader_stream(stream, at, limits, decl, &rejected) !=
+            V9X_I9XX_P5_OK) {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_DECODER);
+    }
+    v9x_present_note_submission();
+    if (!v9x_d3d_i9xx_ring_submit(stream, at)) {
+        v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
+    }
+    v9x_d3d_i9xx_breadcrumb_expected = 0ul;
+    ++v9x_hal->d3d_diagnostics.i9xx_draws_submitted;
+    ++v9x_hal->d3d_diagnostics.i9xx_texture_draws;
+    if (depthed) {
+        ++v9x_hal->d3d_diagnostics.i9xx_depth_draws;
+    }
+    return 1;
+}
+
+static int v9x_d3d_i9xx_draw_shader(const V9X_R3D_DRAW *draw,
+                                    const V9X_R3D_SHADER *shader,
+                                    const float *vertices,
+                                    DWORD triangle_count)
+{
+    struct v9x_i9xx_texture maps[V9X_I9XX_SHADER_STAGES];
+    struct v9x_i9xx_decode_shader decl;
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_ps11_desc desc;
+    const V9X_D3D_I9XX_PS_ENTRY *entry;
+    DWORD *stream = v9x_d3d_i9xx_stream;
+    DWORD fog_rgb[3];
+    DWORD bound = 0ul;
+    DWORD cubes = 0ul;
+    DWORD sampled;
+    DWORD stage;
+    DWORD identity = 0ul;
+    DWORD address = 0ul;
+    DWORD depth_offset = 0ul;
+    DWORD depth_pitch = 0ul;
+    DWORD depth_writes = 0ul;
+    DWORD depth_compare = V9X_I9XX_COMPAREFUNC_LESS;
+    DWORD blend_src;
+    DWORD blend_dst;
+    DWORD alpha_test = 0ul;
+    DWORD target_format;
+    DWORD produced = 0ul;
+    DWORD at = 0ul;
+    DWORD head;
+    DWORD per_triangle;
+    DWORD batch;
+    DWORD done = 0ul;
+    DWORD count = 0ul;
+    int depthed;
+    int flip_waited;
+
+    if (draw == 0 || shader == 0 || shader->program == 0 || vertices == 0 ||
+        triangle_count == 0ul) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_ARGUMENTS);
+    }
+    if (!v9x_d3d_i9xx_ready()) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_SUBMIT);
+    }
+
+    /* Each stage the program samples: a texture bound and sampled (a
+     * cube if create_surface placed one there), or none, which reads
+     * (0, 0, 0, 1) and has no sampler. */
+    for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+        decl.maps[stage].bytes = 0ul;
+    }
+    sampled = shader->program->samples;
+    for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+        DWORD is_cube = 0ul;
+
+        if ((sampled & (1ul << stage)) == 0ul ||
+            shader->texture[stage].object == 0) {
+            continue;
+        }
+        if (!v9x_d3d_i9xx_shader_unit(&shader->texture[stage], &maps[stage],
+                                      &decl.maps[stage], &is_cube)) {
+            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+        }
+        bound |= 1ul << stage;
+        cubes |= is_cube << stage;
+    }
+    desc.cube = cubes;
+    desc.projected = shader->env.projected;
+    desc.unbound = sampled & ~bound;
+    desc.fog = draw->fog_enable != 0ul ? 1ul : 0ul;
+    if (desc.fog != 0ul) {
+        ++v9x_hal->d3d_diagnostics.ps11_fogged;
+    }
+    entry = v9x_d3d_i9xx_ps_program(shader, &desc);
+    if (entry == 0 || (entry->units & ~bound) != 0ul) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
+    }
+    fog_rgb[0] = v9x_d3d_i9xx_unit_bits((draw->fog_color >> 16) & 0xfful);
+    fog_rgb[1] = v9x_d3d_i9xx_unit_bits((draw->fog_color >> 8) & 0xfful);
+    fog_rgb[2] = v9x_d3d_i9xx_unit_bits(draw->fog_color & 0xfful);
+    v9x_i9xx_ps11_constants(shader->program, &shader->env, fog_rgb,
+                            v9x_d3d_i9xx_ps_constants);
+
+    /* The target, depth, blend and alpha test as the fixed-function draw
+     * binds them. */
+    target_format = draw->target.format == V9X_R3D_FORMAT_XRGB8888
+                        ? (V9X_I9XX_COLR_BUF_ARGB8888 |
+                           V9X_I9XX_DEPTH_FRMT_16_FIXED)
+                        : 0ul;
+    if (v9x_d3d_i9xx_bind_target_at(draw->target.offset, draw->target.pitch,
+                                    draw->target.width, draw->target.height,
+                                    draw->target.format ==
+                                            V9X_R3D_FORMAT_XRGB8888
+                                        ? 4ul : 2ul,
+                                    v9x_hal->fb.vram_bytes,
+                                    &identity, &address) == V9X_FALSE) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_TARGET);
+    }
+    flip_waited = v9x_flip_wait_done();
+    if (flip_waited != V9X_FLIP_WAIT_NONE) {
+        ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+        if (flip_waited == V9X_FLIP_WAIT_TIMEOUT) {
+            ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+        }
+    }
+    depthed = v9x_d3d_i9xx_bind_depth_surface(draw, &depth_offset,
+                                              &depth_pitch, &depth_writes,
+                                              &depth_compare);
+    if (depthed && draw->depth.format == V9X_R3D_DEPTH_Z24X8) {
+        target_format = (draw->target.format == V9X_R3D_FORMAT_XRGB8888
+                             ? V9X_I9XX_COLR_BUF_ARGB8888
+                             : V9X_I9XX_COLR_BUF_RGB565) |
+                        V9X_I9XX_DEPTH_FRMT_24_FIXED_8_OTHER;
+    }
+    v9x_d3d_i9xx_bind_blend(draw, &blend_src, &blend_dst);
+    if (v9x_i9xx_alpha_test_bits(draw->alpha_test_enable, draw->alpha_func,
+                                 draw->alpha_ref, &alpha_test) ==
+            V9X_FALSE) {
+        alpha_test = 0ul;
+        ++v9x_hal->d3d_diagnostics.alpha_test_unexpressed;
+    }
+    v9x_i9xx_vertex_set_band(0ul);
+
+    /* The head every run shares: the read flush, stipple off, the state,
+     * the constants and the program. */
+    stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    stream[at++] = V9X_I9XX_3DSTATE_STIPPLE;
+    stream[at++] = V9X_I9XX_STIPPLE_OFF;
+    if (v9x_i9xx_build_shader_state(
+            draw->target.offset, draw->target.pitch, draw->target.width,
+            draw->target.height, maps, entry->units, cubes & entry->units,
+            entry->sets, depth_offset, depth_pitch, depth_writes,
+            depth_compare, blend_src, blend_dst, alpha_test, stream + at,
+            V9X_I9XX_SUBMIT_DWORDS - at, &produced) != V9X_STATUS_OK ||
+        (target_format != 0ul &&
+         v9x_i9xx_retarget_state(stream + at, produced, target_format) !=
+             V9X_STATUS_OK)) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+    }
+    at += produced;
+    if (v9x_i9xx_build_shader_constants(v9x_d3d_i9xx_ps_constants,
+                                        V9X_I9XX_PS11_CONST_REGS,
+                                        stream + at,
+                                        V9X_I9XX_SUBMIT_DWORDS - at,
+                                        &produced) != V9X_STATUS_OK ||
+        V9X_I9XX_SUBMIT_DWORDS - at - produced < entry->dwords) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+    }
+    at += produced;
+    for (produced = 0ul; produced < entry->dwords; ++produced) {
+        stream[at++] = entry->words[produced];
+    }
+    head = at;
+
+    /* What the licence holds the stream to: every field zero first, so a
+     * field this draw has no use for says nothing. */
+    {
+        BYTE *raw = (BYTE *)&limits;
+        DWORD k;
+
+        for (k = 0ul; k < (DWORD)sizeof(limits); ++k) {
+            raw[k] = 0u;
+        }
+    }
+    limits.target_offset = draw->target.offset;
+    limits.target_bytes = draw->target.pitch * draw->target.height;
+    limits.target_pitch = draw->target.pitch;
+    limits.target_width = draw->target.width;
+    limits.target_height = draw->target.height;
+    limits.texture_offset = 0ul;
+    limits.texture_bytes = 0ul;
+    limits.texture_width = 0ul;
+    limits.texture_height = 0ul;
+    limits.texture_pitch = 0ul;
+    limits.texture_format = 0ul;
+    limits.texture_wrap = 0ul;
+    limits.texture_mag_linear = 0ul;
+    limits.texture_min_linear = 0ul;
+    limits.texture_program = 0ul;
+    limits.texture_cylinder = 0ul;
+    limits.texture_mip_filter = 0ul;
+    limits.texture_max_lod = 0ul;
+    limits.blend_src = blend_src;
+    limits.blend_dst = blend_dst;
+    limits.depth_offset = depth_offset;
+    limits.depth_bytes = depthed ? draw->target.height * depth_pitch : 0ul;
+    limits.depth_pitch = depth_pitch;
+    limits.depth_writes = depth_writes;
+    limits.depth_compare = depth_compare;
+    limits.alpha_test = alpha_test;
+    limits.fog = 0ul;
+    limits.target_format = target_format;
+    limits.guard_band = 0ul;
+    limits.draw_inset = 0ul;
+    limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    limits.breadcrumb_offset = 0ul;
+    decl.units = entry->units;
+    decl.cubes = cubes & entry->units;
+    decl.sets = entry->sets;
+    decl.constants = V9X_I9XX_PS11_CONST_REGS;
+
+    /* As many triangles a run as the room after the head holds, at most
+     * the run builder's; room for a whole clipped fan kept in hand. */
+    per_triangle = 3ul * (6ul + 4ul * entry->sets);
+    batch = (V9X_I9XX_SUBMIT_DWORDS - head - V9X_D3D_I9XX_PS_TAIL_DWORDS -
+             1ul) / per_triangle;
+    if (batch > V9X_I9XX_RUNTIME_MAX_TRIANGLES) {
+        batch = V9X_I9XX_RUNTIME_MAX_TRIANGLES;
+    }
+    if (batch < V9X_R3D_MAX_FAN_TRIANGLES) {
+        return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_CAPACITY);
+    }
+
+    while (done < triangle_count) {
+        count += v9x_d3d_i9xx_ps_append(
+            vertices + done * 3ul * V9X_R3D_SHADER_FLOATS, count,
+            (float)draw->target.width, (float)draw->target.height);
+        ++done;
+        if (count != 0ul &&
+            (count + V9X_R3D_MAX_FAN_TRIANGLES > batch ||
+             done == triangle_count)) {
+            if (!v9x_d3d_i9xx_ps_submit(head, count, entry->sets, draw,
+                                        &limits, &decl, depthed)) {
+                return 0;
+            }
+            count = 0ul;
+        }
+    }
+    return 1;
+}
+
+/*
  * Positional; draw_triangles is null and the neutral draw entry is set
  * (Phase 1d of the OpenGL plan, 2026-09-26): this engine reads nothing
  * from V9X_D3D_CONTEXT. The texture is the object the core resolved once
@@ -3624,5 +4216,11 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_i9xx = {
     v9x_d3d_i9xx_create_surface,
     v9x_d3d_i9xx_destroy_surface,
     v9x_d3d_i9xx_draw,
-    v9x_d3d_i9xx_accepts
+    v9x_d3d_i9xx_accepts,
+    0,                                  /* draw_indexed */
+    0,                                  /* draw_tnl */
+    0,                                  /* tnl_available */
+    0,                                  /* lock_surface */
+    0,                                  /* unlock_surface */
+    v9x_d3d_i9xx_draw_shader            /* step 5e: pixel shaders */
 };

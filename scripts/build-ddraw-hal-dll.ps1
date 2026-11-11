@@ -299,6 +299,12 @@ $sources = @(
     "src\chipsets\intel\i9xx_fog.c"
     # The two-unit program, constants and vertex run: HAL only, likewise.
     "src\chipsets\intel\i9xx_multitex.c"
+    # Pixel shaders (docs\plans\gen3-ps11-pixel-shaders.md): the fragment
+    # program encoder, the PS 1.1 translator, and the shader stream's
+    # constants and vertex run. HAL only, likewise.
+    "src\chipsets\intel\i9xx_fs.c"
+    "src\chipsets\intel\i9xx_ps11.c"
+    "src\chipsets\intel\i9xx_shader.c"
     "src\chipsets\intel\i9xx_vertex.c"
     "src\chipsets\intel\i9xx_texture.c"
     "src\chipsets\intel\i9xx_scene.c"
