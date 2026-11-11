@@ -3658,6 +3658,10 @@ static float v9x_d3d_i9xx_ps_scratch[2u * V9X_R3D_CLIP_MAX_VERTICES *
                                      V9X_R3D_SHADER_FLOATS];
 static float v9x_d3d_i9xx_ps_clipped[V9X_R3D_CLIP_MAX_VERTICES *
                                      V9X_R3D_SHADER_FLOATS];
+static float v9x_d3d_i9xx_ps_moved[3u * V9X_R3D_SHADER_FLOATS];
+/* The half pixel this engine's vertices move by (limits.pixel_centre_half,
+ * d3d_core.c's V9X_D3D_PIXEL_CENTRE). */
+#define V9X_D3D_I9XX_PS_CENTRE 0.5f
 static v9x_u32 v9x_d3d_i9xx_ps_constants[V9X_I9XX_PS11_CONST_REGS * 4u];
 
 /* The placed cube whose +X top is at offset, or null. */
@@ -3830,16 +3834,37 @@ static int v9x_d3d_i9xx_ps_vertex(float *v)
 
 /* Append triangle to the run at wide[count], whole or as its clipped fan.
  * The triangles appended, at most V9X_R3D_MAX_FAN_TRIANGLES. */
-static DWORD v9x_d3d_i9xx_ps_append(const float *triangle, DWORD count,
+static DWORD v9x_d3d_i9xx_ps_append(const float *source, DWORD count,
                                     float width, float height)
 {
     float *out = &v9x_d3d_i9xx_ps_wide[count * 3ul * V9X_R3D_SHADER_FLOATS];
+    const float *triangle = v9x_d3d_i9xx_ps_moved;
     DWORD appended = 0ul;
     DWORD vertex;
     DWORD k;
     int inside = 1;
     int corners;
     int fan;
+
+    /*
+     * Onto this engine's pixel centres first: it samples at x + 0.5
+     * (limits.pixel_centre_half), and the core moves a fixed-function
+     * draw's vertices for it but hands a shader's over unmoved, with a
+     * zero centre_offset since centre_in_engine is clear (d3d_core.c,
+     * v9x_d3d_engine_centre). Before the clip, as the core's move is:
+     * after it a full-screen quad's 640 would be 640.5. Unmoved, every
+     * V9XD32 T19 program drew 37 pixels outside its triangle (netbook
+     * boot 303).
+     */
+    for (k = 0ul; k < 3ul * V9X_R3D_SHADER_FLOATS; ++k) {
+        v9x_d3d_i9xx_ps_moved[k] = source[k];
+    }
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        v9x_d3d_i9xx_ps_moved[vertex * V9X_R3D_SHADER_FLOATS] +=
+            V9X_D3D_I9XX_PS_CENTRE;
+        v9x_d3d_i9xx_ps_moved[vertex * V9X_R3D_SHADER_FLOATS + 1ul] +=
+            V9X_D3D_I9XX_PS_CENTRE;
+    }
 
     for (vertex = 0ul; vertex < 3ul; ++vertex) {
         float x = triangle[vertex * V9X_R3D_SHADER_FLOATS];
