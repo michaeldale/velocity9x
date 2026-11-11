@@ -115,6 +115,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\nv3_2d.c',
         # RIVA 128 3D: the D3D object's state, vertex and texture words.
         'src\chipsets\nvidia\nv3_3d.c',
+        # GT218 PGRAPH context program generator (nouveau's), no I/O.
+        'src\chipsets\nvidia\gt218\nv50_grctx.c',
         # Rage 128 2D engine: init, fill and copy register values, no I/O.
         'src\chipsets\ati\rage128\r128_2d.c',
         # Rage 128 3D: CCE state and primitive packet streams, no I/O.
@@ -381,6 +383,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_tdfx_3d.c',
         'tests\host\test_nv3_2d.c',
         'tests\host\test_nv3_3d.c',
+        'tests\host\test_nv50_grctx.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
         'tests\host\test_rs690_2d.c',

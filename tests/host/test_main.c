@@ -321,6 +321,10 @@ unsigned int v9x_run_nv3_2d_tests(void);
  * swizzle words against what /d3d and /d3dstate drew. */
 unsigned int v9x_run_nv3_3d_tests(void);
 
+/* tests\host\test_nv50_grctx.c: the NV50 context program generator's
+ * structure on the GT218's inputs. */
+unsigned int v9x_run_nv50_grctx_tests(void);
+
 /* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
  * 3dfx driver builds for them. */
 unsigned int v9x_run_tdfx_hwc_tests(void);
@@ -1539,6 +1543,7 @@ int main(int argc, char **argv)
     failures += v9x_run_tdfx_3d_tests();
     failures += v9x_run_nv3_2d_tests();
     failures += v9x_run_nv3_3d_tests();
+    failures += v9x_run_nv50_grctx_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_rs690_2d_tests();

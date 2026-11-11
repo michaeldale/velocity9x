@@ -22,7 +22,8 @@ Heap through BAR1 done first
 ([record](../decisions/2026-11-11-gt218-bar1-heap.md)): the driver maps
 128 MiB of BAR1 since boot 83 and DirectDraw reports a 126.5 MiB heap;
 GDI and mode switches pass; nothing has allocated past 14 MiB yet.
-Next: Phase 3's engine choice. Register facts below come from
+Phase 3: Michael chose B, PGRAPH 2D (2026-11-11); its own plan,
+[nvidia-gt218-pgraph-2d.md](nvidia-gt218-pgraph-2d.md), research done. Register facts below come from
 open-source and reverse-engineered sources (nouveau, envytools) unless a
 record says the card confirmed them.
 
