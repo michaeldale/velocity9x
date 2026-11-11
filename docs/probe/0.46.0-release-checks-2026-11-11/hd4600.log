@@ -1,0 +1,7 @@
+[+0:00] agent 0.13.1, boot 210, desktop True
+[+0:09] staged 8 files; resetting
+[+1:14] reset: boot 210 -> 211
+[+1:32] installed: 8 of 8
+[+6:21] push-tree C:\V9XREL attempt 1 failed, exit 20
+[+6:50] push-tree C:\V9XREL attempt 2 failed, exit 20
+[+6:50] ERROR: Could not push C:\Users\michael\AppData\Local\Temp\v9xrc-hd4600-065ebb22\probes to C:\V9XREL.

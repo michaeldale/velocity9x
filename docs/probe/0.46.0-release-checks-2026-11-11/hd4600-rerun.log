@@ -1,0 +1,4 @@
+[+0:00] agent 0.13.1, boot 211, desktop True
+[+1:13] push-tree C:\V9XSTAGE attempt 1 failed, exit 20
+[+8:07] push-tree C:\V9XSTAGE attempt 2 failed, exit 20
+[+8:07] ERROR: Could not push C:\Users\michael\AppData\Local\Temp\v9xrc-hd4600-bc4c70da\stage to C:\V9XSTAGE.

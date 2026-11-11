@@ -1,0 +1,17 @@
+{
+    "Name":  "hd4600",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  null,
+    "BootAfter":  null,
+    "Installed":  null,
+    "Error":  "Could not push C:\\Users\\michael\\AppData\\Local\\Temp\\v9xrc-hd4600-bc4c70da\\stage to C:\\V9XSTAGE.",
+    "Offline":  false,
+    "Agent":  "0.13.1",
+    "Boot":  211,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
