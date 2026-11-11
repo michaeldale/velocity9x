@@ -49,6 +49,10 @@
  *   T21 a six-level RGB565 mip chain, each level its own colour, drawn
  *      MIPNEAREST at four sizes: each quad the level its size selects
  *      (d32_t21_draw); counted only when MIPNEAREST is advertised.
+ *   T22 T6's map at 32 bits a texel, A8R8G8B8 and X8R8G8B8, with red and
+ *      blue unequal in every texel so a swapped byte order shows; each
+ *      quadrant's centre within 8 of its texel. Skipped, not counted,
+ *      where the driver does not take the format.
  *   T11 culling by every submit form the DX5 device has - a triangle list,
  *      an indexed list, a strip (its odd triangle's swap), a fan, an
  *      indexed strip and an indexed list over 260 vertices - each under
@@ -1418,6 +1422,65 @@ static D32_OBJECT *d32_texture_surface_format(D32_OBJECT *ddraw,
     return surface;
 }
 
+/*
+ * T22's texture: T6's 8x8 quadrant map at 32 bits a texel, A8R8G8B8 with
+ * `alpha` non-zero, else X8R8G8B8 (its top byte left 0, which the
+ * format says is ignored), in video memory; null when it could not be
+ * made. <prefix>CreateHr and LockHr are recorded.
+ */
+static D32_OBJECT *d32_texture_surface32(D32_OBJECT *ddraw,
+                                         const DWORD quadrant[4],
+                                         const char *prefix, int alpha)
+{
+    D32_SURFACE_DESC desc;
+    D32_OBJECT *surface = 0;
+    DWORD x;
+    DWORD y;
+    HRESULT hr;
+    char key[32];
+
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT;
+    desc.dwWidth = 8ul;
+    desc.dwHeight = 8ul;
+    desc.ddpfPixelFormat[0] = 32ul;
+    desc.ddpfPixelFormat[1] = alpha ? (DDPF_RGB | DDPF_ALPHAPIXELS)
+                                    : DDPF_RGB;
+    desc.ddpfPixelFormat[3] = 32ul;
+    desc.ddpfPixelFormat[4] = 0x00ff0000ul;
+    desc.ddpfPixelFormat[5] = 0x0000ff00ul;
+    desc.ddpfPixelFormat[6] = 0x000000fful;
+    desc.ddpfPixelFormat[7] = alpha ? 0xff000000ul : 0ul;
+    desc.ddsCaps = DDSCAPS_TEXTURE | DDSCAPS_VIDEOMEMORY;
+    hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
+        ddraw, &desc, &surface, 0);
+    wsprintfA(key, "%sCreateHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    if (hr != 0 || surface == 0) {
+        return 0;
+    }
+    d32_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    hr = ((d32_lock_fn)surface->vtbl[DDS_LOCK])(surface, 0, &desc,
+                                                DDLOCK_WAIT, 0);
+    wsprintfA(key, "%sLockHr", prefix);
+    d32_hx(key, (DWORD)hr);
+    if (hr != 0 || desc.lpSurface == 0) {
+        ((d32_release_fn)surface->vtbl[COM_RELEASE])(surface);
+        return 0;
+    }
+    for (y = 0ul; y < 8ul; ++y) {
+        DWORD *row = (DWORD *)((BYTE *)desc.lpSurface +
+                               y * (DWORD)desc.lPitch);
+        for (x = 0ul; x < 8ul; ++x) {
+            row[x] = quadrant[(y >= 4ul ? 2u : 0u) + (x >= 4ul ? 1u : 0u)];
+        }
+    }
+    ((d32_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, desc.lpSurface);
+    return surface;
+}
+
 static D32_OBJECT *d32_texture_surface(D32_OBJECT *ddraw,
                                        const WORD quadrant[4],
                                        const char *prefix)
@@ -1453,6 +1516,13 @@ static DWORD d32_handle_of(D32_OBJECT *surface, D32_OBJECT *device,
 /* T6's texture: red, green, blue and white quadrants, and its DX5 handle
  * for device. */
 static const WORD d32_quadrants[4] = { 0xfc00u, 0x83e0u, 0x801fu, 0xffffu };
+
+/* T22's quadrants, 0xAARRGGBB: red and blue differ in each, so a sampler
+ * reading the bytes in the other order is seen, and none is a channel at
+ * 0 or FF alone. */
+static const DWORD d32_quadrants32[4] = {
+    0xff2040c0ul, 0xffc08020ul, 0xff10e070ul, 0xff90a0f0ul
+};
 
 static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
                          D32_OBJECT **surface_out)
@@ -6218,6 +6288,8 @@ void WINAPI V9xD3d32ProbeEntry(void)
     D32_OBJECT *texture_surface = 0;
     D32_OBJECT *t20_surfaces[2] = { 0, 0 };
     D32_OBJECT *t21_surface = 0;
+    D32_OBJECT *t22_surfaces[2] = { 0, 0 };
+    DWORD t22_handles[2] = { 0ul, 0ul };
     DWORD handle = 0ul;
     D32_SURFACE_DESC desc;
     D32_ENUM_RESULT enumerated;
@@ -6606,6 +6678,50 @@ void WINAPI V9xD3d32ProbeEntry(void)
         d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
     }
 
+    /* T22, 32-bit textures: T6's quad and states over an A8R8G8B8 map at
+     * (400, 100) and an X8R8G8B8 one at (480, 100). Only where the
+     * driver publishes the formats; where it does not, CreateSurface
+     * fails and T22 is skipped, not counted. */
+    d32_line("Stage", "8c-t22-texture32");
+    t22_surfaces[0] = d32_texture_surface32(ddraw, d32_quadrants32, "T22A",
+                                            1);
+    t22_surfaces[1] = d32_texture_surface32(ddraw, d32_quadrants32, "T22X",
+                                            0);
+    t22_handles[0] = d32_handle_of(t22_surfaces[0], device, "T22A");
+    t22_handles[1] = d32_handle_of(t22_surfaces[1], device, "T22X");
+    {
+        DWORD form;
+
+        for (form = 0ul; form < 2ul; ++form) {
+            float x0 = 400.0f + 80.0f * (float)form;
+
+            if (t22_handles[form] == 0ul) {
+                continue;
+            }
+            d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE,
+                      t22_handles[form]);
+            d32_state(device, D3DRENDERSTATE_TEXTUREMAG, D3DFILTER_NEAREST);
+            d32_state(device, D3DRENDERSTATE_TEXTUREMIN, D3DFILTER_NEAREST);
+            d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND,
+                      D3DTBLEND_DECAL);
+            d32_vertex(&v[0], x0, 100.0f, 0.5f, 0xfffffffful);
+            d32_vertex(&v[1], x0 + 64.0f, 100.0f, 0.5f, 0xfffffffful);
+            d32_vertex(&v[2], x0, 164.0f, 0.5f, 0xfffffffful);
+            v[1].tu = 1.0f;
+            v[2].tv = 1.0f;
+            d32_vertex(&v[3], x0 + 64.0f, 100.0f, 0.5f, 0xfffffffful);
+            d32_vertex(&v[4], x0 + 64.0f, 164.0f, 0.5f, 0xfffffffful);
+            d32_vertex(&v[5], x0, 164.0f, 0.5f, 0xfffffffful);
+            v[3].tu = 1.0f;
+            v[4].tu = 1.0f;
+            v[4].tv = 1.0f;
+            v[5].tv = 1.0f;
+            d32_hx(form == 0ul ? "T22ADrawHr" : "T22XDrawHr",
+                   (DWORD)d32_draw(device, v, 6ul));
+            d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+        }
+    }
+
     /* T7, blending: opaque green, then red at alpha 0x80 with SRCALPHA
      * and INVSRCALPHA over it, at (480, 8). */
     d32_line("Stage", "8d-t7-blend");
@@ -6841,6 +6957,38 @@ void WINAPI V9xD3d32ProbeEntry(void)
         }
         d32_hx("T6Ok", caps);
         failures += caps != 15ul ? 1ul : 0ul;
+
+        /* T22: the same at 32 bits a texel, A8R8G8B8 then X8R8G8B8, each
+         * quadrant's centre its texel's colour within T6's tolerance. A
+         * form whose texture was not made is skipped. */
+        {
+            DWORD form;
+            DWORD q;
+
+            for (form = 0ul; form < 2ul; ++form) {
+                DWORD x0 = 400ul + 80ul * form;
+                DWORD ok = 0ul;
+                char key[32];
+
+                if (t22_handles[form] == 0ul) {
+                    continue;
+                }
+                for (q = 0ul; q < 4ul; ++q) {
+                    DWORD px = d32_pixel(&desc, x0 + 16ul + 32ul * (q & 1ul),
+                                         116ul + 32ul * (q >> 1));
+
+                    wsprintfA(key, "T22%cPixel%lu", form == 0ul ? 'A' : 'X',
+                              q);
+                    d32_hx(key, px);
+                    if (d32_near(px, d32_quadrants32[q] & 0x00fffffful,
+                                 8ul)) {
+                        ok |= 1ul << q;
+                    }
+                }
+                d32_hx(form == 0ul ? "T22AOk" : "T22XOk", ok);
+                failures += ok != 15ul ? 1ul : 0ul;
+            }
+        }
 
         /*
          * T7: half red over green, about 0x80 and 0x7F - averaged over an
@@ -7086,6 +7234,14 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_d3d89();
     if (offscreen != 0) {
         ((d32_release_fn)offscreen->vtbl[COM_RELEASE])(offscreen);
+    }
+    if (t22_surfaces[0] != 0) {
+        ((d32_release_fn)t22_surfaces[0]->vtbl[COM_RELEASE])(
+            t22_surfaces[0]);
+    }
+    if (t22_surfaces[1] != 0) {
+        ((d32_release_fn)t22_surfaces[1]->vtbl[COM_RELEASE])(
+            t22_surfaces[1]);
     }
     if (texture_surface != 0) {
         ((d32_release_fn)texture_surface->vtbl[COM_RELEASE])(

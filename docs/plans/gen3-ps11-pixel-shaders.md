@@ -213,10 +213,14 @@ CreatePixelShader, as any other untranslatable program is.
      Neither reference driver ever selects 88DVDU or QWVU8888, so their
      channel order and signed range come from the names alone.
 
-     **Owed before 0.47.0 ships**, whatever happens to 5b-5f: a netbook
-     run with a game that picks 32-bit textures (Half-Life D3D, 3DMark
-     2001 SE) at 16 and 32 bpp. Without it, 0.47.0 ships the 32-bit
-     textures unmeasured.
+     Measured the same day on the netbook (boot 301, 25e042f1):
+     V9XD32's new T22 samples ARGB8888 and XRGB8888 texels exactly at
+     32 bpp and to 565 rounding at 16, with every draw on the engine.
+     3DMark 2001 SE, set to 32-bit textures, ran all 17 tests at 16 and
+     32 bpp: 1.2 million engine draws each, none refused, no texture
+     format refusals. No counter shows which format 3DMark's textures
+     got. Record:
+     [`../decisions/2026-11-11-gen3-32bit-textures-netbook.md`](../decisions/2026-11-11-gen3-32bit-textures-netbook.md).
    - **5b. Cube maps.** Gen3's cube layout (six faces in the mip tree;
      Mesa's `i915_miptree_layout_cube` and xf86 as the two sources), its
      placement at CreateSurface, the map's cube bit. Host tests on the
