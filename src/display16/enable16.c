@@ -55,6 +55,10 @@ extern WORD FAR PASCAL V9xHardwarePresent(void);
  * offered to a machine with no PCI without also offering it a foreign card that
  * happens to be on a PCI bus. */
 extern WORD FAR PASCAL V9xPciBiosPresent(void);
+#ifdef V9X_HW16_APERTURE_FROM_BAR
+/* runtime.asm: one validated memory BAR of the family's card, by index. */
+extern WORD FAR PASCAL V9xPciReadBar(DWORD FAR *base, WORD bar_index);
+#endif
 extern WORD FAR PASCAL V9xMapAperture(void);
 
 /* ddi.c: which family entry the PCI scan matched, 0xFFFF for none, and
@@ -502,6 +506,45 @@ static void v9x_vbe_trace_record(WORD index)
  * m= is the matched device index or "none", bar= the index that chip asked
  * for, and pci= whether a PCI BIOS answered at all.
  */
+static void v9x_trace_aperture(unsigned long base);
+
+/*
+ * The aperture to map: the VBE's, or for a chip that sets
+ * aperture_from_bar, its framebuffer_bar read from PCI (hw16.h). After the
+ * Aperture trace, so the boot record keeps what the BIOS reported, and
+ * recorded as ApertureFromBar. A refused BAR read keeps the VBE's base and
+ * puts the stage code back, so a later failure is not blamed on it.
+ *
+ * Compiled only into a family whose manifest defines
+ * V9X_HW16_APERTURE_FROM_BAR: the ati image's _TEXT went 113 bytes past
+ * the audit's budget with it, and only the nvidia family has a chip that
+ * sets the field. Elsewhere the field is ignored.
+ */
+#ifdef V9X_HW16_APERTURE_FROM_BAR
+static unsigned long v9x_aperture_from_bar(const V9X_HW16_DEVICE *device,
+                                           unsigned long vbe_base)
+{
+    DWORD bar_base = 0ul;
+    char text[24];
+    WORD at = 0u;
+
+    if (v9x_hw16.read_aperture != 0 || device == 0 ||
+        device->aperture_from_bar == 0u) {
+        return vbe_base;
+    }
+    if (V9xPciReadBar(&bar_base, device->framebuffer_bar) == 0u) {
+        v9x_hardware_stage_code = 3u;
+        v9x_write_ini_key("ApertureFromBar", "refused");
+        return vbe_base;
+    }
+    text[at++] = 'b'; text[at++] = '=';
+    at = v9x_append_hex32(text, at, bar_base);
+    text[at] = '\0';
+    v9x_write_ini_key("ApertureFromBar", text);
+    return bar_base;
+}
+#endif
+
 static void v9x_trace_aperture(unsigned long base)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
@@ -1268,6 +1311,9 @@ WORD FAR PASCAL V9xHardwareEnable(void)
     if (base == 0ul) {
         return 0u;
     }
+#ifdef V9X_HW16_APERTURE_FROM_BAR
+    base = v9x_aperture_from_bar(device, base);
+#endif
     /* After the trace, so the boot record keeps the BAR the BIOS reported;
      * everything mapped from here on starts at the desktop. */
     base += desktop_offset;

@@ -154,8 +154,10 @@
             # Ordinal 1, last so it links after the runtime symbols it calls.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )
-        # gdi_accel.c's NV3 fill and copy, compiled into this family only.
-        Defines = @('V9X_NVIDIA_FAMILY')
+        # gdi_accel.c's NV3 fill and copy, compiled into this family only;
+        # enable16.c's BAR aperture, which the GT218 row asks for
+        # (hw16.h aperture_from_bar).
+        Defines = @('V9X_NVIDIA_FAMILY', 'V9X_HW16_APERTURE_FROM_BAR')
         # runtime.asm's BAR0 read and mini-VDD map for the 2D engine.
         RuntimeDefines = @('V9X_NVIDIA_FAMILY')
         SkeletonOutput = 'build\win16-ddi-nvidia'

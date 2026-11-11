@@ -12,7 +12,17 @@ read done ([record](../decisions/2026-11-11-gt218-register-probe.md)):
 chipset A8 stepping B1, 512 MiB DDR2/3 on one partition, the VBE
 framebuffer is BAR3 + 16 MiB, PFIFO/PGRAPH/copy engine on, and **no BAR
 VM** (1704h/1708h/170Ch all zero), so hard part 1 below is wrong as
-written. Next: a read-only BAR1/BAR3 and VGA CRTC pass, then Phase 3. Register facts below come from
+written. Second read done
+([record](../decisions/2026-11-11-gt218-bar-windows.md)): with the VM
+off, BAR1 + 0 and both halves of BAR3 show the desktop, BAR1 + 16 MiB
+shows unwritten-looking memory, the VGA start is 0. The BAR1 write test
+passed: patterns at 16, 32, 64, 128 and 256 MiB - 4 KiB read back with
+no alias and the desktop untouched, consistent with linear decoding.
+Heap through BAR1 done first
+([record](../decisions/2026-11-11-gt218-bar1-heap.md)): the driver maps
+128 MiB of BAR1 since boot 83 and DirectDraw reports a 126.5 MiB heap;
+GDI and mode switches pass; nothing has allocated past 14 MiB yet.
+Next: Phase 3's engine choice. Register facts below come from
 open-source and reverse-engineered sources (nouveau, envytools) unless a
 record says the card confirmed them.
 

@@ -202,6 +202,23 @@ typedef struct v9x_hw16_device {
                                    unsigned short mtrr_reason,
                                    void (*write)(const char *key,
                                                  const char *value));
+
+    /*
+     * Non-zero: in a family with no read_aperture hook, map the chip's
+     * framebuffer_bar, read from PCI, instead of the VBE's PhysBasePtr. Zero
+     * keeps the VBE's, which is every chip but the ones that opt in. A BAR
+     * read that is refused keeps the VBE's too. Appended 2026-11-11.
+     *
+     * For a card whose VBE hands out a small window of a larger aperture:
+     * the GT218's VBE puts its framebuffer in a 16 MiB window of BAR3 and
+     * reports 14 MiB, while BAR1 shows the same desktop at offset 0 and holds
+     * writes across 256 MiB (docs\decisions\2026-11-11-gt218-bar-windows.md).
+     * The chip's maintainer has measured that the BAR shows the desktop at
+     * the same offset the VBE's window does; nothing here checks it.
+     * Honoured only in a family whose manifest defines
+     * V9X_HW16_APERTURE_FROM_BAR (enable16.c says why).
+     */
+    unsigned short aperture_from_bar;
 } V9X_HW16_DEVICE;
 
 /* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */

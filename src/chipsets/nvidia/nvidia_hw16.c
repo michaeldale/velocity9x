@@ -29,6 +29,9 @@ extern unsigned short v9x_modes16_highcolor(void);
 
 extern const V9X_HW16_DEVICE v9x_riva128_device;
 extern const V9X_HW16_DEVICE v9x_gt218_device;
+/* gt218_hw16.c: the GT218's heap, the whole of its BAR1 mapping. */
+extern unsigned long v9x_gt218_measure_video_memory(
+    unsigned long mapped_bytes, unsigned long reported_bytes);
 
 /* runtime.asm, nvidia family only: BAR0 through the engine selector. */
 extern unsigned short __far __pascal V9xNv3Selector(unsigned long linear);
@@ -214,6 +217,20 @@ static unsigned long v9x_nvidia_place_desktop(unsigned short pitch_bytes)
     return 0ul;
 }
 
+/*
+ * The heap size: the GT218's whole BAR1 mapping, since its VBE reports a
+ * 14 MiB window of 512 MiB; 0 keeps the 4F00h figure for the RIVA 128,
+ * where it is right.
+ */
+static unsigned long v9x_nvidia_measure_video_memory(
+    unsigned long mapped_bytes, unsigned long reported_bytes)
+{
+    if (v9x_hw16_active_device() != &v9x_gt218_device) {
+        return 0ul;
+    }
+    return v9x_gt218_measure_video_memory(mapped_bytes, reported_bytes);
+}
+
 const V9X_HW16_OPS v9x_hw16 = {
     "nvidia",
     v9x_nvidia_devices,
@@ -250,7 +267,7 @@ const V9X_HW16_OPS v9x_hw16 = {
     v9x_nvidia_reserve_video_memory,
     /* unalias_pitch: the BIOS's stride. */
     0u,
-    /* NULL: 4F00h's memory size is right on the measured card. */
-    0,
+    /* 4F00h's size on the RIVA 128; the BAR1 mapping on the GT218. */
+    v9x_nvidia_measure_video_memory,
     v9x_nvidia_place_desktop
 };
