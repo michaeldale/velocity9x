@@ -329,6 +329,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-04 The G45 and Q45 run 0.28.0: issue 3's reporter's field report, 3DMark 2000 1942 and 1760](2026-11-04-g4x-g45-q45-field-report.md)
 - [2026-11-05 The GM45 (GL40, HP t5740) runs 0.35.0: Direct3D in hardware and 3DMark 99, issue 22's field report (V9X-EXR8BE)](2026-11-05-gm45-gl40-field-report.md)
 - [2026-11-11 The GMA 950 samples ARGB8888 and XRGB8888 texels exactly (V9XD32 T22), and 3DMark 2001 SE runs on them at 16 and 32 bpp with nothing refused](2026-11-11-gen3-32bit-textures-netbook.md)
+- [2026-11-11 Gen3 pixel shaders on the GMA 950: T19 passes once DDI 8 is offered and vertices move half a pixel; 3DMark 2001 SE stops in Advanced Pixel Shader on a texture the runtime refuses](2026-11-11-gen3-ps11-netbook-first-runs.md)
 
 ## SiS
 

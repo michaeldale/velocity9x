@@ -325,7 +325,24 @@ CreatePixelShader, as any other untranslatable program is.
      With `draw_shader` set, the core claims PS 1.1, four stages, cube
      maps, Q8W8V8U8 and V8U8 for every Gen3 machine. **0.47.0 must not
      ship this without 5f.**
-   - **5f. Netbook** (W9QI2BE2, GMA 950): V9XD32 T19 at 16 and 32 bpp.
+   - **5f. Netbook.** In progress 2026-11-11
+     ([record](../decisions/2026-11-11-gen3-ps11-netbook-first-runs.md)).
+     - **T19 PASS** at R5G6B5 and X8R8G8B8, all eight programs, after two
+       fixes:
+       - Gen3 offered DDI 8 (it never reached Gen3, since the core gave
+         it only over DDI 7, which needs T&L);
+       - the half-pixel move in `draw_shader`.
+     - **3DMark 2001 SE** runs Nature (2.8 fps) and the shader tests,
+       with no draw refused once signed textures and cubes the heap
+       cannot hold are answered out of video memory.
+     - **But it stops in Advanced Pixel Shader** on a CreateTexture the
+       runtime refuses before the driver sees it ("D3DERR_INVALIDCALL").
+       Before 5e it completed (489), skipping those tests, so this is a
+       regression that blocks 0.47.0 until it is found or `draw_shader`
+       is withheld.
+
+     The run as first planned: V9XD32 T19 at 16 and 32 bpp on the
+     netbook (W9QI2BE2, GMA 950).
      This is old step 4's evidence: it settles the bump formats, cube
      sampling with an unscaled direction, and whether DDI 8 is offered
      on Gen3 at all.

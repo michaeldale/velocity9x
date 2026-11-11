@@ -1261,6 +1261,32 @@ static DWORD v9x_d3d_i9xx_miptree_decline(DWORD reason)
     return V9X_DDHAL_DRIVER_NOTHANDLED;
 }
 
+/*
+ * A texture the heap had no room for. NOTHANDLED lets DirectDraw place it
+ * itself, which is right for an RGB format and wrong for the signed ones
+ * (V8U8, Q8W8V8U8): they come as a FourCC or D3DFORMAT with no bit count,
+ * DirectDraw cannot size them, and the surface it makes has a pitch that
+ * does not hold the texture. On the netbook (boot 304) 3DMark 2001 SE ran
+ * the 7.7 MB out, 7,605 shader draws were refused at the bind for such
+ * surfaces, and Advanced Pixel Shader stopped on "Could not create texture
+ * - D3DERR_INVALIDCALL". So a signed texture is refused as out of video
+ * memory, which a Direct3D 8 runtime answers by evicting managed textures
+ * and trying again, as the RIVA 128's placement does (d3d_nv3.c).
+ */
+static DWORD v9x_d3d_i9xx_unplaced(V9X_DDHAL_CREATESURFACEDATA *data,
+                                   const V9X_DD_SURFACE_LCL *top,
+                                   DWORD reason)
+{
+    const V9X_DDPIXELFORMAT *pixel = v9x_d3d_i9xx_pixel_format(top);
+
+    if (reason == V9X_D3D_PLACE_ALLOC && pixel != 0 &&
+        (pixel->dwFlags & V9X_DDPF_RGB) == 0ul) {
+        data->ddRVal = V9X_DDERR_OUTOFVIDEOMEMORY;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    return V9X_DDHAL_DRIVER_NOTHANDLED;
+}
+
 /* Which arrangement this part samples a chain in: the 915's stacked one when
  * its descriptor says so, the 945's otherwise (v9x_d3d_i9xx_layout_miptree). */
 static v9x_u16 v9x_d3d_i9xx_mip_stacked(void)
@@ -1405,8 +1431,17 @@ static DWORD v9x_d3d_i9xx_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
         seen[face] |= 1ul << level;
         offsets[index] = tree.offset[face][level];
     }
-    if (v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows, offsets,
-                                 &base) != 0ul) {
+    index = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows, offsets,
+                                     &base);
+    if (index == V9X_D3D_PLACE_ALLOC) {
+        /* Whatever its format: a cube DirectDraw placed would be in its
+         * layout, not the sampler's, and unknown to v9x_d3d_i9xx_cubes,
+         * so sampled as a 2D map (v9x_d3d_i9xx_unplaced says why the
+         * runtime prefers this answer). */
+        data->ddRVal = V9X_DDERR_OUTOFVIDEOMEMORY;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
+    if (index != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     slot->base = base;
@@ -1496,6 +1531,7 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD format;
     DWORD bytes;
     DWORD base;
+    DWORD reason;
 
     if (v9x_d3d_i9xx_texture_shape(width, height,
                                    V9X_D3D_I9XX_SAMPLER_SIZE_MIN,
@@ -1509,10 +1545,13 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
     }
     if (v9x_d3d_i9xx_layout_miptree_at(width, height, 1ul,
                                        v9x_d3d_i9xx_mip_stacked(), bytes,
-                                       &tree) == V9X_FALSE ||
-        v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
-                                 tree.level_offset, &base) != 0ul) {
+                                       &tree) == V9X_FALSE) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    reason = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
+                                      tree.level_offset, &base);
+    if (reason != 0ul) {
+        return v9x_d3d_i9xx_unplaced(data, surface, reason);
     }
     ++v9x_hal->d3d_diagnostics.texture_placed;
     v9x_hal->d3d_diagnostics.texture_placed_bytes += tree.pitch * tree.rows;
@@ -1610,7 +1649,8 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     reason = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
                                       tree.level_offset, &base);
     if (reason != 0ul) {
-        return v9x_d3d_i9xx_miptree_decline(reason);
+        (void)v9x_d3d_i9xx_miptree_decline(reason);
+        return v9x_d3d_i9xx_unplaced(data, top, reason);
     }
 
     ++v9x_hal->d3d_diagnostics.mip_tree_allocs;
