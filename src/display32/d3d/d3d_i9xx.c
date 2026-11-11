@@ -93,7 +93,17 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     4ul,                        /* target_pitch_align     */
     2048ul,                     /* target_dimension_max   */
     /*
-     * 8 to 1024, a power of two.
+     * 8 to 2048, a power of two.
+     *
+     * 2048 since 2026-11-11, for 3DMark 2001 SE's Advanced Pixel Shader,
+     * whose 2048x2048 map the Direct3D 8 runtime refused outright while
+     * this said 1024, stopping the whole benchmark. MEASURED on the netbook
+     * (V9XTSHP): a 256x2048 single level reads back exactly, so a 2048
+     * edge is sampled. A 2048-wide level was not read back - DirectDraw's
+     * heap, which places the probe's textures, refuses a 4096-byte row -
+     * but 3DMark's 2048x1024 and 2048x256 maps, placed by this driver, ran
+     * with no refusal. Width and height are the same 11-bit MS3 field
+     * shape. decisions/2026-11-11-gen3-texture-size-2048.md.
      *
      * MEASURED to 1024 (2026-10-02, V9XTSHP on the netbook): 256x256,
      * 512x512, 512x256, 256x512, 1024x1024 and 1024x256 single levels, and
@@ -109,13 +119,15 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * picture, not a write outside the surface. A claim that cost safety
      * rather than accuracy would not be worth making.
      *
-     * The ceiling is 1024 rather than 2048 because a 2048-square map is 8
-     * MiB and this part's stolen memory is 8, and 2048 was not sampled. The
-     * floor is 8 because below it the pitch of a square map stops being a
-     * multiple of four.
+     * A 2048-square chain is 21 MiB at 32 bits, more than the netbook's
+     * 7.7 MiB of stolen memory. With 2048 claimed, Advanced Pixel Shader
+     * created both of its 2048 chains and then reported itself unsupported
+     * instead of stopping the run; why it gave up was not measured.
+     * The floor is 8 because below it the pitch of a square map stops being
+     * a multiple of four.
      */
     8ul,                        /* texture_size_min       */
-    1024ul,                     /* texture_size_max       */
+    2048ul,                     /* texture_size_max       */
     4096.0f,                    /* coordinate_limit       */
     16ul,                       /* depth_bits_per_pixel   */
     /*

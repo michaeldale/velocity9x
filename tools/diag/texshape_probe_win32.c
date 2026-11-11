@@ -21,7 +21,8 @@
  *    right.
  *
  * 3. Large textures, Gen3 only (2026-10-02): single levels from 256 to
- *    1024 and full 512 and 1024 chains, minified onto the target, to say
+ *    1024 (and 256x2048 since 2026-11-11) and full 512 and 1024 chains,
+ *    minified onto the target, to say
  *    whether the sampler reads past the 256 the engine's limit was set at
  *    from one measured 32x32 map. Their texel pattern carries x and y mod
  *    32 exactly, so an error of one texel shows.
@@ -141,15 +142,23 @@ static int v9x_tsp_fill(LPDIRECTDRAWSURFACE surface, DWORD tag)
 }
 
 /* What a nearest sampler reads into a dw x dh region from a w x h level:
- * texel floor((p + 0.5) * w / dw). Pixels outside the region stay 0. */
+ * texel floor(p * w / dw), Direct3D's rule, pixel centres at integer
+ * coordinates. Pixels outside the region stay 0.
+ *
+ * Until 2026-11-11 this was floor((p + 0.5) * w / dw), a centre half a
+ * pixel in, which Gen3 matched in October only because its fixed-function
+ * vertices were not yet moved to its own centre convention. The two rules
+ * agree whenever w <= dw, so only the minified large levels tell them
+ * apart; on the netbook (boot 308) all seven read back exactly under this
+ * rule and missed every pixel under the old one. */
 static void v9x_tsp_expected(DWORD w, DWORD h, DWORD dw, DWORD dh, DWORD tag)
 {
     DWORD x, y;
     v9x_tsp_zero(v9x_tsp_expect, sizeof(v9x_tsp_expect));
     for (y = 0ul; y < dh; ++y) {
         for (x = 0ul; x < dw; ++x) {
-            DWORD tx = ((2ul * x + 1ul) * w) / (2ul * dw);
-            DWORD ty = ((2ul * y + 1ul) * h) / (2ul * dh);
+            DWORD tx = (x * w) / dw;
+            DWORD ty = (y * h) / dh;
             v9x_tsp_expect[y * V9X_TSP_EDGE + x] = v9x_tsp_texel(tx, ty, w, h, tag);
         }
     }
@@ -504,11 +513,17 @@ void __stdcall V9xTexShapeProbeEntry(void)
 
     /* 3. Large textures, on Gen3 only. */
     if (shared->engine.engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
-        static const DWORD large_w[6] = { 256ul, 512ul, 512ul, 256ul, 1024ul, 1024ul };
-        static const DWORD large_h[6] = { 256ul, 512ul, 256ul, 512ul, 1024ul, 256ul };
+        /* 256x2048 added 2026-11-11 for 3DMark 2001 SE's 2048 maps. Tall
+         * only: DirectDraw's heap, which places these textures, refused a
+         * 2048-wide level at 16 bits (a 4096-byte row) with E_INVALIDARG,
+         * and a 2048 square chain is 8 MiB, more than the netbook's 7.7. */
+        static const DWORD large_w[7] = { 256ul, 512ul, 512ul, 256ul, 1024ul, 1024ul,
+                                          256ul };
+        static const DWORD large_h[7] = { 256ul, 512ul, 256ul, 512ul, 1024ul, 256ul,
+                                          2048ul };
         static const DWORD big_chain[2] = { 512ul, 1024ul };
 
-        for (test = 0ul; test < 6ul; ++test) {
+        for (test = 0ul; test < 7ul; ++test) {
             LPDIRECTDRAWSURFACE texture;
             V9X_D3DHAL_TEXTURECREATEDATA tc;
             V9X_D3DHAL_TEXTUREDESTROYDATA td;
