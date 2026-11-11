@@ -34,10 +34,16 @@ The shared S3 mode table has 0x0118 (1024x768x32) and 0x011A
 (1280x1024x16), and nothing in the driver knows about interlace. On a card
 whose stock BIOS accepts one of those numbers, 4F02h succeeds and the mode
 comes up interlaced; `ValidateMode` and the runtime scan cannot see it. A
-4F01h check of the ModeAttributes bits (bit 3, interlaced mode) or a CR42
-bit 5 read after the set would catch it. Not urgent: every stock BIOS
+CR42 bit 5 read after the set would catch it. Not urgent: every stock BIOS
 measured either refuses 0x0118 on 2 MB cards or runs it interlaced on 4 MB
 ones.
+
+Corrected 2026-11-11: this record first offered a 4F01h check of
+ModeAttributes bit 3 as a second route. Bit 3 is colour (1) or monochrome
+(0), so that check would refuse every colour mode. VBE 3.0 adds bit 9,
+"interlaced mode available", which says a mode can be run interlaced, not
+that it is, and the stock Trio64-family BIOSes are VBE 1.2 or 2.0 and do
+not report it. CR42 bit 5 after the set is the route.
 
 ## References
 
@@ -47,6 +53,8 @@ ones.
   found that way.
 - S3 Trio64 data book: CR42 bit 5, the interlace enable (with CR3C, the
   interlace retrace start, used only with it).
-- VBE 1.2 (VS911022), section 6.2: ModeAttributes bit 3, "interlaced mode".
+- VBE 1.2 (VS911022), section 6.2: ModeAttributes, where bit 3 is colour
+  or monochrome (see the correction above); VBE 3.0's bit 9 is "interlaced
+  mode available".
 - trio64-vbios-tools `docs/765-rom.md`: the S3COMPAT run on the 1.03-08
   base that warns of the interlaced 1600x1200 entry.
