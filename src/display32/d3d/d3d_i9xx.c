@@ -1277,6 +1277,146 @@ static DWORD v9x_d3d_i9xx_place_block(V9X_DDHAL_CREATESURFACEDATA *data,
     return v9x_d3d_place_block(data, V9X_I9XX_SANDBOX_PAGE_BYTES, pitch, rows,
                                offsets, base_out);
 }
+
+/*
+ * Cubes, step 5b of docs\plans\gen3-ps11-pixel-shaders.md, as Haswell
+ * places them (d3d_hsw.c, its step 5c). The Direct3D 8 runtime hands a
+ * video-memory cube to CreateSurface whole: six faces in D3DCUBEMAP_FACES
+ * order, each face's top and then its levels, every surface naming its
+ * face in DDSCAPS2 (the 4570, boot 131). The sampler reads a cube as one
+ * surface, so it is placed here as one block in
+ * v9x_d3d_i9xx_layout_cube's layout, each surface found by its face bit
+ * and its edge rather than its place in the list. The block starts with
+ * +X's top, which a texture record carries, and the cube is remembered by
+ * that offset: a texture there samples as a cube (step 5e). HAL statics
+ * are shared by every process, as video memory is.
+ *
+ * Nothing reaches this until the engine has draw_shader: the core claims
+ * cube maps only then (d3d_core.c, v9x_d3d_cubes_claimed).
+ */
+#define V9X_D3D_I9XX_CUBES 64u
+
+typedef struct v9x_d3d_i9xx_cube {
+    DWORD base;             /* +X top's frame-buffer offset; 0 free */
+    DWORD side;
+    DWORD levels;
+    DWORD format;           /* the map format and its texel size */
+    DWORD bytes;
+} V9X_D3D_I9XX_CUBE;
+
+static V9X_D3D_I9XX_CUBE v9x_d3d_i9xx_cubes[V9X_D3D_I9XX_CUBES];
+
+/* A surface's DDSCAPS2, from its DDRAWI_DDRAWSURFACE_MORE; the runtime's
+ * own halves are live while CreateSurface runs. */
+static DWORD v9x_d3d_i9xx_caps2(const V9X_DD_SURFACE_LCL *surface)
+{
+    const BYTE *more;
+
+    if (surface->lpSurfMore == 0ul) {
+        return 0ul;
+    }
+    more = (const BYTE *)surface->lpSurfMore;
+    if (IsBadReadPtr(more, V9X_DD_SURFACE_MORE_CAPS2 + 4ul)) {
+        return 0ul;
+    }
+    return *(const DWORD *)(more + V9X_DD_SURFACE_MORE_CAPS2);
+}
+
+/* The face a surface's DDSCAPS2 names, 0-5 from +X (DDSCAPS2_CUBEMAP_
+ * POSITIVEX is 400h, each next face the next bit), or 6 for none or
+ * more than one. */
+static DWORD v9x_d3d_i9xx_cube_face(DWORD caps2)
+{
+    DWORD bits = caps2 & V9X_DDSCAPS2_CUBEMAP_ALLFACES;
+    DWORD face;
+
+    for (face = 0ul; face < V9X_D3D_I9XX_CUBE_FACES; ++face) {
+        if (bits == (0x400ul << face)) {
+            return face;
+        }
+    }
+    return V9X_D3D_I9XX_CUBE_FACES;
+}
+
+static DWORD v9x_d3d_i9xx_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    v9x_u32 offsets[V9X_D3D_I9XX_CUBE_FACES * V9X_D3D_I9XX_MIP_LEVELS_MAX];
+    DWORD seen[V9X_D3D_I9XX_CUBE_FACES];
+    struct v9x_d3d_i9xx_cubetree tree;
+    V9X_D3D_I9XX_CUBE *slot = 0;
+    DWORD side = (DWORD)list[0]->lpGbl->wWidth;
+    DWORD levels = data->dwSCnt / V9X_D3D_I9XX_CUBE_FACES;
+    DWORD format;
+    DWORD bytes;
+    DWORD index;
+    DWORD face;
+    DWORD level;
+    DWORD base;
+
+    /* Six square faces of equal levels, a format the sampler reads, a
+     * size it takes, and room to remember them. */
+    if (data->dwSCnt % V9X_D3D_I9XX_CUBE_FACES != 0ul || levels == 0ul ||
+        side != (DWORD)list[0]->lpGbl->wHeight ||
+        v9x_d3d_i9xx_texture_shape(side, side,
+                                   V9X_D3D_I9XX_SAMPLER_SIZE_MIN,
+                                   v9x_d3d_i9xx_limits.texture_size_max) ==
+            V9X_FALSE ||
+        !v9x_d3d_i9xx_surface_map_format(list[0], &format, &bytes) ||
+        v9x_d3d_i9xx_layout_cube(side, levels, bytes, &tree) == V9X_FALSE) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    for (index = 0ul; index < V9X_D3D_I9XX_CUBES; ++index) {
+        if (v9x_d3d_i9xx_cubes[index].base == 0ul) {
+            slot = &v9x_d3d_i9xx_cubes[index];
+            break;
+        }
+    }
+    if (slot == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+
+    /* Each surface's face from its DDSCAPS2 and level from its edge, each
+     * pair once; +X's top must lead the list, the block's first byte. */
+    for (face = 0ul; face < V9X_D3D_I9XX_CUBE_FACES; ++face) {
+        seen[face] = 0ul;
+    }
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        const V9X_DD_SURFACE_LCL *surface = list[index];
+        DWORD edge;
+
+        if (surface == 0 || surface->lpGbl == 0) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        face = v9x_d3d_i9xx_cube_face(v9x_d3d_i9xx_caps2(surface));
+        edge = (DWORD)surface->lpGbl->wWidth;
+        for (level = 0ul; level < levels; ++level) {
+            if (edge == ((side >> level) != 0ul ? side >> level : 1ul)) {
+                break;
+            }
+        }
+        if (face >= V9X_D3D_I9XX_CUBE_FACES || level == levels ||
+            (DWORD)surface->lpGbl->wHeight != edge ||
+            (seen[face] & (1ul << level)) != 0ul ||
+            (index == 0ul && (face != 0ul || level != 0ul))) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        seen[face] |= 1ul << level;
+        offsets[index] = tree.offset[face][level];
+    }
+    if (v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows, offsets,
+                                 &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    slot->base = base;
+    slot->side = side;
+    slot->levels = levels;
+    slot->format = format;
+    slot->bytes = bytes;
+    ++v9x_hal->d3d_diagnostics.mip_tree_allocs;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
 /*
  * The Z buffer, padded where its row would be a power of two.
  *
@@ -1402,6 +1542,12 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         (list[0]->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) == 0ul) {
         return v9x_d3d_i9xx_create_depth(data);
     }
+    /* A video-memory cube, six faces and their levels in one call. */
+    if ((list[0]->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) == 0ul &&
+        (v9x_d3d_i9xx_caps2(list[0]) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
+        return v9x_d3d_i9xx_create_cube(data);
+    }
     /* A lone video-memory texture, including a MIPMAP surface of one level. */
     if (data->dwSCnt == 1ul &&
         (list[0]->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
@@ -1487,8 +1633,20 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
  */
 static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
+    const V9X_DD_SURFACE_LCL *surface =
+        (const V9X_DD_SURFACE_LCL *)data->lpDDSurface;
+    DWORD offset = surface != 0 && surface->lpGbl != 0
+                       ? v9x_surface_offset(surface) : 0xfffffffful;
+    DWORD n;
+
     if (v9x_d3d_place_release(data, V9X_I9XX_SANDBOX_PAGE_BYTES)) {
         ++v9x_hal->d3d_diagnostics.mip_tree_frees;
+        /* A cube that started at the freed block is gone too. */
+        for (n = 0ul; n < V9X_D3D_I9XX_CUBES; ++n) {
+            if (v9x_d3d_i9xx_cubes[n].base == offset) {
+                v9x_d3d_i9xx_cubes[n].base = 0ul;
+            }
+        }
     }
 }
 

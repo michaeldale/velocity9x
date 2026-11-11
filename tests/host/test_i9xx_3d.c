@@ -4992,6 +4992,69 @@ static void test_i9xx_miptree_layout_32bit(void)
 }
 
 /*
+ * The cube layout (step 5b of docs\plans\gen3-ps11-pixel-shaders.md):
+ * Mesa gallium's i9x5_texture_layout_cube, which the 915 and the 945 use
+ * for every uncompressed format. Faces in Direct3D's order (+X -X +Y -Y
+ * +Z -Z). Face f's top at its initial offset times the edge, (0,0) (0,2)
+ * (1,0) (1,2) (1,1) (1,3); each next level steps by the halved edge
+ * times (0,2) (0,2) (-1,2) (-1,2) (-1,1) (-1,1). Pitch twice a face row
+ * aligned to 4, rows four edges. The offsets below are worked by hand
+ * from those two tables for a 16-texel cube of five levels.
+ */
+static void test_i9xx_cube_layout(void)
+{
+    struct v9x_d3d_i9xx_cubetree cube;
+
+    CHECK(v9x_d3d_i9xx_layout_cube(16ul, 5ul, 2ul, &cube) == V9X_TRUE);
+    CHECK(cube.levels == 5ul);
+    CHECK(cube.pitch == 64ul);
+    CHECK(cube.rows == 64ul);
+    /* +X down the left edge: (0,0) (0,16) (0,24) (0,28) (0,30). */
+    CHECK(cube.offset[0][0] == 0ul);
+    CHECK(cube.offset[0][1] == 16ul * 64ul);
+    CHECK(cube.offset[0][4] == 30ul * 64ul);
+    /* -X the same from row 32. */
+    CHECK(cube.offset[1][0] == 32ul * 64ul);
+    CHECK(cube.offset[1][2] == 56ul * 64ul);
+    /* +Y from (16,0): (8,16) (4,24) (2,28) (1,30). */
+    CHECK(cube.offset[2][0] == 16ul * 2ul);
+    CHECK(cube.offset[2][1] == 16ul * 64ul + 8ul * 2ul);
+    CHECK(cube.offset[2][4] == 30ul * 64ul + 1ul * 2ul);
+    /* -Y from (16,32): level 2 at (4,56). */
+    CHECK(cube.offset[3][2] == 56ul * 64ul + 4ul * 2ul);
+    /* +Z from (16,16): (8,24) (4,28) (2,30) (1,31). */
+    CHECK(cube.offset[4][0] == 16ul * 64ul + 16ul * 2ul);
+    CHECK(cube.offset[4][1] == 24ul * 64ul + 8ul * 2ul);
+    CHECK(cube.offset[4][4] == 31ul * 64ul + 1ul * 2ul);
+    /* -Z from (16,48) to (1,63), the last row. */
+    CHECK(cube.offset[5][0] == 48ul * 64ul + 16ul * 2ul);
+    CHECK(cube.offset[5][4] == 63ul * 64ul + 1ul * 2ul);
+
+    /* Four bytes a texel: the same places, pitch 128. */
+    CHECK(v9x_d3d_i9xx_layout_cube(16ul, 5ul, 4ul, &cube) == V9X_TRUE);
+    CHECK(cube.pitch == 128ul && cube.rows == 64ul);
+    CHECK(cube.offset[5][4] == 63ul * 128ul + 1ul * 4ul);
+    CHECK(cube.offset[2][1] == 16ul * 128ul + 8ul * 4ul);
+
+    /* One level; a one-texel cube (pitch 2 * 2 aligned to 4). */
+    CHECK(v9x_d3d_i9xx_layout_cube(256ul, 1ul, 4ul, &cube) == V9X_TRUE);
+    CHECK(cube.pitch == 2048ul && cube.rows == 1024ul);
+    CHECK(cube.offset[5][0] == 768ul * 2048ul + 256ul * 4ul);
+    CHECK(v9x_d3d_i9xx_layout_cube(1ul, 1ul, 2ul, &cube) == V9X_TRUE);
+    CHECK(cube.pitch == 4ul && cube.rows == 4ul);
+    CHECK(cube.offset[5][0] == 3ul * 4ul + 1ul * 2ul);
+
+    /* Refused: not a power of two, too large, more levels than the edge
+     * has, none, a texel size other than 2 or 4. */
+    CHECK(v9x_d3d_i9xx_layout_cube(24ul, 1ul, 2ul, &cube) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_cube(4096ul, 1ul, 2ul, &cube) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_cube(16ul, 6ul, 2ul, &cube) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_cube(16ul, 0ul, 2ul, &cube) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_layout_cube(16ul, 1ul, 3ul, &cube) == V9X_FALSE);
+    CHECK(cube.levels == 0ul && cube.pitch == 0ul);
+}
+
+/*
  * The decoder follows the format the engine declared, and a scene does not
  * get to declare one.
  *
@@ -6825,6 +6888,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_i9xx_surface_map_formats();
     test_runtime_texture_32bit();
     test_i9xx_miptree_layout_32bit();
+    test_i9xx_cube_layout();
     test_runtime_cylindrical_wrap();
     test_runtime_decal_program();
     test_runtime_mip_chain();

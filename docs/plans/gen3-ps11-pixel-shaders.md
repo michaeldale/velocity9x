@@ -221,10 +221,29 @@ CreatePixelShader, as any other untranslatable program is.
      format refusals. No counter shows which format 3DMark's textures
      got. Record:
      [`../decisions/2026-11-11-gen3-32bit-textures-netbook.md`](../decisions/2026-11-11-gen3-32bit-textures-netbook.md).
-   - **5b. Cube maps.** Gen3's cube layout (six faces in the mip tree;
-     Mesa's `i915_miptree_layout_cube` and xf86 as the two sources), its
-     placement at CreateSurface, the map's cube bit. Host tests on the
-     layout arithmetic.
+   - **5b. Cube maps.** Done 2026-11-11, host only; nothing places a
+     cube until 5e, since the core claims cube maps only for an engine
+     with `draw_shader`.
+     - **Layout.** `v9x_d3d_i9xx_layout_cube` follows Mesa gallium's
+       `i9x5_texture_layout_cube`, which the 915 and the 945 both use
+       for uncompressed formats: six faces in Direct3D's order, each
+       face's top at a table offset times the edge, and each level
+       stepped by a second table times its halved edge. The pitch is
+       twice a face row aligned to 4 (not the 2D tree's 64); the rows
+       are four edges. Host-tested against offsets worked by hand from
+       the tables (16x16 by five levels, at 2 and 4 bytes; 256 and 1
+       texel).
+     - **Single-sourced.** xf86 samples no cubes, so Mesa gallium is the
+       only source here.
+     - **State.** A cube sampler needs nothing new: the builder's clamp
+       form already sets TCX, TCY and TCZ to CLAMP_EDGE, Mesa's cube
+       sampler. The map needs MS4's six face enables, bits 15-20 in
+       both headers; that is 5c's to emit.
+     - **Placement.** The HAL places a cube the runtime hands it whole
+       (six faces, each surface's face from DDSCAPS2 and level from its
+       edge, +X's top first) as one block. It remembers the cube by
+       +X's offset, format and levels, and forgets it when the block is
+       freed. This is Haswell's create_cube on the Gen3 layout.
    - **5c. Shader stream builders**, pure and host-tested: the state
      block for up to four maps and samplers, with S2 declaring four
      four-component coordinate sets and S4 diffuse and specular; the

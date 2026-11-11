@@ -144,6 +144,32 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree_at(v9x_u32 width, v9x_u32 height,
                                        struct v9x_d3d_i9xx_miptree *tree);
 
 /*
+ * A cube map as the sampler reads one (step 5b of docs\plans\gen3-ps11-
+ * pixel-shaders.md): six square faces of `levels` levels each in one
+ * block, Mesa gallium's i9x5_texture_layout_cube, which the 915 and the
+ * 945 both use for uncompressed formats. offset[face][level] is that
+ * image's byte offset from the block's start, faces in Direct3D's order
+ * (+X, -X, +Y, -Y, +Z, -Z); pitch is twice a face's row aligned to 4
+ * bytes, rows four edges. Only Mesa gallium states this layout among
+ * the sources here (xf86 samples no cubes), so it is single-sourced and
+ * UNMEASURED until the netbook samples a cube. `edge` a power of two up
+ * to MAP_STATE's 2048, `levels` 1 to log2(edge) + 1, `texel_bytes` 2 or
+ * 4; anything else V9X_FALSE, the tree zeroed.
+ */
+#define V9X_D3D_I9XX_CUBE_FACES 6ul
+
+struct v9x_d3d_i9xx_cubetree {
+    v9x_u32 levels;
+    v9x_u32 pitch;
+    v9x_u32 rows;
+    v9x_u32 offset[V9X_D3D_I9XX_CUBE_FACES][V9X_D3D_I9XX_MIP_LEVELS_MAX];
+};
+
+v9x_u16 v9x_d3d_i9xx_layout_cube(v9x_u32 edge, v9x_u32 levels,
+                                 v9x_u32 texel_bytes,
+                                 struct v9x_d3d_i9xx_cubetree *cube);
+
+/*
  * The texture shapes the sampler is given: each edge a power of two, the
  * larger within [size_min, size_max], the smaller at least one texel. The
  * placement, the chain walk, the bind and accepts all ask this, so the

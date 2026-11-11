@@ -217,6 +217,81 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
                                           2ul, tree);
 }
 
+/*
+ * Mesa gallium i915_resource_texture.c's initial_offsets and step_offsets
+ * for i9x5_texture_layout_cube, in Direct3D's face order (+X -X +Y -Y +Z
+ * -Z, which is PIPE_TEX_FACE's too): a face's top at (x, y) times the
+ * edge, and each next level at the last plus (x, y) times its own edge.
+ * Signed, because three faces step left.
+ */
+static const long v9x_d3d_i9xx_cube_start[V9X_D3D_I9XX_CUBE_FACES][2] = {
+    { 0l, 0l }, { 0l, 2l }, { 1l, 0l }, { 1l, 2l }, { 1l, 1l }, { 1l, 3l }
+};
+static const long v9x_d3d_i9xx_cube_step[V9X_D3D_I9XX_CUBE_FACES][2] = {
+    { 0l, 2l }, { 0l, 2l }, { -1l, 2l }, { -1l, 2l }, { -1l, 1l }, { -1l, 1l }
+};
+
+/* Mesa's cube pitch is the face row doubled, aligned to 4 bytes (not the
+ * 2D tree's 64). */
+#define V9X_I9XX_CUBE_PITCH_ALIGN 4ul
+
+v9x_u16 v9x_d3d_i9xx_layout_cube(v9x_u32 edge, v9x_u32 levels,
+                                 v9x_u32 texel_bytes,
+                                 struct v9x_d3d_i9xx_cubetree *cube)
+{
+    v9x_u32 top_levels = 1ul;
+    v9x_u32 face;
+    v9x_u32 level;
+    v9x_u32 e;
+
+    if (cube == 0) {
+        return V9X_FALSE;
+    }
+    cube->levels = 0ul;
+    cube->pitch = 0ul;
+    cube->rows = 0ul;
+    for (face = 0ul; face < V9X_D3D_I9XX_CUBE_FACES; ++face) {
+        for (level = 0ul; level < V9X_D3D_I9XX_MIP_LEVELS_MAX; ++level) {
+            cube->offset[face][level] = 0ul;
+        }
+    }
+
+    if (edge == 0ul || edge > V9X_I9XX_MAP_DIMENSION_MAX ||
+        (edge & (edge - 1ul)) != 0ul ||
+        (texel_bytes != 2ul && texel_bytes != 4ul)) {
+        return V9X_FALSE;
+    }
+    for (e = edge; e > 1ul; e >>= 1) {
+        ++top_levels;
+    }
+    if (levels == 0ul || levels > top_levels ||
+        levels > V9X_D3D_I9XX_MIP_LEVELS_MAX) {
+        return V9X_FALSE;
+    }
+
+    cube->pitch = v9x_d3d_i9xx_align(edge * texel_bytes * 2ul,
+                                     V9X_I9XX_CUBE_PITCH_ALIGN);
+    cube->rows = edge * 4ul;
+
+    /* Mesa's walk: d is the level's edge; after each level it halves and
+     * the position steps by the face's step times the new d. */
+    for (face = 0ul; face < V9X_D3D_I9XX_CUBE_FACES; ++face) {
+        long x = v9x_d3d_i9xx_cube_start[face][0] * (long)edge;
+        long y = v9x_d3d_i9xx_cube_start[face][1] * (long)edge;
+        long d = (long)edge;
+
+        for (level = 0ul; level < levels; ++level) {
+            cube->offset[face][level] = (v9x_u32)y * cube->pitch +
+                                        (v9x_u32)x * texel_bytes;
+            d >>= 1;
+            x += v9x_d3d_i9xx_cube_step[face][0] * d;
+            y += v9x_d3d_i9xx_cube_step[face][1] * d;
+        }
+    }
+    cube->levels = levels;
+    return V9X_TRUE;
+}
+
 v9x_u16 v9x_d3d_i9xx_layout_miptree_at(v9x_u32 width, v9x_u32 height,
                                        v9x_u32 levels, v9x_u16 stacked,
                                        v9x_u32 texel_bytes,
