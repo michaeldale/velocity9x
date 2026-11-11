@@ -1,7 +1,12 @@
 # Pixel shader 1.1 on Gen3 (GMA 900, 950, 3150)
 
-Status: 2026-11-11. Step 1 (this mapping) done at the desk; nothing coded
-or measured. Started for 0.47.0 at Michael's request. Follows
+Status: 2026-11-11. Step 1 (this mapping) done at the desk. Step 2 done
+on the host: the encoder (`src\chipsets\intel\i9xx_fs.c`,
+`include\velocity9x\i9xx_fs.h`) reproduces the untextured, sampling and
+modulate programs dword for dword, and a host model of the program
+(`tests\host\i9xx_fs_sim.c`) runs the six fixed programs to their
+documented answers; nothing measured on hardware. Started for 0.47.0 at
+Michael's request. Follows
 [`haswell-ddi8-pixel-shaders.md`](haswell-ddi8-pixel-shaders.md), whose
 shared half this reuses whole.
 
@@ -113,14 +118,27 @@ CreatePixelShader, as any other untranslatable program is.
 ## Steps
 
 1. **Mapping** (this document). Done 2026-11-11.
-2. **Encoder and host model.** `src\chipsets\intel\i9xx_fs.c`: emit any
-   of the instructions above, each field placement checked against both
-   sources, as the audit did. A host interpreter of the encoded program
-   (`tests\host\`), registers as floats, TEXLD through a callback like
-   the interpreter's. Host tests: encodings against the dwords the two
-   sources imply; the existing fixed programs (`i9xx_fragprog.c`,
-   `i9xx_multitex.c`) run in the model and give what they are documented
-   to give.
+2. **Encoder and host model.** Done 2026-11-11 on the host.
+   `src\chipsets\intel\i9xx_fs.c` emits any declaration, arithmetic or
+   texture instruction above. `tests\host\i9xx_fs_sim.c` decodes the
+   dwords with its own field numbers from Mesa's header and runs them on
+   floats, TEXLD through a callback. `tests\host\test_i9xx_fs.c` checks
+   the encoder against three fixed programs dword for dword, and fields
+   no fixed program sets against Mesa's shifts. It also runs the
+   untextured, DECAL, three modulate and two fog programs in the model
+   to their documented answers, and every opcode the translator will
+   use. The two-unit programs (`i9xx_multitex.c`) are not run in the
+   model.
+
+   The encoder refuses, rather than fixes up:
+   - two constant registers in one instruction;
+   - more than 64 ALU, 32 texture or 27 declaration instructions;
+   - more than 4 phases, counted by Mesa's rule;
+   - a T register read before it is declared, an R register read
+     before it is written, a U register read across a phase;
+   - RCP, RSQ, EXP, LOG, or DP2ADD's addend, on a source that is not
+     one channel replicated, since which channel the hardware takes is
+     not known.
 3. **Translator.** `src\chipsets\intel\i9xx_ps11.c`: PS 1.1 to an encoded
    program. Host tests: every program the Haswell tests use, and
    Nature's, run in the model and match `v9x_ps11_run` per pixel;
@@ -144,6 +162,13 @@ CreatePixelShader, as any other untranslatable program is.
   [`../issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md`](../issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
 - The fragment program's precision: the sources call it fp32-capable;
   not measured.
+- Which channels TEXKILL tests. `_3DSTATE_RASTER_RULES` selects
+  TEXKILL_3D or TEXKILL_4D; xf86 and Mesa both send 4D, and this tree
+  never sends the packet, so the netbook runs the hardware default. The
+  mapping's `MOV tmp, TN.xyz1` gives the same answer under either.
+- Which channel RCP, RSQ, EXP and LOG read (x, or each channel). Mesa
+  always replicates the source; the encoder requires that, so either
+  reading gives the same answer.
 - Whether DDI 8 is offered on Gen3 at all today: the gate Haswell needed
   (`DDHALINFO_GETDRIVERINFO2`) is in the core, but nothing has asked on a
   Gen3 machine. Step 4 or 5 will see.
