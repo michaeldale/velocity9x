@@ -13,6 +13,38 @@ build identifier so exact guest-tested binaries remain traceable.
   copies from 182 to 1,235 MB/s, and text costs 0.4 to 0.6 of what it
   did. Reading the screen is unchanged at 8 MB/s
   ([record](docs/decisions/2026-11-11-carrizo-catch-up-and-write-combining.md)).
+  The same machine also ran Glide for the first time: every check of the
+  Glide probe passes.
+- **`intel-gma` package, Gen3 (GMA 900, 950, 3100, 3150): DirectX 8
+  pixel shaders.** Pixel shader 1.1 programs run on the engine through
+  the i915 fragment program, with four texture stages, cube maps and the
+  signed bump-map formats. DirectX 8 programs now get the DirectX 8
+  driver interface on Gen3, where they used to get the DirectX 6 one.
+  Every Direct3D title can now use 32-bit textures (A8R8G8B8, X8R8G8B8),
+  and textures up to 2048 pixels on a side, where 1024 was the limit.
+  On the netbook's GMA 950, every pixel shader check passes at 16 and
+  32 bpp, and 3DMark 2001 SE runs to the end (528), including the pixel
+  shader tests. Advanced Pixel Shader reports itself unsupported; why
+  was not measured
+  ([first runs](docs/decisions/2026-11-11-gen3-ps11-netbook-first-runs.md),
+  [32-bit textures](docs/decisions/2026-11-11-gen3-32bit-textures-netbook.md),
+  [2048 textures](docs/decisions/2026-11-11-gen3-texture-size-2048.md)).
+- **OpenGL, every package: non-square mipmapped textures draw on
+  DirectX 6.1a.** The ICD now asks for a mip chain that ends when the
+  shorter side reaches 1. On one Radeon HD 5570 (GitHub issue 16),
+  the full chain was refused, so Quake 2 dropped 42 % of its triangles.
+  With the fix it drops none
+  ([issue](docs/issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md)).
+- **Known issue, `intel-gma` Gen4 (GM965, GM45, G4x): a program's own
+  alpha test with depth writes is not drawn.** Half-Life's grates and
+  doors are missing, and Incoming's textures are transparent or missing
+  (GitHub issue 22). The driver refuses that combination because it hung
+  the GM965, and Gen4 has no fallback. Not fixed in this release
+  ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+- **Known issue, `s3` package, Trio64: a second or two of cyan garbage
+  at Windows shutdown**, before the safe-to-turn-off screen (GitHub
+  PR 24). Cosmetic, cause unknown, parked
+  ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
 
 ## 0.46.0 - 2026-11-11
 
