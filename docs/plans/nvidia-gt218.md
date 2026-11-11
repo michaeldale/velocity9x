@@ -7,7 +7,12 @@ Status: Phase 0 done from Windows' own records
 space itself is read in Phase 2. Phase 1 done: the tier-0 `gt218` row runs
 on M-BXMFA8 since boot 82, `enable-ok`, V9XGDI and V9XMSW pass
 ([record](../decisions/2026-11-11-gt218-tier0-enable-ok.md)); open: it
-drops the software Direct3D the `vbe` package offered. Register facts below come from
+drops the software Direct3D the `vbe` package offered. Phase 2's first
+read done ([record](../decisions/2026-11-11-gt218-register-probe.md)):
+chipset A8 stepping B1, 512 MiB DDR2/3 on one partition, the VBE
+framebuffer is BAR3 + 16 MiB, PFIFO/PGRAPH/copy engine on, and **no BAR
+VM** (1704h/1708h/170Ch all zero), so hard part 1 below is wrong as
+written. Next: a read-only BAR1/BAR3 and VGA CRTC pass, then Phase 3. Register facts below come from
 open-source and reverse-engineered sources (nouveau, envytools) unless a
 record says the card confirmed them.
 
@@ -62,7 +67,9 @@ All unmeasured; the probes exist to check them.
    the BAR1 aperture all translate through page tables in VRAM. The VBE
    LFB works, so the BIOS has set up a BAR1 mapping; whether it covers
    more than the 14 MiB window, and where its page directory is, is the
-   first thing to read.
+   first thing to read. *Measured 2026-11-11: wrong. The LFB is in BAR3
+   and the BAR VM registers are all zero; there is no mapping to inherit
+   ([record](../decisions/2026-11-11-gt218-register-probe.md)).*
 2. **PGRAPH needs a context program.** Nouveau generates it in C (no
    external firmware for NVA8 graphics). Porting it is the price of the
    2D (`502D`) and 3D classes.
