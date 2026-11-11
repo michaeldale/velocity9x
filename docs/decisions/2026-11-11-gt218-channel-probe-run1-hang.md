@@ -1,6 +1,12 @@
-# GT218 channel probe, first run: M-BXMFA8 stopped answering in stage fifo
+# GT218 channel probe, runs 1-14: BAR0 reads that time out lose the card; the kick still stops the machine
 
 Date: 2026-11-11
+
+> **Corrected 2026-11-12 (boot 84), see "The report, read after the
+> restart" below:** stage fifo never ran. The card had already left PCI
+> configuration space when the fifo run loaded the VxD, and the region
+> run's first accesses through the BAR1 window at + 192 MiB read
+> FFFFFFFF. The TLB flush suspect below is dead.
 
 Step 3 of [docs/plans/nvidia-gt218-pgraph-2d.md](../plans/nvidia-gt218-pgraph-2d.md).
 
@@ -60,3 +66,322 @@ IB GET poll on a channel PFIFO could not load.
 - Stage fifo is three DIOC runs (`fifo-init`, `fifo-bind`, `fifo-kick`),
   stage gr two (`gr-init`, `gr`), and every run first flushes
   `Report/Progress=<run>` to the INI, so the next hang names its run.
+
+## The report, read after the restart (boot 84)
+
+`V9XN5CH.INI`, kept as `build/driver-results/m-bxmfa8-gt218-boot84/
+V9XN5CH-run1.INI`:
+
+```
+pre.Status=00000017      units.Status=00000017   region.Status=00000017
+fifo.Status=00000000     fifo.RefusedAt=0        Result=FIFO-REFUSED
+[Pre]   PmcEnable=DFF3F113  PgraphCtxCtl=00000000  PgraphTrapClass=00000000
+        IbGet/IbPut/Ref (USERD C02088h...) = FFFFFFFF
+        PgraphIntr..PgraphTrapData (400100h-400810h) = FFFFFFFF
+        VmFault100C94=0C18050E  100C98=00F00002  100C9C=00000200
+[Region] Units=F3010001  ReadPde0, ReadRamfc80, ReadPteSelf, ReadDma = FFFFFFFF
+```
+
+- `fifo.Status=0` has no FOUND bit and no REFUSED bit. In N5CH.VXD that is
+  `NC_Find` failing: the configuration scan for 10DE:0A65 found nothing
+  when the fifo run loaded the VxD. **No fifo op ran.** The EXE then
+  wrote its report and exited normally; the machine stopped after that.
+- The card was alive for `units` (1540h read F3010001). Every read in
+  `region`, the probe's first access through its BAR1 window (BAR1 +
+  192 MiB, video memory 192 MiB), returned FFFFFFFF.
+- In `pre`, the USERD reads and PGRAPH 400100h-400810h read FFFFFFFF
+  while 40008Ch, 400814h and 100C9xh, read in the same run, returned
+  values. Whether those FFFFFFFF are register contents or failed reads is
+  not known.
+
+So the card was lost during the region run, the first access through
+the + 192 MiB window, or as a late effect of `pre`. The BAR1 write test
+(`2026-11-11-gt218-bar-windows.md`) measured 16, 32, 64 and 128 MiB and
+256 MiB - 4 KiB, one 4 KiB page each; 192 MiB was never measured.
+
+## Run 2 (boot 84): the machine stopped again, sooner
+
+The probe now reads PCI configuration dwords 0 and 4 after every DIOC
+run, splits `pre` into `pre` (PMC, PBUS, PFIFO and VM reads only),
+`pre-userd` and `pre-gr` with a one-dword BAR1 check after each, and
+stops after region (`/stop:region`). Run with the window still at
++ 192 MiB.
+
+The agent logged `exec-start` at 15:03:07 (guest clock) and nothing more
+on boot 84; boot 85's agent started at 15:06:06. The INI on boot 85 was
+run 1's file unchanged: not even the EXE's DeleteFile and first writes
+reached the disk, so the machine stopped within the lazy write delay of
+starting, in `pre` or the first BAR1 check. Whether the owner or
+something else reset it is not known (no chat reply).
+
+Run 2's first runs are a subset of run 1's `pre` reads, then the first
+access through the + 192 MiB window. Both runs lost the card at that
+first window access. That is where the evidence points; it is not yet a
+measurement.
+
+## Run 3
+
+The window moves to BAR1 + 128 MiB (a measured page, just past the
+display driver's 128 MiB map), and each step goes first to
+`C:\V9XDIAG\V9XN5CH.LOG`, written through and committed, so a reset keeps
+the last step.
+
+## Run 3 (boot 85): the USERD reads lose the card
+
+Window at BAR1 + 128 MiB, write-through step log. The machine stopped
+again and was reset (boot 86, about nine minutes later); the log and the
+INI both survived. `V9XN5CH.LOG` (GetTickCount, step):
+
+```
+268280 run pre             268281 returned pre       268281 healthy pre
+268282 run vram-pre        268283 returned vram-pre  268283 healthy vram-pre
+268284 run pre-userd       268304 returned pre-userd 268305 healthy pre-userd
+268306 run vram-pre-userd  268310 returned vram-pre-userd
+```
+
+INI `[Health]`: Cfg0 `0A6510DE`, Cfg4 `00100007` after `pre`, `vram-pre`
+and `pre-userd`; **`FFFFFFFF` / `FFFFFFFF` after `vram-pre-userd`**, so
+`Result=CARD-LOST-AFTER-vram-pre-userd`. `[Vram] vram-pre=ok`
+(`C0DE0001` written and read back at BAR1 + 128 MiB + 4 MiB - 4 KiB).
+`[PreUserd]` IbGet, IbPut, Ref = `FFFFFFFF`.
+
+What it shows:
+
+- BAR1 at + 128 MiB stores and returns a word with the card healthy.
+- The three USERD reads (BAR0 C02088h, C0208Ch, C02050h) for channel 1,
+  which PFIFO has not been told about, took about 20 ms between them
+  (the other runs take 1 ms) and returned FFFFFFFF. The card was still in
+  configuration space straight after.
+- The next access, a BAR1 write and read, ended with the card gone from
+  configuration space. The machine stopped some time after the EXE
+  exited.
+- Run 1 made the same USERD reads in `pre` and lost the card at its next
+  BAR1 access (`region`). Its FFFFFFFF PGRAPH reads came after the USERD
+  reads in the same run, so they are most likely failed reads too, not
+  register contents.
+
+Hypotheses this kills: the raw TLB flush (never ran) and the 192 MiB
+window (run 3 lost the card at 128 MiB the same way). Not shown: why an
+unbound channel's USERD read wedges the card, or whether a bound one is
+safe. nouveau only touches USERD through a channel it has created.
+
+Run 4 makes no USERD access before the channel is bound and enabled.
+
+## Run 4 (boot 86): no USERD read, the card stays
+
+Same build as run 3 less the `pre-userd` run, `/stop:region`. Exit 0,
+`Result=STOPPED-AFTER-REGION`; configuration dword 0 `0A6510DE` after all
+seven runs; every BAR1 check ok. The machine kept running.
+
+With no USERD read before them, the PGRAPH reads return values:
+INTR 0, TRAP 1, STATUS 0 (idle), 40032Ch 0, trap status 400804h
+`80000003`, 400808h/40080Ch/400814h 0. Run 1's FFFFFFFF for the same
+registers were failed reads.
+
+The region readback matches what nv50_chan.c built, through BAR1 + 128 MiB:
+PDE 0 `08010001`, RAMFC + 80h `1C000600`, the region's own PTE `08000381`,
+the DMA object `7FC0003D`.
+
+## Run 5 (boot 86): the kick stops the machine
+
+Run 4's build, `/stop:fifo`. Every run through `fifo-bind` returned with
+the card healthy: `fifo-init` (PFIFO reset, nv50_fifo_init constants,
+channel table cleared, caches on) and `fifo-bind` (channel 1 entry
+`80080054`, runlist at video memory 128 MiB + 20000h, count 1;
+`RunlistWait=0`, the update was taken at once). The log's last line is
+`run fifo-kick`; boot 87 followed. That run held the IB PUT write to
+USERD (C0208Ch), a bounded wait reading IB GET (C02088h), and the status
+reads including USERD; it cannot say which one stopped the machine.
+
+Run 6 splits it: `fifo-put` (the write, a delay, PFIFO and VM status only),
+`fifo-get` (one read each of IB GET and REF_CNT), `fifo-status`, with the
+card and BAR1 checked after each.
+
+## Run 6 (boot 87): the USERD write is survived, the USERD read is not
+
+`/stop:fifo` with the kick split. Log (GetTickCount, step):
+
+```
+176136 returned fifo-put        176136 healthy fifo-put
+176138 run vram-fifo-put        176141 returned vram-fifo-put  176142 healthy vram-fifo-put
+176143 run fifo-get             176148 returned fifo-get       176148 healthy fifo-get
+```
+
+and nothing more; boot 88 followed. The IB PUT write to USERD, a delay and
+PFIFO status reads left the card healthy, and a BAR1 write and read after
+them worked. Two USERD reads (IB GET, REF_CNT) with channel 1 bound
+returned in 5 ms with the card still in configuration space; the machine
+stopped before the next step's first log line. The INI's sections after
+`[Fifo]` were lost to the lazy write cache (the FifoPut status included).
+
+So a USERD read stops the machine whether channel 1 is unknown to PFIFO
+(run 3) or bound and kicked (run 6). nouveau reads IB GET through the same
+BAR0 address (`nv50_chan_userd`, base C00000h, 2000h per channel) on this
+family, so something about this channel or PFIFO's state differs from a
+nouveau channel; not known yet what.
+
+Run 7 stops after the PUT write (`/stop:put`) with no USERD read, dumps
+CACHE1 (3200h-32FCh, a new VxD read window) and channel 1's RAMFC from
+video memory, and copies every value to the write-through log.
+
+## Run 7 (boot 88): the kick alone stops the machine
+
+`/stop:put`, no USERD read at all; the put run also read CACHE1
+3200h-32FCh and channel 1's RAMFC. The log's last line is
+`run fifo-put` (boot 89 followed): this time the put run itself never
+returned, where in run 6 the same put run (without the dumps) returned
+and the machine stopped ~70 ms after the kick, during the next run.
+
+Read together, runs 5 to 7 point at the kick, not at USERD reads: the
+machine stops a varying 60-100 ms after IB PUT is written, whatever the
+CPU does in the meantime. (Run 3's loss, a USERD read with no channel at
+all, is separate and stays unexplained.)
+
+Checked against nouveau and not the cause: the PTE (`08000381`: valid,
+VRAM aperture 0, `log2blk` 7, the same encoding as nv50_vmm_pgt_pte) and
+the PDE (`08010001`: 64 KiB pages, VRAM target, nv50_vmm_pde), so the
+fetch cannot have been sent to host memory by the page tables.
+
+The candidate run 8 tests: PGRAPH was uninitialised. The probe did
+fifo-init, bind and kick before nv50_gr_init and the context program;
+nouveau initialises every engine before it creates a channel, and its
+nv50_ectx_bind notes that PFIFO "will hang forever if the connected
+engines don't report that they've processed the context switch
+request". Run 8 runs PGRAPH reset, nv50_gr_init and the context program
+upload between fifo-init and the channel bind, and after the put waits
+about a second (PTIMER reads only) before checking the card.
+
+## Run 8 (boot 89): PGRAPH initialised first, the kick still stops the machine
+
+PGRAPH reset, nv50_gr_init and the context program upload moved between
+`fifo-init` and `fifo-bind`. They ran with the card healthy: after
+`gr-init`, PGRAPH INTR 0, TRAP 0, STATUS 0, trap status `80000000`;
+PFIFO caches 1, CACHE1 push 1, pull `70000001`. Then `run fifo-put` was
+the last log line; boot 90 followed. **Killed: uninitialised PGRAPH as
+the cause.**
+
+## Run 9 (boot 90): the GPU sees the region where BAR1 put it
+
+New stage, no kick: 1700h (PRAMIN base) read `00001FF0` (the VBIOS had
+PRAMIN on the last MiB of the 512 MiB), set to `0800` (video memory
+128 MiB), twelve words of the region read through BAR0 700000h, 1700h
+restored. All twelve matched what BAR1 wrote: engine area 0, PGRAPH
+context pointer `00190000`, DMA object `7FC0003D`, PDE 0 `08010001`,
+RAMFC + 48h `00000020`, + 50h `08021000`, + 54h `00090000`, + 80h
+`1C000600`, + 98h `00008000`, the region's PTE `08000381`, the runlist
+entry `00000001`, push word 0 `00040050`. **Killed: BAR1 + x not being
+video memory x** (at 128 MiB). The RAMFC, runlist commit (32F4h =
+`8020`), IB entry (`(dwords) << 10`, nvif_chan506f) and fifo init writes
+were also checked line by line against nouveau and match.
+
+## Run 10 (boot 90): the flush page is host address 0
+
+The VM block 100C00h-100C9Ch read in pre: **100C08h = `00000000`**.
+nouveau always writes 100C08h with the bus address >> 8 of a host page it
+allocates, the sysmem flush page (fb\nv50.c,
+nv50_fb_sysmem_flush_page_init; nouveau ties a missing one to IOMMU
+"read from address 0" errors). Left at 0, any GPU flush to it touches
+host physical address 0, the real-mode interrupt table. Also read:
+100C00h `FC84418B`, 100C0Ch `00F00002`, 100C20h `00430043`, 100C24h
+`00000004`, 100C2Ch `00400040`, the rest of 100C10h-100C8Ch 0.
+
+## Run 11 (boot 90): a flush page
+
+N5CH.VXD's new op allocates one fixed, zeroed, contiguous page below
+4 GiB (`_PageAllocate`) when 100C08h is 0 and writes its address >> 8
+there; the page is never freed, since the GPU may keep using it. With
+`/stop:region`: 100C08h `00000000` before, **`007FC970` after** (host
+page 7FC97000h), card healthy, BAR1 check ok.
+
+Run 12 kicks with the flush page in place.
+
+## Run 12 (boot 91): the flush page is not enough
+
+The kick with 100C08h on an allocated page. The put run returned this
+time, but after 483 ms (run 6's put run, without the CACHE1 sweep, took
+57 ms), and the machine stopped before the health check logged.
+
+## Run 13 (boot 91): the kick works; reads that time out lose the card
+
+The put run's raw results logged straight after the DIOC returned
+(op order: the PUT write, a 1000-read delay, the known status reads, a
+sweep of CACHE1 3200h-32FCh, a BAR1 read of channel 1's RAMFC):
+
+```
+PMC_ENABLE DFF3F113  PMC_INTR 0  PFIFO_INTR 0  caches 1
+2604h 80080054  32ECh 1  3200h 1  3250h 70000001  100C90h-9Ch 0 0C18050E 00F00002 00000200
+CACHE1 3200h 1        3204h 00010001  3208h-320Ch FFFFFFFF  3210h 0  3214h 10
+       3220h 00504011 3224h 403F6078  322Ch 00000020        3260h 7FFFFFFF
+       32E4h 4000     32ECh 1  32F0h 1  32F4h 8020          about 38 others FFFFFFFF
+RAMFC through BAR1: all FFFFFFFF
+```
+
+The run took 385 ms; then `CARD-LOST-AFTER-fifo-put`.
+
+What it shows:
+
+- **The kick works.** PFIFO switched channel 1 into CACHE1: 3204h names
+  channel 1, and 3224h, 322Ch and 3260h hold RAMFC + 3Ch (`403F6078`),
+  + 48h (`20`) and + 60h (`7FFFFFFF`), loaded from the RAMFC the probe
+  built.
+- About 38 CACHE1 registers returned FFFFFFFF, and the run took hundreds
+  of milliseconds where one of known registers takes one: reads that do
+  not complete. After them BAR1 read FFFFFFFF and the card was gone from
+  configuration space.
+
+Read with the earlier runs: run 3 lost the card after USERD reads with no
+channel, run 6 after USERD reads with the channel kicked (the kick itself
+and known registers were survived), and runs 7, 8, 12 and 13 had the
+CACHE1 sweep in the put run. **A BAR0 read that times out is what loses
+the card**, not the kick. The earlier readings of runs 5 to 12 as "the
+kick stops the machine" are superseded. Whether a USERD read is ever
+valid on this card from here (nouveau reads IB GET there) is not known.
+
+## Run 14
+
+No USERD read and no CACHE1 sweep; N5CH.VXD no longer accepts either.
+The fifo push becomes REF_CNT, `SET_CONTEXT_DMA_SEMAPHORE` (60h) = the VM
+DMA object, then SEMAPHOREA-D releasing `FEED0001` at video memory
+128 MiB + 3F0000h; the fetch is judged by reading that word through BAR1.
+The flush page stays.
+
+## Run 14 (boot 92): the machine stops again, at the first BAR1 poll
+
+`/stop:fifo`. The put run (PUT write, 1000-read delay, known registers)
+returned at once with the card healthy: 2604h `80080054`, 32ECh 1, CACHE1
+push 1, pull `70000001`, PFIFO_INTR 0, PMC_INTR 0, no VM fault (100C90h
+0). The next run, `fifo-sema`, a bounded poll of the semaphore word
+through BAR1 (up to 1,000,000 reads), never returned; boot 93 followed.
+
+So the reading of run 13 is not the whole story: with no BAR0 read that
+could time out, the machine still stopped within a second of the kick.
+Two readings remain and this run does not separate them:
+
+1. Something the push does is harmful: the semaphore release (methods
+   60h and 10h-1Ch, new in this run) or the REF_CNT method, if PFIFO's
+   view of the DMA object or VM sends the write outside video memory.
+2. PFIFO wedges the card a short time after any kick, and run 6 (which
+   survived a delay and a BAR1 check after the kick) only beat it.
+
+## Where this leaves step 3 (paused 2026-11-12)
+
+Eleven resets of a remote-help machine in one night, each needing its
+owner to power-cycle it. The kick experiments are paused for review
+before any more. Established on this card, by measurement:
+
+- PMC/PFIFO/PGRAPH registers that answer, BAR1 at + 128 MiB, PRAMIN
+  through 1700h (restored), nv50_fifo_init, nv50_gr_init and the context
+  program upload, channel bind and runlist commit: all survive.
+- The GPU sees the channel region exactly where BAR1 wrote it.
+- The kick loads channel 1's RAMFC into CACHE1.
+- BAR0 reads that time out (USERD, unanswered CACHE1 registers) are
+  followed by the card leaving configuration space.
+- 100C08h (sysmem flush page) is 0 after the VBIOS; the probe now sets
+  it, as nouveau does. Necessary or not is not known.
+
+Next experiment, proposed, not run: the kick with an **empty** push (one
+IB entry of length 0, or a NOP-only push), then only a delay and the
+configuration-space check. If the machine survives, the methods are the
+cause (bisect REF_CNT against the semaphore); if not, PFIFO's handling
+of the kick itself is, and the next suspects are the RAMFC words nouveau
+derives from objects the probe does not model (0x3C, 0x44, 0x60, 0x7C).

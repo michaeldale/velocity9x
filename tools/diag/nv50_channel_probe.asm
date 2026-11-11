@@ -8,11 +8,12 @@
 ; It finds PCI 10DE:0A65 with configuration mechanism 1, requires BAR0 a
 ; 32-bit memory BAR aligned to 16 MiB and BAR1 a 64-bit memory BAR below
 ; 4 GiB aligned to 256 MiB, maps all of BAR0 and a 4 MiB window of BAR1 at
-; + 192 MiB, and refuses to run unless PMC_BOOT_0 names chipset A8h. BAR1
+; + 128 MiB, and refuses to run unless PMC_BOOT_0 names chipset A8h. BAR1
 ; decodes video memory linearly with no BAR VM on this card
-; (docs\decisions\2026-11-11-gt218-bar-windows.md), and 192 MiB is above
-; the 128 MiB the display driver maps, so the window is memory nothing else
-; uses.
+; (docs\decisions\2026-11-11-gt218-bar-windows.md), and the display driver
+; maps only BAR1's first 128 MiB, so the window is memory nothing else
+; uses. Runs 1 and 2 put it at + 192 MiB, never measured, and lost the card
+; at their first access through it.
 ;
 ;   MMIO read32    - the status and state registers in N5ReadWindows.
 ;   MMIO write32   - the registers nouveau's nv50_fifo_init, channel bind
@@ -61,7 +62,7 @@ NC_BAR_TYPE_64          equ 00000004h
 NC_MMIO_BYTES           equ 01000000h
 NC_MMIO_ALIGN           equ 00ffffffh
 NC_BAR1_ALIGN           equ 0fffffffh
-NC_WINDOW_OFFSET        equ 0c000000h
+NC_WINDOW_OFFSET        equ 08000000h
 NC_WINDOW_BYTES         equ 00400000h
 NC_BOOT_CHIPSET_MASK    equ 1ff00000h
 NC_BOOT_CHIPSET_GT218   equ 0a800000h
@@ -80,6 +81,9 @@ NC_OP_VRAM_BLOCK        equ 6   ; a window offset, b dwords -> block area
 NC_OP_WAIT_MMIO         equ 7   ; a offset, b mask, c value; limit fixed
 NC_OP_WAIT_VRAM         equ 8   ; a window offset, b value, c limit
 NC_OP_DELAY             equ 9   ; a PTIMER reads
+NC_OP_FLUSH_PAGE        equ 10  ; give 100C08h a host page if it has none
+NC_FLUSH_PAGE_REG       equ 100c08h
+NC_PAGE_MAX_PHYS        equ 0fffffh ; pages: below 4 GiB
 NC_DELAY_MAX            equ 2000000
 NC_WAIT_MMIO_LIMIT      equ 4000000
 NC_OP_BYTES             equ 16
@@ -127,7 +131,7 @@ NCReadWindows label dword
     dd 0032ech, 003300h ; runlist count, address, 32FC
     dd 009400h, 009408h ; PTIMER time
     dd 100c80h, 100c84h ; VM flush
-    dd 100c90h, 100ca0h ; VM fault status and address
+    dd 100c00h, 100ca0h ; VM: fault page (100C08h), flush, fault status
     dd 400100h, 400110h ; PGRAPH_INTR, trap status
     dd 400138h, 400140h ; PGRAPH interrupt enables
     dd 400324h, 400328h ; context program index
@@ -139,7 +143,11 @@ NCReadWindows label dword
     dd 40008ch, 400090h ; context switch control
     dd 402ca8h, 402cach ; zcull
     dd 402cc0h, 402cc4h ; zcull
-    dd 0c02000h, 0c02100h ; USERD, channel 1
+    dd 700000h, 800000h ; PRAMIN, the GPU's own view of video memory
+    ; No USERD (C02000h) and no CACHE1 sweep (3200h-32FCh) reads: on this
+    ; card reads there time out (FFFFFFFF, tens of ms) and the card leaves
+    ; configuration space soon after (runs 3, 6 and 13 of
+    ; docs\decisions\2026-11-11-gt218-channel-probe-run1-hang.md).
 NC_READ_WINDOW_COUNT    equ 31
 
 ; Writes accepted: start, limit (exclusive).
@@ -179,7 +187,8 @@ NCWriteWindows label dword
     dd 402ca8h, 402cach
     dd 402cc0h, 402cc4h
     dd 0c0208ch, 0c02090h ; channel 1 IB PUT
-NC_WRITE_WINDOW_COUNT   equ 35
+    dd 001700h, 001704h ; PRAMIN window base (nv50_instmem), restored after
+NC_WRITE_WINDOW_COUNT   equ 36
 
 NCResult label dword
     dd NC_MAGIC                 ; 00 magic
@@ -205,6 +214,7 @@ NCMmio       dd 0
 NCWindow     dd 0
 NCData       dd 0
 NCDataCount  dd 0
+NCFlushPhys  dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -570,6 +580,32 @@ NC_Exec_Wait_Vram_Next:
     mov     eax, NC_TIMEOUT
     jmp     NC_Exec_Done
 NC_Exec_Not_Wait_Vram:
+
+    ; The sysmem flush page (fb\nv50.c nv50_fb_sysmem_flush_page_init):
+    ; the VBIOS leaves 100C08h at 0, host physical address 0. When it is
+    ; 0, one fixed, zeroed, contiguous page below 4 GiB is allocated and
+    ; its address >> 8 written there. The page is never freed: the GPU may
+    ; keep using it after this VxD unloads. Result: 100C08h afterwards.
+    cmp     eax, NC_OP_FLUSH_PAGE
+    jne     short NC_Exec_Not_Flush_Page
+    mov     ebx, NCMmio
+    mov     eax, [ebx+NC_FLUSH_PAGE_REG]
+    test    eax, eax
+    jnz     NC_Exec_Done
+    push    esi
+    VMMcall _PageAllocate,<1,PG_SYS,0,0,0,NC_PAGE_MAX_PHYS,<OFFSET32 NCFlushPhys>,PAGEZEROINIT+PAGEUSEALIGN+PAGECONTIG+PAGEFIXED>
+    pop     esi
+    test    eax, eax
+    jz      NC_Exec_Refused
+    mov     eax, NCFlushPhys
+    test    eax, 0fffh
+    jnz     NC_Exec_Refused
+    shr     eax, 8
+    mov     ebx, NCMmio
+    mov     [ebx+NC_FLUSH_PAGE_REG], eax
+    mov     eax, [ebx+NC_FLUSH_PAGE_REG]
+    jmp     NC_Exec_Done
+NC_Exec_Not_Flush_Page:
 
     cmp     eax, NC_OP_DELAY
     jne     short NC_Exec_Refused

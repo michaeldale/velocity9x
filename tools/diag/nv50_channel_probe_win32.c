@@ -55,6 +55,7 @@
 #define V9X_OP_WAIT_MMIO     7ul
 #define V9X_OP_WAIT_VRAM     8ul
 #define V9X_OP_DELAY         9ul
+#define V9X_OP_FLUSH_PAGE    10ul
 #define V9X_OP_TIMEOUT       0xfffffffful
 
 #define V9X_ST_FOUND         0x00000001ul
@@ -64,8 +65,11 @@
 #define V9X_ST_COMPLETE      0x00000010ul
 #define V9X_ST_TIMEOUT       0x00000040ul
 
-/* The VxD's window: BAR1 + 192 MiB, which is video memory 192 MiB. */
-#define V9X_WINDOW_VRAM      0x0c000000ul
+/* The VxD's window: BAR1 + 128 MiB, which is video memory 128 MiB, the
+ * first byte past the display driver's 128 MiB BAR1 map and a page the
+ * write test measured. Runs 1 and 2 used 192 MiB, never measured; both
+ * lost the card at their first access through it. */
+#define V9X_WINDOW_VRAM      0x08000000ul
 #define V9X_CHID             1ul
 
 /* The fill target, 2 MiB into the window: 128x72 X8R8G8B8, pitch 512,
@@ -84,6 +88,15 @@
 /* REF_CNT's value for stage fifo. */
 #define V9X_REF_VALUE        0x5a5a0001ul
 
+/* The semaphore stage fifo releases (cl826f.h), in the window past the
+ * fill target and before the BAR1 check page. */
+#define V9X_826F_SEMAPHOREA  0x0010ul
+#define V9X_826F_DMA_SEMAPHORE 0x0060ul
+#define V9X_826F_SEMAPHORED_RELEASE 0x00000002ul
+#define V9X_SEMA_OFFSET      0x003f0000ul
+#define V9X_SEMA_VALUE       0xfeed0001ul
+#define V9X_SEMA_WAIT_LIMIT  1000000ul
+
 /* Where each stage's pushbuffer starts, in words from the pushbuffer. */
 #define V9X_PUSH_FIFO        0ul
 #define V9X_PUSH_GR          64ul
@@ -98,6 +111,8 @@
 #define V9X_PFIFO_INTR_EN_VALUE 0xbffffffful
 #define V9X_PFIFO_CACHE1_PUSH 0x003200ul
 #define V9X_PFIFO_CACHE1_PULL 0x003250ul
+/* The VM block read in pre: 100C00h-100C9Ch. */
+#define V9X_VM_DUMP_WORDS     40ul
 #define V9X_PGRAPH_CTXCTL    0x40008cul
 #define V9X_PGRAPH_INTR      0x400100ul
 #define V9X_PGRAPH_TRAP      0x400108ul
@@ -147,6 +162,7 @@ typedef char v9x_n5ch_region_fits[
 static struct v9x_n5ch_request v9x_request;
 static struct v9x_n5ch_result v9x_result;
 static struct v9x_nv50_chan_layout v9x_layout;
+static DWORD v9x_stop_after_region;
 static DWORD v9x_stop_after_fifo;
 static DWORD v9x_stop_after_gr;
 
@@ -177,9 +193,23 @@ static void v9x_decimal(char *text, DWORD value)
     text[at] = '\0';
 }
 
+static void v9x_log(const char *what, const char *step);
+
+/* Every value also goes to the write-through log: run 6 (boot 87) lost
+ * the INI's last sections to the lazy write cache when the machine
+ * stopped. */
 static void v9x_text(const char *section, const char *key, const char *value)
 {
+    char name[48];
+
     WritePrivateProfileStringA(section, key, value, V9X_N5CH_PATH);
+    if (lstrlenA(section) + lstrlenA(key) + 2 > (int)sizeof(name)) {
+        return;
+    }
+    lstrcpyA(name, section);
+    lstrcatA(name, ".");
+    lstrcatA(name, key);
+    v9x_log(name, value);
 }
 
 static void v9x_key(const char *section, const char *key, DWORD value)
@@ -295,6 +325,86 @@ static void v9x_vram_data(DWORD offset, const DWORD *buffer, DWORD words)
 
 static void v9x_progress(const char *step);
 
+/*
+ * One line per step, written through and committed before the step runs.
+ * Run 2 (boot 84) stopped the machine so soon after start that not even
+ * the INI's first writes reached the disk: Win98's lazy write cache loses
+ * them on a reset. This log is what survives one.
+ */
+static void v9x_log(const char *what, const char *step)
+{
+    HANDLE file;
+    DWORD written;
+    char line[128];
+    char tick[12];
+
+    file = CreateFileA(V9X_DIAG_PATH("V9XN5CH.LOG"), GENERIC_WRITE, 0, 0,
+                       OPEN_ALWAYS, FILE_FLAG_WRITE_THROUGH, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    v9x_decimal(tick, GetTickCount());
+    lstrcpyA(line, tick);
+    lstrcatA(line, " ");
+    lstrcatA(line, what);
+    lstrcatA(line, " ");
+    lstrcatA(line, step);
+    lstrcatA(line, "\r\n");
+    SetFilePointer(file, 0, 0, FILE_END);
+    WriteFile(file, line, (DWORD)lstrlenA(line), &written, 0);
+    FlushFileBuffers(file);
+    CloseHandle(file);
+}
+
+/* count dwords to the log, eight per line, each line named <what><first>. */
+static void v9x_log_words(const char *what, const DWORD *words, DWORD count)
+{
+    char name[16];
+    char text[80];
+    DWORD first;
+    DWORD index;
+
+    for (first = 0ul; first < count; first += 8ul) {
+        lstrcpyA(name, what);
+        v9x_decimal(name + lstrlenA(name), first);
+        text[0] = '\0';
+        for (index = first; index < count && index < first + 8ul; ++index) {
+            v9x_hex(text + lstrlenA(text), words[index], 8);
+            lstrcatA(text, " ");
+        }
+        v9x_log(name, text);
+    }
+}
+
+/* The card's configuration address, found at start-up. */
+static DWORD v9x_config;
+
+/*
+ * After every DIOC run: is the card still in configuration space? Run 1
+ * (boot 83) lost it between the region run and the next, which found no
+ * 10DE:0A65 at all, and the machine hung after the EXE exited. Each run's
+ * configuration dwords 0 and 4 name the run after which it went.
+ */
+static void v9x_health(const char *stage)
+{
+    DWORD id;
+    char key[32];
+
+    id = v9x_config_read(v9x_config, 0ul);
+    lstrcpyA(key, stage);
+    lstrcatA(key, ".Cfg0");
+    v9x_key("Health", key, id);
+    lstrcpyA(key, stage);
+    lstrcatA(key, ".Cfg4");
+    v9x_key("Health", key, v9x_config_read(v9x_config, 4ul));
+    if (id != 0x0a6510deul) {
+        lstrcpyA(key, "CARD-LOST-AFTER-");
+        lstrcatA(key, stage);
+        v9x_finish(key, 8u);
+    }
+    v9x_flush();
+}
+
 /* Run the list. Returns nonzero when every op ran. */
 static int v9x_run(const char *stage)
 {
@@ -319,6 +429,16 @@ static int v9x_run(const char *stage)
         v9x_key("Report", "Returned", returned);
         v9x_finish("DIOC-FAILED", 2u);
     }
+    v9x_log("returned", stage);
+    /* The put run's raw results, before any other access: run 12
+     * (boot 90) stopped the machine between this run returning and the
+     * health check, and the results were lost. */
+    if (lstrcmpA(stage, "fifo-put") == 0) {
+        v9x_log_words("op", v9x_result.results, v9x_request.count);
+        v9x_log_words("block", v9x_result.block, v9x_result.block_used);
+    }
+    v9x_health(stage);
+    v9x_log("healthy", stage);
     lstrcpyA(key, stage);
     lstrcatA(key, ".Status");
     v9x_key("Report", key, v9x_result.status);
@@ -337,6 +457,7 @@ static void v9x_progress(const char *step)
 {
     v9x_text("Report", "Progress", step);
     v9x_flush();
+    v9x_log("run", step);
 }
 
 static DWORD v9x_value(DWORD op)
@@ -347,6 +468,9 @@ static DWORD v9x_value(DWORD op)
 /* A result into the stage's section as <name>=value. */
 static void v9x_put(const char *section, const char *name, DWORD op)
 {
+    if (op == 0xfffffffful) {
+        return;
+    }
     v9x_key(section, name, v9x_value(op));
 }
 
@@ -380,10 +504,29 @@ struct v9x_status_ops {
     DWORD vm_fault[4];
 };
 
-static void v9x_status_request(struct v9x_status_ops *s)
+/* Which reads a status request makes besides PMC, PFIFO and the VM. */
+#define V9X_STATUS_USERD     0x00000001ul
+#define V9X_STATUS_GR        0x00000002ul
+#define V9X_STATUS_ALL       (V9X_STATUS_USERD | V9X_STATUS_GR)
+
+/* An op index meaning the read was not made: v9x_put writes no key. */
+#define V9X_OP_NOT_READ      0xfffffffful
+
+static void v9x_status_request(struct v9x_status_ops *s, DWORD which)
 {
     DWORD index;
 
+    s->ib_get = V9X_OP_NOT_READ;
+    s->ib_put = V9X_OP_NOT_READ;
+    s->ref = V9X_OP_NOT_READ;
+    s->gr_intr = V9X_OP_NOT_READ;
+    s->gr_trap = V9X_OP_NOT_READ;
+    s->gr_status = V9X_OP_NOT_READ;
+    s->gr_ctx = V9X_OP_NOT_READ;
+    s->gr_trap_status = V9X_OP_NOT_READ;
+    s->gr_trap_addr = V9X_OP_NOT_READ;
+    s->gr_trap_data = V9X_OP_NOT_READ;
+    s->gr_trap_class = V9X_OP_NOT_READ;
     s->pmc_enable = v9x_read(V9X_NV50_PMC_ENABLE);
     s->pmc_intr = v9x_read(0x000100ul);
     s->pfifo_intr = v9x_read(V9X_NV50_PFIFO_INTR);
@@ -392,17 +535,23 @@ static void v9x_status_request(struct v9x_status_ops *s)
     s->runlist = v9x_read(V9X_NV50_PFIFO_RUNLIST_COUNT);
     s->push = v9x_read(V9X_PFIFO_CACHE1_PUSH);
     s->pull = v9x_read(V9X_PFIFO_CACHE1_PULL);
-    s->ib_get = v9x_read(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_GET);
-    s->ib_put = v9x_read(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT);
-    s->ref = v9x_read(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_REF);
-    s->gr_intr = v9x_read(V9X_PGRAPH_INTR);
-    s->gr_trap = v9x_read(V9X_PGRAPH_TRAP);
-    s->gr_status = v9x_read(V9X_PGRAPH_STATUS);
-    s->gr_ctx = v9x_read(0x40032cul);
-    s->gr_trap_status = v9x_read(0x400804ul);
-    s->gr_trap_addr = v9x_read(0x400808ul);
-    s->gr_trap_data = v9x_read(0x40080cul);
-    s->gr_trap_class = v9x_read(0x400814ul);
+    if ((which & V9X_STATUS_USERD) != 0ul) {
+        s->ib_get = v9x_read(V9X_NV50_USERD(V9X_CHID) +
+                             V9X_NV50_USERD_IB_GET);
+        s->ib_put = v9x_read(V9X_NV50_USERD(V9X_CHID) +
+                             V9X_NV50_USERD_IB_PUT);
+        s->ref = v9x_read(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_REF);
+    }
+    if ((which & V9X_STATUS_GR) != 0ul) {
+        s->gr_intr = v9x_read(V9X_PGRAPH_INTR);
+        s->gr_trap = v9x_read(V9X_PGRAPH_TRAP);
+        s->gr_status = v9x_read(V9X_PGRAPH_STATUS);
+        s->gr_ctx = v9x_read(0x40032cul);
+        s->gr_trap_status = v9x_read(0x400804ul);
+        s->gr_trap_addr = v9x_read(0x400808ul);
+        s->gr_trap_data = v9x_read(0x40080cul);
+        s->gr_trap_class = v9x_read(0x400814ul);
+    }
     for (index = 0ul; index < 4ul; ++index) {
         s->vm_fault[index] = v9x_read(0x100c90ul + index * 4ul);
     }
@@ -444,6 +593,41 @@ static void v9x_status_publish(const char *section,
 
 static DWORD v9x_pmc_enable_found;
 
+/* The window's last page, which neither the region (B0000h bytes) nor the
+ * fill target (2 MiB + 36 KiB) reaches: one marker written and read back
+ * through BAR1 between runs. */
+#define V9X_VRAM_CHECK_OFFSET 0x003ff000ul
+
+static DWORD v9x_vram_check_count;
+
+/* One dword through BAR1 and back. Run 1's region readback was all
+ * FFFFFFFF; this says after which run BAR1 stopped returning memory. */
+static void v9x_vram_check(const char *after)
+{
+    DWORD marker[1];
+    DWORD read;
+    char key[32];
+
+    marker[0] = 0xc0de0000ul | (++v9x_vram_check_count & 0xfffful);
+    v9x_ops_begin();
+    v9x_vram_data(V9X_VRAM_CHECK_OFFSET, marker, 1ul);
+    read = v9x_op(V9X_OP_VRAM_READ, V9X_VRAM_CHECK_OFFSET, 0ul, 0ul);
+    lstrcpyA(key, "vram-");
+    lstrcatA(key, after);
+    if (!v9x_run(key)) {
+        v9x_finish("VRAM-CHECK-REFUSED", 3u);
+    }
+    v9x_put("Vram", after, read);
+    v9x_text("Vram", key, v9x_value(read) == marker[0] ? "ok" : "differs");
+    v9x_flush();
+}
+
+/*
+ * Reads before any write, in three runs, BAR1 checked after each. Run 1
+ * read all of these in one run; the PGRAPH reads 400100h-400810h and the
+ * USERD reads returned FFFFFFFF while 40008Ch, 400814h and 100C9xh read
+ * plausible values, and the card was gone two runs later.
+ */
 static void v9x_stage_pre(void)
 {
     struct v9x_status_ops s;
@@ -451,25 +635,58 @@ static void v9x_stage_pre(void)
     DWORD intr_en;
     DWORD ctxctl;
     DWORD runlist_addr;
+    DWORD index;
+    DWORD vm[V9X_VM_DUMP_WORDS];
 
     v9x_ops_begin();
     enable = v9x_read(V9X_NV50_PMC_ENABLE);
     intr_en = v9x_read(0x000140ul);
-    ctxctl = v9x_read(V9X_PGRAPH_CTXCTL);
     runlist_addr = v9x_read(V9X_NV50_PFIFO_RUNLIST_ADDR);
-    v9x_status_request(&s);
+    v9x_status_request(&s, 0ul);
+    /* The VM block, 100C00h-100C9Ch: 100C08h is the sysmem flush page
+     * (nv50_fb_sysmem_flush_page_init, a host page nouveau allocates;
+     * a bad one causes IOMMU errors). The probe never set it. */
+    for (index = 0ul; index < V9X_VM_DUMP_WORDS; ++index) {
+        vm[index] = v9x_read(0x100c00ul + index * 4ul);
+    }
     if (!v9x_run("pre")) {
         v9x_finish("PRE-REFUSED", 3u);
+    }
+    for (index = 0ul; index < V9X_VM_DUMP_WORDS; ++index) {
+        char key[8];
+
+        v9x_hex(key, 0x100c00ul + index * 4ul, 6);
+        v9x_put("Vm", key, vm[index]);
     }
     v9x_key("Report", "Bar0", v9x_result.bar0);
     v9x_key("Report", "Bar1", v9x_result.bar1);
     v9x_key("Report", "Boot0", v9x_result.boot0);
     v9x_put("Pre", "PmcIntrEn", intr_en);
-    v9x_put("Pre", "PgraphCtxCtl", ctxctl);
     v9x_put("Pre", "RunlistAddr", runlist_addr);
     v9x_status_publish("Pre", &s);
     v9x_pmc_enable_found = v9x_value(enable);
     v9x_flush();
+    v9x_vram_check("pre");
+
+    /*
+     * No USERD read before channel 1 is bound. Run 3 (boot 85) read IB
+     * GET, IB PUT and REF_CNT at C02088h-C02090h here: the three reads
+     * took 20 ms and returned FFFFFFFF, the card was still in
+     * configuration space after them, and the next BAR1 access lost it
+     * (configuration dword 0 FFFFFFFF). Run 1 read the same words in its
+     * pre stage and lost the card at its next BAR1 access too.
+     */
+
+    v9x_ops_begin();
+    ctxctl = v9x_read(V9X_PGRAPH_CTXCTL);
+    v9x_status_request(&s, V9X_STATUS_GR);
+    if (!v9x_run("pre-gr")) {
+        v9x_finish("PRE-REFUSED", 3u);
+    }
+    v9x_put("PreGr", "PgraphCtxCtl", ctxctl);
+    v9x_status_publish("PreGr", &s);
+    v9x_flush();
+    v9x_vram_check("pre-gr");
 }
 
 static DWORD v9x_region[V9X_NV50_REGION_WORDS];
@@ -495,7 +712,7 @@ static void v9x_stage_region(void)
 {
     struct v9x_nv50_grctx_input grctx;
     struct v9x_nv50_push push;
-    DWORD data[1];
+    DWORD data[4];
     DWORD row;
     DWORD read_pd;
     DWORD read_ramfc;
@@ -527,15 +744,31 @@ static void v9x_stage_region(void)
     v9x_key("Region", "ChannelEntry", v9x_layout.chan_entry);
     v9x_key("Region", "RunlistReg", v9x_layout.runlist_reg);
 
-    /* Stage fifo's pushbuffer: PFIFO's REF_CNT, nothing for an engine. */
+    /*
+     * Stage fifo's pushbuffer: PFIFO's REF_CNT, then a semaphore release
+     * PFIFO performs itself, writing V9X_SEMA_VALUE into the window.
+     * That is the fetch's evidence read back through BAR1: run 13
+     * (boot 91) showed reads that time out on BAR0 (USERD, unanswered
+     * CACHE1 registers) are what loses the card. The semaphore DMA
+     * object is the VM one, as nv84_fence binds its VRAM ctxdma with
+     * method 60h before the semaphore methods.
+     */
     v9x_push_stage(V9X_PUSH_FIFO, &push);
     data[0] = V9X_REF_VALUE;
     v9x_nv50_push_method(&push, 0ul, V9X_NV50_MTHD_REF_CNT, 1ul, data);
+    data[0] = V9X_NV50_HANDLE_DMA_VM;
+    v9x_nv50_push_method(&push, 0ul, V9X_826F_DMA_SEMAPHORE, 1ul, data);
+    data[0] = 0ul;
+    data[1] = V9X_WINDOW_VRAM + V9X_SEMA_OFFSET;
+    data[2] = V9X_SEMA_VALUE;
+    data[3] = V9X_826F_SEMAPHORED_RELEASE;
+    v9x_nv50_push_method(&push, 0ul, V9X_826F_SEMAPHOREA, 4ul, data);
     v9x_number("Region", "FifoPushWords", push.count);
 
     v9x_ops_begin();
     v9x_vram_data(0ul, v9x_region, V9X_NV50_REGION_WORDS);
     v9x_ib_write(0ul, V9X_PUSH_FIFO, push.count);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_SEMA_OFFSET, 1ul, 0ul);
     /* The fill target: the pattern over the whole surface. */
     v9x_op(V9X_OP_VRAM_FILL, V9X_FILL_OFFSET,
            V9X_FILL_PITCH / 4ul * V9X_FILL_HEIGHT, V9X_FILL_PATTERN);
@@ -560,12 +793,115 @@ static void v9x_stage_region(void)
     v9x_flush();
 }
 
+/*
+ * Does the GPU see the region where BAR1 put it? The BAR1 write test
+ * showed BAR1 stores and returns data across its 256 MiB, not that BAR1 +
+ * x is video memory x. Runs 5 to 8 lost the card 60-100 ms after each
+ * kick; if PFIFO reads the RAMFC, page tables and IB from a different
+ * place than BAR1 wrote them, it reads garbage, and a garbage PTE can aim
+ * the fetch at host memory. PRAMIN (BAR0 700000h, base in 1700h as
+ * 1 MiB-aligned address >> 16, subdev\instmem\nv50.c) is the GPU's own
+ * view: read the region's words back through it, then restore 1700h.
+ */
+#define V9X_PRAMIN_BASE_REG  0x001700ul
+#define V9X_PRAMIN           0x700000ul
+#define V9X_PRAMIN_CHECKS    12u
+
+static int v9x_stage_pramin(void)
+{
+    static const DWORD offsets[V9X_PRAMIN_CHECKS] = {
+        0x00000ul,                         /* engine area */
+        0x00020ul,                         /* PGRAPH context pointer */
+        V9X_NV50_INST_DMA_VM,              /* DMA object */
+        V9X_NV50_INST_PD,                  /* PDE 0 */
+        V9X_NV50_INST_RAMFC + 0x48ul,      /* RAMFC push DMA object */
+        V9X_NV50_INST_RAMFC + 0x50ul,      /* RAMFC IB address */
+        V9X_NV50_INST_RAMFC + 0x80ul,      /* RAMFC RAMHT */
+        V9X_NV50_INST_RAMFC + 0x98ul,      /* RAMFC instance */
+        V9X_NV50_PT + (V9X_WINDOW_VRAM >> 16) * 8ul, /* the region's PTE */
+        V9X_NV50_RUNLIST,                  /* runlist entry */
+        V9X_NV50_INST_RAMFC + 0x54ul,      /* RAMFC IB high and length */
+        V9X_NV50_PUSH                      /* push word 0 */
+    };
+    DWORD ops[V9X_PRAMIN_CHECKS];
+    DWORD saved;
+    DWORD index;
+    DWORD matches = 0ul;
+    char key[8];
+
+    v9x_ops_begin();
+    saved = v9x_read(V9X_PRAMIN_BASE_REG);
+    if (!v9x_run("pramin-base")) {
+        v9x_finish("PRAMIN-REFUSED", 4u);
+    }
+    saved = v9x_value(saved);
+    v9x_key("Pramin", "Base1700", saved);
+
+    v9x_ops_begin();
+    v9x_write(V9X_PRAMIN_BASE_REG, V9X_WINDOW_VRAM >> 16);
+    for (index = 0ul; index < V9X_PRAMIN_CHECKS; ++index) {
+        ops[index] = v9x_read(V9X_PRAMIN + offsets[index]);
+    }
+    v9x_write(V9X_PRAMIN_BASE_REG, saved);
+    if (!v9x_run("pramin")) {
+        v9x_finish("PRAMIN-REFUSED", 4u);
+    }
+    for (index = 0ul; index < V9X_PRAMIN_CHECKS; ++index) {
+        DWORD expected = v9x_region[offsets[index] / 4ul];
+
+        v9x_hex(key, offsets[index], 5);
+        v9x_put("Pramin", key, ops[index]);
+        if (v9x_value(ops[index]) == expected) {
+            ++matches;
+        }
+    }
+    v9x_number("Pramin", "Matches", matches);
+    v9x_flush();
+    v9x_vram_check("pramin");
+    if (matches != V9X_PRAMIN_CHECKS) {
+        v9x_text("Pramin", "Result", "DIFFERS");
+        return 0;
+    }
+    v9x_text("Pramin", "Result", "PASS");
+    return 1;
+}
+
+/*
+ * The sysmem flush page. Run 10 (boot 90) read 100C08h = 0: the GPU's
+ * flush page was host physical address 0, the real-mode interrupt
+ * table. nouveau always points it at a page of its own
+ * (nv50_fb_sysmem_flush_page_init). N5CH.VXD allocates one when 100C08h
+ * is 0 and never frees it.
+ */
+static void v9x_stage_flush_page(void)
+{
+    DWORD before;
+    DWORD after;
+
+    v9x_ops_begin();
+    before = v9x_read(0x100c08ul);
+    after = v9x_op(V9X_OP_FLUSH_PAGE, 0ul, 0ul, 0ul);
+    if (!v9x_run("flush-page")) {
+        v9x_finish("FLUSH-PAGE-REFUSED", 4u);
+    }
+    v9x_put("FlushPage", "Before", before);
+    v9x_put("FlushPage", "After", after);
+    v9x_flush();
+    if (v9x_value(after) == 0ul) {
+        v9x_finish("NO-FLUSH-PAGE", 4u);
+    }
+    v9x_vram_check("flush-page");
+}
+
+static void v9x_stage_gr_init(void);
+
 static int v9x_stage_fifo(void)
 {
     struct v9x_status_ops s;
     DWORD index;
     DWORD runlist_wait;
-    DWORD get_wait;
+    DWORD sema_wait;
+    DWORD sema;
 
     v9x_ops_begin();
     /* nv50_fifo_init: reset PFIFO, its constants, interrupt status and
@@ -594,9 +930,11 @@ static int v9x_stage_fifo(void)
      * (vmmnv50.c nv50_vmm_flush), and for PGRAPH on the GT215 family it
      * first stops PGRAPH's FIFO access and waits for its units to idle
      * (gr\g84.c g84_gr_tlb_flush, "hw bug workaround"). The first run of
-     * this probe (boot 83) raised a raw PGRAPH flush at this point and the
-     * machine stopped answering during the stage.
+     * this probe listed a raw PGRAPH flush here; it never ran (the card
+     * was lost before stage fifo, see the run 1 record).
      */
+
+    v9x_stage_gr_init();
 
     /* Channel 1: bound and started (g84.c bind, nv50.c start), then the
      * runlist naming it, and the wait nouveau makes for the update. */
@@ -612,36 +950,74 @@ static int v9x_stage_fifo(void)
     v9x_put("Fifo", "RunlistWait", runlist_wait);
     v9x_flush();
 
-    /* One IB entry, then the kick: IB PUT = 1. */
+    /*
+     * One IB entry, then the kick: IB PUT = 1. Only registers that have
+     * answered on this card are read afterwards. Run 13 (boot 91) logged
+     * the put run's results: PFIFO had switched channel 1 in (CACHE1
+     * 3204h 00010001h, 3224h and 322Ch holding RAMFC + 3Ch and + 48h),
+     * and about 38 of 64 CACHE1 reads returned FFFFFFFF in a run that
+     * took 385 ms, after which BAR1 read FFFFFFFF and the card left
+     * configuration space. Runs 3 and 6 lost it after USERD reads the same
+     * way. So the fetch's evidence is the semaphore PFIFO releases into
+     * the window, read through BAR1, and USERD is not read at all.
+     */
     v9x_ops_begin();
     v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT, 1ul);
-    get_wait = v9x_wait(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_GET,
-                        0xfffffffful, 1ul);
-    v9x_status_request(&s);
-    if (!v9x_run("fifo-kick")) {
+    v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
+    v9x_status_request(&s, 0ul);
+    if (!v9x_run("fifo-put")) {
         v9x_finish("FIFO-REFUSED", 5u);
     }
-    v9x_put("Fifo", "GetWait", get_wait);
-    v9x_status_publish("Fifo", &s);
-    v9x_text("Fifo", "RefMatches",
-             v9x_value(s.ref) == V9X_REF_VALUE ? "yes" : "no");
+    v9x_status_publish("FifoPut", &s);
     v9x_flush();
-    if (v9x_timed_out(runlist_wait) || v9x_timed_out(get_wait)) {
-        v9x_text("Fifo", "Result", "TIMEOUT");
+
+    /* The semaphore, through BAR1 only, bounded. */
+    v9x_ops_begin();
+    sema_wait = v9x_op(V9X_OP_WAIT_VRAM, V9X_SEMA_OFFSET, V9X_SEMA_VALUE,
+                       V9X_SEMA_WAIT_LIMIT);
+    sema = v9x_op(V9X_OP_VRAM_READ, V9X_SEMA_OFFSET, 0ul, 0ul);
+    if (!v9x_run("fifo-sema")) {
+        v9x_finish("FIFO-REFUSED", 5u);
+    }
+    v9x_put("Fifo", "SemaWait", sema_wait);
+    v9x_put("Fifo", "Sema", sema);
+    v9x_flush();
+
+    /* About a second of PTIMER reads, then the card checked again. */
+    v9x_ops_begin();
+    v9x_op(V9X_OP_DELAY, 1000000ul, 0ul, 0ul);
+    v9x_status_request(&s, 0ul);
+    if (!v9x_run("fifo-settle")) {
+        v9x_finish("FIFO-REFUSED", 5u);
+    }
+    v9x_status_publish("FifoSettle", &s);
+    v9x_flush();
+    v9x_vram_check("fifo-settle");
+
+    if (v9x_timed_out(runlist_wait) ||
+        v9x_value(sema) != V9X_SEMA_VALUE) {
+        v9x_text("Fifo", "Result", "NOT-FETCHED");
         return 0;
     }
     v9x_text("Fifo", "Result", "PASS");
     return 1;
 }
 
-static int v9x_stage_gr(void)
+/*
+ * PGRAPH reset, nv50_gr_init and the context program, before any channel
+ * is bound: nouveau initialises every engine before it creates a
+ * channel, and notes that PFIFO "will hang forever if the connected
+ * engines don't report that they've processed the context switch
+ * request" (fifo\nv50.c, nv50_ectx_bind). Runs 5 to 7 bound and kicked
+ * channel 1, whose instance block names a PGRAPH context, with PGRAPH
+ * uninitialised, and the machine stopped 60-100 ms after each kick.
+ */
+static void v9x_stage_gr_init(void)
 {
     struct v9x_status_ops s;
-    struct v9x_nv50_push push;
     DWORD index;
     DWORD enable_now;
     DWORD read_enable;
-    DWORD get_wait;
 
     /* PMC_ENABLE as it is now, PFIFO back on. */
     v9x_ops_begin();
@@ -695,9 +1071,21 @@ static int v9x_stage_gr(void)
         v9x_write(0x402c28ul + index * 0x10ul, 0ul);
         v9x_write(0x402c2cul + index * 0x10ul, 0ul);
     }
+    v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
+    v9x_status_request(&s, V9X_STATUS_GR);
     if (!v9x_run("gr-init")) {
         v9x_finish("GR-REFUSED", 6u);
     }
+    v9x_status_publish("GrInit", &s);
+    v9x_flush();
+    v9x_vram_check("gr-init");
+}
+
+static int v9x_stage_gr(void)
+{
+    struct v9x_status_ops s;
+    struct v9x_nv50_push push;
+    DWORD get_wait;
 
     /* The 502D bind as IB entry 1. */
     v9x_ops_begin();
@@ -710,7 +1098,7 @@ static int v9x_stage_gr(void)
     get_wait = v9x_wait(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_GET,
                         0xfffffffful, 2ul);
     v9x_op(V9X_OP_DELAY, 100000ul, 0ul, 0ul);
-    v9x_status_request(&s);
+    v9x_status_request(&s, V9X_STATUS_ALL);
     if (!v9x_run("gr")) {
         v9x_finish("GR-REFUSED", 6u);
     }
@@ -765,7 +1153,7 @@ static int v9x_stage_fill(void)
                         0xfffffffful, 3ul);
     /* PGRAPH idle: 400700h zero (gr\g84.c reads it as the busy word). */
     idle_wait = v9x_wait(V9X_PGRAPH_STATUS, 0xfffffffful, 0ul);
-    v9x_status_request(&s);
+    v9x_status_request(&s, V9X_STATUS_ALL);
     if (!v9x_run("fill")) {
         v9x_finish("FILL-REFUSED", 7u);
     }
@@ -848,6 +1236,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_text("Report", "Tool", "V9XN5CH");
     v9x_text("Report", "Build", V9X_BUILD_ID);
     v9x_text("Report", "Access", "pfifo-pgraph-bringup");
+    v9x_stop_after_region = v9x_switch_given("/stop:region") ? 1ul : 0ul;
     v9x_stop_after_fifo = v9x_switch_given("/stop:fifo") ? 1ul : 0ul;
     v9x_stop_after_gr = v9x_switch_given("/stop:gr") ? 1ul : 0ul;
 
@@ -864,11 +1253,20 @@ void __stdcall V9xNv50ChannelEntry(void)
     if (config == 0ul) {
         v9x_finish("NO-GT218", 1u);
     }
+    v9x_config = config;
     v9x_key("Report", "Config", config);
     v9x_flush();
 
     v9x_stage_pre();
     v9x_stage_region();
+    v9x_vram_check("region");
+    if (!v9x_stage_pramin()) {
+        v9x_finish("PRAMIN-DIFFERS", 4u);
+    }
+    v9x_stage_flush_page();
+    if (v9x_stop_after_region != 0ul) {
+        v9x_finish("STOPPED-AFTER-REGION", 0u);
+    }
     if (!v9x_stage_fifo()) {
         v9x_finish("FIFO-FAILED", 5u);
     }

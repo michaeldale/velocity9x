@@ -148,6 +148,18 @@ each stopped on the first bounded wait that expires with a register dump:
 A hang means the owner power-cycles M-BXMFA8; the probe writes its INI
 before each sub-step.
 
+**Status (2026-11-12): paused at 3a after 14 runs and 11 resets.**
+[docs/decisions/2026-11-11-gt218-channel-probe-run1-hang.md](../decisions/2026-11-11-gt218-channel-probe-run1-hang.md)
+records them. Changed from the design above, by measurement: the window
+is BAR1 + 128 MiB (BAR1 + 192 MiB was never measured; PRAMIN confirms
++ 128 MiB is video memory 128 MiB); there is no USERD read (reads that
+time out lose the card, so GET cannot be polled the way nouveau does);
+PGRAPH is initialised before the channel is bound; 100C08h gets a flush
+page; every step goes to a write-through log first. Everything up to and
+including the channel bind survives, and the kick loads the RAMFC into
+CACHE1, but the machine has stopped within a second of every kick. The
+next experiment (an empty push) is written down in the record, not run.
+
 ### Step 4: DirectDraw fill and copy on the engine
 
 An `NV50` engine type in the HAL (engines\eng_nv50.c), the structures
