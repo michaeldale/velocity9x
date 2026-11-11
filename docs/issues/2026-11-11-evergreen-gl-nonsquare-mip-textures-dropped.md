@@ -2,6 +2,10 @@
 
 Date: 2026-11-11. Status: open. Measured from one field log (0.40.0);
 the cause of the refusal is not confirmed and nothing changed.
+Update 2026-11-11: fixed on `main` (`aaf42da9`, not yet released); the
+reporter's run of that change as issue16-test1 created every texture and
+dropped no draws. Their DirectX is 6.1a. The Quake 2 crosshair is
+missing, cause unknown.
 
 Machine: the reporter's HD 5570 (Redwood, `1002:68D9`) on
 [GitHub issue 16](https://github.com/michaeldale/velocity9x/issues/16),
@@ -89,3 +93,53 @@ on its 0.46.0 files (boot 35, hashes checked).
 [issue 16](https://github.com/michaeldale/velocity9x/issues/16#issuecomment-6784580420)
 with a request for a Quake 2 run, `V9XGL.LOG` and the `DDRAW.DLL`
 version.
+
+## Field result of issue16-test1, 2026-11-11
+
+The reporter's
+[reply](https://github.com/michaeldale/velocity9x/issues/16#issuecomment-6787434783)
+attached `V9XGL.zip` (their whole `V9XGL.LOG`, 26 MB, from 2026-11-07
+on) and two screenshots. Kept outside the repository, as before.
+
+The log's last process is the test DLL (`version=0.47.0 V9XGL
+build=issue16-test1`, Quake 2, `pid=FFFEFB85`, 2026-11-11 00:43). At its
+end:
+
+```
+paths batches/triangles untextured=11361/26367 hw=2691987/100155334
+      cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 ...
+counters hwtex live=0 creates=230 create-failed=0 evictions=0
+      uploads=21994 partial=21234 upload-kb=73071 squared=0
+      alpha-dropped=11473 ... failed r4=0 r7=0 r8=0 other=0
+tsc frames=833 wall-ms=10000 ...
+```
+
+- No create failed and no `hr=` refusal appears in the session; every
+  textured batch, 100 M triangles, went to the engine. Under 0.40.0 the
+  same machine sent 42 % of its triangles to `cpu-nonsquare` and dropped
+  them. 230 creates against 75,533, and 73 MB of uploads against 958 MB.
+- About 83 frames a second in the last 10 s window. Recorded, not
+  compared.
+- `alpha-dropped` counts alpha tests that could discard nothing and were
+  not sent (`src\opengl\gl_icd.c:2337`); it is not a dropped draw.
+
+`DDRAW.DLL` is 4.06.03.0518 and DxDiag reports DirectX 6.1a, the Windows
+98 SE runtime. That fits the first candidate above, a DirectDraw that
+refuses a chain longer than the shorter side allows where the R3E's
+newer runtime accepts it. Both runtimes were not tried on one machine,
+so it stays the likely reading, not a measured one.
+
+The reporter says Quake 2's models, enemies, walls and surfaces now draw
+correctly and the darkness was their monitor (HDMI range on Auto picking
+Limited; forcing Full fixed it), so the dark picture above is not a
+driver fault. Two things are left:
+
+- The Quake 2 crosshair does not appear with the option on. The log has
+  no failure that accounts for it; not investigated.
+- Quake 1 (GLQuake) is reported much improved, with a few artefacts at
+  texture seams. No GLQuake process with the test DLL is in the log, so
+  that is the reporter's account only.
+
+They also ask whether DirectX 6.1 could cause their Virtua Cop 2
+Direct3D flicker. Not checked; they are leaving the machine unchanged
+until asked.
