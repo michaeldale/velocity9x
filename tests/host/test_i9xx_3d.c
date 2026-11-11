@@ -4670,10 +4670,12 @@ static void test_map_state_formats(void)
     CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_ARGB4444) !=
           V9X_FALSE);
     CHECK(v9x_i9xx_map_format_known(0ul) == V9X_FALSE);
-    /* MAPSURF_16BIT with type 3 (AY88) and MAPSURF_32BIT ARGB8888: real
-     * codes, not audited, not emitted. */
+    /* MAPSURF_16BIT with type 3 (AY88) and MAPSURF_32BIT ABGR8888: real
+     * codes, not emitted. (MAPSURF_32BIT ARGB8888, 0x180, was in this
+     * line until the 32-bit formats arrived for pixel shaders; the
+     * 32-bit side now emits it, test_map_state_32bit_and_signed.) */
     CHECK(v9x_i9xx_map_format_known(0x00000118ul) == V9X_FALSE);
-    CHECK(v9x_i9xx_map_format_known(0x00000180ul) == V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(0x00000188ul) == V9X_FALSE);
 
     /* ARGB1555: type 1, so 0x108 where 565 has 0x100. */
     map.format = V9X_I9XX_MAPSURF_16BIT_ARGB1555;
@@ -4701,6 +4703,292 @@ static void test_map_state_formats(void)
     map.format = 0x00000118ul;
     CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
           V9X_STATUS_OK);
+}
+
+/*
+ * The four formats the 32-bit side adds for pixel shaders (step 5a of
+ * docs\plans\gen3-ps11-pixel-shaders.md): ARGB8888 and XRGB8888, and the
+ * signed V8U8 (MT_16BIT_88DVDU) and Q8W8V8U8 (MT_32BIT_QWVU8888). Codes
+ * from Mesa's and xf86's i915_reg.h, which agree: MAPSURF_32BIT 3 << 7,
+ * MAPSURF_16BIT 2 << 7, types ARGB8888 0, XRGB8888 2, QWVU8888 4 and
+ * 88DVDU 5, each << 3. A 32-bit map needs four bytes a texel of pitch.
+ */
+typedef char v9x_test_argb8888_code[
+    V9X_I9XX_MAPSURF_32BIT_ARGB8888 == 0x00000180ul ? 1 : -1];
+typedef char v9x_test_xrgb8888_code[
+    V9X_I9XX_MAPSURF_32BIT_XRGB8888 == 0x00000190ul ? 1 : -1];
+typedef char v9x_test_qwvu8888_code[
+    V9X_I9XX_MAPSURF_32BIT_QWVU8888 == 0x000001a0ul ? 1 : -1];
+typedef char v9x_test_88dvdu_code[
+    V9X_I9XX_MAPSURF_16BIT_88DVDU == 0x00000128ul ? 1 : -1];
+
+static void test_map_state_32bit_and_signed(void)
+{
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[16];
+    v9x_u32 written = 0ul;
+
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_32BIT_ARGB8888) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_32BIT_XRGB8888) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_32BIT_QWVU8888) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_88DVDU) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_texel_bytes(V9X_I9XX_MAPSURF_32BIT_QWVU8888) == 4ul);
+    CHECK(v9x_i9xx_map_texel_bytes(V9X_I9XX_MAPSURF_16BIT_88DVDU) == 2ul);
+    CHECK(v9x_i9xx_map_texel_bytes(V9X_I9XX_MAPSURF_16BIT_RGB565) == 2ul);
+
+    map.offset = 0x00700000ul;
+    map.width = 16ul;
+    map.height = 16ul;
+    map.wrap = 0ul;
+    map.mag_linear = 0ul;
+    map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
+
+    /* 16x16 at four bytes: pitch 64, so MS4 is 15 << 21. */
+    map.pitch = 64ul;
+    map.format = V9X_I9XX_MAPSURF_32BIT_ARGB8888;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x01e03d80ul);
+    CHECK(stream[4] == 0x01e00000ul);
+    map.format = V9X_I9XX_MAPSURF_32BIT_QWVU8888;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x01e03da0ul);
+
+    /* A 16-bit pitch under a 32-bit map holds half a row: refused. */
+    map.pitch = 32ul;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
+          V9X_STATUS_OK);
+    map.format = V9X_I9XX_MAPSURF_32BIT_XRGB8888;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) !=
+          V9X_STATUS_OK);
+
+    /* V8U8 is two bytes, as 565. */
+    map.format = V9X_I9XX_MAPSURF_16BIT_88DVDU;
+    CHECK(v9x_i9xx_build_map_state(&map, 1ul, stream, 16ul, &written) ==
+          V9X_STATUS_OK);
+    CHECK(stream[3] == 0x01e03d28ul);
+    CHECK(stream[4] == 0x00e00000ul);
+}
+
+/*
+ * A surface's DirectDraw pixel format as a map format and its texel size
+ * (v9x_d3d_i9xx_map_format): the three 16-bit formats as before, the two
+ * 32-bit ones by mask, and the signed ones by D3DFORMAT or FourCC code (60
+ * V8U8, 63 Q8W8V8U8) or DirectX 7's DDPF_BUMPDUDV for V8U8, as Haswell's
+ * v9x_d3d_hsw_signed_format reads them.
+ */
+static void test_i9xx_surface_map_formats(void)
+{
+    const v9x_u32 rgb = 0x00000040ul;
+    const v9x_u32 alpha = 0x00000001ul;
+    const v9x_u32 fourcc = 0x00000004ul;
+    const v9x_u32 bump = 0x00080000ul;
+    const v9x_u32 d3dformat = 0x00200000ul;
+    v9x_u32 format = 99ul;
+    v9x_u32 bytes = 99ul;
+
+    CHECK(v9x_d3d_i9xx_map_format(rgb, 0ul, 16ul, 0xf800ul, 0x07e0ul,
+                                  0x001ful, 0ul, &format, &bytes) ==
+          V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_16BIT_RGB565 && bytes == 2ul);
+    CHECK(v9x_d3d_i9xx_map_format(rgb | alpha, 0ul, 16ul, 0x7c00ul, 0x03e0ul,
+                                  0x001ful, 0x8000ul, &format, &bytes) ==
+          V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_16BIT_ARGB1555 && bytes == 2ul);
+    CHECK(v9x_d3d_i9xx_map_format(rgb | alpha, 0ul, 16ul, 0x0f00ul, 0x00f0ul,
+                                  0x000ful, 0xf000ul, &format, &bytes) ==
+          V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_16BIT_ARGB4444 && bytes == 2ul);
+    CHECK(v9x_d3d_i9xx_map_format(rgb | alpha, 0ul, 32ul, 0x00ff0000ul,
+                                  0x0000ff00ul, 0x000000fful, 0xff000000ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_32BIT_ARGB8888 && bytes == 4ul);
+    CHECK(v9x_d3d_i9xx_map_format(rgb, 0ul, 32ul, 0x00ff0000ul,
+                                  0x0000ff00ul, 0x000000fful, 0ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_32BIT_XRGB8888 && bytes == 4ul);
+    CHECK(v9x_d3d_i9xx_map_format(d3dformat, 63ul, 32ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_32BIT_QWVU8888 && bytes == 4ul);
+    CHECK(v9x_d3d_i9xx_map_format(fourcc, 63ul, 0ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_32BIT_QWVU8888);
+    CHECK(v9x_d3d_i9xx_map_format(d3dformat, 60ul, 16ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_16BIT_88DVDU && bytes == 2ul);
+    CHECK(v9x_d3d_i9xx_map_format(bump, 0ul, 16ul, 0x00fful, 0xff00ul, 0ul,
+                                  0ul, &format, &bytes) == V9X_TRUE);
+    CHECK(format == V9X_I9XX_MAPSURF_16BIT_88DVDU && bytes == 2ul);
+
+    /* Refused, nothing written: 555 with no alpha bit, ABGR order, 24-bit,
+     * a bump format with luminance, an unknown code, palettes. */
+    format = 99ul;
+    bytes = 99ul;
+    CHECK(v9x_d3d_i9xx_map_format(rgb, 0ul, 16ul, 0x7c00ul, 0x03e0ul,
+                                  0x001ful, 0ul, &format, &bytes) ==
+          V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_map_format(rgb | alpha, 0ul, 32ul, 0x000000fful,
+                                  0x0000ff00ul, 0x00ff0000ul, 0xff000000ul,
+                                  &format, &bytes) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_map_format(rgb, 0ul, 24ul, 0x00ff0000ul,
+                                  0x0000ff00ul, 0x000000fful, 0ul,
+                                  &format, &bytes) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_map_format(rgb | alpha, 0ul, 32ul, 0x00ff0000ul,
+                                  0x0000ff00ul, 0x000000fful, 0ul,
+                                  &format, &bytes) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_map_format(bump, 0ul, 16ul, 0x00fful, 0xff00ul,
+                                  0x00ff0000ul, 0ul, &format, &bytes) ==
+          V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_map_format(d3dformat, 61ul, 16ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_FALSE);
+    CHECK(v9x_d3d_i9xx_map_format(0ul, 0ul, 8ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_FALSE);
+    CHECK(format == 99ul && bytes == 99ul);
+}
+
+/* The decoder follows a declared 32-bit format as it does a 16-bit one. */
+static void test_runtime_texture_32bit(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_texture map;
+    v9x_u32 stream[400];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 uv[3ul * 2ul];
+    v9x_u32 colors[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    const v9x_u32 one = 0x3f800000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+    const v9x_u32 map_offset = 0x00300000ul;
+    const v9x_u32 map_edge = 64ul;
+
+    map.offset = map_offset;
+    map.width = map_edge;
+    map.height = map_edge;
+    map.pitch = map_edge * 4ul;
+    map.format = V9X_I9XX_MAPSURF_32BIT_ARGB8888;
+    map.wrap = 0ul;
+    map.mag_linear = 0ul;
+    map.min_linear = 0ul;
+    map.mip_filter = 0ul;
+    map.max_lod = 0ul;
+
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.texture_offset = map_offset;
+    limits.texture_bytes = map.height * map.pitch;
+    limits.texture_width = map.width;
+    limits.texture_height = map.height;
+    limits.texture_pitch = map.pitch;
+    limits.texture_format = V9X_I9XX_MAPSURF_32BIT_ARGB8888;
+
+    CHECK(v9x_i9xx_build_runtime_state(surface, pitch, width, height, &map,
+                                       0ul, 0ul, 0ul,
+                                       V9X_I9XX_COMPAREFUNC_LESS, 0ul, 0ul,
+                                       0ul, 0ul, stream + at, 400ul - at,
+                                       &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_modulate_program(stream + at, 400ul - at,
+                                          &produced) == V9X_STATUS_OK);
+    at += produced;
+    xyzw[0] = 0x43204000ul; xyzw[1] = 0x42f00000ul;
+    xyzw[2] = 0ul;          xyzw[3] = one;
+    xyzw[4] = 0x43c80000ul; xyzw[5] = 0x42f00000ul;
+    xyzw[6] = 0ul;          xyzw[7] = one;
+    xyzw[8] = 0x43a00000ul; xyzw[9] = 0x43480000ul;
+    xyzw[10] = 0ul;         xyzw[11] = one;
+    colors[0] = 0xffffffful;
+    colors[1] = 0xffffffful;
+    colors[2] = 0xffffffful;
+    uv[0] = 0ul;  uv[1] = 0ul;
+    uv[2] = one;  uv[3] = 0ul;
+    uv[4] = 0ul;  uv[5] = one;
+    CHECK(v9x_i9xx_build_textured_runtime_run(xyzw, colors, uv, 1ul,
+                                              width, height, stream + at,
+                                              400ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    {
+        struct v9x_i9xx_decode_limits wrong = limits;
+
+        wrong.texture_format = V9X_I9XX_MAPSURF_32BIT_XRGB8888;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+        wrong.texture_format = 0ul;
+        CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &wrong, &index) ==
+              V9X_I9XX_P5_TEXTURE_STATE);
+    }
+}
+
+/*
+ * The mip tree at four bytes a texel: the same rows and positions, every
+ * byte count doubled where the alignment allows (256 to 1, nine levels:
+ * pitch 1024, each offset twice the two-byte tree's).
+ */
+static void test_i9xx_miptree_layout_32bit(void)
+{
+    struct v9x_d3d_i9xx_miptree two;
+    struct v9x_d3d_i9xx_miptree four;
+    v9x_u32 level;
+
+    CHECK(v9x_d3d_i9xx_layout_miptree_at(256ul, 256ul, 9ul, V9X_FALSE, 2ul,
+                                         &two) == V9X_TRUE);
+    CHECK(v9x_d3d_i9xx_layout_miptree_at(256ul, 256ul, 9ul, V9X_FALSE, 4ul,
+                                         &four) == V9X_TRUE);
+    CHECK(two.pitch == 512ul && four.pitch == 1024ul);
+    CHECK(four.rows == two.rows);
+    for (level = 0ul; level < 9ul; ++level) {
+        CHECK(four.level_offset[level] == 2ul * two.level_offset[level]);
+    }
+    /* The two-byte entry point is the 2 case. */
+    CHECK(v9x_d3d_i9xx_layout_miptree(256ul, 256ul, 9ul, V9X_FALSE,
+                                      &four) == V9X_TRUE);
+    CHECK(four.pitch == 512ul);
+    /* Only 2 and 4. */
+    CHECK(v9x_d3d_i9xx_layout_miptree_at(256ul, 256ul, 1ul, V9X_FALSE, 3ul,
+                                         &four) == V9X_FALSE);
+
+    /* A map's footprint at four bytes: a 64-texel row needs 256 bytes of
+     * pitch, and the last row must end inside the aperture. */
+    {
+        v9x_u32 address = 99ul;
+
+        CHECK(v9x_d3d_i9xx_bind_map_at(0x00100000ul, 256ul, 64ul, 64ul, 4ul,
+                                       0x01000000ul, &address) == V9X_TRUE);
+        CHECK(address == 0x00100000ul);
+        CHECK(v9x_d3d_i9xx_bind_map_at(0x00100000ul, 128ul, 64ul, 64ul, 4ul,
+                                       0x01000000ul, &address) == V9X_FALSE);
+        CHECK(address == 0ul);
+        CHECK(v9x_d3d_i9xx_bind_map_at(0x00100000ul, 128ul, 64ul, 64ul, 2ul,
+                                       0x01000000ul, &address) == V9X_TRUE);
+        /* 64 rows of 256 end at 104000h: an aperture a byte short of
+         * that refuses, one exactly that long takes it. */
+        CHECK(v9x_d3d_i9xx_bind_map_at(0x00100000ul, 256ul, 64ul, 64ul, 4ul,
+                                       0x00103ffful, &address) ==
+              V9X_FALSE);
+        CHECK(v9x_d3d_i9xx_bind_map_at(0x00100000ul, 256ul, 64ul, 64ul, 4ul,
+                                       0x00104000ul, &address) ==
+              V9X_TRUE);
+        CHECK(v9x_d3d_i9xx_bind_map_at(0x00100000ul, 256ul, 64ul, 64ul, 3ul,
+                                       0x01000000ul, &address) == V9X_FALSE);
+    }
 }
 
 /*
@@ -6533,6 +6821,10 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_map_state_refusals();
     test_map_state_formats();
     test_runtime_texture_formats();
+    test_map_state_32bit_and_signed();
+    test_i9xx_surface_map_formats();
+    test_runtime_texture_32bit();
+    test_i9xx_miptree_layout_32bit();
     test_runtime_cylindrical_wrap();
     test_runtime_decal_program();
     test_runtime_mip_chain();

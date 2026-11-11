@@ -56,6 +56,34 @@ v9x_u16 v9x_d3d_i9xx_bind_target_at(
 v9x_u16 v9x_d3d_i9xx_bind_map(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes, v9x_u32 *address_out);
+/* The same at 2 or 4 bytes a texel; bind_map is this at 2. */
+v9x_u16 v9x_d3d_i9xx_bind_map_at(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 texel_bytes, v9x_u32 aperture_bytes, v9x_u32 *address_out);
+
+/*
+ * A surface's DirectDraw pixel format (flags, FourCC or D3DFORMAT code,
+ * bit count, the four masks) as the MS3 map format the sampler reads and
+ * its bytes a texel, or V9X_FALSE with nothing written. RGB565,
+ * ARGB1555 and ARGB4444 by mask, as the engine has read them since
+ * Phase 6; ARGB8888 and XRGB8888 by mask (the alpha bit and mask say
+ * which); V8U8 and Q8W8V8U8 by D3DFORMAT or FourCC code (60, 63) or, for
+ * V8U8, DirectX 7's DDPF_BUMPDUDV with du FFh, dv FF00h and no
+ * luminance: Haswell's v9x_d3d_hsw_signed_format reading. The flag values
+ * are ddraw.h's, restated because this file includes no DDHAL header.
+ */
+#define V9X_D3D_I9XX_DDPF_ALPHAPIXELS 0x00000001ul
+#define V9X_D3D_I9XX_DDPF_FOURCC      0x00000004ul
+#define V9X_D3D_I9XX_DDPF_RGB         0x00000040ul
+#define V9X_D3D_I9XX_DDPF_BUMPDUDV    0x00080000ul
+#define V9X_D3D_I9XX_DDPF_D3DFORMAT   0x00200000ul
+#define V9X_D3D_I9XX_D3DFMT_V8U8      60ul
+#define V9X_D3D_I9XX_D3DFMT_Q8W8V8U8  63ul
+
+v9x_u16 v9x_d3d_i9xx_map_format(v9x_u32 flags, v9x_u32 fourcc,
+                                v9x_u32 bits, v9x_u32 red, v9x_u32 green,
+                                v9x_u32 blue, v9x_u32 alpha,
+                                v9x_u32 *format_out, v9x_u32 *texel_bytes);
 v9x_u16 v9x_d3d_i9xx_bind_depth(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes, v9x_u32 *address_out);
@@ -108,6 +136,12 @@ struct v9x_d3d_i9xx_miptree {
 v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
                                     v9x_u32 levels, v9x_u16 stacked,
                                     struct v9x_d3d_i9xx_miptree *tree);
+/* The same at 2 or 4 bytes a texel; layout_miptree is this at 2. The
+ * alignments are in texels and rows, so only the byte counts change. */
+v9x_u16 v9x_d3d_i9xx_layout_miptree_at(v9x_u32 width, v9x_u32 height,
+                                       v9x_u32 levels, v9x_u16 stacked,
+                                       v9x_u32 texel_bytes,
+                                       struct v9x_d3d_i9xx_miptree *tree);
 
 /*
  * The texture shapes the sampler is given: each edge a power of two, the

@@ -761,8 +761,27 @@ v9x_status v9x_i9xx_build_vertex_run(
 #define V9X_I9XX_MAPSURF_16BIT_RGB565    ((v9x_u32)0x00000100ul)
 #define V9X_I9XX_MAPSURF_16BIT_ARGB1555  ((v9x_u32)0x00000108ul)
 #define V9X_I9XX_MAPSURF_16BIT_ARGB4444  ((v9x_u32)0x00000110ul)
-/* Is this one of the three MS3 formats this driver emits? Also in
- * i9xx_texture.c, where the builder refuses anything else. */
+/*
+ * Four more, for pixel shaders (step 5a of docs\plans\gen3-ps11-pixel-
+ * shaders.md), emitted by the 32-bit side only (V9X_I9XX_TWO_UNITS below):
+ * MAPSURF_32BIT (3 << 7) with ARGB8888 (0), XRGB8888 (2) and the signed
+ * QWVU8888 (4), and MAPSURF_16BIT with the signed 88DVDU (5), each type
+ * << 3. Mesa's and xf86's i915_reg.h give the same codes. Neither
+ * driver ever selects the two signed ones, so their channel order (U in
+ * the lowest byte read as the first channel, as the names run Q W V U
+ * from the top) and their signed range are read from the names alone,
+ * UNMEASURED until the netbook samples them.
+ */
+#define V9X_I9XX_MAPSURF_32BIT_ARGB8888  ((v9x_u32)0x00000180ul)
+#define V9X_I9XX_MAPSURF_32BIT_XRGB8888  ((v9x_u32)0x00000190ul)
+#define V9X_I9XX_MAPSURF_32BIT_QWVU8888  ((v9x_u32)0x000001a0ul)
+#define V9X_I9XX_MAPSURF_16BIT_88DVDU    ((v9x_u32)0x00000128ul)
+/* MS3's surface-size field, MAPSURF_32BIT in it. */
+#define V9X_I9XX_MAPSURF_SIZE_MASK       ((v9x_u32)0x00000380ul)
+#define V9X_I9XX_MAPSURF_32BIT           ((v9x_u32)0x00000180ul)
+/* Is this one of the MS3 formats this driver emits: the three 16-bit
+ * colour formats everywhere, and the four above on the 32-bit side? Also
+ * in i9xx_texture.c, where the builder refuses anything else. */
 v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format);
 /* Both must be CLEAR for a linear texture, on the same argument the render
  * target's BUF_INFO uses. */
@@ -1819,6 +1838,9 @@ v9x_status v9x_i9xx_build_two_unit_state(
 #define V9X_I9XX_DST_BUF_VARS_AT          18ul
 v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
                                    v9x_u32 format);
+/* A map format's bytes a texel: 4 for MAPSURF_32BIT, else 2. 32-bit side
+ * only, so the 16-bit build keeps its two and its I9XXCODE bytes. */
+v9x_u32 v9x_i9xx_map_texel_bytes(v9x_u32 format);
 #endif
 
 /* src\chipsets\intel\i9xx_3d_decode.c */

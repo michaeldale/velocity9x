@@ -189,10 +189,34 @@ CreatePixelShader, as any other untranslatable program is.
    at once (`d3d_core.c:8095-8170`). Gen3 has none of those today: its
    maps are 565, 1555 and 4444 only. Every stream also passes the
    allowlist decoder before the ring. In order:
-   - **5a. Map formats.** `MT_16BIT_88DVDU` (V8U8),
-     `MT_32BIT_QWVU8888` (Q8W8V8U8), and whatever 32-bit colour
-     formats T19 binds at 32 bpp, which needs checking first. Placement,
-     the sampler format word, the decoder's footprint. Host tests.
+   - **5a. Map formats.** Done 2026-11-11, host only. T19 makes its
+     colour textures A8R8G8B8, and Gen3 published only 565, 1555 and
+     4444, so ARGB8888 and XRGB8888 were needed as well as the two
+     signed formats. Now:
+     - the map builder and decoder accept `MAPSURF_32BIT` ARGB8888
+       (180h), XRGB8888 (190h) and QWVU8888 (1A0h), and `MAPSURF_16BIT`
+       88DVDU (128h), with four bytes a texel of pitch for the 32-bit
+       ones. All of it sits behind `V9X_I9XX_TWO_UNITS`, so the 16-bit
+       I9XXCODE build is unchanged;
+     - `v9x_d3d_i9xx_map_format` classifies a surface's pixel format.
+       The signed ones are read as Haswell reads them: D3DFORMAT or
+       FourCC 60/63, or DirectX 7's BUMPDUDV for V8U8;
+     - the mip layout and the map footprint take two or four bytes a
+       texel;
+     - the HAL places, verifies and binds all seven formats, and
+       publishes ARGB8888 and XRGB8888 as texture formats four and
+       five, as the HD 4600 does.
+
+     The two 32-bit colour formats reach every Direct3D title on Gen3,
+     not only shaders. The signed formats stay unpublished until 5e,
+     since the core lists them only for an engine with `draw_shader`.
+     Neither reference driver ever selects 88DVDU or QWVU8888, so their
+     channel order and signed range come from the names alone.
+
+     **Owed before 0.47.0 ships**, whatever happens to 5b-5f: a netbook
+     run with a game that picks 32-bit textures (Half-Life D3D, 3DMark
+     2001 SE) at 16 and 32 bpp. Without it, 0.47.0 ships the 32-bit
+     textures unmeasured.
    - **5b. Cube maps.** Gen3's cube layout (six faces in the mip tree;
      Mesa's `i915_miptree_layout_cube` and xf86 as the two sources), its
      placement at CreateSurface, the map's cube bit. Host tests on the

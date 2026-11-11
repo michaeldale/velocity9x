@@ -77,6 +77,16 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format)
         format == V9X_I9XX_MAPSURF_16BIT_ARGB4444) {
         return V9X_TRUE;
     }
+#if V9X_I9XX_TWO_UNITS
+    /* The pixel-shader formats, 32-bit side only: the 16-bit driver
+     * emits none of them, and I9XXCODE has no room for the compares. */
+    if (format == V9X_I9XX_MAPSURF_32BIT_ARGB8888 ||
+        format == V9X_I9XX_MAPSURF_32BIT_XRGB8888 ||
+        format == V9X_I9XX_MAPSURF_32BIT_QWVU8888 ||
+        format == V9X_I9XX_MAPSURF_16BIT_88DVDU) {
+        return V9X_TRUE;
+    }
+#endif
     return V9X_FALSE;
 }
 
@@ -135,11 +145,18 @@ v9x_status v9x_i9xx_build_map_state(
             pitch > V9X_I9XX_MAP_PITCH_MAX) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
-        /* A row must hold its own texels. All three formats this builder
-         * emits are MAPSURF_16BIT: two bytes each. */
+        /* A row must hold its own texels: two bytes each for every
+         * MAPSURF_16BIT format, four for the 32-bit side's MAPSURF_32BIT
+         * ones. The 16-bit build keeps its constant two. */
+#if V9X_I9XX_TWO_UNITS
+        if (pitch < width * v9x_i9xx_map_texel_bytes(maps[index].format)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+#else
         if (pitch < (v9x_u32)((v9x_u16)width * (v9x_u16)2u)) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
+#endif
         /* The format is stated, never defaulted. A zero here is a caller
          * that did not read the surface, and a 565 sampler over a 4444
          * surface is a plausible-looking wrong picture. */
@@ -468,3 +485,11 @@ v9x_status v9x_i9xx_build_depth_clear(
     *written = at;
     return V9X_STATUS_OK;
 }
+
+#if V9X_I9XX_TWO_UNITS
+v9x_u32 v9x_i9xx_map_texel_bytes(v9x_u32 format)
+{
+    return (format & V9X_I9XX_MAPSURF_SIZE_MASK) == V9X_I9XX_MAPSURF_32BIT
+               ? 4ul : 2ul;
+}
+#endif

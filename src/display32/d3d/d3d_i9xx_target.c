@@ -94,6 +94,14 @@ v9x_u16 v9x_d3d_i9xx_bind_map(
     v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
     v9x_u32 aperture_bytes, v9x_u32 *address_out)
 {
+    return v9x_d3d_i9xx_bind_map_at(offset, pitch, width, height, 2ul,
+                                    aperture_bytes, address_out);
+}
+
+v9x_u16 v9x_d3d_i9xx_bind_map_at(
+    v9x_u32 offset, v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+    v9x_u32 texel_bytes, v9x_u32 aperture_bytes, v9x_u32 *address_out)
+{
     if (address_out == 0) {
         return V9X_FALSE;
     }
@@ -101,7 +109,8 @@ v9x_u16 v9x_d3d_i9xx_bind_map(
 
     if (width == 0ul || height == 0ul ||
         width > V9X_I9XX_MAP_DIMENSION_MAX ||
-        height > V9X_I9XX_MAP_DIMENSION_MAX) {
+        height > V9X_I9XX_MAP_DIMENSION_MAX ||
+        (texel_bytes != 2ul && texel_bytes != 4ul)) {
         return V9X_FALSE;
     }
     if (pitch == 0ul || (pitch & 3ul) != 0ul ||
@@ -111,7 +120,8 @@ v9x_u16 v9x_d3d_i9xx_bind_map(
     if ((offset & (V9X_I9XX_SANDBOX_PAGE_BYTES - 1ul)) != 0ul) {
         return V9X_FALSE;
     }
-    if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height, 2ul,
+    if (v9x_d3d_i9xx_footprint_fits(offset, pitch, width, height,
+                                    texel_bytes,
                                     aperture_bytes) == V9X_FALSE) {
         return V9X_FALSE;
     }
@@ -203,6 +213,15 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
                                     v9x_u32 levels, v9x_u16 stacked,
                                     struct v9x_d3d_i9xx_miptree *tree)
 {
+    return v9x_d3d_i9xx_layout_miptree_at(width, height, levels, stacked,
+                                          2ul, tree);
+}
+
+v9x_u16 v9x_d3d_i9xx_layout_miptree_at(v9x_u32 width, v9x_u32 height,
+                                       v9x_u32 levels, v9x_u16 stacked,
+                                       v9x_u32 texel_bytes,
+                                       struct v9x_d3d_i9xx_miptree *tree)
+{
     v9x_u32 level;
     v9x_u32 edge;
     v9x_u32 top_levels = 1ul;
@@ -223,7 +242,8 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
     if (width == 0ul || width > V9X_I9XX_MAP_DIMENSION_MAX ||
         (width & (width - 1ul)) != 0ul ||
         height == 0ul || height > V9X_I9XX_MAP_DIMENSION_MAX ||
-        (height & (height - 1ul)) != 0ul) {
+        (height & (height - 1ul)) != 0ul ||
+        (texel_bytes != 2ul && texel_bytes != 4ul)) {
         return V9X_FALSE;
     }
     /* The chain runs until both edges are one, so its length is the larger
@@ -252,7 +272,7 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
             pitch_texels = mip1;
         }
     }
-    tree->pitch = v9x_d3d_i9xx_align(pitch_texels * 2ul,
+    tree->pitch = v9x_d3d_i9xx_align(pitch_texels * texel_bytes,
                                      V9X_I9XX_MIP_PITCH_ALIGN);
 
     /*
@@ -272,7 +292,7 @@ v9x_u16 v9x_d3d_i9xx_layout_miptree(v9x_u32 width, v9x_u32 height,
         v9x_u32 rows = v9x_d3d_i9xx_align(v9x_d3d_i9xx_minify(height, level),
                                           V9X_I9XX_MIP_ALIGN_ROWS);
 
-        tree->level_offset[level] = y * tree->pitch + x * 2ul;
+        tree->level_offset[level] = y * tree->pitch + x * texel_bytes;
         if (y + rows > tree->rows) {
             tree->rows = y + rows;
         }
@@ -362,4 +382,72 @@ v9x_u16 v9x_d3d_i9xx_texture_shape(v9x_u32 width, v9x_u32 height,
 v9x_u32 v9x_d3d_i9xx_level_edge(v9x_u32 edge, v9x_u32 level)
 {
     return v9x_d3d_i9xx_minify(edge, level);
+}
+
+/* DDPF_BUMPDUDV's du and dv masks for V8U8, which ddraw.h keeps where
+ * the red and green masks are. */
+#define V9X_D3D_I9XX_V8U8_DU 0x000000fful
+#define V9X_D3D_I9XX_V8U8_DV 0x0000ff00ul
+
+v9x_u16 v9x_d3d_i9xx_map_format(v9x_u32 flags, v9x_u32 fourcc,
+                                v9x_u32 bits, v9x_u32 red, v9x_u32 green,
+                                v9x_u32 blue, v9x_u32 alpha,
+                                v9x_u32 *format_out, v9x_u32 *texel_bytes)
+{
+    v9x_u32 has_alpha = (flags & V9X_D3D_I9XX_DDPF_ALPHAPIXELS) != 0ul;
+    v9x_u32 format = 0ul;
+    v9x_u32 code = 0ul;
+
+    if (format_out == 0 || texel_bytes == 0) {
+        return V9X_FALSE;
+    }
+
+    /* The signed formats, named by their Direct3D code, or V8U8 by
+     * DirectX 7's bump description. */
+    if ((flags & (V9X_D3D_I9XX_DDPF_D3DFORMAT |
+                  V9X_D3D_I9XX_DDPF_FOURCC)) != 0ul) {
+        code = fourcc;
+    } else if ((flags & V9X_D3D_I9XX_DDPF_BUMPDUDV) != 0ul &&
+               bits == 16ul && red == V9X_D3D_I9XX_V8U8_DU &&
+               green == V9X_D3D_I9XX_V8U8_DV && blue == 0ul) {
+        code = V9X_D3D_I9XX_D3DFMT_V8U8;
+    }
+    if (code == V9X_D3D_I9XX_D3DFMT_Q8W8V8U8) {
+        format = V9X_I9XX_MAPSURF_32BIT_QWVU8888;
+    } else if (code == V9X_D3D_I9XX_D3DFMT_V8U8) {
+        format = V9X_I9XX_MAPSURF_16BIT_88DVDU;
+    } else if ((flags & V9X_D3D_I9XX_DDPF_RGB) == 0ul) {
+        return V9X_FALSE;
+    } else if (bits == 16ul) {
+        /* The three 16-bit layouts, told apart by their masks; the two
+         * with alpha only with the alpha bit and its mask, since 1:5:5:5
+         * without one is 555, which the sampler has no type for. */
+        if (red == 0x0000f800ul && green == 0x000007e0ul &&
+            blue == 0x0000001ful) {
+            format = V9X_I9XX_MAPSURF_16BIT_RGB565;
+        } else if (red == 0x00007c00ul && green == 0x000003e0ul &&
+                   blue == 0x0000001ful && has_alpha &&
+                   alpha == 0x00008000ul) {
+            format = V9X_I9XX_MAPSURF_16BIT_ARGB1555;
+        } else if (red == 0x00000f00ul && green == 0x000000f0ul &&
+                   blue == 0x0000000ful && has_alpha &&
+                   alpha == 0x0000f000ul) {
+            format = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
+        }
+    } else if (bits == 32ul && red == 0x00ff0000ul &&
+               green == 0x0000ff00ul && blue == 0x000000fful) {
+        /* With the alpha bit, the alpha must be the top byte; without
+         * it, the top byte is ignored. */
+        if (!has_alpha) {
+            format = V9X_I9XX_MAPSURF_32BIT_XRGB8888;
+        } else if (alpha == 0xff000000ul) {
+            format = V9X_I9XX_MAPSURF_32BIT_ARGB8888;
+        }
+    }
+    if (format == 0ul) {
+        return V9X_FALSE;
+    }
+    *format_out = format;
+    *texel_bytes = v9x_i9xx_map_texel_bytes(format);
+    return V9X_TRUE;
 }

@@ -1087,93 +1087,93 @@ static int v9x_d3d_i9xx_refuse_vertices(const DWORD *xyzw, const DWORD *uv,
 }
 
 /*
- * Which of the three MAP_STATE formats a texture surface is, or none.
- *
- * RGB565, ARGB1555 and ARGB4444: the 16-bit types MS3 can name, and the
- * three the builder, the decoder and the published list agree on. The
- * fragment program reads the sampler's RGBA whatever the type, so the format
- * is one MAP_STATE word and nothing else in the stream changes. Anything
- * outside the three is refused here, counted, with its layout recorded -
- * which is how intel56 named Final Reality's 4:4:4:4 when only 565 was
- * accepted.
- *
- * It is also the format the desktop is in: this driver selects 5:6:5 for a
- * Gen3 machine (v9x_dd_engine_wants_555 is false for this engine), so a
- * surface with no format of its own is already the right one - which is why
- * the display's format is classified rather than treated as a refusal.
+ * A surface's pixel format: its own, or with none of its own the
+ * display's. Reading ddpfSurface anyway would read past the allocation -
+ * the DDK allocates it only in the differing case. Null without a HAL.
  */
-static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
-                                       DWORD *format_out)
+static const V9X_DDPIXELFORMAT *v9x_d3d_i9xx_pixel_format(
+    const V9X_DD_SURFACE_LCL *surface)
+{
+    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
+        return &surface->lpGbl->ddpfSurface;
+    }
+    return v9x_hal != 0 ? &v9x_hal->info.vmiData.ddpfDisplay : 0;
+}
+
+/* A surface's map format and bytes a texel (v9x_d3d_i9xx_map_format),
+ * uncounted: placement asks this of every surface it is offered. */
+static int v9x_d3d_i9xx_surface_map_format(const V9X_DD_SURFACE_LCL *surface,
+                                           DWORD *format_out,
+                                           DWORD *bytes_out)
 {
     const V9X_DDPIXELFORMAT *pixel;
 
-    if (format_out != 0) {
-        *format_out = 0ul;
-    }
     if (surface == 0 || surface->lpGbl == 0) {
         return 0;
     }
-    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
-        pixel = &surface->lpGbl->ddpfSurface;
-    } else if (v9x_hal != 0) {
-        /* No format of its own means the display's, and reading ddpfSurface
-         * anyway would read past the allocation - the DDK allocates it only
-         * in the differing case. */
-        pixel = &v9x_hal->info.vmiData.ddpfDisplay;
-    } else {
+    pixel = v9x_d3d_i9xx_pixel_format(surface);
+    if (pixel == 0) {
         return 0;
     }
-    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        pixel->dwRGBBitCount != 16ul) {
-        if (v9x_hal != 0) {
-            ++v9x_hal->d3d_diagnostics.texture_refused_format;
-            v9x_hal->d3d_diagnostics.texture_refused_last =
-                (pixel->dwRGBBitCount << 24) |
-                (pixel->dwRBitMask & 0x00fffffful);
-        }
+    return v9x_d3d_i9xx_map_format(pixel->dwFlags, pixel->dwFourCC,
+                                   pixel->dwRGBBitCount, pixel->dwRBitMask,
+                                   pixel->dwGBitMask, pixel->dwBBitMask,
+                                   pixel->dwRGBAlphaBitMask, format_out,
+                                   bytes_out) != V9X_FALSE;
+}
+
+/*
+ * Which MAP_STATE format a texture surface is, and its bytes a texel, or
+ * none.
+ *
+ * RGB565, ARGB1555 and ARGB4444, the 16-bit types the engine has sampled
+ * since Phase 6; ARGB8888 and XRGB8888, and the signed V8U8 and Q8W8V8U8
+ * that pixel shaders read (step 5a of docs\plans\gen3-ps11-pixel-
+ * shaders.md), classified by v9x_d3d_i9xx_map_format. The fragment program
+ * reads the sampler's RGBA whatever the type, so the format is one
+ * MAP_STATE word and the pitch arithmetic. Anything else is refused here,
+ * counted, with its layout recorded - which is how intel56 named Final
+ * Reality's 4:4:4:4 when only 565 was accepted.
+ *
+ * A surface with no format of its own is the display's: 5:6:5 at 16 bpp
+ * (v9x_dd_engine_wants_555 is false for this engine), XRGB8888 at 32.
+ */
+static int v9x_d3d_i9xx_texture_map(const V9X_DD_SURFACE_LCL *surface,
+                                    DWORD *format_out, DWORD *bytes_out)
+{
+    const V9X_DDPIXELFORMAT *pixel;
+
+    *format_out = 0ul;
+    *bytes_out = 0ul;
+    if (surface == 0 || surface->lpGbl == 0) {
         return 0;
     }
-    /*
-     * The three 16-bit layouts MAP_STATE can name, told apart by their masks.
-     * The alpha mask is checked too for the two that carry one: a surface
-     * described as 1:5:5:5 with no alpha bit is 555, which the sampler has
-     * no type for, and reading it as 1555 would take its top bit as alpha.
-     */
-    if (pixel->dwRBitMask == 0x0000f800ul &&
-        pixel->dwGBitMask == 0x000007e0ul &&
-        pixel->dwBBitMask == 0x0000001ful) {
-        if (format_out != 0) {
-            *format_out = V9X_I9XX_MAPSURF_16BIT_RGB565;
-        }
+    if (v9x_d3d_i9xx_surface_map_format(surface, format_out, bytes_out)) {
         return 1;
     }
-    if (pixel->dwRBitMask == 0x00007c00ul &&
-        pixel->dwGBitMask == 0x000003e0ul &&
-        pixel->dwBBitMask == 0x0000001ful &&
-        (pixel->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
-        pixel->dwRGBAlphaBitMask == 0x00008000ul) {
-        if (format_out != 0) {
-            *format_out = V9X_I9XX_MAPSURF_16BIT_ARGB1555;
-        }
-        return 1;
-    }
-    if (pixel->dwRBitMask == 0x00000f00ul &&
-        pixel->dwGBitMask == 0x000000f0ul &&
-        pixel->dwBBitMask == 0x0000000ful &&
-        (pixel->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
-        pixel->dwRGBAlphaBitMask == 0x0000f000ul) {
-        if (format_out != 0) {
-            *format_out = V9X_I9XX_MAPSURF_16BIT_ARGB4444;
-        }
-        return 1;
-    }
-    if (v9x_hal != 0) {
+    pixel = v9x_d3d_i9xx_pixel_format(surface);
+    if (pixel != 0) {
         ++v9x_hal->d3d_diagnostics.texture_refused_format;
         v9x_hal->d3d_diagnostics.texture_refused_last =
             (pixel->dwRGBBitCount << 24) |
             (pixel->dwRBitMask & 0x00fffffful);
     }
     return 0;
+}
+
+/* The engine-ops question (d3d_internal.h): can this surface be sampled,
+ * and as which map format. */
+static int v9x_d3d_i9xx_texture_format(const V9X_DD_SURFACE_LCL *surface,
+                                       DWORD *format_out)
+{
+    DWORD format;
+    DWORD bytes;
+    int ok = v9x_d3d_i9xx_texture_map(surface, &format, &bytes);
+
+    if (format_out != 0) {
+        *format_out = format;
+    }
+    return ok;
 }
 
 /*
@@ -1349,10 +1349,11 @@ static DWORD v9x_d3d_i9xx_create_depth(V9X_DDHAL_CREATESURFACEDATA *data)
 static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL *surface = ((V9X_DD_SURFACE_LCL **)data->lplpSList)[0];
-    const V9X_DDPIXELFORMAT *pixel;
     struct v9x_d3d_i9xx_miptree tree;
     DWORD width = (DWORD)surface->lpGbl->wWidth;
     DWORD height = (DWORD)surface->lpGbl->wHeight;
+    DWORD format;
+    DWORD bytes;
     DWORD base;
 
     if (v9x_d3d_i9xx_texture_shape(width, height,
@@ -1361,16 +1362,13 @@ static DWORD v9x_d3d_i9xx_create_texture(V9X_DDHAL_CREATESURFACEDATA *data)
             V9X_FALSE) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    pixel = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
-        ? &surface->lpGbl->ddpfSurface
-        : &v9x_hal->info.vmiData.ddpfDisplay;
-    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        pixel->dwRGBBitCount != 16ul) {
+    /* A format the sampler reads, at its own bytes a texel. */
+    if (!v9x_d3d_i9xx_surface_map_format(surface, &format, &bytes)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    if (v9x_d3d_i9xx_layout_miptree(width, height, 1ul,
-                                    v9x_d3d_i9xx_mip_stacked(),
-                                    &tree) == V9X_FALSE ||
+    if (v9x_d3d_i9xx_layout_miptree_at(width, height, 1ul,
+                                       v9x_d3d_i9xx_mip_stacked(), bytes,
+                                       &tree) == V9X_FALSE ||
         v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
                                  tree.level_offset, &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -1385,10 +1383,11 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     V9X_DD_SURFACE_LCL *top;
-    const V9X_DDPIXELFORMAT *pixel;
     struct v9x_d3d_i9xx_miptree tree;
     DWORD width;
     DWORD height;
+    DWORD format;
+    DWORD bytes;
     DWORD index;
     DWORD base;
     DWORD reason;
@@ -1451,19 +1450,14 @@ static DWORD v9x_d3d_i9xx_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
         }
     }
-    /* Sixteen bits a texel, which is what the layout's two bytes assume and
-     * all three MAP_STATE formats are; the bind classifies which one. No
+    /* A format the sampler reads, laid out at its own bytes a texel. No
      * format of its own means the display's. */
-    pixel = (top->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
-        ? &top->lpGbl->ddpfSurface
-        : &v9x_hal->info.vmiData.ddpfDisplay;
-    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        pixel->dwRGBBitCount != 16ul) {
+    if (!v9x_d3d_i9xx_surface_map_format(top, &format, &bytes)) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_FORMAT);
     }
-    if (v9x_d3d_i9xx_layout_miptree(width, height, data->dwSCnt,
-                                    v9x_d3d_i9xx_mip_stacked(), &tree) ==
-            V9X_FALSE) {
+    if (v9x_d3d_i9xx_layout_miptree_at(width, height, data->dwSCnt,
+                                       v9x_d3d_i9xx_mip_stacked(), bytes,
+                                       &tree) == V9X_FALSE) {
         return v9x_d3d_i9xx_miptree_decline(V9X_D3D_I9XX_MIPTREE_SHAPE);
     }
     reason = v9x_d3d_i9xx_place_block(data, tree.pitch, tree.rows,
@@ -1513,6 +1507,7 @@ static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
  * into `tree` when there is more than one.
  */
 static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
+                                     DWORD bytes,
                                      struct v9x_d3d_i9xx_miptree *tree)
 {
     const V9X_DD_SURFACE_LCL *chain[V9X_D3D_I9XX_MIP_LEVELS_MAX];
@@ -1562,9 +1557,9 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (count == 1ul) {
         return 1ul;
     }
-    if (v9x_d3d_i9xx_layout_miptree(width, height, count,
-                                    v9x_d3d_i9xx_mip_stacked(), tree) ==
-            V9X_FALSE) {
+    if (v9x_d3d_i9xx_layout_miptree_at(width, height, count,
+                                       v9x_d3d_i9xx_mip_stacked(), bytes,
+                                       tree) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.mip_gap_shape;
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         return 1ul;
@@ -1598,9 +1593,9 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     if (verified < count) {
         ++v9x_hal->d3d_diagnostics.mip_chain_gaps;
         if (verified <= 1ul ||
-            v9x_d3d_i9xx_layout_miptree(width, height, verified,
-                                        v9x_d3d_i9xx_mip_stacked(), tree) ==
-                V9X_FALSE) {
+            v9x_d3d_i9xx_layout_miptree_at(width, height, verified,
+                                           v9x_d3d_i9xx_mip_stacked(), bytes,
+                                           tree) == V9X_FALSE) {
             return 1ul;
         }
     }
@@ -1618,6 +1613,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
     V9X_DD_SURFACE_LCL *surface = (V9X_DD_SURFACE_LCL *)texture->object;
     struct v9x_d3d_i9xx_miptree tree;
     DWORD format = 0ul;
+    DWORD bytes = 0ul;
     DWORD offset;
     DWORD address = 0ul;
     DWORD levels;
@@ -1644,7 +1640,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
             surface->lpGbl->fpVidMem;
         return 0;
     }
-    if (!v9x_d3d_i9xx_texture_format(surface, &format)) {
+    if (!v9x_d3d_i9xx_texture_map(surface, &format, &bytes)) {
         return 0;
     }
     /*
@@ -1681,12 +1677,12 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
      * across, since level 2's column can reach past level 0's width - rather
      * than the top level alone.
      */
-    levels = v9x_d3d_i9xx_mip_levels(surface, &tree);
+    levels = v9x_d3d_i9xx_mip_levels(surface, bytes, &tree);
     map_rows = (DWORD)surface->lpGbl->wHeight;
     footprint_width = (DWORD)surface->lpGbl->wWidth;
     if (levels > 1ul) {
         map_rows = tree.rows;
-        footprint_width = tree.pitch / 2ul;
+        footprint_width = tree.pitch / bytes;
     }
     /*
      * The footprint, against the aperture. THIS is the memory-safety check
@@ -1694,10 +1690,10 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
      * this produced, which cannot catch an engine that was wrong about the
      * surface, and this is what makes sure it was not.
      */
-    if (v9x_d3d_i9xx_bind_map(offset, (DWORD)surface->lpGbl->lPitch,
-                              footprint_width, map_rows,
-                              v9x_hal->fb.vram_bytes,
-                              &address) == V9X_FALSE) {
+    if (v9x_d3d_i9xx_bind_map_at(offset, (DWORD)surface->lpGbl->lPitch,
+                                 footprint_width, map_rows, bytes,
+                                 v9x_hal->fb.vram_bytes,
+                                 &address) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
         ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
         v9x_hal->d3d_diagnostics.texture_refused_caps = surface->ddsCaps;
@@ -1836,7 +1832,8 @@ static DWORD v9x_d3d_i9xx_texture_program(const V9X_R3D_DRAW *draw,
         return V9X_I9XX_TEXPROG_DECAL;
     }
     if (format == V9X_I9XX_MAPSURF_16BIT_ARGB1555 ||
-        format == V9X_I9XX_MAPSURF_16BIT_ARGB4444) {
+        format == V9X_I9XX_MAPSURF_16BIT_ARGB4444 ||
+        format == V9X_I9XX_MAPSURF_32BIT_ARGB8888) {
         return V9X_I9XX_TEXPROG_MODULATE_TEXALPHA;
     }
     return V9X_I9XX_TEXPROG_MODULATE_DIFFALPHA;
@@ -2212,8 +2209,44 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
         0x0000f000ul;
     shared->texture_formats[2].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
 
+    /*
+     * ARGB8888 and XRGB8888, as the HD 4600 publishes them (step 5a of
+     * docs\plans\gen3-ps11-pixel-shaders.md): V9XD32's pixel-shader test
+     * makes its textures A8R8G8B8, and DirectX 8 asks for no other colour
+     * format there. Every title sees them, not only shaders. MAPSURF_32BIT
+     * ARGB8888 and XRGB8888 are the codes both reference drivers select
+     * for these layouts; neither has been sampled on Gen3 here.
+     */
+    shared->texture_formats[3].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[3].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[3].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[3].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0xff000000ul;
+    shared->texture_formats[3].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
+    shared->texture_formats[4].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[4].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[4].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[4].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 3ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.hwCaps.dwFlags |= V9X_D3DDD_DEVICEZBUFFERBITDEPTH;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
@@ -3312,11 +3345,14 @@ static int v9x_d3d_i9xx_texture_bindable(const V9X_DD_SURFACE_LCL *surface)
             V9X_FALSE) {
         return 0;
     }
-    if ((surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul) {
-        return (surface->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) != 0ul &&
-               surface->lpGbl->ddpfSurface.dwRGBBitCount == 16ul;
+    /* A format the bind classifies; the display's 565 or XRGB8888 for a
+     * surface with none of its own. */
+    {
+        DWORD format;
+        DWORD bytes;
+
+        return v9x_d3d_i9xx_surface_map_format(surface, &format, &bytes);
     }
-    return 1;
 }
 
 /* The render interface's combine numbers are the two-unit program's. */
