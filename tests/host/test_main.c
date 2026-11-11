@@ -325,6 +325,10 @@ unsigned int v9x_run_nv3_3d_tests(void);
  * structure on the GT218's inputs. */
 unsigned int v9x_run_nv50_grctx_tests(void);
 
+/* tests\host\test_nv50_chan.c: the GT218 channel, VM, objects and 2D
+ * pushbuffer words against nouveau's encodings. */
+unsigned int v9x_run_nv50_chan_tests(void);
+
 /* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
  * 3dfx driver builds for them. */
 unsigned int v9x_run_tdfx_hwc_tests(void);
@@ -1544,6 +1548,7 @@ int main(int argc, char **argv)
     failures += v9x_run_nv3_2d_tests();
     failures += v9x_run_nv3_3d_tests();
     failures += v9x_run_nv50_grctx_tests();
+    failures += v9x_run_nv50_chan_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_rs690_2d_tests();

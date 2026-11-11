@@ -1,0 +1,269 @@
+#include <stdio.h>
+#include <string.h>
+
+#include "velocity9x/nv50_chan.h"
+
+/*
+ * The GT218 channel builder (src\chipsets\nvidia\gt218\nv50_chan.c), word
+ * by word against nouveau's encodings as include\velocity9x\nv50_chan.h
+ * cites them, at the base the step 3 probe uses (192 MiB, above the
+ * driver's 128 MiB BAR1 mapping).
+ */
+
+static unsigned int failures = 0u;
+#define CHECK(e) do { if (!(e)) { \
+    printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, #e); \
+    ++failures; } } while (0)
+
+#define BASE 0x0c000000ul
+#define CHID 1ul
+
+static v9x_u32 region[V9X_NV50_REGION_WORDS];
+static struct v9x_nv50_chan_layout layout;
+
+static v9x_u32 word_at(v9x_u32 byte_offset)
+{
+    return region[byte_offset / 4ul];
+}
+
+static v9x_status build(void)
+{
+    struct v9x_nv50_grctx_input input;
+
+    input.chipset = 0xa8ul;
+    input.units = 0xf3010001ul;
+    input.gddr5 = 0ul;
+    return v9x_nv50_chan_build(BASE, CHID, &input, region,
+                               V9X_NV50_REGION_WORDS, &layout);
+}
+
+static v9x_u32 ramht_find(v9x_u32 handle)
+{
+    v9x_u32 slot;
+    v9x_u32 at;
+
+    for (slot = 0ul; slot < V9X_NV50_RAMHT_BYTES / 8ul; ++slot) {
+        at = V9X_NV50_INST_RAMHT + slot * 8ul;
+        if (word_at(at) == handle) {
+            return word_at(at + 4ul);
+        }
+    }
+    return 0xfffffffful;
+}
+
+static void test_layout(void)
+{
+    CHECK(build() == V9X_STATUS_OK);
+    CHECK(layout.inst_addr == BASE);
+    CHECK((layout.inst_addr & 0xffful) == 0ul);
+    CHECK(layout.ramfc_addr == BASE + 0x5400ul);
+    CHECK((layout.ramfc_addr & 0xfful) == 0ul);
+    /* RAMFC >> 8 with bit 31 (g84.c bind, nv50.c start). */
+    CHECK(layout.chan_entry == ((BASE + 0x5400ul) >> 8 | 0x80000000ul));
+    CHECK(layout.runlist_reg == (BASE + V9X_NV50_RUNLIST) >> 12);
+    CHECK(layout.runlist_count == 1ul);
+    CHECK(word_at(V9X_NV50_RUNLIST) == CHID);
+    CHECK(layout.program_words == 124ul);
+    CHECK(layout.grctx_bytes == 77440ul * 4ul);
+    CHECK(layout.grctx_bytes <= V9X_NV50_GRCTX_MAX_BYTES);
+}
+
+/* Every structure inside the instance block stays clear of its
+ * neighbours, checked at compile time. */
+typedef char test_nv50_cache_below_pd[
+    (V9X_NV50_INST_CACHE + 0x1000ul <= V9X_NV50_INST_PD) ? 1 : -1];
+typedef char test_nv50_pd_below_ramfc[
+    (V9X_NV50_INST_PD + V9X_NV50_PD_BYTES <= V9X_NV50_INST_RAMFC) ? 1 : -1];
+typedef char test_nv50_ramht_inside_inst[
+    (V9X_NV50_INST_RAMHT + V9X_NV50_RAMHT_BYTES <= V9X_NV50_INST_BYTES) ?
+    1 : -1];
+/* cl006c.h header layout: count 28:18, subchannel 15:13, method 12:2. */
+typedef char test_nv50_header_bind[
+    (V9X_NV50_PUSH_HEADER(3u, 0x0000ul, 1u) == 0x00046000ul) ? 1 : -1];
+typedef char test_nv50_header_ref[
+    (V9X_NV50_PUSH_HEADER(0u, 0x0050ul, 1u) == 0x00040050ul) ? 1 : -1];
+typedef char test_nv50_header_run[
+    (V9X_NV50_PUSH_HEADER(3u, 0x0200ul, 10u) == 0x00286200ul) ? 1 : -1];
+
+static void test_vm(void)
+{
+    v9x_u32 page;
+    v9x_u32 bad = 0ul;
+
+    CHECK(build() == V9X_STATUS_OK);
+    /* PDE 0: the page table's address | 64 KiB pages in video memory. */
+    CHECK(word_at(V9X_NV50_INST_PD) == ((BASE + V9X_NV50_PT) | 1ul));
+    CHECK(word_at(V9X_NV50_INST_PD + 4ul) == 0ul);
+    CHECK(word_at(V9X_NV50_INST_PD + 8ul) == 0ul);
+    /* The identity, valid, log2blk 7, high word (kind) 0. */
+    for (page = 0ul; page < V9X_NV50_VM_BYTES / V9X_NV50_PAGE_BYTES;
+         ++page) {
+        if (word_at(V9X_NV50_PT + page * 8ul) !=
+            ((page << 16) | 0x381ul) ||
+            word_at(V9X_NV50_PT + page * 8ul + 4ul) != 0ul) {
+            ++bad;
+        }
+    }
+    CHECK(bad == 0ul);
+    CHECK(word_at(V9X_NV50_PT + 0x0c00ul * 8ul) == 0x0c000381ul);
+}
+
+static void test_objects(void)
+{
+    CHECK(build() == V9X_STATUS_OK);
+    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x00ul) == 0x7fc0003dul);
+    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x04ul) == 0x1ffffffful);
+    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x08ul) == 0ul);
+    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x0cul) == 0ul);
+    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x14ul) == 0ul);
+    CHECK(word_at(V9X_NV50_INST_OBJ_2D + 0x00ul) == 0x502dul);
+    CHECK(word_at(V9X_NV50_INST_OBJ_2D + 0x04ul) == 0ul);
+
+    /* RAMHT: engine << 20 | offset >> 4. */
+    CHECK(ramht_find(V9X_NV50_HANDLE_DMA_VM) == (0ul << 20 | 0x200ul >> 4));
+    CHECK(ramht_find(V9X_NV50_HANDLE_2D) == (1ul << 20 | 0x220ul >> 4));
+    /* The DMA object lands at its own hash slot. */
+    CHECK(word_at(V9X_NV50_INST_RAMHT +
+                  v9x_nv50_ramht_hash(V9X_NV50_HANDLE_DMA_VM) * 8ul) ==
+          V9X_NV50_HANDLE_DMA_VM);
+}
+
+static void test_hash(void)
+{
+    /* ramht.c: XOR of 12-bit chunks. */
+    CHECK(v9x_nv50_ramht_hash(0x00000123ul) == 0x123ul);
+    CHECK(v9x_nv50_ramht_hash(0x00456123ul) == (0x123ul ^ 0x456ul));
+    CHECK(v9x_nv50_ramht_hash(0xbeef0201ul) ==
+          (0x201ul ^ 0xef0ul ^ 0xbeul));
+}
+
+static void test_engine_and_ramfc(void)
+{
+    v9x_u32 eng = V9X_NV50_INST_ENG + V9X_NV50_ENG_GR;
+    v9x_u32 ramfc = V9X_NV50_INST_RAMFC;
+    v9x_u32 grctx = BASE + V9X_NV50_GRCTX;
+
+    CHECK(build() == V9X_STATUS_OK);
+    CHECK(word_at(eng + 0x00ul) == 0x00190000ul);
+    CHECK(word_at(eng + 0x04ul) == grctx + 77440ul * 4ul - 1ul);
+    CHECK(word_at(eng + 0x08ul) == grctx);
+    CHECK(word_at(eng + 0x0cul) == grctx);
+    CHECK(word_at(eng + 0x10ul) == 0ul);
+    CHECK(word_at(eng + 0x14ul) == 0ul);
+
+    CHECK(word_at(ramfc + 0x3cul) == 0x403f6078ul);
+    CHECK(word_at(ramfc + 0x44ul) == 0x01003ffful);
+    CHECK(word_at(ramfc + 0x48ul) == 0x200ul >> 4);
+    CHECK(word_at(ramfc + 0x50ul) == BASE + V9X_NV50_IB);
+    CHECK(word_at(ramfc + 0x54ul) == (9ul << 16));
+    CHECK(word_at(ramfc + 0x60ul) == 0x7ffffffful);
+    CHECK(word_at(ramfc + 0x7cul) == 0x30000ffful);
+    CHECK(word_at(ramfc + 0x80ul) ==
+          ((3ul << 27) | (4ul << 24) | (0x6000ul >> 4)));
+    CHECK(word_at(ramfc + 0x88ul) == (BASE + 0x400ul) >> 10);
+    CHECK(word_at(ramfc + 0x98ul) == BASE >> 12);
+}
+
+/* The context image in the region is the generator's, at its offset. */
+static v9x_u32 image[V9X_NV50_GRCTX_MAX_BYTES / 4ul];
+static v9x_u32 program[V9X_NV50_GRCTX_PROGRAM_MAX];
+
+static void test_grctx_placed(void)
+{
+    struct v9x_nv50_grctx_input input;
+    v9x_u32 words = 0ul;
+    v9x_u32 image_words = 0ul;
+
+    CHECK(build() == V9X_STATUS_OK);
+    input.chipset = 0xa8ul;
+    input.units = 0xf3010001ul;
+    input.gddr5 = 0ul;
+    CHECK(v9x_nv50_grctx_build(&input, program, &words, image,
+                               V9X_NV50_GRCTX_MAX_BYTES / 4ul,
+                               &image_words) == V9X_STATUS_OK);
+    CHECK(memcmp(region + V9X_NV50_GRCTX / 4ul, image,
+                 image_words * 4ul) == 0);
+    CHECK(memcmp(layout.program, program, words * 4ul) == 0);
+}
+
+static void test_refusals(void)
+{
+    struct v9x_nv50_grctx_input input;
+
+    input.chipset = 0xa8ul;
+    input.units = 0xf3010001ul;
+    input.gddr5 = 0ul;
+    CHECK(v9x_nv50_chan_build(BASE + 0x1000ul, CHID, &input, region,
+                              V9X_NV50_REGION_WORDS, &layout) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_nv50_chan_build(BASE, 0ul, &input, region,
+                              V9X_NV50_REGION_WORDS, &layout) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_nv50_chan_build(BASE, 127ul, &input, region,
+                              V9X_NV50_REGION_WORDS, &layout) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* B0000h bytes from 1FF60000h would end past the 512 MiB mapped. */
+    CHECK(v9x_nv50_chan_build(0x1ff60000ul, CHID, &input, region,
+                              V9X_NV50_REGION_WORDS, &layout) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_nv50_chan_build(BASE, CHID, &input, region, 16ul, &layout) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_push(void)
+{
+    v9x_u32 words[64];
+    v9x_u32 entry[2];
+    struct v9x_nv50_push push;
+
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_bind_2d(&push);
+    CHECK(push.count == 4ul);
+    CHECK(words[0] == 0x00046000ul);
+    CHECK(words[1] == V9X_NV50_HANDLE_2D);
+    CHECK(words[2] == 0x00046184ul);
+    CHECK(words[3] == V9X_NV50_HANDLE_DMA_VM);
+
+    v9x_nv50_push_fill(&push, 0x0c200000ul, 256ul, 64ul, 64ul,
+                       V9X_502D_FORMAT_X8R8G8B8, 0x00a5c3e1ul,
+                       0ul, 0ul, 64ul, 64ul);
+    CHECK(push.overflow == 0ul);
+    /* Surface run: header, 10 words; then five single methods; then the
+     * point run: header, 4 words. */
+    CHECK(push.count == 4ul + 11ul + 10ul + 5ul);
+    CHECK(words[4] == 0x00286200ul);
+    CHECK(words[5] == 0xe6ul);
+    CHECK(words[6] == 1ul);
+    CHECK(words[8] == 1ul);
+    CHECK(words[9] == 0ul);
+    CHECK(words[10] == 256ul);
+    CHECK(words[14] == 0x0c200000ul);
+    CHECK(words[15] == 0x00046290ul);
+    CHECK(words[25] == 0x00106600ul);
+    CHECK(words[26] == 0ul);
+    CHECK(words[28] == 64ul);
+    CHECK(words[29] == 64ul);
+
+    v9x_nv50_push_init(&push, words, 2ul);
+    v9x_nv50_push_bind_2d(&push);
+    CHECK(push.overflow == 1ul);
+
+    /* chan506f.c: low address; high | dwords << 10. */
+    v9x_nv50_ib_entry(0x0c022000ul, 30ul, entry);
+    CHECK(entry[0] == 0x0c022000ul);
+    CHECK(entry[1] == (30ul << 10));
+}
+
+unsigned int v9x_run_nv50_chan_tests(void)
+{
+    failures = 0u;
+    test_layout();
+    test_vm();
+    test_objects();
+    test_hash();
+    test_engine_and_ramfc();
+    test_grctx_placed();
+    test_refusals();
+    test_push();
+    return failures;
+}

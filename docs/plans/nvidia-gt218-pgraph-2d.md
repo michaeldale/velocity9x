@@ -118,6 +118,19 @@ BAR1: instance block, PD/PT, DMA objects, 502D object, RAMHT with the
 hash, RAMFC, runlist, IB ring and a pushbuffer (NOP, SET_OBJECT, the
 fill). Host tests against the encodings above, word by word.
 
+Done 2026-11-11: `include/velocity9x/nv50_chan.h`,
+`src/chipsets/nvidia/gt218/nv50_chan.c`, `tests/host/test_nv50_chan.c`.
+One B0000h-byte region (instance block at +0, page table +10000h,
+runlist +20000h, IB +21000h, push +22000h, context image +30000h), 64 KiB
+aligned, inside the first 512 MiB. Choices that are ours, not nouveau's:
+the fixed offsets inside the instance block, a VM DMA object limited to
+the 512 MiB the page table maps, handles `BEEF0201h` (DMA) and
+`BEEF502Dh` (2D), subchannel 3, the PGRAPH pointer's fourth word as
+nouveau writes it (start low) rather than as its DMA objects do (start
+high). Two encodings are recalled, not in the saved sources, and marked
+so in the code: the rectangle's second corner exclusive, and REF_CNT at
+PFIFO method 50h read back from USERD + 48h.
+
 ### Step 3: the probe, V9XNV5CH
 
 A VxD + Win32 probe in the N5MM pattern, on a fresh boot, writing its
