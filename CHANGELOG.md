@@ -14,12 +14,13 @@ build identifier so exact guest-tested binaries remain traceable.
   AMD cards measured. On the HD 4600, a 256x256 window move went from 103
   to 2,124 MB/s, an overlapping copy (what scrolling does) from 24 to
   2,665 MB/s, and ScrollDC from 153 to 6,957 MB/s; small areas gain
-  less (2.5 times at 8x8). The cost is the extra
+  less (2.5 times at 8x8). On a Radeon R3E, reads went from 5 MB/s to
+  350-1,180 MB/s at 8, 16 and 32 bpp, and scrolling an 800x600 window
+  from 400 ms to 2-3 ms. Scrolling up a document is no longer seven
+  times slower than scrolling down (HD 4600). The cost is the extra
   copy: drawing that only writes runs at 0.3 to 0.8 of its old speed,
-  text costs 1.3 times as much and lines 1.35 to 1.9 times. After a
-  full-screen DOS box the desktop is back at once. Not yet run on an AMD
-  machine, at a depth other than 16 bpp, or with a windowed program that
-  writes straight to the screen through DirectDraw. A file
+  text costs 1.3 to 1.9 times as much and lines 1.35 to 3.4 times. After a
+  full-screen DOS box the desktop is back at once. A file
   `C:\V9XDIAG\NOSHADOW.TXT` turns it off
   ([record](docs/decisions/2026-11-11-vbe-screen-shadow-phase1.md)).
 

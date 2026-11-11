@@ -1,0 +1,11 @@
+TscHz=1197750060
+SpreadPpm=3.1
+DriftPpm=2.1
+Timer.Cost.Rdtsc=43.6459 cyc/call verified=skipped status=ok
+Timer.Cost.Qpc=5535.0245 cyc/call verified=skipped status=ok
+Timer.Cost.TimeGetTime=5957.4159 cyc/call verified=skipped status=ok
+Ref.AluLoop=2.0176 cyc/loop verified=yes status=ok
+Ref.MemFill=0.5314 cyc/byte verified=yes status=ok
+Ref.MemCopy=1.0265 cyc/byte verified=yes status=ok
+Ref.MemRead=0.5629 cyc/byte verified=yes status=ok
+Ref.DibToDibBlt=0.6055 cyc/byte verified=yes status=ok

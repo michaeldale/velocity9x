@@ -1,0 +1,19 @@
+ConfigId=m-jjn1zz-r3e-v9x-vbe-noshadow
+Environment=metal
+Endpoint=relay:M-JJN1ZZ
+Guest=W9QI0DA2
+GuestUptimeMs=183078
+GuestBootCounter=30
+Agent=0.15.0 v0.15.0
+Build=a80e784
+Version=v0.12.0+10
+Mode=1024x768x32
+ToolOrder=DBCAPS,DBTIME,DBGDI
+Arguments=/env:metal /config:m-jjn1zz-r3e-v9x-vbe-noshadow /mode:1024x768x32
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=
+Tool.DBCAPS ok 22.4s 20261111-104626\DBCAPS.INI
+Tool.DBTIME ok 27.3s 20261111-104626\DBTIME.INI
+Tool.DBGDI ok 109.3s 20261111-104626\DBGDI.INI

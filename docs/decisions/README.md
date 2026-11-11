@@ -157,6 +157,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-08 Mode sync after a Device Manager reinstall: Windows reinstalls from a stale INF entry, and the sync finds no marked key](2026-11-08-mode-sync-after-device-manager-reinstall.md)
 - [2026-11-08 The vbe family write-combines through PAT when the BIOS's MTRRs refuse: FbWrite 66 to 11,357 MB/s on the i5-4570](2026-11-08-vbe-pat-write-combining.md)
 - [2026-11-11 The vbe screen shadow, Phase 1: 256x256 screen-to-screen copies 21 and 112 times faster on the i5-4570, writes 0.3 to 0.8 as fast](2026-11-11-vbe-screen-shadow-phase1.md)
+- [2026-11-11 The vbe screen shadow on an AMD machine, at 8 and 32 bpp, and the open items: R3E reads 75-250x faster, scrolling up is no longer 7x slower than down](2026-11-11-vbe-screen-shadow-open-items.md)
 
 ## S3 hardware baselines
 

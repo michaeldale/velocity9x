@@ -1,0 +1,90 @@
+71 pid=FFFFD677 time interval-ms=151126200 swaps=2 present-ms=102 draw-ms=80166532 upload-ms=0
+72 pid=FFFFD677 tsc frames=2 wall-ms=151126200 vertex-ms=55247 flush-in-vertex-ms=0 flush-other-ms=80363136 bind-ms=792 iface-ms=80154757 beginend-ms=62175 swap-ms=36155906 vertices=12 flushes=1 draws=1 sink-ms=13222 sink-prep-ms=12553 sinks=1
+353 pid=FFFFD677 time interval-ms=10092 swaps=29 present-ms=2566 draw-ms=1930 upload-ms=0
+354 pid=FFFFD677 tsc frames=29 wall-ms=10092 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=2100 bind-ms=13 iface-ms=1930 beginend-ms=0 swap-ms=2566 vertices=215 flushes=55 draws=55 sink-ms=0 sink-prep-ms=0 sinks=60
+748 pid=FFFFD677 time interval-ms=10029 swaps=30 present-ms=1594 draw-ms=1310 upload-ms=0
+749 pid=FFFFD677 tsc frames=30 wall-ms=10029 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1325 bind-ms=14 iface-ms=1310 beginend-ms=0 swap-ms=1595 vertices=235 flushes=80 draws=80 sink-ms=0 sink-prep-ms=0 sinks=80
+71 pid=FFFEBB1F time interval-ms=297651 swaps=2 present-ms=102 draw-ms=158464 upload-ms=0
+72 pid=FFFEBB1F tsc frames=2 wall-ms=297651 vertex-ms=25 flush-in-vertex-ms=0 flush-other-ms=158510 bind-ms=2 iface-ms=158441 beginend-ms=42 swap-ms=71353 vertices=12 flushes=1 draws=1 sink-ms=25 sink-prep-ms=24 sinks=1
+353 pid=FFFEBB1F time interval-ms=10046 swaps=29 present-ms=2568 draw-ms=1887 upload-ms=0
+354 pid=FFFEBB1F tsc frames=29 wall-ms=10046 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=2047 bind-ms=4 iface-ms=1887 beginend-ms=1 swap-ms=2569 vertices=215 flushes=55 draws=55 sink-ms=0 sink-prep-ms=0 sinks=60
+748 pid=FFFEBB1F time interval-ms=10017 swaps=30 present-ms=1590 draw-ms=1309 upload-ms=0
+749 pid=FFFEBB1F tsc frames=30 wall-ms=10017 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1326 bind-ms=16 iface-ms=1309 beginend-ms=0 swap-ms=1591 vertices=235 flushes=80 draws=80 sink-ms=0 sink-prep-ms=0 sinks=80
+71 pid=FFFEAFB7 time interval-ms=3836726 swaps=2 present-ms=101 draw-ms=2067626 upload-ms=0
+72 pid=FFFEAFB7 tsc frames=2 wall-ms=3836726 vertex-ms=330 flush-in-vertex-ms=0 flush-other-ms=2068137 bind-ms=19 iface-ms=2067309 beginend-ms=530 swap-ms=910449 vertices=12 flushes=1 draws=1 sink-ms=331 sink-prep-ms=313 sinks=1
+365 pid=FFFEAFB7 time interval-ms=10215 swaps=30 present-ms=2651 draw-ms=1905 upload-ms=0
+366 pid=FFFEAFB7 tsc frames=30 wall-ms=10215 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=2071 bind-ms=11 iface-ms=1905 beginend-ms=0 swap-ms=2653 vertices=218 flushes=56 draws=56 sink-ms=0 sink-prep-ms=0 sinks=61
+748 pid=FFFEAFB7 time interval-ms=10082 swaps=29 present-ms=1478 draw-ms=1294 upload-ms=0
+749 pid=FFFEAFB7 tsc frames=29 wall-ms=10082 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1310 bind-ms=16 iface-ms=1294 beginend-ms=0 swap-ms=1479 vertices=248 flushes=83 draws=83 sink-ms=0 sink-prep-ms=0 sinks=83
+71 pid=FFFEAFB7 time interval-ms=4250946 swaps=2 present-ms=102 draw-ms=2282331 upload-ms=0
+72 pid=FFFEAFB7 tsc frames=2 wall-ms=4250946 vertex-ms=361 flush-in-vertex-ms=0 flush-other-ms=2282980 bind-ms=54 iface-ms=2281982 beginend-ms=602 swap-ms=1010995 vertices=12 flushes=1 draws=1 sink-ms=363 sink-prep-ms=344 sinks=1
+365 pid=FFFEAFB7 time interval-ms=10216 swaps=30 present-ms=2649 draw-ms=1901 upload-ms=0
+366 pid=FFFEAFB7 tsc frames=30 wall-ms=10216 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=2066 bind-ms=9 iface-ms=1901 beginend-ms=0 swap-ms=2650 vertices=218 flushes=56 draws=56 sink-ms=0 sink-prep-ms=0 sinks=61
+748 pid=FFFEAFB7 time interval-ms=10085 swaps=29 present-ms=1479 draw-ms=1291 upload-ms=0
+749 pid=FFFEAFB7 tsc frames=29 wall-ms=10085 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1306 bind-ms=13 iface-ms=1291 beginend-ms=0 swap-ms=1480 vertices=248 flushes=83 draws=83 sink-ms=0 sink-prep-ms=0 sinks=83
+51 pid=FFFE63BD time interval-ms=32123114 swaps=0 present-ms=0 draw-ms=2147483648 upload-ms=0
+52 pid=FFFE63BD tsc frames=0 wall-ms=32123114 vertex-ms=273521218 flush-in-vertex-ms=0 flush-other-ms=2147483648 bind-ms=11877488 iface-ms=2147483648 beginend-ms=86193434 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=11501629 sink-prep-ms=10374784 sinks=1
+73 pid=FFFE63BD time interval-ms=10000 swaps=11 present-ms=1481 draw-ms=7782 upload-ms=0
+74 pid=FFFE63BD tsc frames=11 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=7793 bind-ms=10 iface-ms=7782 beginend-ms=3700 swap-ms=1481 vertices=28 flushes=118 draws=118 sink-ms=3698 sink-prep-ms=5 sinks=2005
+85 pid=FFFE63BD time interval-ms=10326 swaps=8 present-ms=1055 draw-ms=9132 upload-ms=0
+86 pid=FFFE63BD tsc frames=8 wall-ms=10326 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=9152 bind-ms=20 iface-ms=9132 beginend-ms=6207 swap-ms=1056 vertices=0 flushes=199 draws=199 sink-ms=6203 sink-prep-ms=6 sinks=3822
+97 pid=FFFE63BD time interval-ms=10091 swaps=7 present-ms=918 draw-ms=9016 upload-ms=0
+98 pid=FFFE63BD tsc frames=7 wall-ms=10091 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=9032 bind-ms=16 iface-ms=9016 beginend-ms=6356 swap-ms=919 vertices=0 flushes=218 draws=218 sink-ms=6352 sink-prep-ms=6 sinks=3933
+112 pid=FFFE63BD time interval-ms=10146 swaps=7 present-ms=913 draw-ms=9103 upload-ms=0
+113 pid=FFFE63BD tsc frames=7 wall-ms=10146 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=9120 bind-ms=16 iface-ms=9103 beginend-ms=6655 swap-ms=914 vertices=0 flushes=228 draws=228 sink-ms=6651 sink-prep-ms=6 sinks=4253
+124 pid=FFFE63BD time interval-ms=10047 swaps=6 present-ms=784 draw-ms=9125 upload-ms=0
+125 pid=FFFE63BD tsc frames=6 wall-ms=10047 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=9138 bind-ms=13 iface-ms=9125 beginend-ms=6889 swap-ms=784 vertices=0 flushes=231 draws=231 sink-ms=6885 sink-prep-ms=7 sinks=4501
+136 pid=FFFE63BD time interval-ms=10042 swaps=5 present-ms=652 draw-ms=9260 upload-ms=0
+137 pid=FFFE63BD tsc frames=5 wall-ms=10042 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=9286 bind-ms=26 iface-ms=9259 beginend-ms=7432 swap-ms=652 vertices=0 flushes=230 draws=230 sink-ms=7428 sink-prep-ms=7 sinks=4775
+71 pid=FFFEBC69 time interval-ms=246270 swaps=2 present-ms=101 draw-ms=132453 upload-ms=0
+72 pid=FFFEBC69 tsc frames=2 wall-ms=246270 vertex-ms=23 flush-in-vertex-ms=0 flush-other-ms=132493 bind-ms=3 iface-ms=132430 beginend-ms=37 swap-ms=62989 vertices=12 flushes=1 draws=1 sink-ms=23 sink-prep-ms=22 sinks=1
+389 pid=FFFEBC69 time interval-ms=10209 swaps=32 present-ms=2835 draw-ms=1635 upload-ms=0
+390 pid=FFFEBC69 tsc frames=32 wall-ms=10209 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1798 bind-ms=10 iface-ms=1635 beginend-ms=0 swap-ms=2835 vertices=224 flushes=58 draws=58 sink-ms=0 sink-prep-ms=0 sinks=63
+748 pid=FFFEBC69 time interval-ms=10020 swaps=27 present-ms=1264 draw-ms=794 upload-ms=0
+749 pid=FFFEBC69 tsc frames=27 wall-ms=10020 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=809 bind-ms=13 iface-ms=794 beginend-ms=1 swap-ms=1264 vertices=282 flushes=91 draws=91 sink-ms=0 sink-prep-ms=0 sinks=91
+71 pid=FFFEBB21 time interval-ms=246294 swaps=2 present-ms=101 draw-ms=130725 upload-ms=0
+72 pid=FFFEBB21 tsc frames=2 wall-ms=246294 vertex-ms=23 flush-in-vertex-ms=0 flush-other-ms=130766 bind-ms=3 iface-ms=130702 beginend-ms=36 swap-ms=62873 vertices=12 flushes=1 draws=1 sink-ms=22 sink-prep-ms=21 sinks=1
+389 pid=FFFEBB21 time interval-ms=10205 swaps=32 present-ms=2834 draw-ms=1637 upload-ms=0
+390 pid=FFFEBB21 tsc frames=32 wall-ms=10205 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1799 bind-ms=9 iface-ms=1637 beginend-ms=0 swap-ms=2835 vertices=224 flushes=58 draws=58 sink-ms=0 sink-prep-ms=0 sinks=63
+748 pid=FFFEBB21 time interval-ms=10027 swaps=27 present-ms=1264 draw-ms=800 upload-ms=0
+749 pid=FFFEBB21 tsc frames=27 wall-ms=10027 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=817 bind-ms=16 iface-ms=800 beginend-ms=1 swap-ms=1265 vertices=282 flushes=91 draws=91 sink-ms=0 sink-prep-ms=0 sinks=91
+71 pid=FFFE127F time interval-ms=114286 swaps=2 present-ms=2 draw-ms=7470 upload-ms=0
+72 pid=FFFE127F tsc frames=2 wall-ms=114286 vertex-ms=29 flush-in-vertex-ms=0 flush-other-ms=7546 bind-ms=2 iface-ms=7466 beginend-ms=51 swap-ms=1606 vertices=12 flushes=1 draws=1 sink-ms=30 sink-prep-ms=28 sinks=1
+723 pid=FFFE127F time interval-ms=10083 swaps=59 present-ms=41 draw-ms=5 upload-ms=103
+724 pid=FFFE127F tsc frames=59 wall-ms=10083 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=143 bind-ms=27 iface-ms=5 beginend-ms=1 swap-ms=41 vertices=398 flushes=108 draws=108 sink-ms=0 sink-prep-ms=0 sinks=114
+72 pid=FFFEA099 time interval-ms=262517 swaps=2 present-ms=1 draw-ms=142 upload-ms=0
+73 pid=FFFEA099 tsc frames=2 wall-ms=262517 vertex-ms=375 flush-in-vertex-ms=0 flush-other-ms=477 bind-ms=4 iface-ms=142 beginend-ms=468 swap-ms=2960 vertices=12 flushes=1 draws=1 sink-ms=196 sink-prep-ms=193 sinks=1
+724 pid=FFFEA099 time interval-ms=10040 swaps=59 present-ms=39 draw-ms=5 upload-ms=100
+725 pid=FFFEA099 tsc frames=59 wall-ms=10040 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=136 bind-ms=22 iface-ms=5 beginend-ms=1 swap-ms=39 vertices=398 flushes=108 draws=108 sink-ms=1 sink-prep-ms=0 sinks=114
+71 pid=FFFE739B time interval-ms=1279842 swaps=2 present-ms=1 draw-ms=688 upload-ms=0
+72 pid=FFFE739B tsc frames=2 wall-ms=1279842 vertex-ms=530 flush-in-vertex-ms=0 flush-other-ms=1667 bind-ms=21 iface-ms=687 beginend-ms=449 swap-ms=14481 vertices=12 flushes=1 draws=1 sink-ms=197 sink-prep-ms=180 sinks=1
+771 pid=FFFE739B time interval-ms=10018 swaps=59 present-ms=40 draw-ms=5 upload-ms=101
+772 pid=FFFE739B tsc frames=59 wall-ms=10018 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=134 bind-ms=20 iface-ms=5 beginend-ms=1 swap-ms=40 vertices=382 flushes=104 draws=104 sink-ms=0 sink-prep-ms=0 sinks=109
+72 pid=FFFE49FD time interval-ms=259284 swaps=2 present-ms=2 draw-ms=141 upload-ms=0
+73 pid=FFFE49FD tsc frames=2 wall-ms=259284 vertex-ms=102 flush-in-vertex-ms=0 flush-other-ms=340 bind-ms=4 iface-ms=141 beginend-ms=93 swap-ms=4478 vertices=12 flushes=1 draws=1 sink-ms=39 sink-prep-ms=36 sinks=1
+772 pid=FFFE49FD time interval-ms=10084 swaps=59 present-ms=40 draw-ms=5 upload-ms=101
+773 pid=FFFE49FD tsc frames=59 wall-ms=10084 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=138 bind-ms=24 iface-ms=5 beginend-ms=1 swap-ms=40 vertices=390 flushes=105 draws=105 sink-ms=0 sink-prep-ms=0 sinks=111
+71 pid=FFFEBBC9 time interval-ms=261625 swaps=2 present-ms=1 draw-ms=23 upload-ms=0
+72 pid=FFFEBBC9 tsc frames=2 wall-ms=261625 vertex-ms=275 flush-in-vertex-ms=0 flush-other-ms=135 bind-ms=2 iface-ms=23 beginend-ms=52 swap-ms=450 vertices=12 flushes=1 draws=1 sink-ms=7 sink-prep-ms=6 sinks=1
+771 pid=FFFEBBC9 time interval-ms=10037 swaps=59 present-ms=40 draw-ms=5 upload-ms=100
+772 pid=FFFEBBC9 tsc frames=59 wall-ms=10037 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=134 bind-ms=21 iface-ms=5 beginend-ms=1 swap-ms=40 vertices=390 flushes=105 draws=105 sink-ms=0 sink-prep-ms=0 sinks=111
+73 pid=FFFEBCFD time interval-ms=257395 swaps=2 present-ms=1 draw-ms=146 upload-ms=0
+74 pid=FFFEBCFD tsc frames=2 wall-ms=257395 vertex-ms=345 flush-in-vertex-ms=0 flush-other-ms=710 bind-ms=4 iface-ms=146 beginend-ms=265 swap-ms=3025 vertices=12 flushes=1 draws=1 sink-ms=43 sink-prep-ms=39 sinks=1
+773 pid=FFFEBCFD time interval-ms=10041 swaps=59 present-ms=40 draw-ms=6 upload-ms=100
+774 pid=FFFEBCFD tsc frames=59 wall-ms=10041 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=142 bind-ms=28 iface-ms=6 beginend-ms=1 swap-ms=40 vertices=350 flushes=96 draws=96 sink-ms=0 sink-prep-ms=0 sinks=101
+71 pid=FFFEC15F time interval-ms=257676 swaps=2 present-ms=1 draw-ms=150 upload-ms=0
+72 pid=FFFEC15F tsc frames=2 wall-ms=257676 vertex-ms=106 flush-in-vertex-ms=0 flush-other-ms=359 bind-ms=4 iface-ms=150 beginend-ms=93 swap-ms=2882 vertices=12 flushes=1 draws=1 sink-ms=41 sink-prep-ms=37 sinks=1
+771 pid=FFFEC15F time interval-ms=10051 swaps=59 present-ms=36 draw-ms=5 upload-ms=101
+772 pid=FFFEC15F tsc frames=59 wall-ms=10051 vertex-ms=1 flush-in-vertex-ms=0 flush-other-ms=140 bind-ms=26 iface-ms=5 beginend-ms=1 swap-ms=37 vertices=390 flushes=105 draws=105 sink-ms=0 sink-prep-ms=0 sinks=111
+71 pid=FFFEF8CF time interval-ms=943029 swaps=2 present-ms=202 draw-ms=441050 upload-ms=0
+72 pid=FFFEF8CF tsc frames=2 wall-ms=943029 vertex-ms=357 flush-in-vertex-ms=0 flush-other-ms=442275 bind-ms=4 iface-ms=440969 beginend-ms=386 swap-ms=425090 vertices=12 flushes=1 draws=1 sink-ms=45 sink-prep-ms=40 sinks=1
+283 pid=FFFEF8CF time interval-ms=10255 swaps=22 present-ms=3703 draw-ms=1550 upload-ms=0
+284 pid=FFFEF8CF tsc frames=22 wall-ms=10255 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1923 bind-ms=67 iface-ms=1550 beginend-ms=0 swap-ms=3703 vertices=194 flushes=48 draws=48 sink-ms=0 sink-prep-ms=0 sinks=53
+793 pid=FFFEF8CF time interval-ms=10085 swaps=37 present-ms=4670 draw-ms=528 upload-ms=0
+794 pid=FFFEF8CF tsc frames=37 wall-ms=10085 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=592 bind-ms=63 iface-ms=528 beginend-ms=0 swap-ms=4672 vertices=144 flushes=49 draws=49 sink-ms=0 sink-prep-ms=0 sinks=49
+71 pid=FFFF56BB time interval-ms=184374 swaps=2 present-ms=91 draw-ms=99827 upload-ms=0
+72 pid=FFFF56BB tsc frames=2 wall-ms=184374 vertex-ms=86 flush-in-vertex-ms=0 flush-other-ms=99913 bind-ms=1 iface-ms=99806 beginend-ms=552 swap-ms=43253 vertices=12 flushes=1 draws=1 sink-ms=10 sink-prep-ms=9 sinks=1
+218 pid=FFFF56BB time interval-ms=10045 swaps=17 present-ms=1234 draw-ms=1502 upload-ms=0
+219 pid=FFFF56BB tsc frames=17 wall-ms=10045 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=1700 bind-ms=34 iface-ms=1502 beginend-ms=1 swap-ms=1235 vertices=179 flushes=43 draws=43 sink-ms=1 sink-prep-ms=1 sinks=48
+795 pid=FFFF56BB time interval-ms=10100 swaps=42 present-ms=2655 draw-ms=752 upload-ms=0
+796 pid=FFFF56BB tsc frames=42 wall-ms=10100 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=818 bind-ms=65 iface-ms=752 beginend-ms=0 swap-ms=2656 vertices=171 flushes=61 draws=61 sink-ms=0 sink-prep-ms=0 sinks=61

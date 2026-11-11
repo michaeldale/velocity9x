@@ -1,0 +1,9 @@
+BltUpUs=394789
+BltDownUs=401839
+BltLeftUs=401600
+BltRightUs=403824
+ScrollDCUpUs=399817
+ScrollDCDownUs=399039
+ScrollDCLeftUs=401546
+ScrollDCRightUs=401929
+Done=1

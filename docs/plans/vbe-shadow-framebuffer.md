@@ -144,7 +144,8 @@ a read-bound copy into one at memory speed plus a WC flush.
 
 Still owed from Phase 0: overlap in both directions (DBGDI's Overlap row
 is one direction; issue 15's "up is slower than down" may be exactly
-that), and the issue 25 GLQuake present time.
+that), and the issue 25 GLQuake present time. Both answered 2026-11-11, in
+[Phase 1 as built](#phase-1-as-built-2026-11-11).
 
 ## Phase 1 as built (2026-11-11)
 
@@ -200,6 +201,17 @@ matched the shadow after GDI, cursor, DirectDraw, exclusive mode and
 full-screen DOS exercises. Phase 1's gate is met on one machine; the AMD
 machine it also asks for has not been run, and nor has a windowed Lock of
 the primary.
+
+Later the same day ([record](../decisions/2026-11-11-vbe-screen-shadow-open-items.md)):
+the R3E reads 75 to 250 times faster at 8, 16 and 32 bpp, writes at 0.32 to
+0.73. Phase 1's gate is met on both machines. A windowed Lock of the
+primary and windowed OpenGL presents reach the shadow on 86Box, and 8 bpp
+compares clean there. Phase 0's two owed items are closed. Scrolling: the
+4570 without the shadow scrolls up a document 7 times slower than down
+(issue 15's report), and with it 65 to 360 times faster either way. The
+GLQuake present reads a back buffer the software renderer keeps in video
+memory, which is its own issue
+([`../issues/2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md`](../issues/2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md)).
 
 ## Phases
 

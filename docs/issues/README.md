@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-11 vbe: the software OpenGL back buffer lives in video memory, so every windowed present reads the frame buffer; 126-168 ms a present for a 360x280 window on the R3E (63-73 ms with the screen shadow); explains GitHub issue 25's 1.5 s GLQuake presents; not fixed](2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md)
 - [2026-11-07 A first install of `intel-gma` on a reporter's two Eee PCs (GMA 950 and GMA 900) stayed at 16 colours; installing `vbe` first worked (VOGONS post, no version or files given); a direct install works on our GMA 950; the reporter's files are owed](2026-11-07-first-install-stays-at-16-colours.md)
 - [2026-10-25 Rage 128: the AGP CCE ring corrupts 3DMark 2001 SE's data and a second 3D program hangs A8U4I5 (parked: the CCE runs by PIO again with one texture unit, the map stays at 16 MiB; neither cause known; next is a page-table against GART probe)](2026-10-25-rage128-32mib-map-corrupts.md)
 - [2026-10-09 What the settings page cannot show yet, by family; a button that would not switch tabs and a ninth tab item, neither understood](2026-10-09-settings-page-data-gaps.md)

@@ -1,0 +1,9 @@
+BltUpUs=174
+BltDownUs=225
+BltLeftUs=155
+BltRightUs=217
+ScrollDCUpUs=154
+ScrollDCDownUs=217
+ScrollDCLeftUs=148
+ScrollDCRightUs=218
+Done=1
