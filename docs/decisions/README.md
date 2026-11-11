@@ -154,10 +154,6 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-20 VBE mode inventory per target](2026-08-20-vbe-mode-inventory.md)
 - [2026-08-28 Pineview lists 36 VBE modes and describes 6](2026-08-28-pineview-vbe-mode-list.md)
 - [2026-11-07 Write-combining the vbe family's frame buffer: FbWrite 31.7 to 2,513 and 316 to 3,000 MB/s](2026-11-07-vbe-write-combining.md)
-- [2026-11-08 Mode sync after a Device Manager reinstall: Windows reinstalls from a stale INF entry, and the sync finds no marked key](2026-11-08-mode-sync-after-device-manager-reinstall.md)
-- [2026-11-08 The vbe family write-combines through PAT when the BIOS's MTRRs refuse: FbWrite 66 to 11,357 MB/s on the i5-4570](2026-11-08-vbe-pat-write-combining.md)
-- [2026-11-11 The vbe screen shadow, Phase 1: 256x256 screen-to-screen copies 21 and 112 times faster on the i5-4570, writes 0.3 to 0.8 as fast](2026-11-11-vbe-screen-shadow-phase1.md)
-- [2026-11-11 The vbe screen shadow on an AMD machine, at 8 and 32 bpp, and the open items: R3E reads 75-250x faster, scrolling up is no longer 7x slower than down](2026-11-11-vbe-screen-shadow-open-items.md)
 
 ## S3 hardware baselines
 
@@ -168,6 +164,18 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-29 The Trio64V+ and Trio32 already publish 8811, so the driver has been binding them all along](2026-08-29-s3-device-id-survey.md)
 - [2026-08-29 86Box's Trio32 publishes 8811, so the shipping driver already drove it - and its BIOS is not the Trio64's](2026-08-29-s3-trio32-alias-guest.md)
 - [2026-11-06 The Trio64V+ gets its own Have Disk row, by PCI revision, on the Trio64 install](2026-11-06-trio64vplus-have-disk.md)
+- [2026-11-08 Stock Trio64-family BIOS findings from trio64-vbios-tools: the overview](2026-11-08-stock-trio64-bios-findings-overview.md)
+- [2026-11-08 The stock Trio64-family BIOSes offer some modes only interlaced](2026-11-08-stock-s3-interlaced-modes.md)
+- [2026-11-08 The stock 2.04.07 refresh defaults, and the 4F14h rate interface](2026-11-08-stock-775-refresh-defaults.md)
+- [2026-11-08 Stock 4F15h (DDC): interrupts off for the whole call, and a PIT write](2026-11-08-stock-ddc-4f15-interrupts-off.md)
+- [2026-11-08 The stock POST monitor sense can switch grey-scale summing on](2026-11-08-stock-post-grey-scale-summing.md)
+- [2026-11-08 4F02h clears all of video memory unless bit 15 is set](2026-11-08-4f02-clears-all-video-memory.md)
+- [2026-11-08 The S3 RAMDAC has no 8-bit LUT; 4F08h always answers 6](2026-11-08-s3-ramdac-6-bit-4f08.md)
+- [2026-11-08 The stock 4F04h save/restore covers ADVFUNC_CNTL: one more path that writes the engine-enable bit](2026-11-08-4f04-d3-covers-advfunc-cntl.md)
+- [2026-11-08 4F03h never returns bit 15, even when the mode was set with it](2026-11-08-4f03-bit15-never-returned.md)
+- [2026-11-08 The stock mode set leaves the 3C0h attribute flip-flop unknown](2026-11-08-stock-mode-set-3c0-flip-flop.md)
+- [2026-11-08 The stock 1.03-08 4F02h accepts modes that do not fit the memory](2026-11-08-4f02-accepts-over-memory-modes.md)
+- [2026-11-08 The stock 1.03-08 4F06h changes the upper halves of EAX, ECX and EDX](2026-11-08-4f06-upper-halves.md)
 
 ## ATI
 
@@ -320,7 +328,6 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-04 The GM45's GMA 4500MHD (8086:2A42, GL40 in an HP t5740) joins intel-gma on one DOS survey: the G45's path unchanged](2026-11-04-gm45-gl40-from-a-survey.md)
 - [2026-11-04 The G45 and Q45 run 0.28.0: issue 3's reporter's field report, 3DMark 2000 1942 and 1760](2026-11-04-g4x-g45-q45-field-report.md)
 - [2026-11-05 The GM45 (GL40, HP t5740) runs 0.35.0: Direct3D in hardware and 3DMark 99, issue 22's field report (V9X-EXR8BE)](2026-11-05-gm45-gl40-field-report.md)
-- [2026-11-08 The GM45 on W9QI3DAB (M-6B21TJ), read-only audit: confirmed 8086:2A42 on the 0.40.0 release, and its owner's dark Forsaken](2026-11-08-w9qi3dab-gm45-gl40-audit.md)
 
 ## SiS
 
@@ -387,7 +394,6 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 Carrizo runs Quake 3 through the OpenGL ICD in hardware, once its Z16 rows were whole 64 bytes](2026-10-29-carrizo-opengl-quake3.md)
 - [2026-10-29 Cedar's Z16 rows on 32 bytes: a 360-pixel GL window lost every clear and draw](2026-10-29-cedar-z16-row-align.md)
 - [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
-- [2026-11-07 The HD 5570 (Redwood) row: built from a survey; first run on the reporter's card (0.40.0): claimed, Direct3D draws, V9XDDP fails only Caicos's five; OpenGL and many game reports unexplained](2026-11-07-redwood-row-unmeasured.md)
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)
 - [2026-11-01 0.34.0 release checks: the HD 4600, the GMA 950, the HD 5770 and the HD 7470](2026-11-01-0.34.0-release-checks.md)
 - [2026-11-04 0.35.0 release checks: the HD 4600, the GMA 950, the HD 7660D, the HD 7470 and the RIVA 128ZX](2026-11-04-0.35.0-release-checks.md)
