@@ -2137,6 +2137,41 @@ v9x_u16 v9x_i9xx_decode_two_unit_stream(
     const struct v9x_i9xx_decode_limits *limits,
     const struct v9x_i9xx_decode_unit1 *unit1,
     v9x_u32 *rejected_index);
+
+/*
+ * THE SHADER LICENCE (step 5d of docs\plans\gen3-ps11-pixel-shaders.md): a
+ * runtime stream drawing under a translated pixel shader, as
+ * v9x_i9xx_build_shader_state, _constants and _run build it. The limits
+ * declare the target, depth, blend, alpha test and breadcrumb as for any
+ * runtime stream, with no texture range, no fog and no cylinder: the maps
+ * are declared here, stage N's in maps[N] for each bit N of `units`
+ * (constants_mask unused), a stage in `cubes` a cube.
+ *
+ * MAP_STATE and SAMPLER_STATE must carry exactly those stages, each entry
+ * equal to its declaration, a cube's MS4 with all six face enables, each
+ * sampler naming its own stage's map (a cube's clamped). S2 declares
+ * `sets` four-float sets, S4 position, diffuse and specular. One constants
+ * packet loads C0 to `constants` - 1 before the program, values free. The
+ * program is read for what names memory or state: declarations only of
+ * T0 to sets - 1, T8, T9 and the sampled stages' samplers (CUBE for a
+ * cube, 2D otherwise); texture instructions only through declared
+ * samplers; every source a temporary, a declared T or a loaded constant;
+ * destinations temporaries or oC, which something must write; the
+ * fragment program's instruction limits. Every vertex coordinate finite.
+ */
+struct v9x_i9xx_decode_shader {
+    v9x_u32 units;
+    v9x_u32 cubes;
+    v9x_u32 sets;
+    v9x_u32 constants;
+    struct v9x_i9xx_decode_unit1 maps[V9X_I9XX_SHADER_STAGES];
+};
+
+v9x_u16 v9x_i9xx_decode_shader_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    const struct v9x_i9xx_decode_limits *limits,
+    const struct v9x_i9xx_decode_shader *shader,
+    v9x_u32 *rejected_index);
 #endif
 
 #endif /* VELOCITY9X_INTEL_GEN3_3D_H */

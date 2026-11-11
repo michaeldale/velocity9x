@@ -8,7 +8,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "velocity9x/i9xx_fs.h"
 #include "velocity9x/intel_gen3_3d.h"
+#include "velocity9x/intel_gma.h"
 
 static unsigned int failures;
 #define CHECK(e) do { if (!(e)) { ++failures; \
@@ -295,6 +297,336 @@ static void test_run(void)
                                     42ul, &written) != V9X_STATUS_OK);
 }
 
+/* ------------------------------------------------------------------ */
+/* The licence (step 5d)                                               */
+/* ------------------------------------------------------------------ */
+
+#define TARGET      0x00200000ul
+#define TARGET_W    640ul
+#define TARGET_H    480ul
+#define TARGET_P    2048ul
+#define MAP0        0x00400000ul
+#define CUBE3       0x00500000ul
+
+struct shader_case {
+    struct v9x_i9xx_texture maps[V9X_I9XX_SHADER_STAGES];
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_shader shader;
+    v9x_u32 stream[CAPACITY];
+    v9x_u32 dwords;
+    /* Where each part starts, for the mutations. */
+    v9x_u32 map_at;
+    v9x_u32 sampler_at;
+    v9x_u32 load_at;
+    v9x_u32 constants_at;
+    v9x_u32 program_at;
+    v9x_u32 run_at;
+};
+
+static void declare_unit(struct v9x_i9xx_decode_unit1 *unit,
+                         const struct v9x_i9xx_texture *map, v9x_u32 rows)
+{
+    memset(unit, 0, sizeof(*unit));
+    unit->offset = map->offset;
+    unit->bytes = map->pitch * rows;
+    unit->width = map->width;
+    unit->height = map->height;
+    unit->pitch = map->pitch;
+    unit->format = map->format;
+    unit->wrap = map->wrap;
+    unit->mag_linear = map->mag_linear;
+    unit->min_linear = map->min_linear;
+    unit->mip_filter = map->mip_filter;
+    unit->max_lod = map->max_lod;
+}
+
+/*
+ * Stage 0 a 64x64 565 map, stage 3 a 16x16 ARGB8888 cube; four sets;
+ * eighteen constants. The program: dcl T0 T3 T8 T9, S0 2D, S3 cube;
+ * texld R2 from S0 at T0; texld R5 from S3 at T3; mad oC, R2, R5, C17.
+ */
+static void build_case(struct shader_case *c, const v9x_u32 *program,
+                       v9x_u32 program_dwords)
+{
+    v9x_u32 constants[18ul * 4ul];
+    float wide[3ul * V9X_I9XX_WIDE_FLOATS];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index;
+
+    memset(c, 0, sizeof(*c));
+    set_map(&c->maps[0], MAP0, 64ul, 128ul, V9X_I9XX_MAPSURF_16BIT_RGB565);
+    set_map(&c->maps[3], CUBE3, 16ul, 128ul,
+            V9X_I9XX_MAPSURF_32BIT_ARGB8888);
+
+    c->limits.target_offset = TARGET;
+    c->limits.target_bytes = TARGET_P * TARGET_H;
+    c->limits.target_pitch = TARGET_P;
+    c->limits.target_width = TARGET_W;
+    c->limits.target_height = TARGET_H;
+    c->limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    c->shader.units = 0x9ul;
+    c->shader.cubes = 0x8ul;
+    c->shader.sets = 4ul;
+    c->shader.constants = 18ul;
+    declare_unit(&c->shader.maps[0], &c->maps[0], 64ul);
+    declare_unit(&c->shader.maps[3], &c->maps[3], 64ul);
+
+    c->stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    c->stream[at++] = V9X_I9XX_3DSTATE_STIPPLE;
+    c->stream[at++] = V9X_I9XX_STIPPLE_OFF;
+    CHECK(v9x_i9xx_build_shader_state(TARGET, TARGET_P, TARGET_W, TARGET_H,
+                                      c->maps, 0x9ul, 0x8ul, 4ul, 0ul, 0ul,
+                                      0ul, 0ul, 0ul, 0ul, 0ul,
+                                      c->stream + at, CAPACITY - at,
+                                      &produced) == V9X_STATUS_OK);
+    c->map_at = at + find_packet(c->stream + at, produced,
+                                 V9X_I9XX_3DSTATE_MAP_STATE);
+    c->sampler_at = at + find_packet(c->stream + at, produced,
+                                     V9X_I9XX_3DSTATE_SAMPLER_STATE);
+    at += produced;
+    c->load_at = at - 6ul;
+
+    for (index = 0ul; index < 18ul * 4ul; ++index) {
+        constants[index] = bits_of(0.25f * (float)(index % 5ul));
+    }
+    c->constants_at = at;
+    CHECK(v9x_i9xx_build_shader_constants(constants, 18ul, c->stream + at,
+                                          CAPACITY - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+
+    c->program_at = at;
+    for (index = 0ul; index < program_dwords; ++index) {
+        c->stream[at++] = program[index];
+    }
+
+    wide_vertex(&wide[0], 10.0f, 10.0f);
+    wide_vertex(&wide[V9X_I9XX_WIDE_FLOATS], 100.0f, 10.0f);
+    wide_vertex(&wide[2ul * V9X_I9XX_WIDE_FLOATS], 10.0f, 100.0f);
+    c->run_at = at;
+    CHECK(v9x_i9xx_build_shader_run(wide, 1ul, 4ul, TARGET_W, TARGET_H,
+                                    c->stream + at, CAPACITY - at,
+                                    &produced) == V9X_STATUS_OK);
+    at += produced;
+    c->stream[at++] = V9X_I9XX_MI_FLUSH;
+    if ((at & 1ul) != 0ul) {
+        c->stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+    c->dwords = at;
+}
+
+/* The case's program, by the encoder. */
+static v9x_u32 case_program(v9x_u32 *out, v9x_u32 sampler3_type,
+                            v9x_u32 extra_sampler)
+{
+    struct v9x_i9xx_fs fs;
+    v9x_u32 length = 0ul;
+
+    v9x_i9xx_fs_begin(&fs, out, 256ul);
+    v9x_i9xx_fs_dcl_t(&fs, 0ul, V9X_I9XX_FS_MASK_XYZW);
+    v9x_i9xx_fs_dcl_t(&fs, 3ul, V9X_I9XX_FS_MASK_XYZW);
+    v9x_i9xx_fs_dcl_t(&fs, V9X_I9XX_FS_T_DIFFUSE, V9X_I9XX_FS_MASK_XYZW);
+    v9x_i9xx_fs_dcl_t(&fs, V9X_I9XX_FS_T_SPECULAR, V9X_I9XX_FS_MASK_XYZW);
+    v9x_i9xx_fs_dcl_s(&fs, 0ul, V9X_I9XX_FS_D0_SAMPLE_2D);
+    v9x_i9xx_fs_dcl_s(&fs, 3ul, sampler3_type);
+    if (extra_sampler) {
+        v9x_i9xx_fs_dcl_s(&fs, 2ul, V9X_I9XX_FS_D0_SAMPLE_2D);
+    }
+    v9x_i9xx_fs_tex(&fs, V9X_I9XX_T0_TEXLD, V9X_I9XX_FS_REG_TYPE_R, 2ul,
+                    0ul, V9X_I9XX_FS_REG_TYPE_T, 0ul);
+    v9x_i9xx_fs_tex(&fs, V9X_I9XX_T0_TEXLD, V9X_I9XX_FS_REG_TYPE_R, 5ul,
+                    3ul, V9X_I9XX_FS_REG_TYPE_T, 3ul);
+    v9x_i9xx_fs_alu(&fs, V9X_I9XX_FS_A0_MAD, V9X_I9XX_FS_REG_TYPE_OC, 0ul,
+                    V9X_I9XX_FS_MASK_XYZW, V9X_FALSE,
+                    V9X_I9XX_FS_SRC(V9X_I9XX_FS_REG_TYPE_R, 2ul),
+                    V9X_I9XX_FS_SRC(V9X_I9XX_FS_REG_TYPE_R, 5ul),
+                    V9X_I9XX_FS_SRC(V9X_I9XX_FS_REG_TYPE_CONST, 17ul));
+    CHECK(v9x_i9xx_fs_end(&fs, &length) == V9X_STATUS_OK);
+    return length;
+}
+
+static v9x_u16 decode(const struct shader_case *c, v9x_u32 *where)
+{
+    return v9x_i9xx_decode_shader_stream(c->stream, c->dwords, &c->limits,
+                                         &c->shader, where);
+}
+
+static void test_licence(void)
+{
+    static struct shader_case c;
+    static struct shader_case m;
+    v9x_u32 program[256];
+    v9x_u32 length;
+    v9x_u32 where = 0ul;
+
+    length = case_program(program, V9X_I9XX_FS_D0_SAMPLE_CUBE, 0);
+    build_case(&c, program, length);
+    CHECK(decode(&c, &where) == V9X_I9XX_P5_OK);
+    if (decode(&c, &where) != V9X_I9XX_P5_OK) {
+        printf("  shader stream refused at dword %lu\n",
+               (unsigned long)where);
+    }
+
+    /* Neither other licence takes it. */
+    CHECK(v9x_i9xx_decode_phase5_stream(c.stream, c.dwords, &c.limits,
+                                        &where) != V9X_I9XX_P5_OK);
+
+    /* A map at another address; a cube without its face enables; the
+     * stage mask; a sampler naming another stage's map. */
+    m = c;
+    m.stream[m.map_at + 2ul] += 0x1000ul;
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_TEXTURE_STATE);
+    m = c;
+    m.stream[m.map_at + 7ul] &= ~V9X_I9XX_MS4_CUBE_FACE_ENA_ALL;
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_TEXTURE_STATE);
+    m = c;
+    m.stream[m.map_at + 1ul] = 0xbul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+    m = c;
+    m.stream[m.sampler_at + 6ul] &= ~V9X_I9XX_SS3_MAP_INDEX_MASK;
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_TEXTURE_STATE);
+    /* The declaration disagreeing with the stream: stage 3 not a cube. */
+    m = c;
+    m.shader.cubes = 0ul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+
+    /* S2 not the declared sets. */
+    m = c;
+    m.stream[m.load_at + 1ul] = 0xffffff22ul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+
+    /* The constants: a count other than the declared one. */
+    m = c;
+    m.shader.constants = 17ul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+
+    /* The program: stage 3 sampled as 2D; a sampler for an unsampled
+     * stage; a constant past the loaded ones. */
+    length = case_program(program, V9X_I9XX_FS_D0_SAMPLE_2D, 0);
+    build_case(&m, program, length);
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_SHADER);
+    length = case_program(program, V9X_I9XX_FS_D0_SAMPLE_CUBE, 1);
+    build_case(&m, program, length);
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_SHADER);
+    length = case_program(program, V9X_I9XX_FS_D0_SAMPLE_CUBE, 0);
+    build_case(&m, program, length);
+    m.shader.constants = 18ul;
+    m.stream[m.program_at + 1ul + 3ul * 8ul + 2ul] =
+        (m.stream[m.program_at + 1ul + 3ul * 8ul + 2ul] & ~0x001f0000ul) |
+        (20ul << 16);
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_SHADER);
+    /* A T register past the declared sets is not declarable. */
+    m = c;
+    m.shader.sets = 3ul;
+    m.stream[m.load_at + 1ul] = 0xfffff222ul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+
+    /* The vertices: off the target, and a coordinate that is a NaN. */
+    m = c;
+    m.stream[m.run_at + 1ul] = bits_of(5000.0f);
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_VERTEX_RANGE);
+    m = c;
+    m.stream[m.run_at + 1ul + 6ul + 13ul] = 0x7fc00000ul;
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_VERTEX_RANGE);
+
+    /* No MAP_STATE at all: the packet is replaced by NOOPs. */
+    m = c;
+    {
+        v9x_u32 k;
+
+        for (k = 0ul; k < 2ul + 3ul * 2ul; ++k) {
+            m.stream[m.map_at + k] = V9X_I9XX_MI_NOOP;
+        }
+    }
+    CHECK(decode(&m, &where) == V9X_I9XX_P5_MISSING_PACKET);
+
+    /* Fog or a texture range declared beside a shader: refused. */
+    m = c;
+    m.limits.fog = 1ul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+    m = c;
+    m.limits.texture_offset = MAP0;
+    m.limits.texture_bytes = 128ul * 64ul;
+    CHECK(decode(&m, &where) != V9X_I9XX_P5_OK);
+}
+
+/*
+ * For test_i9xx_ps11.c: a translated program in a whole stream, stages in
+ * `units` sampled from 16x16 maps (those in `cubes` cubes), four sets,
+ * `constants` constant registers; the licence's answer.
+ */
+v9x_u16 v9x_test_shader_licence(const v9x_u32 *program, v9x_u32 dwords,
+                                v9x_u32 units, v9x_u32 cubes,
+                                v9x_u32 constants, v9x_u32 *where)
+{
+    static struct shader_case c;
+    v9x_u32 values[V9X_I9XX_SHADER_CONSTANTS_MAX * 4ul];
+    float wide[3ul * V9X_I9XX_WIDE_FLOATS];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 stage;
+    v9x_u32 index;
+
+    memset(&c, 0, sizeof(c));
+    for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+        if ((units & (1ul << stage)) != 0ul) {
+            set_map(&c.maps[stage], MAP0 + 0x10000ul * stage, 16ul, 128ul,
+                    V9X_I9XX_MAPSURF_16BIT_RGB565);
+            declare_unit(&c.shader.maps[stage], &c.maps[stage], 64ul);
+        }
+    }
+    c.limits.target_offset = TARGET;
+    c.limits.target_bytes = TARGET_P * TARGET_H;
+    c.limits.target_pitch = TARGET_P;
+    c.limits.target_width = TARGET_W;
+    c.limits.target_height = TARGET_H;
+    c.limits.kind = V9X_I9XX_SCENE_RUNTIME;
+    c.shader.units = units;
+    c.shader.cubes = cubes;
+    c.shader.sets = 4ul;
+    c.shader.constants = constants;
+
+    c.stream[at++] = V9X_I9XX_MI_FLUSH_READ;
+    c.stream[at++] = V9X_I9XX_3DSTATE_STIPPLE;
+    c.stream[at++] = V9X_I9XX_STIPPLE_OFF;
+    if (v9x_i9xx_build_shader_state(TARGET, TARGET_P, TARGET_W, TARGET_H,
+                                    c.maps, units, cubes, 4ul, 0ul, 0ul, 0ul,
+                                    0ul, 0ul, 0ul, 0ul, c.stream + at,
+                                    CAPACITY - at, &produced) !=
+        V9X_STATUS_OK) {
+        return 0xffffu;
+    }
+    at += produced;
+    for (index = 0ul; index < constants * 4ul; ++index) {
+        values[index] = 0ul;
+    }
+    if (v9x_i9xx_build_shader_constants(values, constants, c.stream + at,
+                                        CAPACITY - at, &produced) !=
+        V9X_STATUS_OK) {
+        return 0xffffu;
+    }
+    at += produced;
+    for (index = 0ul; index < dwords; ++index) {
+        c.stream[at++] = program[index];
+    }
+    wide_vertex(&wide[0], 10.0f, 10.0f);
+    wide_vertex(&wide[V9X_I9XX_WIDE_FLOATS], 100.0f, 10.0f);
+    wide_vertex(&wide[2ul * V9X_I9XX_WIDE_FLOATS], 10.0f, 100.0f);
+    if (v9x_i9xx_build_shader_run(wide, 1ul, 4ul, TARGET_W, TARGET_H,
+                                  c.stream + at, CAPACITY - at,
+                                  &produced) != V9X_STATUS_OK) {
+        return 0xffffu;
+    }
+    at += produced;
+    c.stream[at++] = V9X_I9XX_MI_FLUSH;
+    if ((at & 1ul) != 0ul) {
+        c.stream[at++] = V9X_I9XX_MI_NOOP;
+    }
+    c.dwords = at;
+    return decode(&c, where);
+}
+
 unsigned int v9x_run_i9xx_shader_tests(void)
 {
     failures = 0u;
@@ -302,5 +634,6 @@ unsigned int v9x_run_i9xx_shader_tests(void)
     test_state_block_edges();
     test_constants();
     test_run();
+    test_licence();
     return failures;
 }

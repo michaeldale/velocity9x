@@ -214,13 +214,269 @@ void v9x_i9xx_decode_limits_clear(
  * would be asserting the picture.
  */
 #define V9X_I9XX_DECODE_S2(textured, limits) \
-    (unit1 != 0 ? V9X_I9XX_S2_TEXTURED_UNITS01 \
+    (shader != 0 ? v9x_i9xx_decode_shader_s2(shader->sets) \
+     : (unit1 != 0 ? V9X_I9XX_S2_TEXTURED_UNITS01 \
      : ((textured) != V9X_FALSE ? V9X_I9XX_S2_TEXTURED_UNIT0 \
-                                : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT))
+                                : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT)))
 #define V9X_I9XX_DECODE_STRIDE(textured, limits) \
-    (unit1 != 0 ? V9X_I9XX_TWO_UNIT_VERTEX_DWORDS \
+    (shader != 0 ? V9X_I9XX_SHADER_VERTEX_DWORDS + 4ul * shader->sets \
+     : (unit1 != 0 ? V9X_I9XX_TWO_UNIT_VERTEX_DWORDS \
      : ((textured) != V9X_FALSE ? V9X_I9XX_TEXTURED_VERTEX_DWORDS \
-                                : V9X_I9XX_VERTEX_DWORDS))
+                                : V9X_I9XX_VERTEX_DWORDS)))
+/* A shader stream's vertex always carries the specular colour. */
+#define V9X_I9XX_DECODE_SPECULAR(fog) ((fog) != 0ul || shader != 0)
+
+/*
+ * THE SHADER LICENCE (step 5d of docs\plans\gen3-ps11-pixel-shaders.md).
+ * A shader vertex: position, diffuse, specular, then four floats a set
+ * (v9x_i9xx_build_shader_run).
+ */
+#define V9X_I9XX_SHADER_VERTEX_DWORDS 6ul
+
+/* The fragment program's limits, I915_MAX_ALU_INSN, _TEX_INSN and
+ * _DECL_INSN (i9xx_fs.h), restated as numbers so this file needs no
+ * header beyond its own. */
+#define V9X_I9XX_DECODE_SHADER_ALU   64ul
+#define V9X_I9XX_DECODE_SHADER_TEX   32ul
+#define V9X_I9XX_DECODE_SHADER_DCL   27ul
+/* Arithmetic opcodes a translated program may use (A0 bits 24-28): ADD
+ * to FLR and SGE, SLT, the list both i915_reg.h headers give, less MOD
+ * and TRC, which the encoder never emits. */
+#define V9X_I9XX_DECODE_OP_ADD   0x01ul
+#define V9X_I9XX_DECODE_OP_FLR   0x10ul
+#define V9X_I9XX_DECODE_OP_SGE   0x13ul
+#define V9X_I9XX_DECODE_OP_SLT   0x14ul
+/* Texture opcodes TEXLD to TEXKILL, and the declaration. */
+#define V9X_I9XX_DECODE_OP_TEXLD   0x15ul
+#define V9X_I9XX_DECODE_OP_TEXKILL 0x18ul
+#define V9X_I9XX_DECODE_OP_DCL     0x19ul
+/* The cube sample type (D0 bits 22-23 = 1). */
+#define V9X_I9XX_DECODE_SAMPLE_CUBE 0x00400000ul
+/* A texture instruction's T0 and T1 fields: opcode, destination type
+ * and number, sampler; address type and number. */
+#define V9X_I9XX_DECODE_T0_FIELDS  0x1f3fc00ful
+#define V9X_I9XX_DECODE_T1_FIELDS  0x073e0000ul
+
+static v9x_u32 v9x_i9xx_decode_shader_s2(v9x_u32 sets)
+{
+    v9x_u32 s2 = V9X_I9XX_S2_ALL_TEXCOORD_ABSENT;
+    v9x_u32 set;
+
+    for (set = 0ul; set < sets; ++set) {
+        s2 = (s2 & ~(0xful << (4ul * set))) |
+             (V9X_I9XX_TEXCOORDFMT_4D << (4ul * set));
+    }
+    return s2;
+}
+
+/* How many arithmetic sources an opcode reads; 0 for one not licensed. */
+static v9x_u32 v9x_i9xx_decode_shader_operands(v9x_u32 op)
+{
+    if (op == 0x04ul || op == 0x05ul || op == 0x0dul) {
+        return 3ul;                     /* MAD, DP2ADD, CMP */
+    }
+    if (op == 0x02ul || op == 0x08ul || op == 0x09ul || op == 0x0aul ||
+        op == 0x0bul || op == 0x0cul || op == V9X_I9XX_DECODE_OP_FLR) {
+        return 1ul;                     /* MOV, FRC, RCP, RSQ, EXP, LOG, FLR */
+    }
+    if (op == V9X_I9XX_DECODE_OP_ADD || op == 0x03ul || op == 0x06ul ||
+        op == 0x07ul || op == 0x0eul || op == 0x0ful ||
+        op == V9X_I9XX_DECODE_OP_SGE || op == V9X_I9XX_DECODE_OP_SLT) {
+        return 2ul;                     /* ADD MUL DP3 DP4 MIN MAX SGE SLT */
+    }
+    return 0ul;
+}
+
+/* A register a shader may read: a temporary R0-R15 or U0-U3, a declared
+ * T, or a loaded constant. */
+static v9x_u16 v9x_i9xx_decode_shader_source(v9x_u32 type, v9x_u32 nr,
+                                             v9x_u32 declared_t,
+                                             v9x_u32 constants)
+{
+    if (type == V9X_I9XX_FS_REG_TYPE_R) {
+        return nr < 16ul ? V9X_TRUE : V9X_FALSE;
+    }
+    if (type == 6ul) {                  /* U, unpreserved temporaries */
+        return nr < 4ul ? V9X_TRUE : V9X_FALSE;
+    }
+    if (type == V9X_I9XX_FS_REG_TYPE_T) {
+        return nr < 16ul && (declared_t & (1ul << nr)) != 0ul ? V9X_TRUE
+                                                              : V9X_FALSE;
+    }
+    if (type == V9X_I9XX_FS_REG_TYPE_CONST) {
+        return nr < constants ? V9X_TRUE : V9X_FALSE;
+    }
+    return V9X_FALSE;
+}
+
+/* A destination a shader may write: a temporary, or oC. Never oD: a
+ * translated shader writes no depth. */
+static v9x_u16 v9x_i9xx_decode_shader_dest(v9x_u32 type, v9x_u32 nr)
+{
+    if (type == V9X_I9XX_FS_REG_TYPE_R) {
+        return nr < 16ul ? V9X_TRUE : V9X_FALSE;
+    }
+    if (type == 6ul) {
+        return nr < 4ul ? V9X_TRUE : V9X_FALSE;
+    }
+    return type == V9X_I9XX_FS_REG_TYPE_OC && nr == 0ul ? V9X_TRUE
+                                                        : V9X_FALSE;
+}
+
+/*
+ * A translated program (v9x_i9xx_ps11_build), read for what names memory
+ * or state, as the two-unit licence reads its program: which T registers
+ * and samplers it declares (sets 0 to sets - 1, T8, T9; the sampled
+ * stages' samplers as CUBE or 2D, as declared), what texture instructions
+ * read through (declared samplers, a declared T or a temporary), what
+ * every source is, that it writes no depth and writes oC, and the
+ * fragment program's instruction limits. What it computes is a colour.
+ * Returns the offending dword, or `dwords` when licensed.
+ */
+static v9x_u32 v9x_i9xx_decode_shader_program(
+    const v9x_u32 *program, v9x_u32 dwords,
+    const struct v9x_i9xx_decode_shader *shader)
+{
+    v9x_u32 declared_t = 0ul;
+    v9x_u32 declared_s = 0ul;
+    v9x_u32 alu = 0ul;
+    v9x_u32 tex = 0ul;
+    v9x_u32 dcl = 0ul;
+    v9x_u16 writes_output = V9X_FALSE;
+    v9x_u32 at;
+
+    if (dwords == 0ul || dwords % 3ul != 0ul ||
+        dwords > 3ul * (V9X_I9XX_DECODE_SHADER_ALU +
+                        V9X_I9XX_DECODE_SHADER_TEX +
+                        V9X_I9XX_DECODE_SHADER_DCL)) {
+        return 0ul;
+    }
+    for (at = 0ul; at < dwords; at += 3ul) {
+        v9x_u32 d0 = program[at];
+        v9x_u32 d1 = program[at + 1ul];
+        v9x_u32 d2 = program[at + 2ul];
+        v9x_u32 op = (d0 >> 24) & 0x1ful;
+        v9x_u32 dest_type = (d0 >> V9X_I9XX_FS_TYPE_SHIFT) & 7ul;
+        v9x_u32 dest_nr = (d0 >> V9X_I9XX_FS_NR_SHIFT) & 0x1ful;
+        v9x_u32 operands;
+
+        if (op == V9X_I9XX_DECODE_OP_DCL) {
+            if (d1 != 0ul || d2 != 0ul) {
+                return at + 1ul;
+            }
+            if (dest_type == V9X_I9XX_FS_REG_TYPE_T &&
+                (dest_nr < shader->sets ||
+                 dest_nr == V9X_I9XX_FS_T_DIFFUSE ||
+                 dest_nr == V9X_I9XX_FS_T_SPECULAR) &&
+                d0 == (V9X_I9XX_FS_D0_DCL |
+                       (dest_type << V9X_I9XX_FS_TYPE_SHIFT) |
+                       (dest_nr << V9X_I9XX_FS_NR_SHIFT) |
+                       V9X_I9XX_FS_CHANNEL_ALL)) {
+                declared_t |= 1ul << dest_nr;
+            } else if (dest_type == V9X_I9XX_FS_REG_TYPE_S &&
+                       dest_nr < V9X_I9XX_SHADER_STAGES &&
+                       (shader->units & (1ul << dest_nr)) != 0ul &&
+                       d0 == (V9X_I9XX_FS_D0_DCL |
+                              (dest_type << V9X_I9XX_FS_TYPE_SHIFT) |
+                              (dest_nr << V9X_I9XX_FS_NR_SHIFT) |
+                              ((shader->cubes & (1ul << dest_nr)) != 0ul
+                                   ? V9X_I9XX_DECODE_SAMPLE_CUBE : 0ul))) {
+                declared_s |= 1ul << dest_nr;
+            } else {
+                return at;
+            }
+            ++dcl;
+            continue;
+        }
+        if (op >= V9X_I9XX_DECODE_OP_TEXLD &&
+            op <= V9X_I9XX_DECODE_OP_TEXKILL) {
+            v9x_u32 sampler = d0 & 0xful;
+
+            if ((d0 & ~V9X_I9XX_DECODE_T0_FIELDS) != 0ul ||
+                v9x_i9xx_decode_shader_dest(dest_type, dest_nr) ==
+                    V9X_FALSE) {
+                return at;
+            }
+            /* TEXKILL samples nothing and names no sampler. */
+            if (op == V9X_I9XX_DECODE_OP_TEXKILL
+                    ? (sampler != 0ul ||
+                       dest_type == V9X_I9XX_FS_REG_TYPE_OC)
+                    : (declared_s & (1ul << sampler)) == 0ul) {
+                return at;
+            }
+            if ((d1 & ~V9X_I9XX_DECODE_T1_FIELDS) != 0ul ||
+                ((d1 >> 24) & 7ul) == V9X_I9XX_FS_REG_TYPE_CONST ||
+                v9x_i9xx_decode_shader_source((d1 >> 24) & 7ul,
+                                              (d1 >> 17) & 0x1ful,
+                                              declared_t, 0ul) ==
+                    V9X_FALSE) {
+                return at + 1ul;
+            }
+            if (d2 != 0ul) {
+                return at + 2ul;
+            }
+            if (dest_type == V9X_I9XX_FS_REG_TYPE_OC) {
+                writes_output = V9X_TRUE;
+            }
+            ++tex;
+            continue;
+        }
+        operands = v9x_i9xx_decode_shader_operands(op);
+        if (operands == 0ul ||
+            v9x_i9xx_decode_shader_dest(dest_type, dest_nr) == V9X_FALSE) {
+            return at;
+        }
+        if (dest_type == V9X_I9XX_FS_REG_TYPE_OC) {
+            writes_output = V9X_TRUE;
+        }
+        if (v9x_i9xx_decode_shader_source(
+                (d0 >> V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT) & 7ul,
+                (d0 >> V9X_I9XX_FS_A0_SRC0_NR_SHIFT) & 0x1ful, declared_t,
+                shader->constants) == V9X_FALSE) {
+            return at;
+        }
+        if (operands >= 2ul &&
+            v9x_i9xx_decode_shader_source(
+                (d1 >> V9X_I9XX_FS_A1_SRC1_TYPE_SHIFT) & 7ul,
+                (d1 >> V9X_I9XX_FS_A1_SRC1_NR_SHIFT) & 0x1ful, declared_t,
+                shader->constants) == V9X_FALSE) {
+            return at + 1ul;
+        }
+        if (operands >= 3ul &&
+            v9x_i9xx_decode_shader_source(
+                (d2 >> V9X_I9XX_FS_A2_SRC2_TYPE_SHIFT) & 7ul,
+                (d2 >> V9X_I9XX_FS_A2_SRC2_NR_SHIFT) & 0x1ful, declared_t,
+                shader->constants) == V9X_FALSE) {
+            return at + 2ul;
+        }
+        /* An operand the instruction does not take must say nothing. */
+        if ((operands < 2ul && ((d1 & 0x0000fffful) != 0ul || d2 != 0ul)) ||
+            (operands < 3ul && (d2 & 0x00fffffful) != 0ul)) {
+            return at + 1ul;
+        }
+        ++alu;
+    }
+    if (alu > V9X_I9XX_DECODE_SHADER_ALU ||
+        tex > V9X_I9XX_DECODE_SHADER_TEX ||
+        dcl > V9X_I9XX_DECODE_SHADER_DCL || writes_output == V9X_FALSE) {
+        return 0ul;
+    }
+    return dwords;
+}
+
+/* How many stages a mask names. */
+static v9x_u32 v9x_i9xx_decode_stage_count(v9x_u32 units)
+{
+    v9x_u32 count = 0ul;
+    v9x_u32 stage;
+
+    for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+        if ((units & (1ul << stage)) != 0ul) {
+            ++count;
+        }
+    }
+    return count;
+}
 
 /* The longest two-unit program the builder emits is 64 dwords; this is
  * room for it and no more than a program could need. */
@@ -421,6 +677,7 @@ static v9x_u32 v9x_i9xx_decode_two_unit_program(const v9x_u32 *program,
     return writes_output != V9X_FALSE ? dwords : 0ul;
 }
 #else
+#define V9X_I9XX_DECODE_SPECULAR(fog) ((fog) != 0ul)
 #define V9X_I9XX_DECODE_S2(textured, limits) \
     ((textured) != V9X_FALSE ? V9X_I9XX_S2_TEXTURED_UNIT0 \
                              : V9X_I9XX_S2_ALL_TEXCOORD_ABSENT)
@@ -430,12 +687,13 @@ static v9x_u32 v9x_i9xx_decode_two_unit_program(const v9x_u32 *program,
 #endif /* V9X_I9XX_TWO_UNITS */
 
 #if V9X_I9XX_TWO_UNITS
-/* The whole decoder, with the second unit's declaration or null; the two
- * public entries at the end of the file are it. */
+/* The whole decoder, with the second unit's declaration or the shader's,
+ * or neither; the three public entries at the end of the file are it. */
 static v9x_u16 v9x_i9xx_decode_body(
     const v9x_u32 *stream, v9x_u32 dword_count,
     const struct v9x_i9xx_decode_limits *limits,
     const struct v9x_i9xx_decode_unit1 *unit1,
+    const struct v9x_i9xx_decode_shader *shader,
     v9x_u32 *rejected_index)
 #else
 v9x_u16 v9x_i9xx_decode_phase5_stream(
@@ -605,6 +863,36 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
          textured == V9X_FALSE || unit1->bytes == 0ul ||
          unit1->offset > 0xfffffffful - unit1->bytes)) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, 0ul);
+    }
+    /*
+     * A shader: a runtime stream whose maps are the shader's to declare,
+     * so no texture range, cylinder or second unit in the limits beside
+     * it, and no fog (a shader's fog is in its program). Each sampled
+     * stage has a range, cubes are sampled stages, at most four sets and
+     * the fragment program's 32 constants.
+     */
+    if (shader != 0) {
+        v9x_u32 stage;
+
+        if (unit1 != 0 || limits->kind != V9X_I9XX_SCENE_RUNTIME ||
+            limits->fog != 0ul || texture_bytes != 0ul ||
+            limits->texture_cylinder != 0ul ||
+            (shader->units & ~((1ul << V9X_I9XX_SHADER_STAGES) - 1ul)) !=
+                0ul ||
+            (shader->cubes & ~shader->units) != 0ul ||
+            shader->sets > V9X_I9XX_SHADER_STAGES ||
+            shader->constants > V9X_I9XX_SHADER_CONSTANTS_MAX) {
+            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, 0ul);
+        }
+        for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+            const struct v9x_i9xx_decode_unit1 *unit = &shader->maps[stage];
+
+            if ((shader->units & (1ul << stage)) != 0ul &&
+                (unit->bytes == 0ul ||
+                 unit->offset > 0xfffffffful - unit->bytes)) {
+                V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, 0ul);
+            }
+        }
     }
 #endif
 
@@ -802,6 +1090,78 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * LOAD_STATE_IMMEDIATE_1 masks with 0xffff0000 for exactly this
              * reason.
              */
+#if V9X_I9XX_TWO_UNITS
+            if (shader != 0) {
+                /*
+                 * The sampled stages' entries, in stage order, each held
+                 * to its declaration; the masks the stage set; a cube's
+                 * MS4 with all six face enables and nothing else changed,
+                 * its sampler the clamp form; each sampler naming its own
+                 * stage's map. Once each.
+                 */
+                v9x_u16 map = (command & 0xffff0000ul) ==
+                                  V9X_I9XX_3DSTATE_MAP_STATE ? V9X_TRUE
+                                                             : V9X_FALSE;
+                v9x_u32 count = v9x_i9xx_decode_stage_count(shader->units);
+                v9x_u32 entry = index + 2ul;
+                v9x_u32 stage;
+
+                if (count == 0ul) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index);
+                }
+                if (dword_count - index < 2ul + 3ul * count) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+                }
+                if ((command & 0x0000fffful) != 3ul * count ||
+                    stream[index + 1ul] != shader->units ||
+                    (map != V9X_FALSE ? saw_map_state
+                                      : saw_sampler_state) != V9X_FALSE) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_BAD_LENGTH, index);
+                }
+                for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+                    const struct v9x_i9xx_decode_unit1 *unit =
+                        &shader->maps[stage];
+                    v9x_u32 cube = (shader->cubes & (1ul << stage)) != 0ul
+                                       ? V9X_I9XX_MS4_CUBE_FACE_ENA_ALL
+                                       : 0ul;
+
+                    if ((shader->units & (1ul << stage)) == 0ul) {
+                        continue;
+                    }
+                    if (map != V9X_FALSE) {
+                        v9x_u32 plain[3];
+
+                        plain[0] = stream[entry];
+                        plain[1] = stream[entry + 1ul];
+                        plain[2] = stream[entry + 2ul] &
+                                   ~V9X_I9XX_MS4_CUBE_FACE_ENA_ALL;
+                        if ((stream[entry + 2ul] &
+                             V9X_I9XX_MS4_CUBE_FACE_ENA_ALL) != cube ||
+                            v9x_i9xx_decode_map_entry(
+                                plain, unit->offset, unit->width,
+                                unit->height, unit->pitch, unit->format,
+                                unit->max_lod) == V9X_FALSE) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE,
+                                            entry);
+                        }
+                    } else if ((cube != 0ul && unit->wrap != 0ul) ||
+                               v9x_i9xx_decode_sampler_entry(
+                                   stream + entry, unit->min_linear,
+                                   unit->mag_linear, unit->mip_filter,
+                                   unit->wrap, stage) == V9X_FALSE) {
+                        V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_STATE, entry);
+                    }
+                    entry += 3ul;
+                }
+                if (map != V9X_FALSE) {
+                    saw_map_state = V9X_TRUE;
+                } else {
+                    saw_sampler_state = V9X_TRUE;
+                }
+                index = entry;
+                continue;
+            }
+#endif
             if (textured == V9X_FALSE) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_TEXTURE_FORBIDDEN, index);
             }
@@ -1145,8 +1505,8 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                        V9X_I9XX_S4_CULLMODE_NONE |
                        V9X_I9XX_S4_VFMT_XYZW |
                        V9X_I9XX_S4_VFMT_COLOR |
-                       (fog_dwords != 0ul ? V9X_I9XX_S4_VFMT_SPEC_FOG
-                                          : 0ul))) {
+                       (V9X_I9XX_DECODE_SPECULAR(fog_dwords)
+                            ? V9X_I9XX_S4_VFMT_SPEC_FOG : 0ul))) {
                 V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, index + 3ul);
             }
 #if V9X_I9XX_TWO_UNITS
@@ -1267,6 +1627,26 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * write the interpolated vertex colour and never sample at all.
              */
 #if V9X_I9XX_TWO_UNITS
+            if (shader != 0) {
+                v9x_u32 bad;
+
+                /* Its constants loaded first, and once. */
+                if (shader->constants != 0ul &&
+                    saw_fog_constants == V9X_FALSE) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, index);
+                }
+                if (saw_shader != V9X_FALSE) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
+                }
+                bad = v9x_i9xx_decode_shader_program(stream + index + 1ul,
+                                                     payload, shader);
+                if (bad != payload) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index + 1ul + bad);
+                }
+                saw_shader = V9X_TRUE;
+                index += payload + 1ul;
+                continue;
+            }
             if (unit1 != 0) {
                 v9x_u32 bad;
 
@@ -1341,6 +1721,29 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
              * 0x3f800000 is greater than one, infinite, a NaN or negative.
              */
 #if V9X_I9XX_TWO_UNITS
+            if (shader != 0) {
+                /* C0 to constants - 1, once, before the program; the
+                 * values are colours, bump terms and the fog colour, and
+                 * name nothing. */
+                v9x_u32 count = shader->constants;
+
+                if (count == 0ul || saw_fog_constants != V9X_FALSE ||
+                    saw_shader != V9X_FALSE ||
+                    command != (V9X_I9XX_3DSTATE_PS_CONSTANTS |
+                                (count * 4ul))) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index);
+                }
+                if (dword_count - index < 2ul + count * 4ul) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_TRUNCATED, index);
+                }
+                if (stream[index + 1ul] !=
+                        (count == 32ul ? 0xfffffffful : (1ul << count) - 1ul)) {
+                    V9X_I9XX_REJECT(V9X_I9XX_P5_SHADER, index + 1ul);
+                }
+                saw_fog_constants = V9X_TRUE;
+                index += 2ul + count * 4ul;
+                continue;
+            }
             if (unit1 != 0) {
                 /* Exactly the registers the program reads, once, each
                  * component in [0, 1]; C0 is the fog colour exactly when
@@ -1939,6 +2342,24 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                         V9X_FALSE) {
                     V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_FORMAT, base + 4ul);
                 }
+#if V9X_I9XX_TWO_UNITS
+                /* A shader vertex's sets, after both colours: any finite
+                 * value, as a runtime coordinate. */
+                if (shader != 0) {
+                    v9x_u32 k;
+
+                    for (k = 0ul; k < 4ul * shader->sets; ++k) {
+                        if (v9x_i9xx_float_finite(
+                                stream[base + V9X_I9XX_SHADER_VERTEX_DWORDS +
+                                       k]) == V9X_FALSE) {
+                            V9X_I9XX_REJECT(V9X_I9XX_P5_VERTEX_RANGE,
+                                            base +
+                                                V9X_I9XX_SHADER_VERTEX_DWORDS +
+                                                k);
+                        }
+                    }
+                }
+#endif
                 if (textured != V9X_FALSE) {
                     /*
                      * The coordinates, checked as bit patterns.
@@ -2038,6 +2459,16 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
         (saw_map_state == V9X_FALSE || saw_sampler_state == V9X_FALSE)) {
         V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
     }
+#if V9X_I9XX_TWO_UNITS
+    /* A shader sampling anything carries both packets for the same
+     * reason; and its constants, when it declares any. */
+    if (shader != 0 &&
+        ((shader->units != 0ul &&
+          (saw_map_state == V9X_FALSE || saw_sampler_state == V9X_FALSE)) ||
+         (shader->constants != 0ul && saw_fog_constants == V9X_FALSE))) {
+        V9X_I9XX_REJECT(V9X_I9XX_P5_MISSING_PACKET, dword_count);
+    }
+#endif
     /*
      * And a depth stream must BIND one. Without the BUF_INFO the S6 enables
      * point the hardware at whatever depth buffer the engine last had, which
@@ -2085,7 +2516,7 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
     const struct v9x_i9xx_decode_limits *limits,
     v9x_u32 *rejected_index)
 {
-    return v9x_i9xx_decode_body(stream, dword_count, limits, 0,
+    return v9x_i9xx_decode_body(stream, dword_count, limits, 0, 0,
                                 rejected_index);
 }
 
@@ -2099,7 +2530,21 @@ v9x_u16 v9x_i9xx_decode_two_unit_stream(
         if (rejected_index != 0) { *rejected_index = 0ul; }
         return V9X_I9XX_P5_TEXTURE_STATE;
     }
-    return v9x_i9xx_decode_body(stream, dword_count, limits, unit1,
+    return v9x_i9xx_decode_body(stream, dword_count, limits, unit1, 0,
+                                rejected_index);
+}
+
+v9x_u16 v9x_i9xx_decode_shader_stream(
+    const v9x_u32 *stream, v9x_u32 dword_count,
+    const struct v9x_i9xx_decode_limits *limits,
+    const struct v9x_i9xx_decode_shader *shader,
+    v9x_u32 *rejected_index)
+{
+    if (shader == 0) {
+        if (rejected_index != 0) { *rejected_index = 0ul; }
+        return V9X_I9XX_P5_SHADER;
+    }
+    return v9x_i9xx_decode_body(stream, dword_count, limits, 0, shader,
                                 rejected_index);
 }
 #endif

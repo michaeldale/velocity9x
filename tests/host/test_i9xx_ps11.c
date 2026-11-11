@@ -71,9 +71,19 @@ static unsigned int failures;
 #define PIXELS     8ul
 #define ATTRIBUTES 6ul       /* v0, v1, then coordinate sets 0 to 3 */
 
+/* test_i9xx_shader.c: the program in a whole stream through the shader
+ * licence (step 5d). */
+v9x_u16 v9x_test_shader_licence(const v9x_u32 *program, v9x_u32 dwords,
+                                v9x_u32 units, v9x_u32 cubes,
+                                v9x_u32 constants, v9x_u32 *where);
+
 static v9x_u32 words[128];
 static v9x_u32 used;
 static v9x_u32 fog_on;
+/* The licence's expected answer for the next case: licensed, or (for a
+ * texm3x3 lookup on a stage that is not a cube, declared VOLUME, which
+ * Gen3 places nothing for) refused as a shader. */
+static v9x_u16 licence_expect = V9X_I9XX_P5_OK;
 static float fog_rgb[3];
 static v9x_u32 program_words[PROGRAM_DWORDS];
 
@@ -198,6 +208,31 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
         ++failures;
         return;
     }
+    /* The licence: the stages the program declares samplers for, cubes
+     * where the draw says so. */
+    {
+        v9x_u32 units = 0ul;
+        v9x_u32 where = 0ul;
+        v9x_u32 at;
+        v9x_u16 answer;
+
+        for (at = 1ul; at + 2ul < dwords; at += 3ul) {
+            if ((program_words[at] & 0x1f000000ul) == 0x19000000ul &&
+                ((program_words[at] >> 19) & 7ul) == 3ul) {
+                units |= 1ul << ((program_words[at] >> 14) & 0xful);
+            }
+        }
+        answer = v9x_test_shader_licence(program_words, dwords, units,
+                                         env->cube & units,
+                                         V9X_I9XX_PS11_CONST_REGS, &where);
+        if (answer != licence_expect) {
+            printf("FAIL %s: licence %u at dword %lu, expected %u\n", name,
+                   (unsigned int)answer, (unsigned long)where,
+                   (unsigned int)licence_expect);
+            ++failures;
+        }
+    }
+
     for (c = 0ul; c < 3ul; ++c) {
         fog_bits[c] = as_bits(fog_rgb[c]);
     }
@@ -402,7 +437,9 @@ static void cases(void)
     put(OP_MUL); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 3, XYZW, 0));
     put(SRC(T, 0, XYZW, 0));
     put(END);
+    licence_expect = V9X_I9XX_P5_SHADER;
     check_case("texm3x3tex", &env, 0ul);
+    licence_expect = V9X_I9XX_P5_OK;
 
     /* Every arithmetic instruction and modifier, a def among them. */
     zero_env(&env);

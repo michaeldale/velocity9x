@@ -264,11 +264,39 @@ CreatePixelShader, as any other untranslatable program is.
      (failing against stubs first, 27 checks) cover non-contiguous stages
      with a cube, S2/S4, the retarget, the constant layout, colour
      packing and the refusals. None of it has been decoded or run.
-   - **5d. Decoder licence**: a shader stream kind. Maps against their
-     footprints, the constants packet, and the program read instruction
-     by instruction: only T0-T3, T8, T9, S0-S3 and C0-C17, within the
-     encoder's limits. Host tests: every step 3 program built into a
-     stream passes, and mutated streams are refused.
+   - **5d. Decoder licence.** Done 2026-11-11, host only.
+     `v9x_i9xx_decode_shader_stream` is a third mode of the one decoder
+     walk, beside the two-unit one, 32-bit only.
+     - **Declaration.** Besides the runtime limits (with no texture
+       range, fog or cylinder), the caller declares the sampled stages,
+       the cubes, the sets, the constant count and each stage's map.
+     - **Map and sampler state.** Each entry must equal its declaration.
+       A cube's MS4 must carry exactly the six face enables, and its
+       sampler must be the clamp form. Each sampler must name its own
+       stage's map, and each packet appears once.
+     - **Vertex layout.** S2 must declare the sets and S4 the specular
+       colour. Every coordinate must be finite, and positions get the
+       runtime checks.
+     - **Constants.** One packet for C0 to n-1, before the program.
+     - **Program.** Read like the two-unit licence, for what names
+       memory or state. It may declare only T0 to sets-1, T8, T9 and the
+       sampled stages' samplers, CUBE or 2D as declared. Texture
+       instructions may go only through declared samplers, and sources
+       must be temporaries, declared T or loaded constants. It may write
+       no oD, must write oC, and stays within the fragment program's
+       limits.
+
+     Host tests (failing against a stub first, 28 checks):
+     - a whole stream is licensed, and is refused by the plain licence;
+     - fourteen mutations are each refused: map address, cube face
+       enables, stage mask, sampler map index, a declared non-cube, S2,
+       constant count, 2D sampling of a cube, an undeclared sampler, a
+       constant past the loaded ones, T past the sets, a vertex off the
+       target, a NaN coordinate, a missing MAP_STATE; plus fog or a
+       texture range declared beside a shader;
+     - every step 3 test program in a stream is licensed, except
+       texm3x3tex on a non-cube stage. That one is declared VOLUME and
+       refused, as this plan says.
    - **5e. `draw_shader`** in `d3d_i9xx.c`: the program cached by the
      shader's serial and the draw's cube, projected, unbound and fog
      bits; four textures bound; triangles gathered; submitted. The
