@@ -1,10 +1,12 @@
 /*
  * The NVIDIA family table.
  *
- * One chip at tier-0, so there is nothing to dispatch on and no hook to
- * supply: the VBE 4F02h mode set programs the card, 4F01h reports where the
- * framebuffer landed, 4F00h reports its size, and the CPU draws
- * (docs\plans\nvidia-riva128.md, Phase 1). The family names the hardware it
+ * Two chips. The VBE 4F02h mode set programs either card, 4F01h reports
+ * where the framebuffer landed, 4F00h reports its size
+ * (docs\plans\nvidia-riva128.md, Phase 1). The RIVA 128 has an NV3 engine
+ * behind its device hooks; the GeForce 210 (GT218) is tier-0, the CPU
+ * draws, and every NV3 path below is skipped for it
+ * (docs\plans\nvidia-gt218.md, Phase 1). The family names the hardware it
  * claims so that it can grow native hooks - the 2D engine first - without
  * disturbing the generic vbe fallback.
  *
@@ -26,6 +28,7 @@ extern unsigned short v9x_selected_mode_geometry(
 extern unsigned short v9x_modes16_highcolor(void);
 
 extern const V9X_HW16_DEVICE v9x_riva128_device;
+extern const V9X_HW16_DEVICE v9x_gt218_device;
 
 /* runtime.asm, nvidia family only: BAR0 through the engine selector. */
 extern unsigned short __far __pascal V9xNv3Selector(unsigned long linear);
@@ -49,7 +52,8 @@ static unsigned long v9x_nvidia_general_before = 0ul;
 static unsigned long v9x_nvidia_general_after = 0ul;
 
 static const V9X_HW16_DEVICE * const v9x_nvidia_devices[] = {
-    &v9x_riva128_device
+    &v9x_riva128_device,
+    &v9x_gt218_device
 };
 
 /*
@@ -136,13 +140,17 @@ static void v9x_nvidia_publish_diagnostics(const V9X_HW16_DEVICE *device,
  * (docs\decisions\2026-11-02-riva128-register-probe.md), which the 2D
  * engine's bring-up writes after every mode set. Kept off the heap at
  * every depth, engine claimed or not, so a surface never sits where the
- * engine's tables go.
+ * engine's tables go. RIVA 128 only: RAMIN at the top of video memory is an
+ * NV3 fact, and where the GT218 keeps its instance memory is not measured.
  */
 #define V9X_NVIDIA_RAMIN_BYTES 0x00008000ul
 
 static unsigned long v9x_nvidia_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
+    if (v9x_hw16_active_device() != &v9x_riva128_device) {
+        return usable_bytes;
+    }
     if (usable_bytes < visible_bytes + V9X_NVIDIA_RAMIN_BYTES) {
         return usable_bytes;
     }

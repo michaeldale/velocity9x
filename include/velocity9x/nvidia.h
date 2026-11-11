@@ -18,6 +18,10 @@
 
 #define V9X_PCI_VENDOR_NVIDIA_SGS   ((v9x_u16)0x12d2u)
 #define V9X_PCI_DEVICE_RIVA128      ((v9x_u16)0x0018u)
+/* GeForce 210, a GT218, seen on M-BXMFA8 (docs\decisions\
+ * 2026-11-11-m-bxmfa8-gt218-first-look.md). */
+#define V9X_PCI_VENDOR_NVIDIA       ((v9x_u16)0x10deu)
+#define V9X_PCI_DEVICE_GT218_GEFORCE210 ((v9x_u16)0x0a65u)
 
 v9x_status v9x_nvidia_probe(
     struct v9x_backend_state *state,

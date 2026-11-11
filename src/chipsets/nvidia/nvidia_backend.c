@@ -71,10 +71,12 @@ v9x_status v9x_nvidia_probe(
      * different engine, and no other 12D2 part has run here. Revision is
      * not checked: the original RIVA 128 (revision below 20h) and the 128ZX
      * share this id (Linux riva_hw.c, nv3GetConfig), though only revision
-     * 22 has run.
+     * 22 has run. The GeForce 210 is the one 10DE part claimed, tier-0.
      */
-    if (pci->vendor_id != V9X_PCI_VENDOR_NVIDIA_SGS ||
-        pci->device_id != V9X_PCI_DEVICE_RIVA128) {
+    if (!((pci->vendor_id == V9X_PCI_VENDOR_NVIDIA_SGS &&
+           pci->device_id == V9X_PCI_DEVICE_RIVA128) ||
+          (pci->vendor_id == V9X_PCI_VENDOR_NVIDIA &&
+           pci->device_id == V9X_PCI_DEVICE_GT218_GEFORCE210))) {
         return V9X_STATUS_UNSUPPORTED;
     }
 

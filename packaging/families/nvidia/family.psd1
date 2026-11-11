@@ -12,8 +12,8 @@
 @{
     SchemaVersion = 1
     Id = 'nvidia'
-    DisplayName = 'NVIDIA RIVA 128'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise.'
+    DisplayName = 'NVIDIA RIVA 128 and GeForce 210'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set and CPU drawing only.'
 
     Chips = @(
         @{
@@ -67,6 +67,49 @@
             }
             MapSymbols = @('v9x_riva128_device')
         }
+        @{
+            Id = 'gt218'
+            Name = 'NVIDIA GeForce 210'
+            VendorId = '10DE'
+            DeviceId = '0A65'
+            # No SubsystemId: the seen card is a Gainward board (10B0:1401)
+            # and the GeForce 210 shipped on many boards.
+            DeviceDesc = 'Velocity9x NVIDIA GeForce 210'
+            Adapter = 'NVIDIA GeForce 210'
+            ClockDetector = 'nvidia-gt218-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # Tier-0: no engine, the CPU draws
+            # (docs\plans\nvidia-gt218.md, Phase 1).
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # What the seen card's VBE reports through 4F00h (224 x 64 KiB),
+            # not the card's memory
+            # (docs\decisions\2026-11-11-m-bxmfa8-gt218-first-look.md).
+            VideoMemoryBytes = 14680064
+
+            # The family's rows; every mode number is in this BIOS's list
+            # too, linear, 16 bpp 5:6:5 (boot 81 V9XBOOT.INI).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('gt218_hw16')
+
+            # No register sequence at tier-0, as for the RIVA 128 row.
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_gt218_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -97,6 +140,7 @@
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'riva128_hw16'; Path = 'src\chipsets\nvidia\riva128\riva128_hw16.c' }
+            @{ Name = 'gt218_hw16'; Path = 'src\chipsets\nvidia\gt218\gt218_hw16.c' }
             @{ Name = 'nvidia_hw16'; Path = 'src\chipsets\nvidia\nvidia_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -124,7 +168,7 @@
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
         DispatchSymbol = 'v9x_hw16'
-        BackendSymbols = @('v9x_riva128_device')
+        BackendSymbols = @('v9x_riva128_device', 'v9x_gt218_device')
     }
 
     Inf = @{
@@ -146,7 +190,7 @@
         Include = $true
         Folder = 'NVIDIA'
         Order = 8
-        HardwareIdHint = 'PCI 12D2:0018'
+        HardwareIdHint = 'PCI 12D2:0018, 10DE:0A65'
         # Installed files that ride a third disk, as every other family's do.
         ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE', 'GLIDE3X.DLL',
                       'ATI3DCIF.DLL')

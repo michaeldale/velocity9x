@@ -107,6 +107,7 @@ $required = @(
     "src\chipsets\nvidia\nvidia_backend.c",
     "src\chipsets\nvidia\nvidia_hw16.c",
     "src\chipsets\nvidia\riva128\riva128_hw16.c",
+    "src\chipsets\nvidia\gt218\gt218_hw16.c",
     "src\chipsets\nvidia\nv3_2d.c",
     "src\display32\engines\eng_nv3.c",
     "tests\host\test_nv3_2d.c",
