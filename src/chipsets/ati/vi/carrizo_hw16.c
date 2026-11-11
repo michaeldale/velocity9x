@@ -149,5 +149,15 @@ const V9X_HW16_DEVICE v9x_vi_carrizo_device = {
     "directdraw-fill-copy",
     "hardware-vi-cp",
     0,
-    v9x_carrizo_fill_engine
+    v9x_carrizo_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    0ul,                    /* map_bytes: the family's 16 MiB */
+    0,                      /* engine_reserve_offset */
+    /* Write-combined as the Evergreen rows are: eng_vi.c and vi_cp.c drain
+     * the write-combining buffers before every SDMA and CP kick, and the
+     * 16 MiB mapping lies inside the 256 MiB BAR0 (the SDMA and CP windows
+     * at 240 and 248 MiB are mapped apart from it). Stage A planned it with
+     * no refusal on M-XP7053 (V9XBOOT.INI Mtrr= r=0 s=4). */
+    V9X_HW16_WC_MAPPING
 };

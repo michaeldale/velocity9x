@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.47.0 - not yet released
 
+- **`ati` package, AMD Radeon R7E (Carrizo): the screen is
+  write-combined.** Every earlier release wrote it uncached. On
+  M-XP7053 at 1024x768x16, frame-buffer writes went from 204 to 4,779
+  MB/s, a full-screen fill from 203 to 2,165 MB/s, bitmap-to-screen
+  copies from 182 to 1,235 MB/s, and text costs 0.4 to 0.6 of what it
+  did. Reading the screen is unchanged at 8 MB/s
+  ([record](docs/decisions/2026-11-11-carrizo-catch-up-and-write-combining.md)).
+
 ## 0.46.0 - 2026-11-11
 
 - **`vbe` package: moving windows, scrolling, and anything else that

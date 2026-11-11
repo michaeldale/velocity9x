@@ -1,0 +1,22 @@
+[+0:04] agent 0.16.0, boot 50, desktop True
+[+0:50] probes in place: sent 5 of 5
+[+1:49] 3DMark started
+[+2:20] 3DMark +0.5 min: no beat
+[+2:57] 3DMark +1.1 min: no beat
+[+3:35] 3DMark +1.8 min: no beat
+[+4:14] 3DMark +2.4 min: no beat
+[+4:52] 3DMark +3.0 min: no beat
+[+5:30] 3DMark +3.7 min: no beat
+[+6:08] 3DMark +4.3 min: no beat
+[+6:45] 3DMark +4.9 min: no beat
+[+7:22] 3DMark +5.6 min: no beat
+[+8:00] 3DMark +6.2 min: no beat
+[+8:38] 3DMark +6.8 min: no beat
+[+9:16] 3DMark +7.5 min: no beat
+[+9:20] 3DMark finished in 7.5 min, last FlipHandled 
+[+14:47] 3DMark counters: draws +, into presented +, refused batches +, engine stalls +0, FilterMagSeen 0x
+[+15:48] V9XD32 default exit=0
+[+16:38] V9XD32 bpp16 exit=0
+[+17:01] V9XGLP.EXE exit=0
+[+17:12] V9XGLIDP.EXE exit=0
+[+17:19] V9XR3DP.EXE exit=0
