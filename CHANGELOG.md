@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.46.0 - not yet released
+## 0.46.0 - 2026-11-11
 
 - **`vbe` package: moving windows, scrolling, and anything else that
   reads the screen is many times faster.** Windows now draws the
@@ -23,6 +23,12 @@ build identifier so exact guest-tested binaries remain traceable.
   full-screen DOS box the desktop is back at once. A file
   `C:\V9XDIAG\NOSHADOW.TXT` turns it off
   ([record](docs/decisions/2026-11-11-vbe-screen-shadow-phase1.md)).
+- **Known issue, `vbe` package: software OpenGL in a window presents
+  slowly.** The back buffer is kept in video memory, so each present
+  reads the screen's memory: about 70 ms a frame for a small window on a
+  Radeon R3E, 1.5 s at 800x600 on one GTX 970 (GitHub issue 25). Not
+  fixed in this release
+  ([issue](docs/issues/2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md)).
 
 ## 0.45.0 - 2026-11-10
 

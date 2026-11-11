@@ -50,3 +50,11 @@ CPU, so the present is a system-to-video blit (2,469 MB/s on the R3E, under
 a millisecond for this window). The HAL's `D3DSoftSysMem=refused` on `vbe`
 is a sibling decision for software Direct3D and was not looked at here.
 Not done: decided and measured nowhere yet.
+
+## Release decision
+
+2026-11-11 (Michael): 0.46.0 ships without the fix. It needs the software
+rasterizer to accept system-memory targets and a HAL system-to-video blit,
+and it touches the HAL every family shares. Full-screen software GL on
+`vbe` probably presents the same way; that is the first thing to measure
+when the work starts.

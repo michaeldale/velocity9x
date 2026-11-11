@@ -35,26 +35,32 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.45.0
+## Current version: 0.46.0
 
-[Download](releases/0.45.0/README.md) ·
+[Download](releases/0.46.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.45.0:
-- **Every card: leaving a full-screen DOS box brings the desktop back.**
-  Before, it came back frozen and unrepainted, and on the GMA 950 the
-  machine hung. Text typed in full screen also no longer lands at the
-  top-left corner. Tested on an Intel GMA 950, an Intel HD 4600 and an
-  emulated S3 ViRGE/DX; other cards not yet run
-  ([record](docs/decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
-- **Withdrawn known issue:** a program that dies holding DirectDraw
-  surfaces no longer crashes the next one, and has not since 0.30.0. No
-  restart is needed after such a crash.
+New in 0.46.0:
+- **`vbe` package: moving windows, scrolling and anything else that reads
+  the screen is many times faster.** Windows draws the desktop into a copy
+  in system memory and the driver copies each change to the screen. On a
+  Radeon R3E reads went from 5 MB/s to 350-1,180 MB/s and scrolling an
+  800x600 window from 400 ms to 2-3 ms; on an HD 4600, scrolling up a
+  document is no longer seven times slower than scrolling down. Drawing
+  that only writes costs a second copy: 0.3 to 0.8 of its old speed.
+  `C:\V9XDIAG\NOSHADOW.TXT` turns it off
+  ([record](docs/decisions/2026-11-11-vbe-screen-shadow-phase1.md),
+  [AMD and other depths](docs/decisions/2026-11-11-vbe-screen-shadow-open-items.md)).
 
 ### Known issues
 
+- **`vbe` package, software OpenGL in a window:** each frame's present
+  reads a back buffer kept in video memory, so it is slow where the
+  screen is slow to read (about 70 ms for a small window on a Radeon R3E,
+  1.5 s at 800x600 on one GTX 970)
+  ([issue](docs/issues/2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md)).
 - **Full-screen DOS on cards other than the GMA 950, HD 4600 and S3
   ViRGE/DX:** the 0.45.0 fix is in every package but has not been run
   on them. If the desktop does not come back, keep DOS windowed.
@@ -79,6 +85,9 @@ New in 0.45.0:
 
 ### Recent releases
 
+- **0.45.0:** leaving a full-screen DOS box brings the desktop back on
+  every card (GMA 950, HD 4600 and ViRGE/DX tested); a program that dies
+  holding DirectDraw surfaces no longer crashes the next one.
 - **0.44.0:** colour-keyed Direct3D that writes depth is drawn on the
   Intel GMA X3100 to Ironlake (Forsaken).
 - **0.43.0:** the `vbe` package write-combines the screen through the
@@ -202,7 +211,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
-| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro), through the page attribute table from 0.43.0 when the BIOS blocks that (HD 4600) |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro), through the page attribute table from 0.43.0 when the BIOS blocks that (HD 4600). From 0.46.0 GDI draws into a copy of the desktop in system memory, so screen reads (window moves, scrolling) no longer cross the bus (Radeon R3E, HD 4600) |
 
 The driver also installs on some close relatives of the cards above,
 which nobody has run it on yet. Each one uses the code of a tested card
