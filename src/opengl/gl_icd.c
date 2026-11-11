@@ -1730,6 +1730,27 @@ static int v9x_gl_hw_texture(V9X_GL_CONTEXT *context, GLuint name,
     } else if (width > description->hw_texture_size_max ||
                height > description->hw_texture_size_max) {
         return v9x_gl_hw_no(V9X_GL_HWNO_TOO_BIG);
+    } else if (levels > 1ul && width != height) {
+        /*
+         * A non-square chain stops where the shorter side reaches 1: 64x16
+         * has five levels, not GL's seven. Asking for seven was refused
+         * with E_INVALIDARG on the GitHub issue 16 HD 5570 (0.40.0), and
+         * every draw with such a texture was then dropped: 42 % of Quake
+         * 2's triangles
+         * (docs\issues\2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md).
+         * Our R3E's DirectDraw takes seven; five works on both. The levels
+         * left off are smaller than 4x1, so only extreme minification
+         * samples the last level kept instead.
+         */
+        v9x_u32 shorter = width < height ? width : height;
+        v9x_u32 cap = 1ul;
+
+        while ((shorter >> (cap - 1ul)) > 1ul) {
+            ++cap;
+        }
+        if (levels > cap) {
+            levels = cap;
+        }
     }
     /*
      * The layout the engine samples: the image's own; for an RGB image on

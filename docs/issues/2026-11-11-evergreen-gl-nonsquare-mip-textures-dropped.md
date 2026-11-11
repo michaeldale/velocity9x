@@ -72,3 +72,20 @@ The `vbe` files and 1024x768x16 were put back (boot 81, `enable-ok`).
 M-D7TFW4 (Trinity) was offline. The R3E has the same `DDRAW.DLL` size
 (359,424 bytes) as M-BXMFA8 and creates the chain. The reporter's
 `DDRAW.DLL` version is the next thing to ask for.
+
+## Test build issue16-test1, 2026-11-11
+
+`v9x_gl_hw_texture` (`src\opengl\gl_icd.c`) now asks for no more levels
+than a non-square texture's shorter side allows (five for 64x16). On the
+R3E, the full `ati` test set (boot 34) and the test `V9XGL.DLL` alone over
+the released 0.46.0 files each ran V9XGLP with every result equal to the
+0.46.0 release check, including the non-square mip checks, and
+`create-failed=0`. That shows no regression where the old request worked;
+it cannot show the fix, since the R3E never refused. The R3E was put back
+on its 0.46.0 files (boot 35, hashes checked).
+
+`velocity9x-issue16-test1.zip` (`V9XGL.DLL` and a README, SHA-256
+`f724bf09...d538`) was attached to
+[issue 16](https://github.com/michaeldale/velocity9x/issues/16#issuecomment-6784580420)
+with a request for a Quake 2 run, `V9XGL.LOG` and the `DDRAW.DLL`
+version.
