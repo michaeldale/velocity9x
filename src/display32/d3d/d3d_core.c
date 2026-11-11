@@ -4519,8 +4519,16 @@ static int v9x_d3d_dp2_for_process(void)
                   engine->tnl_available()
               ? V9X_D3D_DDI7 : V9X_D3D_DDI6;
     /* DDI 8 where the 16-bit side stamped it, which is also where it set
-     * DDHALINFO_GETDRIVERINFO2 (dd16.c); DDI 7 under it. */
-    ddi8 = dp2 == V9X_D3D_DDI7 &&
+     * DDHALINFO_GETDRIVERINFO2 (dd16.c): over DDI 7 on an engine that runs
+     * T&L (Haswell), or over DDI 6 on one that runs pixel shaders and no
+     * T&L (Gen3, docs\plans\gen3-ps11-pixel-shaders.md 5f). DDI 8's vertex
+     * processing is the runtime's either way (ddi8-on-win9x.md section 4:
+     * no HWTRANSFORMANDLIGHT), so a DDI 8 object takes from DDI 7 only
+     * DRAWPRIMITIVES2EX and the Misc2 callbacks, which every DrawPrimitives2
+     * engine here serves; the T&L device is not offered
+     * (V9X_D3D_TNL_DEVICE_OFFERED). */
+    ddi8 = (dp2 == V9X_D3D_DDI7 ||
+            (engine != 0 && engine->draw_shader != 0)) &&
                    (v9x_hal->engine.engine_caps &
                     V9X_DD_ENGINE_CAP_D3D_DDI8) != 0ul
                ? V9X_D3D_DDI8 : dp2;

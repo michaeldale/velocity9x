@@ -257,7 +257,13 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
      * CPU without a ring. FLIP is claimed below; the VBIOS keeps the mode.
      */
     if (v9x_intel_runtime3d_allowed != 0u && *ring_linear_base != 0ul) {
-        *engine_caps = V9X_DD_ENGINE_CAP_D3D;
+        /* DDI 8 with the Gen3 engine's pixel shaders (docs\plans\gen3-
+         * ps11-pixel-shaders.md, 5f): dd16.c sets GETDRIVERINFO2 on it,
+         * without which DirectX 8 programs never see the driver's
+         * D3DCAPS8. Vertex processing stays the runtime's, as it is at
+         * Haswell's DDI 8. The Gen4 and Gen5 wrappers below take it off:
+         * their engine runs no pixel shaders. */
+        *engine_caps = V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_D3D_DDI8;
         if (v9x_intel_async_submit_allowed != 0u) {
             *engine_caps |= V9X_DD_ENGINE_CAP_ASYNC_SUBMIT;
         }
@@ -369,6 +375,8 @@ static void v9x_gm965_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
+    /* Gen4's Direct3D (d3d_g4.c) runs no pixel shaders: no DDI 8. */
+    *engine_caps &= ~V9X_DD_ENGINE_CAP_D3D_DDI8;
     if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN4;
     }
@@ -440,7 +448,8 @@ static void v9x_ilk_fill_engine(unsigned long framebuffer_linear_base,
     v9x_gma950_fill_engine(framebuffer_linear_base, control_linear_base,
                            mapped_aperture_bytes, engine_type, engine_caps,
                            gtt_linear_base, ring_linear_base, ring_bytes);
-    *engine_caps &= ~V9X_DD_ENGINE_CAP_FLIP_RING;
+    *engine_caps &= ~(V9X_DD_ENGINE_CAP_FLIP_RING |
+                      V9X_DD_ENGINE_CAP_D3D_DDI8);
     if (*engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
         *engine_caps |= V9X_DD_ENGINE_CAP_I9XX_GEN5;
     }

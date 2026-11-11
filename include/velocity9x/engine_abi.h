@@ -334,8 +334,10 @@
  * The engine serves DDI 8 (docs\plans\haswell-ddi8-pixel-shaders.md):
  * dd16.c then sets DDHALINFO_GETDRIVERINFO2 on the description it hands
  * DDRAW, without which the runtime never asks for D3DCAPS8, and the HAL
- * gives DirectX 8 and 9 programs DDI 8. Stamped by the Haswell open only,
- * so no other chip's DirectX 8 changes.
+ * gives DirectX 8 and 9 programs DDI 8. Stamped by the Haswell open, and
+ * from 2026-11-11 by the Gen3 one (gma950_hw16.c, not its Gen4 and Gen5
+ * wrappers) for its pixel shaders (docs\plans\gen3-ps11-pixel-shaders.md);
+ * no other chip's DirectX 8 changes.
  */
 #define V9X_DD_ENGINE_CAP_D3D_DDI8      0x00800000ul
 /*
