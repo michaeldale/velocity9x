@@ -183,3 +183,33 @@ To be confirmed with the reporter.
   game's mode, and `V9XDDT.TXT` after the hang.
 - On our own Evergreen machines: Quake 1 and Quake 2 OpenGL, which no
   Evergreen card has run.
+
+## Second files (2026-11-10, reviewed 2026-11-11)
+
+The reporter's `All Tests.zip` on issue 16, still 0.40.0 (`5977e375`),
+kept outside the repository:
+
+- **16 colours is `vga.drv`, as stated above.** The reporter checked
+  `V9XBOOT.INI` after a 16-colour boot and found it was not rewritten.
+  Its contents (`Surface=... bpp=16`) are from an earlier high-colour
+  boot. The INF's `MODES\4\640,480` row sets `drv=vga.drv` and
+  `vdd=*vdd`. What still differs from a plain VGA install is that our
+  mini-VDD stays loaded; whether that is why their DOS programs behave
+  differently there was not checked.
+- **V9XDDP at 16 bpp:** complete, and key for key the same as the HD
+  7470's run (boot 61) apart from modes, addresses and two capability
+  words that changed between builds. Nothing in it is Redwood's.
+- **Quake 2 OpenGL:** 42 % of its triangles were dropped, because a
+  non-square mipmapped texture could not be created and the CPU path
+  that follows is refused on this engine. Filed as
+  [`../issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md`](../issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md).
+  The dark picture is not explained.
+- **Bug! at 320x240:** that is one of our VBE modes (`0193h`), not
+  DirectDraw's Mode X, so the hang on leaving it is ours. Nothing in the
+  files records it: `V9XTRAIL.TXT` holds boots and mode sets only.
+- **`V9XTRACE.INI`** holds an undated fault, an access violation at
+  `0x100057D1` just after a program entered exclusive mode at
+  640x480x16. The 0.40.0 HAL loads at `0xB0400000` (map rebuilt from
+  `5977e375`), so the fault is in a module at `0x10000000`, not the HAL;
+  which program is not recorded.
+- **Moto Racer** needs 16 bpp and flickers there; no file covers it.
