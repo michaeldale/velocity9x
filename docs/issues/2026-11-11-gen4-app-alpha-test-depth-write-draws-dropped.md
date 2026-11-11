@@ -111,3 +111,35 @@ GM45 and a reset path ready.
   Uplink; the owner's hazard course demo was not found on the machine).
 - Incoming's fault after Start Game not investigated.
 - The owner has not been answered.
+
+## Fix in source, not yet measured (2026-11-11, option 1)
+
+`v9x_d3d_g4_map` no longer refuses an application's alpha test with depth
+writes. It sets `depth_prepass` for any alpha-tested draw that writes
+depth, keyed or not, and `v9x_d3d_g4_draw_keyed_depth` is renamed
+`v9x_d3d_g4_draw_alpha_depth`. The passes are unchanged: depth only
+(untextured, no alpha test, colour writes masked), then colour with the
+alpha test, depth writes off and the depth test EQUAL. Reason 8 is now
+returned only for an alpha function outside NEVER..ALWAYS. The cost is the
+same as the keyed case: depth is written over discarded texels, so
+anything drawn later behind a grate is hidden there.
+
+The OpenGL ICD's Gen4 draws go through the same map, so GL programs that
+alpha-test with depth writes now draw through the two passes as well.
+Before this change they were dropped. Not measured.
+
+`run-checks.ps1` passed. Build `254b7655-dirty` (this change only) was
+installed on M-6B21TJ by `run-release-checks.ps1 -Machine gm45`: 8 of 8
+files hash-checked, boot 17 to 18
+(`../probe/m-6b21tj-game-reports-2026-11-11/release-check-gm45/gm45.log`).
+The machine then stopped checking in with the relay at 09:39 UTC, about
+two minutes after the install check, before the probe push. Neither the
+probes nor any 3D program had run, so the new path was not reached. Why
+it went offline is not known: the wifi, the owner, or the driver at idle
+are all open. **That build stays installed** until the machine returns.
+
+Owed when it returns: confirm it booted to the desktop on `254b7655-dirty`
+(`DriverBuild` in a snapshot); V9XD32, V9XGLP, V9XGLIDP and V9XR3DP as a
+regression check; Half-Life and Incoming traced as above, expecting
+`M64Policy08` to stay 0 and census key `28761C94` to draw; a hang check
+on the GM965 (TOMMOHP) before this ships.
