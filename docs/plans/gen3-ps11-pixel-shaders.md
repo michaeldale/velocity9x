@@ -174,13 +174,51 @@ CreatePixelShader, as any other untranslatable program is.
      interpreter's three-coordinate lookup.
 
    Step 4 settles both.
-4. **Probe on the netbook** (W9QI2BE2, GMA 950): a Gen3 probe in the style
-   of `V9XHSWMM /ps11`, drawing translated programs outside the HAL and
-   comparing pixels with the interpreter. Also settles the two bump
-   formats and cube sampling on the silicon.
-5. **HAL.** `draw_shader` in `d3d_i9xx.c`: program and constants per
-   draw (cached by program), four samplers, the vertex with four
-   coordinate sets. Gate: V9XD32 T19 at 16 and 32 bpp on the netbook.
+4. **Folded into step 5** (2026-11-11, Michael's choice). The plan was a
+   Gen3 probe like `V9XHSWMM /ps11`, drawing translated programs outside
+   the HAL. No Gen3 MMIO probe exists to extend: it would need its own
+   ring, GTT and surface setup, and Haswell's probe is 3,900 lines.
+   V9XD32 T19 already judges every pixel of ten PS 1.1 programs against
+   the same interpreter, through Direct3D 8: cube, texbem, texkill, fog
+   and empty stages among them. So T19 on the netbook is the probe, once
+   the HAL draws shaders. The cost: a failure is less isolated, since
+   the HAL's state and texture placement are in the path too. T19
+   reports each program separately, which narrows it.
+5. **HAL.** Several sessions. `draw_shader` in `d3d_i9xx.c` makes the
+   core advertise PS 1.1, cube maps and the Q8W8V8U8 and V8U8 formats
+   at once (`d3d_core.c:8095-8170`). Gen3 has none of those today: its
+   maps are 565, 1555 and 4444 only. Every stream also passes the
+   allowlist decoder before the ring. In order:
+   - **5a. Map formats.** `MT_16BIT_88DVDU` (V8U8),
+     `MT_32BIT_QWVU8888` (Q8W8V8U8), and whatever 32-bit colour
+     formats T19 binds at 32 bpp, which needs checking first. Placement,
+     the sampler format word, the decoder's footprint. Host tests.
+   - **5b. Cube maps.** Gen3's cube layout (six faces in the mip tree;
+     Mesa's `i915_miptree_layout_cube` and xf86 as the two sources), its
+     placement at CreateSurface, the map's cube bit. Host tests on the
+     layout arithmetic.
+   - **5c. Shader stream builders**, pure and host-tested: the state
+     block for up to four maps and samplers, with S2 declaring four
+     four-component coordinate sets and S4 diffuse and specular; the
+     constants packet for C0-C17; the wide-vertex run (position, rhw,
+     diffuse, specular, four xyzw sets).
+   - **5d. Decoder licence**: a shader stream kind. Maps against their
+     footprints, the constants packet, and the program read instruction
+     by instruction: only T0-T3, T8, T9, S0-S3 and C0-C17, within the
+     encoder's limits. Host tests: every step 3 program built into a
+     stream passes, and mutated streams are refused.
+   - **5e. `draw_shader`** in `d3d_i9xx.c`: the program cached by the
+     shader's serial and the draw's cube, projected, unbound and fog
+     bits; four textures bound; triangles gathered; submitted. The
+     ops-table entry turns it on, with no INI key.
+   - **5f. Netbook** (W9QI2BE2, GMA 950): V9XD32 T19 at 16 and 32 bpp.
+     This is old step 4's evidence: it settles the bump formats, cube
+     sampling with an unscaled direction, and whether DDI 8 is offered
+     on Gen3 at all.
+
+   A texm3x3tex stage must hold a cube or a volume texture. Gen3 will
+   place no volume textures, so such a draw with a 2D texture bound is
+   refused rather than drawn as a volume.
 6. **3DMark 2001 SE** on the netbook: Nature and the two pixel-shader
    tests start, draw, and refuse nothing. Then the GMA 3150 (TOMMO33) and
    the GMA 900 if their owners are about.
