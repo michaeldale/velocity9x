@@ -3,6 +3,7 @@
 Built packages, one folder per version. The newest is at the top.
 Open a version's `README.md` to see which zip matches which card.
 
+- [0.46.0](0.46.0/README.md) - 9 downloads
 - [0.45.0](0.45.0/README.md) - 9 downloads
 - [0.44.0](0.44.0/README.md) - 9 downloads
 - [0.43.0](0.43.0/README.md) - 9 downloads
