@@ -21,7 +21,17 @@
  * first KiB, the KiB at the BAR VM instance if the window covers it, and a
  * coarse sample of the whole window.
  *
- * No register or memory is ever written. Every offset and field is from
+ * Two other modes, each with its own report (docs\decisions\
+ * 2026-11-11-gt218-register-probe.md, "Next"):
+ *   /fb    C:\V9XDIAG\V9XN5FB.INI: video memory through the VBE
+ *          framebuffer, BAR3 + 0, BAR1 + 16 MiB and BAR1 + 0, compared;
+ *   /crtc  C:\V9XDIAG\V9XN5CR.INI: the VGA CRTC as the VBE left it;
+ *   /fbwrite  C:\V9XDIAG\V9XN5FW.INI: the BAR1 linearity write test
+ *          (docs\decisions\2026-11-11-gt218-bar-windows.md, "Next").
+ *
+ * No register is ever written. Video memory is written only by /fbwrite,
+ * 16 dwords at each of five BAR1 offsets past 14 MiB, and restored; /crtc
+ * writes only the VGA CRTC index port, and puts it back. Every offset and field is from
  * nouveau (nvkm, Linux master, kept in build\external\nv50\nouveau), not
  * measured; the record of the first run says which held.
  */
@@ -36,9 +46,22 @@
 #endif
 
 #define V9X_N5MM_PATH        V9X_DIAG_PATH("V9XN5MM.INI")
+#define V9X_N5FB_PATH        V9X_DIAG_PATH("V9XN5FB.INI")
+#define V9X_N5CR_PATH        V9X_DIAG_PATH("V9XN5CR.INI")
 #define V9X_N5MM_VXD         "\\\\.\\N5MM.VXD"
 #define V9X_N5MM_MAGIC       0x4d4d354eul
 #define V9X_N5MM_CAPTURE     1u
+#define V9X_N5MM_FB          2u
+#define V9X_N5MM_FBWRITE     3u
+#define V9X_N5FW_PATH        V9X_DIAG_PATH("V9XN5FW.INI")
+#define V9X_ST_WRITE_DONE    0x00000400ul
+
+/* N5MM.VXD's write test: BAR1 + 0, then five targets past 14 MiB, 16
+ * dwords each, each target's pattern A5000000h | window << 16 | byte. */
+#define V9X_N5_WR_WINDOWS    6ul
+#define V9X_N5_WR_DWORDS     16ul
+#define V9X_N5_WR_PATTERN    0xa5000000ul
+#define V9X_N5_WR_TAG_MASK   0xff000000ul
 #define V9X_N5MM_OFFSET_MAX  256u
 #define V9X_N5MM_HEADER      16u
 #define V9X_PCI_ADDRESS      ((WORD)0x0cf8u)
@@ -55,6 +78,23 @@
 #define V9X_ST_IDENTITY_MATCH  0x00000008ul
 #define V9X_ST_OFFSETS_REFUSED 0x00000010ul
 #define V9X_ST_SNAPSHOT_TAKEN  0x00000020ul
+#define V9X_ST_FB_MAPPED       0x00000200ul
+
+/* N5MM.VXD's framebuffer-window encoding: bit 31, the window in 25:24,
+ * the byte in 20:0. Windows in the order /fb reads them, BAR1 last
+ * because nothing says what it decodes with no BAR VM. */
+#define V9X_N5_FB_FLAG         0x80000000ul
+#define V9X_N5_FB_WINDOW_SHIFT 24u
+#define V9X_N5_FB_OFFSET_MASK  0x001ffffful
+#define V9X_N5_FB_BYTES        0x00200000ul
+#define V9X_N5_FB_STEP         (V9X_N5_FB_BYTES / V9X_N5MM_OFFSET_MAX)
+#define V9X_N5_FB_LFB          0ul
+#define V9X_N5_FB_WINDOWS      4ul
+
+/* /crtc: the VGA ports, read only (index writes and data reads). */
+#define V9X_VGA_MISC_READ      ((WORD)0x03ccu)
+#define V9X_VGA_CRTC_INDEX     ((WORD)0x03d4u)
+#define V9X_VGA_CRTC_DATA      ((WORD)0x03d5u)
 
 /* Registers the decode reads back. */
 #define V9X_NV50_PMC_BOOT_0       0x000000ul
@@ -121,6 +161,10 @@ static DWORD v9x_inpd(WORD port);
 #pragma aux v9x_inpd = "in eax,dx" parm [dx] value [eax] modify exact [eax]
 static void v9x_outpd(WORD port, DWORD value);
 #pragma aux v9x_outpd = "out dx,eax" parm [dx] [eax] modify exact []
+static BYTE v9x_inpb(WORD port);
+#pragma aux v9x_inpb = "in al,dx" parm [dx] value [al] modify exact [al]
+static void v9x_outpb(WORD port, BYTE value);
+#pragma aux v9x_outpb = "out dx,al" parm [dx] [al] modify exact []
 
 struct v9x_n5mm_register {
     DWORD offset;
@@ -236,9 +280,10 @@ struct v9x_n5mm_result {
     DWORD cf8;
     DWORD refused_offset;
     DWORD config;
-    DWORD reserved_9;
+    DWORD bar1;
     DWORD class_revision;
-    DWORD reserved[5];
+    DWORD bar3;
+    DWORD reserved[4];
     DWORD offsets[V9X_N5MM_OFFSET_MAX];
     DWORD first[V9X_N5MM_OFFSET_MAX];
     DWORD second[V9X_N5MM_OFFSET_MAX];
@@ -258,6 +303,9 @@ static struct v9x_n5mm_request v9x_request;
 static struct v9x_n5mm_result v9x_result;
 static struct v9x_n5mm_value v9x_values[V9X_N5MM_OFFSET_MAX * 2u];
 static DWORD v9x_value_count;
+
+/* The report this run writes: V9XN5MM.INI, or /fb's and /crtc's own. */
+static const char *v9x_path = V9X_N5MM_PATH;
 
 static DWORD v9x_config_read(DWORD device, DWORD offset)
 {
@@ -305,7 +353,7 @@ static void v9x_key(const char *section, const char *key, DWORD value)
     char text[12];
 
     v9x_hex(text, value, 8);
-    WritePrivateProfileStringA(section, key, text, V9X_N5MM_PATH);
+    WritePrivateProfileStringA(section, key, text, v9x_path);
 }
 
 static void v9x_number(const char *section, const char *key, DWORD value)
@@ -313,12 +361,12 @@ static void v9x_number(const char *section, const char *key, DWORD value)
     char text[12];
 
     v9x_decimal(text, value);
-    WritePrivateProfileStringA(section, key, text, V9X_N5MM_PATH);
+    WritePrivateProfileStringA(section, key, text, v9x_path);
 }
 
 static void v9x_text(const char *section, const char *key, const char *value)
 {
-    WritePrivateProfileStringA(section, key, value, V9X_N5MM_PATH);
+    WritePrivateProfileStringA(section, key, value, v9x_path);
 }
 
 static void v9x_offset_key(char *key, const char *prefix, DWORD offset,
@@ -392,7 +440,7 @@ static void v9x_request_pramin(DWORD start, DWORD bytes, DWORD step)
 }
 
 /* One DIOC call of v9x_request. Returns nonzero on a snapshot. */
-static int v9x_capture(void)
+static int v9x_call(DWORD code)
 {
     HANDLE device;
     DWORD returned;
@@ -406,7 +454,7 @@ static int v9x_capture(void)
         return 0;
     }
     returned = 0ul;
-    ok = DeviceIoControl(device, V9X_N5MM_CAPTURE, &v9x_request,
+    ok = DeviceIoControl(device, code, &v9x_request,
                          sizeof(v9x_request), &v9x_result,
                          sizeof(v9x_result), &returned, 0);
     CloseHandle(device);
@@ -417,6 +465,11 @@ static int v9x_capture(void)
         return 0;
     }
     return (v9x_result.status & V9X_ST_SNAPSHOT_TAKEN) != 0ul;
+}
+
+static int v9x_capture(void)
+{
+    return v9x_call(V9X_N5MM_CAPTURE);
 }
 
 static void v9x_remember(DWORD offset, DWORD value)
@@ -597,7 +650,7 @@ static void v9x_decode_heads(void)
 static void v9x_finish(const char *result, UINT code)
 {
     v9x_text("Report", "Result", result);
-    WritePrivateProfileStringA(0, 0, 0, V9X_N5MM_PATH);
+    WritePrivateProfileStringA(0, 0, 0, v9x_path);
     ExitProcess(code);
 }
 
@@ -617,24 +670,258 @@ static void v9x_optional(const struct v9x_n5mm_register *list, DWORD count,
     v9x_text("Report", report_key, "taken");
 }
 
+static int v9x_switch_given(const char *switch_text)
+{
+    const char *line;
+    int length;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            return 1;
+        }
+        ++line;
+    }
+    return 0;
+}
+
+/*
+ * /fb: the same 256 offsets, one every 8 KiB of 2 MiB, through each of the
+ * four windows: the VBE framebuffer (BAR3 + 16 MiB), BAR3 + 0, BAR1 +
+ * 16 MiB, BAR1 + 0, in that order. The report is flushed after each, so a
+ * window that hangs the machine leaves the ones before it on disk. Per
+ * window: every word (W<n>.<offset>), and counts of words equal to the
+ * framebuffer's, zero, all ones, and moved between the two reads.
+ */
+static DWORD v9x_fb_lfb[V9X_N5MM_OFFSET_MAX];
+
+static void v9x_fb_window(DWORD window)
+{
+    char section[8];
+    char key[24];
+    char text[24];
+    DWORD index;
+    DWORD offset;
+    DWORD same = 0ul;
+    DWORD zero = 0ul;
+    DWORD ones = 0ul;
+    DWORD moved = 0ul;
+
+    v9x_request.count = 0ul;
+    for (offset = 0ul; offset < V9X_N5_FB_BYTES; offset += V9X_N5_FB_STEP) {
+        v9x_request_add(V9X_N5_FB_FLAG |
+                        (window << V9X_N5_FB_WINDOW_SHIFT) | offset);
+    }
+    lstrcpyA(section, "Fb");
+    v9x_hex(section + 2, window, 1);
+    if (!v9x_call(V9X_N5MM_FB)) {
+        v9x_key(section, "Status", v9x_result.status);
+        v9x_finish("FB-CAPTURE-FAILED", 5u);
+    }
+    v9x_key(section, "Status", v9x_result.status);
+    v9x_key("Report", "Bar1", v9x_result.bar1);
+    v9x_key("Report", "Bar3", v9x_result.bar3);
+    for (index = 0ul; index < v9x_result.accepted; ++index) {
+        offset = v9x_result.offsets[index] & V9X_N5_FB_OFFSET_MASK;
+        v9x_offset_key(key, "W", offset, 6);
+        v9x_pair(text, index);
+        v9x_text(section, key, text);
+        if (window == V9X_N5_FB_LFB) {
+            v9x_fb_lfb[index] = v9x_result.first[index];
+        }
+        if (v9x_result.first[index] == v9x_fb_lfb[index]) {
+            ++same;
+        }
+        if (v9x_result.first[index] == 0ul) {
+            ++zero;
+        }
+        if (v9x_result.first[index] == 0xfffffffful) {
+            ++ones;
+        }
+        if (v9x_result.second[index] != v9x_result.first[index]) {
+            ++moved;
+        }
+    }
+    v9x_number(section, "SameAsFramebuffer", same);
+    v9x_number(section, "Zero", zero);
+    v9x_number(section, "AllOnes", ones);
+    v9x_number(section, "Moved", moved);
+    WritePrivateProfileStringA(0, 0, 0, v9x_path);
+}
+
+/*
+ * /fbwrite: is BAR1 linear with no BAR VM? See N5_DIOC_FBWRITE in
+ * nv50_mmio_probe.asm. Per window: Patterned (dwords that read back as
+ * their own window's pattern), Foreign (dwords carrying another window's
+ * pattern: an alias), Restored (dwords equal to the saved word after the
+ * restore), and every saved, patterned and restored word.
+ */
+static void v9x_fb_write(void)
+{
+    static const DWORD targets[] = {
+        0x00000000ul, 0x01000000ul, 0x02000000ul,
+        0x04000000ul, 0x08000000ul, 0x0ffff000ul
+    };
+    char section[8];
+    char key[24];
+    char text[32];
+    DWORD window;
+    DWORD dword;
+    DWORD at;
+    DWORD own;
+    DWORD word;
+    DWORD patterned;
+    DWORD foreign;
+    DWORD restored;
+    DWORD all_ok = 1ul;
+
+    v9x_request.count = 0ul;
+    if (!v9x_call(V9X_N5MM_FBWRITE) ||
+        (v9x_result.status & V9X_ST_WRITE_DONE) == 0ul) {
+        v9x_key("Report", "Status", v9x_result.status);
+        v9x_finish("WRITE-NOT-RUN", 6u);
+    }
+    v9x_key("Report", "Status", v9x_result.status);
+    v9x_key("Report", "Bar1", v9x_result.bar1);
+    for (window = 0ul; window < V9X_N5_WR_WINDOWS; ++window) {
+        lstrcpyA(section, "Wr");
+        v9x_hex(section + 2, window, 1);
+        v9x_key(section, "Bar1Offset", targets[window]);
+        patterned = 0ul;
+        foreign = 0ul;
+        restored = 0ul;
+        for (dword = 0ul; dword < V9X_N5_WR_DWORDS; ++dword) {
+            at = window * V9X_N5_WR_DWORDS + dword;
+            own = V9X_N5_WR_PATTERN | (window << 16) | (dword * 4ul);
+            word = v9x_result.first[at];
+            if (window != 0ul && word == own) {
+                ++patterned;
+            } else if ((word & V9X_N5_WR_TAG_MASK) == V9X_N5_WR_PATTERN &&
+                       word != v9x_result.offsets[at]) {
+                ++foreign;
+            }
+            if (v9x_result.second[at] == v9x_result.offsets[at]) {
+                ++restored;
+            }
+            v9x_offset_key(key, "D", dword * 4ul, 2);
+            v9x_hex(text, v9x_result.offsets[at], 8);
+            text[8] = ',';
+            v9x_hex(text + 9, word, 8);
+            text[17] = ',';
+            v9x_hex(text + 18, v9x_result.second[at], 8);
+            v9x_text(section, key, text);
+        }
+        v9x_number(section, "Patterned", patterned);
+        v9x_number(section, "Foreign", foreign);
+        v9x_number(section, "Restored", restored);
+        if (foreign != 0ul || restored != V9X_N5_WR_DWORDS ||
+            (window != 0ul && patterned != V9X_N5_WR_DWORDS)) {
+            all_ok = 0ul;
+        }
+    }
+    v9x_text("Decode", "Bar1Linear", all_ok ? "consistent" : "no");
+}
+
+static BYTE v9x_crtc_read(BYTE index)
+{
+    v9x_outpb(V9X_VGA_CRTC_INDEX, index);
+    return v9x_inpb(V9X_VGA_CRTC_DATA);
+}
+
+/*
+ * /crtc: the VGA CRTC as the VBE left it, read without unlocking the
+ * extended set: the start address (0C/0D), offset (13), and the registers
+ * NV4 and later use for the start's high bits, the row offset's high bits
+ * and pixel depth (19, 1A, 25, 28, 2D), plus the extended-lock index 1F
+ * (xf86-video-nv's names; whether NV50 honours them is what this reads).
+ * Locked extended registers may read as zero or as the lock.
+ */
+static void v9x_crtc_probe(void)
+{
+    static const BYTE indexes[] = {
+        0x01u, 0x0cu, 0x0du, 0x12u, 0x13u, 0x19u, 0x1au, 0x1fu,
+        0x25u, 0x28u, 0x2du
+    };
+    char key[8];
+    DWORD index;
+    BYTE misc;
+    BYTE saved;
+
+    misc = v9x_inpb(V9X_VGA_MISC_READ);
+    v9x_key("Crtc", "Misc", misc);
+    if ((misc & 0x01u) == 0u) {
+        v9x_text("Crtc", "Result", "mono-crtc-not-read");
+        return;
+    }
+    /* The index register is put back as found. */
+    saved = v9x_inpb(V9X_VGA_CRTC_INDEX);
+    for (index = 0ul; index < sizeof(indexes); ++index) {
+        lstrcpyA(key, "CR");
+        v9x_hex(key + 2, indexes[index], 2);
+        v9x_key("Crtc", key, v9x_crtc_read(indexes[index]));
+    }
+    v9x_outpb(V9X_VGA_CRTC_INDEX, saved);
+    v9x_key("Crtc", "StartWords",
+            (DWORD)v9x_crtc_read(0x0du) |
+            ((DWORD)v9x_crtc_read(0x0cu) << 8));
+    v9x_outpb(V9X_VGA_CRTC_INDEX, saved);
+    v9x_text("Crtc", "Result", "taken");
+}
+
 void __stdcall V9xNv50MmioEntry(void)
 {
     DWORD config;
     DWORD enable;
     DWORD window;
     DWORD instance;
+    int fb;
+    int crtc;
+    int fbwrite;
 
+    /* /fbwrite first: the switch scan matches prefixes, and "/fb" is one. */
+    fbwrite = v9x_switch_given("/fbwrite");
+    fb = !fbwrite && v9x_switch_given("/fb");
+    crtc = v9x_switch_given("/crtc");
+    if (fbwrite) {
+        v9x_path = V9X_N5FW_PATH;
+    } else if (fb) {
+        v9x_path = V9X_N5FB_PATH;
+    } else if (crtc) {
+        v9x_path = V9X_N5CR_PATH;
+    }
     CreateDirectoryA(V9X_DIAG_DIR, 0);
-    DeleteFileA(V9X_N5MM_PATH);
+    DeleteFileA(v9x_path);
     v9x_text("Report", "Tool", "V9XN5MM");
     v9x_text("Report", "Build", V9X_BUILD_ID);
-    v9x_text("Report", "Access", "mmio-read-only");
+    v9x_text("Report", "Access",
+             fbwrite ? "video-memory-write-restored" :
+             crtc && !fb ? "vga-crtc-read" :
+             fb ? "video-memory-read-only" : "mmio-read-only");
 
     config = v9x_find_gt218();
     if (config == 0ul) {
         v9x_finish("NO-GT218", 1u);
     }
     v9x_key("Report", "Config", config);
+
+    if (fbwrite) {
+        v9x_request.config = config;
+        v9x_fb_write();
+        v9x_finish("COMPLETE", 0u);
+    }
+    if (fb) {
+        v9x_request.config = config;
+        for (window = 0ul; window < V9X_N5_FB_WINDOWS; ++window) {
+            v9x_fb_window(window);
+        }
+        v9x_finish("COMPLETE", 0u);
+    }
+    if (crtc) {
+        v9x_crtc_probe();
+        v9x_finish("COMPLETE", 0u);
+    }
     v9x_publish_config(config);
 
     v9x_request.config = config;
