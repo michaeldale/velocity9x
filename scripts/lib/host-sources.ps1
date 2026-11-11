@@ -185,6 +185,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_fs.c',
         # Pixel shader 1.x to the fragment program: step 3.
         'src\chipsets\intel\i9xx_ps11.c',
+        # The shader stream's constants and vertex run: step 5c.
+        'src\chipsets\intel\i9xx_shader.c',
         'src\chipsets\intel\i9xx_fog.c',
         'src\chipsets\intel\i9xx_multitex.c',
         'src\chipsets\intel\i9xx_vertex.c',
@@ -356,6 +358,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_fs.c',
         'tests\host\i9xx_fs_sim.c',
         'tests\host\test_i9xx_ps11.c',
+        'tests\host\test_i9xx_shader.c',
         'tests\host\test_mach64_engine.c',
         'tests\host\test_mach64_policy.c',
         'tests\host\test_mach64_draw.c',

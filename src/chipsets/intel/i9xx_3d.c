@@ -770,6 +770,183 @@ v9x_status v9x_i9xx_build_two_unit_state(
     return V9X_STATUS_OK;
 }
 
+/*
+ * THE SHADER BLOCK (step 5c of docs\plans\gen3-ps11-pixel-shaders.md):
+ * the two-unit block's packets in its order, for a translated pixel
+ * shader. MAP_STATE and SAMPLER_STATE carry the stages a shader samples,
+ * which need not be contiguous: the shared builders emit units 0 to n - 1,
+ * so the sampled maps are built compacted and then the enable masks and
+ * each sampler's map index are set to the stage numbers, as Mesa's
+ * update_samplers writes them (mask by unit, SS3 map index = unit). A
+ * cube's MS4 gains the six face enables. Every pixel-shader stream carries
+ * the specular colour, the program's T9, whose alpha is the fog factor.
+ */
+#define V9X_I9XX_STAGE_MASK ((1ul << V9X_I9XX_SHADER_STAGES) - 1ul)
+
+static v9x_u32 v9x_i9xx_stage_count(v9x_u32 units)
+{
+    v9x_u32 count = 0ul;
+    v9x_u32 stage;
+
+    for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+        if ((units & (1ul << stage)) != 0ul) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+v9x_u32 v9x_i9xx_shader_state_extent(v9x_u32 units, v9x_u32 depthed,
+                                     v9x_u32 blend)
+{
+    v9x_u32 count = v9x_i9xx_stage_count(units);
+
+    if ((units & ~V9X_I9XX_STAGE_MASK) != 0ul) {
+        return 0ul;
+    }
+    return v9x_i9xx_3d_state_extent() +
+           (blend != 0ul ? 1ul : 0ul) +
+           (count != 0ul ? v9x_i9xx_map_state_extent(count) +
+                               v9x_i9xx_sampler_state_extent(count)
+                         : 0ul) +
+           (depthed != 0ul ? 3ul : 0ul);
+}
+
+v9x_status v9x_i9xx_build_shader_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *maps, v9x_u32 units, v9x_u32 cubes,
+    v9x_u32 sets,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
+    v9x_u32 blend_src, v9x_u32 blend_dst, v9x_u32 alpha_test,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    struct v9x_i9xx_texture compact[V9X_I9XX_SHADER_STAGES];
+    v9x_u32 stage_of[V9X_I9XX_SHADER_STAGES];
+    v9x_u32 blend = (blend_src != 0ul || blend_dst != 0ul) ? 1ul : 0ul;
+    v9x_u32 needed = v9x_i9xx_shader_state_extent(
+        units, depth_offset != 0ul ? 1ul : 0ul, blend);
+    v9x_u32 s6 = V9X_I9XX_S6_PHASE5;
+    v9x_u32 s2 = V9X_I9XX_S2_ALL_TEXCOORD_ABSENT;
+    v9x_u32 count = 0ul;
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 packet;
+    v9x_u32 stage;
+    v9x_u32 k;
+
+    if (written != 0) { *written = 0ul; }
+    if (stream == 0 || written == 0 || maps == 0 || needed == 0ul ||
+        capacity < needed) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((cubes & ~units) != 0ul || sets > V9X_I9XX_SHADER_STAGES) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* The two-unit block's argument rules, each for its reason there. */
+    if ((alpha_test & ~V9X_I9XX_S6_ALPHA_TEST_MASK) != 0ul ||
+        (alpha_test != 0ul &&
+         (alpha_test & V9X_I9XX_S6_ALPHA_TEST_ENABLE) == 0ul)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((blend_src != 0ul) != (blend_dst != 0ul) ||
+        (blend_src != 0ul &&
+         (v9x_i9xx_blend_factor_known(blend_src) == V9X_FALSE ||
+          v9x_i9xx_blend_factor_known(blend_dst) == V9X_FALSE))) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (depth_offset != 0ul &&
+        ((depth_pitch & 3ul) != 0ul || depth_pitch == 0ul ||
+         depth_pitch > V9X_I9XX_BUF_3D_PITCH_MASK)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (width == 0ul || height == 0ul ||
+        width > 0x10000ul || height > 0x10000ul ||
+        target_pitch == 0ul || (target_pitch & 3ul) != 0ul ||
+        target_pitch > V9X_I9XX_BUF_3D_PITCH_MASK ||
+        (target_offset & 3ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (stage = 0ul; stage < V9X_I9XX_SHADER_STAGES; ++stage) {
+        if ((units & (1ul << stage)) != 0ul) {
+            compact[count] = maps[stage];
+            stage_of[count] = stage;
+            ++count;
+        }
+    }
+
+    at += v9x_i9xx_emit_invariant(stream + at);
+    at += v9x_i9xx_emit_target(stream + at, target_offset, target_pitch,
+                               width, height);
+    if (depth_offset != 0ul) {
+        stream[at++] = V9X_I9XX_3DSTATE_BUF_INFO;
+        stream[at++] = V9X_I9XX_BUF_3D_ID_DEPTH |
+                       (depth_pitch & V9X_I9XX_BUF_3D_PITCH_MASK);
+        stream[at++] = depth_offset;
+    }
+    if (count != 0ul) {
+        /* MAP_STATE: the compacted entries (address, MS3, MS4 each),
+         * then the stage mask, and a cube's six face enables. */
+        packet = at;
+        if (v9x_i9xx_build_map_state(compact, count, stream + at,
+                                     capacity - at, &produced) !=
+                V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        at += produced;
+        stream[packet + 1ul] = units;
+        for (k = 0ul; k < count; ++k) {
+            if ((cubes & (1ul << stage_of[k])) != 0ul) {
+                stream[packet + 2ul + 3ul * k + 2ul] |=
+                    V9X_I9XX_MS4_CUBE_FACE_ENA_ALL;
+            }
+        }
+
+        /* SAMPLER_STATE: the same, each SS3 naming its stage's map. */
+        packet = at;
+        if (v9x_i9xx_build_sampler_state(compact, count, stream + at,
+                                         capacity - at, &produced) !=
+                V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        at += produced;
+        stream[packet + 1ul] = units;
+        for (k = 0ul; k < count; ++k) {
+            v9x_u32 *ss3 = &stream[packet + 2ul + 3ul * k + 1ul];
+
+            *ss3 = (*ss3 & ~V9X_I9XX_SS3_MAP_INDEX_MASK) |
+                   (stage_of[k] << V9X_I9XX_SS3_MAP_INDEX_SHIFT);
+        }
+    }
+    if (blend != 0ul) {
+        stream[at++] = V9X_I9XX_IAB_DISABLE_DWORD;
+        s6 |= V9X_I9XX_S6_BLEND_ENABLE |
+              (V9X_I9XX_BLENDFUNC_ADD << V9X_I9XX_S6_BLEND_FUNC_SHIFT) |
+              (blend_src << V9X_I9XX_S6_SRC_FACTOR_SHIFT) |
+              (blend_dst << V9X_I9XX_S6_DST_FACTOR_SHIFT);
+    }
+    s6 |= alpha_test;
+    if (depth_offset != 0ul) {
+        s6 |= V9X_I9XX_S6_DEPTH_TEST_ENABLE |
+              ((depth_compare & 7ul) << V9X_I9XX_S6_DEPTH_FUNC_SHIFT);
+        if (depth_writes != 0ul) {
+            s6 |= V9X_I9XX_S6_DEPTH_WRITE_ENABLE;
+        }
+    }
+    /* S2: a 4D nibble for each set the vertex carries, the rest absent. */
+    for (k = 0ul; k < sets; ++k) {
+        s2 = (s2 & ~(0xful << (4ul * k))) |
+             (V9X_I9XX_TEXCOORDFMT_4D << (4ul * k));
+    }
+    at += v9x_i9xx_emit_pipeline(stream + at, s2, 0ul, s6, 1ul);
+    if (at != needed) {
+        return V9X_STATUS_INVALID_STATE;
+    }
+    *written = at;
+    return V9X_STATUS_OK;
+}
+
 /* The DST_BUF_VARS dword every builder here emits: 565, 16-bit depth, the
  * half-pixel biases. */
 #define V9X_I9XX_DST_BUF_VARS_565 \

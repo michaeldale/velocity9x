@@ -244,11 +244,26 @@ CreatePixelShader, as any other untranslatable program is.
        edge, +X's top first) as one block. It remembers the cube by
        +X's offset, format and levels, and forgets it when the block is
        freed. This is Haswell's create_cube on the Gen3 layout.
-   - **5c. Shader stream builders**, pure and host-tested: the state
-     block for up to four maps and samplers, with S2 declaring four
-     four-component coordinate sets and S4 diffuse and specular; the
-     constants packet for C0-C17; the wide-vertex run (position, rhw,
-     diffuse, specular, four xyzw sets).
+   - **5c. Shader stream builders.** Done 2026-11-11, host only.
+     - **State block** (`v9x_i9xx_build_shader_state`, `i9xx_3d.c`): the
+       two-unit block's packets in its order. MAP_STATE and
+       SAMPLER_STATE carry the sampled stages, which need not be
+       contiguous. They are built compacted with the shared builders,
+       then the enable masks and each SS3 map index are set to the stage
+       numbers, as Mesa's update_samplers writes them. A cube's MS4
+       gains the six face enables. S2 declares sets 0 to n-1 as
+       TEXCOORDFMT_4D, and S4 always carries the specular colour (T9,
+       the fog factor in its alpha).
+     - **Constants packet** (`i9xx_shader.c`): C0 to n-1.
+     - **Vertex run** (`i9xx_shader.c`): the core's 28-float wide
+       vertices as position, diffuse and specular packed to ARGB
+       (clamped), then the sets. It applies the runtime run's position
+       checks, and refuses any non-finite coordinate in an emitted set.
+
+     All of it is 32-bit only, so I9XXCODE is unchanged. Host tests
+     (failing against stubs first, 27 checks) cover non-contiguous stages
+     with a cube, S2/S4, the retarget, the constant layout, colour
+     packing and the refusals. None of it has been decoded or run.
    - **5d. Decoder licence**: a shader stream kind. Maps against their
      footprints, the constants packet, and the program read instruction
      by instruction: only T0-T3, T8, T9, S0-S3 and C0-C17, within the

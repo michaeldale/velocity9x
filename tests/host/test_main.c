@@ -281,6 +281,10 @@ unsigned int v9x_run_i9xx_fs_tests(void);
  * host fragment-program model, held to the reference interpreter. */
 unsigned int v9x_run_i9xx_ps11_tests(void);
 
+/* tests\host\test_i9xx_shader.c: the Gen3 shader stream's state block,
+ * constants packet and vertex run. */
+unsigned int v9x_run_i9xx_shader_tests(void);
+
 /* tests\host\test_mach64_engine.c: exact FIFO batches, bounded waits,
  * reset/replay ordering and the CPU-read cache boundary. */
 unsigned int v9x_run_mach64_engine_tests(void);
@@ -1513,6 +1517,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_3d_tests();
     failures += v9x_run_i9xx_fs_tests();
     failures += v9x_run_i9xx_ps11_tests();
+    failures += v9x_run_i9xx_shader_tests();
     failures += v9x_run_mach64_engine_tests();
     failures += v9x_run_mach64_policy_tests();
     failures += v9x_run_mach64_draw_tests();

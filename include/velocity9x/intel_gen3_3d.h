@@ -1841,6 +1841,72 @@ v9x_status v9x_i9xx_retarget_state(v9x_u32 *stream, v9x_u32 written,
 /* A map format's bytes a texel: 4 for MAPSURF_32BIT, else 2. 32-bit side
  * only, so the 16-bit build keeps its two and its I9XXCODE bytes. */
 v9x_u32 v9x_i9xx_map_texel_bytes(v9x_u32 format);
+
+/*
+ * THE SHADER STREAM (step 5c of docs\plans\gen3-ps11-pixel-shaders.md),
+ * for a draw under a translated pixel shader (i9xx_ps11.h). Three
+ * builders, the state block, the constants and the vertex run; the
+ * program is v9x_i9xx_ps11_build's.
+ *
+ * MS4's cube-face enables, bits 15-20: Mesa and xf86 i915_reg.h
+ * MS4_CUBE_FACE_ENA_MASK, (0x3f << 15). A cube's sampler is the clamp
+ * form the sampler builder already writes (CLAMP_EDGE on all three
+ * axes), which is Mesa's for a cube.
+ */
+#define V9X_I9XX_MS4_CUBE_FACE_ENA_ALL   ((v9x_u32)0x001f8000ul)
+/* SS3's map index, four bits from bit 1 (Mesa SS3_TEXTURE_MAP_INDEX). */
+#define V9X_I9XX_SS3_MAP_INDEX_MASK      ((v9x_u32)0x0000001eul)
+/* S2's per-set nibble for four floats a set (both trees' TEXCOORDFMT_4D),
+ * the form the wide vertex carries every set in. */
+#define V9X_I9XX_TEXCOORDFMT_4D          ((v9x_u32)0x2ul)
+/* Up to four stages, sampler and coordinate set N for stage N. */
+#define V9X_I9XX_SHADER_STAGES           4ul
+/* The fragment program's constant registers. */
+#define V9X_I9XX_SHADER_CONSTANTS_MAX    32ul
+
+/*
+ * The state block: the two-unit block's packets in its order, with
+ * MAP_STATE and SAMPLER_STATE for the stages in `units` (bit N for stage
+ * N, maps[N] its map; none at all when zero), each sampler naming its own
+ * stage's map, and a stage in `cubes` (a subset of `units`) a cube: MS4
+ * with the six face enables. S2 declares coordinate sets 0 to sets - 1
+ * as four floats each, S4 position, diffuse and specular (the fog factor
+ * in its alpha, which the program reads as T9.w).
+ */
+v9x_u32 v9x_i9xx_shader_state_extent(v9x_u32 units, v9x_u32 depthed,
+                                     v9x_u32 blend);
+v9x_status v9x_i9xx_build_shader_state(
+    v9x_u32 target_offset, v9x_u32 target_pitch,
+    v9x_u32 width, v9x_u32 height,
+    const struct v9x_i9xx_texture *maps, v9x_u32 units, v9x_u32 cubes,
+    v9x_u32 sets,
+    v9x_u32 depth_offset, v9x_u32 depth_pitch, v9x_u32 depth_writes,
+    v9x_u32 depth_compare,
+    v9x_u32 blend_src, v9x_u32 blend_dst, v9x_u32 alpha_test,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+/* The constants packet for C0 to count - 1, four float bit patterns a
+ * register from `values`, as they are: the translator's block
+ * (v9x_i9xx_ps11_constants) is already clamped where it must be. */
+v9x_status v9x_i9xx_build_shader_constants(
+    const v9x_u32 *values, v9x_u32 count,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+
+/*
+ * The vertex run: a triangle list of the core's wide vertices
+ * (V9X_I9XX_WIDE_FLOATS floats each: x y z rhw, diffuse r g b a, specular
+ * r g b a, then stage 0-3's x y z w; r3d.h's V9X_R3D_SHADER_FLOATS), each
+ * emitted as position, diffuse and specular packed to ARGB bytes (each
+ * clamped to [0, 1]), then sets 0 to sets - 1 as four floats. The
+ * runtime run's checks on every position, and every coordinate finite;
+ * anything else refuses the run.
+ */
+#define V9X_I9XX_WIDE_FLOATS             28ul
+v9x_u32 v9x_i9xx_shader_run_dwords(v9x_u32 triangles, v9x_u32 sets);
+v9x_status v9x_i9xx_build_shader_run(
+    const float *wide, v9x_u32 triangles, v9x_u32 sets,
+    v9x_u32 width, v9x_u32 height,
+    v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 #endif
 
 /* src\chipsets\intel\i9xx_3d_decode.c */
