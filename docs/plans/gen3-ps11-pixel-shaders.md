@@ -4,8 +4,11 @@ Status: 2026-11-11. Step 1 (this mapping) done at the desk. Step 2 done
 on the host: the encoder (`src\chipsets\intel\i9xx_fs.c`,
 `include\velocity9x\i9xx_fs.h`) reproduces the untextured, sampling and
 modulate programs dword for dword, and a host model of the program
-(`tests\host\i9xx_fs_sim.c`) runs the six fixed programs to their
-documented answers; nothing measured on hardware. Started for 0.47.0 at
+(`tests\host\i9xx_fs_sim.c`) runs seven fixed programs to their
+documented answers. Step 3 done on the host: the translator
+(`src\chipsets\intel\i9xx_ps11.c`) matches the reference interpreter
+per pixel in the model on every Haswell test shader. Nothing measured
+on hardware. Started for 0.47.0 at
 Michael's request. Follows
 [`haswell-ddi8-pixel-shaders.md`](haswell-ddi8-pixel-shaders.md), whose
 shared half this reuses whole.
@@ -139,10 +142,38 @@ CreatePixelShader, as any other untranslatable program is.
    - RCP, RSQ, EXP, LOG, or DP2ADD's addend, on a source that is not
      one channel replicated, since which channel the hardware takes is
      not known.
-3. **Translator.** `src\chipsets\intel\i9xx_ps11.c`: PS 1.1 to an encoded
-   program. Host tests: every program the Haswell tests use, and
-   Nature's, run in the model and match `v9x_ps11_run` per pixel;
-   programs over a limit are refused, not mistranslated.
+3. **Translator.** Done 2026-11-11 on the host.
+   `src\chipsets\intel\i9xx_ps11.c` (`include\velocity9x\i9xx_ps11.h`)
+   turns a parsed PS 1.0/1.1 program into a fragment program, given the
+   draw's cube, projected and unbound stages and fog. It also builds the
+   constant block the HAL will load: C0-C7 (def or application,
+   clamped), the bump matrices, the luminance terms, (0.5, 2, 4) and the
+   fog colour.
+
+   `tests\host\test_i9xx_ps11.c` runs every shader
+   `test_intel_hsw_ps11.c` runs on eight pixels in the model. Each
+   result matches `v9x_ps11_run` within 2e-4, and the same pixels are
+   killed. The shaders cover tex (2D, cube, projected), texkill,
+   texbem/texbeml, the texm3x3 family, co-issue, every arithmetic
+   instruction and modifier, fog and unbound stages. Two cases are new
+   here: two constant registers in one instruction, and r0 never
+   written. Nature's own shaders were not available to run; these are
+   the Haswell tests' versions of its patterns.
+
+   A program over a limit is refused: a fifth phase, and texbem on a
+   cube stage. The largest test, eight arithmetic instructions with
+   every modifier, is 38 instructions with its declarations, of 64 ALU
+   allowed. A deliberately swapped CND made the comparison fail, so the
+   comparison is not vacuous. The tests ran against a stub translator
+   first.
+
+   Two choices the hardware has not confirmed:
+   - cube directions go to the sampler unscaled, where the interpreter
+     divides by the largest magnitude (both drivers pass them unscaled);
+   - texm3x3tex on a stage that is not a cube is declared VOLUME, the
+     interpreter's three-coordinate lookup.
+
+   Step 4 settles both.
 4. **Probe on the netbook** (W9QI2BE2, GMA 950): a Gen3 probe in the style
    of `V9XHSWMM /ps11`, drawing translated programs outside the HAL and
    comparing pixels with the interpreter. Also settles the two bump

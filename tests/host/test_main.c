@@ -277,6 +277,10 @@ unsigned int v9x_run_i9xx_3d_tests(void);
  * host model of the program (i9xx_fs_sim.c). */
 unsigned int v9x_run_i9xx_fs_tests(void);
 
+/* tests\host\test_i9xx_ps11.c: pixel shader 1.x programs for Gen3 in the
+ * host fragment-program model, held to the reference interpreter. */
+unsigned int v9x_run_i9xx_ps11_tests(void);
+
 /* tests\host\test_mach64_engine.c: exact FIFO batches, bounded waits,
  * reset/replay ordering and the CPU-read cache boundary. */
 unsigned int v9x_run_mach64_engine_tests(void);
@@ -1508,6 +1512,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_arm_tests();
     failures += v9x_run_i9xx_3d_tests();
     failures += v9x_run_i9xx_fs_tests();
+    failures += v9x_run_i9xx_ps11_tests();
     failures += v9x_run_mach64_engine_tests();
     failures += v9x_run_mach64_policy_tests();
     failures += v9x_run_mach64_draw_tests();

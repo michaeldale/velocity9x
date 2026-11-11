@@ -183,6 +183,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_fragprog.c',
         # General fragment-program encoder: PS 1.1 on Gen3, step 2.
         'src\chipsets\intel\i9xx_fs.c',
+        # Pixel shader 1.x to the fragment program: step 3.
+        'src\chipsets\intel\i9xx_ps11.c',
         'src\chipsets\intel\i9xx_fog.c',
         'src\chipsets\intel\i9xx_multitex.c',
         'src\chipsets\intel\i9xx_vertex.c',
@@ -353,6 +355,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_3d.c',
         'tests\host\test_i9xx_fs.c',
         'tests\host\i9xx_fs_sim.c',
+        'tests\host\test_i9xx_ps11.c',
         'tests\host\test_mach64_engine.c',
         'tests\host\test_mach64_policy.c',
         'tests\host\test_mach64_draw.c',
