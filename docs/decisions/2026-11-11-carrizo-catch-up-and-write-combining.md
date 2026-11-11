@@ -10,8 +10,8 @@ help, agent 0.16.0 (`dev-fault-3`). The machine was last checked at
 
 Evidence: [`../probe/carrizo-catchup-2026-11-11/`](../probe/carrizo-catchup-2026-11-11/)
 (`carrizo-before/` on 0.34.0, `carrizo/` on main), and dispbench
-`docs/results/carrizo-0.46.0-uc/` and `carrizo-main-wc/` (not committed
-there yet).
+`docs/results/carrizo-0.46.0-uc/` and `carrizo-main-wc/` (dispbench
+2fb75c7).
 
 ## Three builds, in order
 
@@ -112,10 +112,28 @@ configuration) clear, and `V9XMSW /set:1280x1024x32` returns
 boots 50 and 51, which usually follows the monitor it read at POST. Left
 at 1024x768x16.
 
+## Quake 3 on main (boot 52, 2026-11-12)
+
+The demo at `C:\games\Q3Ademo`, started as at boot 38 (`+set logfile 2
++set nextdemo quit +timedemo 1 +demo demo001`), its saved config
+unchanged: 640x480 fullscreen, 16-bit colour and Z,
+`GL_LINEAR_MIPMAP_NEAREST`, compiled vertex arrays, no multitexture.
+
+| Run | Result | ICD paths |
+|---|---|---|
+| fullscreen, boot 52 | 1346 frames, 71.9 s: **18.7 fps** | hw 211,282 batches / 5,255,160 triangles; cpu 0; hw-refused 0; 355 textures, 0 failed, 0 evicted; 0 refused draws or clears |
+| fullscreen, boot 38 (October) | 1346 frames, 63.0 s: 21.4 fps | hw 209,541 / 5,263,344 |
+
+It ran to the end and quit by itself with no fault. Every batch went to
+the engine. The rate is recorded, not compared: nothing was done to find
+the cause of the difference. No frame was looked at; a fullscreen frame
+is not visible to the agent's screenshot, and a windowed run would have
+saved `r_fullscreen 0` into the owner's config.
+
 ## Not covered
 
-- A game. Quake 3 (21.3 fps at boot 40) was not rerun.
 - 32 bpp desktop for dispbench: only 1024x768x16 was measured.
-- Why 0.34.0's 3DMark score is half the dev builds'.
+- Why 0.34.0's 3DMark score is half the dev builds', or Quake 3's is 13%
+  under October's.
 
 Gates: `run-checks.ps1` passed on the change before it was installed.
