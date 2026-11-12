@@ -1,0 +1,17 @@
+{
+    "Name":  "carrizo",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  59,
+    "BootAfter":  60,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.16.0",
+    "Boot":  59,
+    "Desktop":  true,
+    "AnswerSeconds":  3,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

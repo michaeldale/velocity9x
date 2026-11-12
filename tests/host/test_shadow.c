@@ -196,6 +196,10 @@ static void test_empty_and_unknown_spans_copy_nothing(void)
     rect.right = 20;
     SHCHECK(v9x_shadow_span(&rect, 4u, 2048ul, &span) == V9X_FALSE);
     SHCHECK(v9x_shadow_span(&rect, 15u, 2048ul, &span) == V9X_FALSE);
+
+    /* The offset is a 16 x 16-bit multiply in LEAFCODE (leaf16.h), so a
+     * pitch past 16 bits is refused rather than wrapped. */
+    SHCHECK(v9x_shadow_span(&rect, 16u, 0x10000ul, &span) == V9X_FALSE);
 }
 
 /* A polyline is bounded by its points, inclusive of the last. */
@@ -325,8 +329,144 @@ static void test_a_bound_cuts_the_access_rect(void)
     SHCHECK(shadow_rect_is(&dirty.rect, 10, 20, 31, 41));
 }
 
+static void shadow_stale_set(struct v9x_shadow_dirty *stale,
+                             int left, int top, int right, int bottom)
+{
+    struct v9x_shadow_rect rect;
+
+    v9x_shadow_dirty_clear(stale);
+    rect.left = (v9x_s16)left;
+    rect.top = (v9x_s16)top;
+    rect.right = (v9x_s16)right;
+    rect.bottom = (v9x_s16)bottom;
+    v9x_shadow_dirty_add_rect(stale, &rect, SH_W, SH_H);
+}
+
+/* Nothing stale: an access reads nothing back. */
+static void test_nothing_stale_reads_nothing_back(void)
+{
+    struct v9x_shadow_dirty stale;
+    struct v9x_shadow_rect access;
+    struct v9x_shadow_rect fetch;
+
+    v9x_shadow_dirty_clear(&stale);
+    access.left = 0;
+    access.top = 0;
+    access.right = 100;
+    access.bottom = 100;
+    SHCHECK(v9x_shadow_stale_take(&stale, &access, &fetch) == V9X_FALSE);
+}
+
+/* An access away from the engine's window reads nothing back and leaves the
+ * window stale. */
+static void test_a_disjoint_access_reads_nothing_back(void)
+{
+    struct v9x_shadow_dirty stale;
+    struct v9x_shadow_rect access;
+    struct v9x_shadow_rect fetch;
+
+    shadow_stale_set(&stale, 100, 100, 740, 580);
+    access.left = 0;
+    access.top = 740;
+    access.right = 1024;
+    access.bottom = 768;
+    SHCHECK(v9x_shadow_stale_take(&stale, &access, &fetch) == V9X_FALSE);
+    SHCHECK(stale.pending == V9X_TRUE);
+    SHCHECK(shadow_rect_is(&stale.rect, 100, 100, 740, 580));
+}
+
+/* A GDI access touching part of the window reads back all of it and clears
+ * it, so no later access in the same call reads over what this one drew. */
+static void test_a_partial_access_reads_back_all_of_it(void)
+{
+    struct v9x_shadow_dirty stale;
+    struct v9x_shadow_rect access;
+    struct v9x_shadow_rect fetch;
+
+    shadow_stale_set(&stale, 100, 100, 740, 580);
+    access.left = 90;
+    access.top = 300;
+    access.right = 122;
+    access.bottom = 332;
+    SHCHECK(v9x_shadow_stale_take(&stale, &access, &fetch) == V9X_TRUE);
+    SHCHECK(shadow_rect_is(&fetch, 100, 100, 740, 580));
+    SHCHECK(stale.pending == V9X_FALSE);
+}
+
+/* The cursor over the window: only the overlap is read back, and the rest
+ * of the window stays stale. */
+static void test_the_cursor_reads_back_only_the_overlap(void)
+{
+    struct v9x_shadow_dirty stale;
+    struct v9x_shadow_rect access;
+    struct v9x_shadow_rect fetch;
+
+    shadow_stale_set(&stale, 100, 100, 740, 580);
+    access.left = 90;
+    access.top = 300;
+    access.right = 122;
+    access.bottom = 332;
+    SHCHECK(v9x_shadow_stale_overlap(&stale, &access, &fetch) == V9X_TRUE);
+    SHCHECK(shadow_rect_is(&fetch, 100, 300, 122, 332));
+    SHCHECK(stale.pending == V9X_TRUE);
+    SHCHECK(shadow_rect_is(&stale.rect, 100, 100, 740, 580));
+
+    access.left = 0;
+    access.top = 0;
+    access.right = 32;
+    access.bottom = 32;
+    SHCHECK(v9x_shadow_stale_overlap(&stale, &access, &fetch) == V9X_FALSE);
+
+    v9x_shadow_dirty_clear(&stale);
+    access.left = 90;
+    access.top = 300;
+    access.right = 122;
+    access.bottom = 332;
+    SHCHECK(v9x_shadow_stale_overlap(&stale, &access, &fetch) == V9X_FALSE);
+}
+
+/* USER repainting the whole window after the game closes: all of it is read
+ * back and nothing is stale any more. */
+static void test_a_covering_access_clears_the_stale_rect(void)
+{
+    struct v9x_shadow_dirty stale;
+    struct v9x_shadow_rect access;
+    struct v9x_shadow_rect fetch;
+
+    shadow_stale_set(&stale, 100, 100, 740, 580);
+    access.left = 0;
+    access.top = 0;
+    access.right = 1024;
+    access.bottom = 768;
+    SHCHECK(v9x_shadow_stale_take(&stale, &access, &fetch) == V9X_TRUE);
+    SHCHECK(shadow_rect_is(&fetch, 100, 100, 740, 580));
+    SHCHECK(stale.pending == V9X_FALSE);
+}
+
+/* An empty access reads nothing back. */
+static void test_an_empty_access_reads_nothing_back(void)
+{
+    struct v9x_shadow_dirty stale;
+    struct v9x_shadow_rect access;
+    struct v9x_shadow_rect fetch;
+
+    shadow_stale_set(&stale, 100, 100, 740, 580);
+    access.left = 200;
+    access.top = 200;
+    access.right = 200;
+    access.bottom = 300;
+    SHCHECK(v9x_shadow_stale_take(&stale, &access, &fetch) == V9X_FALSE);
+    SHCHECK(stale.pending == V9X_TRUE);
+}
+
 unsigned int v9x_run_shadow_tests(void)
 {
+    test_nothing_stale_reads_nothing_back();
+    test_a_disjoint_access_reads_nothing_back();
+    test_a_partial_access_reads_back_all_of_it();
+    test_the_cursor_reads_back_only_the_overlap();
+    test_a_covering_access_clears_the_stale_rect();
+    test_an_empty_access_reads_nothing_back();
     test_a_polyline_is_bounded_by_its_points();
     test_scanlines_are_one_row();
     test_polyscanlines_are_bounded_by_their_scans();

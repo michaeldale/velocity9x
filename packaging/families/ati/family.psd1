@@ -728,8 +728,18 @@
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
-            @{ Name = 'edid'; Path = 'src\common\edid.c' }
-            @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            # LEAFCODE (velocity9x\leaf16.h): _TEXT passed its budget when
+            # the screen shadow went in, so four leaf modules, called from a
+            # few places through far entries, have a segment of their own.
+            @{ Name = 'edid'; Path = 'src\common\edid.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'mtrr'; Path = 'src\common\mtrr.c'; CodeSegment = 'LEAFCODE' }
+            # The screen shadow, as the vbe family has it, for the chips whose
+            # GDI has no engine: the Evergreen, VI and CIK rows set
+            # V9X_HW16_DEVICE.screen_shadow; Mach64 and the Rages keep GDI
+            # on the frame buffer and their engines
+            # (docs\decisions\2026-11-12-ati-screen-shadow.md).
+            @{ Name = 'shadow'; Path = 'src\common\shadow.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'shadow16'; Path = 'src\display16\shadow16.c'; CodeSegment = 'LEAFCODE' }
             # The Direct3D back-end decision behind [Velocity9x] Direct3D.
             # Pure policy, host-tested; dd16.c resolves it at Enable and every
             # family publishes the result as Direct3DMode= whether or not it
@@ -762,9 +772,13 @@
         # Temporary, branch ati-rs690 only: every boot stage committed to
         # C:\V9XDIAG\V9XTRAIL.TXT while the RS690 black screen is open
         # (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
-        Defines = @('V9X_DURABLE_TRAIL')
+        # V9X_SCREEN_SHADOW: the screen shadow in ddi.c, dd16.c, runtime.asm
+        # and the cursor and Output thunks, used only by a chip that sets
+        # screen_shadow (above).
+        Defines = @('V9X_DURABLE_TRAIL', 'V9X_SCREEN_SHADOW')
         # runtime.asm's BAR2 read and mini-VDD map for the Mobility engine.
-        RuntimeDefines = @('V9X_ATI_FAMILY', 'V9X_DURABLE_TRAIL')
+        RuntimeDefines = @('V9X_ATI_FAMILY', 'V9X_DURABLE_TRAIL',
+                           'V9X_SCREEN_SHADOW')
         SkeletonOutput = 'build\win16-ddi-ati'
         PackageOutput = 'build\win98se-ati'
         VmStageDirectory = 'build\vm-probe\ATI'

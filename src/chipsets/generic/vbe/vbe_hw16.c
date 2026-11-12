@@ -105,7 +105,10 @@ const V9X_HW16_DEVICE v9x_vbe_device = {
     V9X_HW16_WC_VRAM,
     /* When the BIOS's MTRRs refuse that, the same window through the page
      * attribute table (GitHub issue 25). */
-    v9x_vbe_write_combine
+    v9x_vbe_write_combine,
+    /* No engine for GDI, and reads at 5-35 MB/s: the shadow's first home
+     * (docs\plans\vbe-shadow-framebuffer.md). */
+    V9X_HW16_SCREEN_SHADOW
 };
 
 static const V9X_HW16_DEVICE * const v9x_vbe_devices[] = {

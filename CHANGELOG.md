@@ -15,6 +15,18 @@ build identifier so exact guest-tested binaries remain traceable.
   ([record](docs/decisions/2026-11-11-carrizo-catch-up-and-write-combining.md)).
   The same machine also ran Glide for the first time: every check of the
   Glide probe passes.
+- **`ati` package, Radeon HD 5000-7000 (Evergreen, Trinity), R7E
+  (Carrizo) and R3E (Mullins): moving windows, scrolling and anything
+  else that reads the screen is many times faster.** These chips have no
+  engine for desktop drawing, so Windows now draws the desktop into a
+  copy in system memory, as the `vbe` package has since 0.46.0. On
+  Carrizo, scrolling went from 8 to 630 MB/s and a 256x256 window move
+  from 8 to 240 MB/s. Drawing that only writes runs at 0.35 to 0.5 of its
+  old speed, text costs 1.7 times as much and lines 2.2 times. Windowed
+  OpenGL is unaffected: Quake 3 in a window runs at 18.7 fps with the
+  copy and without it. A file `C:\V9XDIAG\NOSHADOW.TXT` turns it off.
+  Measured on Carrizo only
+  ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
 - **`intel-gma` package, Gen3 (GMA 900, 950, 3100, 3150): DirectX 8
   pixel shaders.** Pixel shader 1.1 programs run on the engine through
   the i915 fragment program, with four texture stages, cube maps and the

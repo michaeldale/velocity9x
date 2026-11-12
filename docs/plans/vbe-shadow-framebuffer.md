@@ -119,6 +119,14 @@ examined here. Decided 2026-11-11 (Michael): the shadow stays `vbe`-only.
 `intel-gma`, `ati` and `sis`, which draw GDI with the CPU today, get
 their GDI work done properly on the chip later rather than this shadow.
 
+Changed 2026-11-12 (Michael: "do shadow if it is going to be better than
+GDI/SDMA"): the `ati` family's Evergreen, VI and CIK chips read their
+screens at 8 MB/s with no GDI engine, and SDMA would cover plain copies
+only, so they take the shadow too, by a per-chip
+`V9X_HW16_DEVICE.screen_shadow`. Engine blits to the visible screen are
+repeated in the shadow, and a present from off-screen memory is read back
+([record](../decisions/2026-11-12-ati-screen-shadow.md)).
+
 ## Phase 0 status (2026-11-10)
 
 Most of the GDI baseline exists already, in dispbench's 2026-11-07/08

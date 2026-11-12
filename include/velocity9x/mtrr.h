@@ -38,6 +38,7 @@
 #define VELOCITY9X_MTRR_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/leaf16.h"
 
 /*
  * What the CPU admits to, established before any MSR is touched.
@@ -166,10 +167,10 @@ struct v9x_mtrr_plan {
  * described as RAM by the BIOS (safe to fix). Any other default type means
  * that reasoning does not hold, and the answer is to do nothing.
  */
-v9x_u16 v9x_mtrr_plan_wc(const struct v9x_mtrr_state *state,
-                         v9x_u32 aperture_base,
-                         v9x_u32 aperture_bytes,
-                         struct v9x_mtrr_plan *plan);
+v9x_u16 V9X_LEAF_FAR v9x_mtrr_plan_wc(const struct v9x_mtrr_state *state,
+                                      v9x_u32 aperture_base,
+                                      v9x_u32 aperture_bytes,
+                                      struct v9x_mtrr_plan *plan);
 
 /*
  * Non-zero when a valid pair below 4 GiB is exactly a write-combining range
@@ -178,15 +179,15 @@ v9x_u16 v9x_mtrr_plan_wc(const struct v9x_mtrr_state *state,
  * plan over it (ALREADY_COVERED), as it must; this says the refusal is the
  * aperture already being write-combined, not a clash.
  */
-v9x_u16 v9x_mtrr_wc_present(const struct v9x_mtrr_state *state,
-                            v9x_u32 base, v9x_u32 size);
+v9x_u16 V9X_LEAF_FAR v9x_mtrr_wc_present(const struct v9x_mtrr_state *state,
+                                         v9x_u32 base, v9x_u32 size);
 
 /* The largest power of two that both divides base and fits in bytes, or 0.
  * Exposed because it is the arithmetic most worth testing on its own. */
-v9x_u32 v9x_mtrr_window(v9x_u32 base, v9x_u32 bytes);
+v9x_u32 V9X_LEAF_FAR v9x_mtrr_window(v9x_u32 base, v9x_u32 bytes);
 
 /* The IA32_MTRR_PHYSMASKn value that expresses a size-byte range, valid bit
  * included. Zero when size is not a usable power of two. */
-v9x_u32 v9x_mtrr_physmask(v9x_u32 size);
+v9x_u32 V9X_LEAF_FAR v9x_mtrr_physmask(v9x_u32 size);
 
 #endif /* VELOCITY9X_MTRR_H */

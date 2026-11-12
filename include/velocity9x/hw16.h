@@ -202,11 +202,26 @@ typedef struct v9x_hw16_device {
                                    unsigned short mtrr_reason,
                                    void (*write)(const char *key,
                                                  const char *value));
+
+    /*
+     * V9X_HW16_SCREEN_SHADOW: GDI draws this chip's desktop into a copy in
+     * system memory, in a family built with V9X_SCREEN_SHADOW
+     * (src\display16\shadow16.c). For a chip whose GDI has no engine and
+     * whose frame buffer reads slowly: the vbe row, and the ati family's
+     * Evergreen, VI and CIK rows, where screen reads ran at 8 MB/s
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md). Zero leaves GDI on
+     * the frame buffer. Appended 2026-11-12, so every initialiser that
+     * stops before it reads zero.
+     */
+    unsigned short screen_shadow;
 } V9X_HW16_DEVICE;
 
 /* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */
 #define V9X_HW16_WC_MAPPING     1u
 #define V9X_HW16_WC_VRAM        2u
+
+/* V9X_HW16_DEVICE.screen_shadow: this chip's GDI draws into the shadow. */
+#define V9X_HW16_SCREEN_SHADOW  1u
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
  * generic linear-framebuffer bit is what a tier-0 card needs. */

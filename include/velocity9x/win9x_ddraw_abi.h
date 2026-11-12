@@ -6,6 +6,9 @@
 #include "velocity9x/engine_abi.h"
 /* The snapshot identity, written by both sides; fixed-width fields only. */
 #include "velocity9x/diag_identity.h"
+/* The screen shadow's stale rectangle, written by the HAL and read by the
+ * 16-bit side; fixed-width fields only. */
+#include "velocity9x/shadow.h"
 
 /*
  * Minimal Windows 9x DirectDraw HAL ABI used by Velocity9x, written from
@@ -4631,6 +4634,33 @@ typedef struct v9x_dd_shared {
      * 2026102002, after everything a reader size-checks.
      */
     DWORD shadow_linear;
+    /*
+     * The screen rectangles an engine copy wrote while the shadow has not
+     * caught up (v9x_shadow_stale_take, include\velocity9x\shadow.h): the
+     * frame buffer is the truth there. The HAL adds to it, the 16-bit side
+     * reads back the part a GDI access or the cursor touches and clears it
+     * once an access covers it. Cleared when the shadow is enabled and when
+     * a mode restore copies the whole shadow out. Twelve bytes, all 16-bit
+     * fields. Appended 2026-11-12 within ABI 2026102002, after everything a
+     * reader size-checks (docs\decisions\2026-11-12-ati-screen-shadow.md).
+     */
+    struct v9x_shadow_dirty shadow_stale;
+    /*
+     * The screen shadow's event log: the last V9X_SHADOW_LOG_EVENTS
+     * brackets, read-backs, copies out and stale marks, written by
+     * shadow16.c and the HAL, read by V9XFBCMP. Event n is at
+     * shadow_log[n % V9X_SHADOW_LOG_EVENTS]; shadow_log_count is the
+     * number written. Diagnostic only, with no lock: two writers at once
+     * can lose an event. Appended 2026-11-12 within ABI 2026102002
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md).
+     */
+    DWORD shadow_log_count;
+    struct v9x_shadow_event shadow_log[V9X_SHADOW_LOG_EVENTS];
+    /* Calls into the shadow's entry points (shadow16.c) that arrived with
+     * the direction flag set, which they clear for their own code and put
+     * back: by the DIB Engine (access, Output) and the mouse interrupt
+     * (cursor). Diagnostic, read by V9XFBCMP. Appended 2026-11-12. */
+    DWORD shadow_direction_set;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)

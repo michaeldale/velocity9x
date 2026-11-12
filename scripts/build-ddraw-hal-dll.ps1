@@ -83,6 +83,9 @@ $sources = @(
     # The [Velocity9x] VSync rule the flip path asks per flip: pure, and
     # host-tested in tests\host\test_vsync.c.
     "src\common\vsync.c",
+    # The screen shadow's rectangle arithmetic: the HAL marks what an engine
+    # copy left stale (tests\host\test_shadow.c).
+    "src\common\shadow.c",
     "src\display32\ddhal_core.c",
     # The Win16 mutex measurement: resolves _ConfirmWin16Lock through the
     # walk above and counts its answer at six callback entry points.

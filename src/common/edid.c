@@ -69,7 +69,8 @@ static const v9x_u8 *v9x_edid_timing_descriptor(const v9x_u8 *block)
     return dtd;
 }
 
-v9x_u16 v9x_edid_parse(const v9x_u8 *block, struct v9x_edid_summary *out)
+v9x_u16 V9X_LEAF_FAR v9x_edid_parse(const v9x_u8 *block,
+                                    struct v9x_edid_summary *out)
 {
     const v9x_u8 *dtd;
     v9x_u16 width;
@@ -151,8 +152,11 @@ v9x_u16 v9x_edid_parse_timing(const v9x_u8 *block,
         return V9X_FALSE;
     }
 
+    /* A 16-bit count of 10 kHz units: a 16 x 16-bit multiply, inline on the
+     * 16-bit driver, where this file sits in LEAFCODE (leaf16.h). */
     out->pixel_clock_hz =
-        ((v9x_u32)dtd[0] | ((v9x_u32)dtd[1] << 8)) * V9X_EDID_CLOCK_UNIT_HZ;
+        V9X_LEAF_MUL16((v9x_u16)dtd[0] | ((v9x_u16)dtd[1] << 8),
+                       V9X_EDID_CLOCK_UNIT_HZ);
 
     /*
      * Polarity is only a polarity when the sync is digital separate. On an

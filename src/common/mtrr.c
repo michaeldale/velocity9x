@@ -8,7 +8,7 @@
  * type and the valid bit. */
 #define V9X_MTRR_ADDR_MASK ((v9x_u32)0xFFFFF000ul)
 
-v9x_u32 v9x_mtrr_window(v9x_u32 base, v9x_u32 bytes)
+v9x_u32 V9X_LEAF_FAR v9x_mtrr_window(v9x_u32 base, v9x_u32 bytes)
 {
     v9x_u32 window;
 
@@ -23,7 +23,9 @@ v9x_u32 v9x_mtrr_window(v9x_u32 base, v9x_u32 bytes)
      */
     window = (v9x_u32)0x80000000ul;
     while (window != 0ul) {
-        if (window <= bytes && (base % window) == 0ul) {
+        /* window is a power of two, so the mask is the remainder, with no
+         * call to the runtime's 32-bit divide (leaf16.h). */
+        if (window <= bytes && (base & (window - 1ul)) == 0ul) {
             return window;
         }
         window >>= 1;
@@ -31,7 +33,7 @@ v9x_u32 v9x_mtrr_window(v9x_u32 base, v9x_u32 bytes)
     return 0ul;
 }
 
-v9x_u32 v9x_mtrr_physmask(v9x_u32 size)
+v9x_u32 V9X_LEAF_FAR v9x_mtrr_physmask(v9x_u32 size)
 {
     /* A usable size is a power of two of at least one page. */
     if (size < (v9x_u32)0x1000ul || (size & (size - 1ul)) != 0ul) {
@@ -96,8 +98,8 @@ static v9x_u16 v9x_mtrr_range_overlaps(const struct v9x_mtrr_state *state,
     return V9X_FALSE;
 }
 
-v9x_u16 v9x_mtrr_wc_present(const struct v9x_mtrr_state *state,
-                            v9x_u32 base, v9x_u32 size)
+v9x_u16 V9X_LEAF_FAR v9x_mtrr_wc_present(const struct v9x_mtrr_state *state,
+                                         v9x_u32 base, v9x_u32 size)
 {
     v9x_u32 mask = v9x_mtrr_physmask(size);
     v9x_u16 count;
@@ -121,10 +123,10 @@ v9x_u16 v9x_mtrr_wc_present(const struct v9x_mtrr_state *state,
     return V9X_FALSE;
 }
 
-v9x_u16 v9x_mtrr_plan_wc(const struct v9x_mtrr_state *state,
-                         v9x_u32 aperture_base,
-                         v9x_u32 aperture_bytes,
-                         struct v9x_mtrr_plan *plan)
+v9x_u16 V9X_LEAF_FAR v9x_mtrr_plan_wc(const struct v9x_mtrr_state *state,
+                                      v9x_u32 aperture_base,
+                                      v9x_u32 aperture_bytes,
+                                      struct v9x_mtrr_plan *plan)
 {
     v9x_u16 count;
     v9x_u16 index;

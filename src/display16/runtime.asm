@@ -988,6 +988,74 @@ V9xShadowFlushDone:
     retf    12
 V9XSHADOWFLUSH ENDP
 
+; void FAR PASCAL V9xShadowFetch(DWORD offset, WORD row_bytes, WORD rows,
+;                                DWORD pitch)
+;
+; V9xShadowFlush the other way: from the frame buffer into the shadow. The
+; deferred read-back (shadow16.c, v9x_shadow_stale_take): an engine copy
+; wrote these pixels to the frame buffer only, and GDI or the cursor is about
+; to read or draw over them. Same frame, same registers saved, and also run
+; from the mouse interrupt.
+PUBLIC V9XSHADOWFETCH
+V9XSHADOWFETCH PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    es
+    push    eax
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    mov     ax, DGROUP
+    mov     ds, ax
+    mov     bx, V9xShadowSel
+    mov     dx, V9xScreenSelector
+    or      bx, bx
+    jz      short V9xShadowFetchDone
+    or      dx, dx
+    jz      short V9xShadowFetchDone
+    cmp     dword ptr V9xShadowHandle, 0
+    je      short V9xShadowFetchDone
+    mov     es, bx
+    mov     ds, dx
+
+    mov     ebx, dword ptr [bp+14]
+    movzx   edx, word ptr [bp+12]
+    mov     ax, word ptr [bp+10]
+    cld
+V9xShadowFetchRow:
+    or      ax, ax
+    jz      short V9xShadowFetchDone
+    mov     esi, ebx
+    mov     edi, ebx
+    mov     ecx, edx
+    shr     ecx, 2
+    db      67h
+    rep     movsd
+    mov     ecx, edx
+    and     ecx, 3
+    db      67h
+    rep     movsb
+    add     ebx, dword ptr [bp+6]
+    dec     ax
+    jmp     short V9xShadowFetchRow
+
+V9xShadowFetchDone:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     eax
+    pop     es
+    pop     ds
+    pop     bp
+    retf    12
+V9XSHADOWFETCH ENDP
+
 ; void FAR PASCAL V9xShadowZero(void): clear the whole block, so the shadow
 ; and a frame buffer cleared by the mode set start out agreeing.
 PUBLIC V9XSHADOWZERO

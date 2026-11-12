@@ -687,10 +687,14 @@ int v9x_present_gdi_may_draw(void)
  * desktop in system memory and copies each change to the frame buffer
  * (src\display16\shadow16.c). Whatever else writes the visible primary has
  * to write that copy too, or GDI's next read of the area - a window moved,
- * a menu closed over it - brings back what was there before. Two writers
+ * a menu closed over it - brings back what was there before. Three writers
  * pass through here: this DLL's CPU blits, which draw into the shadow and
- * copy the rectangle out, and an application holding a Lock, whose
- * rectangle is read back from the frame buffer at Unlock.
+ * copy the rectangle out; an application holding a Lock, whose rectangle
+ * is marked stale at Unlock; and engine blits, which
+ * v9x_blt_settle_on_screen repeats in the shadow or marks stale. A stale
+ * rectangle (V9X_DD_SHARED.shadow_stale) is read back by the 16-bit side
+ * when GDI touches it, not here. The ati family's Evergreen, VI and CIK
+ * chips have the shadow too: their GDI has no engine.
  *
  * Not while exclusive mode keeps GDI off the screen: the desktop is
  * repainted when it ends, through GDI and so through the shadow. The base,
@@ -742,6 +746,62 @@ static void v9x_shadow_sync_rect(BYTE *shadow, int to_frame_buffer,
     }
 }
 
+/* The screen rectangle a surface rectangle at surface_offset covers: the
+ * shadow is laid out as the visible primary, at the frame buffer's pitch. */
+static void v9x_shadow_screen_rect(DWORD surface_offset, const LONG *rect,
+                                   DWORD bytes_per_pixel,
+                                   struct v9x_shadow_rect *screen)
+{
+    DWORD pitch = v9x_hal->fb.pitch;
+    DWORD start = surface_offset + (DWORD)rect[1] * pitch +
+                  (DWORD)rect[0] * bytes_per_pixel;
+
+    screen->left = (v9x_s16)((start % pitch) / bytes_per_pixel);
+    screen->top = (v9x_s16)(start / pitch);
+    screen->right = (v9x_s16)(screen->left + (rect[2] - rect[0]));
+    screen->bottom = (v9x_s16)(screen->top + (rect[3] - rect[1]));
+}
+
+/* Non-zero when part of a visible rectangle is stale in the shadow: the
+ * frame buffer, not the shadow, holds its pixels. */
+static int v9x_shadow_rect_is_stale(DWORD surface_offset, const LONG *rect,
+                                    DWORD bytes_per_pixel)
+{
+    const struct v9x_shadow_dirty *stale = &v9x_hal->shadow_stale;
+    struct v9x_shadow_rect screen;
+
+    if (stale->pending == V9X_FALSE) {
+        return 0;
+    }
+    v9x_shadow_screen_rect(surface_offset, rect, bytes_per_pixel, &screen);
+    return screen.left < stale->rect.right &&
+           stale->rect.left < screen.right &&
+           screen.top < stale->rect.bottom &&
+           stale->rect.top < screen.bottom;
+}
+
+/* An engine wrote this visible rectangle and the shadow was not given its
+ * pixels: the 16-bit side reads back what GDI touches of it, when it does
+ * (v9x_shadow_stale_take). */
+static void v9x_shadow_mark_stale(DWORD surface_offset, const LONG *rect,
+                                  DWORD bytes_per_pixel)
+{
+    struct v9x_shadow_rect screen;
+    struct v9x_shadow_event *event;
+
+    v9x_shadow_screen_rect(surface_offset, rect, bytes_per_pixel, &screen);
+    v9x_shadow_dirty_add_rect(&v9x_hal->shadow_stale, &screen,
+                              (v9x_u16)v9x_hal->fb.width,
+                              (v9x_u16)v9x_hal->fb.height);
+
+    /* In the shadow's event log, beside the 16-bit side's entries. */
+    event = &v9x_hal->shadow_log[v9x_hal->shadow_log_count++ &
+                                 (V9X_SHADOW_LOG_EVENTS - 1u)];
+    event->kind = V9X_SHADOW_EVENT_STALE;
+    event->detail = 0u;
+    event->rect = screen;
+}
+
 /* The primary rectangle a Lock handed out, for its Unlock. One at a time:
  * DirectDraw holds the Win16 lock across a lock of the primary, so GDI does
  * not draw in between, and a second lock before the first's Unlock widens
@@ -778,23 +838,22 @@ static void v9x_shadow_note_lock(const V9X_DDHAL_LOCKDATA *data)
     v9x_shadow_lock_rect[3] = data->rArea[3];
 }
 
-/* The application has written the frame buffer; read its rectangle back. */
+/* The application has written the frame buffer: its rectangle is stale in
+ * the shadow, and the 16-bit side reads back what GDI touches of it, when
+ * it does. Reading it back here, a whole screen for a Lock without a
+ * rectangle, cost every frame of a windowed program the bus read. */
 static void v9x_shadow_note_unlock(const V9X_DD_SURFACE_LCL *surface)
 {
-    BYTE *shadow;
-
     if (v9x_shadow_lock_surface == 0 || surface != v9x_shadow_lock_surface) {
         return;
     }
     v9x_shadow_lock_surface = 0;
-    shadow = v9x_shadow_for(v9x_shadow_lock_offset);
-    if (shadow == 0 || surface->lpGbl == 0 || surface->lpGbl->lPitch <= 0l) {
+    if (v9x_shadow_for(v9x_shadow_lock_offset) == 0 || surface->lpGbl == 0 ||
+        surface->lpGbl->lPitch <= 0l) {
         return;
     }
-    v9x_shadow_sync_rect(shadow, 0, v9x_shadow_lock_offset,
-                         v9x_shadow_lock_rect,
-                         (DWORD)surface->lpGbl->lPitch,
-                         v9x_hal->fb.bits_per_pixel >> 3);
+    v9x_shadow_mark_stale(v9x_shadow_lock_offset, v9x_shadow_lock_rect,
+                          v9x_hal->fb.bits_per_pixel >> 3);
 }
 
 int v9x_present_draw_record(int submitted)
@@ -2049,14 +2108,48 @@ static int v9x_blt_drain(int wait)
  * which GDI does not touch. In exclusive mode with the application's own
  * buffers shown, blits stay queued. A wait that runs out leaves the engine
  * to the timeout handling every drain has; the blit was submitted.
+ *
+ * With the screen shadow on (a chip whose GDI has no engine), the engine
+ * wrote the frame buffer and not the shadow, and GDI's next copy out of
+ * the shadow would put the old pixels back. A fill is repeated in the
+ * shadow, and so is a copy whose source is on the screen and current in
+ * the shadow, both in memory. Anything else - a windowed present, whose
+ * source is only in video memory - is marked stale, not read back: reading
+ * each present back cost 340 ms a frame on Carrizo (windowed Quake 3 18.7
+ * to 2.5 fps), and the 16-bit side reads back only what GDI later touches.
+ * source_offset is V9X_SHADOW_NO_SOURCE for a fill.
  */
-static void v9x_blt_settle_on_screen(DWORD destination_offset)
+#define V9X_SHADOW_NO_SOURCE 0xfffffffful
+
+static void v9x_blt_settle_on_screen(V9X_DDHAL_BLTDATA *data,
+                                     DWORD destination_offset,
+                                     DWORD source_offset,
+                                     DWORD bytes_per_pixel)
 {
+    BYTE *shadow;
+
     if (v9x_hal == 0 || destination_offset >= v9x_hal->fb.visible_bytes ||
         !v9x_present_gdi_may_draw()) {
         return;
     }
     (void)v9x_render_drain(1);
+
+    shadow = v9x_shadow_for(destination_offset);
+    if (shadow == 0) {
+        return;
+    }
+    if (source_offset == V9X_SHADOW_NO_SOURCE) {
+        v9x_cpu_fill_in(data, shadow, destination_offset, bytes_per_pixel);
+        return;
+    }
+    if (v9x_shadow_for(source_offset) != 0 &&
+        !v9x_shadow_rect_is_stale(source_offset, data->rSrc,
+                                  bytes_per_pixel)) {
+        v9x_cpu_copy_in(data, shadow, source_offset, shadow,
+                        destination_offset, bytes_per_pixel);
+        return;
+    }
+    v9x_shadow_mark_stale(destination_offset, data->rDest, bytes_per_pixel);
 }
 
 /*
@@ -2170,7 +2263,8 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         }
         if (outcome == V9X_BLT_DONE) {
             *engine_used = 1;
-            v9x_blt_settle_on_screen(destination_offset);
+            v9x_blt_settle_on_screen(data, destination_offset,
+                                     source_offset, bytes_per_pixel);
             return V9X_DDHAL_DRIVER_HANDLED;
         }
     }
@@ -2187,9 +2281,12 @@ static DWORD v9x_srccopy_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     /* Into the shadow, reading a visible source from the shadow as well
-     * rather than across the bus, then the rectangle out to the screen. */
+     * rather than across the bus - unless an engine left that source stale
+     * there - then the rectangle out to the screen. */
     v9x_cpu_copy_in(data,
-                    v9x_shadow_for(source_offset) != 0 ?
+                    v9x_shadow_for(source_offset) != 0 &&
+                    !v9x_shadow_rect_is_stale(source_offset, data->rSrc,
+                                              bytes_per_pixel) ?
                         shadow : (const BYTE *)v9x_hal->fb.linear_base,
                     source_offset, shadow, destination_offset,
                     bytes_per_pixel);
@@ -2253,7 +2350,8 @@ static DWORD v9x_colorfill_body(V9X_DDHAL_BLTDATA *data, int *engine_used)
     }
     if (outcome == V9X_BLT_DONE) {
         *engine_used = 1;
-        v9x_blt_settle_on_screen(offset);
+        v9x_blt_settle_on_screen(data, offset, V9X_SHADOW_NO_SOURCE,
+                                 bytes_per_pixel);
         return V9X_DDHAL_DRIVER_HANDLED;
     }
     if (!v9x_blt_drain(wait)) {

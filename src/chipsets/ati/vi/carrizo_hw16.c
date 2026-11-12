@@ -159,5 +159,10 @@ const V9X_HW16_DEVICE v9x_vi_carrizo_device = {
      * 16 MiB mapping lies inside the 256 MiB BAR0 (the SDMA and CP windows
      * at 240 and 248 MiB are mapped apart from it). Stage A planned it with
      * no refusal on M-XP7053 (V9XBOOT.INI Mtrr= r=0 s=4). */
-    V9X_HW16_WC_MAPPING
+    V9X_HW16_WC_MAPPING,
+    0,                      /* write_combine_fallback */
+    /* GDI has no engine here and read the screen at 8 MB/s write-combined:
+     * screen-to-screen copies, ScrollDC and SRCAND all bound by it
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md). */
+    V9X_HW16_SCREEN_SHADOW
 };

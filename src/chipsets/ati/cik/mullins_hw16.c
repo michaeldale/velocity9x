@@ -150,5 +150,14 @@ const V9X_HW16_DEVICE v9x_cik_mullins_device = {
     "directdraw-fill-copy",
     "hardware-vi-cp",
     0,
-    v9x_mullins_fill_engine
+    v9x_mullins_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    0ul,                    /* map_bytes: the family's 16 MiB */
+    0,                      /* engine_reserve_offset */
+    0u,                     /* write_combine: Stage A */
+    0,                      /* write_combine_fallback */
+    /* GDI has no engine here, and the R3E read its screen at 5 MB/s under
+     * vbe until the shadow (docs\decisions\2026-11-12-ati-screen-shadow.md). */
+    V9X_HW16_SCREEN_SHADOW
 };
