@@ -389,18 +389,32 @@ int v9x_d3d_raster_depth_valid(const V9X_D3D_RASTER_DEPTH *depth,
     return 1;
 }
 
+/* Bytes a texel: four for the 32-bit formats, two for the others. */
+static v9x_u32 v9x_d3d_raster_texel_bytes(v9x_u32 format)
+{
+    if (format == V9X_D3D_RASTER_TEXFMT_ARGB8888 ||
+        format == V9X_D3D_RASTER_TEXFMT_XRGB8888) {
+        return 4ul;
+    }
+    return 2ul;
+}
+
 int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
 {
     v9x_u32 bit;
+    v9x_u32 texel_bytes;
 
     if (texture == 0 || texture->pixels == 0) {
         return 0;
     }
     if (texture->format != V9X_D3D_RASTER_TEXFMT_ARGB1555 &&
         texture->format != V9X_D3D_RASTER_TEXFMT_ARGB4444 &&
-        texture->format != V9X_D3D_RASTER_TEXFMT_RGB565) {
+        texture->format != V9X_D3D_RASTER_TEXFMT_RGB565 &&
+        texture->format != V9X_D3D_RASTER_TEXFMT_ARGB8888 &&
+        texture->format != V9X_D3D_RASTER_TEXFMT_XRGB8888) {
         return 0;
     }
+    texel_bytes = v9x_d3d_raster_texel_bytes(texture->format);
     if (texture->filter != V9X_D3D_RASTER_FILTER_POINT &&
         texture->filter != V9X_D3D_RASTER_FILTER_LINEAR) {
         return 0;
@@ -450,7 +464,7 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
             }
         }
     }
-    if (texture->pitch < texture->width * 2ul) {
+    if (texture->pitch < texture->width * texel_bytes) {
         return 0;
     }
     if (texture->mip != V9X_D3D_RASTER_MIP_NONE &&
@@ -482,7 +496,8 @@ int v9x_d3d_raster_texture_valid(const V9X_D3D_RASTER_TEXTURE *texture)
             width = width > 1ul ? width / 2ul : 1ul;
             height = height > 1ul ? height / 2ul : 1ul;
             if (mip->pixels == 0 || mip->width != width ||
-                mip->height != height || mip->pitch < width * 2ul) {
+                mip->height != height ||
+                mip->pitch < width * texel_bytes) {
                 return 0;
             }
         }
@@ -724,10 +739,14 @@ typedef struct V9X_D3D_RASTER_SAMPLER {
     V9X_D3D_RASTER_FIELD red;
     V9X_D3D_RASTER_FIELD green;
     V9X_D3D_RASTER_FIELD blue;
-    /* The texel's alpha: none (opaque), one bit at 15, or four bits at 12;
-     * and what the span does with it, one of V9X_D3D_RASTER_TEXALPHA_*. */
+    /* The texel's alpha: none (opaque), one bit at 15, four bits at 12, or
+     * eight bits at 24; and what the span does with it, one of
+     * V9X_D3D_RASTER_TEXALPHA_*. */
     v9x_u32 alpha_bits;
     v9x_u32 alpha_op;
+    /* Non-zero for a 32-bit texel (ARGB8888, XRGB8888), read as a whole
+     * DWORD; zero for the 16-bit formats. One test per texel fetch. */
+    int wide;
 } V9X_D3D_RASTER_SAMPLER;
 
 /*
@@ -744,6 +763,9 @@ static v9x_s32 v9x_d3d_raster_texel_alpha(const V9X_D3D_RASTER_SAMPLER *sampler,
     }
     if (sampler->alpha_bits == 4ul) {
         return (v9x_s32)(((word >> 12) & 0xful) * 17ul);
+    }
+    if (sampler->alpha_bits == 8ul) {
+        return (v9x_s32)((word >> 24) & 0xfful);
     }
     return 255l;
 }
@@ -816,8 +838,18 @@ static void v9x_d3d_raster_sampler_start(
         sampler->env_blue = 0l;
     }
     sampler->alpha_bits = texture->format == V9X_D3D_RASTER_TEXFMT_ARGB1555 ? 1ul
-        : (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444 ? 4ul : 0ul);
+        : (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444 ? 4ul
+        : (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB8888 ? 8ul : 0ul));
+    sampler->wide = v9x_d3d_raster_texel_bytes(texture->format) == 4ul;
 
+    if (sampler->wide) {
+        /* Eight bits a channel: the field's replication shift is eight,
+         * so the decode leaves each byte as it is. */
+        v9x_d3d_raster_field(&sampler->red, 16l, 8l);
+        v9x_d3d_raster_field(&sampler->green, 8l, 8l);
+        v9x_d3d_raster_field(&sampler->blue, 0l, 8l);
+        return;
+    }
     if (texture->format == V9X_D3D_RASTER_TEXFMT_ARGB4444) {
         v9x_d3d_raster_field(&sampler->red, 8l, 4l);
         v9x_d3d_raster_field(&sampler->green, 4l, 4l);
@@ -883,13 +915,21 @@ static void v9x_d3d_raster_sampler_start(
  * the end. Tiling did not need a second code path in the sampler; it needed a
  * coordinate wide enough to reach one.
  */
+/* The texel at (x, y) of a level, as a word: a DWORD for a 32-bit format,
+ * a WORD otherwise. Names `sampler` implicitly, as V9X_D3D_RASTER_DECODE. */
+#define V9X_D3D_RASTER_TEXEL(level, x, y) \
+    (sampler->wide ? \
+        ((const v9x_u32 *)((level)->pixels + \
+                           (v9x_u32)(y) * (level)->pitch))[(x)] : \
+        (v9x_u32)((const v9x_u16 *)((level)->pixels + \
+                                    (v9x_u32)(y) * (level)->pitch))[(x)])
+
 static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
                                   const V9X_D3D_RASTER_SAMPLER_LEVEL *level,
                                   v9x_s32 texel_u, v9x_s32 texel_v,
                                   v9x_s32 *red, v9x_s32 *green, v9x_s32 *blue,
                                   v9x_s32 *texel_alpha)
 {
-    const v9x_u16 *row;
     v9x_u32 word;
     /* Into the level's texel units: a shift, since the coordinate is inside
      * one repeat and the extent is a power of two. */
@@ -909,14 +949,10 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
         v9x_s32 w10 = (fu << 8) - w11;
         v9x_s32 w01 = (fv << 8) - w11;
         v9x_s32 w00 = 65536l - (fu << 8) - (fv << 8) + w11;
-        const v9x_u16 *row0 = (const v9x_u16 *)(level->pixels +
-                                                (v9x_u32)y0 * level->pitch);
-        const v9x_u16 *row1 = (const v9x_u16 *)(level->pixels +
-                                                (v9x_u32)y1 * level->pitch);
-        v9x_u32 t00 = (v9x_u32)row0[x0];
-        v9x_u32 t10 = (v9x_u32)row0[x1];
-        v9x_u32 t01 = (v9x_u32)row1[x0];
-        v9x_u32 t11 = (v9x_u32)row1[x1];
+        v9x_u32 t00 = V9X_D3D_RASTER_TEXEL(level, x0, y0);
+        v9x_u32 t10 = V9X_D3D_RASTER_TEXEL(level, x1, y0);
+        v9x_u32 t01 = V9X_D3D_RASTER_TEXEL(level, x0, y1);
+        v9x_u32 t11 = V9X_D3D_RASTER_TEXEL(level, x1, y1);
         v9x_s32 r00, g00, b00, r10, g10, b10, r01, g01, b01, r11, g11, b11;
 
         V9X_D3D_RASTER_DECODE(t00, r00, g00, b00);
@@ -936,10 +972,8 @@ static void v9x_d3d_raster_sample(const V9X_D3D_RASTER_SAMPLER *sampler,
         return;
     }
 
-    row = (const v9x_u16 *)(level->pixels +
-                            (v9x_u32)((sv >> 16) & level->mask_v) *
-                                level->pitch);
-    word = (v9x_u32)row[(su >> 16) & level->mask_u];
+    word = V9X_D3D_RASTER_TEXEL(level, (su >> 16) & level->mask_u,
+                                (sv >> 16) & level->mask_v);
     V9X_D3D_RASTER_DECODE(word, *red, *green, *blue);
     if (sampler->sample_alpha) {
         *texel_alpha = v9x_d3d_raster_texel_alpha(sampler, word);

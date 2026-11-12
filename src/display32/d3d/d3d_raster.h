@@ -161,6 +161,14 @@
  * one place the two deliberately differ.
  */
 #define V9X_D3D_RASTER_TEXFMT_RGB565   3ul
+/*
+ * Four bytes a texel, eight bits a channel: ARGB8888 with its alpha in the
+ * top byte, XRGB8888 opaque. The S3D unit carries ARGB8888 too, so the two
+ * engines still agree on it. Added 2026-11-12 for V9XD32 T22, which drew
+ * white on the vbe package because the software engine refused both.
+ */
+#define V9X_D3D_RASTER_TEXFMT_ARGB8888 4ul
+#define V9X_D3D_RASTER_TEXFMT_XRGB8888 5ul
 
 /*
  * Filter and blend, numbered as D3DFILTER_* and D3DTBLEND_* number them, for

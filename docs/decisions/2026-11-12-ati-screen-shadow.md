@@ -257,11 +257,13 @@ after (boots 36 to 39).
 
   GDI under ati now matches vbe on the same card, and DirectDraw keeps
   its engine.
-- **V9XD32 on vbe: T22 draws white.** The software engine accepts
-  A8R8G8B8 and X8R8G8B8 textures (create, lock, handle and draw all
-  `0x00000000`) and samples nothing: every T22 pixel is `0x00FFFFFF`,
-  two failures. T22 dates from 2026-11-11 (Gen3 32-bit textures); no
-  earlier vbe run had it. Not the shadow's: GDI only. Not investigated.
+- **V9XD32 on vbe: T22 draws white.** Create, lock, handle and draw all
+  return `0x00000000` and every T22 pixel is `0x00FFFFFF`, two failures.
+  T22 dates from 2026-11-11 (Gen3 32-bit textures); no earlier vbe run
+  had it. Not the shadow's: GDI only. Later the same day: the software
+  engine refused the 32-bit formats and drew vertex colour; it samples
+  them now, and T22 passes
+  ([record](2026-11-12-vbe-soft-32bit-textures.md)).
 - **DBDD died on ati** after writing its last test (`Dd.ScanLine`),
   before `[Result]`; on vbe it completed. DBDD stopped early on this
   machine on 2026-11-07 too, before any shadow (after `Dd.Flip`).

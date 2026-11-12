@@ -69,11 +69,12 @@ build identifier so exact guest-tested binaries remain traceable.
   (GitHub issue 22). The driver refuses that combination because it hung
   the GM965, and Gen4 has no fallback. Not fixed in this release
   ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
-- **Known issue, `vbe` package: Direct3D on the software renderer draws
-  32-bit textures white.** It accepts A8R8G8B8 and X8R8G8B8 textures and
-  then samples nothing. Found on one R3E by a test added in this
-  release; earlier releases behave the same, untested. Not fixed in this
-  release ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
+- **`vbe` package: Direct3D on the software renderer draws 32-bit
+  textures.** It used to refuse A8R8G8B8 and X8R8G8B8 textures and draw
+  their triangles in plain vertex colour, white in the test that found
+  it. It now samples both, alpha included, and offers them to programs
+  that ask which formats it takes. Measured on one R3E
+  ([record](docs/decisions/2026-11-12-vbe-soft-32bit-textures.md)).
 - **Known issue, `s3` package, Trio64: a second or two of cyan garbage
   at Windows shutdown**, before the safe-to-turn-off screen (GitHub
   PR 24). Cosmetic, cause unknown, parked
