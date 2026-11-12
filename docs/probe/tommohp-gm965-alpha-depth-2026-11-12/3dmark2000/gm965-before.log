@@ -1,0 +1,23 @@
+[+0:03] agent 0.16.0, boot 44, desktop True
+[+0:05] probes in place: sent 0 of 7
+[+0:56] 3DMark started
+[+1:23] 3DMark +0.5 min: FlipHandled 345
+[+1:59] 3DMark +1.0 min: FlipHandled 635
+[+2:32] 3DMark +1.6 min: FlipHandled 841
+[+3:07] 3DMark +2.2 min: FlipHandled 1319
+[+3:43] 3DMark +2.8 min: FlipHandled 1726
+[+4:17] 3DMark +3.4 min: FlipHandled 2027
+[+4:52] 3DMark +3.9 min: FlipHandled 2264
+[+5:27] 3DMark +4.5 min: FlipHandled 2814
+[+6:01] 3DMark +5.1 min: FlipHandled 3213
+[+6:35] 3DMark +5.6 min: FlipHandled 3669
+[+7:07] 3DMark +6.2 min: FlipHandled 3865
+[+7:35] 3DMark +6.7 min: FlipHandled 3943
+[+7:36] 3DMark finished in 6.7 min, last FlipHandled 3943
+[+8:31] 3DMark counters: draws +349463, into presented +0, refused batches +0, engine stalls +0, FilterMagSeen 0x6
+[+8:49] V9XD32 default exit=0
+[+8:58] V9XGLP.EXE exit=0
+[+9:04] V9XGLIDP.EXE exit=0
+[+9:06] V9XR3DP.EXE exit=0
+[+9:13] V9XWPRS.EXE exit=0
+[+9:16] V9XFBCMP.EXE exit=0

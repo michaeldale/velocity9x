@@ -176,6 +176,13 @@
 #define D3DCULL_CW 2ul
 #define D3DCULL_CCW 3ul
 #define D3DCMP_LESS 2ul
+#define D3DCMP_LESSEQUAL 4ul
+#define D3DCMP_GREATER 5ul
+#define D3DRENDERSTATE_ALPHATESTENABLE 15ul
+#define D3DRENDERSTATE_ALPHAREF 24ul
+#define D3DRENDERSTATE_ALPHAFUNC 25ul
+#define D3DBLEND_ZERO 1ul
+#define D3DBLEND_SRCCOLOR 3ul
 
 typedef struct d32_surface_desc {
     DWORD dwSize;
@@ -275,6 +282,11 @@ typedef struct d32_object { void **vtbl; } D32_OBJECT;
 #define D3DDESC_TRI_TEXTURE_CAPS 33
 #define D3DDESC_TRI_FILTER_CAPS 34
 #define D3DDESC_TRI_BLEND_CAPS 35
+/* dwDestBlendCaps and dwAlphaCmpCaps, 4 and 5 DWORDs after dwMiscCaps. */
+#define D3DDESC_TRI_DEST_BLEND_CAPS 30
+#define D3DDESC_TRI_ALPHA_CMP_CAPS 31
+#define D3DPBLENDCAPS_SRCCOLOR 0x00000004ul
+#define D3DPCMPCAPS_GREATER 0x00000010ul
 #define D3DPRASTERCAPS_FOGVERTEX 0x00000080ul
 #define D3DPTEXTURECAPS_TRANSPARENCY 0x00000008ul
 #define D3DPTFILTERCAPS_MIPNEAREST 0x00000004ul
@@ -356,6 +368,8 @@ static DWORD d32_tri_raster_caps;
 static DWORD d32_tri_texture_caps;
 static DWORD d32_tri_filter_caps;
 static DWORD d32_tri_blend_caps;
+static DWORD d32_tri_dest_blend_caps;
+static DWORD d32_tri_alpha_cmp_caps;
 
 static void d32_hex(char *text, DWORD value)
 {
@@ -555,6 +569,8 @@ typedef struct d32_enum_result {
     DWORD tri_texture_caps;
     DWORD tri_filter_caps;
     DWORD tri_blend_caps;
+    DWORD tri_dest_blend_caps;
+    DWORD tri_alpha_cmp_caps;
 } D32_ENUM_RESULT;
 
 static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
@@ -576,6 +592,8 @@ static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
         result->tri_texture_caps = hardware[D3DDESC_TRI_TEXTURE_CAPS];
         result->tri_filter_caps = hardware[D3DDESC_TRI_FILTER_CAPS];
         result->tri_blend_caps = hardware[D3DDESC_TRI_BLEND_CAPS];
+        result->tri_dest_blend_caps = hardware[D3DDESC_TRI_DEST_BLEND_CAPS];
+        result->tri_alpha_cmp_caps = hardware[D3DDESC_TRI_ALPHA_CMP_CAPS];
     }
     return 1;   /* D3DENUMRET_OK */
 }
@@ -1568,12 +1586,21 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
  *   ColorKey x 232: an RGB565 quadrant texture keyed on its green, DECAL,
  *                   over a grey quad drawn first - grey where green was,
  *                   the other three texels.
+ *   AlphaTest x 288: Half-Life's alpha-tested brushes - grey 808080h behind
+ *                   at z 0.75, then DecalAlpha's texture DECAL with the
+ *                   alpha test (GREATER 80h) and depth writes at 0.5, then
+ *                   a grey ZERO/SRCCOLOR lightmap pass at 0.5, LESSEQUAL,
+ *                   no depth write - the left (alpha 0) quadrants grey
+ *                   halved (404040h), the right ones red and green halved.
+ *                   The combination hung the GM965 and was refused on
+ *                   Gen4 until 0.48.0, which draws it in two passes.
  *
  * A device that refuses one of these draws leaves the band's clear colour
  * there, which fails.
  */
 #define D32_T20_TOP 96.0f
 #define D32_T20_SIZE 48.0f
+#define D32_T20_ALPHA_X 288.0f
 
 typedef HRESULT (WINAPI *d32_set_color_key_fn)(D32_OBJECT *, DWORD,
                                                DWORD *);
@@ -1613,6 +1640,8 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
 {
     D32_TLVERTEX v[6];
     DWORD handle;
+    DWORD decal_handle;
+    DWORD index;
     DWORD key[2];
 
     d32_line("Stage", "8e-t20-dx5-states");
@@ -1641,6 +1670,7 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
     surfaces[0] = d32_texture_surface(ddraw, d32_t20_decal_alpha,
                                       "T20DecalAlpha");
     handle = d32_handle_of(surfaces[0], device, "T20DecalAlpha");
+    decal_handle = handle;
     if (handle != 0ul) {
         d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
         d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND,
@@ -1671,6 +1701,40 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
         d32_t20_quad(v, 232.0f, 0xfffffffful, 0ul);
         d32_hx("T20ColorKeyHr", (DWORD)d32_draw(device, v, 6ul));
         d32_state(device, D3DRENDERSTATE_COLORKEYENABLE, 0ul);
+    }
+
+    /* The alpha test with depth writes, then a lightmap pass: grey behind
+     * at 0.75, the DECALALPHA texture DECAL with GREATER 80h at 0.5 writing
+     * depth, then an untextured grey ZERO/SRCCOLOR pass at 0.5, LESSEQUAL,
+     * no depth write. */
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    d32_t20_quad(v, D32_T20_ALPHA_X, 0xff808080ul, 0ul);
+    for (index = 0ul; index < 6ul; ++index) {
+        v[index].sz = 0.75f;
+    }
+    d32_hx("T20AlphaBackHr", (DWORD)d32_draw(device, v, 6ul));
+    if (decal_handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, decal_handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+        d32_state(device, D3DRENDERSTATE_ALPHATESTENABLE, 1ul);
+        d32_state(device, D3DRENDERSTATE_ALPHAREF, 0x80ul);
+        d32_state(device, D3DRENDERSTATE_ALPHAFUNC, D3DCMP_GREATER);
+        d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 1ul);
+        d32_t20_quad(v, D32_T20_ALPHA_X, 0xfffffffful, 0ul);
+        d32_hx("T20AlphaTestHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_ALPHATESTENABLE, 0ul);
+
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+        d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 0ul);
+        d32_state(device, D3DRENDERSTATE_ZFUNC, D3DCMP_LESSEQUAL);
+        d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+        d32_state(device, D3DRENDERSTATE_SRCBLEND, D3DBLEND_ZERO);
+        d32_state(device, D3DRENDERSTATE_DESTBLEND, D3DBLEND_SRCCOLOR);
+        d32_t20_quad(v, D32_T20_ALPHA_X, 0xff808080ul, 0ul);
+        d32_hx("T20AlphaLitHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+        d32_state(device, D3DRENDERSTATE_ZFUNC, D3DCMP_LESS);
+        d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 1ul);
     }
     d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
     d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
@@ -1708,10 +1772,15 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
     ok |= d32_t20_point(desc, "KeyGone", 268ul, 108ul, 0x00808080ul) << 9;
     ok |= d32_t20_point(desc, "KeyBlue", 244ul, 132ul, 0x000000fful) << 10;
     ok |= d32_t20_point(desc, "KeyWhite", 268ul, 132ul, 0x00fffffful) << 11;
+    ok |= d32_t20_point(desc, "AlphaHole", 300ul, 108ul, 0x00404040ul) << 12;
+    ok |= d32_t20_point(desc, "AlphaRed", 324ul, 108ul, 0x00800000ul) << 13;
+    ok |= d32_t20_point(desc, "AlphaHoleG", 300ul, 132ul, 0x00404040ul) << 14;
+    ok |= d32_t20_point(desc, "AlphaGreen", 324ul, 132ul, 0x00008000ul) << 15;
     d32_hx("T20Ok", ok);
 
     /* Only the parts the device advertises count: fog bits 0-1, ADD 2-3,
-     * DECALALPHA 4-7, the colour key 8-11. T20Ok still shows them all. */
+     * DECALALPHA 4-7, the colour key 8-11, the alpha test with its
+     * ZERO/SRCCOLOR lightmap pass 12-15. T20Ok still shows them all. */
     if ((d32_tri_raster_caps & D3DPRASTERCAPS_FOGVERTEX) != 0ul) {
         expected |= 0x003ul;
     }
@@ -1723,6 +1792,10 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
     }
     if ((d32_tri_texture_caps & D3DPTEXTURECAPS_TRANSPARENCY) != 0ul) {
         expected |= 0xf00ul;
+    }
+    if ((d32_tri_alpha_cmp_caps & D3DPCMPCAPS_GREATER) != 0ul &&
+        (d32_tri_dest_blend_caps & D3DPBLENDCAPS_SRCCOLOR) != 0ul) {
+        expected |= 0xf000ul;
     }
     d32_hx("T20Expected", expected);
     return (ok & expected) != expected ? 1ul : 0ul;
@@ -6448,6 +6521,10 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_tri_texture_caps = enumerated.tri_texture_caps;
     d32_tri_filter_caps = enumerated.tri_filter_caps;
     d32_tri_blend_caps = enumerated.tri_blend_caps;
+    d32_hx("HalTriDestBlendCaps", enumerated.tri_dest_blend_caps);
+    d32_hx("HalTriAlphaCmpCaps", enumerated.tri_alpha_cmp_caps);
+    d32_tri_dest_blend_caps = enumerated.tri_dest_blend_caps;
+    d32_tri_alpha_cmp_caps = enumerated.tri_alpha_cmp_caps;
     if (enumerated.hal_found == 0ul ||
         (enumerated.render_depth & (bpp == 32ul ? DDBD_32 : DDBD_16)) ==
             0ul) {

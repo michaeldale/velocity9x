@@ -287,3 +287,29 @@ So the two-pass path has run on the 965 core without hanging, in one
 probe draw at 1024x768x16. Direct3D on the GM965 has not drawn an
 alpha-tested depth-writing primitive (no D3D program on the machine
 does); that is the remaining gap.
+
+### Direct3D on the GM965 (same day, same boot)
+
+- 3DMark 2000 default benchmark, census on (`3dmark2000/`): completed,
+  774, no refusals, no hang. Its four census keys have no alpha test, so
+  it does not reach the path either.
+- V9XD32's T20 gained a check for it (`AlphaTest x 288`): grey behind at
+  z 0.75, the ARGB1555 DecalAlpha texture DECAL with ALPHATEST GREATER
+  80h and depth writes at 0.5, then an untextured grey ZERO/SRCCOLOR
+  lightmap pass at 0.5, LESSEQUAL, no depth write. Expected: holes
+  404040h, solid texels halved. Counted only when the device claims
+  `D3DPCMPCAPS_GREATER` and `D3DPBLENDCAPS_SRCCOLOR`.
+- GM965 (`v9xd32-t20-alpha/`, probe built locally,
+  `d3d32-probe-local`, on the `be9f701d-dirty` driver): AlphaHole 404040,
+  AlphaRed 800000, AlphaHoleG 404040, AlphaGreen 008000, T20Ok =
+  T20Expected = FF03, Result PASS, `M64Policy08` 0, no hang. The census
+  table was already full (16 keys, 3DMark's included), so it cannot show
+  the state; the solid quadrants drawing red and green halved over the
+  grey is what says the draw was made.
+- GM45 M-6B21TJ, boot 25, same probe
+  (`../probe/m-6b21tj-game-reports-2026-11-11/boot25-v9xd32-t20-alpha/`):
+  the same four values, PASS.
+- Not shown: that the check fails on a build without the fix (0.47.0
+  refused the draw, which would leave the grey back quad halved
+  everywhere, 404040h on the solid side too). That needs 0.47.0 on a
+  Gen4 machine again.
