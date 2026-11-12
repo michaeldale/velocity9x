@@ -207,10 +207,70 @@ A diagonal line costs 2.2 times its uncached-read figure here, against
 which is the likely cost, not measured on its own. DirectDraw's rows are
 within 1 % of boot 52's.
 
+## The other machines (afternoon, committed build 7da1bcb1)
+
+Evidence: [`../probe/shadow-ati-vbe-2026-11-12/`](../probe/shadow-ati-vbe-2026-11-12/)
+and dispbench `m-jjn1zz-r3e-v9x-ati-shadow/`, `m-jjn1zz-r3e-v9x-vbe-shadow/`.
+Trinity (M-D7TFW4) and every vbe machine in the release list were
+offline, so the vbe set went onto M-JJN1ZZ's Radeon R3E (Mullins) by
+WININIT over its ati set, as on 2026-11-11, and the ati set went back
+after (boots 36 to 39).
+
+| M-JJN1ZZ | ati | vbe |
+|---|---|---|
+| `ScreenShadow` | on | on |
+| V9XD32, V9XGLP, V9XGLIDP, V9XR3DP | all pass | V9XD32 FAIL (below), the rest pass |
+| V9XFBCMP after the probes | equal | equal |
+| V9XFBCMP after dispbench | equal (8,697 direction-set entries) | equal (47,751) |
+| FbWrite | 31.7 MB/s | 2,512 MB/s |
+| ScrollDC | 30.3 MB/s | 1,157 MB/s |
+| Screen to screen, 256x256 | 7.8 | 382 |
+| FillRect 1024x768 | 30.9 | 1,220 |
+| ExtTextOut, fixed opaque | 410,017 cyc | 30,732 cyc |
+
+- **vbe, with the shadow, against its 2026-11-07 run without it**
+  (`m-jjn1zz-r3e-v9x-vbe`, write-combined): ScrollDC 4.7 to 1,157 MB/s,
+  overlapping copy 4.7 to 783, SRCAND 2.5 to 100; FillRect 0.49 of its
+  speed, text 1.8 and diagonal lines 3.2 times the cost.
+- **ati on Mullins is not write-combined.** Its hw16 row leaves
+  `write_combine` at 0 (Stage A), so the frame buffer is written
+  uncached at 31.7 MB/s, and with the shadow every GDI call copies out
+  to it: about 30 MB/s for everything. Carrizo was the same until
+  5dfe395c. No ati run without the shadow exists on this card, so
+  whether the shadow helped or hurt Mullins is not known.
+- **Mullins write-combined (boot 40).** The row now opts in with
+  `V9X_HW16_WC_MAPPING`, as Carrizo's: the same eng_vi.c and vi_cp.c
+  drain before every SDMA and CP kick, and the plan was the one Carrizo
+  had (`Mtrr=... r=0 s=5 b=e0000000 z=01000000`, `MtrrWrite=ok`). All
+  five probes pass, V9XFBCMP equal after the probes and after dispbench,
+  DBDD completed (`m-jjn1zz-r3e-v9x-ati-wc-shadow`):
+
+  | Mullins, ati | uncached | write-combined | vbe |
+  |---|---:|---:|---:|
+  | FbWrite | 31.7 MB/s | 2,505 | 2,512 |
+  | ScrollDC | 30.3 | 1,168 | 1,157 |
+  | Screen to screen, 256x256 | 7.8 | 382 | 382 |
+  | FillRect 1024x768 | 30.9 | 1,235 | 1,220 |
+  | ExtTextOut, fixed opaque | 410,017 cyc | 28,286 cyc | 30,732 cyc |
+  | DirectDraw vid-to-vid, 256x256 | 520 | 519 | 4.7 |
+  | DirectDraw sys-to-vid, 512x512 | 62.4 | 2,451 | 2,467 |
+
+  GDI under ati now matches vbe on the same card, and DirectDraw keeps
+  its engine.
+- **V9XD32 on vbe: T22 draws white.** The software engine accepts
+  A8R8G8B8 and X8R8G8B8 textures (create, lock, handle and draw all
+  `0x00000000`) and samples nothing: every T22 pixel is `0x00FFFFFF`,
+  two failures. T22 dates from 2026-11-11 (Gen3 32-bit textures); no
+  earlier vbe run had it. Not the shadow's: GDI only. Not investigated.
+- **DBDD died on ati** after writing its last test (`Dd.ScanLine`),
+  before `[Result]`; on vbe it completed. DBDD stopped early on this
+  machine on 2026-11-07 too, before any shadow (after `Dd.Flip`).
+  Recorded, not rerun.
+
 ## Not covered
 
-- Trinity, Mullins and the Evergreen cards: opted in by the same design,
-  none run.
+- Trinity and the Evergreen cards: opted in by the same design, none
+  run (Trinity offline on 2026-11-12).
 - 32 bpp, Windows 95, a full-screen DOS box with the shadow on this card.
 - Windowed Direct3D and windowed DirectDraw programs other than the GL
   ICD's presents.

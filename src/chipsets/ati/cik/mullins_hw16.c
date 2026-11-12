@@ -155,7 +155,14 @@ const V9X_HW16_DEVICE v9x_cik_mullins_device = {
     0u,                     /* packed_pitch */
     0ul,                    /* map_bytes: the family's 16 MiB */
     0,                      /* engine_reserve_offset */
-    0u,                     /* write_combine: Stage A */
+    /* Write-combined as Carrizo's row is (5dfe395c): the same eng_vi.c and
+     * vi_cp.c drain the write-combining buffers before every SDMA and CP
+     * kick, and the 16 MiB mapping lies inside BAR0, whose SDMA and CP
+     * windows at 240 and 248 MiB are mapped apart from it. Uncached, the
+     * frame buffer took writes at 31.7 MB/s on M-JJN1ZZ, and with the
+     * screen shadow every GDI call ran at about 30 MB/s
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md). */
+    V9X_HW16_WC_MAPPING,
     0,                      /* write_combine_fallback */
     /* GDI has no engine here, and the R3E read its screen at 5 MB/s under
      * vbe until the shadow (docs\decisions\2026-11-12-ati-screen-shadow.md). */

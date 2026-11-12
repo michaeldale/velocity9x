@@ -25,8 +25,13 @@ build identifier so exact guest-tested binaries remain traceable.
   old speed, text costs 1.7 times as much and lines 2.2 times. Windowed
   OpenGL is unaffected: Quake 3 in a window runs at 18.7 fps with the
   copy and without it. A file `C:\V9XDIAG\NOSHADOW.TXT` turns it off.
-  Measured on Carrizo only
+  Measured on Carrizo and on one R3E
   ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
+- **`ati` package, AMD Radeon R3E (Mullins): the screen is
+  write-combined.** Every earlier release wrote it uncached, at 32 MB/s
+  on the one measured: desktop drawing went from about 30 MB/s to 1,170
+  (scrolling) and 1,235 (a full-screen fill), level with the `vbe`
+  package on the same card, while DirectDraw keeps its engine.
 - **`intel-gma` package, Gen3 (GMA 900, 950, 3100, 3150): DirectX 8
   pixel shaders.** Pixel shader 1.1 programs run on the engine through
   the i915 fragment program, with four texture stages, cube maps and the
