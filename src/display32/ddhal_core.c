@@ -2858,6 +2858,17 @@ DWORD __stdcall DriverInit(DWORD context)
      * is - see v9x_d3d_publish - and it cannot be chip-selected here anyway,
      * because DriverInit runs before the 16-bit side has described anything.
      */
+    /*
+     * Surfaces wider than the primary. Without this bit DirectDraw refuses a
+     * video-memory surface wider than the display (DDRAW.H:1840), and the
+     * Direct3D 8 runtime reports that as D3DERR_DRIVERINTERNALERROR: 3DMark
+     * 2001 SE's Advanced Pixel Shader asks for a 1024x512 render-target
+     * texture and failed so at 640x480 on the GMA 950 and the HD 4600 alike,
+     * with 27 MiB free on the latter (2026-11-12-gen3-aps-call-log.md). The
+     * heap is linear (dd16.c), so width costs nothing a taller surface of the
+     * same bytes does not.
+     */
+    shared->info.ddCaps.dwCaps2 = V9X_DDCAPS2_WIDESURFACES;
     shared->info.ddCaps.dwRops[6] = 0x00001000ul;
     shared->info.ddCaps.dwRops[7] = 0x00010000ul;
     shared->info.ddCaps.ddsCaps = V9X_DDSCAPS_3DDEVICE |

@@ -138,6 +138,9 @@ typedef void (FAR PASCAL *V9X_DD_CODE_PTR)();
  * runtime clears a Z buffer by locking it and writing every word from the
  * CPU, once per frame. */
 #define V9X_DDCAPS_BLTDEPTHFILL      0x10000000ul
+/* DDRAW.H:1840, a dwCaps2 bit: video-memory surfaces may be wider than the
+ * primary. */
+#define V9X_DDCAPS2_WIDESURFACES     0x00001000ul
 #define V9X_DDSCAPS_3DDEVICE         0x00002000ul
 #define V9X_DDSCAPS_BACKBUFFER       0x00000004ul
 #define V9X_DDSCAPS_COMPLEX          0x00000008ul

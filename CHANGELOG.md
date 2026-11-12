@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.48.0 - not yet released
 
+- **Every package: DirectDraw and Direct3D surfaces may be wider than
+  the screen.** The driver never told DirectDraw it allows them, so a
+  program asking for one was refused: Direct3D 8 reported it as an
+  internal driver error. 3DMark 2001 SE's Advanced Pixel Shader asks for
+  a 1024x512 render target and failed at 640x480 on the GMA 950 and the
+  HD 4600 alike. With the fix it runs on the HD 4600 at 640x480x32. On
+  the GMA 950 it now stops on a genuine lack of video memory: its 7.7 MB
+  is too small for this test at 32-bit colour
+  ([record](docs/decisions/2026-11-12-gen3-aps-call-log.md)).
+
 ## 0.47.0 - 2026-11-12
 
 - **`ati` package, AMD Radeon R7E (Carrizo): the screen is
