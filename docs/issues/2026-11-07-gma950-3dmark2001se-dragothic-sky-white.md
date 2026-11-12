@@ -5,7 +5,8 @@ Date: 2026-11-07. Seen by Michael on the netbook's panel (W9QI2BE2,
 benchmark at 640x480, 16-bit colour and 16-bit textures. Status:
 **parked 2026-11-07** at Michael's word, for a later version. 3DMark
 binds no texture for the white geometry (below), and the cause is not
-found.
+found. **2026-11-12: the sky draws with the texture pool**; untextured
+draws remain, now seen on the dragon (section at the end).
 
 If it proves to be texture memory, the fix belongs to
 [`../plans/intel-gen3-system-memory-textures.md`](../plans/intel-gen3-system-memory-textures.md)
@@ -97,3 +98,33 @@ could not be on the HD 4600. It is not measured.
   white too, the heap is not it, and this joins the Nature defect.
 - A reference frame from real DirectX 8 hardware would settle what the
   sky should be.
+
+## 2026-11-12: with the texture pool, the sky draws
+
+Dragothic alone (low and high detail), boot 319, build `3c7d7ab6`: the
+32 MiB texture pool in system RAM
+(`../decisions/2026-11-12-intel-gen3-texture-pool-phase3.md`). Same
+settings as before but 32-bit textures; census and grab armed as on
+boot 286 (`V9XTRACE -omit:2147483648 -grab:60x10`). Evidence:
+[`../probe/gen3-dragothic-sky-2026-11-12/`](../probe/gen3-dragothic-sky-2026-11-12/).
+
+- **The sky is textured.** `boot319-V9XGRAB2-low-detail.png` is the
+  moment of boot 285's `V9XGRAB1` (12:39 against 12:46 on the test's
+  clock): the sky behind the castle and through the rock arch, flat white
+  then, is a dark storm-cloud texture now. `V9XGRAB1` shows the same
+  over the town.
+- **Nothing was declined for room.** `MipTreeDeclined` stayed at 118
+  across the run while 802 mip trees were placed; it rose by 7,486 in the
+  boot-284 run. That fits the heap hypothesis above for the sky.
+- **Untextured draws remain.** `DrawsNoHandle` rose by 2,715
+  (`DrawsHandleUnresolved` 0). In `boot319-V9XGRAB3-low-detail-dragon.png`
+  the dragon's neck and head plates are smooth shaded white with no
+  scales, beside a textured scaled patch. The bone-white horns look as
+  in boot 285's high-detail frame and are probably meant. No earlier
+  frame of this moment exists, so whether the white neck is new is not
+  known.
+
+So the memory half of this issue is answered; what is left is the
+no-texture-bound pattern the HD 4600's Nature defect shows, which no
+amount of heap fixes. Next: the census slot of the white neck's draws,
+and the same run on the HD 4600 for comparison.
