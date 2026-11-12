@@ -1029,6 +1029,7 @@ static int v9x_stage_fifo(void)
     DWORD sema_wait;
     DWORD sema;
     DWORD trap_enable;
+    DWORD empty_wait;
     DWORD trap;
     DWORD trap_word[V9X_NV50_VM_TRAP_WORDS];
     char trap_key[8];
@@ -1048,6 +1049,13 @@ static int v9x_stage_fifo(void)
     for (index = 0ul; index < V9X_NV50_PFIFO_CHAN_COUNT; ++index) {
         v9x_write(V9X_NV50_PFIFO_CHAN(index), 0ul);
     }
+    /* nv50_fifo_init commits a runlist before CACHE1 is enabled: with no
+     * channel yet, an empty one (nv50_runl_commit, count 0), then waits
+     * for the update (32ECh bit 8). Runs 1-19 committed only at the bind. */
+    v9x_write(V9X_NV50_PFIFO_RUNLIST_ADDR, v9x_layout.runlist_reg);
+    v9x_write(V9X_NV50_PFIFO_RUNLIST_COUNT, 0ul);
+    empty_wait = v9x_wait(V9X_NV50_PFIFO_RUNLIST_COUNT,
+                          V9X_NV50_PFIFO_RUNLIST_BUSY, 0ul);
     v9x_write(V9X_PFIFO_CACHE1_PUSH, 1ul);
     v9x_write(V9X_PFIFO_CACHE1_PULL, 1ul);
     v9x_write(V9X_NV50_PFIFO_CACHES, 1ul);
@@ -1059,6 +1067,7 @@ static int v9x_stage_fifo(void)
         v9x_finish("FIFO-REFUSED", 5u);
     }
     v9x_put("Trap", "Enable", trap_enable);
+    v9x_put("Fifo", "EmptyRunlistWait", empty_wait);
     v9x_flush();
 
     /*
