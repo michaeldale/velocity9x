@@ -7,9 +7,14 @@ Status: Phase 0 done (tier-0 `vbe` on M-NZHWBR,
 read on the card the same day
 ([record](../decisions/2026-11-13-rv630-register-probe.md)): 256 MiB at
 GPU address `E0000000`, VBE scans out through `D1GRPH`, the GPU idle,
-the CP's ME halted and the DMA ring disabled. Next: Phase 1's identity
-row, then Phase 3's DMA write probe. Other register facts below come
-from Linux `radeon` source.
+the CP's ME halted and the DMA ring disabled. Phase 3's DMA write probe
+ran the same day ([record](../decisions/2026-11-13-rv630-dma-write-probe.md)):
+copies, inline writes and overlapping copies exact; a fill works only as
+a seed write then copies with a CPU-awaited fence between dependent
+steps, and a one-dword COPY is a no-op. Next: a probe of the one-seed-row
+fill shape, then the identity row together with DirectDraw on DMA (the
+RS690 was claimed with its engine, not before it). Other register facts
+below come from Linux `radeon` source.
 
 Target: the RV630 (`1002:9588`, Gigabyte SUBSYS `1458:216C`) as a new
 chip generation in the one `ati` family (`one-family-per-vendor`), with
