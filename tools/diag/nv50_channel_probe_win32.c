@@ -181,6 +181,10 @@ static DWORD v9x_push_empty;
 static DWORD v9x_flush_none;
 static DWORD v9x_ib_unmapped;
 static DWORD v9x_push_unmapped;
+static DWORD v9x_push_class02;
+
+/* COMP_VM 3 << 29 | KIND_VM 7Fh << 22 | target VM | access VM | class 02h. */
+#define V9X_DMA_FLAGS0_FROM_MEMORY 0x7fc00002ul
 
 /* RAMFC + 50h holds the IB ring's VM address, low word (fifo\g84.c). */
 #define V9X_RAMFC_IB_LOW         0x50ul
@@ -874,6 +878,18 @@ static void v9x_stage_region(void)
      * (run 17) 100C90h bit 31 must set. If the kick still master-aborts
      * with no trap, the IB fetch does not go through this VM.
      */
+    /*
+     * /push:class02, run 24: the push DMA object (the one RAMFC + 48h
+     * names) as nouveau builds it for Tesla (nouveau_chan.c: target VM,
+     * access VM, NV_DMA_FROM_MEMORY; dma\usernv50.c: flags0 7FC00002h).
+     * The probe's has class 3Dh, NV_DMA_IN_MEMORY. After run 23 it is the
+     * one difference left in that object besides its limit.
+     */
+    if (v9x_push_class02 != 0ul) {
+        v9x_region[(V9X_NV50_INST + V9X_NV50_INST_DMA_VM) / 4ul] =
+            V9X_DMA_FLAGS0_FROM_MEMORY;
+        v9x_key("Region", "DmaFlags0", V9X_DMA_FLAGS0_FROM_MEMORY);
+    }
     if (v9x_ib_unmapped != 0ul) {
         v9x_region[(V9X_NV50_INST + V9X_NV50_INST_RAMFC +
                     V9X_RAMFC_IB_LOW) / 4ul] = V9X_IB_UNMAPPED_ADDRESS;
@@ -939,7 +955,8 @@ static void v9x_stage_region(void)
              v9x_value(read_pd) == v9x_region[V9X_NV50_INST_PD / 4ul] &&
              v9x_value(read_ramfc) ==
                  v9x_region[(V9X_NV50_INST_RAMFC + 0x80ul) / 4ul] &&
-             v9x_value(read_dma) == 0x7fc0003dul ? "ok" : "differs");
+             v9x_value(read_dma) ==
+                 v9x_region[V9X_NV50_INST_DMA_VM / 4ul] ? "ok" : "differs");
     v9x_flush();
 }
 
@@ -1675,6 +1692,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_flush_none = v9x_switch_given("/flush:none") ? 1ul : 0ul;
     v9x_ib_unmapped = v9x_switch_given("/ib:unmapped") ? 1ul : 0ul;
     v9x_push_unmapped = v9x_switch_given("/push:unmapped") ? 1ul : 0ul;
+    v9x_push_class02 = v9x_switch_given("/push:class02") ? 1ul : 0ul;
     v9x_stop_after_fifo = v9x_switch_given("/stop:fifo") ? 1ul : 0ul;
     v9x_stop_after_gr = v9x_switch_given("/stop:gr") ? 1ul : 0ul;
 
