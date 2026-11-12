@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-21: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-23: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -732,3 +732,59 @@ below 400h to log the request in. The PCIe logs reachable from here do
 not name the address. Untried: the extended list from 600h (probably
 NVIDIA's own capability), and clearing the bridge's secondary status
 before the kick so that a fresh bit 13 would be attributable to it.
+
+## Run 22 (boot 100): an unmapped IB traps, and the card survives
+
+A control, run while the local GT210 is not yet in the BringupKit target
+([nvidia-gt218-linux-trace.md](../plans/nvidia-gt218-linux-trace.md)).
+`/push:empty /flush:none /ib:unmapped /stop:fifo`, the 7e8a4950 code.
+The RAMFC's IB address (RAMFC + 50h) is moved to 30000000h, above the
+512 MiB PDE 0 maps; PDE 1 is zero. Log: `run22-V9XN5CH.LOG` (from line
+4001).
+
+- **100C90h `800D0FFF`: a VM trap**, the first in 22 runs. Words 0-5:
+  `00080F05 00008000 00000000 00000000 00003000 00000100`, decoded as
+  `nv50_fb_intr` does for A8:
+  - word 5 bit 8 says it was a read;
+  - word 5 bits 7:0, word 4 and word 3 give the address,
+    **30000000h, the IB address written**;
+  - (word 2 << 16 | word 1) << 12 gives the instance, **08000000h, this
+    channel's instance block**;
+  - word 0's bytes are engine 05h, reason 0Fh and client 08h. They are
+    not decoded here; nouveau's enum tables are not in the saved sources.
+- PMC_INTR `00000100` (PFIFO), PFIFO_INTR `00001000` (DMA pusher).
+- **PCI status stayed `00100007`: no master abort.** After the one-second
+  sleep the card answered, the BAR1 marker read back, and the probe ran
+  to its end (`EMPTY-PUSH-SURVIVED`). The machine kept running.
+
+So PFIFO reads the IB through this channel's VM: our instance block, page
+directory and page tables. A fault there is reported and survived. The
+master abort in runs 14-21 comes after an IB fetch that succeeds.
+
+## Run 23 (boot 100): an unmapped push neither traps nor survives
+
+Same boot, `/push:empty /flush:none /push:unmapped /stop:fifo`, the
+0e2ad5e4 code built as `7e8a4950-dirty`. The IB stays mapped; its entry
+names a pushbuffer at 30000000h. fifo-init now acknowledges a stale trap
+first: it found run 22's (`850D0FFF`) and cleared it, and the enable
+read back `000D0FFF`. Log: `run23-V9XN5CH.LOG` (from line 4393).
+
+- After the kick: 100C90h `000D0FFF`, **no trap** (the words are run 22's,
+  still selectable). PFIFO_INTR 0, PMC_INTR 0, **PCI status `20100007`**.
+- After the sleep, configuration space answered with the abort bit still
+  set, BAR1 read FFFFFFFF, and the next VxD run refused. Boot 101
+  followed the owner's power-cycle.
+
+30000000h is outside the push DMA object's limit (1FFFFFFFh) as well as
+outside the VM. A fetch through that object should fail its limit check
+or fault in the VM, and neither was reported. And 30000000h is real
+memory on this 2 GiB host, so even a fetch sent to the host at that
+physical address would be answered. So the master-aborted cycle is
+probably not the push fetch at that address. Something PFIFO does after
+a successful IB fetch, and before or instead of the push fetch, sends a
+cycle to a host address nothing decodes.
+
+Compared with nouveau's Tesla push DMA object (nouveau_chan.c: target VM,
+access VM, `NV_DMA_FROM_MEMORY`; usernv50.c: flags0 `7FC00002`, word 14h
+`part << 16` = 0), the probe's differs only in class (3Dh, IN_MEMORY)
+and limit (512 MiB against nouveau's VM limit). Neither is tested.
