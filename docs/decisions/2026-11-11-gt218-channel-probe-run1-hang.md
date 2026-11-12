@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-15: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-16: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -438,3 +438,30 @@ allocation, so 100C08h keeps the 0 the VBIOS left (host address 0, real
 memory). The probe also logs `GlobalMemoryStatus`'s total. If the master
 abort goes, the flush page address is the fault. If it stays, it does
 not, and (2) is next.
+
+## Run 16 (boot 94): no flush page, the same master abort
+
+`/push:empty /flush:none /stop:fifo`, build 31003553. Log:
+`run16-V9XN5CH.LOG` (run 16 starts at its line 2079).
+
+- `GlobalMemoryStatus` total `7FEE5000` (2047 MiB): the machine has 2 GiB,
+  so the earlier flush pages near 2 GiB were real memory.
+- 100C08h read 0 and was left at 0. Every stage up to and including the
+  bind read dword 4 `00100007`.
+- The put run returned at once, with the same state as run 15 (2604h
+  `80080054`, CACHE1 push 1, pull `70000001`, no PFIFO, PMC or VM fault).
+  **Dword 4 read `20100007` straight after it**: the master abort again.
+- After the one-second host sleep, configuration space read FFFFFFFF
+  (`CARD-LOST-AFTER-fifo-sleep`). The machine stopped; boot 95 followed
+  the owner's power-cycle.
+
+So the flush page is not the address nothing answered: reading (1) of
+run 15 is dead. With nothing to execute, the kick still makes the card
+issue a bus-master cycle to an unclaimed host address, and the card is
+gone within a second. The page tables, the VM DMA object and the PGRAPH
+pointer were checked against nouveau and name no host target. What is
+left is the hardware's own reaction to a channel switch-in on this
+setup: the RAMFC words copied from nouveau without decoding (3Ch, 44h,
+60h, 7Ch), PFIFO state nouveau sets up elsewhere that the probe does
+not, or a host-targeted save of the context that was current before
+(PFIFO's or PGRAPH's). None of these has been tested.
