@@ -124,8 +124,10 @@ does not go through the update server:
 1. **Read-only.** The released `vbe` package and a `V9XSIMM` register
    probe (Phases 0 and 2). Nothing is written to the GPU. The owner sends
    back `V9XHW.INI`, `V9XMODES.INI` and the probe's INI. Built
-   (`scripts\build-si-mmio-probe.ps1`, `tools\diag\si_mmio_probe*`), not
-   run on any machine; the owner's instructions are
+   (`scripts\build-si-mmio-probe.ps1`, `tools\diag\si_mmio_probe*`).
+   Smoke-tested on the emulated Mach64 guest (2026-11-12): the VxD loads,
+   accepts its offset list and refuses the non-Oland card; nothing past
+   that has run. The owner's instructions and the smoke record are
    [ati-oland-kit1.md](ati-oland-kit1.md).
 2. **DMA engine.** The ati package with the Oland row (Phases 3 to 5).
    The engine is claimed only if its fence lands; otherwise the CPU draws

@@ -13,6 +13,9 @@ card** and installs nothing. It writes one report file:
 `C:\V9XDIAG\V9XSIMM.INI`.
 
 It has not yet been run on an R7 240. If it fails, the report says how.
+A smoke test on an emulated ATI Mach64 (2026-11-12, below) showed that
+the program starts, loads its driver and refuses a card that is not an
+Oland, without trouble.
 
 ## Before you start
 
@@ -61,6 +64,28 @@ state the BIOS left), `GbAddrConfig` and `CcGcShaderArrayConfig` (the GPU's
 shape, for gpu_init), and `MemoryMiB`/`MemoryGddr5`. `[D1]` shows what the
 VBE mode set programmed. A result goes into a dated
 `docs/decisions/` record with the INI files, as every register probe has.
+
+### Smoke test, 2026-11-12
+
+On the 86Box guest `Win98SE-Mach64VT2` (port 9873, boot 158, agent
+0.16.0, an emulated Mach64 VT2 `1002:5654` on the ati driver), from
+`ae7a5a20-dirty` (the same probe source as `cf2600ef`). Captures in
+[`docs/probe/oland-simm-smoke-2026-11-12/`](../probe/oland-simm-smoke-2026-11-12/).
+
+- `V9XSIMM.EXE` exited 1 with `Result=NO-OLAND`: the scan does not take a
+  non-Oland ATI card.
+- A scratch copy of the publisher that takes any ATI device (not in the
+  tree: the scan's id check removed, the report renamed `V9XSIMMX.INI`)
+  handed the Mach64's address `80006000` to `SIMM.VXD`. The VxD loaded
+  from the program's folder, accepted all 176 requested offsets (no
+  `RefusedOffset`, status bit 10h clear), read the id through CF8h, and
+  returned `Status=00000081` (ATI, not an Oland) in a full-size result
+  with the right magic. Exit 2, as designed.
+- The guest stayed up and shut down cleanly afterwards.
+
+Not covered, because no emulator has an Oland: the BAR2 checks, the
+mapping, the `CONFIG_MEMSIZE` identity check, the register reads and the
+whole `[Decode]` section.
 
 Build the kit with `scripts\build-si-mmio-probe.ps1`; the two files are in
 `build\si-mmio-probe\` (`simm.vxd`, `v9xsimm.exe`), to be renamed in
