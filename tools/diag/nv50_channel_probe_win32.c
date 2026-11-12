@@ -1272,6 +1272,71 @@ static void v9x_stage_bar(void)
     }
 }
 
+/*
+ * After-kick samples: registers that have answered on this card in every
+ * run, plus one video memory word through BAR1, read about every 20 ms.
+ * Two log lines per sample, six values each, in this order:
+ *   a: PTIMER low, PMC_INTR, PFIFO_INTR, 2500h, 2604h, 3200h
+ *   b: 3250h, 32ECh, 100C90h, PGRAPH_INTR, PGRAPH status 400700h,
+ *      the instance block's first word through BAR1
+ */
+#define V9X_SAMPLE_COUNT     50u
+#define V9X_SAMPLE_GAP_MS    20u
+#define V9X_SAMPLE_REGS      11u
+
+static void v9x_sample_line(const char *what, const DWORD *ops, DWORD first)
+{
+    char text[64];
+    DWORD index;
+
+    text[0] = '\0';
+    for (index = first; index < first + 6ul; ++index) {
+        char word[10];
+
+        v9x_hex(word, v9x_value(ops[index]), 8);
+        lstrcatA(text, word);
+        if (index + 1ul < first + 6ul) {
+            lstrcatA(text, " ");
+        }
+    }
+    v9x_log(what, text);
+}
+
+static void v9x_sample_after_kick(void)
+{
+    static const DWORD regs[V9X_SAMPLE_REGS] = {
+        0x009400ul, 0x000100ul, 0x002100ul, 0x002500ul, 0x002604ul,
+        0x003200ul, 0x003250ul, 0x0032ecul, 0x100c90ul, 0x400100ul,
+        0x400700ul
+    };
+    DWORD ops[V9X_SAMPLE_REGS + 1u];
+    DWORD sample;
+    DWORD index;
+    char name[8];
+    char what[12];
+
+    for (sample = 0ul; sample < V9X_SAMPLE_COUNT; ++sample) {
+        Sleep(V9X_SAMPLE_GAP_MS);
+        lstrcpyA(name, "s");
+        v9x_hex(name + 1, sample, 2);
+        v9x_ops_begin();
+        for (index = 0ul; index < V9X_SAMPLE_REGS; ++index) {
+            ops[index] = v9x_read(regs[index]);
+        }
+        ops[V9X_SAMPLE_REGS] = v9x_op(V9X_OP_VRAM_READ, V9X_NV50_INST,
+                                      0ul, 0ul);
+        if (!v9x_run(name)) {
+            v9x_finish("SAMPLE-REFUSED", 5u);
+        }
+        lstrcpyA(what, name);
+        lstrcatA(what, "a");
+        v9x_sample_line(what, ops, 0ul);
+        lstrcpyA(what, name);
+        lstrcatA(what, "b");
+        v9x_sample_line(what, ops, 6ul);
+    }
+}
+
 static void v9x_stage_gr_init(void);
 
 static int v9x_stage_fifo(void)
@@ -1403,11 +1468,13 @@ static int v9x_stage_fifo(void)
     v9x_status_publish("FifoPut", &s);
     v9x_flush();
 
-    /* /push:empty: a second with the card untouched (a host sleep, not
-     * PTIMER reads), then configuration space and BAR1. */
+    /* /push:empty: about a second of short sampling runs (run 25), then
+     * configuration space and BAR1. Run 24 left the card answering at
+     * about 1 ms and lost by 1 s. Each sample is its own VxD run, logged
+     * as soon as it returns, so a read that hangs the bus loses only that
+     * sample, and the last line before the gap shows what changed. */
     if (v9x_push_empty != 0ul) {
-        v9x_log("sleep", "1000");
-        Sleep(1000);
+        v9x_sample_after_kick();
         v9x_health("fifo-sleep");
         v9x_log("healthy", "fifo-sleep");
         v9x_pcie_status("fifo-sleep");
