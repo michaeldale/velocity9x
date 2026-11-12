@@ -161,8 +161,10 @@ CACHE1, but the machine has stopped within a second of every kick. Run 15
 (2026-11-12) kicked an empty push and the machine still stopped. PCI
 status showed a master abort the card received right after the kick, and
 BAR1 read FFFFFFFF a second later. Run 16 left the flush page unset and
-got the same master abort, so the flush page is not the cause. What the
-card addresses on the host is not yet known.
+got the same master abort, so the flush page is not the cause. Run 17
+enabled the VM trap as nouveau does: the kick traps nothing, and the
+master abort still comes. The untested differences next are the BAR
+channel (1704h) and PMC_ENABLE.
 
 ### Step 4: DirectDraw fill and copy on the engine
 

@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-16: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-17: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -517,3 +517,33 @@ trap words. This needs the VxD to allow a write to 100C90h; it allows
 none today. The put run's results came back each time before the card
 was lost, so a trap the kick causes should be in them. That would name
 the address the card was reaching for, rather than another guess.
+
+## Run 17 (boot 95): the trap enabled, and nothing trapped
+
+`/push:empty /flush:none /stop:fifo`, built from 0b31d1a6 plus the trap
+change, so the build id reads `0b31d1a6-dirty`; the code is what
+8545c6bb committed. Log: `run17-V9XN5CH.LOG` (run 17 starts at its line
+2359).
+
+- The enable stuck: 100C90h read `000D0FFF` after the write in
+  fifo-init.
+- In the put run, after the kick and its delay, 100C90h read `000D0FFF`:
+  **bit 31 clear, no trap**. The six words came back as `0C18050E
+  00003FC5 000039FF 0000924C 0000DD44 00000003`. The select writes did
+  change what 100C94h returns. Word 0 is the value earlier runs read as
+  "100C94h" every boot, so that was trap word 0 of a stale or reset
+  state, not a live reading. With bit 31 clear, none of the words
+  describe this kick.
+- PCI status read `20100007` (master abort) straight after the kick, as
+  in runs 14-16. After the one-second host sleep, configuration space
+  read FFFFFFFF (`CARD-LOST-AFTER-fifo-sleep`). The machine stopped, and
+  boot 96 followed the owner's power-cycle. Daniel was asked through his
+  other machine, M-JJN1ZZ, because the frozen one cannot receive chat.
+
+So with VM trap reporting on as nouveau has it, the kick causes no MMU
+fault, yet the card still issues a bus-master cycle nothing claims. Either
+the access never goes through the channel's VM, or it translates without
+a fault to a host target. The probe's own tables name no host target. An
+access by physical address fits the first reading. The BAR channel
+(1704h, 0 here, always programmed by nouveau) is the untested difference
+that could hold such an address. PMC_ENABLE is the other.
