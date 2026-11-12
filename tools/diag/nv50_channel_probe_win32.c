@@ -107,6 +107,7 @@
 #define V9X_NV50_VM_TRAP        0x100c90ul
 #define V9X_NV50_VM_TRAP_DATA   0x100c94ul
 #define V9X_NV50_VM_TRAP_ENABLE 0x000d0ffful
+#define V9X_NV50_VM_TRAP_PENDING 0x80000000ul
 #define V9X_NV50_VM_TRAP_WORD_SHIFT 24u
 #define V9X_NV50_VM_TRAP_WORDS  6u
 
@@ -179,6 +180,7 @@ static DWORD v9x_stop_after_region;
 static DWORD v9x_push_empty;
 static DWORD v9x_flush_none;
 static DWORD v9x_ib_unmapped;
+static DWORD v9x_push_unmapped;
 
 /* RAMFC + 50h holds the IB ring's VM address, low word (fifo\g84.c). */
 #define V9X_RAMFC_IB_LOW         0x50ul
@@ -820,9 +822,16 @@ static void v9x_push_stage(DWORD first_word, struct v9x_nv50_push *push)
 static void v9x_ib_write(DWORD entry_index, DWORD first_word, DWORD words)
 {
     DWORD entry[2];
+    DWORD address = v9x_layout.push_addr + first_word * 4ul;
 
-    v9x_nv50_ib_entry(v9x_layout.push_addr + first_word * 4ul, words,
-                      entry);
+    /* /push:unmapped, run 23's control: run 22 showed the IB fetch goes
+     * through the channel's VM (an unmapped IB trapped, no master abort).
+     * This moves the pushbuffer the IB entry names to the same unmapped
+     * address, to see whether the push fetch does too. */
+    if (v9x_push_unmapped != 0ul) {
+        address = V9X_IB_UNMAPPED_ADDRESS;
+    }
+    v9x_nv50_ib_entry(address, words, entry);
     v9x_vram_data(V9X_NV50_IB + entry_index * 8ul, entry, 2ul);
 }
 
@@ -1256,6 +1265,7 @@ static int v9x_stage_fifo(void)
     DWORD sema_wait;
     DWORD sema;
     DWORD trap_enable;
+    DWORD trap_stale;
     DWORD empty_wait;
     DWORD trap;
     DWORD trap_word[V9X_NV50_VM_TRAP_WORDS];
@@ -1289,11 +1299,18 @@ static int v9x_stage_fifo(void)
     v9x_write(V9X_NV50_PFIFO_CACHES, 1ul);
     /* nv50_fb_init's trap enable. Runs 1-16 never wrote it, so their
      * 100C90h-9Ch readings showed no fault whether there was one or not. */
+    /* First nv50_fb_intr's acknowledge (enable | bit 31), so a trap left
+     * latched by an earlier run in the same boot (run 22 left one) is not
+     * read as this run's. */
+    trap_stale = v9x_read(V9X_NV50_VM_TRAP);
+    v9x_write(V9X_NV50_VM_TRAP,
+              V9X_NV50_VM_TRAP_ENABLE | V9X_NV50_VM_TRAP_PENDING);
     v9x_write(V9X_NV50_VM_TRAP, V9X_NV50_VM_TRAP_ENABLE);
     trap_enable = v9x_read(V9X_NV50_VM_TRAP);
     if (!v9x_run("fifo-init")) {
         v9x_finish("FIFO-REFUSED", 5u);
     }
+    v9x_put("Trap", "Before", trap_stale);
     v9x_put("Trap", "Enable", trap_enable);
     v9x_put("Fifo", "EmptyRunlistWait", empty_wait);
     v9x_flush();
@@ -1657,6 +1674,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_push_empty = v9x_switch_given("/push:empty") ? 1ul : 0ul;
     v9x_flush_none = v9x_switch_given("/flush:none") ? 1ul : 0ul;
     v9x_ib_unmapped = v9x_switch_given("/ib:unmapped") ? 1ul : 0ul;
+    v9x_push_unmapped = v9x_switch_given("/push:unmapped") ? 1ul : 0ul;
     v9x_stop_after_fifo = v9x_switch_given("/stop:fifo") ? 1ul : 0ul;
     v9x_stop_after_gr = v9x_switch_given("/stop:gr") ? 1ul : 0ul;
 
