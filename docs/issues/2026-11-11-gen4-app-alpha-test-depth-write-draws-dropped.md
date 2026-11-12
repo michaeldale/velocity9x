@@ -252,3 +252,38 @@ and installed on M-6B21TJ by `run-release-checks.ps1 -Machine gm45`:
   `v48-hld.png` shows the corridor drawn; no hang.
 
 The GM965 hang check is still owed before 0.48.0 ships.
+
+## The GM965 (2026-11-12, TOMMOHP boot 44)
+
+TOMMOHP (`M-KYHT4Q`, GM965 GMA X3100 `8086:2A02`, the 965 core that
+hung on alpha test with depth writes) checked in again after three weeks
+offline. Its agent was hot-updated from 0.12.0 to 0.16.0 (`dev-fault-3`).
+The same `be9f701d-dirty` package was installed by
+`run-release-checks.ps1` (a one-machine list outside the repo): 8 of 8
+files hash-checked, boot 43 to 44, the "Enter Network Password" box
+cancelled with Escape. Captures:
+[`../probe/tommohp-gm965-alpha-depth-2026-11-12/`](../probe/tommohp-gm965-alpha-depth-2026-11-12/).
+
+- Probes: V9XD32 default and `/z24`, V9XGLP, V9XGLIDP, V9XWPRS and
+  V9XFBCMP PASS, V9XR3DP COMPLETE.
+- The Direct3D census over V9XD32 and V9XGLP (`A.INI` to `B.INI`) has
+  no alpha-tested state at all, so V9XD32 does not reach the new path.
+- V9XGLP does: its alpha section draws an alpha-tested quad (GREATER
+  0.666) with depth test LEQUAL and depth writes on, then a lightmap pass
+  over it, as Half-Life OpenGL does. Rerun on its own, its GL log has
+  `failed r4=0 r7=0 r8=0` for the whole run (`V9XGL-glp-rerun.LOG`, the
+  last 400 lines), where earlier processes in this machine's GL log (older
+  builds; which programs they were was not checked) read `r8=1`. With
+  `r8=0` and the alpha results right, the draw now goes to the engine through the two
+  passes instead of being refused. Results exact (`V9XGLP-rerun.INI`):
+  AlphaHole 00FF00, AlphaSolid FF0000, AlphaLitHole 008200,
+  AlphaLitSolid 840000. No hang.
+- Quake 2 demo, OpenGL windowed on demo1 for a minute: drew
+  (`q2.png`), GL log `hw-refused=0`, `r8=0`, no hang. Whether Quake 2
+  issues alpha tests with depth writes in that scene was not checked.
+  Its `config.cfg` was saved before and put back after.
+
+So the two-pass path has run on the 965 core without hanging, in one
+probe draw at 1024x768x16. Direct3D on the GM965 has not drawn an
+alpha-tested depth-writing primitive (no D3D program on the machine
+does); that is the remaining gap.

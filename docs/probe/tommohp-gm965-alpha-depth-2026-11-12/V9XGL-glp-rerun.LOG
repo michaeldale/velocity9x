@@ -1,0 +1,400 @@
+428 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+429 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+430 pid=FFF99065 DrvReleaseContext context=2 -> 1
+431 pid=FFF99065 paths batches/triangles untextured=8/26 hw=52/89 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+432 pid=FFF99065 counters hwtex lost=0
+433 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+434 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+435 pid=FFF99065 counters hwtex live=0 creates=43 create-failed=0 evictions=0 uploads=46 partial=2 upload-kb=442 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+436 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+437 pid=FFF99065 DrvDeleteContext context=2 -> 1
+438 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+439 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+440 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+441 pid=FFF99065 drawable window=000001B0 360x280
+442 pid=FFF99065   depth cell=16 bits=16
+443 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+444 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+445 pid=FFF99065 DrvReleaseContext context=2 -> 1
+446 pid=FFF99065 paths batches/triangles untextured=8/26 hw=53/90 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+447 pid=FFF99065 counters hwtex lost=0
+448 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+449 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+450 pid=FFF99065 counters hwtex live=0 creates=44 create-failed=0 evictions=0 uploads=47 partial=2 upload-kb=452 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+451 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+452 pid=FFF99065 DrvDeleteContext context=2 -> 1
+453 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+454 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+455 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+456 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+457 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+458 pid=FFF99065 DrvReleaseContext context=2 -> 1
+459 pid=FFF99065 paths batches/triangles untextured=8/26 hw=54/91 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+460 pid=FFF99065 counters hwtex lost=0
+461 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+462 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+463 pid=FFF99065 counters hwtex live=0 creates=45 create-failed=0 evictions=0 uploads=48 partial=2 upload-kb=462 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+464 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+465 pid=FFF99065 DrvDeleteContext context=2 -> 1
+466 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+467 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+468 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+469 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+470 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+471 pid=FFF99065 DrvReleaseContext context=2 -> 1
+472 pid=FFF99065 paths batches/triangles untextured=8/26 hw=55/92 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+473 pid=FFF99065 counters hwtex lost=0
+474 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+475 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+476 pid=FFF99065 counters hwtex live=0 creates=46 create-failed=0 evictions=0 uploads=49 partial=2 upload-kb=472 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+477 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+478 pid=FFF99065 DrvDeleteContext context=2 -> 1
+479 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+480 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+481 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+482 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+483 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+484 pid=FFF99065 DrvReleaseContext context=2 -> 1
+485 pid=FFF99065 paths batches/triangles untextured=8/26 hw=56/93 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+486 pid=FFF99065 counters hwtex lost=0
+487 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+488 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+489 pid=FFF99065 counters hwtex live=0 creates=47 create-failed=0 evictions=0 uploads=50 partial=2 upload-kb=482 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+490 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+491 pid=FFF99065 DrvDeleteContext context=2 -> 1
+492 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+493 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+494 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+495 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+496 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+497 pid=FFF99065 DrvReleaseContext context=2 -> 1
+498 pid=FFF99065 paths batches/triangles untextured=8/26 hw=57/94 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+499 pid=FFF99065 counters hwtex lost=0
+500 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+501 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+502 pid=FFF99065 counters hwtex live=0 creates=48 create-failed=0 evictions=0 uploads=51 partial=2 upload-kb=492 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+503 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+504 pid=FFF99065 DrvDeleteContext context=2 -> 1
+505 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+506 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+507 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+508 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+509 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+510 pid=FFF99065 DrvReleaseContext context=2 -> 1
+511 pid=FFF99065 paths batches/triangles untextured=8/26 hw=58/95 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+512 pid=FFF99065 counters hwtex lost=0
+513 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+514 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+515 pid=FFF99065 counters hwtex live=0 creates=49 create-failed=0 evictions=0 uploads=52 partial=2 upload-kb=502 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+516 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+517 pid=FFF99065 DrvDeleteContext context=2 -> 1
+518 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+519 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+520 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+521 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+522 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+523 pid=FFF99065 DrvReleaseContext context=2 -> 1
+524 pid=FFF99065 paths batches/triangles untextured=8/26 hw=59/96 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+525 pid=FFF99065 counters hwtex lost=0
+526 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+527 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+528 pid=FFF99065 counters hwtex live=0 creates=50 create-failed=0 evictions=0 uploads=53 partial=2 upload-kb=512 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+529 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+530 pid=FFF99065 DrvDeleteContext context=2 -> 1
+531 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+532 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+533 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+534 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+535 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+536 pid=FFF99065 DrvReleaseContext context=2 -> 1
+537 pid=FFF99065 paths batches/triangles untextured=8/26 hw=60/97 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+538 pid=FFF99065 counters hwtex lost=0
+539 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+540 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+541 pid=FFF99065 counters hwtex live=0 creates=51 create-failed=0 evictions=0 uploads=54 partial=2 upload-kb=522 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+542 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+543 pid=FFF99065 DrvDeleteContext context=2 -> 1
+544 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+545 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+546 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+547 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+548 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+549 pid=FFF99065 DrvReleaseContext context=2 -> 1
+550 pid=FFF99065 paths batches/triangles untextured=8/26 hw=61/98 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+551 pid=FFF99065 counters hwtex lost=0
+552 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+553 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+554 pid=FFF99065 counters hwtex live=0 creates=52 create-failed=0 evictions=0 uploads=55 partial=2 upload-kb=532 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+555 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+556 pid=FFF99065 DrvDeleteContext context=2 -> 1
+557 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+558 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+559 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+560 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+561 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+562 pid=FFF99065 DrvReleaseContext context=2 -> 1
+563 pid=FFF99065 paths batches/triangles untextured=8/26 hw=62/99 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+564 pid=FFF99065 counters hwtex lost=0
+565 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+566 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+567 pid=FFF99065 counters hwtex live=0 creates=53 create-failed=0 evictions=0 uploads=56 partial=2 upload-kb=542 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+568 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+569 pid=FFF99065 DrvDeleteContext context=2 -> 1
+570 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+571 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+572 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+573 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+574 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+575 pid=FFF99065 DrvReleaseContext context=2 -> 1
+576 pid=FFF99065 paths batches/triangles untextured=8/26 hw=63/100 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+577 pid=FFF99065 counters hwtex lost=0
+578 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+579 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+580 pid=FFF99065 counters hwtex live=0 creates=54 create-failed=0 evictions=0 uploads=57 partial=2 upload-kb=552 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+581 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+582 pid=FFF99065 DrvDeleteContext context=2 -> 1
+583 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+584 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+585 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+586 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+587 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+588 pid=FFF99065 DrvReleaseContext context=2 -> 1
+589 pid=FFF99065 paths batches/triangles untextured=8/26 hw=64/101 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+590 pid=FFF99065 counters hwtex lost=0
+591 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+592 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+593 pid=FFF99065 counters hwtex live=0 creates=55 create-failed=0 evictions=0 uploads=58 partial=2 upload-kb=562 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+594 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+595 pid=FFF99065 DrvDeleteContext context=2 -> 1
+596 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+597 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+598 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+599 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+600 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+601 pid=FFF99065 DrvReleaseContext context=2 -> 1
+602 pid=FFF99065 paths batches/triangles untextured=8/26 hw=65/102 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+603 pid=FFF99065 counters hwtex lost=0
+604 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+605 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+606 pid=FFF99065 counters hwtex live=0 creates=56 create-failed=0 evictions=0 uploads=59 partial=2 upload-kb=572 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+607 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+608 pid=FFF99065 DrvDeleteContext context=2 -> 1
+609 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+610 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+611 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+612 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+613 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+614 pid=FFF99065 DrvReleaseContext context=2 -> 1
+615 pid=FFF99065 paths batches/triangles untextured=8/26 hw=66/103 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+616 pid=FFF99065 counters hwtex lost=0
+617 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+618 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+619 pid=FFF99065 counters hwtex live=0 creates=57 create-failed=0 evictions=0 uploads=60 partial=2 upload-kb=582 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+620 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+621 pid=FFF99065 DrvDeleteContext context=2 -> 1
+622 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+623 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+624 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+625 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+626 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+627 pid=FFF99065 DrvReleaseContext context=2 -> 1
+628 pid=FFF99065 paths batches/triangles untextured=8/26 hw=67/104 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+629 pid=FFF99065 counters hwtex lost=0
+630 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+631 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+632 pid=FFF99065 counters hwtex live=0 creates=58 create-failed=0 evictions=0 uploads=61 partial=2 upload-kb=592 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+633 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+634 pid=FFF99065 DrvDeleteContext context=2 -> 1
+635 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+636 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+637 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+638 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+639 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+640 pid=FFF99065 DrvReleaseContext context=2 -> 1
+641 pid=FFF99065 paths batches/triangles untextured=8/26 hw=68/105 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+642 pid=FFF99065 counters hwtex lost=0
+643 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+644 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+645 pid=FFF99065 counters hwtex live=0 creates=59 create-failed=0 evictions=0 uploads=62 partial=2 upload-kb=602 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+646 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+647 pid=FFF99065 DrvDeleteContext context=2 -> 1
+648 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+649 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+650 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+651 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+652 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+653 pid=FFF99065 DrvReleaseContext context=2 -> 1
+654 pid=FFF99065 paths batches/triangles untextured=8/26 hw=69/106 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+655 pid=FFF99065 counters hwtex lost=0
+656 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+657 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+658 pid=FFF99065 counters hwtex live=0 creates=60 create-failed=0 evictions=0 uploads=63 partial=2 upload-kb=612 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+659 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+660 pid=FFF99065 DrvDeleteContext context=2 -> 1
+661 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+662 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+663 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+664 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+665 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+666 pid=FFF99065 DrvReleaseContext context=2 -> 1
+667 pid=FFF99065 paths batches/triangles untextured=8/26 hw=70/107 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+668 pid=FFF99065 counters hwtex lost=0
+669 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+670 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+671 pid=FFF99065 counters hwtex live=0 creates=61 create-failed=0 evictions=0 uploads=64 partial=2 upload-kb=622 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+672 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+673 pid=FFF99065 DrvDeleteContext context=2 -> 1
+674 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+675 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+676 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+677 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+678 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+679 pid=FFF99065 DrvReleaseContext context=2 -> 1
+680 pid=FFF99065 paths batches/triangles untextured=8/26 hw=71/108 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+681 pid=FFF99065 counters hwtex lost=0
+682 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+683 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+684 pid=FFF99065 counters hwtex live=0 creates=62 create-failed=0 evictions=0 uploads=65 partial=2 upload-kb=632 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+685 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+686 pid=FFF99065 DrvDeleteContext context=2 -> 1
+687 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+688 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+689 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+690 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+691 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+692 pid=FFF99065 DrvReleaseContext context=2 -> 1
+693 pid=FFF99065 paths batches/triangles untextured=8/26 hw=72/109 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+694 pid=FFF99065 counters hwtex lost=0
+695 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+696 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+697 pid=FFF99065 counters hwtex live=0 creates=63 create-failed=0 evictions=0 uploads=66 partial=2 upload-kb=642 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+698 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+699 pid=FFF99065 DrvDeleteContext context=2 -> 1
+700 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+701 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+702 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+703 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+704 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+705 pid=FFF99065 DrvReleaseContext context=2 -> 1
+706 pid=FFF99065 paths batches/triangles untextured=8/26 hw=73/110 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+707 pid=FFF99065 counters hwtex lost=0
+708 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+709 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+710 pid=FFF99065 counters hwtex live=0 creates=64 create-failed=0 evictions=0 uploads=67 partial=2 upload-kb=652 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+711 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+712 pid=FFF99065 DrvDeleteContext context=2 -> 1
+713 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+714 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+715 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+716 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+717 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+718 pid=FFF99065 DrvReleaseContext context=2 -> 1
+719 pid=FFF99065 paths batches/triangles untextured=8/26 hw=74/111 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+720 pid=FFF99065 counters hwtex lost=0
+721 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+722 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+723 pid=FFF99065 counters hwtex live=0 creates=65 create-failed=0 evictions=0 uploads=68 partial=2 upload-kb=662 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+724 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+725 pid=FFF99065 DrvDeleteContext context=2 -> 1
+726 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+727 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+728 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+729 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+730 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+731 pid=FFF99065 DrvReleaseContext context=2 -> 1
+732 pid=FFF99065 paths batches/triangles untextured=8/26 hw=75/112 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+733 pid=FFF99065 counters hwtex lost=0
+734 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+735 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+736 pid=FFF99065 counters hwtex live=0 creates=66 create-failed=0 evictions=0 uploads=69 partial=2 upload-kb=672 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+737 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+738 pid=FFF99065 DrvDeleteContext context=2 -> 1
+739 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+740 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+741 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+742 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+743 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+744 pid=FFF99065 DrvReleaseContext context=2 -> 1
+745 pid=FFF99065 paths batches/triangles untextured=8/26 hw=76/113 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+746 pid=FFF99065 counters hwtex lost=0
+747 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+748 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+749 pid=FFF99065 counters hwtex live=0 creates=67 create-failed=0 evictions=0 uploads=70 partial=2 upload-kb=682 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+750 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+751 pid=FFF99065 DrvDeleteContext context=2 -> 1
+752 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=0 -> count=2
+753 pid=FFF99065 DrvDescribePixelFormat index=1 bytes=40 -> count=2
+754 pid=FFF99065 DrvCreateLayerContext hdc=0000077A layer=0 -> 2
+755 pid=FFF99065 DrvSetContext hdc=0000077A context=2 -> 1
+756 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+757 pid=FFF99065 DrvReleaseContext context=2 -> 1
+758 pid=FFF99065 paths batches/triangles untextured=8/26 hw=77/114 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+759 pid=FFF99065 counters hwtex lost=0
+760 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+761 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+762 pid=FFF99065 counters hwtex live=0 creates=68 create-failed=0 evictions=0 uploads=71 partial=2 upload-kb=692 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+763 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+764 pid=FFF99065 DrvDeleteContext context=2 -> 1
+765 pid=FFF99065 DrvSetContext hdc=0000077A context=1 -> 1
+766 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+767 pid=FFF99065 DrvGetProcAddress name=glSelectTextureSGIS -> entry
+768 pid=FFF99065 DrvGetProcAddress name=glMTexCoord2fSGIS -> entry
+769 pid=FFF99065 sgis first glSelectTextureSGIS target=835E
+770 pid=FFF99065 sgis first glMTexCoord2fSGIS target=835E
+771 pid=FFF99065 state tex=15 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=16/01010200 env1=0000FF
+772 pid=FFF99065 state tex=15 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=16/01010101 env1=0000FF
+773 pid=FFF99065 state tex=15 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=16/01010400 env1=0000FF
+774 pid=FFF99065 refused tex=15 size=00020002 tex=02010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=16/02010400 env1=0000FF
+775 pid=FFF99065 state tex=15 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=16/00000000 env1=000000
+776 pid=FFF99065 state tex=15 size=00020002 tex=01010101 blend=01010400 depth=00020001 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=16/00000000 env1=000000
+777 pid=FFF99065 state tex=15 size=00020002 tex=01010200 blend=01020200 depth=00020001 colour=FF0000FF mask=7 scissor=0,0,360,280 fog=0 tex1=16/00000000 env1=000000
+778 pid=FFF99065 state tex=15 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=17/01040300 env1=0000FF
+779 pid=FFF99065 DrvGetProcAddress name=glActiveTextureARB -> entry
+780 pid=FFF99065 DrvGetProcAddress name=glClientActiveTextureARB -> entry
+781 pid=FFF99065 DrvGetProcAddress name=glMultiTexCoord2fARB -> entry
+782 pid=FFF99065 arb first glActiveTextureARB target=84C1
+783 pid=FFF99065 arb first glClientActiveTextureARB target=84C1
+784 pid=FFF99065 arb first glMultiTexCoordARB target=84C0 count=2
+785 pid=FFF99065 state tex=19 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=20/01010200 env1=0000FF
+786 pid=FFF99065 state tex=19 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=20/01010101 env1=0000FF
+787 pid=FFF99065 state tex=19 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=20/01010400 env1=0000FF
+788 pid=FFF99065 refused tex=19 size=00020002 tex=02010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=20/02010400 env1=0000FF
+789 pid=FFF99065 state tex=19 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=20/00000000 env1=000000
+790 pid=FFF99065 state tex=19 size=00020002 tex=01010101 blend=01010400 depth=00020001 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=20/00000000 env1=000000
+791 pid=FFF99065 state tex=19 size=00020002 tex=01010200 blend=01020200 depth=00020001 colour=FF0000FF mask=7 scissor=0,0,360,280 fog=0 tex1=20/00000000 env1=000000
+792 pid=FFF99065 state tex=19 size=00020002 tex=01010101 blend=00020100 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=21/01040300 env1=0000FF
+793 pid=FFF99065 DrvGetProcAddress name=glSelectTextureSGIS -> entry
+794 pid=FFF99065 DrvGetProcAddress name=glMTexCoord2fSGIS -> entry
+795 pid=FFF99065 state tex=23 size=00400040 tex=01010101 blend=00020100 depth=00020102 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=25/00000000 env1=000000
+796 pid=FFF99065 state tex=23 size=00400040 tex=01010101 blend=00020100 depth=00020102 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=24/01010200 env1=0000FF
+797 pid=FFF99065 DrvGetProcAddress name=glLockArraysEXT -> entry
+798 pid=FFF99065 DrvGetProcAddress name=glUnlockArraysEXT -> entry
+799 pid=FFF99065 cva first glLockArraysEXT first=4294967295 count=6
+800 pid=FFF99065 state tex=26 size=00040004 tex=01010100 blend=01050600 depth=00020101 colour=800000FF mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+801 pid=FFF99065 state tex=27 size=00100010 tex=01010101 blend=00050600 depth=00020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+802 pid=FFF99065 DrvReleaseContext context=1 -> 1
+803 pid=FFF99065 DrvSetContext hdc=0000077A context=1 -> 1
+804 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+805 pid=FFF99065 state tex=30 size=00000000 tex=00000000 blend=00050600 depth=01020100 colour=FF337359 mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+806 pid=FFF99065 state tex=29 size=00080008 tex=01010200 blend=00050600 depth=01020101 colour=FFFFFFFF mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+807 pid=FFF99065 state tex=30 size=00080008 tex=01010200 blend=00050600 depth=01020101 colour=FFFF99FF mask=7 scissor=0,0,360,280 fog=0 tex1=0/00000000 env1=000000
+808 pid=FFF99065 DrvReleaseContext context=1 -> 1
+809 pid=FFF99065 DrvSetContext hdc=0000077A context=1 -> 1
+810 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+811 pid=FFF99065 DrvReleaseContext context=1 -> 1
+812 pid=FFF99065 DrvSetContext hdc=0000077A context=1 -> 1
+813 pid=FFF99065 tnl allowed=0 batches=0 triangles=0
+814 pid=FFF99065 DrvReleaseContext context=1 -> 1
+815 pid=FFF99065 paths batches/triangles untextured=23/152 hw=182/328 cpu=0/0 cpu-nonsquare=0/0 hw-refused=4/8 two-units=54/108 split=4/8 split-declined=0
+816 pid=FFF99065 counters hwtex lost=0
+817 pid=FFF99065 counters tnl batches=0 triangles=0 refused=0 failed=0
+818 pid=FFF99065 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+819 pid=FFF99065 counters hwtex live=0 creates=83 create-failed=0 evictions=0 uploads=86 partial=2 upload-kb=710 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+820 pid=FFF99065 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+821 pid=FFF99065 DrvDeleteContext context=1 -> 1
+822 pid=FFF99065 detach slots-called=1 stub-calls=1
+823 pid=FFF99065 census glBegin=193 glColor3f=106 glColor3us=1 glColor4b=1 glColor4f=8 glColor4fv=40 glEdgeFlag=2 glEnd=193 glNormal3fv=40 glRecti=1 glTexCoord2f=426 glVertex2f=486 glVertex2s=4 glVertex3f=370 glVertex3fv=48 glColorMaterial=1 glCullFace=2 glFogf=5 glFogfv=1 glFogi=3 glFogiv=1 glFrontFace=2 glHint=1 glLightf=30 glLightfv=31 glLightModelfv=5 glLightModeli=5 glMaterialf=5 glMaterialfv=20 glScissor=2 glShadeModel=3
+824 pid=FFF99065 census glTexParameteri=89 glTexImage2D=403 glTexEnvfv=2 glTexEnvi=39 glDrawBuffer=7 glClear=178 glClearColor=32 glClearStencil=2 glClearDepth=6 glDepthMask=5 glDisable=155 glEnable=110 glFinish=244 glFlush=66 glPopAttrib=3 glPushAttrib=2 glAlphaFunc=1 glBlendFunc=7 glDepthFunc=8 glPixelStorei=652 glReadBuffer=8 glReadPixels=588 glGetBooleanv=1 glGetError=89 glGetFloatv=4 glGetIntegerv=12 glGetLightfv=1
+825 pid=FFF99065 census glGetString=7 glGetTexEnviv=1 glGetTexLevelParameteriv=2 glIsEnabled=3 glDepthRange=5 glFrustum=5 glLoadIdentity=48 glMatrixMode=51 glOrtho=20 glPopMatrix=14 glPushMatrix=14 glRotatef=2 glTranslatef=16 glViewport=16 glBindTexture=105 glColorPointer=1 glDisableClientState=45 glDrawArrays=9 glDrawElements=8 glEnableClientState=45 glInterleavedArrays=1 glPolygonOffset=3 glTexCoordPointer=28 glVertexPointer=16
+826 pid=FFF99065 census glDeleteTextures=17 glGenTextures=67 glTexSubImage2D=2 glPopClientAttrib=1 glPushClientAttrib=1
+827 pid=FFF99065 census implemented-slots-called=87
