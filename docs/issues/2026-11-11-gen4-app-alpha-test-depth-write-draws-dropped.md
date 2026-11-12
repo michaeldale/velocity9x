@@ -191,3 +191,41 @@ The census mask was set back to 0 afterwards. Left installed:
 Still owed: a look at the grates and doors themselves (the hazard course,
 or the owner's eyes); Incoming gameplay; the GM965 hang check on TOMMOHP
 before this ships, since the two passes have only run on G4x.
+
+## Owner's confirmation, and Incoming's crash reproduced (2026-11-12)
+
+The owner, by chat, 2026-11-11 23:35 UTC (msg 173), on `254b7655-dirty`:
+Half-Life's textures "now work across all renderers". Msgs 174/175:
+Incoming is the only title still slow and with render bugs; its video
+options change neither; the Start Game crash happened to them once, and
+the second launch worked.
+
+The 0.47.0 release check (another session) then installed released
+`0.47.0 0246432c` by hard reset at 03:44 UTC (guest `EVENTS.LOG`, local
+time UTC-5). **That release does not contain this fix**
+(`b614ac2d` is not an ancestor of `0246432c`), so the machine is back to
+dropping these draws.
+
+Boot 23, `0.47.0 0246432c`, census on (`boot23/g-A.INI` to `g-B.INI`):
+Incoming's menu; Enter on Start Game did nothing; a click on it ran the
+"Rage" logo flyby (`g3.png`), then a screen showing the pilot name
+(`g4.png`); a click on the name gave **the same fault as boot 17**,
+"exception code(c0000005) ADDRESS: (465973)" (`g6.png`). Over the run:
+`M64Policy08` 0, `BatchesEngineRefused` unchanged at 4, and key
+`28761C94` absent, so no reason-8 draw was reached before the fault. The
+census keys differ from boot 19's (high byte `2C`, min filter field 6:
+mipmapped), not examined. Boot 19 never got past the flyby, so its "no
+fault" above was not this path.
+
+What the game does at 465973 (`INCOMING.EXE` from the guest, disassembled
+with capstone): after the name-entry handler at `4677E0` (DirectInput
+scancodes Home/End/arrows/Enter editing a string at `4BCBE8`), it stores
+-64.0 (`C2800000`) to `+8` of three objects through the pointers at
+`4BCECC`, `4BCEAC` and `4BCE8C`; `4BCECC` is NULL, so the first store
+faults. Those pointers belong to a list headed at `4BCE88` that
+`465700` builds. Why the list is empty at that point is not found: a
+failed resource or surface creation by the driver would explain it, a
+game bug would too. Not tested on another driver.
+
+Not done: Incoming gameplay is still unreached; its render bugs and
+frame rate are unexamined.
