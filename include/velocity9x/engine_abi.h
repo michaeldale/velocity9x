@@ -385,5 +385,16 @@
  * mullins_hw16.c only (docs\decisions\2026-11-08-mullins-sdma-write-probe.md).
  */
 #define V9X_DD_ENGINE_CAP_VI_MULLINS    0x10000000ul
+/*
+ * AMD engine type V9X_DD_ENGINE_TYPE_ATI_VI on Oland (Radeon R7 240,
+ * GCN 1, Linux's Southern Islands), not Carrizo. Its 2D engine is SI's
+ * async DMA engine, Evergreen's at Evergreen's registers with no
+ * microcode, so eng_vi.c starts that ring and emits si_dma.c's packets in
+ * place of SDMA's. Its graphics CP is GFX6, which vi_cp.c does not drive,
+ * so the row never stamps V9X_DD_ENGINE_CAP_D3D beside it. A chip identity
+ * bit, stamped by oland_hw16.c only. Not yet run on a card
+ * (docs\plans\ati-oland-gfx6.md).
+ */
+#define V9X_DD_ENGINE_CAP_VI_OLAND      0x20000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

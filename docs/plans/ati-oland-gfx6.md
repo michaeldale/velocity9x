@@ -2,8 +2,19 @@
 
 Date: 2026-11-12
 
-Status: Proposed. Nothing coded, nothing measured. No machine with an
-R7 240 is on record, so Phase 0 waits on one.
+Status: Desk work in progress on branch `ati-oland`, nothing measured. No
+machine with an R7 240 is on record. Michael chose route A and asked for
+the work to go ahead without hardware (2026-11-12). Done and host-tested:
+`si_dma.c` (Evergreen's plans as SI DMA packets) and the Oland microcode
+generator. Built but not run: `eng_vi.c` starts SI's ring and emits those
+packets when `V9X_DD_ENGINE_CAP_VI_OLAND` is set. **Blocked:** the
+16-bit row (`oland_hw16.c`, `V9xPciReadSiBars`) needs about 480 bytes of
+the ati driver's `_TEXT`, which had 131 free on `main` (57,213 of the
+57,344-byte budget), even with its hook and diagnostics moved to
+`LEAFCODE`. It is kept in a git stash on the branch until Michael picks a
+family-level fix. Without it nothing stamps the identity bit, so the
+engine code is unreachable. An offline tester can still run kit 1 (below),
+which needs no row.
 
 Target: the Radeon R7 240, an Oland part, which Linux binds as
 `CHIP_OLAND` (Southern Islands, `si.c` in radeon, `si.c`/`gfx_v6_0.c` in
@@ -105,6 +116,20 @@ Instruction Set Architecture* reference for Phase 6 (not yet downloaded).
    instruction against the Southern Islands ISA guide. Then V9XD32 at 32
    and 16 bpp, 3DMark 2000, and OpenGL and Glide on the engine.
 
+## Testing with an offline owner
+
+Kits sent to an owner who is not on remote help, each a test build that
+does not go through the update server:
+
+1. **Read-only.** The released `vbe` package and a `V9XSIMM` register
+   probe (Phases 0 and 2). Nothing is written to the GPU. The owner sends
+   back `V9XHW.INI`, `V9XMODES.INI` and the probe's INI.
+2. **DMA engine.** The ati package with the Oland row (Phases 3 to 5).
+   The engine is claimed only if its fence lands; otherwise the CPU draws
+   and `V9XVIDMA.TXT` records why. A hang needs a power cycle and a Safe
+   Mode revert, so the kit carries a page on backing out.
+3. **CP and 3D**, one step a build.
+
 ## Unknowns that need a measurement
 
 - Everything in Phase 0: which id, which BIOS, which modes, whether BAR0
@@ -114,6 +139,12 @@ Instruction Set Architecture* reference for Phase 6 (not yet downloaded).
   Scores are recorded, not chased.
 - Whether the RLC is needed for the CP to run. Trinity's CP ran without
   it; GCN's may not.
+- Whether BAR0's first byte is VRAM's first (`HDP_NONSURFACE_BASE`), which
+  the ring window at BAR0 + 240 MiB assumes, and whether VM context 0 is
+  off at boot (`VM_CONTEXT0_CNTL`), which the DMA engine's MC addresses
+  assume. Both are for `V9XSIMM`.
+- Whether SI's DMA engine copies an overlapping span correctly. Until
+  measured, `si_dma.c` refuses any copy whose spans overlap.
 - Whether a discrete card's mode changes through the VBE leave the DMA
   engine and the CP in a state the restart path handles, as Carrizo's and
   Mullins' did.

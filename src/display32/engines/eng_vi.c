@@ -39,10 +39,18 @@
  *
  * There is no recovery path yet. A timeout raises idle_timeouts, gives the
  * engine up for the rest of the mode and declines the operation to the CPU.
+ *
+ * Oland (V9X_DD_ENGINE_CAP_VI_OLAND, GCN 1) has no SDMA. Its 2D engine is
+ * SI's async DMA engine, Evergreen's at Evergreen's registers with no
+ * microcode: the same windows, fence dword, sequence numbers and waits
+ * here, but si_dma_start's ring bring-up, si_dma.c's packets, Evergreen's
+ * NOP and fence words, and DMA_RB_WPTR in place of SDMA0's. Not yet run
+ * on a card (docs\plans\ati-oland-gfx6.md).
  */
 #include "ddhal_internal.h"
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/eg_dma.h"
+#include "velocity9x/si_dma.h"
 #include "velocity9x/vi_sdma.h"
 #include "velocity9x/vi_sdma_microcode.h"
 #include "velocity9x/cik_sdma_microcode.h"
@@ -114,6 +122,30 @@ static volatile DWORD *v9x_vi_ring(void)
     return (volatile DWORD *)v9x_hal->engine.ring_linear_base;
 }
 
+/* Oland's SI DMA engine in place of SDMA0 (oland_hw16.c's identity bit). */
+static int v9x_vi_oland(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_VI_OLAND) != 0ul;
+}
+
+/* The engine's NOP: SDMA's is 0, SI's is Evergreen's command Fh. */
+static DWORD v9x_vi_nop(void)
+{
+    return v9x_vi_oland() ? V9X_EG_DMA_NOP : V9X_VI_SDMA_NOP;
+}
+
+/* The register that takes the write pointer in bytes, and the one that
+ * reads the read pointer: SDMA0's, or SI DMA's at Evergreen's offsets. */
+static DWORD v9x_vi_wptr_register(void)
+{
+    return v9x_vi_oland() ? V9X_SI_DMA_RB_WPTR : V9X_VI_SDMA0_RB_WPTR;
+}
+
+static DWORD v9x_vi_rptr_register(void)
+{
+    return v9x_vi_oland() ? V9X_SI_DMA_RB_RPTR : V9X_VI_SDMA0_RB_RPTR;
+}
+
 static DWORD v9x_vi_fence_dword(void)
 {
     return v9x_vi_ring()[V9X_VI_SDMA_FENCE_OFFSET / 4ul];
@@ -142,7 +174,7 @@ static void v9x_vi_kick(void)
 {
     v9x_wc_drain();
     v9x_vi_hdp_flush();
-    v9x_vi_write32(V9X_VI_SDMA0_RB_WPTR, v9x_vi_wptr * 4ul);
+    v9x_vi_write32(v9x_vi_wptr_register(), v9x_vi_wptr * 4ul);
 }
 
 /*
@@ -171,7 +203,7 @@ static int v9x_vi_submit(const v9x_u32 *dwords, DWORD count)
             return 0;
         }
         while (v9x_vi_wptr < V9X_VI_SDMA_RING_DWORDS) {
-            ring[v9x_vi_wptr++] = V9X_VI_SDMA_NOP;
+            ring[v9x_vi_wptr++] = v9x_vi_nop();
         }
         v9x_vi_wptr = 0ul;
         v9x_vi_kick();
@@ -179,14 +211,23 @@ static int v9x_vi_submit(const v9x_u32 *dwords, DWORD count)
     for (index = 0ul; index < count; ++index) {
         ring[v9x_vi_wptr + index] = dwords[index];
     }
-    (void)v9x_vi_sdma_fence(v9x_vi_ring_low + V9X_VI_SDMA_FENCE_OFFSET,
-                            v9x_vi_gpu_high, v9x_vi_sequence + 1ul, fence);
+    /* Both fences are four dwords (V9X_EG_DMA_FENCE_DWORDS), and both
+     * engines pad to 16, so only the words differ. */
+    if (v9x_vi_oland()) {
+        (void)v9x_eg_dma_fence(v9x_vi_gpu_high,
+                               v9x_vi_ring_low + V9X_VI_SDMA_FENCE_OFFSET,
+                               v9x_vi_sequence + 1ul, fence);
+    } else {
+        (void)v9x_vi_sdma_fence(v9x_vi_ring_low + V9X_VI_SDMA_FENCE_OFFSET,
+                                v9x_vi_gpu_high, v9x_vi_sequence + 1ul,
+                                fence);
+    }
     for (index = 0ul; index < V9X_VI_SDMA_FENCE_DWORDS; ++index) {
         ring[v9x_vi_wptr + count + index] = fence[index];
     }
     for (index = v9x_vi_wptr + total;
          (index % V9X_VI_SDMA_ALIGN_DWORDS) != 0ul; ++index) {
-        ring[index] = V9X_VI_SDMA_NOP;
+        ring[index] = v9x_vi_nop();
     }
     ++v9x_vi_sequence;
     v9x_vi_wptr = v9x_vi_sdma_ring_advance(v9x_vi_wptr, total);
@@ -207,12 +248,51 @@ static int v9x_vi_validated(void)
 }
 
 /* sdma_v3_0_enable(false) and gfx_stop for SDMA0: ring and IBs off, then
- * halted. */
+ * halted. On Oland, si_dma_stop: the ring off, nothing more. */
 static void v9x_vi_halt(void)
 {
+    if (v9x_vi_oland()) {
+        v9x_vi_modify32(V9X_SI_DMA_RB_CNTL, V9X_SI_DMA_RB_ENABLE, 0ul);
+        return;
+    }
     v9x_vi_modify32(V9X_VI_SDMA0_RB_CNTL, V9X_VI_RB_ENABLE, 0ul);
     v9x_vi_modify32(V9X_VI_SDMA0_IB_CNTL, V9X_VI_IB_ENABLE, 0ul);
     v9x_vi_modify32(V9X_VI_SDMA0_F32_CNTL, 0ul, V9X_VI_F32_HALT);
+}
+
+/*
+ * Oland: amdgpu si_dma_start for DMA0, no microcode and no golden values
+ * (si.c has none for the DMA block). The semaphore timers off, the ring
+ * size, both pointers at 0, the read-pointer writeback in the window, the
+ * base, IBs on with the VMID forced as Linux sets it, the context-empty
+ * interrupt off, then the ring on. DMA_TILING_CONFIG is gfx_v6_0's
+ * gpu_init's to write and only matters to tiled copies, which this never
+ * sends. Addresses are the MC's with no VM context set up, as Evergreen's
+ * and Trinity's ran; the register probe is to read VM_CONTEXT0_CNTL.
+ */
+static void v9x_vi_si_start(void)
+{
+    DWORD rb_cntl;
+
+    v9x_vi_halt();
+    v9x_vi_write32(V9X_SI_DMA_SEM_INCOMPLETE_TIMER, 0ul);
+    v9x_vi_write32(V9X_SI_DMA_SEM_WAIT_FAIL_TIMER, 0ul);
+    rb_cntl = V9X_VI_SDMA_RING_LOG2_DWORDS << V9X_SI_DMA_RB_SIZE_SHIFT;
+    v9x_vi_write32(V9X_SI_DMA_RB_CNTL, rb_cntl);
+    v9x_vi_write32(V9X_SI_DMA_RB_RPTR, 0ul);
+    v9x_vi_write32(V9X_SI_DMA_RB_WPTR, 0ul);
+    v9x_vi_write32(V9X_SI_DMA_RB_RPTR_ADDR_LO,
+                   v9x_vi_ring_low + V9X_VI_SDMA_WRITEBACK_OFFSET);
+    v9x_vi_write32(V9X_SI_DMA_RB_RPTR_ADDR_HI, v9x_vi_gpu_high & 0xfful);
+    rb_cntl |= V9X_SI_DMA_RPTR_WRITEBACK;
+    v9x_vi_write32(V9X_SI_DMA_RB_BASE,
+                   v9x_eg_dma_ring_base(v9x_vi_gpu_high, v9x_vi_ring_low));
+    v9x_vi_write32(V9X_SI_DMA_IB_CNTL,
+                   V9X_SI_DMA_IB_ENABLE | V9X_SI_DMA_IB_VMID_FORCE);
+    v9x_vi_modify32(V9X_SI_DMA_CNTL, V9X_SI_DMA_CTXEMPTY_INT_ENABLE, 0ul);
+    v9x_vi_write32(V9X_SI_DMA_RB_WPTR, 0ul);
+    v9x_vi_hdp_flush();
+    v9x_vi_write32(V9X_SI_DMA_RB_CNTL, rb_cntl | V9X_SI_DMA_RB_ENABLE);
 }
 
 /* sdma_v3_0_start for SDMA0 with the microcode loaded directly: the golden
@@ -327,7 +407,11 @@ static int v9x_vi_validate(void)
     v9x_vi_wptr = 0ul;
     v9x_vi_sequence = 0ul;
     v9x_vi_ring()[V9X_VI_SDMA_FENCE_OFFSET / 4ul] = 0xfffffffful;
-    v9x_vi_start();
+    if (v9x_vi_oland()) {
+        v9x_vi_si_start();
+    } else {
+        v9x_vi_start();
+    }
 
     if (!v9x_vi_submit(0, 0ul) || !v9x_vi_poll_idle(V9X_VI_WAIT_SPINS)) {
         v9x_vi_halt();
@@ -383,12 +467,28 @@ static void v9x_vi_write_record(void)
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
-    v9x_vi_log_text(file, "[CarrizoSdma]\r\n");
+    v9x_vi_log_text(file, v9x_vi_oland() ? "[OlandDma]\r\n" :
+                                           "[CarrizoSdma]\r\n");
     v9x_vi_log_hex(file, "WptrBytes=", v9x_vi_wptr * 4ul);
     v9x_vi_log_hex(file, "Sequence=", v9x_vi_sequence);
     v9x_vi_log_hex(file, "FenceDword=", v9x_vi_fence_dword());
     v9x_vi_log_hex(file, "WritebackRptr=",
                    ring[V9X_VI_SDMA_WRITEBACK_OFFSET / 4ul]);
+    if (v9x_vi_oland()) {
+        v9x_vi_log_hex(file, "DMA_RB_RPTR=",
+                       v9x_vi_read32(V9X_SI_DMA_RB_RPTR));
+        v9x_vi_log_hex(file, "DMA_RB_WPTR=",
+                       v9x_vi_read32(V9X_SI_DMA_RB_WPTR));
+        v9x_vi_log_hex(file, "DMA_RB_CNTL=",
+                       v9x_vi_read32(V9X_SI_DMA_RB_CNTL));
+        v9x_vi_log_hex(file, "DMA_RB_BASE=",
+                       v9x_vi_read32(V9X_SI_DMA_RB_BASE));
+        v9x_vi_log_hex(file, "DMA_IB_CNTL=",
+                       v9x_vi_read32(V9X_SI_DMA_IB_CNTL));
+        v9x_vi_log_hex(file, "DMA_CNTL=", v9x_vi_read32(V9X_SI_DMA_CNTL));
+        v9x_vi_log_hex(file, "DMA_STATUS_REG=",
+                       v9x_vi_read32(V9X_SI_DMA_STATUS_REG));
+    }
     v9x_vi_log_hex(file, "SDMA0_GFX_RB_RPTR=",
                    v9x_vi_read32(V9X_VI_SDMA0_RB_RPTR));
     v9x_vi_log_hex(file, "SDMA0_GFX_RB_WPTR=",
@@ -417,7 +517,7 @@ static void v9x_vi_give_up(void)
 {
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
         v9x_vi_write_record();
-        v9x_trace_flush_fault(V9X_VI_FAULT_TAG, V9X_VI_SDMA0_RB_RPTR);
+        v9x_trace_flush_fault(V9X_VI_FAULT_TAG, v9x_vi_rptr_register());
     }
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
 }
@@ -437,7 +537,7 @@ static int v9x_vi_dma_idle(int wait)
     }
     if (wait && v9x_fault_injected()) {
         ++v9x_hal->engine.idle_timeouts;
-        v9x_trace_flush_fault(V9X_VI_FAULT_TAG, V9X_VI_SDMA0_RB_RPTR);
+        v9x_trace_flush_fault(V9X_VI_FAULT_TAG, v9x_vi_rptr_register());
         return 0;
     }
     reads = wait ? V9X_VI_WAIT_SPINS : V9X_VI_QUICK_READS;
@@ -509,23 +609,42 @@ static void v9x_vi_after_cp(void)
     (void)v9x_vi_cp_drain(1);
 }
 
-/* Every row of a plan into the ring, a stage at a time. */
+/* Whether this engine's emitter takes every row of the plan. */
+static v9x_status v9x_vi_plan_check(const struct v9x_eg_dma_plan *plan)
+{
+    if (v9x_vi_oland()) {
+        return v9x_si_dma_plan_check(plan);
+    }
+    return v9x_vi_sdma_plan_check(plan);
+}
+
+/* Every row of a plan into the ring, a stage at a time, as SDMA or SI DMA
+ * packets. */
 static int v9x_vi_emit(const struct v9x_eg_dma_plan *plan)
 {
     v9x_u32 stage[V9X_VI_STAGE_DWORDS];
+    DWORD row_max;
     DWORD used;
     DWORD row;
+    int oland;
 
+    oland = v9x_vi_oland();
+    row_max = oland ? V9X_SI_DMA_ROW_DWORDS_MAX : V9X_VI_SDMA_ROW_DWORDS_MAX;
     used = 0ul;
     for (row = 0ul; row < plan->rows; ++row) {
-        if (used + V9X_VI_SDMA_ROW_DWORDS_MAX > V9X_VI_STAGE_DWORDS) {
+        if (used + row_max > V9X_VI_STAGE_DWORDS) {
             if (!v9x_vi_submit(stage, used)) {
                 return 0;
             }
             used = 0ul;
         }
-        used += v9x_vi_sdma_plan_row(plan, row, v9x_vi_gpu_high,
-                                     stage + used);
+        if (oland) {
+            used += v9x_si_dma_plan_row(plan, row, v9x_vi_gpu_high,
+                                        stage + used);
+        } else {
+            used += v9x_vi_sdma_plan_row(plan, row, v9x_vi_gpu_high,
+                                         stage + used);
+        }
     }
     if (used != 0ul && !v9x_vi_submit(stage, used)) {
         return 0;
@@ -592,7 +711,7 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                       ~(V9X_VI_DEPTH_TILE_ROWS - 1ul);
     }
     if (v9x_eg_dma_plan_fill(&fill, &plan) != V9X_STATUS_OK ||
-        v9x_vi_sdma_plan_check(&plan) != V9X_STATUS_OK) {
+        v9x_vi_plan_check(&plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
     v9x_vi_after_cp();
@@ -632,7 +751,7 @@ static int v9x_vi_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     copy.width = (DWORD)(data->rSrc[2] - data->rSrc[0]);
     copy.height = (DWORD)(data->rSrc[3] - data->rSrc[1]);
     if (v9x_eg_dma_plan_copy(&copy, &plan) != V9X_STATUS_OK ||
-        v9x_vi_sdma_plan_check(&plan) != V9X_STATUS_OK) {
+        v9x_vi_plan_check(&plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
     v9x_vi_after_cp();

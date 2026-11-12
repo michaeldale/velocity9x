@@ -358,6 +358,11 @@ unsigned int v9x_run_eg_dma_tests(void);
  * the generated microcode's edges. */
 unsigned int v9x_run_vi_sdma_tests(void);
 
+/* tests\host\test_si_dma.c: Oland (SI) DMA packets from Evergreen's DMA
+ * plans, run through a model of the engine as Linux drives it (nothing
+ * measured), and the generated Oland microcode's edges. */
+unsigned int v9x_run_si_dma_tests(void);
+
 /* tests\host\test_cik_shader.c: the GCN 3 to GCN 2 translation for
  * Mullins against LLVM's SI/CI and VI encodings, and every bring-up shader
  * translating whole. */
@@ -1554,6 +1559,7 @@ int main(int argc, char **argv)
     failures += v9x_run_rs690_3d_tests();
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_vi_sdma_tests();
+    failures += v9x_run_si_dma_tests();
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();
     failures += v9x_run_vi_3d_tests();
