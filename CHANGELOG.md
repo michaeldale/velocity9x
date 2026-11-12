@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.49.0 - not yet released
+
 ## 0.48.0 - 2026-11-12
 
 - **Every package: DirectDraw and Direct3D surfaces may be wider than
