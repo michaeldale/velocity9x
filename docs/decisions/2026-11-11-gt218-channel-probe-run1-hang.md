@@ -547,3 +547,57 @@ a fault to a host target. The probe's own tables name no host target. An
 access by physical address fits the first reading. The BAR channel
 (1704h, 0 here, always programmed by nouveau) is the untested difference
 that could hold such an address. PMC_ENABLE is the other.
+
+## Source study of the BAR channel (2026-11-12, no run)
+
+What the saved nouveau sources say about 1704h, from subdev_bar_nv50.c
+and nvkm_subdev_bar_g84.c (g84_bar is A8's):
+
+- `nv50_bar_oneinit` allocates a 128 KiB instance block of its own
+  (`bar->mem`). g84 reserves 200h bytes before its 16 KiB page directory
+  (`pgd_addr` 200h; nv50 uses 1400h). It joins two VMs to that block,
+  "bar2" (nouveau's name for BAR3, from VM address 1_0000_0000h) and
+  "bar1" (from 0). Each gets a 24-byte DMA object in the block: flags
+  `7FC00000`, limit, start, then limit high << 24 | start high, then 0, 0.
+- `nv50_bar_bar2_init` writes 1704h = `mem >> 12`, then 1704h =
+  `40000000h | mem >> 12`, then 170Ch = `80000000h | bar2 DMA offset >>
+  4`. `nv50_bar_bar1_init` writes 1708h = `80000000h | bar1 DMA offset >>
+  4`. `nv50_bar_init` clears 1900h-191Ch. What bit 30 of 1704h means is
+  not in the sources.
+- **Who uses it**: only the BARs themselves. Instmem goes through the
+  bar2 VM (`nv50_instobj_bar2`), and USERD needs BAR1 only on chips whose
+  USERD lives behind BAR1 (`nvkm_fifo_oneinit`). NV50's USERD is BAR0
+  C00000h (`nv50_chan_userd`). No PFIFO, PGRAPH or MMU code in the saved
+  sources reads 1704h or depends on it. So the sources give no reason
+  why a channel kick would need a BAR channel. Whether the hardware
+  needs one anyway, they cannot say.
+
+One finding is not about 1704h itself. **nouveau flushes the BAR write
+path before the GPU reads what the CPU wrote.** `nv50_instobj_release`
+(subdev_instmem_nv50.c) does `wmb()` then `nvkm_bar_flush`, which on G84
+is `g84_bar_flush`: write 70000h = 1, then wait up to 2 s for bit 1 to
+clear. Every instance-memory write batch ends this way, including the
+RAMFC, the page tables and the DMA objects. The probe writes all of these
+through BAR1 and never writes 70000h. The evidence that the writes still
+arrived: PRAMIN read back what BAR1 wrote (run 9), and CACHE1 loaded the
+RAMFC words (run 13). But PRAMIN may see a path the PFIFO and MMU fetch
+does not, and only twelve words were checked. A missing BAR flush is
+the one step nouveau always does before a channel runs that the probe
+does not.
+
+Proposed run 18, the two steps nouveau does that the probe does not, in
+one run because each run costs a power-cycle:
+
+1. After the region is written and before the bind, the G84 BAR flush:
+   70000h = 1, a bounded wait for bit 1 to clear. Its result is a finding
+   on its own. A flush that never completes would say the write path
+   was not idle.
+2. A BAR channel with the BARs left linear: an instance block in the
+   region with an empty page directory, 1704h written as nouveau writes
+   it (plain, then | `40000000h`), and 1708h and 170Ch left 0, so BAR1
+   and BAR3 keep decoding linearly. The desktop lives in BAR3 linear, so
+   this keeps it out of the change. Read 1704h back before the kick.
+
+If run 18 survives, a run with each step alone says which mattered. If
+it does not, PMC_ENABLE is the last of the differences nouveau's init
+order shows.
