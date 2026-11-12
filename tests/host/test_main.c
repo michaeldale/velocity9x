@@ -228,6 +228,9 @@ unsigned int v9x_run_diag_identity_tests(void);
 unsigned int v9x_run_i9xx_cover_tests(void);
 unsigned int v9x_run_i9xx_depth_tests(void);
 unsigned int v9x_run_i9xx_wm_tests(void);
+/* tests\host\test_i9xx_pool.c: the Gen3 texture pool's size, place and
+ * page-list checks (docs\plans\intel-gen3-system-memory-textures.md). */
+unsigned int v9x_run_i9xx_pool_tests(void);
 /* tests\host\test_frame_grab.c: the flip-path frame grab's read plan, pixel
  * decode, BMP layout and schedule. */
 unsigned int v9x_run_frame_grab_tests(void);
@@ -1505,6 +1508,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_cover_tests();
     failures += v9x_run_i9xx_depth_tests();
     failures += v9x_run_i9xx_wm_tests();
+    failures += v9x_run_i9xx_pool_tests();
     failures += v9x_run_frame_grab_tests();
     failures += v9x_run_i9xx_mmio_tests();
     failures += v9x_run_i9xx_gtt_tests();

@@ -1,8 +1,17 @@
 # Intel Gen3: textures in system memory through the GTT (DVMT)
 
-Date: 2026-10-02. Status: proposed; nothing coded. Three decisions below
-are Michael's, and a Phase 0 errata decision precedes any GTT write.
-Machine: MICHAEL-NETBOOK (945GSE / GMA 950, 2 GiB RAM, 8 MiB stolen).
+Date: 2026-10-02. Status: in progress since 2026-11-12. The decisions and
+the errata gate are taken
+([record](../decisions/2026-11-12-intel-gen3-texture-pool-decisions.md)).
+Phase 1's policy is written and host-tested (`src/common/i9xx_pool.c`).
+Phase 0 is measured
+([record](../decisions/2026-11-12-intel-gen3-texture-pool-phase0.md)),
+except Serious Sam's working set and allocation at `Device_Init`. Next is
+Phase 2. Two findings change the plan below: the aperture map is 64 MiB,
+not 8 + N, and the HAL has to place pool textures itself (DirectDraw gives
+them a 4 KiB pitch).
+Machine: MICHAEL-NETBOOK (945GSE / GMA 950, 2 GiB RAM, 1 GiB of it seen
+under `MaxPhysPage=40000`, 8 MiB stolen).
 
 ## Why
 

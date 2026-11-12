@@ -497,7 +497,14 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
     /* VBE reports the framebuffer in GMADR BAR2. */
     2u,
     0u,
-    0ul,
+    /*
+     * 64 MiB of GMADR, not the family's 16: the texture pool's 32 MiB sits
+     * above the 8 MiB stolen run, and the CPU writes it only through the
+     * aperture (docs\decisions\2026-11-12-intel-gen3-texture-pool-
+     * decisions.md). A power of two so one MTRR still covers the mapping.
+     * The heap does not grow with it: VBE's 7.4 MiB bounds it.
+     */
+    0x04000000ul,
     0,
     /*
      * Write-combined: the 16 MiB mapping of the 256 MiB GMADR, through
