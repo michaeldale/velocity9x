@@ -178,6 +178,11 @@ static struct v9x_nv50_chan_layout v9x_layout;
 static DWORD v9x_stop_after_region;
 static DWORD v9x_push_empty;
 static DWORD v9x_flush_none;
+static DWORD v9x_ib_unmapped;
+
+/* RAMFC + 50h holds the IB ring's VM address, low word (fifo\g84.c). */
+#define V9X_RAMFC_IB_LOW         0x50ul
+#define V9X_IB_UNMAPPED_ADDRESS  0x30000000ul
 static DWORD v9x_stop_after_fifo;
 static DWORD v9x_stop_after_gr;
 
@@ -851,6 +856,19 @@ static void v9x_stage_region(void)
     v9x_number("Region", "BuildStatus", (DWORD)status);
     if (status != V9X_STATUS_OK) {
         v9x_finish("BUILD-FAILED", 4u);
+    }
+    /*
+     * /ib:unmapped, the control for runs 17-21: the RAMFC's IB address
+     * (g84.c, RAMFC + 50h) moved above the 512 MiB the page directory
+     * maps, where PDE 1 is zero. If PFIFO fetches the IB through the
+     * channel's VM, the fetch must fault, and with the trap enabled
+     * (run 17) 100C90h bit 31 must set. If the kick still master-aborts
+     * with no trap, the IB fetch does not go through this VM.
+     */
+    if (v9x_ib_unmapped != 0ul) {
+        v9x_region[(V9X_NV50_INST + V9X_NV50_INST_RAMFC +
+                    V9X_RAMFC_IB_LOW) / 4ul] = V9X_IB_UNMAPPED_ADDRESS;
+        v9x_key("Region", "IbUnmapped", V9X_IB_UNMAPPED_ADDRESS);
     }
     v9x_number("Region", "ProgramWords", v9x_layout.program_words);
     v9x_number("Region", "ContextBytes", v9x_layout.grctx_bytes);
@@ -1638,6 +1656,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_stop_after_region = v9x_switch_given("/stop:region") ? 1ul : 0ul;
     v9x_push_empty = v9x_switch_given("/push:empty") ? 1ul : 0ul;
     v9x_flush_none = v9x_switch_given("/flush:none") ? 1ul : 0ul;
+    v9x_ib_unmapped = v9x_switch_given("/ib:unmapped") ? 1ul : 0ul;
     v9x_stop_after_fifo = v9x_switch_given("/stop:fifo") ? 1ul : 0ul;
     v9x_stop_after_gr = v9x_switch_given("/stop:gr") ? 1ul : 0ul;
 
