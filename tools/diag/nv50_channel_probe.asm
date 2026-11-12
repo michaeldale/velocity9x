@@ -21,7 +21,7 @@
 ;                    program upload write (fifo\nv50.c, fifo\g84.c,
 ;                    gr\nv50.c, gr\ctxnv50.c), the VM TLB flush and the
 ;                    channel 1 IB PUT; nothing else. PMC_ENABLE (200h) may
-;                    change only its PFIFO and PGRAPH bits.
+;                    switch off only its PFIFO and PGRAPH bits.
 ;   VRAM data      - a run of the request's data area into the window.
 ;   VRAM ops       - read, fill, read block, inside the window.
 ;   wait           - an MMIO dword under a mask equal to a value, or a
@@ -461,12 +461,17 @@ NC_Exec_Not_Read:
     jc      NC_Exec_Refused
     mov     ebx, NCMmio
     mov     eax, [esi+8]
-    ; PMC_ENABLE: only the PFIFO and PGRAPH bits may change, so nothing
-    ; else on the card (the display, the bus) is ever switched off here.
+    ; PMC_ENABLE: only the PFIFO and PGRAPH bits may be switched off, so
+    ; nothing else on the card (the display, the bus) is ever switched off
+    ; here. Other bits may be switched on, as nv50_mc_init does when it
+    ; writes FFFFFFFFh (run 19).
     cmp     edx, NC_PMC_ENABLE
     jne     short NC_Exec_Write_Value_Ok
     mov     ecx, [ebx+NC_PMC_ENABLE]
-    xor     ecx, eax
+    push    eax
+    not     eax
+    and     ecx, eax
+    pop     eax
     test    ecx, NOT NC_PMC_ENABLE_ALLOWED
     jnz     NC_Exec_Refused
 NC_Exec_Write_Value_Ok:

@@ -954,6 +954,32 @@ static void v9x_stage_flush_page(void)
  * for bit 1 to clear. Here it follows everything the region stage wrote
  * through BAR1.
  */
+/*
+ * nv50_mc_init (mc\nv50.c, which gt215_mc uses): 200h = FFFFFFFFh,
+ * "everything on", before any engine is set up. The VBIOS leaves
+ * DFF3F113h; the bits off (200C0EECh) are outside gt215's reset table,
+ * so the sources do not name their units. The VxD lets bits be
+ * switched on but never off (other than PFIFO and PGRAPH).
+ */
+#define V9X_NV50_PMC_ENABLE_ALL 0xfffffffful
+
+static void v9x_stage_mc(void)
+{
+    DWORD enable;
+
+    v9x_ops_begin();
+    v9x_write(V9X_NV50_PMC_ENABLE, V9X_NV50_PMC_ENABLE_ALL);
+    v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
+    enable = v9x_read(V9X_NV50_PMC_ENABLE);
+    if (!v9x_run("mc")) {
+        v9x_finish("MC-REFUSED", 4u);
+    }
+    v9x_put("Mc", "Enable", enable);
+    v9x_flush();
+    v9x_pmc_enable_found = v9x_value(enable);
+    v9x_vram_check("mc");
+}
+
 #define V9X_BAR_INST_OFFSET  0x00100000ul
 #define V9X_BAR_INST_BYTES   0x00020000ul
 #define V9X_NV50_BAR_CHANNEL 0x001704ul
@@ -1414,6 +1440,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     if (v9x_stop_after_region != 0ul) {
         v9x_finish("STOPPED-AFTER-REGION", 0u);
     }
+    v9x_stage_mc();
     v9x_stage_bar();
     if (!v9x_stage_fifo()) {
         v9x_finish("FIFO-FAILED", 5u);
