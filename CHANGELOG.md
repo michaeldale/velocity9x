@@ -25,13 +25,24 @@ build identifier so exact guest-tested binaries remain traceable.
   old speed, text costs 1.7 times as much and lines 2.2 times. Windowed
   OpenGL is unaffected: Quake 3 in a window runs at 18.7 fps with the
   copy and without it. A file `C:\V9XDIAG\NOSHADOW.TXT` turns it off.
-  Measured on Carrizo and on one R3E
+  Measured on Carrizo and on one R3E; the Evergreen cards and Trinity
+  have it on by the same design, unmeasured
   ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
 - **`ati` package, AMD Radeon R3E (Mullins): the screen is
   write-combined.** Every earlier release wrote it uncached, at 32 MB/s
   on the one measured: desktop drawing went from about 30 MB/s to 1,170
   (scrolling) and 1,235 (a full-screen fill), level with the `vbe`
-  package on the same card, while DirectDraw keeps its engine.
+  package on the same card, while DirectDraw keeps its engine
+  ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
+- **`vbe` package: the screen copy no longer reads the screen after a
+  windowed program draws on it.** A windowed program that locks the
+  screen, or presents into a window from video memory, used to have
+  each rectangle read back into the desktop's copy at the card's read
+  speed (5 MB/s on the AMD cards). It is now read back only when the
+  desktop next draws there. Shared with the `ati` change above, where it
+  took windowed Quake 3 from 2.5 to 18.7 fps; on `vbe` itself measured
+  on one R3E only, where the desktop and the screen still agree after
+  every test.
 - **`intel-gma` package, Gen3 (GMA 900, 950, 3100, 3150): DirectX 8
   pixel shaders.** Pixel shader 1.1 programs run on the engine through
   the i915 fragment program, with four texture stages, cube maps and the
@@ -58,6 +69,11 @@ build identifier so exact guest-tested binaries remain traceable.
   (GitHub issue 22). The driver refuses that combination because it hung
   the GM965, and Gen4 has no fallback. Not fixed in this release
   ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+- **Known issue, `vbe` package: Direct3D on the software renderer draws
+  32-bit textures white.** It accepts A8R8G8B8 and X8R8G8B8 textures and
+  then samples nothing. Found on one R3E by a test added in this
+  release; earlier releases behave the same, untested. Not fixed in this
+  release ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
 - **Known issue, `s3` package, Trio64: a second or two of cyan garbage
   at Windows shutdown**, before the safe-to-turn-off screen (GitHub
   PR 24). Cosmetic, cause unknown, parked
