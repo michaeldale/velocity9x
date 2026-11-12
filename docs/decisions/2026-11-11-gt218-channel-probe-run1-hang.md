@@ -537,8 +537,9 @@ change, so the build id reads `0b31d1a6-dirty`; the code is what
 - PCI status read `20100007` (master abort) straight after the kick, as
   in runs 14-16. After the one-second host sleep, configuration space
   read FFFFFFFF (`CARD-LOST-AFTER-fifo-sleep`). The machine stopped, and
-  boot 96 followed the owner's power-cycle. Daniel was asked through his
-  other machine, M-JJN1ZZ, because the frozen one cannot receive chat.
+  boot 96 followed the owner's power-cycle. The owner was asked through
+  their other remote-help machine, M-JJN1ZZ, because the frozen one
+  cannot receive chat.
 
 So with VM trap reporting on as nouveau has it, the kick causes no MMU
 fault, yet the card still issues a bus-master cycle nothing claims. Either

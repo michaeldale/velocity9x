@@ -168,8 +168,10 @@ BAR flush; the flush completed at once and the kick still master-aborted.
 Run 19 found that PMC_ENABLE cannot be raised past the VBIOS's
 `DFF3F113`, so it is not a difference either. Run 20 committed the empty
 runlist at init: no change. Every difference from nouveau's init is now
-ruled out. Paused; the record lists four ways forward that do not depend
-on reading nouveau.
+ruled out. Run 21 read the card's and the root port's PCIe error state.
+There is no AER below 400h, and no address was recorded. Continued
+locally on a GT210 under Linux nouveau:
+[nvidia-gt218-linux-trace.md](nvidia-gt218-linux-trace.md).
 
 ### Step 4: DirectDraw fill and copy on the engine
 
