@@ -35,36 +35,31 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.47.0
+## Current version: 0.48.0
 
-[Download](releases/0.47.0/README.md) ·
+[Download](releases/0.48.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.47.0:
-- **Intel GMA 900, 950, 3100 and 3150: DirectX 8 pixel shaders.** Pixel
-  shader 1.1 runs on the Gen3 engine through the DirectX 8 interface, with
-  four texture stages, cube maps, the signed bump formats, 32-bit textures
-  and textures up to 2048 pixels. On the GMA 950, 3DMark 2001 SE runs to
-  the end with its pixel shader tests (528)
-  ([record](docs/decisions/2026-11-11-gen3-texture-size-2048.md)).
-- **`ati` package, Radeon HD 5000-7000, R3E and R7E: moving windows and
-  scrolling are many times faster.** The desktop is drawn into a copy in
-  system memory, as on the `vbe` package since 0.46.0: on the R7E,
-  scrolling went from 8 to 630 MB/s, with windowed OpenGL unaffected. The
-  R7E and R3E also write the screen write-combined, which they never did:
-  on the R3E, desktop drawing went from about 30 MB/s to 1,170
-  ([record](docs/decisions/2026-11-12-ati-screen-shadow.md),
-  [R7E](docs/decisions/2026-11-11-carrizo-catch-up-and-write-combining.md)).
-- **`vbe` package:** a windowed program that draws on the screen no longer
-  has each frame read back into the desktop's copy, and the software
-  Direct3D renderer draws 32-bit textures, which it used to refuse
-  ([record](docs/decisions/2026-11-12-vbe-soft-32bit-textures.md)).
-- **OpenGL, every package:** non-square mipmapped textures draw on
-  DirectX 6.1a, where Quake 2 dropped 42 % of its triangles on one Radeon
-  HD 5570
-  ([issue](docs/issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md)).
+New in 0.48.0:
+- **Intel GMA X3100 and the GMA 4500 family: see-through textures that
+  also write depth now draw.** Half-Life's grates, fences, ladders and
+  some doors, and parts of Incoming, were missing. They now draw in two
+  passes, as colour-keyed ones have since 0.44.0. Half-Life confirmed by
+  its reporter on a GMA 4500MHD; the GMA X3100 that once hung on this
+  case draws it without a hang
+  ([record](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+- **Intel GMA X3100 laptop: the panel's own 1280x800.** Its video BIOS
+  describes the panel's mode as 1024x768 and stretched that; the driver
+  now writes the panel's timing into the BIOS's mode table at boot, so
+  1280x800 is offered and set unscaled. On the one machine measured
+  (HP, GM965); other chips are not enabled
+  ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)).
+- **Every package: DirectDraw and Direct3D surfaces wider than the
+  screen.** They were refused, which Direct3D 8 reported as an internal
+  driver error; 3DMark 2001 SE's Advanced Pixel Shader asks for one
+  ([record](docs/decisions/2026-11-12-gen3-aps-call-log.md)).
 
 ### Known issues
 
@@ -85,9 +80,9 @@ New in 0.47.0:
   stuck; press Escape and resume
   ([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).
 - **HD 4600:** 3DMark 2001 SE's Nature draws its distant terrain white.
-- **GMA X3100, GMA 4500 family:** a program's own alpha test with depth
-  writes is not drawn, so Half-Life's grates and doors are missing and
-  Incoming's textures are transparent or missing
+- **GMA 4500MHD, Incoming demo:** Start Game can fault (exception at
+  465973 after the pilot-name screen), and the game is slow with some
+  render faults its reporter still sees; the cause is not found
   ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
 - **`ati` HD 5000-7000:** the desktop copy above is on by the same design
   as on the R3E and R7E but has not been measured on them.
@@ -107,6 +102,12 @@ New in 0.47.0:
 
 ### Recent releases
 
+- **0.47.0:** DirectX 8 pixel shader 1.1 on the GMA 900, 950, 3100 and
+  3150 (3DMark 2001 SE completes on the GMA 950, 528); the `ati`
+  package's Radeons draw the desktop into a copy in system memory, and
+  the R7E and R3E write the screen write-combined; the `vbe` software
+  Direct3D renderer draws 32-bit textures; OpenGL non-square mipmaps draw
+  on DirectX 6.1a.
 - **0.46.0:** the `vbe` package draws the desktop into a copy in system
   memory, so moving windows and scrolling no longer read the screen
   (Radeon R3E reads 5 to 350-1,180 MB/s).
@@ -184,9 +185,9 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
-| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes is refused, so Direct3D does not draw it; from 0.44.0 colour keys with depth writes are drawn in two passes instead (not run on this machine) |
+| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes once hung this chip; from 0.48.0 it is drawn in two passes, as colour keys with depth writes have been since 0.44.0, and runs without a hang. From 0.48.0 the panel's own 1280x800, set unscaled by writing its timing into the BIOS's mode table ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)) |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
-| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)). From 0.44.0 the same machine is reached through remote help: Direct3D, OpenGL and Glide 2 probes pass, two-unit REPLACE and DECAL fail as on the GMA X3100 and Ironlake, and Forsaken's menu draws ([audit](docs/decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md), [issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)) |
+| Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)). From 0.44.0 the same machine is reached through remote help: Direct3D, OpenGL and Glide 2 probes pass, two-unit REPLACE and DECAL fail as on the GMA X3100 and Ironlake, and Forsaken's menu draws ([audit](docs/decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md), [issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)). From 0.48.0 Half-Life's grates and doors draw, in every renderer by its reporter's account ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)) |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
@@ -254,7 +255,7 @@ the reason for each is in
 
 Modes come from each card's video BIOS, merged with the driver's own where
 it sets modes itself: up to 1024x768 at 8 and 16 bpp on most cards, True
-Color and 1280x1024 on the S3 cards, 1024x576 on the GMA 950's panel, and 1024x600 on the GMA 3150's.
+Color and 1280x1024 on the S3 cards, 1024x576 on the GMA 950's panel, 1024x600 on the GMA 3150's, and from 0.48.0 1280x800 on the GMA X3100 laptop's.
 Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
 where the table says otherwise. On the `vbe` package (0.46.0) and the
 `ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0) it draws into a

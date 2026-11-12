@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.48.0 - not yet released
+## 0.48.0 - 2026-11-12
 
 - **Every package: DirectDraw and Direct3D surfaces may be wider than
   the screen.** The driver never told DirectDraw it allows them, so a
@@ -24,6 +24,21 @@ build identifier so exact guest-tested binaries remain traceable.
   see-through part of such a texture can be hidden there. Half-Life
   confirmed by its reporter on a GMA 4500MHD
   ([record](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+  On the GMA X3100, where this combination hung the chip before it was
+  refused, V9XGLP and V9XD32 draw it in the two passes without a hang.
+- **`intel-gma` package, GMA X3100 (GM965) laptops: the panel's own
+  resolution.** The video BIOS on the one machine measured carries a
+  1280x800 slot for its panel filled with 1024x768 timing, so VESA
+  offered 1024x768 and the BIOS stretched it to the panel. At boot the
+  driver now writes the panel's EDID timing into that slot in shadow RAM,
+  only where the slot holds the bytes it planned against, and the BIOS
+  sets 1280x800 with the panel fitter off; the owner confirmed the screen.
+  Enabled on the GM965 only; the GMA 950 netbook and the GMA 4500MHD need
+  their own BIOS read first
+  ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)).
+- **Release checks:** V9XFBCMP now also checks offscreen surfaces wider
+  than the screen, and V9XD32's T20 an alpha test with depth writes, so
+  every release run covers both changes above.
 
 ## 0.47.0 - 2026-11-12
 
