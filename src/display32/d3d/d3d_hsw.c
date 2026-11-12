@@ -3165,6 +3165,10 @@ static DWORD v9x_d3d_hsw_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
 #define V9X_D3D_HSW_MIPTREE_SHAPE  1ul  /* not a halving chain */
 #define V9X_D3D_HSW_MIPTREE_FORMAT 2ul  /* not a layout the sampler takes */
 
+/* d3d_hsw_map.h keeps its own copy of "the heap had no room". */
+typedef char v9x_d3d_hsw_assert_place_alloc[
+    V9X_D3D_HSW_PLACE_ALLOC == V9X_D3D_PLACE_ALLOC ? 1 : -1];
+
 static DWORD v9x_d3d_hsw_miptree_decline(DWORD reason)
 {
     ++v9x_hal->d3d_diagnostics.mip_tree_declined;
@@ -3227,6 +3231,17 @@ static DWORD v9x_d3d_hsw_create_miptree(V9X_DDHAL_CREATESURFACEDATA *data)
     reason = v9x_d3d_place_block(data, V9X_D3D_HSW_TILE_BYTES, tree.pitch,
                                  tree.rows, tree.level_offset, &base);
     if (reason != 0ul) {
+        /* A DXT or signed tree with no room is out of video memory, not
+         * DirectDraw's to place: it has no bit count to size a surface by
+         * (v9x_d3d_hsw_unplaced_out_of_memory). */
+        if (v9x_d3d_hsw_unplaced_out_of_memory(
+                reason,
+                (top->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul ||
+                    (top->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) != 0ul)) {
+            (void)v9x_d3d_hsw_miptree_decline(reason);
+            data->ddRVal = V9X_DDERR_OUTOFVIDEOMEMORY;
+            return V9X_DDHAL_DRIVER_HANDLED;
+        }
         return v9x_d3d_hsw_miptree_decline(reason);
     }
     ++v9x_hal->d3d_diagnostics.mip_tree_allocs;

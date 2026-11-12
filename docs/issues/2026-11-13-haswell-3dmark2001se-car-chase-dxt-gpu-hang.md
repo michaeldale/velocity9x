@@ -7,7 +7,10 @@ Builds:
 - boots 221 and 222: two HAL-only measurement swaps (below).
 
 3DMark 2001 SE build 330 at 1024x768, 32-bit colour, Z24 and software
-T&L. Status: **open**. The cause is not found.
+T&L. Status: **fixed in source 2026-11-13**. A DXT or signed tree
+that finds no room is now answered out of video memory, not left to
+DirectDraw (section at the end). Measured on the 4570; how
+DirectDraw's placement hung the engine is not established.
 
 ## What happens
 
@@ -108,3 +111,81 @@ marks**. 0 engine timeouts or resets, 0 refusals of any kind, no fault,
   reproduce the hang with one such texture in V9XD32's T19.
 - Until the cause is found, 3DMark on the 4570 is run with 32-bit
   textures.
+
+## 2026-11-13: fixed - a DXT tree with no room is out of video memory
+
+A d3d8 proxy run (boot 224) listed Car Chase's textures. The compressed
+ones are all DXT1, managed, with full chains to 1x1. Many are
+non-square: 1024x512, 512x1024, 1024x256, 512x256, 512x128, 128x512 and
+64x128.
+
+Measurement HALs, each a HAL-only swap on a fresh boot (hash checked),
+Car Chase with Compressed textures:
+
+| Boot | HAL | Result |
+|---|---|---|
+| 225 | non-square BC trees declined | completes, 0 timeouts |
+| 226 | BC surfaces with VALIGN_4 (Mesa's ISL setting; ours was VALIGN_2) | hangs as before |
+| 227 | wide BC trees declined | hangs as before |
+| 228 | tall BC trees declined | "failed to validate material", nothing drawn |
+| 229 | the fix below | completes, 0 timeouts, 0 refused, textured frames |
+
+**Killed:**
+- **VALIGN.** The HAL lays BC levels out at j = 4 but states VALIGN_2,
+  where Mesa states VALIGN_4. With VALIGN_4 Car Chase hung the same. The
+  change was reverted: it fixed nothing, and what it does to the
+  smallest levels is unmeasured.
+- **Shape alone.** Declining only wide trees still hung, and declining
+  only tall ones broke material validation. Declining every non-square
+  tree changed which trees ever ran out of room.
+
+**What the hanging runs had in common:** a BC tree declined for room.
+The boot-220 run had exactly 1 decline (reason 4, `V9X_D3D_PLACE_ALLOC`)
+before the hang. A declined tree went back to DirectDraw as NOTHANDLED,
+and DirectDraw placed the DXT surface in its own heap. A DXT surface has
+no bit count, so DirectDraw cannot size it right. Gen3 met the same with
+its signed formats (`v9x_d3d_i9xx_unplaced`, the netbook, boot 304) and
+answers such a texture out of video memory. Haswell never did.
+
+How exactly a DirectDraw-placed DXT surface hung the render engine is
+not established. This HAL already refused to sample one. The mechanism
+is open; the trigger and the cure are measured.
+
+**The fix:** `v9x_d3d_hsw_unplaced_out_of_memory` (`d3d_hsw_map.c`,
+`test_unplaced` written first and seen failing). A tree with no room
+whose format is not RGB (DXT or signed) is answered
+`DDERR_OUTOFVIDEOMEMORY` from `v9x_d3d_hsw_create_miptree`. The Direct3D
+8 runtime then evicts managed textures and tries again. RGB trees go to
+DirectDraw as before.
+
+Boot 229, Car Chase alone, Compressed: score window at 68 s, 0 engine
+timeouts, 0 DP2 refusals, no fault, 24,745,318 triangles. 1,564 trees
+were placed and 226 declined for room, each answered out of video memory.
+The grabs show the road, sky, terrain and trucks textured.
+
+**Full benchmark with the fix**, boot 229, all 21 tests, Compressed
+textures: **2519 3D marks**. 0 engine timeouts or resets, 0 refusals of
+any kind, no fault, 178,767 DP2 calls, 355,708,738 triangles. Recorded,
+not compared.
+
+| Test | Result |
+|---|---|
+| Car Chase, low / high | 27.0 / 6.1 fps |
+| Dragothic, low / high | 40.0 / 22.5 fps |
+| Lobby, low / high | 44.8 / 24.6 fps |
+| Nature | 16.8 fps |
+| Fill rate, single / multi | 176.4 / 602.4 MTexels/s |
+| High polygon count, 1 / 8 lights | 3.8 / 3.3 MTriangles/s |
+| Environment bump mapping | 57.9 fps |
+| DOT3 bump mapping | not supported by hardware |
+| Vertex shader | 24.9 fps |
+| Pixel shader / advanced pixel shader | 58.7 / 26.4 fps |
+| Point sprites | 1.7 MSprites/s |
+
+Gates: `build-host.ps1` (`test_unplaced` failing first, then passing)
+and `run-checks.ps1` pass. The 4570 ran this HAL alone over the boot-218
+intel-gma set.
+
+Gen3 already had this answer (`v9x_d3d_i9xx_unplaced`) and is not
+changed. Not checked: Ivy Bridge, which shares `d3d_hsw.c` and so takes
+the same answer, unmeasured there.

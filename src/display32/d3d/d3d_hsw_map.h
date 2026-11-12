@@ -23,6 +23,19 @@
 #define V9X_D3D_HSW_REFUSE_COMBINE     10ul  /* a two-unit combine with no
                                                 exact kernel stage       */
 
+/* d3d_internal.h's V9X_D3D_PLACE_ALLOC, "the heap had no room", which that
+ * DDHAL header keeps from the host build; d3d_hsw.c asserts the two equal. */
+#define V9X_D3D_HSW_PLACE_ALLOC 4ul
+
+/*
+ * 1 when a texture tree the engine could not place is answered
+ * DDERR_OUTOFVIDEOMEMORY rather than left to DirectDraw: the heap had no
+ * room (place_reason V9X_D3D_HSW_PLACE_ALLOC) and the format is not RGB -
+ * DXT or signed, with no bit count DirectDraw could size a surface by.
+ * The runtime then evicts managed textures and tries again. 0 otherwise.
+ */
+int v9x_d3d_hsw_unplaced_out_of_memory(v9x_u32 place_reason, int rgb);
+
 /* The RGB write mask, V9X_R3D_ABI_WRITE_RED | GREEN | BLUE. */
 #define V9X_D3D_HSW_WRITE_RGB 7ul
 

@@ -355,6 +355,25 @@ static void test_bc_format(void)
     CHECK(format == 0x1234u && alpha == -1 && block == 7ul);
 }
 
+/*
+ * A texture tree the heap had no room for. An RGB one is left to
+ * DirectDraw, which can size it. A DXT or signed one has no bit count, so
+ * DirectDraw's own surface does not hold it: it is answered out of video
+ * memory, and the runtime evicts managed textures and tries again, as
+ * Gen3 does. Left to DirectDraw, a DXT1 chain declined for room hung the
+ * HD 4600's render engine in 3DMark 2001 SE's Car Chase (the 4570,
+ * 2026-11-13). Any other reason is left to DirectDraw as before.
+ */
+static void test_unplaced(void)
+{
+    CHECK(v9x_d3d_hsw_unplaced_out_of_memory(V9X_D3D_HSW_PLACE_ALLOC, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(V9X_D3D_HSW_PLACE_ALLOC, 1));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(1ul, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(2ul, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(5ul, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(0ul, 0));
+}
+
 /* A texture's layout as the sampler's format, its alpha and its texel
  * size: the three 16-bit layouts as before, and the two 32-bit ones. */
 static void test_texel_format(void)
@@ -416,6 +435,7 @@ unsigned int v9x_run_d3d_hsw_map_tests(void)
     test_texel_format();
     test_signed_format();
     test_bc_format();
+    test_unplaced();
     test_target();
     test_depth();
     test_accepted();

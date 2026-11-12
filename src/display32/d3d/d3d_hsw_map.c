@@ -23,6 +23,11 @@ v9x_u32 v9x_d3d_hsw_explicit_refusal(const V9X_R3D_DRAW *draw)
 #define V9X_D3D_HSW_DISABLE_GREEN 2u
 #define V9X_D3D_HSW_DISABLE_BLUE  1u
 
+int v9x_d3d_hsw_unplaced_out_of_memory(v9x_u32 place_reason, int rgb)
+{
+    return place_reason == V9X_D3D_HSW_PLACE_ALLOC && !rgb;
+}
+
 v9x_u8 v9x_d3d_hsw_write_disable(v9x_u32 write_mask)
 {
     v9x_u8 disable = 0u;
