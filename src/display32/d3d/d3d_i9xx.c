@@ -174,7 +174,18 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * and an unused byte (v9x_i9xx_retarget_state). */
     24ul,                       /* depth32_bits           */
     0ul,                        /* centre_in_engine       */
-    0ul,                        /* texture_stages         */
+    /*
+     * Two Direct3D stages in one pass, on the two-unit program OpenGL has
+     * drawn since 2026-10-05 (texture_units above). It was 0 while the
+     * caps already told DX8 programs four stages for pixel shaders, so
+     * 3DMark 2001 SE bound a second texture the fixed-function path then
+     * dropped: Dragothic's dragon drew its pale stage-0 texture alone,
+     * smooth white, and its terrain lost its second map (d3d8 proxy census,
+     * netbook boot 319, docs\issues\2026-11-07-gma950-3dmark2001se-
+     * dragothic-sky-white.md). Two stages also give every program DDI 6,
+     * as on the Rage 128 (d3d_core.c, v9x_d3d_dp2_for_process).
+     */
+    2ul,                        /* texture_stages         */
     /*
      * DDI 6 programs keep the band (coordinate_limit less a pixel) they
      * were told while the core clipped for this engine; without this,
@@ -3587,6 +3598,7 @@ typedef char v9x_assert_i9xx_combine_numbers[
      V9X_R3D_ABI_COLOROP_MODULATE == V9X_I9XX_COMBINE_MODULATE &&
      V9X_R3D_ABI_COLOROP_DECALALPHA == V9X_I9XX_COMBINE_DECAL &&
      V9X_R3D_ABI_COLOROP_BLEND == V9X_I9XX_COMBINE_BLEND &&
+     V9X_R3D_COLOROP_ADD == V9X_I9XX_COMBINE_ADD &&
      V9X_R3D_ABI_ALPHAOP_FRAGMENT == V9X_I9XX_ALPHA_KEEP &&
      V9X_R3D_ABI_ALPHAOP_REPLACE == V9X_I9XX_ALPHA_REPLACE &&
      V9X_R3D_ABI_ALPHAOP_MODULATE == V9X_I9XX_ALPHA_MODULATE) ? 1 : -1];
@@ -3603,7 +3615,8 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
      * builder here emits none of them yet (the ring could carry a scissor
      * and a write mask; neither is built). */
     /* A second unit: both surfaces bindable, every combine the two-unit
-     * program has (all of table 3.18), addressing the sampler has. Its
+     * program has (all of table 3.18, and Direct3D's ADD), addressing the
+     * sampler has. Its
      * colour and alpha ops are the render interface's numbers, which are
      * V9X_I9XX_COMBINE_* / _ALPHA_* by the assertion above this engine's
      * draw. The single-unit `op` is not set on such a draw. */
@@ -3618,7 +3631,7 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
                 !v9x_d3d_i9xx_texture_bindable(
                     (const V9X_DD_SURFACE_LCL *)unit[k]->object) ||
                 unit[k]->color_op < V9X_I9XX_COMBINE_REPLACE ||
-                unit[k]->color_op > V9X_I9XX_COMBINE_BLEND ||
+                unit[k]->color_op > V9X_I9XX_COMBINE_ADD ||
                 unit[k]->alpha_op > V9X_I9XX_ALPHA_MODULATE ||
                 (unit[k]->address != V9X_R3D_ADDRESS_WRAP &&
                  unit[k]->address != V9X_R3D_ADDRESS_MIRROR &&

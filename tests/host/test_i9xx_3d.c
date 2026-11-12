@@ -15,6 +15,7 @@
 
 #include "velocity9x/intel_gen3_3d.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/i9xx_fs.h"
 /* The Gen3 render-target binding is a leaf unit precisely so this file can
  * reach it; the engine that calls it needs the DDHAL headers and cannot be
  * built here. */
@@ -3201,6 +3202,10 @@ static v9x_u32 v9x_test_find_packet(const v9x_u32 *stream, v9x_u32 count,
     return count;
 }
 
+/* Direct3D's ADD is the render interface's COLOROP 5 (r3d.h). */
+typedef char v9x_assert_i9xx_combine_add_is_5[
+    V9X_I9XX_COMBINE_ADD == 5ul ? 1 : -1];
+
 static void test_two_unit_stream(void)
 {
     struct v9x_i9xx_decode_limits limits;
@@ -3272,18 +3277,46 @@ static void test_two_unit_stream(void)
           V9X_I9XX_P5_OK);
     CHECK(unit1.constants_mask == 5ul);
 
-    /* Every combine pairing builds and decodes. */
-    for (i = 0ul; i < 16ul; ++i) {
-        ops[0].colour_op = 1ul + (i & 3ul);
-        ops[0].alpha_op = (i >> 2) % 3ul;
-        ops[1].colour_op = 1ul + ((i >> 2) & 3ul);
+    /* Every combine pairing builds and decodes, ADD among them. */
+    for (i = 0ul; i < 25ul; ++i) {
+        ops[0].colour_op = 1ul + (i % 5ul);
+        ops[0].alpha_op = (i / 5ul) % 3ul;
+        ops[1].colour_op = 1ul + (i / 5ul);
         ops[1].alpha_op = i % 3ul;
         count = v9x_test_two_unit_stream(stream, 2304ul, ops, i & 1ul, 3ul,
                                          &limits, &unit1);
         CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits,
                                               &unit1, &index) == V9X_I9XX_P5_OK);
     }
-    ops[0].colour_op = 5ul;
+
+    /* Direct3D's ADD (the render interface's COLOROP 5, d3d_state.c):
+     * REPLACE then ADD, a lightmap added over a base, which V9XD32's T12
+     * draws. Unit 1's ADD is one instruction in MUL's form, saturated,
+     * because Direct3D clamps each stage's result before the next reads
+     * it: add_sat R2.xyz, R2, R1. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_REPLACE;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_REPLACE;
+    ops[1].colour_op = V9X_I9XX_COMBINE_ADD;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_KEEP;
+    CHECK(v9x_i9xx_two_unit_program_extent(ops, 0ul) == 34ul);
+    CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
+                                          &produced) == V9X_STATUS_OK);
+    CHECK(produced == 34ul);
+    CHECK(program[28] == (0x01009c08ul | V9X_I9XX_FS_A0_SATURATE) &&
+          program[29] == 0x01230101ul);
+    CHECK(v9x_i9xx_two_unit_constants_mask(ops, 0ul) == 0ul);
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, 1ul, 8ul,
+                                     &limits, &unit1);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) == V9X_I9XX_P5_OK);
+    /* An ADD on unit 0 adds to the diffuse colour, T8. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_ADD;
+    CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
+                                          &produced) == V9X_STATUS_OK);
+    CHECK(program[22] == (0x01009ca0ul | V9X_I9XX_FS_A0_SATURATE) &&
+          program[23] == 0x01230001ul);
+
+    ops[0].colour_op = 6ul;
     CHECK(v9x_i9xx_two_unit_program_extent(ops, 0ul) == 0ul);
     CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
                                           &produced) != V9X_STATUS_OK);

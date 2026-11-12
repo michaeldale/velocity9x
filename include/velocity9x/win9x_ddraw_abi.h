@@ -847,6 +847,7 @@ typedef char v9x_assert_misc2_size[
 #define V9X_D3DTSS_MAGFILTER              16ul
 #define V9X_D3DTSS_MINFILTER              17ul
 #define V9X_D3DTSS_MIPFILTER              18ul
+#define V9X_D3DTSS_TEXTURETRANSFORMFLAGS  24ul
 /* d3dtypes.h: D3DTEXTUREOP. */
 #define V9X_D3DTOP_DISABLE                 1ul
 #define V9X_D3DTOP_SELECTARG1              2ul

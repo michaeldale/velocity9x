@@ -236,6 +236,21 @@ typedef struct v9x_d3d_context {
     DWORD stage1_address_v;
     DWORD stage1_texcoord;
     DWORD stage_two;
+    /* D3DTSS_TEXTURETRANSFORMFLAGS of stages 0 and 1: a PROJECTED stage's
+     * pair is divided by its last coordinate as each vertex is converted
+     * (v9x_dp2_fvf_project). ContextCreate sets DISABLE, Direct3D's
+     * default. */
+    DWORD stage_ttff;
+    DWORD stage1_ttff;
+    /* Stage 2's combine, raw, on a two-stage engine: no unit draws it, but
+     * v9x_d3d_state_stage2_fold moves a final multiply by the vertex colour
+     * into stage 0 (v9x_d3d_stage_pair). ContextCreate sets DISABLE. */
+    DWORD stage2_color_op;
+    DWORD stage2_color_arg1;
+    DWORD stage2_color_arg2;
+    DWORD stage2_alpha_op;
+    DWORD stage2_alpha_arg1;
+    DWORD stage2_alpha_arg2;
     /* DDI 7 (docs\plans\hardware-tnl.md step 5): set when the context was
      * made for a DDI 7 driver object, which names its surfaces by
      * CreateSurfaceEx handle within dd_local, the DirectDraw local object

@@ -870,14 +870,16 @@ static DWORD v9x_d3d_min_filter_fold(DWORD min, DWORD mip)
                   : V9X_D3DFILTER_LINEARMIPNEAREST;
 }
 
-/* Stages 0 and 1 as v9x_d3d_state_stages reads them; unit0 and unit1
- * receive the combines on TWO. */
+/* Stages 0 and 1 as v9x_d3d_state_stages reads them, stage 2 folded into
+ * stage 0 where it is a final multiply by the vertex colour; unit0 and
+ * unit1 receive the combines on TWO. */
 static DWORD v9x_d3d_stage_pair(const V9X_D3D_CONTEXT *context,
                                 V9X_R3D_TEXTURE *unit0,
                                 V9X_R3D_TEXTURE *unit1)
 {
     V9X_D3D_STATE_STAGE stage0;
     V9X_D3D_STATE_STAGE stage1;
+    V9X_D3D_STATE_STAGE stage2;
 
     stage0.color_op = context->stage_color_op;
     stage0.color_arg1 = context->stage_color_arg1;
@@ -891,6 +893,13 @@ static DWORD v9x_d3d_stage_pair(const V9X_D3D_CONTEXT *context,
     stage1.alpha_op = context->stage1_alpha_op;
     stage1.alpha_arg1 = context->stage1_alpha_arg1;
     stage1.alpha_arg2 = context->stage1_alpha_arg2;
+    stage2.color_op = context->stage2_color_op;
+    stage2.color_arg1 = context->stage2_color_arg1;
+    stage2.color_arg2 = context->stage2_color_arg2;
+    stage2.alpha_op = context->stage2_alpha_op;
+    stage2.alpha_arg1 = context->stage2_alpha_arg1;
+    stage2.alpha_arg2 = context->stage2_alpha_arg2;
+    (void)v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2);
     return v9x_d3d_state_stages(&stage0, &stage1, unit0, unit1);
 }
 
@@ -2564,6 +2573,16 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->stage1_address_v = V9X_D3DTADDRESS_WRAP;
             context->stage1_texcoord = 1ul;
             context->stage_two = V9X_D3D_STAGES_ONE;
+            /* D3DTTFF_DISABLE on both: coordinates as sent. */
+            context->stage_ttff = 0ul;
+            context->stage1_ttff = 0ul;
+            /* Stage 2 disabled, as Direct3D starts every stage past 0. */
+            context->stage2_color_op = V9X_D3DTOP_DISABLE;
+            context->stage2_color_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage2_color_arg2 = V9X_D3DTA_CURRENT;
+            context->stage2_alpha_op = V9X_D3DTOP_DISABLE;
+            context->stage2_alpha_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage2_alpha_arg2 = V9X_D3DTA_CURRENT;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -4943,9 +4962,54 @@ static void v9x_d3d_dp2_stage1_state(V9X_D3D_CONTEXT *context,
     case V9X_D3DTSS_TEXCOORDINDEX:
         context->stage1_texcoord = (DWORD)value & 0xfffful;
         break;
+    case V9X_D3DTSS_TEXTURETRANSFORMFLAGS:
+        context->stage1_ttff = (DWORD)value;
+        break;
     default:
         break;
     }
+}
+
+/*
+ * Stage 2's combine on a two-stage engine, for v9x_d3d_state_stage2_fold.
+ * Only the six combine states are kept; stage 2 samples nothing a unit
+ * could draw. Ignored until 2026-11-12: 3DMark 2001 SE's Dragothic
+ * multiplies its vertex-shader lighting in at stage 2, and the dragon,
+ * horns brightest, drew unlit (d3d8 proxy, netbook).
+ */
+static void v9x_d3d_dp2_stage2_state(V9X_D3D_DP2_USER *user, v9x_u32 state,
+                                     v9x_u32 value)
+{
+    V9X_D3D_CONTEXT *context = user->context;
+    V9X_R3D_TEXTURE unit0;
+    V9X_R3D_TEXTURE unit1;
+    DWORD *field;
+
+    switch (state) {
+    case V9X_D3DTSS_COLOROP:
+        field = &context->stage2_color_op;
+        break;
+    case V9X_D3DTSS_COLORARG1:
+        field = &context->stage2_color_arg1;
+        break;
+    case V9X_D3DTSS_COLORARG2:
+        field = &context->stage2_color_arg2;
+        break;
+    case V9X_D3DTSS_ALPHAOP:
+        field = &context->stage2_alpha_op;
+        break;
+    case V9X_D3DTSS_ALPHAARG1:
+        field = &context->stage2_alpha_arg1;
+        break;
+    case V9X_D3DTSS_ALPHAARG2:
+        field = &context->stage2_alpha_arg2;
+        break;
+    default:
+        return;
+    }
+    v9x_d3d_dp2_note_state(user, 2ul, (DWORD)state);
+    *field = (DWORD)value;
+    context->stage_two = v9x_d3d_stage_pair(context, &unit0, &unit1);
 }
 
 static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
@@ -4972,7 +5036,11 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
         (void)v9x_d3d_ps_stage_state(&context->ddi8_ps_stage[stage], state,
                                      value);
     }
-    if (stage > 1ul || (stage == 1ul && !user->two_stages)) {
+    if (stage > 2ul || (stage != 0ul && !user->two_stages)) {
+        return;
+    }
+    if (stage == 2ul) {
+        v9x_d3d_dp2_stage2_state(user, state, value);
         return;
     }
     v9x_d3d_dp2_note_state(user, (DWORD)stage, (DWORD)state);
@@ -5045,6 +5113,13 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
          * vertices have already had. */
         context->stage_texcoord = (DWORD)value & 0xfffful;
         break;
+    case V9X_D3DTSS_TEXTURETRANSFORMFLAGS:
+        /* PROJECTED divides the pair by its last coordinate, which the
+         * vertex conversion does (v9x_d3d_dp2_vertex). Dropped until
+         * 2026-11-12, when Dragothic was found drawing a reflection map
+         * through a COUNT3|PROJECTED transform (d3d8 proxy, netbook). */
+        context->stage_ttff = (DWORD)value;
+        break;
     case V9X_D3DTSS_ALPHAARG1:
         /* Kept for every engine since 2026-11-07: whether stage 0's alpha
          * is the vertex's (texture.alpha_diffuse) reads them, as the
@@ -5082,9 +5157,12 @@ static void v9x_d3d_dp2_pair(const V9X_D3D_DP2_USER *user,
 {
     v9x_dp2_fvf_texcoords(user->layout, user->context->stage1_texcoord,
                           source, (v9x_u8 *)pair);
+    v9x_dp2_fvf_project(user->layout, user->context->stage1_texcoord,
+                        user->context->stage1_ttff, source, pair);
 }
 
-/* One vertex of the call's format as the engines' vertex. */
+/* One vertex of the call's format as the engines' vertex, its stage-0 pair
+ * divided by its last coordinate when stage 0 is projected. */
 static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
                                const v9x_u8 *source, V9X_R3D_VERTEX *vertex)
 {
@@ -5093,6 +5171,9 @@ static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
     } else {
         v9x_dp2_fvf_convert_set(user->fvf, user->context->stage_texcoord,
                                 source, (v9x_u8 *)vertex);
+        v9x_dp2_fvf_project(user->fvf, user->context->stage_texcoord,
+                            user->context->stage_ttff, source,
+                            &vertex->tu);
     }
 }
 

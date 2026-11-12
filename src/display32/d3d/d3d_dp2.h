@@ -293,6 +293,25 @@ void v9x_dp2_fvf_convert_set(const V9X_DP2_FVF *layout, v9x_u32 set,
 void v9x_dp2_fvf_texcoords(const V9X_DP2_FVF *layout, v9x_u32 set,
                            const v9x_u8 *source, v9x_u8 *pair);
 
+/* D3DTSS_TEXTURETRANSFORMFLAGS: the count in the low byte, PROJECTED. */
+#define V9X_DP2_TTFF_COUNT_MASK  0xfful
+#define V9X_DP2_TTFF_PROJECTED   0x100ul
+
+/*
+ * A projected stage's pair: when `ttff` says PROJECTED with a count of 2
+ * to 4 and set `set` (by the readers' rule) carries that many floats,
+ * uv[0] and uv[1] are divided by the set's element count - 1, as the
+ * rasteriser of a projected stage does. Anything else, or a divisor of
+ * zero, leaves uv as given.
+ *
+ * Per vertex, not per pixel: exact when the divisor is constant across a
+ * triangle, close where it varies slowly. The exact form needs an engine
+ * that interpolates the divisor and divides per pixel, which no
+ * fixed-function path here does.
+ */
+void v9x_dp2_fvf_project(const V9X_DP2_FVF *layout, v9x_u32 set,
+                         v9x_u32 ttff, const v9x_u8 *source, float *uv);
+
 /* Whether the layout is D3DTLVERTEX itself, so no copy is needed. */
 int v9x_dp2_fvf_is_tlvertex(const V9X_DP2_FVF *layout);
 

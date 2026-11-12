@@ -942,6 +942,38 @@ static float v9x_dp2_get_float(const v9x_u8 *p)
     return bits.f;
 }
 
+/* Below this a divisor is taken as zero: the pair is left as given rather
+ * than sent to the engine as an infinity. */
+#define V9X_DP2_PROJECT_EPSILON 1.0e-20f
+
+void v9x_dp2_fvf_project(const V9X_DP2_FVF *layout, v9x_u32 set,
+                         v9x_u32 ttff, const v9x_u8 *source, float *uv)
+{
+    v9x_u32 count = ttff & V9X_DP2_TTFF_COUNT_MASK;
+    v9x_u32 tex;
+    v9x_u32 floats;
+    float q;
+
+    if ((ttff & V9X_DP2_TTFF_PROJECTED) == 0ul || count < 2ul ||
+        count > 4ul || layout->tex_sets == 0ul) {
+        return;
+    }
+    if (set >= layout->tex_sets) {
+        set = 0ul;
+    }
+    tex = layout->tex[set];
+    floats = layout->tex_floats[set];
+    if (floats < count) {
+        return;
+    }
+    q = v9x_dp2_get_float(source + tex + (count - 1ul) * 4ul);
+    if (q < V9X_DP2_PROJECT_EPSILON && q > -V9X_DP2_PROJECT_EPSILON) {
+        return;
+    }
+    uv[0] = uv[0] / q;
+    uv[1] = uv[1] / q;
+}
+
 /* A copy of the 32-byte vertex at source with sx and sy moved by dx, dy. */
 static void v9x_dp2_moved(const v9x_u8 *source, float dx, float dy,
                           v9x_u8 *out)

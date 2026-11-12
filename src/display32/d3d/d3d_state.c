@@ -260,6 +260,57 @@ v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
     return V9X_D3D_STAGES_TWO;
 }
 
+v9x_u32 v9x_d3d_state_stage2_fold(V9X_D3D_STATE_STAGE *stage0,
+                                  const V9X_D3D_STATE_STAGE *stage1,
+                                  const V9X_D3D_STATE_STAGE *stage2)
+{
+    v9x_u32 a1 = stage2->color_arg1;
+    v9x_u32 a2 = stage2->color_arg2;
+    int alpha_passed;
+    int texel_selected;
+
+    /* Stage 2: the input times the vertex colour, exactly. */
+    if (stage2->color_op != V9X_D3D_STATE_TOP_MODULATE ||
+        !((a1 == V9X_D3D_STATE_TA_CURRENT && a2 == V9X_D3D_STATE_TA_DIFFUSE) ||
+          (a1 == V9X_D3D_STATE_TA_DIFFUSE && a2 == V9X_D3D_STATE_TA_CURRENT))) {
+        return 0ul;
+    }
+
+    /* Its alpha handed on unchanged: disabled under an enabled colour, as
+     * v9x_d3d_state_stage_alpha takes it, or CURRENT selected. */
+    alpha_passed =
+        stage2->alpha_op == V9X_D3D_STATE_TOP_DISABLE ||
+        (stage2->alpha_op == V9X_D3D_STATE_TOP_SELECTARG1 &&
+         stage2->alpha_arg1 == V9X_D3D_STATE_TA_CURRENT) ||
+        (stage2->alpha_op == V9X_D3D_STATE_TOP_SELECTARG2 &&
+         stage2->alpha_arg2 == V9X_D3D_STATE_TA_CURRENT);
+    if (!alpha_passed) {
+        return 0ul;
+    }
+
+    /* Stage 1 a product, and stage 0 the bare texel: only then does the
+     * vertex colour commute down to stage 0. A stage 0 that already
+     * multiplies by it would need d squared. */
+    if (stage1->color_op != V9X_D3D_STATE_TOP_MODULATE ||
+        !v9x_d3d_state_args_texture_input(stage1->color_arg1,
+                                          stage1->color_arg2, 1)) {
+        return 0ul;
+    }
+    texel_selected =
+        (stage0->color_op == V9X_D3D_STATE_TOP_SELECTARG1 &&
+         v9x_d3d_state_arg_texture(stage0->color_arg1)) ||
+        (stage0->color_op == V9X_D3D_STATE_TOP_SELECTARG2 &&
+         v9x_d3d_state_arg_texture(stage0->color_arg2));
+    if (!texel_selected) {
+        return 0ul;
+    }
+
+    stage0->color_op = V9X_D3D_STATE_TOP_MODULATE;
+    stage0->color_arg1 = V9X_D3D_STATE_TA_TEXTURE;
+    stage0->color_arg2 = V9X_D3D_STATE_TA_DIFFUSE;
+    return 1ul;
+}
+
 /* A flag as bit `shift`, a field cut to `mask` at `shift`. */
 static v9x_u32 v9x_d3d_state_bit(v9x_u32 value, unsigned int shift)
 {

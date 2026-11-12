@@ -522,6 +522,57 @@ unsigned int v9x_run_d3d_dp2_tests(void)
         v9x_dp2_fvf_texcoords(&f, 1ul, (const v9x_u8 *)in, (v9x_u8 *)out);
         CHECK(out[0] == 0ul && out[1] == 0ul);
 
+        /*
+         * A projected stage (D3DTTFF_PROJECTED with a count): u and v
+         * divided by the set's last element of that count, per vertex.
+         * 3DMark 2001 SE's Dragothic draws the dragon's horns with a
+         * camera-space reflection vector through a COUNT3|PROJECTED
+         * transform (0x103), and taken undivided they sampled the map's
+         * smallest level, flat white (d3d8 proxy, netbook boot 321).
+         */
+        {
+            float fin[10];
+            float uv[2];
+
+            /* XYZRHW|DIFFUSE|TEX1, set 0 three floats (TEXCOORDSIZE3 is
+             * 1 at bits 16-17). */
+            CHECK(v9x_dp2_fvf_layout(0x144ul | (1ul << 16), &f) &&
+                  f.tex_floats[0] == 3ul && f.tex[0] == 20ul);
+            memset(fin, 0, sizeof(fin));
+            fin[5] = 2.0f; fin[6] = 4.0f; fin[7] = 2.0f;
+            uv[0] = 2.0f; uv[1] = 4.0f;
+            v9x_dp2_fvf_project(&f, 0ul, 0x103ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 1.0f && uv[1] == 2.0f);
+            /* Not projected, or a count of one: as given. */
+            uv[0] = 2.0f; uv[1] = 4.0f;
+            v9x_dp2_fvf_project(&f, 0ul, 0x003ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 2.0f && uv[1] == 4.0f);
+            v9x_dp2_fvf_project(&f, 0ul, 0x101ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 2.0f && uv[1] == 4.0f);
+            /* A count the set does not carry: as given. */
+            v9x_dp2_fvf_project(&f, 0ul, 0x104ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 2.0f && uv[1] == 4.0f);
+            /* A divisor of zero: as given, not infinite. */
+            fin[7] = 0.0f;
+            v9x_dp2_fvf_project(&f, 0ul, 0x103ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 2.0f && uv[1] == 4.0f);
+            /* COUNT2: both over the second, so v becomes 1. */
+            fin[7] = 2.0f;
+            v9x_dp2_fvf_project(&f, 0ul, 0x102ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 0.5f && uv[1] == 1.0f);
+            /* COUNT4 over a four-float set (TEXCOORDSIZE4 is 2). */
+            CHECK(v9x_dp2_fvf_layout(0x144ul | (2ul << 16), &f) &&
+                  f.tex_floats[0] == 4ul);
+            fin[5] = 8.0f; fin[6] = 6.0f; fin[7] = 5.0f; fin[8] = 4.0f;
+            uv[0] = 8.0f; uv[1] = 6.0f;
+            v9x_dp2_fvf_project(&f, 0ul, 0x104ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 2.0f && uv[1] == 1.5f);
+            /* A set past the vertex's reads set 0, as the readers do. */
+            uv[0] = 8.0f; uv[1] = 6.0f;
+            v9x_dp2_fvf_project(&f, 3ul, 0x104ul, (const v9x_u8 *)fin, uv);
+            CHECK(uv[0] == 2.0f && uv[1] == 1.5f);
+        }
+
         /* The optional record callback sees every record consumed. */
         memset(&c, 0, sizeof(c)); used = 0ul;
         command(V9X_DP2OP_RENDERSTATE, 1ul); put32(9ul); put32(2ul);

@@ -82,6 +82,19 @@ v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
                              V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1);
 
 /*
+ * Stage 2 folded into stage 0 where the product allows it: stage 2 a
+ * MODULATE of CURRENT and DIFFUSE with its alpha passed on, stage 1 a
+ * MODULATE of its texel and CURRENT, and stage 0 selecting its texel draw
+ * t0 * t1 * d, which is stage 0 as MODULATE of TEXTURE and DIFFUSE under
+ * the same stage 1. Then stage0's colour is rewritten so and 1 returned;
+ * otherwise nothing is written and 0 returned. Two-unit engines draw no
+ * third stage of their own.
+ */
+v9x_u32 v9x_d3d_state_stage2_fold(V9X_D3D_STATE_STAGE *stage0,
+                                  const V9X_D3D_STATE_STAGE *stage1,
+                                  const V9X_D3D_STATE_STAGE *stage2);
+
+/*
  * 1 when stage 0, drawn as one DX5 texture blend, wants the vertex's alpha
  * where that blend would take the texel's: its colour is MODULATE or a
  * SELECTARG of the texture, and its alpha a SELECTARG of DIFFUSE or

@@ -5,8 +5,9 @@ Date: 2026-11-07. Seen by Michael on the netbook's panel (W9QI2BE2,
 benchmark at 640x480, 16-bit colour and 16-bit textures. Status:
 **parked 2026-11-07** at Michael's word, for a later version. 3DMark
 binds no texture for the white geometry (below), and the cause is not
-found. **2026-11-12: the sky draws with the texture pool**; untextured
-draws remain, now seen on the dragon (section at the end).
+found. **2026-11-12: the sky draws with the texture pool**, and the
+dragon's white neck and horns were dropped texture stages, now drawn
+(sections at the end). Untextured draws remain.
 
 If it proves to be texture memory, the fix belongs to
 [`../plans/intel-gen3-system-memory-textures.md`](../plans/intel-gen3-system-memory-textures.md)
@@ -128,3 +129,55 @@ So the memory half of this issue is answered; what is left is the
 no-texture-bound pattern the HD 4600's Nature defect shows, which no
 amount of heap fixes. Next: the census slot of the white neck's draws,
 and the same run on the HD 4600 for comparison.
+
+## 2026-11-12: the dragon - stages Gen3 dropped
+
+The white neck and the white horns were not unbound textures. They were
+texture stages the driver did not draw. A logging `D3D8.DLL` proxy beside
+3DMark (scratchpad tool, not in the tree; 3DMark's shader code stays out
+of the repository) recorded each draw's vertex shader and its stage
+states. A skip experiment (the proxy drops the draws of one shader)
+named the dragon's: hiding vertex shader 3 removes the whole dragon.
+Hiding the projected reflection-map key `0x252` leaves it, so that key
+is not the horns.
+
+The dragon's draws are three stages, under a vertex shader that writes
+two coordinate sets and two point lights into `oD0`:
+- stage 0: SELECTARG1 TEXTURE;
+- stage 1: MODULATE TEXTURE CURRENT;
+- stage 2: MODULATE CURRENT DIFFUSE, untextured.
+
+6,388 draws used this in one run (proxy, boot 322).
+
+**Neck and scales.** `d3d_i9xx.c` reported `texture_stages` 0, so stage
+1, the scale texture, was dropped. Now it reports 2 and gives DDI 6 to
+every program. Stage 1 runs on the second unit: `TwoUnitBatches` 283,696
+and `TwoUnitDeclined` 0 in the run. The two-unit program gained ADD,
+which the T12 two-stage test exercises once two stages are offered
+(`i9xx_multitex.c`, `test_i9xx_3d.c`). TEXTURETRANSFORMFLAGS PROJECTED
+is now applied to both stages' coordinates (`v9x_dp2_fvf_project`). That
+is for key `0x252`; its effect on the frame was not isolated.
+
+**Horns.** Stage 2 carries the lighting, and the core dropped every
+stage past 1, so the dragon drew unlit. The horns, whose textures are
+pale, drew flat white. Gen3 has no third unit. But t0 · t1 · d is the
+same product as stage 0 MODULATE TEXTURE DIFFUSE under the same stage 1.
+`v9x_d3d_state_stage2_fold` (`d3d_state.c`, tested in
+`test_d3d_state.c`) makes that rewrite, and only when every step is a
+product and stage 2's alpha passes through. Any other stage 2 is still
+dropped.
+
+The two frames below are the same moment (20:7x on the test's clock):
+- `two-stage-V9XGRAB4-horns-unlit.png`, boot 322: two stages without the
+  fold. The horns are flat white, and the back, spikes and peasants are
+  full-bright.
+- `stage2-fold-V9XGRAB4-horns-lit.png`, boot 323: with the fold. The
+  horns shade from bone to blue-grey under the two lights, and the
+  dragon and the peasants are lit.
+
+The earlier note that the white horns are "probably meant" is wrong.
+
+Not yet run on these builds: the release probe set on the netbook,
+Half-Life (DDI 6 now offered to DX6/7 programs), and the HD 4600
+comparison. The no-texture-bound draws (`DrawsNoHandle`) are separate,
+and they remain.

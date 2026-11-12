@@ -345,6 +345,76 @@ static void test_two_stages(void)
 }
 
 /*
+ * A third stage folded into stage 0: stage 2 multiplying by the vertex
+ * colour over stage 0 selecting its texel and stage 1 multiplying by its
+ * own is t0 * t1 * d, which stage 0 modulating by DIFFUSE under the same
+ * stage 1 draws exactly. 3DMark 2001 SE's Dragothic lights the dragon that
+ * way (d3d8 proxy, netbook 2026-11-12); dropping stage 2 drew it unlit,
+ * the horns white. Anything that is not all products is left alone.
+ */
+static void test_stage2_fold(void)
+{
+    V9X_D3D_STATE_STAGE stage0;
+    V9X_D3D_STATE_STAGE stage1;
+    V9X_D3D_STATE_STAGE stage2;
+    V9X_D3D_STATE_STAGE kept;
+
+    stage_set(&stage0, T_SELECT1, A_TEXTURE, A_DIFFUSE,
+              T_SELECT1, A_TEXTURE, A_DIFFUSE);
+    stage_set(&stage1, T_MODULATE, A_TEXTURE, A_CURRENT,
+              T_DISABLE, A_TEXTURE, A_CURRENT);
+    stage_set(&stage2, T_MODULATE, A_CURRENT, A_DIFFUSE,
+              T_DISABLE, A_TEXTURE, A_CURRENT);
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 1ul);
+    SCHECK(stage0.color_op == T_MODULATE);
+    SCHECK(stage0.color_arg1 == A_TEXTURE);
+    SCHECK(stage0.color_arg2 == A_DIFFUSE);
+    SCHECK(stage0.alpha_op == T_SELECT1);
+    SCHECK(stage0.alpha_arg1 == A_TEXTURE);
+
+    /* Arguments either way round, stage 0's texel as Arg2, stage 2's
+     * alpha selecting CURRENT. */
+    stage_set(&stage0, T_SELECT2, A_DIFFUSE, A_TEXTURE,
+              T_SELECT1, A_TEXTURE, A_DIFFUSE);
+    stage_set(&stage1, T_MODULATE, A_CURRENT, A_TEXTURE,
+              T_DISABLE, A_TEXTURE, A_CURRENT);
+    stage_set(&stage2, T_MODULATE, A_DIFFUSE, A_CURRENT,
+              T_SELECT1, A_CURRENT, A_TEXTURE);
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 1ul);
+    SCHECK(stage0.color_op == T_MODULATE);
+    SCHECK(stage0.color_arg1 == A_TEXTURE);
+    SCHECK(stage0.color_arg2 == A_DIFFUSE);
+
+    /* Left alone: stage 2 disabled; stage 2's alpha changing; stage 0
+     * already multiplying by the vertex colour (d squared); stage 1 adding
+     * ((t0 + t1) d is not t0 d + t1); a complemented argument. */
+    stage_set(&stage0, T_SELECT1, A_TEXTURE, A_DIFFUSE,
+              T_SELECT1, A_TEXTURE, A_DIFFUSE);
+    stage_set(&stage1, T_MODULATE, A_TEXTURE, A_CURRENT,
+              T_DISABLE, A_TEXTURE, A_CURRENT);
+    kept = stage0;
+    stage_set(&stage2, T_DISABLE, A_CURRENT, A_DIFFUSE,
+              T_DISABLE, A_TEXTURE, A_CURRENT);
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 0ul);
+    stage_set(&stage2, T_MODULATE, A_CURRENT, A_DIFFUSE,
+              T_MODULATE, A_CURRENT, A_DIFFUSE);
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 0ul);
+    stage2.alpha_op = T_DISABLE;
+    stage2.color_arg2 = A_DIFFUSE | A_COMPLEMENT;
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 0ul);
+    stage2.color_arg2 = A_DIFFUSE;
+    stage1.color_op = T_ADD;
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 0ul);
+    stage1.color_op = T_MODULATE;
+    SCHECK(memcmp(&stage0, &kept, sizeof(kept)) == 0);
+    stage_set(&stage0, T_MODULATE, A_TEXTURE, A_DIFFUSE,
+              T_SELECT1, A_TEXTURE, A_DIFFUSE);
+    kept = stage0;
+    SCHECK(v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2) == 0ul);
+    SCHECK(memcmp(&stage0, &kept, sizeof(kept)) == 0);
+}
+
+/*
  * One stage's alpha as the vertex's: DX5's MODULATE and DECAL take the
  * texel's alpha whenever the texture has one, so a DX6+ stage whose
  * colour is MODULATE or SELECTARG of the texture and whose alpha selects
@@ -436,6 +506,7 @@ unsigned int v9x_run_d3d_state_tests(void)
     state_failures = 0u;
     test_census_key();
     test_two_stages();
+    test_stage2_fold();
     test_stage0_alpha_diffuse();
     test_values_match_d3dtypes();
     test_every_field_routes();

@@ -9,6 +9,7 @@
  * capture on the netbook says otherwise.
  */
 #include "velocity9x/intel_gen3_3d.h"
+#include "velocity9x/i9xx_fs.h"
 
 #if V9X_I9XX_TWO_UNITS
 
@@ -101,7 +102,7 @@ static v9x_u16 v9x_i9xx_mt_known(const struct v9x_i9xx_combine *units)
     }
     for (unit = 0ul; unit < V9X_I9XX_TEXTURE_UNITS_MAX; ++unit) {
         if (units[unit].colour_op < V9X_I9XX_COMBINE_REPLACE ||
-            units[unit].colour_op > V9X_I9XX_COMBINE_BLEND ||
+            units[unit].colour_op > V9X_I9XX_COMBINE_ADD ||
             units[unit].alpha_op > V9X_I9XX_ALPHA_MODULATE) {
             return V9X_FALSE;
         }
@@ -175,6 +176,17 @@ static v9x_u32 v9x_i9xx_mt_unit(v9x_u32 *stream, v9x_u32 unit,
         /* mul R2.xyz, Cp, Rt */
         at += v9x_i9xx_mt_arith(stream + at, V9X_I9XX_FS_A0_MUL, r,
                                 V9X_I9XX_MT_COLOR, V9X_I9XX_FS_CHANNEL_XYZ,
+                                prev_type, prev_nr,
+                                V9X_I9XX_FS_A1_SWIZZLE_XYZW,
+                                r, unit, 0ul, 0ul, 0ul, 2ul);
+        break;
+    case V9X_I9XX_COMBINE_ADD:
+        /* add_sat R2.xyz, Cp, Rt: saturated, because Direct3D clamps a
+         * stage's result before the next stage reads it; a sum left above
+         * 1.0 would brighten what a following MODULATE darkens. */
+        at += v9x_i9xx_mt_arith(stream + at,
+                                V9X_I9XX_FS_A0_ADD | V9X_I9XX_FS_A0_SATURATE,
+                                r, V9X_I9XX_MT_COLOR, V9X_I9XX_FS_CHANNEL_XYZ,
                                 prev_type, prev_nr,
                                 V9X_I9XX_FS_A1_SWIZZLE_XYZW,
                                 r, unit, 0ul, 0ul, 0ul, 2ul);
