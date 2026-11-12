@@ -125,6 +125,20 @@
 #define V9X_CM_RING1                0x8000ul
 #define V9X_CM_RING2                0xc000ul
 
+/* The HD 2600 XT (RV630, R6xx), whose CP Linux brings up in r600.c: the
+ * same registers (r600d.h), radeon_ucode.h's R600 sizes, ME before PFP,
+ * only the CP in the reset pulse, no CP_SEM_INCOMPLETE_TIMER_CNTL, and
+ * ME_INITIALIZE's second word 3 with r600_gpu_init's 8 contexts. VRAM's
+ * start is at R6xx's MC_VM_FB_LOCATION. */
+#define V9X_R6_DEVICE_RV630         0x9588ul
+#define V9X_R6_PFP_DWORDS           576ul
+#define V9X_R6_ME_DWORDS            5376ul
+#define V9X_R6_MC_VM_FB_LOCATION    0x2180ul
+#define V9X_R6_GRBM_RESET_CP        0x00000001ul
+#define V9X_R6_ME_INIT_WORD2        0x3ul
+#define V9X_R6_HW_CONTEXTS          8ul
+#define V9X_R6_CP_ME_HALT           0x10000000ul
+
 /* Registers, evergreend.h. */
 #define V9X_EG_MC_VM_FB_LOCATION    0x2024ul
 #define V9X_EG_HDP_MEM_FLUSH        0x5480ul
@@ -288,7 +302,10 @@ static const char *v9x_saved_list_names[V9X_SAVED_MAX];
 static DWORD v9x_saved_count;
 /* Nonzero on 1002:9901, whose CP is Cayman's. */
 static int v9x_trinity;
-static BYTE v9x_microcode_bytes[V9X_CM_ME_DWORDS * 4ul];
+/* Nonzero on 1002:9588, whose CP is R6xx's. */
+static int v9x_rv630;
+/* The largest image: R6xx's ME, 5376 dwords. */
+static BYTE v9x_microcode_bytes[V9X_R6_ME_DWORDS * 4ul];
 static DWORD v9x_ring[64];
 static DWORD v9x_ring_count;
 /* Bits 39:32 of the window's GPU address. */
@@ -532,6 +549,105 @@ static void v9x_build_run(DWORD g)
     v9x_key("Run", "WptrTest", wptr_test);
 }
 
+/* R6xx's bring-up (r600.c), for the RV630: r600_cp_stop,
+ * r600_cp_load_microcode (ME first, then PFP), r600_cp_resume and
+ * r600_cp_start, then r600_ring_test, all with writeback off as on
+ * Evergreen here. */
+static void v9x_build_run_rv630(DWORD g)
+{
+    DWORD wptr_init;
+    DWORD wptr_test;
+    DWORD index;
+
+    v9x_ring_count = 0ul;
+    v9x_ring_put(V9X_PACKET3(V9X_P3_ME_INITIALIZE, 5ul));
+    v9x_ring_put(0x1ul);
+    v9x_ring_put(V9X_R6_ME_INIT_WORD2);
+    v9x_ring_put(V9X_R6_HW_CONTEXTS - 1ul);
+    v9x_ring_put(1ul << 16); /* PACKET3_ME_INITIALIZE_DEVICE_ID(1) */
+    v9x_ring_put(0ul);
+    v9x_ring_put(0ul);
+    wptr_init = v9x_ring_close();
+    v9x_ring_put(V9X_PACKET3(V9X_P3_SET_CONFIG_REG, 1ul));
+    v9x_ring_put((V9X_EG_SCRATCH_REG0 - V9X_SET_CONFIG_REG_START) >> 2);
+    v9x_ring_put(V9X_SCRATCH_VALUE);
+    wptr_test = v9x_ring_close();
+
+    v9x_request.count = 0ul;
+    v9x_op(V9X_OP_SAVE, 0ul, 0ul, 0ul);
+    v9x_op(V9X_OP_VRAM_FILL, 0ul, V9X_WINDOW_DWORDS, 0ul);
+    for (index = 0ul; index < v9x_ring_count; ++index) {
+        v9x_op(V9X_OP_VRAM_WRITE, index * 4ul, v9x_ring[index], 0ul);
+    }
+
+    /* r600_cp_stop: the ME halted (the PFP with it, as Evergreen's halt
+     * value does), SCRATCH_UMSK 0. */
+    v9x_write(V9X_EG_CP_ME_CNTL, V9X_EG_CP_HALT);
+    v9x_write(V9X_EG_SCRATCH_UMSK, 0ul);
+
+    /* r600_cp_load_microcode. */
+    v9x_write(V9X_EG_CP_RB_CNTL, V9X_EG_RB_CNTL_LOADING);
+    v9x_write(V9X_EG_GRBM_SOFT_RESET, V9X_R6_GRBM_RESET_CP);
+    v9x_read(V9X_EG_GRBM_SOFT_RESET);
+    v9x_op(V9X_OP_DELAY, V9X_RESET_DELAY_READS, 0ul, 0ul);
+    v9x_write(V9X_EG_GRBM_SOFT_RESET, 0ul);
+    v9x_write(V9X_EG_CP_ME_RAM_WADDR, 0ul);
+    v9x_op(V9X_OP_STREAM, V9X_EG_CP_ME_RAM_DATA, V9X_R6_PFP_DWORDS,
+           V9X_R6_ME_DWORDS);
+    v9x_write(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_op(V9X_OP_STREAM, V9X_EG_CP_PFP_UCODE_DATA, 0ul, V9X_R6_PFP_DWORDS);
+    v9x_write(V9X_EG_CP_PFP_UCODE_ADDR, 0ul);
+    v9x_write(V9X_EG_CP_ME_RAM_WADDR, 0ul);
+    v9x_write(V9X_EG_CP_ME_RAM_RADDR, 0ul);
+
+    /* r600_cp_resume. */
+    v9x_write(V9X_EG_GRBM_SOFT_RESET, V9X_R6_GRBM_RESET_CP);
+    v9x_at_reset_read = v9x_read(V9X_EG_GRBM_SOFT_RESET);
+    v9x_op(V9X_OP_DELAY, V9X_RESET_DELAY_READS, 0ul, 0ul);
+    v9x_write(V9X_EG_GRBM_SOFT_RESET, 0ul);
+    v9x_read(V9X_EG_GRBM_SOFT_RESET);
+    v9x_write(V9X_EG_CP_RB_CNTL, V9X_RB_CNTL);
+    v9x_write(V9X_EG_CP_SEM_WAIT_TIMER, 0ul);
+    v9x_write(V9X_EG_CP_RB_WPTR_DELAY, 0ul);
+    v9x_write(V9X_EG_CP_RB_CNTL, V9X_RB_CNTL | V9X_EG_RB_RPTR_WR_ENA);
+    v9x_write(V9X_EG_CP_RB_RPTR_WR, 0ul);
+    v9x_write(V9X_EG_CP_RB_WPTR, 0ul);
+    v9x_write(V9X_EG_CP_RB_RPTR_ADDR, (g + V9X_RPTR_WB) & ~3ul);
+    v9x_write(V9X_EG_CP_RB_RPTR_ADDR_HI, v9x_gpu_high);
+    v9x_write(V9X_EG_SCRATCH_ADDR,
+              (v9x_gpu_high << V9X_ADDR_SHIFT_HIGH) |
+              ((g + V9X_SCRATCH_WB) >> 8));
+    v9x_write(V9X_EG_SCRATCH_UMSK, 0ul);
+    v9x_op(V9X_OP_DELAY, V9X_SHORT_DELAY_READS, 0ul, 0ul);
+    v9x_write(V9X_EG_CP_RB_CNTL, V9X_RB_CNTL | V9X_EG_RB_NO_UPDATE);
+    v9x_write(V9X_EG_CP_RB_BASE, (v9x_gpu_high << V9X_ADDR_SHIFT_HIGH) |
+                                 (g >> 8));
+    v9x_write(V9X_EG_CP_DEBUG, V9X_EG_CP_DEBUG_VALUE);
+
+    /* r600_cp_start: ME_INITIALIZE, then CP_ME_CNTL FFh. */
+    v9x_write(V9X_EG_HDP_MEM_FLUSH, 1ul);
+    v9x_write(V9X_EG_CP_RB_WPTR, wptr_init);
+    v9x_write(V9X_EG_CP_ME_CNTL, V9X_EG_CP_RUN);
+    v9x_at_wait_init = v9x_op(V9X_OP_WAIT_MMIO, V9X_EG_CP_RB_RPTR,
+                              0xfffffffful, wptr_init);
+
+    /* r600_ring_test. */
+    v9x_write(V9X_EG_SCRATCH_REG0, V9X_SCRATCH_SEED);
+    v9x_write(V9X_EG_CP_RB_WPTR, wptr_test);
+    v9x_at_wait_scratch = v9x_op(V9X_OP_WAIT_MMIO, V9X_EG_SCRATCH_REG0,
+                                 0xfffffffful, V9X_SCRATCH_VALUE);
+    v9x_at_scratch = v9x_read(V9X_EG_SCRATCH_REG0);
+    v9x_at_rptr = v9x_read(V9X_EG_CP_RB_RPTR);
+    v9x_at_cp_stat = v9x_read(V9X_EG_CP_STAT);
+    v9x_at_grbm = v9x_read(V9X_EG_GRBM_STATUS);
+    v9x_at_me_cntl = v9x_read(V9X_EG_CP_ME_CNTL);
+
+    v9x_build_teardown();
+
+    v9x_key("Run", "WptrInit", wptr_init);
+    v9x_key("Run", "WptrTest", wptr_test);
+}
+
 /* Cayman's bring-up (ni.c), for Trinity: see the header. Both builders
  * lay out the same ring, ME_INITIALIZE then SET_CONFIG_REG, apart from the
  * context count. */
@@ -725,8 +841,15 @@ void __stdcall V9xEvergreenCpEntry(void)
     v9x_key("Report", "Bar2", v9x_result.bar2);
     v9x_trinity = (v9x_result.id >> 16) == V9X_CM_DEVICE_TRINITY;
     v9x_text("Report", "Trinity", v9x_trinity ? "yes" : "no");
+    v9x_rv630 = (v9x_result.id >> 16) == V9X_R6_DEVICE_RV630;
+    v9x_text("Report", "RV630", v9x_rv630 ? "yes" : "no");
     v9x_saved_count = 0ul;
     for (index = 0ul; index < V9X_BASE_SAVED_COUNT; ++index) {
+        /* R6xx has no CP_SEM_INCOMPLETE_TIMER_CNTL to put back. */
+        if (v9x_rv630 &&
+            v9x_saved_offsets[index] == V9X_EG_CP_SEM_INCOMPLETE) {
+            continue;
+        }
         v9x_saved_list[v9x_saved_count] = v9x_saved_offsets[index];
         v9x_saved_list_names[v9x_saved_count++] = v9x_saved_names[index];
     }
@@ -746,6 +869,14 @@ void __stdcall V9xEvergreenCpEntry(void)
             v9x_finish("MICROCODE-MISSING", 1u);
         }
         v9x_request.data_count = V9X_CM_PFP_DWORDS + V9X_CM_ME_DWORDS;
+    } else if (v9x_rv630) {
+        if (!v9x_load_microcode("PFP.BIN", 0ul, V9X_R6_PFP_DWORDS) ||
+            !v9x_load_microcode("ME.BIN", V9X_R6_PFP_DWORDS,
+                                V9X_R6_ME_DWORDS)) {
+            CloseHandle(device);
+            v9x_finish("MICROCODE-MISSING", 1u);
+        }
+        v9x_request.data_count = V9X_R6_PFP_DWORDS + V9X_R6_ME_DWORDS;
     } else {
         if (!v9x_load_microcode("PFP.BIN", 0ul, V9X_EG_PFP_DWORDS) ||
             !v9x_load_microcode("ME.BIN", V9X_EG_PFP_DWORDS,
@@ -756,9 +887,10 @@ void __stdcall V9xEvergreenCpEntry(void)
         v9x_request.data_count = V9X_EG_PFP_DWORDS + V9X_EG_ME_DWORDS;
     }
     v9x_key("Report", "PfpFirst", v9x_request.data[0]);
-    v9x_key("Report", "MeFirst", v9x_request.data[v9x_trinity ?
-                                                  V9X_CM_PFP_DWORDS :
-                                                  V9X_EG_PFP_DWORDS]);
+    v9x_key("Report", "MeFirst",
+            v9x_request.data[v9x_trinity ? V9X_CM_PFP_DWORDS :
+                             (v9x_rv630 ? V9X_R6_PFP_DWORDS :
+                              V9X_EG_PFP_DWORDS)]);
 
     /* Call 1: read-only. */
     v9x_request.count = 0ul;
@@ -768,7 +900,8 @@ void __stdcall V9xEvergreenCpEntry(void)
     at_grbm = v9x_read(V9X_EG_GRBM_STATUS);
     at_cp_stat = v9x_read(V9X_EG_CP_STAT);
     at_rptr = v9x_read(V9X_EG_CP_RB_RPTR);
-    at_fb = v9x_read(V9X_EG_MC_VM_FB_LOCATION);
+    at_fb = v9x_read(v9x_rv630 ? V9X_R6_MC_VM_FB_LOCATION :
+                                 V9X_EG_MC_VM_FB_LOCATION);
     if (!v9x_dioc(device)) {
         CloseHandle(device);
         v9x_finish("REFUSED", 2u);
@@ -783,8 +916,11 @@ void __stdcall V9xEvergreenCpEntry(void)
     v9x_key("Before", "CP_RB_RPTR", r[at_rptr]);
     v9x_key("Before", "MC_VM_FB_LOCATION", r[at_fb]);
 
-    /* The CP must be halted, as POST leaves it: nothing else is using it. */
-    if ((v9x_saved[0] & V9X_EG_CP_HALT) != V9X_EG_CP_HALT) {
+    /* The CP must be halted, as POST leaves it: nothing else is using it.
+     * R6xx halts the ME alone (r600_cp_stop), and M-NZHWBR's BIOS leaves
+     * CP_ME_CNTL at 10000000h. */
+    if ((v9x_saved[0] & (v9x_rv630 ? V9X_R6_CP_ME_HALT : V9X_EG_CP_HALT)) !=
+        (v9x_rv630 ? V9X_R6_CP_ME_HALT : V9X_EG_CP_HALT)) {
         CloseHandle(device);
         v9x_finish("CP-NOT-HALTED", 3u);
     }
@@ -805,6 +941,8 @@ void __stdcall V9xEvergreenCpEntry(void)
     /* Call 2: the run. */
     if (v9x_trinity) {
         v9x_build_run_trinity(g);
+    } else if (v9x_rv630) {
+        v9x_build_run_rv630(g);
     } else {
         v9x_build_run(g);
     }

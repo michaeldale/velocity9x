@@ -71,6 +71,11 @@ EC_DEVICE_CEDAR         equ 68f9h
 EC_DEVICE_CAICOS        equ 6778h
 EC_DEVICE_JUNIPER       equ 68b8h
 EC_DEVICE_TRINITY       equ 9901h
+; The HD 2600 XT (RV630, R6xx): its CP sits at Evergreen's offsets
+; (r600d.h). Its register BAR is 64 KiB, but M-NZHWBR's is 128 KiB aligned,
+; and the 64 KiB mapped past it is never read
+; (docs\decisions\2026-11-13-rv630-register-probe.md).
+EC_DEVICE_RV630         equ 9588h
 EC_OP_MAX               equ 512
 EC_BLOCK_DWORDS         equ 4096
 EC_DATA_DWORDS          equ 8192
@@ -92,6 +97,9 @@ EC_SCRATCH_BYTES        equ 00010000h
 EC_CONFIG_MEMSIZE       equ 5428h
 EC_MEMSIZE_MIN_MIB      equ 256
 EC_MEMSIZE_MAX_MIB      equ 4096
+; R6xx keeps CONFIG_MEMSIZE in bytes (r600_mc_init), as EG_MAP accepts.
+EC_R6_MEMSIZE_MIN       equ 10000000h
+EC_R6_MEMSIZE_MAX       equ 40000000h
 
 ; Op codes; the layout is four dwords: op, a, b, c.
 EC_OP_MMIO_READ         equ 1   ; a offset
@@ -149,6 +157,7 @@ ECReadWindows label dword
     dd 0e60h, 0e64h     ; SRBM_SOFT_RESET
     dd 0ec4h, 0ec8h     ; SRBM_STATUS2
     dd 2024h, 2028h     ; MC_VM_FB_LOCATION
+    dd 2180h, 2184h     ; MC_VM_FB_LOCATION on R6xx (r600d.h)
     dd 5428h, 542ch     ; CONFIG_MEMSIZE
     dd 8010h, 8018h     ; GRBM_STATUS, GRBM_STATUS_SE0
     dd 8020h, 8024h     ; GRBM_SOFT_RESET
@@ -207,7 +216,7 @@ ECReadWindows label dword
     dd 8e10h, 8e14h     ; SQ_LSTMP_RING_BASE
     dd 8e18h, 8e1ch     ; SQ_HSTMP_RING_BASE
     dd 9150h, 9154h     ; CGTS_SM_CTRL_REG
-EC_READ_WINDOW_COUNT    equ 59
+EC_READ_WINDOW_COUNT    equ 60
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.
@@ -388,6 +397,8 @@ EC_Find_Next:
     je      short EC_Find_Found
     cmp     eax, (EC_DEVICE_TRINITY shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
+    cmp     eax, (EC_DEVICE_RV630 shl 16) or EC_VENDOR_ATI
+    je      short EC_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h
     jb      short EC_Find_Next
@@ -484,7 +495,13 @@ EC_Map_Bar0_Low:
     cmp     edx, EC_MEMSIZE_MIN_MIB
     jb      EC_Map_Fail
     cmp     edx, EC_MEMSIZE_MAX_MIB
+    jbe     short EC_Map_Size_Ok
+    ; Not a MiB count: an R6xx byte count, or refused.
+    cmp     edx, EC_R6_MEMSIZE_MIN
+    jb      EC_Map_Fail
+    cmp     edx, EC_R6_MEMSIZE_MAX
     ja      EC_Map_Fail
+EC_Map_Size_Ok:
     or      ECResult[4], EC_ST_IDENTITY
 
     add     edi, EC_SCRATCH_OFFSET
