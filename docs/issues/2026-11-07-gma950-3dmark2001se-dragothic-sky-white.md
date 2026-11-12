@@ -177,7 +177,16 @@ The two frames below are the same moment (20:7x on the test's clock):
 
 The earlier note that the white horns are "probably meant" is wrong.
 
-Not yet run on these builds: the release probe set on the netbook,
-Half-Life (DDI 6 now offered to DX6/7 programs), and the HD 4600
-comparison. The no-texture-bound draws (`DrawsNoHandle`) are separate,
-and they remain.
+On the same build (`4146a0f0-dirty`, the fold included):
+- **Release probe set, boot 324**: `run-release-checks.ps1`, netbook
+  only. All 9 probe runs passed: V9XD32 default, `/bpp16`, `/ddi6` and
+  `/ddi5`; V9XGLP; V9XGLIDP; V9XR3DP; V9XWPRS; V9XFBCMP. Every
+  installed file's hash matched the package.
+- **Half-Life, boot 324**: Direct3D, windowed 640x480, `timedemo mwd5`
+  twice: 45.7 fps, then 50.5 fps. DDI 6 is now offered to DX6/7
+  programs. The Xen frame drew textured, and the game quit cleanly.
+  Boot 319's pool run measured 56.8 fps on its second pass. That is
+  recorded, not chased.
+
+Not run: the HD 4600 comparison. The no-texture-bound draws
+(`DrawsNoHandle`) are separate, and they remain.
