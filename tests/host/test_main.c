@@ -353,6 +353,12 @@ unsigned int v9x_run_rs690_3d_tests(void);
  * with a CPU rectangle operation. */
 unsigned int v9x_run_eg_dma_tests(void);
 
+/* tests\host\test_r6_dma.c: R6xx DMA fill and copy plans, run through two
+ * models of the engine M-NZHWBR's probe measured (in order, and with every
+ * read stale inside a submission) and compared with a CPU rectangle
+ * operation. */
+unsigned int v9x_run_r6_dma_tests(void);
+
 /* tests\host\test_vi_sdma.c: Carrizo SDMA packets from Evergreen's DMA
  * plans, run through a model of the engine the write probe measured, and
  * the generated microcode's edges. */
@@ -1553,6 +1559,7 @@ int main(int argc, char **argv)
     failures += v9x_run_rs690_2d_tests();
     failures += v9x_run_rs690_3d_tests();
     failures += v9x_run_eg_dma_tests();
+    failures += v9x_run_r6_dma_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();

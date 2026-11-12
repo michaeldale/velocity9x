@@ -145,6 +145,10 @@ $sources = @(
     # host-tested builder, in a ring in VRAM.
     "src\display32\engines\eng_eg.c",
     "src\chipsets\ati\evergreen\eg_dma.c",
+    # The R6xx async DMA engine: fill and copy plans through the
+    # host-tested builder, in the same ring window.
+    "src\display32\engines\eng_r6.c",
+    "src\chipsets\ati\r600\r6_dma.c",
     # The Evergreen 3D engine: the CP and its microcode (licence in
     # NOTICES.TXT), the PM4 streams and shaders, the neutral draw to them,
     # and the engine that submits them.

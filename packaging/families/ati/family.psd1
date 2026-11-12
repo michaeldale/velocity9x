@@ -689,6 +689,52 @@
             }
             MapSymbols = @('v9x_rs690_device')
         }
+        @{
+            Id = 'rv630'
+            Name = 'ATI Radeon HD 2600 XT (RV630)'
+            VendorId = '1002'
+            DeviceId = '9588'
+            # No SubsystemId: M-NZHWBR's reads 216C:1458, and the bare id
+            # binds every board built on the chip.
+            DeviceDesc = 'Velocity9x ATI Radeon HD 2600 XT (RV630)'
+            Adapter = 'ATI Radeon HD 2600 XT (RV630)'
+            ClockDetector = 'ati-r600-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # R6xx has no 2D engine. DirectDraw fill and copy on the async
+            # DMA engine: a seed row the CPU writes, then a COPY a row, by
+            # the rules the write probe measured on this card
+            # (docs\decisions\2026-11-13-rv630-dma-write-probe.md); the rest
+            # is drawn by the CPU (docs\plans\ati-rv630-hd2600xt.md).
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'not-advertised'
+            EngineType = 'ATI_R600'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # What M-NZHWBR's VBE 4F00h reports; CONFIG_MEMSIZE says 256 MiB
+            # (docs\decisions\2026-11-13-rv630-register-probe.md).
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c); M-NZHWBR's BIOS lists all seven
+            # (V9XBOOT.INI, 2026-11-13 audit).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            # Evergreen's module: its hook with the R6xx engine type, there
+            # because _TEXT has no room for a module of its own.
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_r600_rv630_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -743,8 +789,9 @@
             # The Direct3D back-end decision behind [Velocity9x] Direct3D.
             # Pure policy, host-tested; dd16.c resolves it at Enable and every
             # family publishes the result as Direct3DMode= whether or not it
-            # has a DirectDraw HAL to apply it to.
-            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
+            # has a DirectDraw HAL to apply it to. In LEAFCODE here since the
+            # R6xx row took _TEXT 49 bytes past its budget (leaf16.h).
+            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
@@ -902,6 +949,10 @@
             }
             @{
                 ChipId = 'rs690'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rv630'
                 Emulator = 'none'
             }
         )

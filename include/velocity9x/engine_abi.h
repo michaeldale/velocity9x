@@ -121,6 +121,16 @@
  * register. No Direct3D engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_RS690    14ul
+/*
+ * ATI R6xx async DMA engine (engines\eng_r6.c): solid fill and screen copy
+ * as linear VRAM runs, one COPY a row, through a ring in VRAM behind the
+ * 64 KiB register BAR. Evergreen's engine by descent, with other packets,
+ * no constant fill, and ordering rules of its own, measured on an HD 2600
+ * XT (docs\decisions\2026-11-13-rv630-dma-write-probe.md); the plans are
+ * src\chipsets\ati\r600\r6_dma.c's. No Direct3D engine, so d3d_select.c
+ * gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_R600     15ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

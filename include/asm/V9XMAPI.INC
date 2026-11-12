@@ -562,7 +562,8 @@ V9XMINI_FN_R128_AGP_RING    EQU 0024h
 ; 16 MiB the driver maps for the heap, where the DMA write probe ran
 ; (docs\decisions\2026-10-26-cedar-dma-write-probe.md). It is mapped only
 ; when BAR0 is 256 MiB aligned and CONFIG_MEMSIZE (5428h, MiB) reads
-; between 256 and 4096 through the register window, so the window is VRAM
+; between 256 and 4096 through the register window, or, as the R6xx HD 2600
+; XT keeps it in bytes, between 256 MiB and 1 GiB, so the window is VRAM
 ; behind this card's BAR. Maps once and refuses moved BARs. Interprets
 ; nothing else; only the ati family image implements it.
 ;

@@ -129,6 +129,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rs690\rs690_3d.c',
         # Evergreen async DMA: fill and copy packets, no I/O.
         'src\chipsets\ati\evergreen\eg_dma.c',
+        # R6xx async DMA: fill and copy plans, no I/O.
+        'src\chipsets\ati\r600\r6_dma.c',
         # Evergreen CP microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\evergreen\eg_cp_microcode.c',
         # Evergreen shader words and the bring-up shaders, no I/O.
@@ -391,6 +393,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_rs690_2d.c',
         'tests\host\test_rs690_3d.c',
         'tests\host\test_eg_dma.c',
+        'tests\host\test_r6_dma.c',
         'tests\host\test_eg_shader.c',
         'tests\host\test_eg_3d.c',
         'tests\host\test_cm_shader.c',

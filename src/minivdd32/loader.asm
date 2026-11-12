@@ -220,7 +220,12 @@ V9xRs690MmioLinear dd 0
 ; ring, then the CP's ring, shaders and vertex arena (eg_3d.h,
 ; V9X_EG_WINDOW_*). It ends at 244 MiB, inside the 256 MiB minimum below.
 ; CONFIG_MEMSIZE is in MiB on Evergreen (Linux evergreen_mc_init); 1024 on
-; M-BXMFA8 (docs\decisions\2026-10-26-cedar-register-probe.md).
+; M-BXMFA8 (docs\decisions\2026-10-26-cedar-register-probe.md). The R6xx
+; HD 2600 XT keeps the register at the same offset in bytes (r600_mc_init):
+; 10000000h on M-NZHWBR (docs\decisions\2026-11-13-rv630-register-probe.md).
+; EG_MAP takes either; the two ranges cannot meet, as a MiB count stays at
+; or below 4096 and a byte count at or above 256 MiB. Its register BAR is
+; 64 KiB; the 128 KiB mapped here past it is never read.
 V9X_EG_MMIO_BYTES       equ 00020000h
 V9X_EG_RING_OFFSET      equ 0f000000h
 V9X_EG_RING_BYTES       equ 00400000h
@@ -228,6 +233,8 @@ V9X_EG_BAR0_ALIGN       equ 0fffffffh
 V9X_EG_CONFIG_MEMSIZE   equ 00005428h
 V9X_EG_MEMSIZE_MIN_MIB  equ 256
 V9X_EG_MEMSIZE_MAX_MIB  equ 4096
+V9X_R6_MEMSIZE_MIN      equ 10000000h
+V9X_R6_MEMSIZE_MAX      equ 40000000h
 V9xEgMmioBase   dd 0
 V9xEgMmioLinear dd 0
 V9xEgBar0       dd 0
@@ -4220,7 +4227,13 @@ V9xMini_Api_EgMap_Map:
     cmp     ecx, V9X_EG_MEMSIZE_MIN_MIB
     jb      V9xMini_Api_EgMap_Failed
     cmp     ecx, V9X_EG_MEMSIZE_MAX_MIB
+    jbe     short V9xMini_Api_EgMap_Size_Ok
+    ; Not a MiB count: an R6xx byte count, or refused.
+    cmp     ecx, V9X_R6_MEMSIZE_MIN
+    jb      V9xMini_Api_EgMap_Failed
+    cmp     ecx, V9X_R6_MEMSIZE_MAX
     ja      V9xMini_Api_EgMap_Failed
+V9xMini_Api_EgMap_Size_Ok:
     push    eax
     mov     edx, V9xEgBar0
     add     edx, V9X_EG_RING_OFFSET

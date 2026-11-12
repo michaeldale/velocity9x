@@ -13,9 +13,13 @@ copies, inline writes and overlapping copies exact; a fill works only as
 a seed write then copies with a CPU-awaited fence between dependent
 steps, and a one-dword COPY is a no-op. The rectangle-fill shape for
 DirectDraw (seed row inline, a CPU-awaited fence, then every row copied
-from it in one submission) measured exact. Next: the identity row
-together with DirectDraw fill and copy on DMA (the RS690 was claimed with
-its engine, not before it). Other register facts
+from it in one submission) measured exact. Claimed in the `ati` family
+the same day with DirectDraw fill and copy on DMA (engine type 15,
+`eng_r6.c`): V9XDDP's fill, copy and four overlap cases pixel-correct at
+16 bpp, the ring drawn through, no timeouts
+([record](../decisions/2026-11-13-rv630-directdraw-on-dma.md)). The row
+lost the `vbe` driver's software Direct3D (the `ati` family's default
+request is 0). Next: 8 and 32 bpp through the HAL, then flips on D1. Other register facts
 below come from Linux `radeon` source.
 
 Target: the RV630 (`1002:9588`, Gigabyte SUBSYS `1458:216C`) as a new

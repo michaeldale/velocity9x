@@ -195,6 +195,9 @@ const V9X_HW16_DEVICE v9x_cik_mullins_device = {
 const V9X_HW16_DEVICE v9x_rs690_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_r600_rv630_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write)
 {
     (void)write;
