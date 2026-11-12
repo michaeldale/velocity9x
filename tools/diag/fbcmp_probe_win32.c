@@ -23,6 +23,10 @@
  * differences away from the cursor, and Result=PASS when there are none,
  * FAIL when there are, or FAIL-<step> when a step could not run. 16 and
  * 32 bpp only.
+ *
+ * It then checks offscreen surfaces wider than the screen (v9x_fbc_wide,
+ * the Wide* keys); when the comparison passed and that check fails,
+ * Result is FAIL-WIDE.
  */
 #define WIN32_LEAN_AND_MEAN
 #define COBJMACROS
@@ -218,6 +222,216 @@ static void v9x_fbc_fail(const char *result)
     ExitProcess(1u);
 }
 
+/*
+ * Offscreen surfaces wider than the screen. Since 0.48.0 every package
+ * claims DDCAPS2_WIDESURFACES (src\display32\ddhal_core.c), so DirectDraw
+ * now hands such surfaces to every chip's blitter, where it refused them
+ * before; 3DMark 2001 SE asks for a 1024x512 target at 640x480. The width
+ * here is 1.5 times the screen's, 64 rows, in video memory:
+ *
+ *  - A holds a pattern written by the CPU through a lock.
+ *  - B is filled whole by the engine (colour Z), then a band of rows 8-23
+ *    from 16 pixels left of the screen's width to the right edge (colour
+ *    C), so the fill crosses the screen-width boundary; then rows 32-63
+ *    are copied from A by the engine, full width.
+ *  - B is read back through a lock and every pixel checked.
+ *
+ * Writes the Wide* keys. Returns 1 when a surface the driver claims to
+ * support drew wrong, 0 otherwise (passed, or not claimed and refused).
+ */
+#define V9X_FBC_WIDE_ROWS 64ul
+#define V9X_FBC_WIDE_FILL_TOP 8l
+#define V9X_FBC_WIDE_FILL_BOTTOM 24l
+#define V9X_FBC_WIDE_FILL_LEAD 16l
+#define V9X_FBC_WIDE_COPY_TOP 32l
+
+static DWORD v9x_fbc_wide_mask(DWORD bytes)
+{
+    return bytes == 2ul ? 0xfffful : 0x00fffffful;
+}
+
+static DWORD v9x_fbc_wide_pattern(DWORD x, DWORD y, DWORD bytes)
+{
+    return ((x * 0x9e37ul) ^ (y * 0x7f4a7c15ul) ^ (x << 11)) &
+           v9x_fbc_wide_mask(bytes);
+}
+
+static DWORD v9x_fbc_wide_read(const BYTE *row, DWORD x, DWORD bytes)
+{
+    return bytes == 2ul ? (DWORD)*(const WORD *)(row + x * 2ul) :
+           *(const DWORD *)(row + x * 4ul) & 0x00fffffful;
+}
+
+static LPDIRECTDRAWSURFACE v9x_fbc_wide_surface(LPDIRECTDRAW dd,
+                                                DWORD width, HRESULT *result)
+{
+    LPDIRECTDRAWSURFACE surface = 0;
+    DDSURFACEDESC desc;
+
+    v9x_fbc_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    desc.dwFlags = DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT;
+    desc.ddsCaps.dwCaps = DDSCAPS_OFFSCREENPLAIN | DDSCAPS_VIDEOMEMORY;
+    desc.dwWidth = width;
+    desc.dwHeight = V9X_FBC_WIDE_ROWS;
+    *result = IDirectDraw_CreateSurface(dd, &desc, &surface, 0);
+    return *result == DD_OK ? surface : 0;
+}
+
+static int v9x_fbc_wide(LPDIRECTDRAW dd, DWORD screen_width, DWORD bytes)
+{
+    DDCAPS caps;
+    LPDIRECTDRAWSURFACE pattern = 0;
+    LPDIRECTDRAWSURFACE target = 0;
+    DDSURFACEDESC desc;
+    DDBLTFX fx;
+    RECT rect;
+    HRESULT result;
+    DWORD wide;
+    DWORD claimed;
+    DWORD fill_z;
+    DWORD fill_c;
+    DWORD x;
+    DWORD y;
+    DWORD mismatch = 0ul;
+    int failed = 0;
+    char text[64];
+
+    /* 1.5 times the screen, rounded to 32 pixels. */
+    wide = ((screen_width + screen_width / 2ul) + 31ul) & ~31ul;
+    v9x_fbc_uint("WideWidth", wide);
+    v9x_fbc_zero(&caps, sizeof(caps));
+    caps.dwSize = sizeof(caps);
+    claimed = 0ul;
+    if (IDirectDraw_GetCaps(dd, &caps, 0) == DD_OK) {
+        claimed = (caps.dwCaps2 & V9X_DDCAPS2_WIDESURFACES) != 0ul ? 1ul : 0ul;
+    }
+    v9x_fbc_uint("WideClaimed", claimed);
+
+    pattern = v9x_fbc_wide_surface(dd, wide, &result);
+    if (pattern != 0) {
+        target = v9x_fbc_wide_surface(dd, wide, &result);
+    }
+    wsprintfA(text, "%08lX", (DWORD)result);
+    v9x_fbc_text("WideCreate", text);
+    if (pattern == 0 || target == 0) {
+        /* Refused: right when the cap is not claimed, wrong when it is. */
+        v9x_fbc_text("WideResult", claimed ? "FAIL-CREATE" : "NOT-CLAIMED");
+        failed = claimed ? 1 : 0;
+        goto done;
+    }
+
+    /* A by the CPU. */
+    v9x_fbc_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (IDirectDrawSurface_Lock(pattern, 0, &desc, DDLOCK_WAIT, 0) != DD_OK) {
+        v9x_fbc_text("WideResult", "FAIL-LOCK");
+        failed = 1;
+        goto done;
+    }
+    v9x_fbc_uint("WidePitch", (DWORD)desc.lPitch);
+    for (y = 0ul; y < V9X_FBC_WIDE_ROWS; ++y) {
+        BYTE *row = (BYTE *)desc.lpSurface + (DWORD)desc.lPitch * y;
+
+        for (x = 0ul; x < wide; ++x) {
+            DWORD value = v9x_fbc_wide_pattern(x, y, bytes);
+
+            if (bytes == 2ul) {
+                *(WORD *)(row + x * 2ul) = (WORD)value;
+            } else {
+                *(DWORD *)(row + x * 4ul) = value;
+            }
+        }
+    }
+    IDirectDrawSurface_Unlock(pattern, 0);
+
+    /* B by the engine: fill whole, fill the band, copy the rows. */
+    fill_z = bytes == 2ul ? 0x39e7ul : 0x00396b5aul;
+    fill_c = bytes == 2ul ? 0xf81ful : 0x00e01cf0ul;
+    v9x_fbc_zero(&fx, sizeof(fx));
+    fx.dwSize = sizeof(fx);
+    fx.dwFillColor = fill_z;
+    if (IDirectDrawSurface_Blt(target, 0, 0, 0, DDBLT_COLORFILL | DDBLT_WAIT,
+                               &fx) != DD_OK) {
+        v9x_fbc_text("WideResult", "FAIL-FILL");
+        failed = 1;
+        goto done;
+    }
+    rect.left = (LONG)screen_width - V9X_FBC_WIDE_FILL_LEAD;
+    rect.top = V9X_FBC_WIDE_FILL_TOP;
+    rect.right = (LONG)wide;
+    rect.bottom = V9X_FBC_WIDE_FILL_BOTTOM;
+    fx.dwFillColor = fill_c;
+    if (IDirectDrawSurface_Blt(target, &rect, 0, 0,
+                               DDBLT_COLORFILL | DDBLT_WAIT, &fx) != DD_OK) {
+        v9x_fbc_text("WideResult", "FAIL-FILL-BAND");
+        failed = 1;
+        goto done;
+    }
+    rect.left = 0l;
+    rect.top = V9X_FBC_WIDE_COPY_TOP;
+    rect.right = (LONG)wide;
+    rect.bottom = (LONG)V9X_FBC_WIDE_ROWS;
+    if (IDirectDrawSurface_Blt(target, &rect, pattern, &rect, DDBLT_WAIT,
+                               0) != DD_OK) {
+        v9x_fbc_text("WideResult", "FAIL-COPY");
+        failed = 1;
+        goto done;
+    }
+
+    /* Read B back. */
+    v9x_fbc_zero(&desc, sizeof(desc));
+    desc.dwSize = sizeof(desc);
+    if (IDirectDrawSurface_Lock(target, 0, &desc,
+                                DDLOCK_WAIT | DDLOCK_READONLY, 0) != DD_OK) {
+        v9x_fbc_text("WideResult", "FAIL-LOCK");
+        failed = 1;
+        goto done;
+    }
+    for (y = 0ul; y < V9X_FBC_WIDE_ROWS; ++y) {
+        const BYTE *row = (const BYTE *)desc.lpSurface +
+                          (DWORD)desc.lPitch * y;
+
+        for (x = 0ul; x < wide; ++x) {
+            DWORD want;
+            DWORD got = v9x_fbc_wide_read(row, x, bytes);
+
+            if ((LONG)y >= V9X_FBC_WIDE_COPY_TOP) {
+                want = v9x_fbc_wide_pattern(x, y, bytes);
+            } else if ((LONG)y >= V9X_FBC_WIDE_FILL_TOP &&
+                       (LONG)y < V9X_FBC_WIDE_FILL_BOTTOM &&
+                       (LONG)x >= (LONG)screen_width -
+                                  V9X_FBC_WIDE_FILL_LEAD) {
+                want = fill_c;
+            } else {
+                want = fill_z;
+            }
+            if (got == want) {
+                continue;
+            }
+            if (mismatch == 0ul) {
+                wsprintfA(text, "%lu,%lu got=%08lX want=%08lX", x, y, got,
+                          want);
+                v9x_fbc_text("WideFirstMismatch", text);
+            }
+            ++mismatch;
+        }
+    }
+    IDirectDrawSurface_Unlock(target, 0);
+    v9x_fbc_uint("WideMismatch", mismatch);
+    failed = mismatch != 0ul ? 1 : 0;
+    v9x_fbc_text("WideResult", failed ? "FAIL" : "PASS");
+
+done:
+    if (target != 0) {
+        IDirectDrawSurface_Release(target);
+    }
+    if (pattern != 0) {
+        IDirectDrawSurface_Release(pattern);
+    }
+    return failed;
+}
+
 void __stdcall V9xFbCompareProbeEntry(void)
 {
     V9X_FBC_CREATE create;
@@ -250,6 +464,7 @@ void __stdcall V9xFbCompareProbeEntry(void)
     LONG box_top = 0x7fffffffl;
     LONG box_right = -1l;
     LONG box_bottom = -1l;
+    int wide_failed;
     char text[64];
 
     /* "/delay" on the command line: wait 15 s first, so a remote agent
@@ -417,10 +632,11 @@ void __stdcall V9xFbCompareProbeEntry(void)
             }
         }
     }
+    v9x_fbc_uint("Pitch", (DWORD)desc.lPitch);
     IDirectDrawSurface_Release(primary);
+    wide_failed = v9x_fbc_wide(dd, width, bytes);
     IDirectDraw_Release(dd);
 
-    v9x_fbc_uint("Pitch", (DWORD)desc.lPitch);
     v9x_fbc_uint("CursorX", (DWORD)cursor.x);
     v9x_fbc_uint("CursorY", (DWORD)cursor.y);
     v9x_fbc_uint("DifferNearCursor", differ_cursor);
@@ -441,6 +657,13 @@ void __stdcall V9xFbCompareProbeEntry(void)
     DeleteObject(bitmap_after);
     DeleteDC(memory);
     v9x_fbc_write_log();
-    v9x_fbc_text("Result", differ == 0ul ? "PASS" : "FAIL");
-    ExitProcess(differ == 0ul ? 0u : 2u);
+    /* The frame-buffer comparison first; a wide-surface failure shows in
+     * Result only when the comparison itself passed (WideResult has it
+     * either way). */
+    if (differ != 0ul) {
+        v9x_fbc_text("Result", "FAIL");
+        ExitProcess(2u);
+    }
+    v9x_fbc_text("Result", wide_failed ? "FAIL-WIDE" : "PASS");
+    ExitProcess(wide_failed ? 3u : 0u);
 }
