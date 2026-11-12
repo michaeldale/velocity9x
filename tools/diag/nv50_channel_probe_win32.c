@@ -420,6 +420,104 @@ static void v9x_health(const char *stage)
     v9x_flush();
 }
 
+/*
+ * PCIe error state around the kick (run 21). Runs 14-20 found the
+ * card's PCI status bit 13 (received master abort) set by the kick, with
+ * no VM trap, and nothing in nouveau's init left to compare. A requester
+ * sets that bit when its request completes as Unsupported Request, so
+ * the root port above it detected one. This logs, through CF8h only:
+ * the root port's status and secondary status, the PCIe Device Status
+ * of the root port and of the card (Unsupported Request Detected is bit
+ * 3 of the status half), and the root port's Root Status. The address
+ * of the request sits in AER header logs, read separately.
+ */
+#define V9X_CAP_POINTER       0x34ul
+#define V9X_CAP_PCIE          0x10ul
+#define V9X_PCIE_DEVICE_CTL   0x08ul
+#define V9X_PCIE_ROOT_STATUS  0x20ul
+#define V9X_BRIDGE_BUSES      0x18ul
+#define V9X_BRIDGE_SEC_STATUS 0x1cul
+
+static DWORD v9x_bridge;
+static DWORD v9x_gpu_pcie;
+static DWORD v9x_bridge_pcie;
+
+static DWORD v9x_find_cap(DWORD device, DWORD id)
+{
+    DWORD at = v9x_config_read(device, V9X_CAP_POINTER) & 0xfcul;
+    DWORD hops;
+
+    for (hops = 0ul; hops < 48ul && at >= 0x40ul; ++hops) {
+        DWORD word = v9x_config_read(device, at);
+
+        if ((word & 0xfful) == id) {
+            return at;
+        }
+        at = (word >> 8) & 0xfcul;
+    }
+    return 0ul;
+}
+
+/* The bridge on bus 0 whose secondary bus is the card's. */
+static void v9x_find_bridge(void)
+{
+    DWORD bus = (v9x_config >> 16) & 0xfful;
+    DWORD slot;
+    DWORD function;
+
+    for (slot = 0ul; slot < 32ul; ++slot) {
+        for (function = 0ul; function < 8ul; ++function) {
+            DWORD device = 0x80000000ul | (slot << 11) | (function << 8);
+            DWORD header;
+
+            if (v9x_config_read(device, 0ul) == 0xfffffffful) {
+                continue;
+            }
+            header = (v9x_config_read(device, 0x0cul) >> 16) & 0x7ful;
+            if (header == 1ul &&
+                ((v9x_config_read(device, V9X_BRIDGE_BUSES) >> 8) & 0xfful) ==
+                    bus) {
+                v9x_bridge = device;
+                v9x_bridge_pcie = v9x_find_cap(device, V9X_CAP_PCIE);
+                return;
+            }
+        }
+    }
+}
+
+static void v9x_pcie_key(const char *stage, const char *name, DWORD value)
+{
+    char key[40];
+
+    lstrcpyA(key, stage);
+    lstrcatA(key, ".");
+    lstrcatA(key, name);
+    v9x_key("Pcie", key, value);
+}
+
+static void v9x_pcie_status(const char *stage)
+{
+    if (v9x_gpu_pcie != 0ul) {
+        v9x_pcie_key(stage, "GpuDevCtlSta",
+                     v9x_config_read(v9x_config,
+                                     v9x_gpu_pcie + V9X_PCIE_DEVICE_CTL));
+    }
+    if (v9x_bridge != 0ul) {
+        v9x_pcie_key(stage, "BridgeCfg4", v9x_config_read(v9x_bridge, 4ul));
+        v9x_pcie_key(stage, "BridgeSecStatus",
+                     v9x_config_read(v9x_bridge, V9X_BRIDGE_SEC_STATUS));
+    }
+    if (v9x_bridge_pcie != 0ul) {
+        v9x_pcie_key(stage, "BridgeDevCtlSta",
+                     v9x_config_read(v9x_bridge,
+                                     v9x_bridge_pcie + V9X_PCIE_DEVICE_CTL));
+        v9x_pcie_key(stage, "BridgeRootStatus",
+                     v9x_config_read(v9x_bridge,
+                                     v9x_bridge_pcie + V9X_PCIE_ROOT_STATUS));
+    }
+    v9x_flush();
+}
+
 /* Run the list. Returns nonzero when every op ran. */
 static int v9x_run(const char *stage)
 {
@@ -961,6 +1059,117 @@ static void v9x_stage_flush_page(void)
  * so the sources do not name their units. The VxD lets bits be
  * switched on but never off (other than PFIFO and PGRAPH).
  */
+/*
+ * The card's PCIe extended configuration space, which CF8h cannot reach,
+ * through the BAR0 mirror at 88000h (offset = configuration offset). The
+ * mirror is recalled from nouveau (pci\nv40.c), not in the saved sources,
+ * so its first 16 dwords are first compared with CF8h reads. Then the
+ * extended capability list from 100h is walked (id 15:0, next 31:20). If
+ * AER (id 1) is there, its 11 dwords are read now and again straight
+ * after the kick: uncorrectable status, mask, severity, correctable
+ * status, mask, control (first error pointer), and the four-dword header
+ * log of the first error, which holds the request's address.
+ */
+#define V9X_MIRROR            0x088000ul
+#define V9X_MIRROR_CHECK_WORDS 16u
+#define V9X_EXT_BASE          0x100ul
+#define V9X_EXT_LIMIT         0x400ul
+#define V9X_EXT_WORDS         ((V9X_EXT_LIMIT - V9X_EXT_BASE) / 4ul)
+#define V9X_EXT_CAP_AER       0x0001ul
+#define V9X_AER_WORDS         11u
+
+static DWORD v9x_aer;
+
+static void v9x_aer_request(DWORD *ops)
+{
+    DWORD index;
+
+    for (index = 0ul; index < V9X_AER_WORDS; ++index) {
+        ops[index] = v9x_read(V9X_MIRROR + v9x_aer + index * 4ul);
+    }
+}
+
+static void v9x_aer_publish(const char *stage, const DWORD *ops)
+{
+    DWORD index;
+    char key[40];
+
+    for (index = 0ul; index < V9X_AER_WORDS; ++index) {
+        lstrcpyA(key, stage);
+        lstrcatA(key, ".Aer");
+        v9x_hex(key + lstrlenA(key), index * 4ul, 2);
+        v9x_put("Pcie", key, ops[index]);
+    }
+}
+
+static void v9x_stage_pcie(void)
+{
+    DWORD check[V9X_MIRROR_CHECK_WORDS];
+    DWORD ext[V9X_EXT_WORDS];
+    DWORD index;
+    DWORD matches = 0ul;
+    DWORD at;
+    DWORD hops;
+    char key[16];
+
+    v9x_find_bridge();
+    v9x_gpu_pcie = v9x_find_cap(v9x_config, V9X_CAP_PCIE);
+    v9x_key("Pcie", "Bridge", v9x_bridge);
+    v9x_key("Pcie", "GpuCap", v9x_gpu_pcie);
+    v9x_key("Pcie", "BridgeCap", v9x_bridge_pcie);
+    v9x_flush();
+
+    v9x_ops_begin();
+    for (index = 0ul; index < V9X_MIRROR_CHECK_WORDS; ++index) {
+        check[index] = v9x_read(V9X_MIRROR + index * 4ul);
+    }
+    for (index = 0ul; index < V9X_EXT_WORDS; ++index) {
+        ext[index] = v9x_read(V9X_MIRROR + V9X_EXT_BASE + index * 4ul);
+    }
+    if (!v9x_run("pcie")) {
+        v9x_finish("PCIE-REFUSED", 4u);
+    }
+    for (index = 0ul; index < V9X_MIRROR_CHECK_WORDS; ++index) {
+        if (v9x_value(check[index]) ==
+            v9x_config_read(v9x_config, index * 4ul)) {
+            ++matches;
+        }
+    }
+    v9x_key("Pcie", "MirrorMatches", matches);
+
+    /* The extended capability headers, as found. */
+    at = V9X_EXT_BASE;
+    for (hops = 0ul; hops < 32ul && at >= V9X_EXT_BASE &&
+                     at < V9X_EXT_LIMIT; ++hops) {
+        DWORD header = v9x_value(ext[(at - V9X_EXT_BASE) / 4ul]);
+
+        lstrcpyA(key, "Ext");
+        v9x_hex(key + 3, at, 3);
+        v9x_key("Pcie", key, header);
+        if (header == 0ul || header == 0xfffffffful) {
+            break;
+        }
+        if ((header & 0xfffful) == V9X_EXT_CAP_AER) {
+            v9x_aer = at;
+        }
+        at = (header >> 20) & 0xffcul;
+    }
+    v9x_key("Pcie", "Aer", v9x_aer);
+    if (v9x_aer != 0ul && v9x_aer + V9X_AER_WORDS * 4ul > V9X_EXT_LIMIT) {
+        v9x_aer = 0ul;
+    }
+    if (v9x_aer != 0ul) {
+        DWORD words[V9X_AER_WORDS];
+
+        for (index = 0ul; index < V9X_AER_WORDS; ++index) {
+            words[index] = ext[(v9x_aer - V9X_EXT_BASE) / 4ul + index];
+        }
+        v9x_aer_publish("pre", words);
+    }
+    v9x_flush();
+    v9x_pcie_status("pre");
+}
+
 #define V9X_NV50_PMC_ENABLE_ALL 0xfffffffful
 
 static void v9x_stage_mc(void)
@@ -1032,6 +1241,7 @@ static int v9x_stage_fifo(void)
     DWORD empty_wait;
     DWORD trap;
     DWORD trap_word[V9X_NV50_VM_TRAP_WORDS];
+    DWORD aer[V9X_AER_WORDS];
     char trap_key[8];
 
     v9x_ops_begin();
@@ -1094,6 +1304,7 @@ static int v9x_stage_fifo(void)
     }
     v9x_put("Fifo", "RunlistWait", runlist_wait);
     v9x_flush();
+    v9x_pcie_status("fifo-bind");
 
     /*
      * One IB entry, then the kick: IB PUT = 1. Only registers that have
@@ -1119,10 +1330,17 @@ static int v9x_stage_fifo(void)
                   (index << V9X_NV50_VM_TRAP_WORD_SHIFT));
         trap_word[index] = v9x_read(V9X_NV50_VM_TRAP_DATA);
     }
+    if (v9x_aer != 0ul) {
+        v9x_aer_request(aer);
+    }
     v9x_status_request(&s, 0ul);
     if (!v9x_run("fifo-put")) {
         v9x_finish("FIFO-REFUSED", 5u);
     }
+    if (v9x_aer != 0ul) {
+        v9x_aer_publish("fifo-put", aer);
+    }
+    v9x_pcie_status("fifo-put");
     v9x_put("Trap", "Status", trap);
     for (index = 0ul; index < V9X_NV50_VM_TRAP_WORDS; ++index) {
         lstrcpyA(trap_key, "Word");
@@ -1140,6 +1358,7 @@ static int v9x_stage_fifo(void)
         Sleep(1000);
         v9x_health("fifo-sleep");
         v9x_log("healthy", "fifo-sleep");
+        v9x_pcie_status("fifo-sleep");
         v9x_vram_check("fifo-sleep");
         v9x_ops_begin();
         v9x_status_request(&s, 0ul);
@@ -1449,6 +1668,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     if (v9x_stop_after_region != 0ul) {
         v9x_finish("STOPPED-AFTER-REGION", 0u);
     }
+    v9x_stage_pcie();
     v9x_stage_mc();
     v9x_stage_bar();
     if (!v9x_stage_fifo()) {

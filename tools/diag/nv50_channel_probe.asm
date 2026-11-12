@@ -145,11 +145,15 @@ NCReadWindows label dword
     dd 402cc0h, 402cc4h ; zcull
     dd 700000h, 800000h ; PRAMIN, the GPU's own view of video memory
     dd 070000h, 070004h ; G84 BAR flush (bar\g84.c g84_bar_flush)
+    dd 088000h, 088400h ; PCI configuration mirror, with PCIe extended space
+                        ; from 100h (nouveau pci\nv40.c nv40_pci_rd32, as
+                        ; recalled: not in the saved sources; run 21
+                        ; checks it against CF8h reads of 0-FFh)
     ; No USERD (C02000h) and no CACHE1 sweep (3200h-32FCh) reads: on this
     ; card reads there time out (FFFFFFFF, tens of ms) and the card leaves
     ; configuration space soon after (runs 3, 6 and 13 of
     ; docs\decisions\2026-11-11-gt218-channel-probe-run1-hang.md).
-NC_READ_WINDOW_COUNT    equ 32
+NC_READ_WINDOW_COUNT    equ 33
 
 ; Writes accepted: start, limit (exclusive).
 NCWriteWindows label dword
