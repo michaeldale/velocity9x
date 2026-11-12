@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-25: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-26: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -837,5 +837,27 @@ space, which the bridge reaches without the card's memory path, still
 answers. Run 22, where the IB fetch faulted and no push was fetched,
 lost neither. The failure follows the push fetch and reaches the card's
 host interface: first its framebuffer path, then its register path.
+
+## Run 26 (boot 103): sampling inside the kick's run hangs it
+
+As run 25, with 40 samples (PTIMER, the BAR1 instance word, PMC_INTR,
+PFIFO_INTR, 400700h, then 2000 PTIMER reads) added to the put run itself,
+straight after the IB PUT write. The 46fa90d3 code was built as
+`505761c7-dirty`. Log: `run26-V9XN5CH.LOG` (from line 5529).
+
+The log ends at `run fifo-put`: the put run never returned, so none of
+its samples were recorded. The machine stopped; boot 104 followed the
+owner's power-cycle.
+
+Run 25's reads of BAR1 and BAR0 about 50-80 ms after the kick returned
+FFFFFFFF. Some read in this run, made while the failure was in progress,
+did not return at all. Which one, and when, is not known. Reading the
+card's memory windows during the first tens of milliseconds after a kick
+can stop the CPU, so a finer timeline from Win98 needs reads that cannot
+stall the bus, and none of these qualify. This is where the measurement
+from M-BXMFA8 stops being cheap. The plan for the local GT210 under
+Linux nouveau ([nvidia-gt218-linux-trace.md](../plans/nvidia-gt218-linux-trace.md))
+is the next step: it should show what nouveau does after its push fetch
+that the probe does not.
 
 

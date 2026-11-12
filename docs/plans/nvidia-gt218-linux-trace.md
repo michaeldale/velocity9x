@@ -31,6 +31,18 @@ G84-G98, GT200, GT215/216/218, MCP7x) feeds its engines through the same
 PFIFO channels, and nouveau gives A8 the G84/G98 channel code the probe
 ports.
 
+### Since the plan was written (runs 22-26, 2026-11-12)
+
+Controls on M-BXMFA8 moved the question. An IB outside the VM traps
+cleanly at our instance block and the card survives (run 22), so the IB
+fetch and the VM work. The master abort came from the push DMA object's
+class: with nouveau's `NV_DMA_FROM_MEMORY` (02h) it is gone (run 24).
+What remains: after the push fetch, BAR1 stops answering within about
+50 ms and BAR0 by about 80 ms, with nothing reported (run 25). Reads
+during that window can stop the CPU (run 26). So step 2's comparison
+should look first at what nouveau does at and after its first push
+fetch, and at what its push contains.
+
 ## Steps
 
 Each step ends in a record in docs/decisions/ with its log, the way the
