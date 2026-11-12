@@ -937,6 +937,62 @@ static void v9x_stage_flush_page(void)
     v9x_vram_check("flush-page");
 }
 
+/*
+ * The BAR channel and the BAR write flush, the two steps nouveau takes
+ * before any channel runs that runs 1-17 did not (the source studies in
+ * docs\decisions\2026-11-11-gt218-channel-probe-run1-hang.md).
+ *
+ * 1704h names an instance block of its own, written as
+ * nv50_bar_bar2_init writes it: plain, then with bit 30. The block is
+ * 128 KiB of zeros (nv50_bar_oneinit's size), so its page directory at
+ * + 1400h holds no valid entry. 1708h and 170Ch stay 0 (the VxD refuses
+ * them), so BAR1 and BAR3 keep decoding video memory linearly, and the
+ * desktop in BAR3 is not involved.
+ *
+ * Then g84_bar_flush, which nouveau runs after every instance-memory
+ * write batch (instmem\nv50.c nv50_instobj_release): 70000h = 1, wait
+ * for bit 1 to clear. Here it follows everything the region stage wrote
+ * through BAR1.
+ */
+#define V9X_BAR_INST_OFFSET  0x00100000ul
+#define V9X_BAR_INST_BYTES   0x00020000ul
+#define V9X_NV50_BAR_CHANNEL 0x001704ul
+#define V9X_NV50_BAR_CHANNEL_BIT30 0x40000000ul
+#define V9X_G84_BAR_FLUSH    0x070000ul
+#define V9X_G84_BAR_FLUSH_BUSY 0x00000002ul
+
+static void v9x_stage_bar(void)
+{
+    DWORD inst = (V9X_WINDOW_VRAM + V9X_BAR_INST_OFFSET) >> 12;
+    DWORD before;
+    DWORD channel;
+    DWORD flush_wait;
+    DWORD flush;
+
+    v9x_ops_begin();
+    before = v9x_read(V9X_NV50_BAR_CHANNEL);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_BAR_INST_OFFSET, V9X_BAR_INST_BYTES / 4ul,
+           0ul);
+    v9x_write(V9X_NV50_BAR_CHANNEL, inst);
+    v9x_write(V9X_NV50_BAR_CHANNEL, V9X_NV50_BAR_CHANNEL_BIT30 | inst);
+    channel = v9x_read(V9X_NV50_BAR_CHANNEL);
+    v9x_write(V9X_G84_BAR_FLUSH, 1ul);
+    flush_wait = v9x_wait(V9X_G84_BAR_FLUSH, V9X_G84_BAR_FLUSH_BUSY, 0ul);
+    flush = v9x_read(V9X_G84_BAR_FLUSH);
+    if (!v9x_run("bar")) {
+        v9x_finish("BAR-REFUSED", 4u);
+    }
+    v9x_put("Bar", "ChannelBefore", before);
+    v9x_put("Bar", "Channel", channel);
+    v9x_put("Bar", "FlushWait", flush_wait);
+    v9x_put("Bar", "Flush", flush);
+    v9x_flush();
+    v9x_vram_check("bar");
+    if (v9x_timed_out(flush_wait)) {
+        v9x_finish("BAR-FLUSH-TIMEOUT", 4u);
+    }
+}
+
 static void v9x_stage_gr_init(void);
 
 static int v9x_stage_fifo(void)
@@ -1358,6 +1414,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     if (v9x_stop_after_region != 0ul) {
         v9x_finish("STOPPED-AFTER-REGION", 0u);
     }
+    v9x_stage_bar();
     if (!v9x_stage_fifo()) {
         v9x_finish("FIFO-FAILED", 5u);
     }

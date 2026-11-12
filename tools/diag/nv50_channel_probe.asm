@@ -144,11 +144,12 @@ NCReadWindows label dword
     dd 402ca8h, 402cach ; zcull
     dd 402cc0h, 402cc4h ; zcull
     dd 700000h, 800000h ; PRAMIN, the GPU's own view of video memory
+    dd 070000h, 070004h ; G84 BAR flush (bar\g84.c g84_bar_flush)
     ; No USERD (C02000h) and no CACHE1 sweep (3200h-32FCh) reads: on this
     ; card reads there time out (FFFFFFFF, tens of ms) and the card leaves
     ; configuration space soon after (runs 3, 6 and 13 of
     ; docs\decisions\2026-11-11-gt218-channel-probe-run1-hang.md).
-NC_READ_WINDOW_COUNT    equ 31
+NC_READ_WINDOW_COUNT    equ 32
 
 ; Writes accepted: start, limit (exclusive).
 NCWriteWindows label dword
@@ -190,7 +191,10 @@ NCWriteWindows label dword
     dd 001700h, 001704h ; PRAMIN window base (nv50_instmem), restored after
     dd 100c90h, 100c94h ; VM trap enable and trap word select (nv50_fb_init,
                         ; nv50_fb_intr; 000D0FFFh on gt215_fb)
-NC_WRITE_WINDOW_COUNT   equ 37
+    dd 070000h, 070004h ; G84 BAR flush
+    dd 001704h, 001708h ; BAR channel (bar\nv50.c nv50_bar_bar2_init); 1708h
+                        ; and 170Ch stay unwritable, so both BARs stay linear
+NC_WRITE_WINDOW_COUNT   equ 39
 
 NCResult label dword
     dd NC_MAGIC                 ; 00 magic
