@@ -63,6 +63,14 @@ before the mode list is read should make VBE 163h-165h set 1280x800. Not
 tried: nothing has been written to shadow RAM, and how the GM965's PAM
 registers lock C0000h is not checked.
 
+## Done for the GM965 (2026-11-12)
+
+`5dc632be` plans and applies the patch; on TOMMOHP the BIOS now sets
+1280x800 with the fitter off
+([`../decisions/2026-11-12-gm965-panel-native-1280x800.md`](../decisions/2026-11-12-gm965-panel-native-1280x800.md)).
+The netbook, the GM45 and Pineview are not gated in: each needs its own
+BIOS read first. The acceptance below (the netbook) is still open.
+
 ## Acceptance
 
 The netbook offers and sets 1024x600 (its panel), recorded with the BIOS
