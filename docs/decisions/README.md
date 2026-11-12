@@ -333,6 +333,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-11 Gen3 textures to 2048: the refused call was a 2048x2048 map against a 1024 cap; with 2048 claimed (a 2048 edge sampled exactly) 3DMark 2001 SE completes with pixel shaders, 528](2026-11-11-gen3-texture-size-2048.md)
 - [2026-11-12 Intel Gen3 texture pool: the plan's decisions taken (32 MiB, netbook only, V9X3D OFF recovers) and its errata gate](2026-11-12-intel-gen3-texture-pool-decisions.md)
 - [2026-11-12 Intel Gen3 texture pool, Phase 0: 32 MiB of fixed pages allocates in 34 ms, 64 MiB of GMADR maps write-combined, and the 98 SE runtime keeps a texture-only heap to textures](2026-11-12-intel-gen3-texture-pool-phase0.md)
+- [2026-11-12 Intel Gen3 texture pool, Phase 2: 32 MiB of RAM mapped through the GTT, a pattern through the aperture lands in the right pages, and a VBIOS mode set leaves the PTEs alone](2026-11-12-intel-gen3-texture-pool-phase2.md)
 
 ## SiS
 
