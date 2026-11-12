@@ -41,6 +41,13 @@ param(
     # Also run 3DMark 2000 on machines whose entry has a ThreeDMark sequence,
     # with V9XTRACE grabbing frames.
     [switch]$ThreeDMark,
+    # Stop 3DMark this many minutes after it starts drawing; 0 runs it to
+    # its score. Three minutes covers the first game test, where the grabs
+    # are taken and every counter that has caught a fault (draws into the
+    # page on screen, point-sampled magnification, engine stalls) moves; a
+    # whole run took 6 to 16 minutes in the 0.47.0 checks.
+    [ValidateRange(0, 30)]
+    [int]$ThreeDMarkMinutes = 3,
     # Write the record for an existing -OutDir without running anything:
     # after rerunning one machine, or to compare two earlier folders.
     [switch]$SummaryOnly,
@@ -87,6 +94,13 @@ $probeReports = @(
     @{ Exe = 'V9XGLP.EXE'; Report = 'V9XGLP.INI'; Prefix = 'glp' }
     @{ Exe = 'V9XGLIDP.EXE'; Report = 'V9XGLIDP.INI'; Prefix = 'glidp' }
     @{ Exe = 'V9XR3DP.EXE'; Report = 'V9XR3DP.INI'; Prefix = 'r3dp' }
+    # From 0.48.0. DirectDraw and OpenGL presents into a window, timed and
+    # read back through GDI: what windowed Quake 3 found in 0.47.0's screen
+    # shadow (docs\decisions\2026-11-12-ati-screen-shadow.md).
+    @{ Exe = 'V9XWPRS.EXE'; Report = 'V9XWPRS.INI'; Prefix = 'wprs' }
+    # Last: the frame buffer against what GDI reads, after every probe has
+    # drawn and closed its window.
+    @{ Exe = 'V9XFBCMP.EXE'; Report = 'V9XFBCMP.INI'; Prefix = 'fbcmp' }
 )
 
 function Import-V9xMachineList {
@@ -313,6 +327,8 @@ if ($Worker) {
             'V9XGLP.EXE'   = Join-Path $repoRoot 'build\gl-probe\V9XGLP.EXE'
             'V9XGLIDP.EXE' = Join-Path $repoRoot 'build\glide-probe\V9XGLIDP.EXE'
             'V9XR3DP.EXE'  = Join-Path $repoRoot 'build\r3d-probe\V9XR3DP.EXE'
+            'V9XWPRS.EXE'  = Join-Path $repoRoot 'build\wpresent-probe\V9XWPRS.EXE'
+            'V9XFBCMP.EXE' = Join-Path $repoRoot 'build\fbcmp-probe\V9XFBCMP.EXE'
             'V9XTRACE.EXE' = Join-Path $package 'V9XTRACE.EXE'
         }
         # Only the probes that changed are sent. V9XREL.SUM on the machine
@@ -452,6 +468,7 @@ if ($Worker) {
             $flipsMoved = Get-Date
             $began = Get-Date
             $finished = $false
+            $limited = $false
             while (-not $finished) {
                 if (((Get-Date) - $began).TotalMinutes -gt 20) {
                     Save-Stuck 'no score after 20 minutes'
@@ -511,12 +528,26 @@ if ($Worker) {
                 if ($foreign) {
                     Save-Stuck "dialog '$($foreign[0].Title)' appeared"
                 }
+                # The time limit, checked after the crash and dialog checks
+                # so a run that faulted in its last poll still says so.
+                if ($ThreeDMarkMinutes -gt 0 -and
+                    ((Get-Date) - $began).TotalMinutes -ge $ThreeDMarkMinutes) {
+                    $limited = $true
+                    $finished = $true
+                }
             }
-            $status.ThreeDMark = ("finished in {0:N1} min, last FlipHandled {1}" -f
-                ((Get-Date) - $began).TotalMinutes, $lastFlips)
+            if ($limited) {
+                $status.ThreeDMark = ("stopped at the {0}-minute limit, last FlipHandled {1}" -f
+                    $ThreeDMarkMinutes, $lastFlips)
+            } else {
+                $status.ThreeDMark = ("finished in {0:N1} min, last FlipHandled {1}" -f
+                    ((Get-Date) - $began).TotalMinutes, $lastFlips)
+            }
             Note "3DMark $($status.ThreeDMark)"
-            & $controller screenshot -OutFile (Join-Path $machineDir '3dmark-score.png') `
-                @connection -ConnectTimeoutSeconds 120 | Out-Null
+            if (-not $limited) {
+                & $controller screenshot -OutFile (Join-Path $machineDir '3dmark-score.png') `
+                    @connection -ConnectTimeoutSeconds 120 | Out-Null
+            }
             $null = Invoke-Ctl kill @{ Name = '3DMARK2000.EXE' }
             Save-Snapshot (Join-Path $grabDir 'snapshot-after.ini')
             for ($i = 0; $i -lt 10; ++$i) {
@@ -681,6 +712,8 @@ if ($SummaryOnly) {
     & (Join-Path $PSScriptRoot "build-gl-probe.ps1") -BuildId $buildId | Out-Null
     & (Join-Path $PSScriptRoot "build-glide-probe.ps1") -BuildId $buildId | Out-Null
     & (Join-Path $PSScriptRoot "build-r3d-probe.ps1") -BuildId $buildId | Out-Null
+    & (Join-Path $PSScriptRoot "build-wpresent-probe.ps1") -BuildId $buildId | Out-Null
+    & (Join-Path $PSScriptRoot "build-fbcmp-probe.ps1") -BuildId $buildId | Out-Null
 }
 
 $powershell = (Get-Command 'powershell.exe').Source
@@ -695,7 +728,7 @@ foreach ($entry in $machines) {
         '-OutDir', "`"$OutDir`""
     )
     if ($Baseline) { $arguments += '-Baseline' }
-    if ($ThreeDMark) { $arguments += '-ThreeDMark' }
+    if ($ThreeDMark) { $arguments += '-ThreeDMark'; $arguments += '-ThreeDMarkMinutes'; $arguments += "$ThreeDMarkMinutes" }
     if ($List) { $arguments += '-List' }
     $process = Start-Process -FilePath $powershell -ArgumentList $arguments `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err" `
@@ -887,8 +920,11 @@ function Get-V9xCell {
 }
 
 if (-not $Previous) {
+    # Only a release's own folder, <version>-release-checks-<date>: a side
+    # run beside it (0.47.0's -vbe-hd4600) sorts after it and is not one.
     $Previous = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'docs\probe') -Directory |
-        Where-Object { $_.Name -match '-release-checks' -and $_.FullName -ne $OutDir } |
+        Where-Object { $_.Name -match '^\d+\.\d+\.\d+-release-checks-\d{4}-\d{2}-\d{2}$' -and
+                       $_.FullName -ne $OutDir } |
         Sort-Object Name | Select-Object -Last 1 | ForEach-Object { $_.FullName })[0]
 }
 
@@ -958,7 +994,7 @@ if ($buildId -match '-dirty$') {
     $statusLine += ' from a clean tree.'
 }
 if (-not $SkipProbeBuild -and -not $SummaryOnly) {
-    $statusLine += " The four probes (V9XD32, V9XGLP, V9XGLIDP, V9XR3DP) were rebuilt with that build id first."
+    $statusLine += " The probes (V9XD32, V9XGLP, V9XGLIDP, V9XR3DP, V9XWPRS, V9XFBCMP) were rebuilt with that build id first."
 }
 $statusLine += " Every probe report's ``Build=`` line is checked against it below."
 $md += $statusLine
@@ -1025,7 +1061,10 @@ if (-not $Previous) {
         $newTests = @()
         foreach ($check in $column.Reports.Keys) {
             if (-not $old.Contains($check)) {
-                $changes += "$check is new"
+                # A probe the previous checks did not run (V9XWPRS and
+                # V9XFBCMP from 0.48.0) has nothing to compare and needs no
+                # cause: listed, not a change.
+                $newTests += "${check}: not in the $previousVersion checks"
                 continue
             }
             # One line per check: the Result first, then the tests that
@@ -1085,6 +1124,57 @@ if (-not $Previous) {
     }
 }
 
+# Windowed presents (V9XWPRS): the average DirectDraw present and OpenGL
+# swap into a 512x384 window, beside the previous checks' where they ran it.
+# Times are not verdicts; a present many times slower than last release's
+# is what the 0.47.0 shadow's eager read-back would have shown (340 ms on
+# Carrizo, against under 1 ms).
+function Get-V9xPresentTimes {
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
+        return $null
+    }
+    $values = @{}
+    foreach ($line in [IO.File]::ReadAllLines($Path)) {
+        if ($line -match '^(DDrawPresentAvgUs|GlSwapAvgUs|GlResult)=(.*)$') {
+            $values[$Matches[1]] = $Matches[2].Trim()
+        }
+    }
+    $ms = {
+        param($us)
+        if ($us -match '^\d+$') { '{0:N2}' -f ([double]$us / 1000.0) } else { '-' }
+    }
+    $gl = if ($values['GlResult'] -like 'NO-GL*') { 'no GL' } else { & $ms $values['GlSwapAvgUs'] }
+    return "$(& $ms $values['DDrawPresentAvgUs']) / $gl"
+}
+$presentRows = @()
+foreach ($column in $resultColumns) {
+    if (-not $column.Reports.Contains('V9XWPRS')) {
+        continue
+    }
+    $now = Get-V9xPresentTimes $column.Reports['V9XWPRS']
+    $before = '-'
+    if ($Previous) {
+        $old = Get-V9xMachineReports (Join-Path $Previous $column.Folder)
+        if ($old.Contains('V9XWPRS')) {
+            $before = Get-V9xPresentTimes $old['V9XWPRS']
+        }
+    }
+    $presentRows += "| $($labels[$column.Folder]) | $now | $before |"
+}
+if ($presentRows.Count -gt 0) {
+    $md += ''
+    $md += '## Windowed presents'
+    $md += ''
+    $md += 'V9XWPRS: the average DirectDraw present and OpenGL swap into a 512x384'
+    $md += 'window, in ms (DirectDraw / OpenGL). Recorded, not judged; a present many'
+    $md += 'times slower than the previous release''s needs a cause.'
+    $md += ''
+    $md += "| Machine | This run | $(if ($previousVersion) { $previousVersion } else { 'Previous' }) |"
+    $md += '|---|---|---|'
+    $md += $presentRows
+}
+
 $ran3d = @($folderNames | Where-Object { $statuses.Contains($_) -and $statuses[$_].ThreeDMark })
 if ($ran3d.Count -gt 0) {
     $md += ''
@@ -1093,13 +1183,17 @@ if ($ran3d.Count -gt 0) {
     $md += 'Default benchmark, frames grabbed by V9XTRACE (`3dmark2000-grab/`), progress'
     $md += 'watched through the HAL''s FlipHandled (`3dmark-beat.ini`). Counters are this'
     $md += 'run''s, from V9XTRACE snapshots before and after it.'
+    if ($ThreeDMarkMinutes -gt 0) {
+        $md += "Stopped $ThreeDMarkMinutes minutes after it started (``-ThreeDMarkMinutes``), so there is no score."
+    }
     $md += ''
     $md += '| Machine | Run | Score | Counters |'
     $md += '|---|---|---|---|'
     foreach ($folder in $ran3d) {
         $s = $statuses[$folder]
         $counters = if ($s.CounterFlags) { "**$($s.CounterFlags)**; $($s.Counters)" } else { $s.Counters }
-        $md += "| $($labels[$folder]) | $($s.ThreeDMark) | TODO: from ``$folder/3dmark-score.png`` | $counters |"
+        $score = if ($s.ThreeDMark -like 'stopped at the*') { 'none (time limit)' } else { "TODO: from ``$folder/3dmark-score.png``" }
+        $md += "| $($labels[$folder]) | $($s.ThreeDMark) | $score | $counters |"
     }
     $flagged = @($ran3d | Where-Object { $statuses[$_].CounterFlags })
     foreach ($folder in $flagged) {
