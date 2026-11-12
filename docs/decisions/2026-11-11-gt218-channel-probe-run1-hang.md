@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-23: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-24: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -788,3 +788,31 @@ Compared with nouveau's Tesla push DMA object (nouveau_chan.c: target VM,
 access VM, `NV_DMA_FROM_MEMORY`; usernv50.c: flags0 `7FC00002`, word 14h
 `part << 16` = 0), the probe's differs only in class (3Dh, IN_MEMORY)
 and limit (512 MiB against nouveau's VM limit). Neither is tested.
+
+## Run 24 (boot 101): nouveau's push DMA class removes the master abort
+
+Michael chose the class test (2026-11-12). `/push:empty /flush:none
+/push:class02 /stop:fifo`, the e10041e8 code built as `c0be5177-dirty`.
+The push DMA object's flags0 is `7FC00002` (NV_DMA_FROM_MEMORY, as
+nouveau's Tesla push ctxdma) in place of `7FC0003D`; the region readback
+read `7FC00002`. The IB and push are mapped. Log: `run24-V9XN5CH.LOG`
+(from line 4774).
+
+- Trap.Before 0 (fresh boot). After the kick: **PCI status `00100007`,
+  no master abort**, for the first time after a kick that fetched a
+  mapped IB. No VM trap (100C90h `000D0FFF`), PMC_INTR 0, PFIFO_INTR 0.
+- After the one-second host sleep, PCI status was still `00100007`,
+  configuration space answered, and the card's and the root port's PCIe
+  status were unchanged. **But BAR1 read FFFFFFFF** and the next VxD
+  run refused its first op, as in runs 15-23. The machine stopped; boot
+  102 followed the owner's power-cycle.
+
+So the class of the push DMA object caused the master abort in runs
+14-23. With class 3Dh, PFIFO's push fetch turned into a host cycle
+nothing decoded. That reading also fits run 23, where the push address
+did not matter. With nouveau's class the cycle is gone. A second fault
+remains: within a second of the kick, video memory stops answering BAR1
+while configuration space still answers, with no interrupt and no trap
+seen at about a millisecond. What happens in between is not yet
+observed.
+
