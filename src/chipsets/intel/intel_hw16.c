@@ -1,5 +1,9 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/intel16.h"
+#include "velocity9x/leaf16.h"
+
+/* src\display16\intel_panel16.c, in LEAFCODE. */
+extern void V9X_LEAF_FAR v9x_intel_plan_panel(unsigned short device_id);
 
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
@@ -191,6 +195,11 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
     } else {
         write("VbeVramBytes", "unavailable");
     }
+    /* The panel-mode plan for the mini-VDD's next Device_Init. It rides this
+     * hook because the hook is where the matched chip is known and the
+     * family's own code runs; it writes its VbiosPanel= key here itself
+     * (velocity9x\vbios_panel.h). The chip test is inside: one chip so far. */
+    v9x_intel_plan_panel(device->device_id);
     /* The three Gen3 captures below read 945 registers and BAR3; on the
      * GM965 the GTT window is BAR0 + 512 KiB, on G4x and Ironlake BAR0 + 2 MiB
      * (V9xPciReadIntelGttConfig). The 945 registers they read are pipe and

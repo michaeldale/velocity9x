@@ -137,6 +137,10 @@ V9xDdSharedLin   dd 0
 ; descriptor handed back to the LDT and re-acquired later is a descriptor that
 ; could belong to anything in between.
 V9xEngineSel dw 0
+; One read-only LDT descriptor over the shadowed video BIOS at C0000h, for
+; the Intel panel-mode plan (include\velocity9x\vbios_panel.h). Allocated
+; once by V9XROMSELECTOR and kept, as V9xEngineSel is.
+V9xRomSel dw 0
 ; V9xEnsureDiagDir's once-latch and the directory it creates. The diagnostic
 ; INI writers all target C:\V9XDIAG (include\velocity9x\diagpaths.h), and
 ; WritePrivateProfileString fails silently into a missing directory, so the
@@ -431,6 +435,60 @@ V9xDdSharedDone:
     pop     bx
     retf
 V9XDDSHAREDALLOC ENDP
+
+; WORD FAR PASCAL V9xRomSelector(void): a selector over linear C0000h-CFFFFh,
+; the video BIOS as the system VM sees it, or 0. Linear, not physical: the
+; first megabyte of the system VM is mapped where it lies, so no DPMI 0800h
+; mapping is needed, and reading through it reads the shadow the BIOS runs
+; from. Data only: the caller reads the ROM; it never writes through this.
+V9X_ROM_LINEAR_HIGH equ 000Ch
+V9X_ROM_LIMIT       equ 0FFFFh
+PUBLIC V9XROMSELECTOR
+V9XROMSELECTOR PROC FAR
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     V9xRomSel, 0
+    jne     short V9xRomSelectorReady
+
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xRomSelectorFailed
+    mov     V9xRomSel, ax
+
+    mov     bx, ax
+    xor     dx, dx
+    mov     cx, V9X_ROM_LINEAR_HIGH
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xRomSelectorFree
+
+    mov     bx, V9xRomSel
+    xor     cx, cx
+    mov     dx, V9X_ROM_LIMIT
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xRomSelectorFree
+
+V9xRomSelectorReady:
+    mov     ax, V9xRomSel
+    jmp     short V9xRomSelectorDone
+
+V9xRomSelectorFree:
+    mov     bx, V9xRomSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xRomSel, 0
+V9xRomSelectorFailed:
+    xor     ax, ax
+V9xRomSelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XROMSELECTOR ENDP
 
 ; ---------------------------------------------------------------------------
 ; ViRGE new-MMIO access for GDI acceleration.

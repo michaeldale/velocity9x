@@ -625,6 +625,28 @@ IFDEF V9X_ADVFUNC_SHIELD
 ; yet; the -IoTrace build's log is the instrument that counts them.
 V9xAdvFuncShieldCount dd 0
 ENDIF
+
+; The Intel panel-mode patch (V9xMini_Vbios_Patch): the SYSTEM.INI record the
+; 16-bit driver planned (include\velocity9x\vbios_panel.h), as parsed, and the
+; serial line for each outcome.
+V9xVbiosSection  db 'Velocity9x', 0
+V9xVbiosKey      db 'VbiosPanelPatch', 0
+V9xVbiosOffset   dd 0
+V9xVbiosPam      dd 0
+V9xVbiosRw       dd 0
+V9xVbiosSavedPam dd 0
+V9xVbiosOld      db 18 dup (0)
+V9xVbiosNew      db 18 dup (0)
+V9xVbiosAppliedLine db 'V9X-MINI vbios panel patch applied', 13, 10
+V9xVbiosAppliedLineLength equ $ - V9xVbiosAppliedLine
+V9xVbiosAlreadyLine db 'V9X-MINI vbios panel patch already present', 13, 10
+V9xVbiosAlreadyLineLength equ $ - V9xVbiosAlreadyLine
+V9xVbiosMismatchLine db 'V9X-MINI vbios panel patch refused: bytes differ', 13, 10
+V9xVbiosMismatchLineLength equ $ - V9xVbiosMismatchLine
+V9xVbiosBadLine db 'V9X-MINI vbios panel patch refused: record', 13, 10
+V9xVbiosBadLineLength equ $ - V9xVbiosBadLine
+V9xVbiosReadbackLine db 'V9X-MINI vbios panel patch failed: read back', 13, 10
+V9xVbiosReadbackLineLength equ $ - V9xVbiosReadbackLine
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -6322,6 +6344,280 @@ ENDIF
 EndProc MiniVDD_TracePostVGAToHiRes
 ENDIF
 
+; ---------------------------------------------------------------------------
+; The Intel panel-mode patch: write the panel's timing into the video BIOS's
+; panel slot in shadow RAM, before V9xMini_Vbe_Collect reads the mode list.
+;
+; Mechanism only. Which bytes go where is the 16-bit driver's decision,
+; planned in host-tested C (src\common\vbios_panel.c) from the ROM and the
+; EDID at an earlier Enable and stored in SYSTEM.INI [Velocity9x]
+; VbiosPanelPatch as "OOOO PP MM " + 18 old bytes + " " + 18 new bytes, in
+; hex. This applies it only while the ROM still holds the old bytes, so a
+; different BIOS, a different panel or a record from another machine changes
+; nothing. Shadow RAM is unlocked through the one PAM half the record names
+; (0:0.0 config 91h or 92h, bits 03h or 30h), written, flushed, read back,
+; and the PAM register is restored to the value it had.
+;
+; Device_Init only, ring 0, before any VM can run the BIOS. Never fails the
+; init.
+V9X_VBIOS_ROM_PHYS     equ 0C0000h
+V9X_VBIOS_ROM_BYTES    equ 10000h
+V9X_VBIOS_DTD_BYTES    equ 18
+V9X_VBIOS_RECORD_BYTES equ 84
+V9X_VBIOS_PAM_LOW      equ 91h
+V9X_VBIOS_PAM_HIGH     equ 92h
+V9X_VBIOS_RW_LOW       equ 03h
+V9X_VBIOS_RW_HIGH      equ 30h
+V9X_PCI_HOST_BRIDGE    equ 80000000h    ; bus 0, device 0, function 0
+V9X_VBIOS_VENDOR_INTEL equ 8086h
+V9X_VBIOS_CONFIG_ADDRESS equ 0cf8h      ; PCI configuration mechanism 1
+V9X_VBIOS_CONFIG_DATA    equ 0cfch
+
+; Configuration cycles for the patch. V9xMini_Pci_Read and _Write are in the
+; I/O-trace build only; these are the same two cycles, in every build.
+; EAX = config address. Returns EAX = the dword there.
+BeginProc V9xMini_Vbios_Cfg_Read
+    push    edx
+    mov     dx, V9X_VBIOS_CONFIG_ADDRESS
+    out     dx, eax
+    mov     dx, V9X_VBIOS_CONFIG_DATA
+    in      eax, dx
+    pop     edx
+    ret
+EndProc V9xMini_Vbios_Cfg_Read
+
+; EAX = config address, ECX = the dword to write.
+BeginProc V9xMini_Vbios_Cfg_Write
+    push    edx
+    mov     dx, V9X_VBIOS_CONFIG_ADDRESS
+    out     dx, eax
+    mov     eax, ecx
+    mov     dx, V9X_VBIOS_CONFIG_DATA
+    out     dx, eax
+    pop     edx
+    ret
+EndProc V9xMini_Vbios_Cfg_Write
+
+; ESI = two hex digits. Returns AL = their value and ESI past them, or CF.
+BeginProc V9xMini_Hex_Byte
+    push    ecx
+    xor     eax, eax
+    mov     ecx, 2
+V9xMini_Hex_Next:
+    shl     al, 4
+    mov     ah, byte ptr [esi]
+    inc     esi
+    cmp     ah, '0'
+    jb      short V9xMini_Hex_Bad
+    cmp     ah, '9'
+    jbe     short V9xMini_Hex_Digit
+    and     ah, 0DFh                    ; upper case
+    cmp     ah, 'A'
+    jb      short V9xMini_Hex_Bad
+    cmp     ah, 'F'
+    ja      short V9xMini_Hex_Bad
+    sub     ah, 'A' - 10 - '0'
+V9xMini_Hex_Digit:
+    sub     ah, '0'
+    or      al, ah
+    dec     ecx
+    jnz     short V9xMini_Hex_Next
+    xor     ah, ah
+    pop     ecx
+    clc
+    ret
+V9xMini_Hex_Bad:
+    pop     ecx
+    stc
+    ret
+EndProc V9xMini_Hex_Byte
+
+; ESI = a space. Steps past it, or CF.
+BeginProc V9xMini_Hex_Space
+    cmp     byte ptr [esi], ' '
+    jne     short V9xMini_Hex_Space_Bad
+    inc     esi
+    clc
+    ret
+V9xMini_Hex_Space_Bad:
+    stc
+    ret
+EndProc V9xMini_Hex_Space
+
+; ESI = 36 hex digits, EDI = 18 bytes to fill. CF on a bad digit.
+BeginProc V9xMini_Hex_Dtd
+    push    ecx
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+V9xMini_Hex_Dtd_Next:
+    call    V9xMini_Hex_Byte
+    jc      short V9xMini_Hex_Dtd_Done
+    mov     byte ptr [edi], al
+    inc     edi
+    dec     ecx
+    jnz     short V9xMini_Hex_Dtd_Next
+    clc
+V9xMini_Hex_Dtd_Done:
+    pop     ecx
+    ret
+EndProc V9xMini_Hex_Dtd
+
+BeginProc V9xMini_Vbios_Patch
+    pushad
+
+    xor     edx, edx
+    mov     esi, OFFSET32 V9xVbiosSection
+    mov     edi, OFFSET32 V9xVbiosKey
+    VMMcall Get_Profile_String
+    jc      V9xMini_Vbios_Done          ; nothing planned
+    mov     esi, edx
+
+    ; The record is fixed width; anything else is not one of ours.
+    xor     ecx, ecx
+V9xMini_Vbios_Length:
+    cmp     byte ptr [esi+ecx], 0
+    je      short V9xMini_Vbios_Measured
+    inc     ecx
+    cmp     ecx, V9X_VBIOS_RECORD_BYTES
+    jbe     short V9xMini_Vbios_Length
+V9xMini_Vbios_Measured:
+    cmp     ecx, V9X_VBIOS_RECORD_BYTES
+    jne     V9xMini_Vbios_Bad
+
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    movzx   ebx, al
+    shl     ebx, 8
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    mov     bl, al
+    mov     V9xVbiosOffset, ebx
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    cmp     al, V9X_VBIOS_PAM_LOW
+    je      short V9xMini_Vbios_Pam_Ok
+    cmp     al, V9X_VBIOS_PAM_HIGH
+    jne     V9xMini_Vbios_Bad
+V9xMini_Vbios_Pam_Ok:
+    movzx   eax, al
+    mov     V9xVbiosPam, eax
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    cmp     al, V9X_VBIOS_RW_LOW
+    je      short V9xMini_Vbios_Rw_Ok
+    cmp     al, V9X_VBIOS_RW_HIGH
+    jne     V9xMini_Vbios_Bad
+V9xMini_Vbios_Rw_Ok:
+    movzx   eax, al
+    mov     V9xVbiosRw, eax
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    mov     edi, OFFSET32 V9xVbiosOld
+    call    V9xMini_Hex_Dtd
+    jc      V9xMini_Vbios_Bad
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    mov     edi, OFFSET32 V9xVbiosNew
+    call    V9xMini_Hex_Dtd
+    jc      V9xMini_Vbios_Bad
+
+    ; Inside the 64 KiB window.
+    mov     eax, V9xVbiosOffset
+    add     eax, V9X_VBIOS_DTD_BYTES
+    cmp     eax, V9X_VBIOS_ROM_BYTES
+    ja      V9xMini_Vbios_Bad
+
+    ; The PAM layout is Intel's: an Intel host bridge or nothing.
+    mov     eax, V9X_PCI_HOST_BRIDGE
+    call    V9xMini_Vbios_Cfg_Read
+    cmp     ax, V9X_VBIOS_VENDOR_INTEL
+    jne     V9xMini_Vbios_Bad
+
+    VMMcall _MapPhysToLinear,<V9X_VBIOS_ROM_PHYS,V9X_VBIOS_ROM_BYTES,0>
+    cmp     eax, 0FFFFFFFFh
+    je      V9xMini_Vbios_Bad
+    add     eax, V9xVbiosOffset
+    mov     ebp, eax                    ; the descriptor in the ROM
+
+    ; The old bytes, or the new ones already, or neither.
+    mov     esi, ebp
+    mov     edi, OFFSET32 V9xVbiosOld
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    cld
+    repe    cmpsb
+    je      short V9xMini_Vbios_Write
+    mov     esi, ebp
+    mov     edi, OFFSET32 V9xVbiosNew
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    repe    cmpsb
+    jne     V9xMini_Vbios_Mismatch
+    mov     esi, OFFSET32 V9xVbiosAlreadyLine
+    mov     ecx, V9xVbiosAlreadyLineLength
+    jmp     V9xMini_Vbios_Report
+
+V9xMini_Vbios_Write:
+    ; Open the one half read-write: OR its two bits into the PAM byte, in the
+    ; dword config cycle that holds it.
+    mov     eax, V9xVbiosPam
+    and     eax, 0FCh
+    or      eax, V9X_PCI_HOST_BRIDGE
+    mov     ebx, eax                    ; the config address
+    call    V9xMini_Vbios_Cfg_Read
+    mov     V9xVbiosSavedPam, eax
+    mov     ecx, V9xVbiosPam
+    and     ecx, 3
+    shl     ecx, 3                      ; the byte's bit position
+    mov     edx, V9xVbiosRw
+    shl     edx, cl
+    or      eax, edx
+    mov     ecx, eax
+    mov     eax, ebx
+    call    V9xMini_Vbios_Cfg_Write
+
+    mov     esi, OFFSET32 V9xVbiosNew
+    mov     edi, ebp
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    rep     movsb
+    ; Out of the caches before the half is locked again: a line written back
+    ; after the lock would go nowhere.
+    wbinvd
+
+    mov     esi, ebp
+    mov     edi, OFFSET32 V9xVbiosNew
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    repe    cmpsb
+    pushfd
+    mov     eax, ebx
+    mov     ecx, V9xVbiosSavedPam
+    call    V9xMini_Vbios_Cfg_Write
+    popfd
+    jne     short V9xMini_Vbios_Readback
+
+    mov     esi, OFFSET32 V9xVbiosAppliedLine
+    mov     ecx, V9xVbiosAppliedLineLength
+    jmp     short V9xMini_Vbios_Report
+
+V9xMini_Vbios_Readback:
+    mov     esi, OFFSET32 V9xVbiosReadbackLine
+    mov     ecx, V9xVbiosReadbackLineLength
+    jmp     short V9xMini_Vbios_Report
+V9xMini_Vbios_Mismatch:
+    mov     esi, OFFSET32 V9xVbiosMismatchLine
+    mov     ecx, V9xVbiosMismatchLineLength
+    jmp     short V9xMini_Vbios_Report
+V9xMini_Vbios_Bad:
+    mov     esi, OFFSET32 V9xVbiosBadLine
+    mov     ecx, V9xVbiosBadLineLength
+V9xMini_Vbios_Report:
+    call    V9xMini_Serial_Write
+V9xMini_Vbios_Done:
+    popad
+    ret
+EndProc V9xMini_Vbios_Patch
+
 BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniInitLine
     mov     ecx, V9xMiniInitLineLength
@@ -6503,6 +6799,10 @@ IFNDEF V9X_NO_VBE_COLLECT
     ; What cannot be engineered away: Exec_Int runs the real video BIOS and
     ; has no timeout, so a BIOS that never IRETs hangs the boot. The vbe-call
     ; markers exist so a serial capture names the exact call.
+    ;
+    ; The panel-mode patch first, so the list collected below is the one the
+    ; patched BIOS describes. A no-op without a SYSTEM.INI record.
+    call    V9xMini_Vbios_Patch
     call    V9xMini_Vbe_Collect
 ELSE
     ; Assembled without the collection. Families whose drivers read the

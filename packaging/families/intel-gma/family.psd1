@@ -396,6 +396,10 @@
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            # The panel-mode slot plan and the module that runs it at Enable
+            # (velocity9x\vbios_panel.h); LEAFCODE, as I9XXCODE is full.
+            @{ Name = 'vbios_panel'; Path = 'src\common\vbios_panel.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'intel_panel16'; Path = 'src\display16\intel_panel16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'pat'; Path = 'src\common\pat.c' }
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }

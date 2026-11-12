@@ -22,6 +22,8 @@ function Get-V9xHostSourceNames {
         'src\common\vbe_modes.c',
         'src\common\vbe_cache.c',
         'src\common\edid.c',
+        # The panel-mode slot patch for Intel video BIOSes.
+        'src\common\vbios_panel.c',
         'src\common\mtrr.c',
         # The PAT route to write-combining, where every MTRR pair is taken.
         'src\common\pat.c',
@@ -295,6 +297,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vbe_modes.c',
         'tests\host\test_vbe_cache.c',
         'tests\host\test_edid.c',
+        'tests\host\test_vbios_panel.c',
         'tests\host\test_mtrr.c',
         'tests\host\test_pat.c',
         'tests\host\test_shadow.c',

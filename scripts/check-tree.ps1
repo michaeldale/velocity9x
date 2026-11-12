@@ -313,6 +313,10 @@ $allowedOsBoundaries = @(
     # Phase 5's sequencer writes INTEL3D0.TXT with the same Win16 profile API.
     # Every builder it calls stays OS-free in src\chipsets\intel.
     (Join-Path $repoRoot "src\display16\intel_3d16.c"),
+    # The panel-mode plan writes V9XHW.INI and its SYSTEM.INI record with the
+    # same Win16 profile API; the plan itself is OS-free in
+    # src\common\vbios_panel.c.
+    (Join-Path $repoRoot "src\display16\intel_panel16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only

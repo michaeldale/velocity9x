@@ -46,6 +46,10 @@ unsigned int v9x_run_vbe_cache_tests(void);
  * same convention. */
 unsigned int v9x_run_edid_tests(void);
 
+/* tests\host\test_vbios_panel.c: the panel-mode slot patch for Intel video
+ * BIOSes, same convention. */
+unsigned int v9x_run_vbios_panel_tests(void);
+
 /* tests\host\test_mtrr.c: the write-combining decision, over the MSR states
  * ring 0 reports, same convention. */
 unsigned int v9x_run_mtrr_tests(void);
@@ -1434,6 +1438,7 @@ int main(int argc, char **argv)
     failures += v9x_run_vbe_modes_tests();
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
+    failures += v9x_run_vbios_panel_tests();
     failures += v9x_run_mtrr_tests();
     failures += v9x_run_pat_tests();
     failures += v9x_run_update_proto_tests();
