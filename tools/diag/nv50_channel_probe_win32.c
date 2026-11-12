@@ -1280,6 +1280,10 @@ static void v9x_stage_bar(void)
  *   b: 3250h, 32ECh, 100C90h, PGRAPH_INTR, PGRAPH status 400700h,
  *      the instance block's first word through BAR1
  */
+/* 40 samples, 2000 PTIMER reads apart: run 15's put run (1000 reads)
+ * took about 1 ms, so this spans roughly the first 80 ms. */
+#define V9X_TIMELINE_SAMPLES 40u
+#define V9X_TIMELINE_DELAY   2000ul
 #define V9X_SAMPLE_COUNT     50u
 #define V9X_SAMPLE_GAP_MS    20u
 #define V9X_SAMPLE_REGS      11u
@@ -1352,6 +1356,7 @@ static int v9x_stage_fifo(void)
     DWORD trap;
     DWORD trap_word[V9X_NV50_VM_TRAP_WORDS];
     DWORD aer[V9X_AER_WORDS];
+    DWORD timeline[V9X_TIMELINE_SAMPLES][5];
     char trap_key[8];
 
     v9x_ops_begin();
@@ -1436,7 +1441,20 @@ static int v9x_stage_fifo(void)
      */
     v9x_ops_begin();
     v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT, 1ul);
-    v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
+    /* Run 26's timeline, in the kick's own run: run 25 found BAR1 lost
+     * by about 50 ms and BAR0 by about 80 ms, and reads of both return
+     * FFFFFFFF rather than hang, so the run can sample through the
+     * failure. Each sample is PTIMER, the BAR1 word, PMC_INTR, PFIFO_INTR
+     * and PGRAPH status, then a PTIMER-read delay. */
+    for (index = 0ul; index < V9X_TIMELINE_SAMPLES; ++index) {
+        timeline[index][0] = v9x_read(0x009400ul);
+        timeline[index][1] = v9x_op(V9X_OP_VRAM_READ, V9X_NV50_INST,
+                                    0ul, 0ul);
+        timeline[index][2] = v9x_read(0x000100ul);
+        timeline[index][3] = v9x_read(0x002100ul);
+        timeline[index][4] = v9x_read(0x400700ul);
+        v9x_op(V9X_OP_DELAY, V9X_TIMELINE_DELAY, 0ul, 0ul);
+    }
     /* The trap, in the same run: runs 14-16 lost the card within a second
      * of the kick, but this run's results came back each time. The six
      * words are read whether or not bit 31 is set (an op list cannot
@@ -1467,6 +1485,24 @@ static int v9x_stage_fifo(void)
     }
     v9x_status_publish("FifoPut", &s);
     v9x_flush();
+    for (index = 0ul; index < V9X_TIMELINE_SAMPLES; ++index) {
+        char text[56];
+        char word[10];
+        DWORD column;
+        char what[8];
+
+        text[0] = '\0';
+        for (column = 0ul; column < 5ul; ++column) {
+            v9x_hex(word, v9x_value(timeline[index][column]), 8);
+            lstrcatA(text, word);
+            if (column < 4ul) {
+                lstrcatA(text, " ");
+            }
+        }
+        lstrcpyA(what, "t");
+        v9x_hex(what + 1, index, 2);
+        v9x_log(what, text);
+    }
 
     /* /push:empty: about a second of short sampling runs (run 25), then
      * configuration space and BAR1. Run 24 left the card answering at
