@@ -43,6 +43,10 @@
  *      of its own, ending in a fence the CPU waits for. On M-NZHWBR only
  *      both together filled every dword
  *      (docs\decisions\2026-11-13-rv630-dma-write-probe.md).
+ *      /rowfill instead fills a rectangle the way a DirectDraw fill
+ *      would: its first row inline, every other row copied from that
+ *      row; /serial puts the seed row in a submission of its own and
+ *      /nowait submits the copies without waiting for its fence.
  *
  * Then the ring is stopped and reset, every register written is put back
  * as call 1 read it, HDP is flushed, the buffers are read back and the
@@ -146,6 +150,15 @@
 #define V9X_WRITE_DST           0x4000ul
 #define V9X_OVERLAP             0x5000ul
 #define V9X_FILL_DST            0x6000ul
+/* /rowfill's surface: 8 rows at a 64-dword pitch, the rectangle 24 dwords
+ * wide from dword 4 of each row, so guards sit on both sides of every
+ * row. */
+#define V9X_RECT                0x7000ul
+#define V9X_RECT_PITCH          64ul
+#define V9X_RECT_ROWS           8ul
+#define V9X_RECT_X              4ul
+#define V9X_RECT_WIDTH          24ul
+#define V9X_RECT_DWORDS         (V9X_RECT_PITCH * V9X_RECT_ROWS)
 
 #define V9X_GUARD_VALUE         0x5a5a5a5aul
 #define V9X_GUARD_DWORDS        4ul
@@ -237,6 +250,10 @@ static DWORD v9x_srbm_reset;
  * alone and waits for its fence before the next. */
 static DWORD v9x_fill_seed;
 static int v9x_fill_serial;
+/* /rowfill replaces the doubling fill with a rectangle fill from one seed
+ * row; /nowait submits each step without waiting for its fence. */
+static int v9x_rowfill;
+static int v9x_fill_nowait;
 static DWORD v9x_step_count;
 static DWORD v9x_step_wptr[V9X_FILL_STEPS_MAX];
 static DWORD v9x_at_step_wait[V9X_FILL_STEPS_MAX];
@@ -421,14 +438,74 @@ static DWORD v9x_pattern(DWORD seed, DWORD index)
     return seed + index * V9X_PATTERN_STEP;
 }
 
+/* Ends the current fill step with its own fence and records its write
+ * pointer, so the op list can submit it alone. */
+static void v9x_step_close(DWORD g)
+{
+    v9x_ring_fence(g + V9X_FENCE_STEP + v9x_step_count * 4ul,
+                   V9X_FENCE_STEP_VALUE + v9x_step_count);
+    v9x_step_wptr[v9x_step_count++] = v9x_ring_close();
+}
+
+/* The doubling fill: the seed written inline, then each copy doubles the
+ * run from what the packets before it wrote. With /serial every step is
+ * its own submission ending in its own fence. */
+static void v9x_build_doubling(DWORD g)
+{
+    DWORD fill;
+    DWORD index;
+    DWORD run;
+
+    fill = g + V9X_FILL_DST + V9X_GUARD_DWORDS * 4ul;
+    v9x_ring_put(V9X_DMA_PACKET(V9X_DMA_WRITE, v9x_fill_seed));
+    v9x_ring_put(fill);
+    v9x_ring_put(v9x_gpu_high & V9X_RV_HIGH_MASK);
+    for (index = 0ul; index < v9x_fill_seed; ++index) {
+        v9x_ring_put(V9X_FILL_VALUE);
+    }
+    for (run = v9x_fill_seed; run <= V9X_RUN_DWORDS; run <<= 1) {
+        if (v9x_fill_serial) {
+            v9x_step_close(g);
+        }
+        if (run == V9X_RUN_DWORDS) {
+            break;
+        }
+        v9x_ring_copy(run, fill + run * 4ul, fill);
+    }
+}
+
+/* The rectangle fill a DirectDraw solid fill would emit: the rectangle's
+ * first row written inline, then every other row copied from that row, so
+ * no copy reads what another copy wrote. With /serial the seed row is a
+ * submission of its own; the copies always share one. */
+static void v9x_build_rowfill(DWORD g)
+{
+    DWORD rect;
+    DWORD index;
+    DWORD row;
+
+    rect = g + V9X_RECT + V9X_RECT_X * 4ul;
+    v9x_ring_put(V9X_DMA_PACKET(V9X_DMA_WRITE, V9X_RECT_WIDTH));
+    v9x_ring_put(rect);
+    v9x_ring_put(v9x_gpu_high & V9X_RV_HIGH_MASK);
+    for (index = 0ul; index < V9X_RECT_WIDTH; ++index) {
+        v9x_ring_put(V9X_FILL_VALUE);
+    }
+    if (v9x_fill_serial) {
+        v9x_step_close(g);
+    }
+    for (row = 1ul; row < V9X_RECT_ROWS; ++row) {
+        v9x_ring_copy(V9X_RECT_WIDTH, rect + row * V9X_RECT_PITCH * 4ul,
+                      rect);
+    }
+}
+
 /* Call 2's op list. g is the scratch window's GPU address. */
 static void v9x_build_run(DWORD g)
 {
     DWORD wptr_1;
     DWORD wptr_2;
     DWORD index;
-    DWORD run;
-    DWORD fill;
 
     v9x_ring_count = 0ul;
     v9x_ring_copy(V9X_RUN_DWORDS, g + V9X_COPY_DST + V9X_GUARD_DWORDS * 4ul,
@@ -441,27 +518,11 @@ static void v9x_build_run(DWORD g)
     v9x_ring_fence(g + V9X_FENCE_1, V9X_FENCE_1_VALUE);
     wptr_1 = v9x_ring_close();
 
-    /* The fill: the seed written inline, then each copy doubles the run
-     * from what the packets before it wrote. With /serial every step is
-     * its own submission ending in its own fence. */
-    fill = g + V9X_FILL_DST + V9X_GUARD_DWORDS * 4ul;
     v9x_step_count = 0ul;
-    v9x_ring_put(V9X_DMA_PACKET(V9X_DMA_WRITE, v9x_fill_seed));
-    v9x_ring_put(fill);
-    v9x_ring_put(v9x_gpu_high & V9X_RV_HIGH_MASK);
-    for (index = 0ul; index < v9x_fill_seed; ++index) {
-        v9x_ring_put(V9X_FILL_VALUE);
-    }
-    for (run = v9x_fill_seed; run <= V9X_RUN_DWORDS; run <<= 1) {
-        if (v9x_fill_serial) {
-            v9x_ring_fence(g + V9X_FENCE_STEP + v9x_step_count * 4ul,
-                           V9X_FENCE_STEP_VALUE + v9x_step_count);
-            v9x_step_wptr[v9x_step_count++] = v9x_ring_close();
-        }
-        if (run == V9X_RUN_DWORDS) {
-            break;
-        }
-        v9x_ring_copy(run, fill + run * 4ul, fill);
+    if (v9x_rowfill) {
+        v9x_build_rowfill(g);
+    } else {
+        v9x_build_doubling(g);
     }
     v9x_ring_fence(g + V9X_FENCE_2, V9X_FENCE_2_VALUE);
     wptr_2 = v9x_ring_close();
@@ -478,6 +539,7 @@ static void v9x_build_run(DWORD g)
            V9X_SEED_OVERLAP);
     v9x_op(V9X_OP_VRAM_FILL, V9X_FILL_DST, V9X_TARGET_DWORDS,
            V9X_GUARD_VALUE);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_RECT, V9X_RECT_DWORDS, V9X_GUARD_VALUE);
     for (index = 0ul; index < v9x_ring_count; ++index) {
         v9x_op(V9X_OP_VRAM_WRITE, V9X_RING + index * 4ul, v9x_ring[index],
                0ul);
@@ -517,9 +579,17 @@ static void v9x_build_run(DWORD g)
     v9x_at_status_1 = v9x_op(V9X_OP_MMIO_READ, V9X_RV_DMA_STATUS_REG,
                              0ul, 0ul);
 
+    /* Each step submitted alone. Under /nowait the next write pointer
+     * follows at once, and StepWait<n> reports DMA_RB_RPTR as it read
+     * straight after the step's write instead of the fence wait. */
     for (index = 0ul; index < v9x_step_count; ++index) {
         v9x_op(V9X_OP_MMIO_WRITE, V9X_RV_DMA_RB_WPTR, v9x_step_wptr[index],
                0ul);
+        if (v9x_fill_nowait) {
+            v9x_at_step_wait[index] = v9x_op(V9X_OP_MMIO_READ,
+                                             V9X_RV_DMA_RB_RPTR, 0ul, 0ul);
+            continue;
+        }
         v9x_at_step_wait[index] = v9x_op(V9X_OP_WAIT_VRAM,
                                          V9X_FENCE_STEP + index * 4ul,
                                          V9X_FENCE_STEP_VALUE + index,
@@ -549,6 +619,7 @@ static void v9x_build_run(DWORD g)
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_WRITE_DST, V9X_WRITE_TARGET, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_OVERLAP, V9X_OVERLAP_DWORDS, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_FILL_DST, V9X_TARGET_DWORDS, 0ul);
+    v9x_op(V9X_OP_VRAM_BLOCK, V9X_RECT, V9X_RECT_DWORDS, 0ul);
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
     v9x_at_after_reset = v9x_op(V9X_OP_MMIO_READ, V9X_RV_SRBM_SOFT_RESET,
@@ -558,6 +629,9 @@ static void v9x_build_run(DWORD g)
 
     v9x_number("Run", "FillSeedDwords", v9x_fill_seed);
     v9x_text("Run", "FillSerial", v9x_fill_serial ? "yes" : "no");
+    v9x_text("Run", "FillShape", v9x_rowfill ? "rect-from-seed-row" :
+                                               "doubling");
+    v9x_text("Run", "FillWaits", v9x_fill_nowait ? "no" : "yes");
     v9x_number("Run", "FillSteps", v9x_step_count);
     v9x_number("Run", "Ops", v9x_request.count);
     v9x_number("Run", "RingDwords", v9x_ring_count);
@@ -597,6 +671,40 @@ static int v9x_check_run(const char *name, const DWORD *got,
 }
 
 static DWORD v9x_expected[V9X_TARGET_DWORDS];
+static DWORD v9x_rect_expected[V9X_RECT_DWORDS];
+
+/* /rowfill's surface: the fill value inside the rectangle, the guard
+ * everywhere else. Each row's count of filled dwords is reported too, so a
+ * failure shows which rows the copies reached. */
+static void v9x_verify_rect(const DWORD *rect)
+{
+    DWORD index;
+    DWORD row;
+    DWORD column;
+    DWORD filled;
+
+    for (index = 0ul; index < V9X_RECT_DWORDS; ++index) {
+        column = index % V9X_RECT_PITCH;
+        v9x_rect_expected[index] =
+            (column >= V9X_RECT_X && column < V9X_RECT_X + V9X_RECT_WIDTH) ?
+            V9X_FILL_VALUE : V9X_GUARD_VALUE;
+    }
+    v9x_pass("Rect", v9x_check_run("Rect", rect, v9x_rect_expected,
+                                   V9X_RECT_DWORDS));
+    for (row = 0ul; row < V9X_RECT_ROWS; ++row) {
+        char key[16];
+
+        filled = 0ul;
+        for (column = 0ul; column < V9X_RECT_PITCH; ++column) {
+            if (rect[row * V9X_RECT_PITCH + column] == V9X_FILL_VALUE) {
+                ++filled;
+            }
+        }
+        lstrcpyA(key, "RectRow");
+        v9x_decimal(key + 7, row);
+        v9x_number("Result", key, filled);
+    }
+}
 
 static void v9x_verify(void)
 {
@@ -665,6 +773,12 @@ static void v9x_verify(void)
         lstrcpyA(key, "OverlapAt");
         v9x_decimal(key + 9, V9X_OVERLAP_SHIFT + index);
         v9x_key("Result", key, overlap[V9X_OVERLAP_SHIFT + index]);
+    }
+
+    if (v9x_rowfill) {
+        v9x_text("Result", "Fill", "SKIPPED");
+        v9x_verify_rect(fill + V9X_TARGET_DWORDS);
+        return;
     }
 
     /* The doubling fill. */
@@ -799,6 +913,8 @@ void __stdcall V9xRv630DmaEntry(void)
     v9x_fill_seed = v9x_switch_given("/seed8") ? V9X_FILL_SEED_LINE :
                                                  V9X_FILL_SEED_SMALL;
     v9x_fill_serial = v9x_switch_given("/serial");
+    v9x_rowfill = v9x_switch_given("/rowfill");
+    v9x_fill_nowait = v9x_switch_given("/nowait");
     v9x_build_run(g);
     if (!v9x_dioc(device)) {
         CloseHandle(device);

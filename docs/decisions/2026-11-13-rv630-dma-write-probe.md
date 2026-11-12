@@ -2,7 +2,7 @@
 
 Date: 2026-11-13
 
-Status: **measured, one card, six runs on one boot.** M-NZHWBR's HD 2600
+Status: **measured, one card, nine runs on one boot.** M-NZHWBR's HD 2600
 XT (`1002:9588`, RV630), agent boot 4, the 0.48.0 `vbe` package at
 1024x768x16. Phase 3 of [the plan](../plans/ati-rv630-hd2600xt.md), first
 step. New tool: `V9XRVDMA.EXE` + `RVDMA.VXD` (`tools\diag\rv630_dma*`,
@@ -83,24 +83,41 @@ So:
 teardown, `44C83556` while the ring ran: the values Cedar showed. Unlike
 Cedar's, bit 0 came back set after each stop.
 
+## The rectangle fill a driver would emit (runs 6-8)
+
+`/rowfill` replaces the doubling fill with the shape a DirectDraw solid
+fill would use: a 24-dword-wide, 8-row rectangle at a 64-dword pitch,
+four guard dwords left of it in every row. The first row is written
+inline; every other row is one COPY from that row, so no copy reads what
+another copy wrote. Same build, same boot.
+
+| Run | Seed row and row copies | Rectangle |
+|---|---|---|
+| 6 | one submission | **FAIL**: rows 1-7 each 20 of 24, the last 4 dwords of every row the guard |
+| 7 | seed row its own submission; the next write pointer at once (`/nowait`) | PASS |
+| 8 | seed row its own submission; the CPU waits for its fence | PASS |
+
+Run 6 is rule 1 again, in a clean form: every copy read the seed row
+before the WRITE's last 16 bytes had landed. Run 7 passed, but
+`DMA_RB_RPTR` read straight after its first write pointer already equalled
+it (`100h`): the engine had fetched the seed submission before the next
+write pointer went in, so that timing may have hidden the race. It is not
+evidence that a submission boundary alone orders the copies.
+
 ## What it means for DirectDraw
 
 - Copies (blits) can go on the DMA ring as they are, one COPY per
   scanline: R6xx has no rectangle form. A blit whose source was just
   written by the ring needs a fence the CPU waits for first.
-- A solid fill cannot be one packet. The shape run 3 proves: write a seed
-  inline, wait for its fence, then copy from it. One scanline of seed
-  (at most 2048 dwords at 1600x1200x32, inside a WRITE's 65,535) lets
-  every other row of the fill copy from that one row in a single
-  submission, since every copy then reads only completed data. That shape
-  is untested; it is the next probe.
+- A solid fill: the rectangle's first row as an inline WRITE (at most
+  2048 dwords at 1600x1200x32, inside a WRITE's 65,535), a fence the CPU
+  waits for, then every other row copied from that row in one
+  submission. Run 8 measured that shape exact; the wait cost one poll.
 - Never emit a one-dword COPY; widen it or write it inline.
 
 ## Not measured
 
-- A fill with one seed row and many independent row copies in one
-  submission (the shape proposed above).
 - Whether a submission boundary alone, without a CPU-awaited fence,
-  orders a later copy after an earlier write.
+  orders a later copy after an earlier write (run 7 cannot tell).
 - Odd copy counts above one; unaligned addresses.
 - Anything at another mode, or a second boot.
