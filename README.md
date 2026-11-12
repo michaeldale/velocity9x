@@ -35,24 +35,36 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.46.0
+## Current version: 0.47.0
 
-[Download](releases/0.46.0/README.md) ·
+[Download](releases/0.47.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.46.0:
-- **`vbe` package: moving windows, scrolling and anything else that reads
-  the screen is many times faster.** Windows draws the desktop into a copy
-  in system memory and the driver copies each change to the screen. On a
-  Radeon R3E reads went from 5 MB/s to 350-1,180 MB/s and scrolling an
-  800x600 window from 400 ms to 2-3 ms; on an HD 4600, scrolling up a
-  document is no longer seven times slower than scrolling down. Drawing
-  that only writes costs a second copy: 0.3 to 0.8 of its old speed.
-  `C:\V9XDIAG\NOSHADOW.TXT` turns it off
-  ([record](docs/decisions/2026-11-11-vbe-screen-shadow-phase1.md),
-  [AMD and other depths](docs/decisions/2026-11-11-vbe-screen-shadow-open-items.md)).
+New in 0.47.0:
+- **Intel GMA 900, 950, 3100 and 3150: DirectX 8 pixel shaders.** Pixel
+  shader 1.1 runs on the Gen3 engine through the DirectX 8 interface, with
+  four texture stages, cube maps, the signed bump formats, 32-bit textures
+  and textures up to 2048 pixels. On the GMA 950, 3DMark 2001 SE runs to
+  the end with its pixel shader tests (528)
+  ([record](docs/decisions/2026-11-11-gen3-texture-size-2048.md)).
+- **`ati` package, Radeon HD 5000-7000, R3E and R7E: moving windows and
+  scrolling are many times faster.** The desktop is drawn into a copy in
+  system memory, as on the `vbe` package since 0.46.0: on the R7E,
+  scrolling went from 8 to 630 MB/s, with windowed OpenGL unaffected. The
+  R7E and R3E also write the screen write-combined, which they never did:
+  on the R3E, desktop drawing went from about 30 MB/s to 1,170
+  ([record](docs/decisions/2026-11-12-ati-screen-shadow.md),
+  [R7E](docs/decisions/2026-11-11-carrizo-catch-up-and-write-combining.md)).
+- **`vbe` package:** a windowed program that draws on the screen no longer
+  has each frame read back into the desktop's copy, and the software
+  Direct3D renderer draws 32-bit textures, which it used to refuse
+  ([record](docs/decisions/2026-11-12-vbe-soft-32bit-textures.md)).
+- **OpenGL, every package:** non-square mipmapped textures draw on
+  DirectX 6.1a, where Quake 2 dropped 42 % of its triangles on one Radeon
+  HD 5570
+  ([issue](docs/issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md)).
 
 ### Known issues
 
@@ -67,11 +79,21 @@ New in 0.46.0:
 - **Glide and 3DCIF DLLs from 0.23.0 or earlier** do not work with this
   driver. Replace any copy in a game's folder with this release's.
 - **GMA 950:** 3DMark 2001 SE's Dragothic draws its sky white
-  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
+  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)),
+  and its Advanced Pixel Shader test reports itself unsupported.
   Starting a Half-Life multiplayer game in OpenGL can leave the screen
   stuck; press Escape and resume
   ([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).
 - **HD 4600:** 3DMark 2001 SE's Nature draws its distant terrain white.
+- **GMA X3100, GMA 4500 family:** a program's own alpha test with depth
+  writes is not drawn, so Half-Life's grates and doors are missing and
+  Incoming's textures are transparent or missing
+  ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+- **`ati` HD 5000-7000:** the desktop copy above is on by the same design
+  as on the R3E and R7E but has not been measured on them.
+- **S3 Trio64:** a second or two of cyan garbage at Windows shutdown,
+  before the safe-to-turn-off screen; cosmetic
+  ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
 - **Radeon X1200:** 3DMark 2000's first game test tints some distant
   terrain red ([issue](docs/issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)).
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts
@@ -85,6 +107,9 @@ New in 0.46.0:
 
 ### Recent releases
 
+- **0.46.0:** the `vbe` package draws the desktop into a copy in system
+  memory, so moving windows and scrolling no longer read the screen
+  (Radeon R3E reads 5 to 350-1,180 MB/s).
 - **0.45.0:** leaving a full-screen DOS box brings the desktop back on
   every card (GMA 950, HD 4600 and ViRGE/DX tested); a program that dies
   holding DirectDraw surfaces no longer crashes the next one.
@@ -156,7 +181,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
-| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
+| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes is refused, so Direct3D does not draw it; from 0.44.0 colour keys with depth writes are drawn in two passes instead (not run on this machine) |
@@ -181,8 +206,8 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
 | AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. The Glide 2 probe passes (0.41.0) |
-| AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU. OpenGL and the Glide 2 probe on the engine. 3DMark 2000 (0.42.0); no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. |
-| AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips. 3DMark 2000 and Quake 3. One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only. Glide not run |
+| AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU, from 0.47.0 into a copy of the desktop, with the screen write-combined (scrolling 30 to 1,170 MB/s). OpenGL and the Glide 2 probe on the engine. 3DMark 2000 (0.42.0); no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. |
+| AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips; from 0.47.0 the screen write-combined and GDI drawn into a copy of the desktop (scrolling 8 to 630 MB/s). 3DMark 2000 and Quake 3 (windowed too, 18.7 fps). The Glide 2 probe passes (0.47.0). One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only |
 
 #### S3
 
@@ -211,7 +236,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
-| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro), through the page attribute table from 0.43.0 when the BIOS blocks that (HD 4600). From 0.46.0 GDI draws into a copy of the desktop in system memory, so screen reads (window moves, scrolling) no longer cross the bus (Radeon R3E, HD 4600) |
+| Anything with a VESA 2.0 BIOS | `vbe` | none: software rasterizer | Tested on a GMA 950 and a Trio3D, installed through Have Disk. Writes the screen write-combined from 0.39.0 (Radeon R3E, Radeon HD 8570, Rage 128 Pro), through the page attribute table from 0.43.0 when the BIOS blocks that (HD 4600). From 0.46.0 GDI draws into a copy of the desktop in system memory, so screen reads (window moves, scrolling) no longer cross the bus (Radeon R3E, HD 4600). From 0.47.0 the software Direct3D renderer draws 32-bit textures (Radeon R3E) |
 
 The driver also installs on some close relatives of the cards above,
 which nobody has run it on yet. Each one uses the code of a tested card
@@ -231,7 +256,11 @@ Modes come from each card's video BIOS, merged with the driver's own where
 it sets modes itself: up to 1024x768 at 8 and 16 bpp on most cards, True
 Color and 1280x1024 on the S3 cards, 1024x576 on the GMA 950's panel, and 1024x600 on the GMA 3150's.
 Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
-where the table says otherwise. No card has a hardware cursor.
+where the table says otherwise. On the `vbe` package (0.46.0) and the
+`ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0) it draws into a
+copy of the desktop in system memory, so reading the screen does not
+cross the bus; `C:\V9XDIAG\NOSHADOW.TXT` turns that off. No card has a
+hardware cursor.
 
 ### What each card runs
 
@@ -268,7 +297,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7660D (0.35.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon R3E (Mullins, 0.41.0) | DirectDraw, flips | Yes | Not run | Probe | No | Glide 2 probe only | Not run |
-| AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
+| AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | S3 Trio32/64 | GDI, DirectDraw | No | No | No | No | No | No |
 | S3 ViRGE/DX | GDI | Yes (0.36.0) | Not run | Probe | No | Probe fails | Not run |
 | S3 Trio3D/2X, Trio3D | No | Yes, narrow | Not run | Not run | No | Not run | Not run |
@@ -294,7 +323,8 @@ Limits found in testing:
 - **Write-combining:** the CPU writes video memory write-combined on the
   Rage 128 Pro, the GMA 950/900/3150 and the Ironlake, on the HD 4600
   through the page attribute table (from 0.33.0, its BIOS leaving no
-  memory-type range free), on the SiS 6326 (0.34.0), and on any card on
+  memory-type range free), on the SiS 6326 (0.34.0), the Radeon HD 5450
+  to 7660D (0.41.0), the R7E and R3E (0.47.0), and on any card on
   the `vbe` package (0.39.0; through the page attribute table when the
   BIOS's ranges refuse, 0.43.0); `C:\V9XDIAG\NOWC.TXT` turns it off on
   these two. `V9X3D OFF` turns it off on the others.
@@ -398,6 +428,15 @@ issue: Nature's distant terrain and mountains draw white. DirectX 7
 programs keep the older interface; `[Velocity9x.Direct3DDdi]
 <program>=7` sets one program back if it breaks
 ([record](docs/decisions/2026-10-30-haswell-ddi8-ps11-record.md)).
+
+On the GMA 900, 950, 3100 and 3150, from 0.47.0, DirectX 8 programs get
+DDI 8 with **pixel shader 1.1** on the Gen3 engine, four texture stages,
+cube textures, the signed bump formats, 32-bit textures and textures up to
+2048 pixels; no DXT. On the GMA 950, 3DMark 2001 SE runs every test to the
+end (528), and its Advanced Pixel Shader test reports itself unsupported;
+why was not measured. The other three chips have not run it
+([first runs](docs/decisions/2026-11-11-gen3-ps11-netbook-first-runs.md),
+[2048 textures](docs/decisions/2026-11-11-gen3-texture-size-2048.md)).
 
 ## OpenGL
 

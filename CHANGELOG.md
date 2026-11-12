@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.47.0 - not yet released
+## 0.47.0 - 2026-11-12
 
 - **`ati` package, AMD Radeon R7E (Carrizo): the screen is
   write-combined.** Every earlier release wrote it uncached. On
