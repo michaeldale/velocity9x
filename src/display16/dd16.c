@@ -42,6 +42,9 @@ extern LONG FAR PASCAL V9xDibControlCall(LPVOID device, WORD function,
 
 extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 extern DWORD FAR PASCAL V9xLinearBase(void);
+/* ddi.c: the framebuffer aperture mapping's last page offset, hi and lo. */
+extern WORD v9x_map_pages_hi;
+extern WORD v9x_map_pages_lo;
 
 static v9x_u16 v9x_dd_d3d_state = V9X_D3D_STATE_NONE;
 /*
@@ -269,7 +272,7 @@ static V9X_DDHALINFO v9x_dd_info16;
 static V9X_DDHAL_DDCALLBACKS v9x_dd_callbacks16;
 static V9X_DDHAL_DDSURFACECALLBACKS v9x_dd_surface_callbacks16;
 static V9X_DDHAL_DDPALETTECALLBACKS v9x_dd_palette_callbacks16;
-static V9X_VIDMEM v9x_dd_heap16;
+static V9X_VIDMEM v9x_dd_heap16[2];
 static V9X_DDHALMODEINFO v9x_dd_modes16[V9X_DD_MODE_COUNT];
 
 static void v9x_dd_copy(void FAR *destination, const void FAR *source,
@@ -542,6 +545,37 @@ static void v9x_dd_publish_engine_stamp(DWORD engine_type, DWORD engine_caps,
                               V9X_DIAG_HW_INI);
 }
 
+/*
+ * The texture pool the chip's family mapped at Enable, or none: the engine
+ * record's pool_offset and pool_bytes, which refresh_info publishes as
+ * heap 1 and the HAL places textures in. A pool that does not lie wholly
+ * past the stolen heap's end and inside the mapped aperture is not
+ * published (docs\plans\intel-gen3-system-memory-textures.md).
+ */
+static void v9x_dd_engine_pool(V9X_DD_SHARED FAR *shared,
+                               const V9X_HW16_DEVICE *device)
+{
+    unsigned long bytes = 0ul;
+    unsigned long offset = 0ul;
+    /* The framebuffer aperture this driver mapped (enable16.c), which is
+     * where fb.linear_base points and the CPU writes the pool. */
+    unsigned long mapped = (((unsigned long)v9x_map_pages_hi << 16) |
+                            (unsigned long)v9x_map_pages_lo) + 1ul;
+
+    shared->engine.pool_offset = 0ul;
+    shared->engine.pool_bytes = 0ul;
+    if (device == 0 || device->engine_pool == 0) {
+        return;
+    }
+    offset = device->engine_pool(&bytes);
+    if (bytes == 0ul || offset < shared->fb.vram_bytes ||
+        offset > mapped || bytes > mapped - offset) {
+        return;
+    }
+    shared->engine.pool_offset = offset;
+    shared->engine.pool_bytes = bytes;
+}
+
 static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
 {
     const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
@@ -583,6 +617,7 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
         shared->engine.reserve_offset =
             device->engine_reserve_offset != 0 ?
             device->engine_reserve_offset() : 0ul;
+        v9x_dd_engine_pool(shared, device);
         /*
          * The TYPE, stamped here and not only by the later refresh.
          *
@@ -768,6 +803,7 @@ static void v9x_dd_refresh_framebuffer(void)
         shared->engine.reserve_offset =
             device->engine_reserve_offset != 0 ?
             device->engine_reserve_offset() : 0ul;
+        v9x_dd_engine_pool(shared, device);
         /*
          * The user's Direct3D setting, applied before the stamp rather than
          * after it.
@@ -806,6 +842,8 @@ static void v9x_dd_refresh_framebuffer(void)
         shared->engine.ring_linear_base = 0ul;
         shared->engine.ring_bytes = 0ul;
         shared->engine.reserve_offset = 0ul;
+        shared->engine.pool_offset = 0ul;
+        shared->engine.pool_bytes = 0ul;
         shared->engine.flags = 0ul;
     }
 
@@ -945,6 +983,28 @@ static void v9x_dd_refresh_info(void)
      * video-memory totals it computed were zero. The heap is known here. */
     info->ddCaps.dwVidMemTotal =
         shared->fb.vram_bytes - shared->fb.visible_bytes;
+    /*
+     * The texture pool as heap 1, textures only: every other kind of
+     * surface is excluded, in both passes. The 98 SE runtime honours the
+     * restriction in allocation and in GetAvailableVidMem (measured, Phase 0
+     * record, 2026-11-12). Render targets, Z buffers, flipping chains and
+     * the primary stay in stolen memory.
+     */
+    if (shared->engine.pool_bytes != 0ul) {
+        shared->heaps[1].dwFlags = V9X_VIDMEM_ISLINEAR;
+        shared->heaps[1].fpStart =
+            shared->fb.linear_base + shared->engine.pool_offset;
+        shared->heaps[1].fpEnd = shared->heaps[1].fpStart +
+                                 shared->engine.pool_bytes - 1ul;
+        shared->heaps[1].ddsCaps =
+            V9X_DDSCAPS_OFFSCREENPLAIN | V9X_DDSCAPS_PRIMARYSURFACE |
+            V9X_DDSCAPS_BACKBUFFER | V9X_DDSCAPS_FLIP |
+            V9X_DDSCAPS_ZBUFFER | V9X_DDSCAPS_3DDEVICE;
+        shared->heaps[1].ddsCapsAlt = shared->heaps[1].ddsCaps;
+        shared->heaps[1].lpHeap = 0ul;
+        info->vmiData.dwNumHeaps = 2ul;
+        info->ddCaps.dwVidMemTotal += shared->engine.pool_bytes;
+    }
     info->ddCaps.dwVidMemFree = info->ddCaps.dwVidMemTotal;
     /*
      * The depths a Z buffer may be made at, which DirectDraw checks before it
@@ -1023,7 +1083,7 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
     v9x_dd_copy(&v9x_dd_palette_callbacks16,
                 &v9x_dd_shared->palette_callbacks,
                 sizeof(v9x_dd_palette_callbacks16));
-    v9x_dd_copy(&v9x_dd_heap16, &v9x_dd_shared->heaps[0],
+    v9x_dd_copy(&v9x_dd_heap16[0], &v9x_dd_shared->heaps[0],
                 sizeof(v9x_dd_heap16));
     for (index = 0u; index < (WORD)v9x_dd_shared->mode_count; ++index) {
         v9x_dd_copy(&v9x_dd_modes16[index], &v9x_dd_shared->modes[index],
@@ -1032,7 +1092,7 @@ WORD FAR PASCAL V9xDdCreateDriverObject(WORD reset)
     v9x_dd_info16.lpDDCallbacks = &v9x_dd_callbacks16;
     v9x_dd_info16.lpDDSurfaceCallbacks = &v9x_dd_surface_callbacks16;
     v9x_dd_info16.lpDDPaletteCallbacks = &v9x_dd_palette_callbacks16;
-    v9x_dd_info16.vmiData.pvmList = &v9x_dd_heap16;
+    v9x_dd_info16.vmiData.pvmList = &v9x_dd_heap16[0];
     v9x_dd_info16.lpModeInfo = &v9x_dd_modes16[0];
     v9x_dd_info16.hInstance =
         (DWORD)SELECTOROF((LPVOID)&v9x_dd_info16);

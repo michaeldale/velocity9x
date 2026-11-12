@@ -484,6 +484,34 @@ DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface)
 }
 
 /*
+ * A sampled surface's offset, which may lie in the texture pool as well as
+ * in stolen memory (docs\plans\intel-gen3-system-memory-textures.md). Each
+ * caller still bounds the surface's whole footprint against the end of the
+ * range it is in.
+ */
+DWORD v9x_surface_sample_offset(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD offset = v9x_surface_offset(surface);
+    DWORD address;
+
+    if (offset != 0xfffffffful || surface == 0 || surface->lpGbl == 0 ||
+        v9x_hal == 0 || v9x_hal->engine.pool_bytes == 0ul ||
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul) {
+        return offset;
+    }
+    address = surface->lpGbl->fpVidMem;
+    if (address < v9x_hal->fb.linear_base) {
+        return 0xfffffffful;
+    }
+    offset = address - v9x_hal->fb.linear_base;
+    if (offset < v9x_hal->engine.pool_offset ||
+        offset - v9x_hal->engine.pool_offset >= v9x_hal->engine.pool_bytes) {
+        return 0xfffffffful;
+    }
+    return offset;
+}
+
+/*
  * Can this family program the display start?
  *
  * v9x_set_display_start writes S3 extension register CR69 to carry address

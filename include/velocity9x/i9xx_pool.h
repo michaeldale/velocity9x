@@ -34,6 +34,9 @@
  */
 #define V9X_I9XX_POOL_ALIGN_BYTES    ((v9x_u32)0x00100000ul)
 #define V9X_I9XX_POOL_PAGE_BYTES     ((v9x_u32)4096ul)
+/* The pool is sized in four-page grains: the mini-VDD hands its pages to
+ * the display driver four at a time (V9XMINI_FN_I9XX_POOL_CHUNK). */
+#define V9X_I9XX_POOL_GRAIN_BYTES    ((v9x_u32)0x00004000ul)
 #define V9X_I9XX_POOL_MAX_EXCLUDED   4u
 
 /* The 945 PTE for a system-memory page: physical address, valid, cache
@@ -100,6 +103,18 @@ void v9x_i9xx_pool_sort(v9x_u32 *pages, v9x_u32 count);
 v9x_u16 v9x_i9xx_pool_check(const struct v9x_i9xx_pool_layout *layout,
                             const struct v9x_i9xx_pool_plan *plan,
                             const v9x_u32 *pages, v9x_u32 count);
+
+/*
+ * The same checks in streaming form, for the DRV, which receives the pages
+ * from the mini-VDD four at a time and has no room to sort 32 KiB of them:
+ * the plan once, then each page. No order or repeat check: the pages come
+ * from one _PageAllocate, which cannot hand out a page twice. Each returns
+ * a V9X_I9XX_POOL_* reason, OK when accepted.
+ */
+v9x_u16 v9x_i9xx_pool_check_plan(const struct v9x_i9xx_pool_layout *layout,
+                                 const struct v9x_i9xx_pool_plan *plan);
+v9x_u16 v9x_i9xx_pool_check_page(const struct v9x_i9xx_pool_layout *layout,
+                                 v9x_u32 page);
 
 /* The PTE that maps one accepted page. */
 v9x_u32 v9x_i9xx_pool_pte(v9x_u32 physical_page);

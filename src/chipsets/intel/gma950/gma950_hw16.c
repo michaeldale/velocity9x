@@ -63,6 +63,21 @@ extern unsigned short v9x_intel_async_submit_allowed;
  */
 static const char *v9x_gma950_engine_status = "not-called";
 
+/*
+ * The texture pool, for dd16.c (V9X_HW16_DEVICE.engine_pool). A near
+ * function in this segment reading what intel_pool16.c, in LEAFCODE, left
+ * in data: a hook slot must not hold a function in another code segment
+ * (velocity9x\intel16.h).
+ */
+extern unsigned long v9x_intel_pool_offset;
+extern unsigned long v9x_intel_pool_bytes;
+
+static unsigned long v9x_gma950_engine_pool(unsigned long *bytes)
+{
+    *bytes = v9x_intel_pool_bytes;
+    return v9x_intel_pool_offset;
+}
+
 const char *v9x_gma950_engine_status_text(void)
 {
     return v9x_gma950_engine_status;
@@ -514,7 +529,11 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
      * the HAL (docs\decisions\2026-10-25-intel-gen3-write-combining.md).
      * The GMA 900 and GMA 3150 below are the same design and take it too.
      */
-    1u
+    1u,
+    0,
+    0u,
+    /* The texture pool intel_pool16.c mapped at Enable, if any. */
+    v9x_gma950_engine_pool
 };
 
 /*

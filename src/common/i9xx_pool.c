@@ -104,7 +104,7 @@ v9x_u16 v9x_i9xx_pool_size(const struct v9x_i9xx_pool_layout *layout,
         v9x_i9xx_pool_refuse(plan, V9X_I9XX_POOL_NO_ROOM);
         return plan->reason;
     }
-    bytes = (limit - offset) & ~V9X_I9XX_POOL_PAGE_MASK;
+    bytes = (limit - offset) & ~(V9X_I9XX_POOL_GRAIN_BYTES - 1ul);
     if (bytes > V9X_I9XX_POOL_BYTES) {
         bytes = V9X_I9XX_POOL_BYTES;
     }
@@ -192,29 +192,71 @@ static int v9x_i9xx_pool_plan_fits(const struct v9x_i9xx_pool_layout *layout,
     return end <= layout->aperture_bytes && end <= layout->mapped_bytes;
 }
 
-v9x_u16 v9x_i9xx_pool_check(const struct v9x_i9xx_pool_layout *layout,
-                            const struct v9x_i9xx_pool_plan *plan,
-                            const v9x_u32 *pages, v9x_u32 count)
+v9x_u16 v9x_i9xx_pool_check_plan(const struct v9x_i9xx_pool_layout *layout,
+                                 const struct v9x_i9xx_pool_plan *plan)
 {
-    v9x_u32 index;
-    v9x_u16 range;
-
     if (layout == 0 || plan == 0 || !v9x_i9xx_pool_layout_ok(layout)) {
         return V9X_I9XX_POOL_BAD_LAYOUT;
     }
     if (plan->reason != V9X_I9XX_POOL_OK) {
         return plan->reason;
     }
-    if (pages == 0 || count == 0ul || count != plan->entry_count) {
+    if (plan->entry_count == 0ul) {
         return V9X_I9XX_POOL_COUNT;
     }
     if (!v9x_i9xx_pool_plan_fits(layout, plan)) {
         return V9X_I9XX_POOL_APERTURE;
     }
+    return V9X_I9XX_POOL_OK;
+}
+
+v9x_u16 v9x_i9xx_pool_check_page(const struct v9x_i9xx_pool_layout *layout,
+                                 v9x_u32 page)
+{
+    v9x_u16 range;
+
+    if (layout == 0) {
+        return V9X_I9XX_POOL_BAD_LAYOUT;
+    }
+    if ((page & V9X_I9XX_POOL_PAGE_MASK) != 0ul) {
+        return V9X_I9XX_POOL_ALIGNMENT;
+    }
+    if (page == 0ul) {
+        return V9X_I9XX_POOL_ZERO_PAGE;
+    }
+    if (v9x_i9xx_pool_in_range(page, layout->bsm, layout->stolen_bytes)) {
+        return V9X_I9XX_POOL_STOLEN;
+    }
+    for (range = 0u; range < layout->excluded_count &&
+                     range < V9X_I9XX_POOL_MAX_EXCLUDED; ++range) {
+        if (v9x_i9xx_pool_in_range(page, layout->excluded[range].base,
+                                   layout->excluded[range].bytes)) {
+            return V9X_I9XX_POOL_EXCLUDED;
+        }
+    }
+    return V9X_I9XX_POOL_OK;
+}
+
+v9x_u16 v9x_i9xx_pool_check(const struct v9x_i9xx_pool_layout *layout,
+                            const struct v9x_i9xx_pool_plan *plan,
+                            const v9x_u32 *pages, v9x_u32 count)
+{
+    v9x_u32 index;
+    v9x_u16 reason;
+
+    reason = v9x_i9xx_pool_check_plan(layout, plan);
+    if (reason != V9X_I9XX_POOL_OK) {
+        return reason;
+    }
+    if (pages == 0 || count != plan->entry_count) {
+        return V9X_I9XX_POOL_COUNT;
+    }
 
     for (index = 0ul; index < count; ++index) {
         v9x_u32 page = pages[index];
 
+        /* Alignment and zero first, so a bad entry is named for what it is
+         * rather than for being out of order. */
         if ((page & V9X_I9XX_POOL_PAGE_MASK) != 0ul) {
             return V9X_I9XX_POOL_ALIGNMENT;
         }
@@ -225,14 +267,9 @@ v9x_u16 v9x_i9xx_pool_check(const struct v9x_i9xx_pool_layout *layout,
         if (index > 0ul && page <= pages[index - 1ul]) {
             return V9X_I9XX_POOL_ORDER;
         }
-        if (v9x_i9xx_pool_in_range(page, layout->bsm, layout->stolen_bytes)) {
-            return V9X_I9XX_POOL_STOLEN;
-        }
-        for (range = 0u; range < layout->excluded_count; ++range) {
-            if (v9x_i9xx_pool_in_range(page, layout->excluded[range].base,
-                                       layout->excluded[range].bytes)) {
-                return V9X_I9XX_POOL_EXCLUDED;
-            }
+        reason = v9x_i9xx_pool_check_page(layout, page);
+        if (reason != V9X_I9XX_POOL_OK) {
+            return reason;
         }
     }
     return V9X_I9XX_POOL_OK;

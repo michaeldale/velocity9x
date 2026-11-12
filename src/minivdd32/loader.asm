@@ -647,6 +647,26 @@ V9xVbiosBadLine db 'V9X-MINI vbios panel patch refused: record', 13, 10
 V9xVbiosBadLineLength equ $ - V9xVbiosBadLine
 V9xVbiosReadbackLine db 'V9X-MINI vbios panel patch failed: read back', 13, 10
 V9xVbiosReadbackLineLength equ $ - V9xVbiosReadbackLine
+
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; The Gen3 texture pool (V9XMINI_FN_I9XX_POOL_* in V9XMAPI.INC). The page
+; table copy is the pool's frames in the order their PTEs are written, so
+; aperture page i is allocation page i (measured, Phase 2 record).
+V9X_I9XX_POOL_DEVICE   equ 27ae8086h     ; the gate: MICHAEL-NETBOOK's 945GSE
+V9X_I9XX_POOL_FRAME    equ 0fffff000h
+V9X_I9XX_POOL_CFG_ADDR equ 0cf8h         ; PCI configuration mechanism 1
+V9X_I9XX_POOL_CFG_DATA equ 0cfch
+V9X_I9XX_POOL_CFG_IGD  equ 80001000h     ; 00:02.0, register 0
+V9xI9xxPoolPages   dd V9X_I9XX_POOL_PAGE_MAX dup (0)
+V9xI9xxPoolDemand  dd 32 dup (0)         ; DemandInfoStruc and its reserve
+V9xI9xxPoolState   dd 0                  ; 0 none, 1 allocated, 2 mapped
+V9xI9xxPoolHandle  dd 0
+V9xI9xxPoolLinear  dd 0
+V9xI9xxPoolFirst   dd 0
+V9xI9xxPoolCount   dd 0
+V9xI9xxPoolSaved   dd 0
+V9xI9xxPoolBad     dd 0
+ENDIF
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -2939,6 +2959,14 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_Nv3MmioMap
     cmp     ax, V9XMINI_FN_RS690_MMIO_MAP
     je      V9xMini_Api_Rs690MmioMap
+    cmp     ax, V9XMINI_FN_I9XX_POOL_INFO
+    je      V9xMini_Api_I9xxPoolInfo
+    cmp     ax, V9XMINI_FN_I9XX_POOL_ALLOC
+    je      V9xMini_Api_I9xxPoolAlloc
+    cmp     ax, V9XMINI_FN_I9XX_POOL_CHUNK
+    je      V9xMini_Api_I9xxPoolChunk
+    cmp     ax, V9XMINI_FN_I9XX_POOL_MAP
+    je      V9xMini_Api_I9xxPoolMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -4036,6 +4064,77 @@ ENDIF
     mov     [ebp.Client_AX], 0
     ret
 
+; The Gen3 texture pool. See V9XMINI_FN_I9XX_POOL_* in V9XMAPI.INC; the
+; work is in V9xMini_I9xx_Pool_* below the API.
+V9xMini_Api_I9xxPoolInfo:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    call    V9xMini_I9xx_Pool_Info
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_AX], 1
+    ret
+ELSE
+    mov     [ebp.Client_AX], 0
+    ret
+ENDIF
+
+V9xMini_Api_I9xxPoolAlloc:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    call    V9xMini_I9xx_Pool_Alloc
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_AX], ax
+    ret
+ELSE
+    mov     [ebp.Client_AX], 0
+    ret
+ENDIF
+
+V9xMini_Api_I9xxPoolChunk:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxPoolState, 0
+    je      short V9xMini_Api_I9xxPoolChunk_Missing
+    movzx   eax, [ebp.Client_CX]
+    shl     eax, 2
+    add     eax, 4
+    cmp     eax, V9xI9xxPoolCount
+    ja      short V9xMini_Api_I9xxPoolChunk_Missing
+    movzx   eax, [ebp.Client_CX]
+    shl     eax, 4
+    add     eax, OFFSET32 V9xI9xxPoolPages
+    mov     ebx, [eax]
+    mov     [ebp.Client_EBX], ebx
+    mov     ebx, [eax+4]
+    mov     [ebp.Client_ECX], ebx
+    mov     ebx, [eax+8]
+    mov     [ebp.Client_EDX], ebx
+    mov     ebx, [eax+12]
+    mov     [ebp.Client_ESI], ebx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxPoolChunk_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxPoolMap:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    mov     edx, [ebp.Client_EDX]
+    call    V9xMini_I9xx_Pool_Map
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_AX], ax
+    ret
+ELSE
+    mov     [ebp.Client_AX], 0
+    ret
+ENDIF
+
 ; No input. See V9XMINI_FN_R128_AGP_RING in V9XMAPI.INC.
 V9xMini_Api_R128AgpRing:
 IFDEF V9X_R128_MMIO
@@ -4881,6 +4980,276 @@ V9xMini_Api_NoData:
     mov     [ebp.Client_AX], 0
     ret
 EndProc MiniVDD_PM_API
+
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; The Gen3 texture pool's mechanics. The policy - how big, where, whether
+; these pages may be mapped - is the display driver's, from
+; src\common\i9xx_pool.c; this allocates, reports and writes, and keeps the
+; checks it cannot be talked out of: the device, the GTT bounds, entries
+; that all hold one value before, present pages outside stolen memory, and
+; every PTE read back after. Proved as G3PM.VXD on the netbook first
+; (docs\decisions\2026-11-12-intel-gen3-texture-pool-phase2.md).
+
+; Out: EBX = physical pages, ECX = state, EDX = saved PTE, ESI = mismatches.
+BeginProc V9xMini_I9xx_Pool_Info
+    VMMcall _GetDemandPageInfo,<<OFFSET32 V9xI9xxPoolDemand>,0>
+    mov     ebx, V9xI9xxPoolDemand[4]   ; DIPhys_Count, VMM.INC DemandInfoStruc
+    mov     ecx, V9xI9xxPoolState
+    mov     edx, V9xI9xxPoolSaved
+    mov     esi, V9xI9xxPoolBad
+    ret
+EndProc V9xMini_I9xx_Pool_Info
+
+; Out: EAX = 00:02.0's vendor and device. CF8h saved and restored with
+; interrupts off: this runs after boot, while other code may be mid-cycle.
+BeginProc V9xMini_I9xx_Pool_Igd_Id
+    push    ecx
+    push    edx
+    pushfd
+    cli
+    mov     dx, V9X_I9XX_POOL_CFG_ADDR
+    in      eax, dx
+    mov     ecx, eax
+    mov     eax, V9X_I9XX_POOL_CFG_IGD
+    out     dx, eax
+    mov     dx, V9X_I9XX_POOL_CFG_DATA
+    in      eax, dx
+    xchg    eax, ecx
+    mov     dx, V9X_I9XX_POOL_CFG_ADDR
+    out     dx, eax
+    mov     eax, ecx
+    popfd
+    pop     edx
+    pop     ecx
+    ret
+EndProc V9xMini_I9xx_Pool_Igd_Id
+
+; Out: ESI = linear address of the pool's first PTE.
+BeginProc V9xMini_I9xx_Pool_Pte_Base
+    mov     esi, V9xI9xxPoolFirst
+    shl     esi, 2
+    add     esi, V9xI9xxGttLinear
+    ret
+EndProc V9xMini_I9xx_Pool_Pte_Base
+
+; EBX = first entry, ECX = page count. Out: AX = 1, or AX = 0 and EDX =
+; reason (V9XMAPI.INC, POOL_ALLOC).
+BeginProc V9xMini_I9xx_Pool_Alloc
+    push    ebx
+    push    ecx
+    push    esi
+    push    edi
+    mov     edx, 1
+    cmp     V9xI9xxPoolState, 0
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     edx, 2
+    cmp     V9xI9xxGttValid, 0
+    je      V9xMini_I9xx_Pool_Alloc_Refused
+    cmp     V9xI9xxGttInBar0, 0
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     edx, 3
+    call    V9xMini_I9xx_Pool_Igd_Id
+    cmp     eax, V9X_I9XX_POOL_DEVICE
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     edx, 4
+    test    ecx, ecx
+    jz      V9xMini_I9xx_Pool_Alloc_Refused
+    cmp     ecx, V9X_I9XX_POOL_PAGE_MAX
+    ja      V9xMini_I9xx_Pool_Alloc_Refused
+    cmp     ebx, V9X_I9XX_GTT_ENTRY_COUNT
+    jae     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     eax, V9X_I9XX_GTT_ENTRY_COUNT
+    sub     eax, ebx
+    cmp     ecx, eax
+    ja      V9xMini_I9xx_Pool_Alloc_Refused
+    mov     V9xI9xxPoolFirst, ebx
+    mov     V9xI9xxPoolCount, ecx
+
+    ; Every entry the pool will take must hold the first one's value -
+    ; the VBIOS's scratch PTE - which is what a failed map restores.
+    mov     edx, 5
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     eax, [esi]
+    mov     V9xI9xxPoolSaved, eax
+V9xMini_I9xx_Pool_Alloc_Uniform:
+    cmp     [esi], eax
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    add     esi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Pool_Alloc_Uniform
+
+    mov     ecx, V9xI9xxPoolCount
+    VMMcall _PageAllocate,<ecx,PG_SYS,0,0,0,0,0,PAGEFIXED+PAGEZEROINIT>
+    test    eax, eax
+    jz      short V9xMini_I9xx_Pool_Alloc_No_Pages
+    mov     V9xI9xxPoolHandle, eax
+    mov     V9xI9xxPoolLinear, edx
+    mov     eax, edx
+    shr     eax, PAGESHIFT
+    VMMcall _CopyPageTable,<eax,V9xI9xxPoolCount,<OFFSET32 V9xI9xxPoolPages>,0>
+    test    eax, eax
+    jnz     short V9xMini_I9xx_Pool_Alloc_Done
+    VMMcall _PageFree,<V9xI9xxPoolHandle,0>
+    mov     V9xI9xxPoolHandle, 0
+    mov     V9xI9xxPoolLinear, 0
+    mov     edx, 7
+    jmp     short V9xMini_I9xx_Pool_Alloc_Failed
+    ; _PageAllocate returns the linear address in EDX, so the reason is set
+    ; after it, not before.
+V9xMini_I9xx_Pool_Alloc_No_Pages:
+    mov     edx, 6
+    jmp     short V9xMini_I9xx_Pool_Alloc_Failed
+
+V9xMini_I9xx_Pool_Alloc_Done:
+    mov     V9xI9xxPoolState, 1
+    mov     V9xI9xxPoolBad, 0
+    xor     edx, edx
+    mov     ax, 1
+    jmp     short V9xMini_I9xx_Pool_Alloc_Out
+V9xMini_I9xx_Pool_Alloc_Failed:
+V9xMini_I9xx_Pool_Alloc_Refused:
+    xor     ax, ax
+V9xMini_I9xx_Pool_Alloc_Out:
+    pop     edi
+    pop     esi
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_I9xx_Pool_Alloc
+
+; Free the pages and forget them. State back to 0.
+BeginProc V9xMini_I9xx_Pool_Release
+    push    eax
+    mov     eax, V9xI9xxPoolHandle
+    test    eax, eax
+    jz      short V9xMini_I9xx_Pool_Release_Done
+    VMMcall _PageFree,<eax,0>
+    mov     V9xI9xxPoolHandle, 0
+    mov     V9xI9xxPoolLinear, 0
+V9xMini_I9xx_Pool_Release_Done:
+    mov     V9xI9xxPoolState, 0
+    pop     eax
+    ret
+EndProc V9xMini_I9xx_Pool_Release
+
+; EBX = V9X_I9XX_POOL_ACCEPT to map, else release; ECX = BSM, EDX = stolen
+; bytes. Out: AX = 1 mapped or released, or AX = 0 and EDX = reason, ESI =
+; page index (reason 2) or mismatches (reason 3).
+BeginProc V9xMini_I9xx_Pool_Map
+    push    ebx
+    push    ecx
+    push    edi
+    push    ebp
+    cmp     V9xI9xxPoolState, 1
+    jne     V9xMini_I9xx_Pool_Map_State
+    cmp     ebx, V9X_I9XX_POOL_ACCEPT
+    je      short V9xMini_I9xx_Pool_Map_Check
+    call    V9xMini_I9xx_Pool_Release
+    xor     edx, edx
+    xor     esi, esi
+    mov     ax, 1
+    jmp     V9xMini_I9xx_Pool_Map_Out
+
+    ; Present, non-zero, outside [BSM, BSM + stolen), whatever the caller
+    ; decided. EBX = BSM, EBP = stolen bytes.
+V9xMini_I9xx_Pool_Map_Check:
+    mov     ebx, ecx
+    mov     ebp, edx
+    mov     edi, OFFSET32 V9xI9xxPoolPages
+    xor     esi, esi
+V9xMini_I9xx_Pool_Map_Page:
+    mov     eax, [edi+esi*4]
+    test    eax, P_PRES
+    jz      short V9xMini_I9xx_Pool_Map_Page_Refused
+    and     eax, V9X_I9XX_POOL_FRAME
+    jz      short V9xMini_I9xx_Pool_Map_Page_Refused
+    sub     eax, ebx
+    jb      short V9xMini_I9xx_Pool_Map_Page_Ok
+    cmp     eax, ebp
+    jb      short V9xMini_I9xx_Pool_Map_Page_Refused
+V9xMini_I9xx_Pool_Map_Page_Ok:
+    inc     esi
+    cmp     esi, V9xI9xxPoolCount
+    jb      short V9xMini_I9xx_Pool_Map_Page
+    jmp     short V9xMini_I9xx_Pool_Map_Write
+V9xMini_I9xx_Pool_Map_Page_Refused:
+    call    V9xMini_I9xx_Pool_Release
+    mov     edx, 2
+    xor     ax, ax
+    jmp     V9xMini_I9xx_Pool_Map_Out
+
+    ; The zero fill out of the cache before the GPU or the aperture can
+    ; read the pages, then the PTEs (frame | valid, cache type 0, as the
+    ; VBIOS writes its own) and the read that posts them.
+V9xMini_I9xx_Pool_Map_Write:
+    wbinvd
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, OFFSET32 V9xI9xxPoolPages
+    mov     ecx, V9xI9xxPoolCount
+V9xMini_I9xx_Pool_Map_Pte:
+    mov     eax, [edi]
+    and     eax, V9X_I9XX_POOL_FRAME
+    or      eax, 1
+    mov     [esi], eax
+    add     esi, 4
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Pool_Map_Pte
+    mov     eax, [esi-4]
+
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, OFFSET32 V9xI9xxPoolPages
+    mov     ecx, V9xI9xxPoolCount
+    xor     edx, edx
+V9xMini_I9xx_Pool_Map_Verify:
+    mov     eax, [edi]
+    and     eax, V9X_I9XX_POOL_FRAME
+    or      eax, 1
+    cmp     eax, [esi]
+    je      short V9xMini_I9xx_Pool_Map_Same
+    inc     edx
+V9xMini_I9xx_Pool_Map_Same:
+    add     esi, 4
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Pool_Map_Verify
+    mov     V9xI9xxPoolBad, edx
+    test    edx, edx
+    jnz     short V9xMini_I9xx_Pool_Map_Restore
+    mov     V9xI9xxPoolState, 2
+    xor     esi, esi
+    mov     ax, 1
+    jmp     short V9xMini_I9xx_Pool_Map_Out
+
+    ; A PTE that did not read back: the scratch PTE back in every entry
+    ; before the pages are freed, so no entry is left naming a freed page.
+V9xMini_I9xx_Pool_Map_Restore:
+    mov     ebp, edx
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, esi
+    mov     ecx, V9xI9xxPoolCount
+    mov     eax, V9xI9xxPoolSaved
+    cld
+    rep     stosd
+    mov     eax, [edi-4]
+    call    V9xMini_I9xx_Pool_Release
+    mov     esi, ebp
+    mov     edx, 3
+    xor     ax, ax
+    jmp     short V9xMini_I9xx_Pool_Map_Out
+
+V9xMini_I9xx_Pool_Map_State:
+    mov     edx, 1
+    xor     esi, esi
+    xor     ax, ax
+V9xMini_I9xx_Pool_Map_Out:
+    pop     ebp
+    pop     edi
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_I9xx_Pool_Map
+ENDIF
 
 ; The mask's bits above 4 GiB for this CPU's physical address width:
 ; CPUID 80000008h where it exists, else 36 bits with PAE or PSE-36, else 32.

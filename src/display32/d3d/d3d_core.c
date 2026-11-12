@@ -117,7 +117,10 @@ static const BYTE v9x_guid_more_surface_caps[16] = {
     0x88u, 0x0bu, 0x00u, 0xc0u, 0x4fu, 0xd9u, 0x30u, 0xc5u
 };
 
-#define V9X_DD_MORE_SURFACE_CAPS_HEAPS 1ul      /* vmiData.dwNumHeaps */
+/* At most two heaps: stolen memory, and the Gen3 texture pool when the
+ * engine has one (dd16.c, vmiData.dwNumHeaps). The answer carries one
+ * 24-byte record per published heap. */
+#define V9X_DD_MORE_SURFACE_CAPS_HEAPS 2ul
 #define V9X_DD_MORE_SURFACE_CAPS_BYTES \
     (16ul + 24ul * V9X_DD_MORE_SURFACE_CAPS_HEAPS)
 
@@ -8443,18 +8446,20 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         v9x_d3d_cubes_claimed()) {
         {
             DWORD answer[V9X_DD_MORE_SURFACE_CAPS_BYTES / 4ul];
-            DWORD copy = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            DWORD size = 16ul + 24ul * (v9x_hal->engine.pool_bytes != 0ul
+                                            ? 2ul : 1ul);
+            DWORD copy = size;
             DWORD at;
 
             for (at = 0ul; at < V9X_DD_MORE_SURFACE_CAPS_BYTES / 4ul; ++at) {
                 answer[at] = 0ul;
             }
-            answer[0] = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            answer[0] = size;
             answer[1] = V9X_DDSCAPS2_CUBEMAP;
             if (data->dwExpectedSize < copy) {
                 copy = data->dwExpectedSize;
             }
-            data->dwActualSize = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            data->dwActualSize = size;
             if (data->lpvData != 0 && copy != 0ul) {
                 for (at = 0ul; at < copy; ++at) {
                     ((BYTE *)data->lpvData)[at] = ((const BYTE *)answer)[at];

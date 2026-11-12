@@ -1689,7 +1689,7 @@ static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     const V9X_DD_SURFACE_LCL *surface =
         (const V9X_DD_SURFACE_LCL *)data->lpDDSurface;
     DWORD offset = surface != 0 && surface->lpGbl != 0
-                       ? v9x_surface_offset(surface) : 0xfffffffful;
+                       ? v9x_surface_sample_offset(surface) : 0xfffffffful;
     DWORD n;
 
     if (v9x_d3d_place_release(data, V9X_I9XX_SANDBOX_PAGE_BYTES)) {
@@ -1817,6 +1817,21 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     return verified;
 }
 
+/*
+ * Where a sampled surface at `offset` must end: the texture pool's end for
+ * one in the pool, stolen memory's otherwise. A footprint may not run from
+ * one into the other, nor into the scratch-mapped addresses between them
+ * (docs\plans\intel-gen3-system-memory-textures.md).
+ */
+static DWORD v9x_d3d_i9xx_sample_limit(DWORD offset)
+{
+    if (v9x_hal->engine.pool_bytes != 0ul &&
+        offset >= v9x_hal->engine.pool_offset) {
+        return v9x_hal->engine.pool_offset + v9x_hal->engine.pool_bytes;
+    }
+    return v9x_hal->fb.vram_bytes;
+}
+
 static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
                                      struct v9x_i9xx_texture *map,
                                      DWORD *bytes_out)
@@ -1873,7 +1888,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
             ((DWORD)surface->lpGbl->lPitch & 0xfffful);
         return 0;
     }
-    offset = v9x_surface_offset(surface);
+    offset = v9x_surface_sample_offset(surface);
     if (offset == 0xfffffffful) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
         ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
@@ -1903,7 +1918,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
      */
     if (v9x_d3d_i9xx_bind_map_at(offset, (DWORD)surface->lpGbl->lPitch,
                                  footprint_width, map_rows, bytes,
-                                 v9x_hal->fb.vram_bytes,
+                                 v9x_d3d_i9xx_sample_limit(offset),
                                  &address) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
         ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
@@ -3754,7 +3769,7 @@ static int v9x_d3d_i9xx_shader_unit(const V9X_R3D_TEXTURE *texture,
     if (surface == 0 || surface->lpGbl == 0) {
         return 0;
     }
-    offset = v9x_surface_offset(surface);
+    offset = v9x_surface_sample_offset(surface);
     cube = offset != 0xfffffffful ? v9x_d3d_i9xx_cube_at(offset) : 0;
     if (cube == 0) {
         if (!v9x_d3d_i9xx_bind_texture(texture, map, &bytes)) {
@@ -3765,7 +3780,8 @@ static int v9x_d3d_i9xx_shader_unit(const V9X_R3D_TEXTURE *texture,
                                      &tree) == V9X_FALSE ||
             v9x_d3d_i9xx_bind_map_at(offset, tree.pitch,
                                      tree.pitch / cube->bytes, tree.rows,
-                                     cube->bytes, v9x_hal->fb.vram_bytes,
+                                     cube->bytes,
+                                     v9x_d3d_i9xx_sample_limit(offset),
                                      &address) == V9X_FALSE) {
             return 0;
         }

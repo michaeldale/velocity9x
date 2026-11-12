@@ -1975,6 +1975,12 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026111201: the Gen3 texture pool. V9X_DD_ENGINE gains pool_offset and
+ * pool_bytes, and V9X_DD_SHARED's heaps grows from one to two, for the
+ * texture-only heap over the pool
+ * (docs\plans\intel-gen3-system-memory-textures.md). A layout change:
+ * everything after the engine block moves, in V9X_DD_SHARED and in the
+ * trace snapshot. */
 /* 2026102002: V9X_DD_SHARED's texture_formats grows from three to five,
  * for the HD 4600's ARGB8888 and XRGB8888 textures. A layout change:
  * everything after it moves. V9X_D3D_DIAGNOSTICS also gains
@@ -2117,7 +2123,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026102002ul
+#define V9X_DD_SHARED_ABI   2026111201ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2255,6 +2261,16 @@ typedef struct v9x_dd_engine {
      * side. Zero for every other engine.
      */
     DWORD reserve_offset;
+    /*
+     * The Gen3 texture pool: system RAM the mini-VDD mapped through the GTT
+     * above the stolen run, as a graphics (aperture) offset and a size. The
+     * CPU reaches it at fb.linear_base + pool_offset, inside the aperture
+     * mapping; DirectDraw sees it as heap 1, textures only. Both zero when
+     * there is no pool, which is every engine but Gen3 on the gated device
+     * (docs\decisions\2026-11-12-intel-gen3-texture-pool-decisions.md).
+     */
+    DWORD pool_offset;
+    DWORD pool_bytes;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {
@@ -4589,7 +4605,10 @@ typedef struct v9x_dd_shared {
     V9X_DDSURFACEDESC texture_formats[5];
     V9X_D3DHAL_CALLBACKS d3d_callbacks;
     V9X_D3D_DIAGNOSTICS d3d_diagnostics;
-    V9X_VIDMEM heaps[1];
+    /* Heap 0 is stolen memory past the visible surface; heap 1, when the
+     * engine has a pool (engine.pool_bytes), is the pool, textures only.
+     * Two since ABI 2026111201. */
+    V9X_VIDMEM heaps[2];
     /* How many of modes[] the 16-bit side filled in. Written before DriverInit
      * runs, which validates it and publishes it as info.dwNumModes. */
     DWORD mode_count;

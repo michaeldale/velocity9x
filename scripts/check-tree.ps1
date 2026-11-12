@@ -320,6 +320,9 @@ $allowedOsBoundaries = @(
     # same Win16 profile API; the plan itself is OS-free in
     # src\common\vbios_panel.c.
     (Join-Path $repoRoot "src\display16\intel_panel16.c"),
+    # The texture pool's setup writes INTELGTT.TXT with the same Win16
+    # profile API; its policy is OS-free in src\common\i9xx_pool.c.
+    (Join-Path $repoRoot "src\display16\intel_pool16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only

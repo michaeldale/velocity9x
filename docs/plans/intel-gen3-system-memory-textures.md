@@ -9,7 +9,12 @@ Phase 0 is measured
 except Serious Sam's working set and allocation at `Device_Init`. Phase 2
 passed on the netbook
 ([record](../decisions/2026-11-12-intel-gen3-texture-pool-phase2.md)).
-Next is Phase 3, the GPU sampling the pool. Three findings change the
+Phase 3, built as designed below with Phase 4's heap and placement, passed
+on the netbook
+([record](../decisions/2026-11-12-intel-gen3-texture-pool-phase3.md)).
+Next: the rest of Phase 4's sustained runs (Serious Sam's demo, Half-Life,
+Quake 2, the Dragothic sky), a DOS box with the pool mapped, then the
+other Gen3 chips one record each. Three findings change the
 plan below: the aperture map is 64 MiB, not 8 + N; the HAL has to place
 pool textures itself (DirectDraw gives them a 4 KiB pitch); and a VBIOS
 mode set leaves the pool's PTEs alone, so item 6's re-apply is not needed
@@ -162,6 +167,53 @@ GMADR offset 0          7.7 MiB            7.7 + N MiB          256 MiB
    Quake 2, Half-Life and 3DMark 99 for regressions, watched for
    corruption. Mode change and DOS box (which hard-locks this netbook,
    so last and with the operator present).
+
+## Phase 3 design (proposed 2026-11-12, needs Michael's agreement)
+
+Phases 0 and 2 ran as dynamic probe VxDs. Phase 3 cannot: the GPU samples
+the pool only if the driver places a texture there and binds it, and the
+driver owns the ring. So Phase 3 is the pool built into the driver, with
+Phase 4's heap and placement folded in, and its test is the driver's own
+probes drawing pool textures. Each piece crosses a module boundary.
+
+1. **Mini-VDD (`loader.asm`): four new PM API functions**, Gen3 only and
+   refused on any device but `8086:27AE` while the gate is netbook-only.
+   They are the probe's calls on the GTT mapping the capture path already
+   holds:
+   - `I9XX_POOL_ALLOC(first, count)`: refuse unless the entries hold one
+     value, keep it; `_PageAllocate` fixed and zeroed; `_CopyPageTable` into
+     a locked 32 KiB buffer; report total physical pages
+     (`_GetDemandPageInfo`) for the RAM rule.
+   - `I9XX_POOL_CHUNK(n)`: four frames, as `I9XX_GTT_CHUNK` returns entries.
+   - `I9XX_POOL_MAP(accept)`: `WBINVD`, PTEs, read back, verify. Nothing on
+     refusal.
+   - `I9XX_POOL_INFO`: state, offset, size, mismatches.
+   The pages are never freed; the pool lives as long as Windows.
+2. **DRV: a new `intel_pool16.c`**, in a segment with room (I9XXCODE has
+   tens of bytes free). After the GTT inventory it sizes the pool with
+   `v9x_i9xx_pool_size`, calls ALLOC, streams the frames through a new
+   per-page `v9x_i9xx_pool_check_page` (no sort needed: frames from one
+   `_PageAllocate` cannot repeat, which the VxD also cannot be wrong about;
+   the property test still covers the sorted whole-list check), calls MAP,
+   and writes `[IntelPool]` keys to `INTELGTT.TXT`. `V9X3D OFF` skips all
+   of it.
+3. **Shared ABI bump**: `V9X_DD_ENGINE` gains `pool_offset` and
+   `pool_bytes`, and `V9X_DD_SHARED.heaps` widens from 1 to 2. DRV and HAL
+   deploy together, as every ABI change.
+4. **DRV heap**: `dd16.c` publishes heap 1 over the pool's aperture range
+   when `pool_bytes` is non-zero, with every surface type but textures
+   excluded (measured in Phase 0).
+5. **HAL placement and binding**: `d3d_place.c` asks heap 1 first for a
+   texture that is not a render target, then heap 0; the stolen memory is
+   then left to targets, Z and the rest. Texture binds (`bind_map_at`, the
+   cube path) check against the pool's end instead of `fb.vram_bytes`;
+   targets and depth keep `fb.vram_bytes`. A texture the HAL leaves to
+   DirectDraw can still land in the pool at a 4 KiB pitch; that wastes
+   memory but samples correctly.
+6. **Test (Phase 3 proper)**: V9XD32 at 16 and 32 bpp with its textures in
+   the pool (`INTELGTT.TXT` and a trace confirm where they are), then
+   V9XDDP's texture matrix; read back exactly or stop. Then sustained:
+   3DMark 2001 SE, Serious Sam's demo, Half-Life, with the stop rule.
 
 ## Separately, and cheaper
 

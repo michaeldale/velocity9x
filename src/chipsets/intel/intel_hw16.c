@@ -4,6 +4,7 @@
 
 /* src\display16\intel_panel16.c, in LEAFCODE. */
 extern void V9X_LEAF_FAR v9x_intel_plan_panel(unsigned short device_id);
+extern void V9X_LEAF_FAR v9x_intel_pool_setup(unsigned short device_id);
 
 extern unsigned long v9x_vbe_vram_reported;
 extern const V9X_HW16_DEVICE v9x_gma950_device;
@@ -211,6 +212,10 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     v9x_intel_publish_mmio_fingerprint();
     v9x_intel_publish_gtt_inventory();
+    /* After the inventory, which maps the GTT the pool's PTEs go into and
+     * records the table as the VBIOS left it. The device test is inside:
+     * one gated chip so far. */
+    v9x_intel_pool_setup(device->device_id);
     v9x_intel_publish_ring_plan();
 }
 

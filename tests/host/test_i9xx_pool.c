@@ -61,6 +61,15 @@ static void test_size_limits(void)
     CHECK(v9x_i9xx_pool_size(&layout, &plan) == V9X_I9XX_POOL_OK);
     CHECK(plan.bytes == 4ul * MIB);
 
+    /* Room that is not a whole number of four-page grains rounds down:
+     * the mini-VDD hands pages over four at a time. */
+    layout.mapped_bytes = 13ul * MIB + 12ul * 1024ul;
+    CHECK(v9x_i9xx_pool_size(&layout, &plan) == V9X_I9XX_POOL_OK);
+    CHECK(plan.bytes == 5ul * MIB && (plan.entry_count & 3ul) == 0ul);
+    layout.mapped_bytes = 13ul * MIB + 16ul * 1024ul;
+    CHECK(v9x_i9xx_pool_size(&layout, &plan) == V9X_I9XX_POOL_OK);
+    CHECK(plan.bytes == 5ul * MIB + 16ul * 1024ul);
+
     /* Under it: no pool, and nothing to allocate. */
     layout.mapped_bytes = 12ul * MIB - 4096ul;
     CHECK(v9x_i9xx_pool_size(&layout, &plan) == V9X_I9XX_POOL_NO_ROOM);
@@ -285,6 +294,57 @@ static void test_check_plan_bounds(void)
           V9X_I9XX_POOL_NO_ROOM);
 }
 
+/*
+ * The streaming form the DRV uses: the plan checked once, then each page
+ * as the mini-VDD hands it over, with no sort. It must refuse exactly what
+ * the whole-list check refuses for a single page.
+ */
+static void test_streaming(void)
+{
+    struct v9x_i9xx_pool_layout layout;
+    struct v9x_i9xx_pool_plan plan;
+
+    small_layout(&layout, &plan);
+    CHECK(v9x_i9xx_pool_check_plan(&layout, &plan) == V9X_I9XX_POOL_OK);
+    CHECK(v9x_i9xx_pool_check_page(&layout, 0x01000000ul) ==
+          V9X_I9XX_POOL_OK);
+    CHECK(v9x_i9xx_pool_check_page(&layout, 0x01000010ul) ==
+          V9X_I9XX_POOL_ALIGNMENT);
+    CHECK(v9x_i9xx_pool_check_page(&layout, 0ul) == V9X_I9XX_POOL_ZERO_PAGE);
+    CHECK(v9x_i9xx_pool_check_page(&layout, NETBOOK_BSM) ==
+          V9X_I9XX_POOL_STOLEN);
+    CHECK(v9x_i9xx_pool_check_page(&layout,
+                                   NETBOOK_BSM + NETBOOK_STOLEN - 4096ul) ==
+          V9X_I9XX_POOL_STOLEN);
+    CHECK(v9x_i9xx_pool_check_page(&layout, NETBOOK_BSM + NETBOOK_STOLEN) ==
+          V9X_I9XX_POOL_OK);
+    layout.excluded_count = 1u;
+    layout.excluded[0].base = 0x02000000ul;
+    layout.excluded[0].bytes = 0x1000ul;
+    CHECK(v9x_i9xx_pool_check_page(&layout, 0x02000000ul) ==
+          V9X_I9XX_POOL_EXCLUDED);
+    CHECK(v9x_i9xx_pool_check_page(&layout, 0x02001000ul) ==
+          V9X_I9XX_POOL_OK);
+    CHECK(v9x_i9xx_pool_check_page(0, 0x01000000ul) ==
+          V9X_I9XX_POOL_BAD_LAYOUT);
+
+    /* The plan alone: refused, overlapping stolen, past the mapping. */
+    small_layout(&layout, &plan);
+    plan.reason = V9X_I9XX_POOL_NO_ROOM;
+    CHECK(v9x_i9xx_pool_check_plan(&layout, &plan) == V9X_I9XX_POOL_NO_ROOM);
+    small_layout(&layout, &plan);
+    plan.first_entry = 2047ul;
+    plan.aperture_offset = plan.first_entry * 4096ul;
+    CHECK(v9x_i9xx_pool_check_plan(&layout, &plan) == V9X_I9XX_POOL_APERTURE);
+    small_layout(&layout, &plan);
+    layout.mapped_bytes -= 4096ul;
+    CHECK(v9x_i9xx_pool_check_plan(&layout, &plan) == V9X_I9XX_POOL_APERTURE);
+    small_layout(&layout, &plan);
+    plan.entry_count = 0ul;
+    plan.bytes = 0ul;
+    CHECK(v9x_i9xx_pool_check_plan(&layout, &plan) == V9X_I9XX_POOL_COUNT);
+}
+
 static void test_pte(void)
 {
     CHECK(v9x_i9xx_pool_pte(0x01234000ul) == 0x01234001ul);
@@ -376,6 +436,7 @@ unsigned int v9x_run_i9xx_pool_tests(void)
     test_sort();
     test_check();
     test_check_plan_bounds();
+    test_streaming();
     test_pte();
     test_property();
     return failures;

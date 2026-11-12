@@ -621,6 +621,38 @@ V9XMINI_FN_NV3_MMIO_MAP     EQU 002Ah
 ; image implements it.
 V9XMINI_FN_RS690_MMIO_MAP   EQU 002Bh
 
+; Intel Gen3 texture pool: system RAM mapped through the GTT above the
+; stolen run (docs\plans\intel-gen3-system-memory-textures.md, Phase 3
+; design; gate docs\decisions\2026-11-12-intel-gen3-texture-pool-
+; decisions.md). The mini-VDD allocates the pages and writes the PTEs; the
+; display driver decides, with src\common\i9xx_pool.c, whether it may.
+; Gen3 GTT in BAR3 only, after GTT_CAPTURE, and only on 8086:27AE while the
+; gate is netbook-only. Only the intel-gma image implements them.
+;
+; POOL_INFO: out AX=1, EBX = physical pages (_GetDemandPageInfo
+;   DIPhys_Count), ECX = state (0 none, 1 allocated, 2 mapped), EDX = the
+;   PTE the pool's entries held, ESI = PTEs that failed to read back.
+; POOL_ALLOC in: EBX = first entry, ECX = page count (at most 8192). Refuses
+;   unless the state is 0, the entries lie in the GTT and all hold one
+;   value. Allocates fixed, zeroed pages and copies their page table. Out
+;   AX=1, or AX=0 and EDX = reason: 1 state, 2 no GTT, 3 device, 4 bounds,
+;   5 entries differ, 6 allocation, 7 page table.
+; POOL_CHUNK in: CX = chunk; out EBX/ECX/EDX/ESI = four page-table entries
+;   (frame | VMM bits; bit 0 present).
+; POOL_MAP in: EBX = V9X_I9XX_POOL_ACCEPT to map, anything else to release
+;   the pages; ECX = BSM, EDX = stolen bytes, for the mini-VDD's own check
+;   that every page is present and outside stolen memory. Mapping: WBINVD,
+;   one PTE per page in page-table order, every PTE read back; on any
+;   mismatch the saved PTE is restored and the pages freed. Out AX=1 when
+;   mapped (or released), AX=0 and EDX = reason: 1 state, 2 page refused,
+;   3 read back; ESI = page index or mismatch count.
+V9XMINI_FN_I9XX_POOL_INFO   EQU 002Ch
+V9XMINI_FN_I9XX_POOL_ALLOC  EQU 002Dh
+V9XMINI_FN_I9XX_POOL_CHUNK  EQU 002Eh
+V9XMINI_FN_I9XX_POOL_MAP    EQU 002Fh
+V9X_I9XX_POOL_ACCEPT        EQU 4C4F4F50h  ; "POOL"
+V9X_I9XX_POOL_PAGE_MAX      EQU 8192
+
 ; Write-combining through the page attribute table, for a machine whose BIOS
 ; leaves no MTRR pair to give (include\velocity9x\pat.h,
 ; docs\decisions\2026-10-28-haswell-pat-write-combining.md). The C policy

@@ -214,6 +214,17 @@ typedef struct v9x_hw16_device {
      * stops before it reads zero.
      */
     unsigned short screen_shadow;
+
+    /*
+     * The texture pool this chip's family set up at Enable: system RAM the
+     * mini-VDD mapped into the aperture, as a graphics offset (returned)
+     * and a size (*bytes). dd16.c publishes it as engine.pool_offset and
+     * pool_bytes and as DirectDraw's heap 1, textures only. NULL, or a
+     * size of zero, for no pool. Appended 2026-11-12 for the GMA 950
+     * (docs\plans\intel-gen3-system-memory-textures.md), so every
+     * initialiser that stops before it reads zero.
+     */
+    unsigned long (*engine_pool)(unsigned long *bytes);
 } V9X_HW16_DEVICE;
 
 /* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */

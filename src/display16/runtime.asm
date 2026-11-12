@@ -108,6 +108,8 @@ EXTRN _v9x_i9xx_ring_exec_elapsed:DWORD
 EXTRN _v9x_i9xx_ring_exec_polls:DWORD
 EXTRN _v9x_i9xx_ring_exec_failure:DWORD
 EXTRN _v9x_i9xx_ring_diag_value:DWORD
+; intel_pool16.c: EBX, ECX, EDX and ESI as the last pool call left them.
+EXTRN _v9x_i9xx_pool_regs:DWORD
 ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
@@ -1687,6 +1689,51 @@ V9xMiniI9xxGttChunkDone:
     pop     bp
     retf    2
 V9XMINII9XXGTTCHUNK ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxPoolCall(WORD function, DWORD ebx_in,
+;                                     DWORD ecx_in, DWORD edx_in)
+; One of the four texture-pool functions (V9XMINI_FN_I9XX_POOL_* in
+; V9XMAPI.INC) with EBX, ECX and EDX as given; anything else is refused
+; here. EBX, ECX, EDX and ESI come back in v9x_i9xx_pool_regs whatever AX.
+PUBLIC V9XMINII9XXPOOLCALL
+V9XMINII9XXPOOLCALL PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    edi
+    push    es
+    movzx   eax, word ptr [bp+18]
+    cmp     eax, V9XMINI_FN_I9XX_POOL_INFO
+    jb      short V9xMiniI9xxPoolCallRefused
+    cmp     eax, V9XMINI_FN_I9XX_POOL_MAP
+    ja      short V9xMiniI9xxPoolCallRefused
+    cmp     dword ptr V9xMiniApiEntry, 0
+    je      short V9xMiniI9xxPoolCallRefused
+    mov     ebx, dword ptr [bp+14]
+    mov     ecx, dword ptr [bp+10]
+    mov     edx, dword ptr [bp+6]
+    xor     esi, esi
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_i9xx_pool_regs, ebx
+    mov     _v9x_i9xx_pool_regs[4], ecx
+    mov     _v9x_i9xx_pool_regs[8], edx
+    mov     _v9x_i9xx_pool_regs[12], esi
+    jmp     short V9xMiniI9xxPoolCallDone
+V9xMiniI9xxPoolCallRefused:
+    xor     ax, ax
+V9xMiniI9xxPoolCallDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    14
+V9XMINII9XXPOOLCALL ENDP
 
 ; WORD FAR PASCAL V9xMiniI9xxEventCapture(WORD kind, WORD context)
 ; Captures the caller's lifecycle point, then returns the complete retained

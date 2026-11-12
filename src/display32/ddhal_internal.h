@@ -416,6 +416,12 @@ int v9x_render_drain(int wait);
 /* Byte offset of a surface within the framebuffer, or 0xffffffff. */
 DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface);
 
+/* The same for a surface an engine only samples: also accepts the texture
+ * pool, past stolen memory (engine.pool_offset, pool_bytes). For texture
+ * binds and placement records only; blits, flips and targets keep
+ * v9x_surface_offset, which ends at fb.vram_bytes. */
+DWORD v9x_surface_sample_offset(const V9X_DD_SURFACE_LCL *surface);
+
 /* Outcome of an attempt to express a blit on a particular engine. */
 #define V9X_BLT_DONE      0   /* the engine has been programmed          */
 #define V9X_BLT_BUSY      1   /* engine busy and the caller asked not to wait */

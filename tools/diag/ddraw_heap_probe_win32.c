@@ -176,6 +176,7 @@ static void heap_fill(HEAP_OBJECT *ddraw, HEAP_OBJECT *ddraw2,
     DWORD in_heap1 = 0ul;
     DWORD lowest = 0xfffffffful;
     DWORD highest = 0ul;
+    DWORD first = 0ul;
     DWORD unlocked = 0ul;
     HRESULT hr = 0;
     DWORD index;
@@ -213,6 +214,10 @@ static void heap_fill(HEAP_OBJECT *ddraw, HEAP_OBJECT *ddraw2,
             DWORD address = (DWORD)desc.lpSurface;
 
             ((heap_unlock_fn)surface->vtbl[DDS_UNLOCK])(surface, 0);
+            /* Where the first one went says which heap is tried first. */
+            if (count == 1ul) {
+                first = address;
+            }
             if (address < lowest) {
                 lowest = address;
             }
@@ -228,6 +233,7 @@ static void heap_fill(HEAP_OBJECT *ddraw, HEAP_OBJECT *ddraw2,
     heap_key(section, "StopHr", (DWORD)hr);
     heap_key(section, "InHeap1", in_heap1);
     heap_key(section, "Unlocked", unlocked);
+    heap_key(section, "First", first);
     heap_key(section, "Lowest", lowest);
     heap_key(section, "Highest", highest);
     for (index = count; index > 0ul; --index) {
