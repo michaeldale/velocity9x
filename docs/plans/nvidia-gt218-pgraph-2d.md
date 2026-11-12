@@ -163,8 +163,10 @@ status showed a master abort the card received right after the kick, and
 BAR1 read FFFFFFFF a second later. Run 16 left the flush page unset and
 got the same master abort, so the flush page is not the cause. Run 17
 enabled the VM trap as nouveau does: the kick traps nothing, and the
-master abort still comes. The untested differences next are the BAR
-channel (1704h) and PMC_ENABLE.
+master abort still comes. Run 18 added a BAR channel (1704h) and the G84
+BAR flush; the flush completed at once and the kick still master-aborted.
+The only untested differences left from nouveau are PMC_ENABLE and the
+empty runlist at init.
 
 ### Step 4: DirectDraw fill and copy on the engine
 

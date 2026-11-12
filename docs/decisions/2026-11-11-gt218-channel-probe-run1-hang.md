@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-17: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-18: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -601,3 +601,35 @@ one run because each run costs a power-cycle:
 If run 18 survives, a run with each step alone says which mattered. If
 it does not, PMC_ENABLE is the last of the differences nouveau's init
 order shows.
+
+## Run 18 (boot 96): BAR channel and BAR flush, the same master abort
+
+`/push:empty /flush:none /stop:fifo`. The build id reads `1407d7a6-dirty`
+because it was built before the commit; the code is 7836ca4a's. Log:
+`run18-V9XN5CH.LOG` (run 18 starts at its line 2649).
+
+- Bar stage: 1704h read `00000000` before. After the two writes it read
+  `40008100`, which is bit 30 | video memory 129 MiB >> 12, as written.
+  The G84 BAR flush finished on the first poll (FlushWait 0, 70000h `0`).
+  PCI status stayed `00100007`, and the BAR1 marker read back.
+- fifo-init, gr-init and the bind passed as before, and the trap enable
+  read back `000D0FFF`.
+- After the kick: PCI status `20100007` (master abort), 100C90h
+  `000D0FFF` (no trap), 2604h `80080054`. The same as runs 15-17.
+- The log ends at `sleep 1000`, the host sleep after the put run. The
+  health check after it never reached the log. In runs 16 and 17 that
+  check read FFFFFFFF; here the machine stopped first, or during the
+  configuration read itself. Boot 97 followed the owner's power-cycle,
+  requested through M-JJN1ZZ.
+
+So neither step nouveau takes before a channel runs changes anything:
+the BAR channel and the flush of the BAR write path are ruled out with
+the flush page (run 16) and VM faults (run 17). The flush completing at
+once also says the BAR1 writes were not pending when the kick came.
+
+Left from the source comparison: PMC_ENABLE (`DFF3F113` here,
+`FFFFFFFF` in `nv50_mc_init`) and the empty runlist that
+`nv50_fifo_init` commits before enabling CACHE1. Neither has a mechanism
+in the sources that would explain a bus-master cycle to the host. The
+probe is now at the end of what reading nouveau suggests. Step 3 should
+pause again here for a decision on what to try next.
