@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-20: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-21: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -696,3 +696,38 @@ forward that do not depend on it, recorded for Michael's choice:
    (mmiotrace), which needs the owner to boot Linux on M-BXMFA8.
 4. Stop at the working tier: the VBE desktop with the BAR1 DirectDraw
    heap (boot 83), the CPU doing fills and copies.
+
+## Run 21 (boot 99): the PCIe error state, no address
+
+Michael chose (1) (2026-11-12). The 52ede5ef code, built as
+`0dd01736-dirty`, `/push:empty /flush:none /stop:fifo`. Log:
+`run21-V9XN5CH.LOG` (run 21 starts at its line 3647).
+
+- **The BAR0 configuration mirror works**: 88000h-8803Ch matched the
+  CF8h reads of 00h-3Ch, 16 of 16, and reading 88000h-883FFh did not
+  disturb the card.
+- **No AER in 100h-3FFh.** The extended list is 100h `12810002`
+  (Virtual Channel, next 128h), 128h `60010004` (Power Budgeting, next
+  600h). 600h onwards was not read.
+- The card's PCIe capability is at 78h. Its Device Control/Status read
+  `00002810` before the run, after the bind and after the kick: Device
+  Status 0, so the card detected no error as a receiver. It has
+  error-reporting enables off (Device Control bits 3:0 clear), but the
+  status bits do not depend on them.
+- The bridge above it is bus 0 device 1 function 0 (`80000800`), with a
+  PCIe capability at A0h. Its status `0010`, Device Control/Status
+  `00000000` and Root Status `00000000` read the same at every point,
+  so the root port logged no Unsupported Request. Its secondary status
+  read `2000` (received master abort) **before the run started**. That is
+  most likely from Windows' or the BIOS's scan of empty device numbers on
+  bus 1, so it says nothing about the kick.
+- The kick: PCI status `20100007` again, no VM trap, 2604h `80080054`.
+  The log ends at the one-second host sleep, as in run 18. Boot 100
+  followed the owner's power-cycle.
+
+So the card received a master abort that the root port above it did not
+record as an Unsupported Request it detected, and the card has no AER
+below 400h to log the request in. The PCIe logs reachable from here do
+not name the address. Untried: the extended list from 600h (probably
+NVIDIA's own capability), and clearing the bridge's secondary status
+before the kick so that a fresh bit 13 would be attributable to it.
