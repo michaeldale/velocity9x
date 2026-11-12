@@ -3,11 +3,13 @@
 Date: 2026-11-07. Seen by Michael on the netbook's panel (W9QI2BE2,
 945GSE / GMA 950), build `089a5e70`, boot 284, 3DMark 2001 SE default
 benchmark at 640x480, 16-bit colour and 16-bit textures. Status:
-**parked 2026-11-07** at Michael's word, for a later version. 3DMark
+**closed 2026-11-12** at Michael's word. It had been parked on
+2026-11-07, also at his word, for a later version. 3DMark
 binds no texture for the white geometry (below), and the cause is not
 found. **2026-11-12: the sky draws with the texture pool**, and the
 dragon's white neck and horns were dropped texture stages, now drawn
-(sections at the end). Untextured draws remain.
+(sections at the end). The HD 4600 makes as many untextured draws
+and draws the scene without white.
 
 If it proves to be texture memory, the fix belongs to
 [`../plans/intel-gen3-system-memory-textures.md`](../plans/intel-gen3-system-memory-textures.md)
@@ -188,5 +190,29 @@ On the same build (`4146a0f0-dirty`, the fold included):
   Boot 319's pool run measured 56.8 fps on its second pass. That is
   recorded, not chased.
 
-Not run: the HD 4600 comparison. The no-texture-bound draws
-(`DrawsNoHandle`) are separate, and they remain.
+## 2026-11-12: the same run on the HD 4600
+
+The HD 4600 (i5-4570) ran main's intel-gma set at boot 218: the same
+code as 746c0a42, installed by `run-release-checks.ps1` (8 of 8 hashes
+matched). All 9 of its probe runs passed. Dragothic ran alone with the
+census and grab armed, as on the netbook. 3DMark is set to 1024x768,
+32-bit, compressed textures on this box, and the ten grabs fall within
+the low-detail half. Evidence:
+[`../probe/hsw-dragothic-2026-11-12/`](../probe/hsw-dragothic-2026-11-12/).
+
+- **Nothing draws white.** The sky over the town (`boot218-V9XGRAB1-sky.png`)
+  is a dark textured cloud layer. The horns (`V9XGRAB3`, `V9XGRAB9`)
+  are lit dark blue-grey, and the dragon's back is scaled.
+- **`DrawsNoHandle` is 4,154 here too** (`DrawsHandleUnresolved` 0),
+  with no texture refused and `MipTreeDeclined` 0. On a card that
+  draws the scene right, Dragothic still makes thousands of draws with
+  no texture bound. So that counter alone does not mark a defect, and
+  the netbook's 2,715 at boot 319 need not be one. Both machines'
+  frames now show no white geometry.
+- `TwoUnitBatches` is 798 here, against 283,696 on the netbook. Why it
+  is so much lower here was not looked into.
+
+With the sky drawn on the pool and the dragon's stages drawn, nothing
+white is left in the netbook's frames. **Closed 2026-11-12** at
+Michael's word. A full run on the netbook's panel has not been watched
+since these fixes.
