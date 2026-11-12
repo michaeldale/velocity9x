@@ -163,6 +163,8 @@ static struct v9x_n5ch_request v9x_request;
 static struct v9x_n5ch_result v9x_result;
 static struct v9x_nv50_chan_layout v9x_layout;
 static DWORD v9x_stop_after_region;
+static DWORD v9x_push_empty;
+static DWORD v9x_flush_none;
 static DWORD v9x_stop_after_fifo;
 static DWORD v9x_stop_after_gr;
 
@@ -754,15 +756,25 @@ static void v9x_stage_region(void)
      * method 60h before the semaphore methods.
      */
     v9x_push_stage(V9X_PUSH_FIFO, &push);
-    data[0] = V9X_REF_VALUE;
-    v9x_nv50_push_method(&push, 0ul, V9X_NV50_MTHD_REF_CNT, 1ul, data);
-    data[0] = V9X_NV50_HANDLE_DMA_VM;
-    v9x_nv50_push_method(&push, 0ul, V9X_826F_DMA_SEMAPHORE, 1ul, data);
-    data[0] = 0ul;
-    data[1] = V9X_WINDOW_VRAM + V9X_SEMA_OFFSET;
-    data[2] = V9X_SEMA_VALUE;
-    data[3] = V9X_826F_SEMAPHORED_RELEASE;
-    v9x_nv50_push_method(&push, 0ul, V9X_826F_SEMAPHOREA, 4ul, data);
+    if (v9x_push_empty != 0ul) {
+        /* /push:empty: one word, method 0 with count 0, which carries no
+         * method. Run 14 stopped the machine with the methods below and
+         * nothing but BAR1 read after the kick; this separates the
+         * methods from the kick itself. */
+        v9x_region[V9X_NV50_PUSH / 4ul + V9X_PUSH_FIFO] = 0ul;
+        push.count = 1ul;
+    } else {
+        data[0] = V9X_REF_VALUE;
+        v9x_nv50_push_method(&push, 0ul, V9X_NV50_MTHD_REF_CNT, 1ul, data);
+        data[0] = V9X_NV50_HANDLE_DMA_VM;
+        v9x_nv50_push_method(&push, 0ul, V9X_826F_DMA_SEMAPHORE, 1ul,
+                             data);
+        data[0] = 0ul;
+        data[1] = V9X_WINDOW_VRAM + V9X_SEMA_OFFSET;
+        data[2] = V9X_SEMA_VALUE;
+        data[3] = V9X_826F_SEMAPHORED_RELEASE;
+        v9x_nv50_push_method(&push, 0ul, V9X_826F_SEMAPHOREA, 4ul, data);
+    }
     v9x_number("Region", "FifoPushWords", push.count);
 
     v9x_ops_begin();
@@ -872,14 +884,33 @@ static int v9x_stage_pramin(void)
  * table. nouveau always points it at a page of its own
  * (nv50_fb_sysmem_flush_page_init). N5CH.VXD allocates one when 100C08h
  * is 0 and never frees it.
+ *
+ * /flush:none reads 100C08h and allocates nothing. Runs 14 and 15 (boots
+ * 93, 94) found PCI status bit 13, a master abort the card received, set
+ * by the kick, with a flush page near 2 GiB; a kick with 100C08h left at
+ * 0 says whether that page is the address nothing answered.
  */
 static void v9x_stage_flush_page(void)
 {
     DWORD before;
     DWORD after;
+    MEMORYSTATUS memory;
+
+    memory.dwLength = sizeof(memory);
+    GlobalMemoryStatus(&memory);
+    v9x_key("FlushPage", "TotalPhys", memory.dwTotalPhys);
 
     v9x_ops_begin();
     before = v9x_read(0x100c08ul);
+    if (v9x_flush_none != 0ul) {
+        if (!v9x_run("flush-none")) {
+            v9x_finish("FLUSH-PAGE-REFUSED", 4u);
+        }
+        v9x_put("FlushPage", "Before", before);
+        v9x_text("FlushPage", "After", "not-set");
+        v9x_flush();
+        return;
+    }
     after = v9x_op(V9X_OP_FLUSH_PAGE, 0ul, 0ul, 0ul);
     if (!v9x_run("flush-page")) {
         v9x_finish("FLUSH-PAGE-REFUSED", 4u);
@@ -970,6 +1001,24 @@ static int v9x_stage_fifo(void)
     }
     v9x_status_publish("FifoPut", &s);
     v9x_flush();
+
+    /* /push:empty: a second with the card untouched (a host sleep, not
+     * PTIMER reads), then configuration space and BAR1. */
+    if (v9x_push_empty != 0ul) {
+        v9x_log("sleep", "1000");
+        Sleep(1000);
+        v9x_health("fifo-sleep");
+        v9x_log("healthy", "fifo-sleep");
+        v9x_vram_check("fifo-sleep");
+        v9x_ops_begin();
+        v9x_status_request(&s, 0ul);
+        if (!v9x_run("fifo-after")) {
+            v9x_finish("FIFO-REFUSED", 5u);
+        }
+        v9x_status_publish("FifoAfter", &s);
+        v9x_flush();
+        v9x_finish("EMPTY-PUSH-SURVIVED", 0u);
+    }
 
     /* The semaphore, through BAR1 only, bounded. */
     v9x_ops_begin();
@@ -1237,6 +1286,8 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_text("Report", "Build", V9X_BUILD_ID);
     v9x_text("Report", "Access", "pfifo-pgraph-bringup");
     v9x_stop_after_region = v9x_switch_given("/stop:region") ? 1ul : 0ul;
+    v9x_push_empty = v9x_switch_given("/push:empty") ? 1ul : 0ul;
+    v9x_flush_none = v9x_switch_given("/flush:none") ? 1ul : 0ul;
     v9x_stop_after_fifo = v9x_switch_given("/stop:fifo") ? 1ul : 0ul;
     v9x_stop_after_gr = v9x_switch_given("/stop:gr") ? 1ul : 0ul;
 

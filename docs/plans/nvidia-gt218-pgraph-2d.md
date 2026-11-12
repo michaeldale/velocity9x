@@ -157,8 +157,11 @@ time out lose the card, so GET cannot be polled the way nouveau does);
 PGRAPH is initialised before the channel is bound; 100C08h gets a flush
 page; every step goes to a write-through log first. Everything up to and
 including the channel bind survives, and the kick loads the RAMFC into
-CACHE1, but the machine has stopped within a second of every kick. The
-next experiment (an empty push) is written down in the record, not run.
+CACHE1, but the machine has stopped within a second of every kick. Run 15
+(2026-11-12) kicked an empty push and the machine still stopped. PCI
+status showed a master abort the card received right after the kick, and
+BAR1 read FFFFFFFF a second later. Run 16 (`/flush:none`, not run) tests
+whether the flush page address is what nothing answered.
 
 ### Step 4: DirectDraw fill and copy on the engine
 

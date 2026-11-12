@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-14: BAR0 reads that time out lose the card; the kick still stops the machine
+# GT218 channel probe, runs 1-15: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -385,3 +385,56 @@ configuration-space check. If the machine survives, the methods are the
 cause (bisect REF_CNT against the semaphore); if not, PFIFO's handling
 of the kick itself is, and the next suspects are the RAMFC words nouveau
 derives from objects the probe does not model (0x3C, 0x44, 0x60, 0x7C).
+
+## Run 15 (boot 93): an empty push stops the machine too
+
+Michael approved the experiment above (2026-11-12). `/push:empty
+/stop:fifo`, build 8cac3715-dirty: the IB entry points at a pushbuffer of
+one word, 0 (method 0, count 0, nothing to execute). After the put run,
+the probe sleeps a second on the host without touching the card, then
+checks configuration space and BAR1, then reads the known registers.
+Log: `build/driver-results/m-bxmfa8-gt218-boot84/run15-V9XN5CH.LOG`
+(the file accumulates across boots; run 15 starts at its line 1773).
+
+- Everything up to the bind passed as in runs 12-14; the flush page was
+  set again (100C08h `007FCCD0`).
+- The put run returned in about 1 ms (run 12's took 483 ms): 2604h
+  `80080054`, 32ECh 1, CACHE1 push 1, pull `70000001`, PFIFO_INTR 0,
+  PMC_INTR 0, 100C90h 0.
+- **PCI configuration dword 4 read `20100007` straight after the put**,
+  where every earlier stage of the run read `00100007`. Bit 29 is status
+  bit 13, *received master abort*: the card, as bus master, issued a
+  transaction no target claimed. Run 14's log shows the same value at the
+  same point; it was not noticed then. Runs before 13 logged no dword 4,
+  so whether the bit appears without a flush page is not known.
+- After the one-second sleep, configuration space still answered (vendor
+  and device, status still `2010`), but the BAR1 marker at + 3FF000h read
+  FFFFFFFF, and the next VxD run refused its first op. The EXE exited
+  (`FIFO-REFUSED`); the machine stopped shortly afterwards and came back as
+  boot 94 after the owner's power-cycle.
+
+So the methods are not the cause. Pushing nothing is enough. Within a
+second of the kick, video memory stops answering through BAR1 while
+configuration space still answers. The master abort is the first sign
+that is not a timeout: PFIFO, or something it starts, sends a bus-master
+access to a host address nothing decodes.
+
+Where the card can address the host here, by what the probe set up:
+
+1. **The flush page (100C08h).** `_PageAllocate` returned physical pages
+   just under 2 GiB (`7FC97000`, `7FCC9000`, `7FCBC000`, `7FCCD000`). If
+   this machine has less memory than that, or Windows reports pages it
+   cannot back, the GPU's flush read master-aborts. The machine's RAM size
+   has not been read.
+2. **A VM or DMA object that resolves to system memory.** The PTEs (aper
+   0), the PDE (target 0), the VM DMA object (`7FC0003D`, target VM) and
+   the PGRAPH pointer (`00190000`) were checked against nouveau after this
+   run and match. No word written by the probe names a host target, but
+   the RAMFC words copied from nouveau (3Ch, 44h, 60h, 7Ch) are not
+   decoded.
+
+The next run, 16, separates (1) from the rest. `/flush:none` skips the
+allocation, so 100C08h keeps the 0 the VBIOS left (host address 0, real
+memory). The probe also logs `GlobalMemoryStatus`'s total. If the master
+abort goes, the flush page address is the fault. If it stays, it does
+not, and (2) is next.
