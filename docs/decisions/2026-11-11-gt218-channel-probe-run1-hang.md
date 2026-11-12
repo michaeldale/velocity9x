@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-24: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-25: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -815,4 +815,27 @@ remains: within a second of the kick, video memory stops answering BAR1
 while configuration space still answers, with no interrupt and no trap
 seen at about a millisecond. What happens in between is not yet
 observed.
+
+## Run 25 (boot 102): BAR1 goes first, BAR0 within 80 ms
+
+As run 24 (`/push:class02`), with the host sleep replaced by short VxD
+runs about 20 ms apart, each logged on return. The 2cf16d92 code was
+built as `0ab3d5f4-dirty`. Log: `run25-V9XN5CH.LOG` (from line 5156).
+GetTickCount stamps, in ms:
+
+| Tick | Event |
+| --- | --- |
+| 327303-327304 | put run (IB PUT, 1000 PTIMER reads, status): PCI `00100007`, no trap, PFIFO_INTR 0 |
+| 327350-327354 | sample 00: PTIMER `A0302F60`, PMC_INTR 0, PFIFO_INTR 0, 2500h 1, 2604h `80080054`, 3200h 1, 3250h `70000001`, 32ECh 1, 100C90h `050D0FFF` (no trap), PGRAPH_INTR 0, 400700h 0 (idle); **BAR1 word FFFFFFFF**; PCI `00100007` |
+| 327384-327388 | sample 01: refused at op 0, status `00000001` (found, not identified): **PMC_BOOT_0 through BAR0 no longer read A8**; configuration space still `0A6510DE` / `00100007` |
+
+So about 50 ms after the kick, video memory has stopped answering
+through BAR1. Every BAR0 register still reads normally and shows nothing
+wrong: PFIFO idle with the channel resident, PGRAPH idle, no interrupt,
+no VM trap. 30 ms later BAR0 has stopped answering too. Configuration
+space, which the bridge reaches without the card's memory path, still
+answers. Run 22, where the IB fetch faulted and no push was fetched,
+lost neither. The failure follows the push fetch and reaches the card's
+host interface: first its framebuffer path, then its register path.
+
 
