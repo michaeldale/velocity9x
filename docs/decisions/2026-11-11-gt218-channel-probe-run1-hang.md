@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-19: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-20: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -665,3 +665,34 @@ established, every time: within a millisecond of the IB PUT write, with
 nothing to execute, the card issues a bus-master cycle no host target
 claims, and within a second video memory stops answering BAR1, then
 the card or the machine is lost.
+
+## Run 20 (boot 98): the empty runlist first, no change
+
+Michael chose to try it (2026-11-12). `/push:empty /flush:none
+/stop:fifo`, the 625859c1 code, built as `70fe4a5c-dirty`. Log:
+`run20-V9XN5CH.LOG` (run 20 starts at its line 3301).
+
+- fifo-init committed an empty runlist (32F4h, 32ECh = 0) before
+  enabling CACHE1. The update completed on the first poll
+  (`Fifo.EmptyRunlistWait` 0). The bind's runlist update completed the
+  same way.
+- After the kick: PCI status `20100007`, no VM trap, 2604h `80080054`,
+  32ECh 1. After the one-second host sleep, configuration space answered
+  but BAR1 read FFFFFFFF and the next VxD run refused its first op, as in
+  runs 15 and 19. The relay dropped the session, and boot 99 followed the
+  owner's power-cycle.
+
+Every difference from nouveau's init order that the saved sources show
+is now tested and ruled out. Reading nouveau has no more to give. Ways
+forward that do not depend on it, recorded for Michael's choice:
+
+1. Read the GPU's own PCIe extended configuration space through its BAR0
+   mirror (88000h + 100h onwards) after the kick. If it implements AER,
+   its header log may hold the unanswered request and its address. Reads
+   only, one run.
+2. The root port's error status, through MMCONFIG if the chipset
+   exposes it under Win98. Unchecked.
+3. A register trace of Linux nouveau bringing up a channel on this card
+   (mmiotrace), which needs the owner to boot Linux on M-BXMFA8.
+4. Stop at the working tier: the VBE desktop with the BAR1 DirectDraw
+   heap (boot 83), the CPU doing fills and copies.
