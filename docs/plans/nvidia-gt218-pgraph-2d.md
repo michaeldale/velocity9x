@@ -165,8 +165,9 @@ got the same master abort, so the flush page is not the cause. Run 17
 enabled the VM trap as nouveau does: the kick traps nothing, and the
 master abort still comes. Run 18 added a BAR channel (1704h) and the G84
 BAR flush; the flush completed at once and the kick still master-aborted.
-The only untested differences left from nouveau are PMC_ENABLE and the
-empty runlist at init.
+Run 19 found that PMC_ENABLE cannot be raised past the VBIOS's
+`DFF3F113`, so it is not a difference either. Only the empty runlist at
+init is left untested from nouveau's init. Paused.
 
 ### Step 4: DirectDraw fill and copy on the engine
 

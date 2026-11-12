@@ -1,4 +1,4 @@
-# GT218 channel probe, runs 1-18: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
+# GT218 channel probe, runs 1-19: BAR0 reads that time out lose the card; any kick stops the machine, with a master abort
 
 Date: 2026-11-11
 
@@ -633,3 +633,35 @@ Left from the source comparison: PMC_ENABLE (`DFF3F113` here,
 in the sources that would explain a bus-master cycle to the host. The
 probe is now at the end of what reading nouveau suggests. Step 3 should
 pause again here for a decision on what to try next.
+
+## Run 19 (boot 97): PMC_ENABLE cannot be raised; the kick unchanged
+
+Michael chose to try PMC_ENABLE anyway (2026-11-12). `/push:empty
+/flush:none /stop:fifo`, with the fe496fd1 code built as `cfbde3cd-dirty`.
+Log: `run19-V9XN5CH.LOG` (run 19 starts at its line 2956).
+
+- The new mc stage wrote 200h = FFFFFFFF, waited 1000 PTIMER reads and
+  read **`DFF3F113`**. The VxD accepted the write (run status 17, as for
+  every accepted run), and the card kept the old value. The bits left off
+  (`200C0EEC`) do not stick on GT218. With nothing behind those bits to
+  switch on, every unit that can be enabled already was. nouveau's
+  `FFFFFFFF` amounts to the same state, so PMC_ENABLE is not a
+  difference after all.
+- The BAR stage repeated run 18 (1704h `40008100`, flush at once), and
+  fifo-init, gr-init and the bind passed.
+- After the kick: PCI status `20100007` (master abort), no VM trap,
+  2604h `80080054`. After the one-second host sleep, configuration space
+  still answered (`0A6510DE`, status `2010`), but the BAR1 marker read
+  FFFFFFFF and the next VxD run refused its first op. This is the same
+  sequence as run 15. The machine then stopped; boot 98 followed the
+  owner's power-cycle, requested through M-JJN1ZZ.
+
+So the comparison with nouveau's init is exhausted: the methods, the
+flush page, VM faults, the BAR channel and BAR flush, and PMC_ENABLE
+are all ruled out. The empty runlist that `nv50_fifo_init` commits
+before enabling CACHE1 is the only difference left untested, and nothing
+in the sources links it to a host bus-master cycle. What runs 15-19
+established, every time: within a millisecond of the IB PUT write, with
+nothing to execute, the card issues a bus-master cycle no host target
+claims, and within a second video memory stops answering BAR1, then
+the card or the machine is lost.
