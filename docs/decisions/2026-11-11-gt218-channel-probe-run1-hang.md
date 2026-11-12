@@ -465,3 +465,55 @@ setup: the RAMFC words copied from nouveau without decoding (3Ch, 44h,
 60h, 7Ch), PFIFO state nouveau sets up elsewhere that the probe does
 not, or a host-targeted save of the context that was current before
 (PFIFO's or PGRAPH's). None of these has been tested.
+
+## Source study after run 16 (2026-11-12, no run)
+
+Michael asked for a read of the saved nouveau sources
+(`build/external/nv50/nouveau/`) before another kick. I compared what
+nouveau sets up for chipset A8 (`nva8_chipset`: gt215_fb, gt215_mc,
+g84_bar, g84_mmu, nv50_instmem, g98_fifo, gt215_gr) with what the probe
+does. Nothing below has been measured.
+
+**The VM fault readings so far mean nothing.** `nv50_fb_init`
+(subdev_fb_nv50.c) writes 100C90h = `fb->func->trap`, `000D0FFF` for
+gt215 (subdev_fb_gt215.c), with the comment that it "is needed to get
+meaningful information from 100c90 on traps". The probe never writes it,
+and the VBIOS leaves it 0. 100C94h-100C9Ch read the same in every stage of
+a run and change only between boots (`0C18050E` in run 15, `0C10050E` in
+run 16). So "no VM fault (100C90h 0)" in the run 12-16 sections above says
+only that trap reporting was never enabled. It is not evidence that the
+fetch stayed in video memory. nouveau's trap decoder (`nv50_fb_intr`,
+same file) shows how to read a trap: if 100C90h bit 31 is set, write
+`idx | i << 24` for i = 0-5 and read 100C94h each time. Word 5 bit 8 is
+read/write, words 3-5 give the 40-bit address, words 1-2 the instance,
+and word 0 the engine, client and reason.
+
+Other differences, in the order I would test them:
+
+1. **PMC_ENABLE.** `nv50_mc_init` (subdev_mc_nv50.c) writes 200h =
+   `FFFFFFFF`. The probe keeps the VBIOS's `DFF3F113`, and the VxD lets
+   it change only the PFIFO and PGRAPH bits. The bits that are off
+   (`200C0EEC`: 29, 19-18, 11-9, 7-5, 3-2) are all outside gt215's
+   reset table (subdev_mc_gt215.c), so the saved sources do not name
+   their units.
+2. **The BAR channel.** nouveau always programs 1704h with an instance
+   block of its own (`nv50_bar_bar2_init`: written once plain, then with
+   `40000000h`), sets 1708h and 170Ch, and clears 1900h-191Ch
+   (`nv50_bar_init`). Here 1704h, 1708h and 170Ch are 0. The saved
+   sources do not say whether PFIFO needs 1704h.
+3. **The empty runlist first.** `nv50_fifo_init` commits an empty runlist
+   before it enables CACHE1 (3200h, 3250h, 2500h). The probe commits only
+   when it binds.
+
+Checked and not a difference: nouveau never flushes a PFIFO TLB
+(`nv50_vmm_flush` has no PFIFO case), so the probe is not missing one.
+RAMFC 44h is the same value nouveau writes to 2044h, and CACHE1 3224h
+loaded 3Ch's value in run 13, so both reach the hardware as written.
+
+Proposed run 17, before testing anything above: enable the trap
+(100C90h = `000D0FFF`) during fifo-init. Then, in the put run, straight
+after the kick and its delay, read 100C90h and, if bit 31 is set, the six
+trap words. This needs the VxD to allow a write to 100C90h; it allows
+none today. The put run's results came back each time before the card
+was lost, so a trap the kick causes should be in them. That would name
+the address the card was reaching for, rather than another guess.
