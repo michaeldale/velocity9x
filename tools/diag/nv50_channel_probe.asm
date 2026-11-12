@@ -188,7 +188,9 @@ NCWriteWindows label dword
     dd 402cc0h, 402cc4h
     dd 0c0208ch, 0c02090h ; channel 1 IB PUT
     dd 001700h, 001704h ; PRAMIN window base (nv50_instmem), restored after
-NC_WRITE_WINDOW_COUNT   equ 36
+    dd 100c90h, 100c94h ; VM trap enable and trap word select (nv50_fb_init,
+                        ; nv50_fb_intr; 000D0FFFh on gt215_fb)
+NC_WRITE_WINDOW_COUNT   equ 37
 
 NCResult label dword
     dd NC_MAGIC                 ; 00 magic

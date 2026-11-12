@@ -97,6 +97,19 @@
 #define V9X_SEMA_VALUE       0xfeed0001ul
 #define V9X_SEMA_WAIT_LIMIT  1000000ul
 
+/*
+ * The VM trap (subdev\fb\nv50.c). nv50_fb_init writes the enable,
+ * 000D0FFFh for gt215_fb, without which 100C90h latches nothing.
+ * nv50_fb_intr reads a trap when bit 31 is set by writing the enable |
+ * word << 24 and reading 100C94h, six words, then acks with bit 31.
+ * The probe never acks: the trap stays latched for the next read.
+ */
+#define V9X_NV50_VM_TRAP        0x100c90ul
+#define V9X_NV50_VM_TRAP_DATA   0x100c94ul
+#define V9X_NV50_VM_TRAP_ENABLE 0x000d0ffful
+#define V9X_NV50_VM_TRAP_WORD_SHIFT 24u
+#define V9X_NV50_VM_TRAP_WORDS  6u
+
 /* Where each stage's pushbuffer starts, in words from the pushbuffer. */
 #define V9X_PUSH_FIFO        0ul
 #define V9X_PUSH_GR          64ul
@@ -933,6 +946,10 @@ static int v9x_stage_fifo(void)
     DWORD runlist_wait;
     DWORD sema_wait;
     DWORD sema;
+    DWORD trap_enable;
+    DWORD trap;
+    DWORD trap_word[V9X_NV50_VM_TRAP_WORDS];
+    char trap_key[8];
 
     v9x_ops_begin();
     /* nv50_fifo_init: reset PFIFO, its constants, interrupt status and
@@ -952,9 +969,15 @@ static int v9x_stage_fifo(void)
     v9x_write(V9X_PFIFO_CACHE1_PUSH, 1ul);
     v9x_write(V9X_PFIFO_CACHE1_PULL, 1ul);
     v9x_write(V9X_NV50_PFIFO_CACHES, 1ul);
+    /* nv50_fb_init's trap enable. Runs 1-16 never wrote it, so their
+     * 100C90h-9Ch readings showed no fault whether there was one or not. */
+    v9x_write(V9X_NV50_VM_TRAP, V9X_NV50_VM_TRAP_ENABLE);
+    trap_enable = v9x_read(V9X_NV50_VM_TRAP);
     if (!v9x_run("fifo-init")) {
         v9x_finish("FIFO-REFUSED", 5u);
     }
+    v9x_put("Trap", "Enable", trap_enable);
+    v9x_flush();
 
     /*
      * No VM TLB flush here. nouveau flushes no unit for PFIFO
@@ -995,9 +1018,26 @@ static int v9x_stage_fifo(void)
     v9x_ops_begin();
     v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT, 1ul);
     v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
+    /* The trap, in the same run: runs 14-16 lost the card within a second
+     * of the kick, but this run's results came back each time. The six
+     * words are read whether or not bit 31 is set (an op list cannot
+     * branch); with it clear they are not a trap. */
+    trap = v9x_read(V9X_NV50_VM_TRAP);
+    for (index = 0ul; index < V9X_NV50_VM_TRAP_WORDS; ++index) {
+        v9x_write(V9X_NV50_VM_TRAP, V9X_NV50_VM_TRAP_ENABLE |
+                  (index << V9X_NV50_VM_TRAP_WORD_SHIFT));
+        trap_word[index] = v9x_read(V9X_NV50_VM_TRAP_DATA);
+    }
     v9x_status_request(&s, 0ul);
     if (!v9x_run("fifo-put")) {
         v9x_finish("FIFO-REFUSED", 5u);
+    }
+    v9x_put("Trap", "Status", trap);
+    for (index = 0ul; index < V9X_NV50_VM_TRAP_WORDS; ++index) {
+        lstrcpyA(trap_key, "Word");
+        trap_key[4] = (char)('0' + index);
+        trap_key[5] = '\0';
+        v9x_put("Trap", trap_key, trap_word[index]);
     }
     v9x_status_publish("FifoPut", &s);
     v9x_flush();
