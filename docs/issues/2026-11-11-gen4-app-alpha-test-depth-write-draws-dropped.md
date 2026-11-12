@@ -229,3 +229,26 @@ game bug would too. Not tested on another driver.
 
 Not done: Incoming gameplay is still unreached; its render bugs and
 frame rate are unexamined.
+
+## Merged into 0.48.0 and measured (2026-11-12, boot 24)
+
+Merged to main as `be9f701d` (run-checks passed). Built as
+`be9f701d-dirty` (untracked evidence files from other work in the tree)
+and installed on M-6B21TJ by `run-release-checks.ps1 -Machine gm45`:
+8 of 8 files hash-checked, boot 23 to 24. Captures:
+[`../probe/m-6b21tj-game-reports-2026-11-11/boot24-0.48.0/`](../probe/m-6b21tj-game-reports-2026-11-11/boot24-0.48.0/).
+
+- Probes: V9XD32 default and `/ddi5`, V9XGLP, V9XGLIDP, V9XWPRS and
+  V9XFBCMP PASS, V9XR3DP COMPLETE, every report `Build=be9f701d-dirty`.
+- Half-Life had been left on OpenGL by the owner (`HKCU\Software\Valve\
+  HLDemo\Settings` `EngineType=2`; `-d3d` on the command line does not
+  override it). The first run (`v48-hl-*`) was OpenGL: no census, no
+  refusals, no fault. For Direct3D, `EngineType` was set to 3 by
+  `regedit /s`, and set back to 2 afterwards (read back as 2).
+- Direct3D, about two minutes on hldemo1 (`v48-hld-A.INI` to
+  `-B.INI`): `M64Policy08` 0, `BatchesEngineRefused` unchanged at 4.
+  Key `28761C94` (the base pass) drew 7,776 times and `24561CD2` (its
+  lightmap pass) 7,776: the pairing boot 17 showed, now both drawn.
+  `v48-hld.png` shows the corridor drawn; no hang.
+
+The GM965 hang check is still owed before 0.48.0 ships.
