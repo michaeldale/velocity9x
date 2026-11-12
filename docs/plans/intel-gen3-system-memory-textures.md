@@ -12,9 +12,11 @@ passed on the netbook
 Phase 3, built as designed below with Phase 4's heap and placement, passed
 on the netbook
 ([record](../decisions/2026-11-12-intel-gen3-texture-pool-phase3.md)).
-Next: the rest of Phase 4's sustained runs (Serious Sam's demo, Half-Life,
-Quake 2, the Dragothic sky), a DOS box with the pool mapped, then the
-other Gen3 chips one record each. Three findings change the
+Half-Life, Quake 2 and Serious Sam run on it; Serious Sam no longer fails
+a texture create or evicts
+([record](../decisions/2026-11-12-intel-gen3-texture-pool-games.md)).
+Next: a DOS box with the pool mapped (operator present), the Dragothic
+sky, then the other Gen3 chips one record each. Three findings change the
 plan below: the aperture map is 64 MiB, not 8 + N; the HAL has to place
 pool textures itself (DirectDraw gives them a 4 KiB pitch); and a VBIOS
 mode set leaves the pool's PTEs alone, so item 6's re-apply is not needed

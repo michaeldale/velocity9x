@@ -335,6 +335,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-12 Intel Gen3 texture pool, Phase 0: 32 MiB of fixed pages allocates in 34 ms, 64 MiB of GMADR maps write-combined, and the 98 SE runtime keeps a texture-only heap to textures](2026-11-12-intel-gen3-texture-pool-phase0.md)
 - [2026-11-12 Intel Gen3 texture pool, Phase 2: 32 MiB of RAM mapped through the GTT, a pattern through the aperture lands in the right pages, and a VBIOS mode set leaves the PTEs alone](2026-11-12-intel-gen3-texture-pool-phase2.md)
 - [2026-11-12 Intel Gen3 texture pool, Phase 3: the driver maps 32 MiB of system RAM at boot, publishes it as a texture-only heap, and the GMA 950 samples textures from it exactly; every netbook probe passes and 3DMark 2001 SE completes](2026-11-12-intel-gen3-texture-pool-phase3.md)
+- [2026-11-12 Intel Gen3 texture pool: Half-Life, Quake 2 and Serious Sam run on the netbook; Serious Sam holds 488 hardware textures with no failed creates or evictions](2026-11-12-intel-gen3-texture-pool-games.md)
 
 ## SiS
 
