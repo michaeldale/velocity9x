@@ -15,6 +15,15 @@ build identifier so exact guest-tested binaries remain traceable.
   the GMA 950 it now stops on a genuine lack of video memory: its 7.7 MB
   is too small for this test at 32-bit colour
   ([record](docs/decisions/2026-11-12-gen3-aps-call-log.md)).
+- **`intel-gma` package, GMA X3000/X3100/4500 and HD Graphics (Gen4 and
+  Gen5): see-through textures that also write depth now draw.** The
+  driver refused them and Direct3D dropped them, so Half-Life's grates,
+  fences, ladders and some doors were invisible, as were parts of
+  Incoming. They now draw in two passes, as colour-keyed ones have since
+  0.44.0; the same limit applies: something drawn later behind the
+  see-through part of such a texture can be hidden there. Half-Life
+  confirmed by its reporter on a GMA 4500MHD
+  ([record](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
 
 ## 0.47.0 - 2026-11-12
 

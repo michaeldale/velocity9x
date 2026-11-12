@@ -1,7 +1,7 @@
 # Gen4: an application's alpha test with depth writes is refused and dropped, so Half-Life's grates and doors and parts of Incoming vanish
 
-Date: 2026-11-11. Status: **open**. Logs taken, nothing changed in source
-or on the machine.
+Date: 2026-11-11. Status: **open**. Fixed on branch `gen4-alpha-depth`
+and measured on the GM45 (boot 19, below); the GM965 is unchecked.
 
 Machine: issue 22's reporter's HP t5740 (`M-6B21TJ`, W9QI3DAB), GM45
 `8086:2A42`, boot 17, driver and HAL `0.45.0 03782be9` (from the
@@ -111,3 +111,121 @@ GM45 and a reset path ready.
   Uplink; the owner's hazard course demo was not found on the machine).
 - Incoming's fault after Start Game not investigated.
 - The owner has not been answered.
+
+## Fix in source, not yet measured (2026-11-11, option 1)
+
+`v9x_d3d_g4_map` no longer refuses an application's alpha test with depth
+writes. It sets `depth_prepass` for any alpha-tested draw that writes
+depth, keyed or not, and `v9x_d3d_g4_draw_keyed_depth` is renamed
+`v9x_d3d_g4_draw_alpha_depth`. The passes are unchanged: depth only
+(untextured, no alpha test, colour writes masked), then colour with the
+alpha test, depth writes off and the depth test EQUAL. Reason 8 is now
+returned only for an alpha function outside NEVER..ALWAYS. The cost is the
+same as the keyed case: depth is written over discarded texels, so
+anything drawn later behind a grate is hidden there.
+
+The OpenGL ICD's Gen4 draws go through the same map, so GL programs that
+alpha-test with depth writes now draw through the two passes as well.
+Before this change they were dropped. Not measured.
+
+`run-checks.ps1` passed. Build `254b7655-dirty` (this change only) was
+installed on M-6B21TJ by `run-release-checks.ps1 -Machine gm45`: 8 of 8
+files hash-checked, boot 17 to 18
+(`../probe/m-6b21tj-game-reports-2026-11-11/release-check-gm45/gm45.log`).
+The machine then stopped checking in with the relay at 09:39 UTC, about
+two minutes after the install check, before the probe push. Neither the
+probes nor any 3D program had run, so the new path was not reached. Why
+it went offline is not known: the wifi, the owner, or the driver at idle
+are all open. **That build stays installed** until the machine returns.
+
+Owed when it returns: confirm it booted to the desktop on `254b7655-dirty`
+(`DriverBuild` in a snapshot); V9XD32, V9XGLP, V9XGLIDP and V9XR3DP as a
+regression check; Half-Life and Incoming traced as above, expecting
+`M64Policy08` to stay 0 and census key `28761C94` to draw; a hang check
+on the GM965 (TOMMOHP) before this ships.
+
+## Measured on the GM45 (2026-11-11, boot 19)
+
+M-6B21TJ checked in again at 21:26 UTC on boot 19 (the owner restarted
+it; boot 18 was the install's reset). Desktop at 1024x768x16,
+`V9XBOOT.INI` `Stage=enable-ok`, snapshot `DriverBuild` and `HalBuild`
+both `0.47.0 254b7655-dirty`. Captures:
+[`../probe/m-6b21tj-game-reports-2026-11-11/boot19/`](../probe/m-6b21tj-game-reports-2026-11-11/boot19/).
+
+**Probes** (`run-release-checks.ps1 -Machine gm45 -Baseline
+-SkipProbeBuild`, nothing installed, every report `Build=254b7655-dirty`):
+V9XD32 default PASS and `/ddi5` PASS (`Failures=0` both), V9XGLP PASS
+(`LifetimeFailures=0`), V9XGLIDP PASS failures=0, V9XR3DP COMPLETE.
+Same verdicts as boot 12 on 0.44.0.
+
+**Half-Life**, same command and map as above, census on at `hl-A.INI`
+(empty census: first enable since boot) and about two minutes on the map
+to `hl-B.INI`:
+
+- `M64Policy08` stayed 0; `BatchesEngineRefused` stayed at 4 (the four
+  reason-4 refusals from before HL started, not this path).
+- Census key `28761C94`, the base pass refused 5,390 times on boot 17, drew
+  6,576 times. Its lightmap partner `24561CD2` is not in the census this
+  time; the blended passes counted are `24521CD2` (143,246) and others, so
+  HL's state mix differs from boot 17's in more than this key. Not
+  explained.
+- The machine did not hang or fault. A screen capture during play
+  (`hl-screen.png`) shows a lit corridor with an overhead slatted grille
+  drawn solid; whether that brush is one of the `{` textures is not known,
+  and the owner's hazard course is still not on the machine.
+
+**Incoming**, started from the desktop after HL quit, ~70 s at the main
+menu (`inc-B.INI`, cumulative from `hl-A.INI`):
+
+- `M64Policy08` 0; `28761C94` rose by 5,824 (6,576 to 12,400), all drawn.
+- The menu, logo and landscape draw (`inc-menu.png`), as on boot 17.
+- **Start Game did not fault this time.** It went to the demo's "Rage"
+  intro flyby over the terrain (`inc-start.png`, `inc-C.INI`, no new
+  refusals). Gameplay itself was not reached; Incoming was ended with
+  `kill`. Boot 17's c0000005 at 465973 did not repeat in one try, so it
+  stays unexplained.
+
+The census mask was set back to 0 afterwards. Left installed:
+`254b7655-dirty` (branch `gen4-alpha-depth`).
+
+Still owed: a look at the grates and doors themselves (the hazard course,
+or the owner's eyes); Incoming gameplay; the GM965 hang check on TOMMOHP
+before this ships, since the two passes have only run on G4x.
+
+## Owner's confirmation, and Incoming's crash reproduced (2026-11-12)
+
+The owner, by chat, 2026-11-11 23:35 UTC (msg 173), on `254b7655-dirty`:
+Half-Life's textures "now work across all renderers". Msgs 174/175:
+Incoming is the only title still slow and with render bugs; its video
+options change neither; the Start Game crash happened to them once, and
+the second launch worked.
+
+The 0.47.0 release check (another session) then installed released
+`0.47.0 0246432c` by hard reset at 03:44 UTC (guest `EVENTS.LOG`, local
+time UTC-5). **That release does not contain this fix**
+(`b614ac2d` is not an ancestor of `0246432c`), so the machine is back to
+dropping these draws.
+
+Boot 23, `0.47.0 0246432c`, census on (`boot23/g-A.INI` to `g-B.INI`):
+Incoming's menu; Enter on Start Game did nothing; a click on it ran the
+"Rage" logo flyby (`g3.png`), then a screen showing the pilot name
+(`g4.png`); a click on the name gave **the same fault as boot 17**,
+"exception code(c0000005) ADDRESS: (465973)" (`g6.png`). Over the run:
+`M64Policy08` 0, `BatchesEngineRefused` unchanged at 4, and key
+`28761C94` absent, so no reason-8 draw was reached before the fault. The
+census keys differ from boot 19's (high byte `2C`, min filter field 6:
+mipmapped), not examined. Boot 19 never got past the flyby, so its "no
+fault" above was not this path.
+
+What the game does at 465973 (`INCOMING.EXE` from the guest, disassembled
+with capstone): after the name-entry handler at `4677E0` (DirectInput
+scancodes Home/End/arrows/Enter editing a string at `4BCBE8`), it stores
+-64.0 (`C2800000`) to `+8` of three objects through the pointers at
+`4BCECC`, `4BCEAC` and `4BCE8C`; `4BCECC` is NULL, so the first store
+faults. Those pointers belong to a list headed at `4BCE88` that
+`465700` builds. Why the list is empty at that point is not found: a
+failed resource or surface creation by the driver would explain it, a
+game bug would too. Not tested on another driver.
+
+Not done: Incoming gameplay is still unreached; its render bugs and
+frame rate are unexamined.
