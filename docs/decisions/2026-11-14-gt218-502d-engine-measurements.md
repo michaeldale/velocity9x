@@ -62,8 +62,39 @@ So, for the engine:
   the value is written as given.
 - The destination and source formats can be the same value in one push.
 
+## 4. The IB ring wraps cleanly: 600 kicks (run 35)
+
+The probe at 944bc1db (built as `f74835c1-dirty`), `/many` added. After
+the four earlier entries, 600 kicks of one small fill, each a new IB
+entry with PUT advanced modulo 512, 150 to a VxD run. Log:
+`run35-V9XN5CH.LOG` (from line 11579).
+
+- IB get after each 150: `9A`, `130`, `1C6`, then **`5C`**: 604 modulo
+  512, so the ring wrapped and PFIFO followed it.
+- No wait timed out in 600; PFIFO_INTR 0, PGRAPH_INTR 0, pusher error 0
+  after every batch. The four batches took about 60 ms between them.
+- The three depth tests then ran on the wrapped ring and passed again,
+  9216 of 9216 each.
+
+So the engine can treat the ring as 512 entries indexed modulo 512 with
+nothing special at the wrap, and reuse one pushbuffer address for every
+kick.
+
+## 6. The push DMA object in class 3Dh: works (run 36)
+
+The same probe without `/push:class02`, so the VM DMA object reads
+`7FC0003D`, the builder's default, and is both the push object and the
+2D destination and source. Log: `run36-V9XN5CH.LOG` (from line 12697).
+
+Every stage passed as with class 02h: the semaphore push, the 502D bind,
+the fill, the copy and the three depth tests (9216 of 9216 each); no
+master abort, no trap, no interrupt.
+
+So the class was never the fault. Run 24's change with 02h came from the
+misplaced page directory, where that word was being read as PDE 0 (the
+trace record says how). The builder's default stays 3Dh; the plan's
+rule to default to 02h is dropped.
+
 ## Not yet run
 
-4. Several hundred kicks, to wrap the IB ring.
 5. A mode set with the channel up.
-6. The push DMA object in class 3Dh.

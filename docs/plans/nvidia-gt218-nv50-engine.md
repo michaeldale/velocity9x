@@ -75,8 +75,10 @@ history:
 - The channel's VM is the identity over the first 512 MiB, and BAR1 is
   linear, so a surface's VM address is its heap offset. Nothing is
   mapped per surface.
-- The push DMA object is built in class 02h, the class that was
-  measured, by default in `nv50_chan.c`.
+- The push DMA object keeps the builder's class 3Dh: run 36 measured it
+  working, and 02h equally (4.0 item 6).
+- An overlapping copy is passed to the engine as it is, and 32, 16
+  (R5G6B5) and 8 bpp are all drawn (4.0 items 2 and 3).
 - Statics are shared by every process (V9XHAL), which is what the
   engine's state is.
 
