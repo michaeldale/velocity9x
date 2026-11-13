@@ -1,0 +1,17 @@
+{
+    "Name":  "hd4600",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  230,
+    "BootAfter":  231,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.16.0",
+    "Boot":  230,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

@@ -1,0 +1,17 @@
+{
+    "Name":  "hd2600",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  19,
+    "BootAfter":  20,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.17.0",
+    "Boot":  19,
+    "Desktop":  true,
+    "AnswerSeconds":  5,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
