@@ -249,8 +249,11 @@ files below are in, so one thing changes at a time.
 
 - Bug!'s cursor square with `C:\V9XDIAG\NOSHADOW.TXT` present (one
   reboot): gone or not.
-- Moto Racer: desktop depth, the game's mode, `V9XDD.INI` after it.
+- Moto Racer: desktop depth, the game's mode, `V9XTRACE.INI` after it.
 - Quake 2: `V9XGL.LOG` from one session with the crosshair on. On our
   side, whether the crosshair draws on Caicos or Trinity.
 - Quake 1 DOS: the same run on the `vbe` package.
 - Still owed from before: V9XD32 at 16 and 32 bpp.
+
+Asked for on issue 16 on 2026-11-13
+([comment](https://github.com/michaeldale/velocity9x/issues/16#issuecomment-6846448413)).
