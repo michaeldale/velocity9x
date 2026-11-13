@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.50.0 - not yet released
+
 ## 0.49.0 - 2026-11-13
 
 - **`ati` package: the Radeon HD 2600 XT (RV630, `1002:9588`) gets
