@@ -42,6 +42,11 @@ typedef struct v9x_d3d_surface_handle {
      * halves (DDI 8's held surfaces, d3d_core.c), which it must free when
      * it drops the entry. Kept and dropped as user is. */
     v9x_u32 held;
+    /* The surface's DDSCAPS2 as CreateSurfaceEx saw it, when the runtime's
+     * DDRAWI_DDRAWSURFACE_MORE is still readable: a held copy has none,
+     * so at a draw a cube map is known by this (DDSCAPS2_CUBEMAP). Kept
+     * and dropped as user is. */
+    v9x_u32 caps2;
 } V9X_D3D_SURFACE_HANDLE;
 
 typedef struct v9x_d3d_handles {

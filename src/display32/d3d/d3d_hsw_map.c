@@ -144,6 +144,8 @@ static int v9x_d3d_hsw_color_op(v9x_u32 op, v9x_u8 *colour)
         *colour = V9X_HSW_PS_OP_MODULATE;
     } else if (op == V9X_R3D_COLOROP_ADD) {
         *colour = V9X_HSW_PS_OP_ADD;
+    } else if (op == V9X_R3D_COLOROP_MODULATE2X) {
+        *colour = V9X_HSW_PS_OP_MODULATE2X;
     } else if (op == V9X_R3D_ABI_COLOROP_DECALALPHA) {
         *colour = V9X_HSW_PS_OP_DECALALPHA;
     } else {
@@ -227,6 +229,25 @@ v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
         return V9X_D3D_HSW_REFUSE_COMBINE;
     }
     return 0ul;
+}
+
+int v9x_d3d_hsw_modulate2x_stage(v9x_u32 texop, int has_alpha,
+                                 v9x_u8 *stage0)
+{
+    if (texop == V9X_R3D_TEXOP_MODULATE) {
+        /* D3D's rule, as for MODULATE: the texture's alpha when it has
+         * one, else the vertex's. */
+        *stage0 = V9X_HSW_PS_STAGE0_OPS(V9X_HSW_PS_OP_MODULATE2X,
+                                        has_alpha ? V9X_HSW_PS_AOP_REPLACE
+                                                  : V9X_HSW_PS_AOP_INPUT);
+        return 1;
+    }
+    if (texop == V9X_R3D_TEXOP_MODULATEALPHA) {
+        *stage0 = V9X_HSW_PS_STAGE0_OPS(V9X_HSW_PS_OP_MODULATE2X,
+                                        V9X_HSW_PS_AOP_MODULATE);
+        return 1;
+    }
+    return 0;
 }
 
 int v9x_d3d_hsw_scissor(const V9X_R3D_DRAW *draw, v9x_u32 rect[4])

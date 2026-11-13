@@ -737,6 +737,35 @@ static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
  * goes with it: a trace that cannot name the context cannot tell a second
  * context's target from the same context rebound.
  */
+static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void);
+
+/* Whether the published engine draws MODULATE2X (limits->modulate2x). */
+static int v9x_d3d_engine_modulate2x(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+
+    return ops != 0 && ops->limits != 0 && ops->limits->modulate2x != 0ul;
+}
+
+/* Whether stage 0 is a doubled texture times vertex colour that this
+ * engine draws as one (v9x_d3d_state_stage0_modulate2x). */
+static int v9x_d3d_context_stage0_modulate2x(const V9X_D3D_ENGINE_OPS *ops,
+                                             const V9X_D3D_CONTEXT *context)
+{
+    V9X_D3D_STATE_STAGE stage0;
+
+    if (ops == 0 || ops->limits == 0 || ops->limits->modulate2x == 0ul) {
+        return 0;
+    }
+    stage0.color_op = context->stage_color_op;
+    stage0.color_arg1 = context->stage_color_arg1;
+    stage0.color_arg2 = context->stage_color_arg2;
+    stage0.alpha_op = context->stage_alpha_op;
+    stage0.alpha_arg1 = context->stage_alpha_arg1;
+    stage0.alpha_arg2 = context->stage_alpha_arg2;
+    return v9x_d3d_state_stage0_modulate2x(&stage0);
+}
+
 /*
  * The batch as the neutral core describes it, from the context: the three
  * surfaces resolved here, because they are DirectDraw's, and the render
@@ -804,6 +833,15 @@ static void v9x_d3d_describe_draw(const V9X_D3D_ENGINE_OPS *ops,
     raw.alpha_force = context->alpha_force;
     raw.color_key_enable = context->color_key_enable;
     v9x_d3d_state_fill(&raw, draw);
+
+    /* A doubled stage 0 stated beside its DX5 blend, for an engine that
+     * draws it (limits->modulate2x); zero otherwise, since `draw` is the
+     * caller's uninitialised local. A two-unit draw's describe_unit1
+     * writes both units' combines over this. */
+    draw->texture.color_op = 0ul;
+    if (v9x_d3d_context_stage0_modulate2x(ops, context)) {
+        draw->texture.color_op = V9X_R3D_COLOROP_MODULATE2X;
+    }
 }
 
 /* A byte of the census's packed state; a value past 255 reads as 255. */
@@ -902,7 +940,8 @@ static DWORD v9x_d3d_stage_pair(const V9X_D3D_CONTEXT *context,
     stage2.alpha_arg1 = context->stage2_alpha_arg1;
     stage2.alpha_arg2 = context->stage2_alpha_arg2;
     (void)v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2);
-    return v9x_d3d_state_stages(&stage0, &stage1, unit0, unit1);
+    return v9x_d3d_state_stages(&stage0, &stage1, unit0, unit1,
+                                v9x_d3d_engine_modulate2x());
 }
 
 /*
@@ -4887,7 +4926,15 @@ static void v9x_d3d_dp2_express_stage(V9X_D3D_CONTEXT *context)
         blend = V9X_D3DTBLEND_DECALALPHA;
     } else {
         textured = 1ul;
-        if (v9x_hal != 0) {
+        /* MODULATE2X on an engine that draws it is exact: the blend
+         * carries its alpha as MODULATE's would, and describe_draw states
+         * the doubling. Elsewhere it is drawn as MODULATE and counted. */
+        if (v9x_d3d_context_stage0_modulate2x(v9x_d3d_publish_engine(),
+                                              context)) {
+            blend = context->stage_alpha_op == V9X_D3DTOP_MODULATE
+                        ? V9X_D3DTBLEND_MODULATEALPHA
+                        : V9X_D3DTBLEND_MODULATE;
+        } else if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_stage0_approximated;
         }
     }
@@ -6240,6 +6287,9 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
                                                    handle, lcl);
                 if (entry == 0) {
                     v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
+                } else {
+                    /* Readable now and never again (d3d_handles.h). */
+                    entry->caps2 = caps2;
                 }
             }
             /* A DDI 8 vertex or index buffer: its memory and size now,
@@ -7175,6 +7225,114 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
 }
 
 /*
+ * Fixed-function stages that sample a cube map, drawn as a pixel shader.
+ * Engines that run shaders sample a cube there (step 5c) but not in their
+ * fixed-function kernels, which refuse the draw: UT2004's environment maps,
+ * 11,577 batches a botmatch on the 4570, every one a single DXT5 cube stage
+ * (boot 237, a measurement HAL). So a DDI 8 draw with no shader bound whose
+ * stage 0, or stage 1 on a two-stage engine, binds a cube is drawn under
+ * the program v9x_d3d_ps_fixed writes for its stages; one that does not
+ * translate goes on to the fixed-function path as before. The programs
+ * are kept by their tokens in a table of their own, so an application's
+ * handles never meet them; a full table reuses the oldest slot.
+ */
+#define V9X_D3D_PS_FIXED_SLOTS 8u
+
+static V9X_D3D_PS_SHADER v9x_d3d_ps_fixed_table[V9X_D3D_PS_FIXED_SLOTS];
+static v9x_u32 v9x_d3d_ps_fixed_words[V9X_D3D_PS_FIXED_SLOTS]
+                                     [V9X_D3D_PS_FIXED_DWORDS];
+static v9x_u32 v9x_d3d_ps_fixed_count[V9X_D3D_PS_FIXED_SLOTS];
+static v9x_u32 v9x_d3d_ps_fixed_next;
+/* Its address is the table's owner, which no context can be. */
+static v9x_u32 v9x_d3d_ps_fixed_owner;
+
+/* Whether a stage's texture handle names a cube map, by the DDSCAPS2 its
+ * CreateSurfaceEx recorded: a held copy's own reads zero, which every one
+ * of UT2004's 178 stage textures did at a draw, cubes included (the 4570,
+ * boot 240, a measurement HAL). */
+static int v9x_d3d_stage_is_cube(V9X_D3D_CONTEXT *context, DWORD handle)
+{
+    const V9X_D3D_SURFACE_HANDLE *entry;
+
+    if (handle == 0ul) {
+        return 0;
+    }
+    entry = v9x_d3d_ddi7_surface(context, handle);
+    return entry != 0 && (entry->caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul;
+}
+
+static const V9X_D3D_PS_SHADER *v9x_d3d_ps_fixed_shader(
+    const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context)
+{
+    V9X_D3D_STATE_STAGE stage0;
+    V9X_D3D_STATE_STAGE stage1;
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+    v9x_u32 dwords;
+    v9x_u32 slot;
+    v9x_u32 i;
+    int two;
+
+    if (ops == 0 || ops->draw_shader == 0 || ops->limits == 0) {
+        return 0;
+    }
+    two = ops->limits->texture_stages >= 2ul;
+    if (!v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[0].texture) &&
+        !(two &&
+          v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[1].texture))) {
+        return 0;
+    }
+    stage0.color_op = context->stage_color_op;
+    stage0.color_arg1 = context->stage_color_arg1;
+    stage0.color_arg2 = context->stage_color_arg2;
+    stage0.alpha_op = context->stage_alpha_op;
+    stage0.alpha_arg1 = context->stage_alpha_arg1;
+    stage0.alpha_arg2 = context->stage_alpha_arg2;
+    stage1.color_op = context->stage1_color_op;
+    stage1.color_arg1 = context->stage1_color_arg1;
+    stage1.color_arg2 = context->stage1_color_arg2;
+    stage1.alpha_op = context->stage1_alpha_op;
+    stage1.alpha_arg1 = context->stage1_alpha_arg1;
+    stage1.alpha_arg2 = context->stage1_alpha_arg2;
+    dwords = v9x_d3d_ps_fixed(&stage0, &stage1, two,
+                              context->specular_enable != 0ul, tokens);
+    if (dwords == 0ul) {
+        return 0;
+    }
+
+    for (slot = 0ul; slot < V9X_D3D_PS_FIXED_SLOTS; ++slot) {
+        if (v9x_d3d_ps_fixed_count[slot] != dwords) {
+            continue;
+        }
+        for (i = 0ul; i < dwords; ++i) {
+            if (v9x_d3d_ps_fixed_words[slot][i] != tokens[i]) {
+                break;
+            }
+        }
+        if (i == dwords) {
+            return v9x_d3d_ps_find(v9x_d3d_ps_fixed_table,
+                                   V9X_D3D_PS_FIXED_SLOTS,
+                                   &v9x_d3d_ps_fixed_owner, slot + 1ul);
+        }
+    }
+
+    /* A new program, in the next slot round; the slot's number is its
+     * handle, so re-creating it replaces whatever was there. */
+    slot = v9x_d3d_ps_fixed_next++ % V9X_D3D_PS_FIXED_SLOTS;
+    v9x_d3d_ps_fixed_count[slot] = 0ul;
+    if (v9x_d3d_ps_create(v9x_d3d_ps_fixed_table, V9X_D3D_PS_FIXED_SLOTS,
+                          &v9x_d3d_ps_serial, &v9x_d3d_ps_fixed_owner,
+                          slot + 1ul, tokens, dwords) != V9X_PS11_OK) {
+        return 0;
+    }
+    for (i = 0ul; i < dwords; ++i) {
+        v9x_d3d_ps_fixed_words[slot][i] = tokens[i];
+    }
+    v9x_d3d_ps_fixed_count[slot] = dwords;
+    return v9x_d3d_ps_find(v9x_d3d_ps_fixed_table, V9X_D3D_PS_FIXED_SLOTS,
+                           &v9x_d3d_ps_fixed_owner, slot + 1ul);
+}
+
+/*
  * One DDI 8 draw: stream 0 and the indices resolved to memory, the draw
  * record turned into a V9X_DP2_DRAW, and drawn by v9x_dp2_draw through
  * the walk's own sink, under SETVERTEXSHADER's vertex format. Offsets in
@@ -7216,6 +7374,11 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
             v9x_d3d_ddi8_shader_draw(context, op, words);
             return;
         }
+    } else {
+        /* A fixed-function stage on a cube: the stages' own program,
+         * where the engine runs shaders and they translate. */
+        ops = v9x_d3d_engine();
+        shader = v9x_d3d_ps_fixed_shader(ops, context);
     }
     if (context->ddi8_fvf == 0ul ||
         !v9x_dp2_fvf_layout(context->ddi8_fvf, &layout)) {
@@ -7303,7 +7466,9 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
             break;
         }
         /* DRAWINDEXEDPRIMITIVE2: both offsets in bytes. A negative base
-         * that is not whole vertices has no vertex number. */
+         * need not be whole vertices: UT2004 sends ones that are not (935
+         * draws in one botmatch on the 4570, boot 235), and they still
+         * name exact addresses (v9x_dp2_negative_base). */
         if ((words[4] % size) != 0ul) {
             v9x_d3d_ddi7_log("dx8-index-offset", words[4], size, 0ul, 0ul);
             return;
@@ -7311,9 +7476,8 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
         draw.first = words[4] / size;
         if ((v9x_s32)words[1] >= 0l) {
             offset = words[1];
-        } else if (((DWORD)(-(v9x_s32)words[1]) % stride) == 0ul) {
-            draw.base = (v9x_s32)words[1] / (v9x_s32)stride;
-        } else {
+        } else if (!v9x_dp2_negative_base(&draw, stream, stream_bytes,
+                                          (v9x_s32)words[1])) {
             v9x_d3d_ddi7_log("dx8-base-offset", words[1], stride, 0ul, 0ul);
             return;
         }
@@ -7909,7 +8073,9 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
     op = context->stage_color_op;
     if (op == V9X_D3DTOP_DISABLE || op == V9X_D3DTOP_SELECTARG1 ||
         op == V9X_D3DTOP_SELECTARG2 || op == V9X_D3DTOP_MODULATE ||
-        op == V9X_D3DTOP_BLENDTEXTUREALPHA) {
+        op == V9X_D3DTOP_BLENDTEXTUREALPHA ||
+        v9x_d3d_context_stage0_modulate2x(v9x_d3d_publish_engine(),
+                                          context)) {
         data->dwNumPasses = 1ul;
         data->ddrval = V9X_DD_OK;
     } else {
@@ -8374,13 +8540,13 @@ static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
         format->dwRGBBitCount = 0ul;
         format->dwRBitMask = formats[answer->dwFormatIndex].operations;
         /* Every texture format a cube as well where cubes are claimed:
-         * the engine places any format it samples as a cube - except DXT,
-         * whose cube layout nothing here has measured. */
+         * the engine places any format it samples as a cube. DXT too:
+         * without it the runtime answers a DXT cube's creation
+         * D3DERR_INVALIDCALL, and UT2004 stops at its first frame there
+         * (docs\issues\2026-11-13-haswell-ut2004-demo-dxt5-cube-create-
+         * refused.md). */
         if (v9x_d3d_cubes_claimed() &&
-            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul &&
-            format->dwFourCC != V9X_D3DFMT_DXT1 &&
-            format->dwFourCC != V9X_D3DFMT_DXT3 &&
-            format->dwFourCC != V9X_D3DFMT_DXT5) {
+            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
             format->dwRBitMask |= V9X_D3DFORMAT_OP_CUBETEXTURE;
         }
         format->dwGBitMask = 0ul;

@@ -125,6 +125,7 @@ v9x_u32 v9x_d3d_state_depth_active(v9x_u32 z_enable, v9x_u32 depth_bound,
 #define V9X_D3D_STATE_TOP_SELECTARG1 2ul
 #define V9X_D3D_STATE_TOP_SELECTARG2 3ul
 #define V9X_D3D_STATE_TOP_MODULATE   4ul
+#define V9X_D3D_STATE_TOP_MODULATE2X 5ul
 #define V9X_D3D_STATE_TOP_ADD        7ul
 #define V9X_D3D_STATE_TOP_BLENDTEXTUREALPHA 13ul
 #define V9X_D3D_STATE_TA_SELECTMASK  0x0000000ful
@@ -160,9 +161,10 @@ static int v9x_d3d_state_args_texture_input(v9x_u32 arg1, v9x_u32 arg2,
             v9x_d3d_state_arg_texture(arg2));
 }
 
-/* A stage's colour as a unit's colour op, COLOR_PASS, or NONE. */
+/* A stage's colour as a unit's colour op, COLOR_PASS, or NONE;
+ * MODULATE2X only where the engine draws it. */
 static v9x_u32 v9x_d3d_state_stage_color(const V9X_D3D_STATE_STAGE *stage,
-                                         int index)
+                                         int index, int modulate2x)
 {
     v9x_u32 arg1 = stage->color_arg1;
     v9x_u32 arg2 = stage->color_arg2;
@@ -181,6 +183,10 @@ static v9x_u32 v9x_d3d_state_stage_color(const V9X_D3D_STATE_STAGE *stage,
     case V9X_D3D_STATE_TOP_MODULATE:
         return v9x_d3d_state_args_texture_input(arg1, arg2, index)
             ? V9X_R3D_ABI_COLOROP_MODULATE : V9X_D3D_STATE_NONE;
+    case V9X_D3D_STATE_TOP_MODULATE2X:
+        return modulate2x &&
+               v9x_d3d_state_args_texture_input(arg1, arg2, index)
+            ? V9X_R3D_COLOROP_MODULATE2X : V9X_D3D_STATE_NONE;
     case V9X_D3D_STATE_TOP_ADD:
         return v9x_d3d_state_args_texture_input(arg1, arg2, index)
             ? V9X_R3D_COLOROP_ADD : V9X_D3D_STATE_NONE;
@@ -223,9 +229,17 @@ static v9x_u32 v9x_d3d_state_stage_alpha(const V9X_D3D_STATE_STAGE *stage,
     }
 }
 
+int v9x_d3d_state_stage0_modulate2x(const V9X_D3D_STATE_STAGE *stage0)
+{
+    return stage0->color_op == V9X_D3D_STATE_TOP_MODULATE2X &&
+           v9x_d3d_state_args_texture_input(stage0->color_arg1,
+                                            stage0->color_arg2, 0);
+}
+
 v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
                              const V9X_D3D_STATE_STAGE *stage1,
-                             V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1)
+                             V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1,
+                             int modulate2x)
 {
     v9x_u32 color0;
     v9x_u32 alpha0;
@@ -237,7 +251,7 @@ v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
         stage1->color_op == V9X_D3D_STATE_TOP_DISABLE) {
         return V9X_D3D_STAGES_ONE;
     }
-    color1 = v9x_d3d_state_stage_color(stage1, 1);
+    color1 = v9x_d3d_state_stage_color(stage1, 1, modulate2x);
     alpha1 = v9x_d3d_state_stage_alpha(stage1, 1);
     if (color1 == V9X_D3D_STATE_COLOR_PASS &&
         alpha1 == V9X_R3D_ABI_ALPHAOP_FRAGMENT) {
@@ -246,7 +260,7 @@ v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
     /* A passed colour under a changed alpha has no unit op; nor does a
      * stage 0 that samples nothing under a stage 1 that does - the
      * hardware runs unit 1 only behind unit 0. */
-    color0 = v9x_d3d_state_stage_color(stage0, 0);
+    color0 = v9x_d3d_state_stage_color(stage0, 0, modulate2x);
     alpha0 = v9x_d3d_state_stage_alpha(stage0, 0);
     if (color1 == V9X_D3D_STATE_NONE || color1 == V9X_D3D_STATE_COLOR_PASS ||
         alpha1 == V9X_D3D_STATE_NONE || color0 == V9X_D3D_STATE_NONE ||

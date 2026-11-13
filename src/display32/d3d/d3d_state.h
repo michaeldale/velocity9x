@@ -75,11 +75,19 @@ typedef struct v9x_d3d_state_stage {
  * texel the factor. Nothing else of either unit is written. Only the
  * combinations whose arithmetic is exactly that are TWO: Direct3D asks
  * ValidateTextureStageState first, and an application told no draws its
- * own passes.
+ * own passes. modulate2x non-zero, for an engine that draws it, adds
+ * MODULATE2X of the texel and the input as V9X_R3D_COLOROP_MODULATE2X;
+ * without it such a stage is REFUSE, as before.
  */
 v9x_u32 v9x_d3d_state_stages(const V9X_D3D_STATE_STAGE *stage0,
                              const V9X_D3D_STATE_STAGE *stage1,
-                             V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1);
+                             V9X_R3D_TEXTURE *unit0, V9X_R3D_TEXTURE *unit1,
+                             int modulate2x);
+
+/* 1 when stage 0 is MODULATE2X of its texel and the vertex colour, either
+ * way round: one stage drawn as V9X_R3D_COLOROP_MODULATE2X where the engine
+ * has it. */
+int v9x_d3d_state_stage0_modulate2x(const V9X_D3D_STATE_STAGE *stage0);
 
 /*
  * Stage 2 folded into stage 0 where the product allows it: stage 2 a

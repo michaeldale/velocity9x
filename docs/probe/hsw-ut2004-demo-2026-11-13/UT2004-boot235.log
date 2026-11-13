@@ -1,0 +1,118 @@
+Log: Log file open, 11/13/26 19:30:39
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows 98 4.10 (Build: 67766446)
+Init: Version: 3334 (128.29)
+Init: Compiled: Sep 21 2004 19:59:46
+Init: Command line: dm-rankin?spectatoronly=1?numbots=12?quickstart=1?attractcam=1 -benchmark -seconds=77 -exec=..\Benchmark\Stuff\botmatchexec.txt -nosound
+Init: Character set: Unicode
+Init: Base directory: C:\UT2004DEMO\SYSTEM\
+Init: Ini:UT2004.ini   UserIni:User.ini
+Init: Build label: UT2004 Build UT2004_Build_[2004-09-21_19.13]
+Init: Object subsystem initialized
+Log: 	V9XHAL.DLL/Velocity9x Intel HD Graphics 4600 (Haswell)
+Warning: Missing Class Class Editor.TransBuffer
+Warning: Missing Texture Texture UCGeneric.DetailTextures.detail25
+Warning: Missing Package Package CubeMaps.testenv
+Warning: Missing TexEnvMap TexEnvMap CubeMaps.testenv.testcubeTexEnv
+Warning: Missing Package Package CubeMaps.testenv
+Warning: Missing Texture Texture UCGeneric.DetailTextures.detail41
+Warning: Missing Texture Texture PlayerSkins.MercFemaleCBodyA
+Warning: Missing Texture Texture PlayerSkins.MercFemaleCHeadA
+Warning: Missing Texture Texture PlayerSkins.MercFemaleBBodyA
+Warning: Missing Texture Texture PlayerSkins.MercFemaleBHeadA
+Warning: Missing Texture Texture PlayerSkins.NightFemaleBBodyA_0
+Warning: Missing Texture Texture PlayerSkins.NightFemaleBHeadA
+Warning: Missing Texture Texture PlayerSkins.NightFemaleABodyA
+Warning: Missing Texture Texture PlayerSkins.NightFemaleAHeadA
+Warning: Missing Texture Texture PlayerSkins.Human_Skeleton
+Warning: Missing Texture Texture PlayerSkins.EgyptFemaleABodyA
+Warning: Missing Texture Texture PlayerSkins.EgyptFemaleAHeadA
+Warning: Missing Texture Texture PlayerSkins.EgyptFemaleBBodyA
+Warning: Missing Texture Texture PlayerSkins.EgyptFemaleBHeadA
+Warning: Missing Texture Texture PlayerSkins.MercFemaleABodyA
+Warning: Missing Texture Texture PlayerSkins.MercFemaleAHeadA
+Warning: Missing Texture Texture PlayerSkins.EgyptMaleBBodyA
+Warning: Missing Texture Texture PlayerSkins.EgyptMaleBHeadA
+Warning: Missing Texture Texture PlayerSkins.NightMaleBBodyA
+Warning: Missing Texture Texture PlayerSkins.NightMaleBHeadA
+Warning: Missing Texture Texture PlayerSkins.MercMaleABodyA
+Warning: Missing Texture Texture PlayerSkins.MercMaleAHeadA
+Warning: Missing Texture Texture PlayerSkins.MercMaleCBodyA
+Warning: Missing Texture Texture PlayerSkins.MercMaleCHeadA
+Warning: Missing Texture Texture PlayerSkins.MercMaleDBodyA
+Warning: Missing Texture Texture PlayerSkins.MercMaleDHeadA
+Warning: Missing Texture Texture PlayerSkins.EgyptMaleABodyA
+Warning: Missing Texture Texture PlayerSkins.EgyptMaleAHeadA
+Warning: Missing Texture Texture PlayerSkins.MercMaleBBodyA
+Warning: Missing Texture Texture PlayerSkins.MercMaleBHeadA
+Warning: Missing Texture Texture PlayerSkins.Human_Skeleton
+Warning: Missing Texture Texture PlayerSkins.NightMaleABodyA
+Warning: Missing Texture Texture PlayerSkins.NightMaleAHeadA
+Log: Game class is 'GameInfo'
+Log: Bringing Level Entry.myLevel up for play (0) appSeconds: 2.746000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Warning: Missing Texture Texture WeaponSkins.Skins.TransLauncherTex0
+Warning: Missing Texture Texture WeaponSkins.Skins.TransBeaconTex0
+Warning: Missing Texture Texture H_E_L_Ltx.Shaders.cp_caustics4water
+Warning: Missing TexPanner TexPanner FireEngine.Liquids.water04AR-texpanner
+Warning: Missing TexEnvMap TexEnvMap CubeMaps.Anubis.Anubis-texenv
+Warning: Missing Texture Texture FireEngine.Liquids.water04AR
+Warning: Missing Shader Shader Egypt_tech_Epic.Shaders.toptarpalpha
+Log: Browse: dm-rankin?Name=Player?Class=Engine.Pawn?Character=Jakob?team=255?spectatoronly=1?numbots=12?quickstart=1?attractcam=1
+Log: Collecting garbage
+Log: Purging garbage
+Log: Garbage: objects: 33054->33052; refs: 432709
+Log: Game class is 'xDeathMatch'
+Log: Bringing Level dm-rankin.myLevel up for play (0) appSeconds: 7.173000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+ScriptLog: New Player Player id=32af618f3ba1ef8264f8deefed08553c
+Log: Opened viewport
+Log: Enter SetRes: 800x600 Fullscreen 1
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: Creating device
+Log: xD3DHelper::Init (QuadEmulation)
+Log: OS doesn't support IME.
+Log: Startup time: 7.785000 seconds
+Log: FactoryCreateText: TextBuffer with TextBufferFactory (0 1 ..\Benchmark\Stuff\botmatchexec.txt)
+Log: Execing ..\Benchmark\Stuff\botmatchexec.txt
+ScriptLog: START MATCH
+Log: Precaching: dm-rankin.LevelInfo0
+Log: Static mesh batches: 11352456 vertex bytes, 914784 index bytes
+Log: Allocating 16384 byte dynamic index buffer.
+Log: Finished precaching geometry in 0.837 seconds
+Log: WARNING: Texture [DemoPlayerSkins.DemoSkeleton] is corrupted.
+Log: Finished precaching textures in 3.514 seconds
+Log: Preprocessing:  Vertex stream total vertices: 86 Orig wedges: 86
+Log: Preprocessing:  Vertex stream total vertices: 62 Orig wedges: 62
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Log: Purging garbage
+Log: Unbound to Window.dll
+Log: Unbound to Core.dll
+Log: Unbound to Engine.dll
+Exit: Game engine shut down
+Log: Unbound to WinDrv.dll
+Exit: Windows client shut down
+Log: Unbound to D3DDrv.dll
+Log: Unbound to XGame.dll
+Log: Unbound to IpDrv.dll
+Log: Unbound to Fire.dll
+Log: Unbound to XInterface.dll
+Log: Unbound to UWeb.dll
+Log: Unbound to Onslaught.dll
+Log: (Karma): Level Karma Terminated.
+Log: (Karma): MePoolMallocDestroy(): 17807200 structs still allocated
+Log: Garbage: objects: 36010->0; refs: 432709
+Exit: Object subsystem successfully closed.
+Exit: Exiting.
+Log: FileManager: Reading 0 GByte 90 MByte 71 KByte 392 Bytes from HD took 7.263880 seconds (6.603885 reading, 0.659995 seeking).
+Log: FileManager: 0.066000 seconds spent with misc. duties
+Uninitialized: Name subsystem shut down
+Uninitialized: Memory Allocation Status
+Uninitialized: Curr Memory  0.347M /  3.246M
+Uninitialized: Peak Memory  106.809M /  109.254M
+Uninitialized: Allocs         670 Current /  1392444 Total
+Uninitialized: Log file closed, 11/13/26 19:32:02

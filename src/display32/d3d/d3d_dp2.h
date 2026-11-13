@@ -246,6 +246,20 @@ v9x_u32 v9x_dp2_draw(const V9X_DP2_DRAW *draw, const V9X_DP2_SINK *sink,
                      V9X_DP2_RESULT *result);
 
 /*
+ * A draw's vertices from a negative base vertex offset in bytes
+ * (DRAWINDEXEDPRIMITIVE2's BaseVertexOffset, ddi8-on-win9x.md), whether or
+ * not it is whole vertices. Vertex i is at stream + offset + i x stride;
+ * with offset = -k x stride + r, 0 <= r < stride, that is
+ * (stream + r) + (i - k) x stride. So vertices is stream + r, base -k and
+ * vertex_count the whole vertices from there, which v9x_dp2_draw then
+ * bounds-checks as for any negative base. Uses draw->vertex_stride. 0, and
+ * draw untouched, for a stride of 0, an offset not below 0, or a stream
+ * shorter than r.
+ */
+int v9x_dp2_negative_base(V9X_DP2_DRAW *draw, const v9x_u8 *stream,
+                          v9x_u32 stream_bytes, v9x_s32 offset);
+
+/*
  * Flexible vertex formats (dwVertexType), turned into the D3DTLVERTEX the
  * engines draw.
  *

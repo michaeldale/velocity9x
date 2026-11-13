@@ -248,13 +248,15 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
  * V9X_HSW_PS_STAGE1_OPS(c, a) a stage1 code, for the combinations the
  * codes above do not name.
  *   colour: REPLACE Ct; MODULATE C Ct; ADD C + Ct, saturated; DECALALPHA
- *           Ct At + C (1 - At)
+ *           Ct At + C (1 - At); MODULATE2X 2 C Ct, saturated (appended
+ *           2026-11-13 for UT2004's lighting)
  *   alpha:  INPUT A; REPLACE At; MODULATE A At
  */
 #define V9X_HSW_PS_OP_REPLACE    ((v9x_u8)0u)
 #define V9X_HSW_PS_OP_MODULATE   ((v9x_u8)1u)
 #define V9X_HSW_PS_OP_ADD        ((v9x_u8)2u)
 #define V9X_HSW_PS_OP_DECALALPHA ((v9x_u8)3u)
+#define V9X_HSW_PS_OP_MODULATE2X ((v9x_u8)4u)
 #define V9X_HSW_PS_AOP_INPUT     ((v9x_u8)0u)
 #define V9X_HSW_PS_AOP_REPLACE   ((v9x_u8)1u)
 #define V9X_HSW_PS_AOP_MODULATE  ((v9x_u8)2u)
@@ -264,8 +266,8 @@ v9x_status v9x_intel_hsw_ps_kernel_interpolated(v9x_u32 *out,
     ((v9x_u8)(V9X_HSW_PS_OPS_FIRST0 + (c) * 3u + (a)))
 #define V9X_HSW_PS_STAGE1_OPS(c, a) \
     ((v9x_u8)(V9X_HSW_PS_OPS_FIRST1 + (c) * 3u + (a)))
-#define V9X_HSW_PS_STAGE0_LAST V9X_HSW_PS_STAGE0_OPS(3u, 2u)
-#define V9X_HSW_PS_STAGE1_LAST V9X_HSW_PS_STAGE1_OPS(3u, 2u)
+#define V9X_HSW_PS_STAGE0_LAST V9X_HSW_PS_STAGE0_OPS(4u, 2u)
+#define V9X_HSW_PS_STAGE1_LAST V9X_HSW_PS_STAGE1_OPS(4u, 2u)
 
 struct v9x_hsw_ps_desc {
     v9x_u8 stage0;

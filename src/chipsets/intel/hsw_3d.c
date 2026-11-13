@@ -863,6 +863,41 @@ v9x_status v9x_intel_hsw_cubetree(v9x_u16 side, v9x_u8 levels,
     return V9X_STATUS_OK;
 }
 
+v9x_status v9x_intel_hsw_cubetree_bc(v9x_u16 side, v9x_u8 levels,
+                                     v9x_u8 block_bytes,
+                                     struct v9x_hsw_cubetree *tree)
+{
+    struct v9x_hsw_miptree face;
+    v9x_u32 h0 = (v9x_u32)side;
+    v9x_u32 h1 = h0 > 1ul ? h0 >> 1 : 1ul;
+    v9x_u32 level;
+
+    /* A side of whole blocks: a smaller top face has no QPitch in rows of
+     * blocks. miptree_bc refuses the block sizes and level counts. */
+    if (tree == 0 || side == 0u || (h0 & (V9X_HSW_BC_BLOCK - 1ul)) != 0ul ||
+        v9x_intel_hsw_miptree_bc(side, side, levels, block_bytes, &face) !=
+            V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    /* The sampler's spacing between faces is in pixel rows; the block is
+     * stored a quarter as deep. Every term is a multiple of the block. */
+    if (levels == 1u) {
+        tree->qpitch = h0 / V9X_HSW_BC_BLOCK;
+    } else {
+        tree->qpitch = (v9x_hsw_mip_align(h0, V9X_HSW_BC_BLOCK) +
+                        v9x_hsw_mip_align(h1, V9X_HSW_BC_BLOCK) +
+                        V9X_HSW_CUBE_QPITCH_J * V9X_HSW_BC_BLOCK) /
+                       V9X_HSW_BC_BLOCK;
+    }
+    tree->pitch = face.pitch;
+    tree->rows = (V9X_HSW_CUBE_FACES - 1ul) * tree->qpitch + face.rows;
+    for (level = 0ul; level < (v9x_u32)levels; ++level) {
+        tree->level_offset[level] = face.level_offset[level];
+    }
+    return V9X_STATUS_OK;
+}
+
 v9x_status v9x_intel_hsw_surface_cube_mips(v9x_u32 out[8], v9x_u16 format,
                                            v9x_u32 base, v9x_u16 side,
                                            v9x_u32 pitch, v9x_u8 levels)

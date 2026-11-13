@@ -226,6 +226,159 @@ static void table_tests(void)
           v9x_d3d_ps_find(table, 3ul, &b, 5ul) != 0);
 }
 
+/* D3DTEXTUREOP and D3DTA (d3d8types.h). */
+#define TOP_DISABLE    1ul
+#define TOP_SELECT1    2ul
+#define TOP_SELECT2    3ul
+#define TOP_MODULATE   4ul
+#define TOP_MODULATE2X 5ul
+#define TOP_ADD        7ul
+#define TOP_BLENDDIFFUSEALPHA 12ul
+#define TA_DIFFUSE     0ul
+#define TA_CURRENT     1ul
+#define TA_TEXTURE     2ul
+#define TA_TFACTOR     3ul
+#define TA_COMPLEMENT  0x10ul
+
+static void ff_stage(V9X_D3D_STATE_STAGE *s, v9x_u32 cop, v9x_u32 c1,
+                     v9x_u32 c2, v9x_u32 aop, v9x_u32 a1, v9x_u32 a2)
+{
+    s->color_op = cop;
+    s->color_arg1 = c1;
+    s->color_arg2 = c2;
+    s->alpha_op = aop;
+    s->alpha_arg1 = a1;
+    s->alpha_arg2 = a2;
+}
+
+/* Stage 0's texel and stage 1's, distinct in every channel. */
+static void ff_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                      const float *coords, float rgba[4])
+{
+    (void)user;
+    (void)count;
+    (void)coords;
+    if (stage == 0ul) {
+        rgba[0] = 0.25f; rgba[1] = 0.5f; rgba[2] = 0.75f; rgba[3] = 0.5f;
+    } else {
+        rgba[0] = 0.5f; rgba[1] = 0.125f; rgba[2] = 0.375f; rgba[3] = 0.25f;
+    }
+}
+
+/* Generate, parse and run on one pixel: diffuse (0.5, 0.25, 1, 0.75),
+ * specular (0.125, 0.25, 0.5, 1). 0 when nothing was generated or the
+ * parser refused it. */
+static int ff_run(const V9X_D3D_STATE_STAGE *s0,
+                  const V9X_D3D_STATE_STAGE *s1, int two, int specular,
+                  float out[4])
+{
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+    V9X_PS11_PROGRAM program;
+    V9X_PS11_ENV env;
+    V9X_PS11_PIXEL pixel;
+    v9x_u32 dwords;
+    v9x_u32 where;
+
+    dwords = v9x_d3d_ps_fixed(s0, s1, two, specular, tokens);
+    if (dwords == 0ul ||
+        v9x_ps11_parse(tokens, dwords, &program, &where) != V9X_PS11_OK) {
+        return 0;
+    }
+    memset(&env, 0, sizeof(env));
+    env.cube = 1ul;
+    memset(&pixel, 0, sizeof(pixel));
+    pixel.v[0][0] = 0.5f; pixel.v[0][1] = 0.25f;
+    pixel.v[0][2] = 1.0f; pixel.v[0][3] = 0.75f;
+    pixel.v[1][0] = 0.125f; pixel.v[1][1] = 0.25f;
+    pixel.v[1][2] = 0.5f; pixel.v[1][3] = 1.0f;
+    pixel.tc[0][0] = 1.0f;
+    pixel.tc[1][1] = 1.0f;
+    return v9x_ps11_run(&program, &env, &pixel, ff_sample, 0, out);
+}
+
+static int ff_is(const float out[4], float r, float g, float b, float a)
+{
+    return out[0] == r && out[1] == g && out[2] == b && out[3] == a;
+}
+
+/*
+ * Fixed-function stages as a ps.1.1 program (v9x_d3d_ps_fixed), judged by
+ * the reference interpreter against D3D's stage arithmetic: each stage
+ * saturated, CURRENT the diffuse colour on stage 0, specular added last.
+ * UT2004's environment maps on the 4570 (boot 236, the d3d8 proxy): stage
+ * 0 selects its cube's texel, stage 1 passes CURRENT.
+ */
+static void fixed_tests(void)
+{
+    V9X_D3D_STATE_STAGE s0;
+    V9X_D3D_STATE_STAGE s1;
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+    float out[4];
+
+    /* UT2004's: the texel, colour and alpha; stage 1 passing. */
+    ff_stage(&s0, TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    ff_stage(&s1, TOP_SELECT2, TA_DIFFUSE, TA_CURRENT,
+             TOP_SELECT2, TA_DIFFUSE, TA_CURRENT);
+    CHECK(ff_run(&s0, &s1, 1, 0, out) &&
+          ff_is(out, 0.25f, 0.5f, 0.75f, 0.5f));
+    /* The same with stage 1 disabled, and with the vertex's alpha. */
+    s1.color_op = TOP_DISABLE;
+    s0.alpha_op = TOP_SELECT2;
+    CHECK(ff_run(&s0, &s1, 1, 0, out) &&
+          ff_is(out, 0.25f, 0.5f, 0.75f, 0.75f));
+    /* Alpha disabled under an enabled colour passes the vertex's. */
+    s0.alpha_op = TOP_DISABLE;
+    CHECK(ff_run(&s0, &s1, 1, 0, out) &&
+          ff_is(out, 0.25f, 0.5f, 0.75f, 0.75f));
+
+    /* MODULATE2X saturated per channel: 2 x 0.75 x 1 clamps at one. */
+    ff_stage(&s0, TOP_MODULATE2X, TA_TEXTURE, TA_DIFFUSE,
+             TOP_MODULATE, TA_TEXTURE, TA_DIFFUSE);
+    CHECK(ff_run(&s0, &s1, 1, 0, out) &&
+          ff_is(out, 0.25f, 0.25f, 1.0f, 0.375f));
+
+    /* Two stages: stage 1 adds its texel to stage 0's result, saturated;
+     * alpha from stage 0. */
+    ff_stage(&s0, TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    ff_stage(&s1, TOP_ADD, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT2, TA_TEXTURE, TA_CURRENT);
+    CHECK(ff_run(&s0, &s1, 1, 0, out) &&
+          ff_is(out, 0.75f, 0.625f, 1.0f, 0.5f));
+    /* Without a second stage on the engine, stage 1 is not drawn. */
+    CHECK(ff_run(&s0, &s1, 0, 0, out) &&
+          ff_is(out, 0.25f, 0.5f, 0.75f, 0.5f));
+
+    /* Specular added after the stages, colour only, saturated. */
+    s1.color_op = TOP_DISABLE;
+    CHECK(ff_run(&s0, &s1, 1, 1, out) &&
+          ff_is(out, 0.375f, 0.75f, 1.0f, 0.5f));
+
+    /* Stage 0's colour disabled: the vertex colour, nothing sampled. */
+    s0.color_op = TOP_DISABLE;
+    CHECK(ff_run(&s0, &s1, 1, 0, out) &&
+          ff_is(out, 0.5f, 0.25f, 1.0f, 0.75f));
+
+    /* Not expressible here: a constant factor, a complemented argument,
+     * an op without a translation. */
+    ff_stage(&s0, TOP_MODULATE, TA_TEXTURE, TA_TFACTOR,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+    ff_stage(&s0, TOP_MODULATE, TA_TEXTURE | TA_COMPLEMENT, TA_DIFFUSE,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+    ff_stage(&s0, TOP_BLENDDIFFUSEALPHA, TA_TEXTURE, TA_DIFFUSE,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+    /* Nor is stage 1 reading a factor. */
+    ff_stage(&s0, TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    ff_stage(&s1, TOP_ADD, TA_TFACTOR, TA_CURRENT,
+             TOP_SELECT2, TA_TEXTURE, TA_CURRENT);
+    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+}
+
 unsigned int v9x_run_d3d_ps_tests(void)
 {
     failures = 0u;
@@ -233,5 +386,6 @@ unsigned int v9x_run_d3d_ps_tests(void)
     constant_tests();
     wide_tests();
     table_tests();
+    fixed_tests();
     return failures;
 }

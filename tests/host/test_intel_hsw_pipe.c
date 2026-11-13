@@ -433,22 +433,66 @@ static void test_every_kernel_fits(void)
     }
 }
 
-/* Whether a stage code is a general combine with DECALALPHA's colour, the
- * one op that takes four instructions a component. */
-static int v9x_test_decal(unsigned int code, unsigned int first)
+/* Instructions a general combine's colour op takes per component: one,
+ * DECALALPHA four, MODULATE2X two (a mul and a saturated add). */
+static unsigned int v9x_test_colour_cost(unsigned int op)
 {
-    return code >= first && (code - first) / 3u == V9X_HSW_PS_OP_DECALALPHA;
+    if (op == V9X_HSW_PS_OP_DECALALPHA) {
+        return 4u;
+    }
+    if (op == V9X_HSW_PS_OP_MODULATE2X) {
+        return 2u;
+    }
+    return 1u;
+}
+
+/*
+ * The instructions a kernel takes, counted from hsw_eu.c's generator: the
+ * write; the diffuse plns unless stage 0 is TEXTURE; two plns and a sample
+ * per texture; fog's pln and three add-mul-adds; specular's three plns and
+ * three adds; stage 0's four (a named code) or three colour ops and an
+ * alpha instruction (general); stage 1's three colour ops and an alpha
+ * instruction unless it keeps its input, which it already holds.
+ */
+static unsigned int v9x_test_kernel_instructions(unsigned int s0,
+                                                 unsigned int s1,
+                                                 unsigned int flags)
+{
+    unsigned int n = 1u + 3u + 3u;
+
+    if (s0 != V9X_HSW_PS_TEXTURE) {
+        n += 4u;
+    }
+    if ((flags & 2u) != 0u) {
+        n += 10u;
+    }
+    if ((flags & 1u) != 0u) {
+        n += 6u;
+    }
+    if (s0 >= V9X_HSW_PS_OPS_FIRST0) {
+        n += 3u * v9x_test_colour_cost((s0 - V9X_HSW_PS_OPS_FIRST0) / 3u) +
+             1u;
+    } else {
+        n += 4u;
+    }
+    n += 3u * v9x_test_colour_cost((s1 - V9X_HSW_PS_OPS_FIRST1) / 3u);
+    if ((s1 - V9X_HSW_PS_OPS_FIRST1) % 3u != V9X_HSW_PS_AOP_INPUT) {
+        n += 1u;
+    }
+    return n;
 }
 
 /*
  * The general combines of the second Direct3D stage: every pair of a
  * stage-0 code (named or general) and a general stage-1 code builds inside
  * a kernel slot, lands in one of the 48 slots, and has a signature of its
- * own, since several now share a slot - except DECALALPHA beside fog or
- * specular, which overflows the slot's 160 dwords and is refused (the
- * core then draws that batch's stage 0 alone, counted): DECALALPHA in
- * both stages with either, or in one with both unless stage 0 is TEXTURE,
- * which reads no diffuse colour and so interpolates four fewer values.
+ * own, since several now share a slot - except a kernel past the slot's
+ * 160 dwords (40 instructions), which is refused (the core then draws that
+ * batch's stage 0 alone, counted). Before MODULATE2X those were DECALALPHA
+ * in both stages beside fog or specular, or in one beside both unless
+ * stage 0 is TEXTURE, which reads no diffuse colour; the count below gives
+ * the same answer for them, and MODULATE2X beside DECALALPHA and fog, or
+ * in both stages beside fog and specular, overflows too.
  */
 static void test_general_kernels_fit(void)
 {
@@ -461,7 +505,6 @@ static void test_general_kernels_fit(void)
     unsigned int s0;
     unsigned int s1;
     unsigned int flags;
-    int decals;
     int overflows;
 
     for (s0 = 1u; s0 <= V9X_HSW_PS_STAGE0_LAST; ++s0) {
@@ -475,15 +518,15 @@ static void test_general_kernels_fit(void)
                 desc.fog = (v9x_u8)(flags >> 1);
                 desc.fog_rgb[0] = 0x3f000000ul;
                 used = 0ul;
-                decals = v9x_test_decal(s0, V9X_HSW_PS_OPS_FIRST0) +
-                         v9x_test_decal(s1, V9X_HSW_PS_OPS_FIRST1);
-                overflows = (decals == 2 && flags != 0u) ||
-                            (decals == 1 && flags == 3u &&
-                             s0 != V9X_HSW_PS_TEXTURE);
+                overflows = v9x_test_kernel_instructions(s0, s1, flags) *
+                                4u > V9X_HSW_PIPE_KERNEL_DWORDS;
                 CHECK(v9x_intel_hsw_ps_kernel_build(
                           words, V9X_HSW_PIPE_KERNEL_DWORDS, &desc, &used) ==
                       (overflows ? V9X_STATUS_INVALID_ARGUMENT
                                  : V9X_STATUS_OK));
+                CHECK(overflows ||
+                      used == v9x_test_kernel_instructions(s0, s1, flags) *
+                                  4ul);
                 CHECK(v9x_intel_hsw_pipe_kernel_slot(&desc) <
                       V9X_INTEL_HSW_KERNEL_SLOTS);
                 other = desc;

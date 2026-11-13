@@ -62,6 +62,7 @@ V9X_D3D_SURFACE_HANDLE *v9x_d3d_handles_set(V9X_D3D_HANDLES *table,
             entry->memory = 0;
             entry->bytes = 0ul;
             entry->held = 0ul;
+            entry->caps2 = 0ul;
         }
         return entry;
     }
@@ -77,6 +78,7 @@ V9X_D3D_SURFACE_HANDLE *v9x_d3d_handles_set(V9X_D3D_HANDLES *table,
             entry->memory = 0;
             entry->bytes = 0ul;
             entry->held = 0ul;
+            entry->caps2 = 0ul;
             return entry;
         }
     }

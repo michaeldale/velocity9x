@@ -868,6 +868,19 @@ v9x_status v9x_intel_hsw_cubetree(v9x_u16 side, v9x_u8 levels,
                                   v9x_u8 bytes_per_texel,
                                   struct v9x_hsw_cubetree *tree);
 
+/*
+ * The same for a BC1-3 (DXT) cube: each face a block tree as
+ * v9x_intel_hsw_miptree_bc lays it out; pitch in bytes per row of blocks,
+ * qpitch and rows in rows of blocks. QPitch is the rule above with the
+ * compressed j of 4, h0 + h1 + 12 x 4 pixel rows, divided by the block's 4
+ * (Mesa's brw_tex_layout.c for a compressed array before Gen9); one level
+ * is the side in blocks. The side must be whole blocks. Recalled from
+ * Mesa, not from the PRM, and unmeasured until a DXT cube is sampled.
+ */
+v9x_status v9x_intel_hsw_cubetree_bc(v9x_u16 side, v9x_u8 levels,
+                                     v9x_u8 block_bytes,
+                                     struct v9x_hsw_cubetree *tree);
+
 /* RENDER_SURFACE_STATE for the cube cubetree lays out: surface_cube for
  * one level, else SURFTYPE_CUBE, FULL spacing, six faces, MIP Count. */
 v9x_status v9x_intel_hsw_surface_cube_mips(v9x_u32 out[8], v9x_u16 format,

@@ -1092,6 +1092,30 @@ static const v9x_u8 *v9x_dp2_draw_vertex(const V9X_DP2_DRAW *draw,
     return draw->vertices + number * draw->vertex_stride;
 }
 
+int v9x_dp2_negative_base(V9X_DP2_DRAW *draw, const v9x_u8 *stream,
+                          v9x_u32 stream_bytes, v9x_s32 offset)
+{
+    v9x_u32 stride = draw->vertex_stride;
+    v9x_u32 below;
+    v9x_u32 whole;
+    v9x_u32 rest;
+
+    if (stride == 0ul || offset >= 0l) {
+        return 0;
+    }
+    /* -offset without overflowing on the most negative one. */
+    below = (v9x_u32)(-(offset + 1l)) + 1ul;
+    whole = below / stride + (below % stride != 0ul ? 1ul : 0ul);
+    rest = whole * stride - below;
+    if (rest > stream_bytes) {
+        return 0;
+    }
+    draw->vertices = stream + rest;
+    draw->vertex_count = (stream_bytes - rest) / stride;
+    draw->base = -(v9x_s32)whole;
+    return 1;
+}
+
 v9x_u32 v9x_dp2_draw(const V9X_DP2_DRAW *draw, const V9X_DP2_SINK *sink,
                      V9X_DP2_RESULT *result)
 {

@@ -56,6 +56,17 @@ unsigned int v9x_run_d3d_handles_tests(void)
     HCHECK(e->memory == 0 && e->bytes == 0ul && e->held == 0ul);
     HCHECK(v9x_d3d_handles_drop(&table, &local_a, 3ul) == 1ul);
 
+    /* So does the DDSCAPS2 recorded at announcement (a cube map's bit):
+     * a handle re-announced with another surface is not still a cube. */
+    e = v9x_d3d_handles_set(&table, &local_a, 4ul, &surface[0]);
+    HCHECK(e != 0 && e->caps2 == 0ul);
+    e->caps2 = 0x200ul;
+    HCHECK(v9x_d3d_handles_set(&table, &local_a, 4ul, &surface[0])->caps2 ==
+           0x200ul);
+    HCHECK(v9x_d3d_handles_set(&table, &local_a, 4ul, &surface[3])->caps2 ==
+           0ul);
+    HCHECK(v9x_d3d_handles_drop(&table, &local_a, 4ul) == 1ul);
+
     /* 1 + 1024 lands on handle 1's slot and probes on; freeing B's handle
      * 1 in between keeps it findable. */
     HCHECK(v9x_d3d_handles_set(&table, &local_a,

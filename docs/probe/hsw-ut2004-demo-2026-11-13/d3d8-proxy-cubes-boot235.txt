@@ -1,0 +1,5 @@
+CreateDevice 1 type 1 flags 22 800x600 bbfmt 22 ds 77/1 -> 00000000
+CreateCubeTexture 128 levels 8 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateCubeTexture 128 levels 8 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateCubeTexture 128 levels 8 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateCubeTexture 64 levels 7 usage 0 fmt 894720068 pool 1 -> 00000000

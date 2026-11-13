@@ -230,6 +230,67 @@ static void test_cut_interpolation(void)
     CLCHECK(found);
 }
 
+/*
+ * A two-unit triangle cut (v9x_r3d_clip_triangle_uv1): the same polygon as
+ * the one-unit clip, vertex for vertex, and the second unit's coordinates
+ * perspective-correct at each cut as the first's are. The edge of
+ * test_cut_interpolation with rhw 1 and 3: tu1 at the cut is
+ * (2*1 + (4*3 - 2*1) * 0.5) / 2 = 3.5, tv1 (4*1 + (4*3 - 4*1) * 0.5) / 2
+ * = 4. A big lightmapped floor near the camera is this case (UT2004 on
+ * the 4570, boot 241).
+ */
+static void test_cut_second_unit(void)
+{
+    V9X_R3D_VERTEX tri[3];
+    V9X_R3D_VERTEX one[V9X_R3D_CLIP_MAX_VERTICES];
+    V9X_R3D_VERTEX two[V9X_R3D_CLIP_MAX_VERTICES];
+    V9X_R3D_VERTEX scratch[V9X_R3D_CLIP_MAX_VERTICES + 3u];
+    float uv1[6];
+    float out_uv1[2u * V9X_R3D_CLIP_MAX_VERTICES];
+    int count;
+    int index;
+    int cut = 0;
+    int kept = 0;
+
+    tri[0] = clip_vertex(560.0f, 100.0f, 1.0f, 0xff000000, 0.0f, 0.0f);
+    tri[1] = clip_vertex(720.0f, 100.0f, 3.0f, 0xff808080, 1.0f, 0.0f);
+    tri[2] = clip_vertex(560.0f, 200.0f, 1.0f, 0xff000000, 0.0f, 1.0f);
+    uv1[0] = 2.0f; uv1[1] = 4.0f;
+    uv1[2] = 4.0f; uv1[3] = 4.0f;
+    uv1[4] = 2.0f; uv1[5] = 8.0f;
+
+    count = v9x_r3d_clip_triangle(tri, CLIP_GUARD, CLIP_WIDTH, CLIP_HEIGHT,
+                                  one);
+    CLCHECK(v9x_r3d_clip_triangle_uv1(tri, uv1, CLIP_GUARD, CLIP_WIDTH,
+                                      CLIP_HEIGHT, scratch, two, out_uv1) ==
+            count);
+    for (index = 0; index < count; ++index) {
+        CLCHECK(two[index].sx == one[index].sx &&
+                two[index].sy == one[index].sy &&
+                two[index].rhw == one[index].rhw &&
+                two[index].color == one[index].color &&
+                two[index].tu == one[index].tu &&
+                two[index].tv == one[index].tv);
+        if (two[index].sx == CLIP_WIDTH && two[index].sy == 100.0f) {
+            CLCHECK(out_uv1[2 * index] == 3.5f &&
+                    out_uv1[2 * index + 1] == 4.0f);
+            cut = 1;
+        }
+        if (two[index].sx == 560.0f && two[index].sy == 100.0f) {
+            CLCHECK(out_uv1[2 * index] == 2.0f &&
+                    out_uv1[2 * index + 1] == 4.0f);
+            kept = 1;
+        }
+    }
+    CLCHECK(cut && kept);
+
+    /* Refused as the one-unit clip refuses: a vertex past the band. */
+    tri[1].sx = CLIP_GUARD;
+    CLCHECK(v9x_r3d_clip_triangle_uv1(tri, uv1, CLIP_GUARD, CLIP_WIDTH,
+                                      CLIP_HEIGHT, scratch, two, out_uv1) ==
+            -1);
+}
+
 /* The list builder's sink: records every batch it is handed. */
 typedef struct clip_batch_record {
     const V9X_R3D_VERTEX *vertices;
@@ -686,6 +747,7 @@ unsigned int v9x_run_r3d_clip_tests(void)
     test_covering_triangle_becomes_target();
     test_offscreen_triangle_is_empty();
     test_cut_interpolation();
+    test_cut_second_unit();
     test_list_runs_and_fans();
     test_list_culled_ends_run_and_is_not_sent();
     test_list_refusals();

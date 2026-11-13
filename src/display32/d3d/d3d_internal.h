@@ -522,6 +522,15 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD dxt_textures;
     /*
+     * Nonzero when the engine draws D3DTOP_MODULATE2X of the texel and the
+     * input exactly (V9X_R3D_COLOROP_MODULATE2X), on one stage or either of
+     * two. Without it a doubled stage 1 is refused and stage 0 drawn alone,
+     * and a doubled stage 0 is drawn as MODULATE, as before. UT2004 lights
+     * most of its world so (the 4570, boot 236). Appended 2026-11-13; an
+     * initialiser that stops short leaves it zero.
+     */
+    DWORD modulate2x;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

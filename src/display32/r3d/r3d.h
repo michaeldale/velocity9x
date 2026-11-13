@@ -66,6 +66,22 @@ int v9x_r3d_clip_triangle(const V9X_R3D_VERTEX *triangle,
                           V9X_R3D_VERTEX *result);
 
 /*
+ * The same for a triangle that also carries a second unit's coordinates,
+ * uv1 holding tu1 tv1 for each of its three vertices: result as
+ * v9x_r3d_clip_triangle gives it, and result_uv1 each result vertex's tu1
+ * tv1, perspective-correct at a cut as tu tv are. The cuts depend only on
+ * the positions, so it is the one-unit clip run twice, the second time
+ * with the second unit's coordinates in tu tv. scratch holds
+ * V9X_R3D_CLIP_MAX_VERTICES + 3 vertices, the caller's: HAL callbacks run
+ * on small stacks.
+ */
+int v9x_r3d_clip_triangle_uv1(const V9X_R3D_VERTEX *triangle,
+                              const float *uv1, float guard_limit,
+                              float width, float height,
+                              V9X_R3D_VERTEX *scratch,
+                              V9X_R3D_VERTEX *result, float *result_uv1);
+
+/*
  * Non-zero when all three vertices lie on [0, width] x [0, height], edges
  * included, and every coordinate is finite. A NaN answers no so it reaches
  * the clipper, which refuses it with a count.
@@ -206,6 +222,10 @@ typedef struct v9x_r3d_texture {
  * stops at V9X_R3D_ABI_COLOROP_BLEND, so no ICD draw carries it, and an
  * engine that does not know it refuses the draw. */
 #define V9X_R3D_COLOROP_ADD 5ul
+/* Likewise C = 2 Cin Ct, saturated (D3DTOP_MODULATE2X), stated only for an
+ * engine whose limits say modulate2x. UT2004 lights 73 % of its draws so
+ * and its lightmaps under it (the 4570, boot 236). */
+#define V9X_R3D_COLOROP_MODULATE2X 6ul
 
 /* One CPU texture level: storage the front end owns for the call. */
 typedef struct v9x_r3d_level {

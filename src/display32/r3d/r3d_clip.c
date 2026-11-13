@@ -286,6 +286,39 @@ static int v9x_r3d_wide_inside(const float *vertex, v9x_u32 edge,
     }
 }
 
+int v9x_r3d_clip_triangle_uv1(const V9X_R3D_VERTEX *triangle,
+                              const float *uv1, float guard_limit,
+                              float width, float height,
+                              V9X_R3D_VERTEX *scratch,
+                              V9X_R3D_VERTEX *result, float *result_uv1)
+{
+    V9X_R3D_VERTEX *second = scratch;
+    V9X_R3D_VERTEX *second_out = scratch + 3;
+    int count;
+    int index;
+
+    count = v9x_r3d_clip_triangle(triangle, guard_limit, width, height,
+                                  result);
+    if (count <= 0) {
+        return count;
+    }
+    for (index = 0; index < 3; ++index) {
+        second[index] = triangle[index];
+        second[index].tu = uv1[2 * index];
+        second[index].tv = uv1[2 * index + 1];
+    }
+    /* The same positions take the same cuts in the same order. */
+    if (v9x_r3d_clip_triangle(second, guard_limit, width, height,
+                              second_out) != count) {
+        return -1;
+    }
+    for (index = 0; index < count; ++index) {
+        result_uv1[2 * index] = second_out[index].tu;
+        result_uv1[2 * index + 1] = second_out[index].tv;
+    }
+    return count;
+}
+
 int v9x_r3d_clip_wide(const float *triangle, float guard_limit, float width,
                       float height, float *scratch, float *result)
 {

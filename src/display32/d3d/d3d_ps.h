@@ -23,6 +23,7 @@
 #include "velocity9x/ps11.h"
 #include "velocity9x/types.h"
 #include "d3d_dp2.h"
+#include "d3d_state.h"
 
 #define V9X_D3D_PS_STAGES          4u
 #define V9X_D3D_PS_WIDE_FLOATS     28u
@@ -122,5 +123,25 @@ void v9x_d3d_ps_delete(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
 /* Every shader of a context that is going away. */
 void v9x_d3d_ps_forget(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
                        const void *owner);
+
+/*
+ * Fixed-function texture stages 0 and 1 as a ps.1.1 program, so an engine
+ * whose fixed-function kernels cannot sample a stage - a cube map - draws
+ * it through its shader path, which can. D3D's stage arithmetic: stage 0's
+ * CURRENT is the diffuse colour, each stage's result saturated, stage 1
+ * only when two_stages, a disabled stage 0 colour the diffuse colour and
+ * alpha with nothing sampled, an alpha DISABLE under an enabled colour the
+ * input's alpha, and the specular colour added last when specular. Ops
+ * SELECTARG1, SELECTARG2, MODULATE, MODULATE2X, MODULATE4X and ADD over
+ * DIFFUSE, CURRENT, TEXTURE and SPECULAR, unmodified. Returns the token
+ * count, or 0 for anything else, nothing to be drawn so. Host-tested
+ * against the reference interpreter (tests\host\test_d3d_ps.c).
+ */
+#define V9X_D3D_PS_FIXED_DWORDS 48u
+
+v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stage0,
+                         const V9X_D3D_STATE_STAGE *stage1, int two_stages,
+                         int specular,
+                         v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS]);
 
 #endif

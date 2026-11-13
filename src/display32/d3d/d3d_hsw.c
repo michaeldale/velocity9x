@@ -181,7 +181,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
      * and Half-Life ran on the 4570 with it (boots 81-82). */
     1ul,            /* guard_band_ddi6 */
     /* DXT1/3/5 as BC1-3, placed in block trees (v9x_d3d_hsw_tree). */
-    1ul             /* dxt_textures */
+    1ul,            /* dxt_textures */
+    /* 2 C Ct, a general combine (V9X_HSW_PS_OP_MODULATE2X). */
+    1ul             /* modulate2x */
 };
 
 /*
@@ -214,7 +216,8 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
     1ul,            /* centre_in_engine */
     1ul,            /* texture_stages: the difference */
     1ul,            /* guard_band_ddi6: measured on W9QI75E0, boot 12 */
-    1ul             /* dxt_textures */
+    1ul,            /* dxt_textures */
+    1ul             /* modulate2x: the same kernels */
 };
 
 /* One texture unit as the sampler reads it. */
@@ -1253,7 +1256,11 @@ static DWORD v9x_d3d_hsw_map(const V9X_R3D_DRAW *draw,
             return V9X_D3D_HSW_REFUSE_KEY;
         }
         op = draw->texture.op;
-        if (op == V9X_R3D_TEXOP_DECAL || op == V9X_R3D_TEXOP_COPY) {
+        if (draw->texture.color_op == V9X_R3D_COLOROP_MODULATE2X &&
+            v9x_d3d_hsw_modulate2x_stage(op, has_alpha,
+                                         &state->desc.stage0)) {
+            /* A doubled stage 0 the core stated (modulate2x). */
+        } else if (op == V9X_R3D_TEXOP_DECAL || op == V9X_R3D_TEXOP_COPY) {
             state->desc.stage0 = V9X_HSW_PS_TEXTURE;
         } else if (op == V9X_R3D_TEXOP_MODULATE) {
             /* D3D's rule: the texture's alpha when it has one. */
@@ -1721,6 +1728,11 @@ static v9x_u32 *v9x_d3d_hsw_put_vertex(v9x_u32 *target,
     return target;
 }
 
+/* A two-unit cut's working storage (v9x_r3d_clip_triangle_uv1): static
+ * as the shader path's is, since HAL callbacks run on small stacks. */
+static V9X_R3D_VERTEX v9x_d3d_hsw_uv1_scratch[V9X_R3D_CLIP_MAX_VERTICES + 3u];
+static float v9x_d3d_hsw_uv1_clipped[2u * V9X_R3D_CLIP_MAX_VERTICES];
+
 static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                                   const V9X_R3D_VERTEX *vertices,
                                   DWORD triangle_count)
@@ -1882,9 +1894,6 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                 }
                 ++count;
             } else if (kind == V9X_D3D_HSW_GUARD_CLIP && !d.tl_uv1) {
-                /* A second unit's coordinates cannot follow a cut, and the
-                 * render interface clips its two-unit draws before they
-                 * come here, so only the one-unit fan is built. */
                 int corners = v9x_r3d_clip_triangle(
                     triangle, v9x_d3d_hsw_limits.coordinate_limit, width,
                     height, clipped);
@@ -1895,6 +1904,33 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
                     target = v9x_d3d_hsw_put_vertex(target, &clipped[fan]);
                     target = v9x_d3d_hsw_put_vertex(target,
                                                     &clipped[fan + 1]);
+                    ++count;
+                }
+            } else if (kind == V9X_D3D_HSW_GUARD_CLIP) {
+                /* Two units: the second unit's coordinates cut with the
+                 * first's. Direct3D's two-stage draws reach here whole -
+                 * UT2004's lightmapped floors since MODULATE2X (the 4570,
+                 * boot 241), whose near triangles span 8K - and were
+                 * dropped, leaving holes in the floor. */
+                const float *pair = draw->texcoords1 + done * 3ul * 2ul;
+                int corners = v9x_r3d_clip_triangle_uv1(
+                    triangle, pair, v9x_d3d_hsw_limits.coordinate_limit,
+                    width, height, v9x_d3d_hsw_uv1_scratch, clipped,
+                    v9x_d3d_hsw_uv1_clipped);
+                int fan;
+                int pick;
+                DWORD corner;
+
+                for (fan = 1; fan + 1 < corners; ++fan) {
+                    for (pick = 0; pick < 3; ++pick) {
+                        corner = pick == 0 ? 0ul : (DWORD)(fan + pick - 1);
+                        target = v9x_d3d_hsw_put_vertex(target,
+                                                        &clipped[corner]);
+                        uv1 = (const v9x_u32 *)(v9x_d3d_hsw_uv1_clipped +
+                                                corner * 2ul);
+                        *target++ = uv1[0];
+                        *target++ = uv1[1];
+                    }
                     ++count;
                 }
             }
@@ -3313,17 +3349,23 @@ static DWORD v9x_d3d_hsw_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD face;
     DWORD level;
     DWORD base;
+    DWORD reason;
 
-    /* Six square faces of equal levels, and room to remember them. */
+    /* Six square faces of equal levels, and room to remember them. A DXT
+     * cube's faces are block trees (UT2004's environment maps are DXT5,
+     * the 4570, boot 234); `bytes` is then a block's. */
     if (data->dwSCnt % V9X_HSW_CUBE_FACES != 0ul || levels == 0ul ||
         levels > V9X_HSW_MIP_LEVELS_MAX ||
         side != (DWORD)list[0]->lpGbl->wHeight ||
         side > v9x_d3d_hsw_limits.texture_size_max ||
         !v9x_d3d_hsw_texture_format_of(list[0], &format, &has_alpha,
                                        &bytes) ||
-        v9x_d3d_hsw_is_bc(format) ||
-        v9x_intel_hsw_cubetree((v9x_u16)side, (v9x_u8)levels, (v9x_u8)bytes,
-                               &tree) != V9X_STATUS_OK) {
+        (v9x_d3d_hsw_is_bc(format)
+             ? v9x_intel_hsw_cubetree_bc((v9x_u16)side, (v9x_u8)levels,
+                                         (v9x_u8)bytes, &tree)
+             : v9x_intel_hsw_cubetree((v9x_u16)side, (v9x_u8)levels,
+                                      (v9x_u8)bytes, &tree)) !=
+            V9X_STATUS_OK) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     for (index = 0ul; index < V9X_D3D_HSW_CUBES; ++index) {
@@ -3365,8 +3407,19 @@ static DWORD v9x_d3d_hsw_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
         offsets[index] = face * tree.qpitch * tree.pitch +
                          tree.level_offset[level];
     }
-    if (v9x_d3d_place_block(data, V9X_D3D_HSW_TILE_BYTES, tree.pitch,
-                            tree.rows, offsets, &base) != 0ul) {
+    reason = v9x_d3d_place_block(data, V9X_D3D_HSW_TILE_BYTES, tree.pitch,
+                                 tree.rows, offsets, &base);
+    if (reason != 0ul) {
+        /* As for a tree: a DXT or signed cube with no room is out of video
+         * memory, not DirectDraw's to place. */
+        if (v9x_d3d_hsw_unplaced_out_of_memory(
+                reason,
+                (list[0]->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) == 0ul ||
+                    (list[0]->lpGbl->ddpfSurface.dwFlags & V9X_DDPF_RGB) !=
+                        0ul)) {
+            data->ddRVal = V9X_DDERR_OUTOFVIDEOMEMORY;
+            return V9X_DDHAL_DRIVER_HANDLED;
+        }
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     slot->base = base;
