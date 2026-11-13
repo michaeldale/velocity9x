@@ -95,6 +95,38 @@ misplaced page directory, where that word was being read as PDE 0 (the
 trace record says how). The builder's default stays 3Dh; the plan's
 rule to default to 02h is dropped.
 
-## Not yet run
+## 5. A VBE mode set leaves the channel intact (runs 37-39)
 
-5. A mode set with the channel up.
+The probe at a64118a4 (built as `a6724726-dirty`), `/flush:none /pusher
+/check`: it initialises nothing, reads 23 registers and 14 sampled
+region words, and uses the channel as found only if they still describe
+it. The channel was the one run 36 left up. The desktop is the
+Velocity9x nvidia tier-0 driver at 1024x768x16, whose mode sets are VBE
+calls. Mode changes by V9XMSW through the agent; its reports are saved
+beside the logs.
+
+| Run | Before it | Channel state | 32 bpp fill and two copies |
+| --- | --- | --- | --- |
+| 37 | nothing (baseline, 12 minutes after run 36) | held | 9216 of 9216 |
+| 38 | `V9XMSW /cycle:4`: 4 of 4 resolution cycles, PASS | held | 9216 of 9216 |
+| 39 | `V9XMSW /depth:4`: 4 of 4 depth cycles, PASS | held | 9216 of 9216 |
+
+In all three: 2604h `80080042`, 32ECh 1, 32F4h `00008020`, 40032Ch
+`80008000` (PGRAPH still holds this channel's context), 40008Ch 4,
+400500h `00010001`, 1704h `40008100`, PFIFO_INTR and PGRAPH_INTR 0,
+PMC_ENABLE `DFF3F113`, and 14 of 14 sampled words of the instance block,
+page table, runlist, objects and context image as written. IB get moved
+on by three per run (0Dh, 10h, 13h), the three kicks of the run before.
+
+So, unlike the RIVA 128, **this card's VBIOS mode set does not disturb
+PFIFO, PGRAPH or the channel's memory**, across eight mode sets of each
+kind, and the channel outlives the process that built it. The engine
+needs no rebuild after a mode set. A cheap guard stays worth having,
+because what was not tested can still lose the state: a full-screen DOS
+box, standby and resume, and a display-driver restart.
+
+## Step 4.0 is complete
+
+Every item the plan listed is measured. For the engine: fill and copy
+at 32, 16 and 8 bpp; overlap as it is; one kick per operation with the
+ring modulo 512; the default DMA class; and no rebuild on a mode set.

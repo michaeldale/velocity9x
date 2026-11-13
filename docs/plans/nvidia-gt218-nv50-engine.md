@@ -144,9 +144,19 @@ backed up as they are today. Then, recorded with counters:
 - fills and copies at 32, 16 and 8 bpp, with the engine's fill, copy,
   decline and timeout counters read back.
 
+## Status
+
+2026-11-14: **4.0 is complete**, every item measured on M-BXMFA8
+([the record](../decisions/2026-11-14-gt218-502d-engine-measurements.md)).
+4.1 is next.
+
 ## Decisions owed
 
-- The rebuild policy after a mode set (4.0 item 4 decides).
+- Settled by 4.0: a mode set does not disturb the channel, so no rebuild
+  on a mode change. The engine keeps a two-register guard (2604h and
+  40032Ch against what it wrote) before an operation and gives the
+  engine up if it fails; a full-screen DOS box, standby and a driver
+  restart are untested.
 - Whether the mini-VDD BAR0 map service is renamed for two NVIDIA
   generations or a second one is added.
 - When to try the other differences from nouveau's trace (RAMFC 7Ch
