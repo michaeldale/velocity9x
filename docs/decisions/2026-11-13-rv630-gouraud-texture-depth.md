@@ -2,7 +2,7 @@
 
 Date: 2026-11-13
 
-Status: **measured, one card, one boot (5), about 70 runs.** M-NZHWBR's HD
+Status: **measured, one card, boot 5 (about 70 runs) and boot 6 (depth recheck).** M-NZHWBR's HD
 2600 XT (`1002:9588`, RV630), the `ati` driver of `2c6eeccb` running
 DirectDraw on DMA throughout. The 3D step of
 [the plan](../plans/ati-rv630-hd2600xt.md), after the first solid draw

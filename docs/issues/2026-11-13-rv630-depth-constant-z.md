@@ -1,7 +1,9 @@
 # RV630: the depth block writes one constant Z for every fragment
 
 Date: 2026-11-13
-Status: **open.** Blocks Direct3D depth on the HD 2600 XT row.
+Status: **not reproduced after a reset.** Seen only in boot 5; boot 6
+draws correct depth with the same binary. Cause in boot 5 unknown; reopen
+if the constant comes back.
 
 Machine: M-NZHWBR, Radeon HD 2600 XT (`1002:9588`). Tool: `V9XR63D.EXE
 /depth` (`tools\diag\rv630_3d_win32.c`). The full list of what was tried,
@@ -38,3 +40,28 @@ config register holds the constant.
   with the first depth draw of a boot.
 - A known-good R6xx depth command stream (Mesa r600 under Linux, captured)
   to diff packet for packet.
+
+## After a reset (boot 6)
+
+`v9xctl reset` (boot 6), then the same `V9XR63D.EXE` (`89b81545-dirty`,
+the binary of boot 5's last sets), captures lettered `r` and `s` in
+[`../probe/rv630-3d-2026-11-13/`](../probe/rv630-3d-2026-11-13/):
+
+| Run | Boot 5 | Boot 6 |
+|---|---|---|
+| `/depth /zfunc:7 /zfill:30003000 /set:28010=10006` (Z32F) | every tile `4994E8C4` | tiles 0-3 `3F400000` (0.75), 4-7 `3E800000` (0.25): the vertices' z |
+| `/depth` (Z16, LESS) | nothing drawn | Pixels PASS, DepthBuffer PASS, tiles `8000`/`4000` |
+| `/depth ... /zlit:3E800000` | `4994E8C4` | every written tile `3E800000` |
+| `/gouraud` | PASS | PASS |
+
+Set `s` wrote CP_QUEUE_THRESHOLDS (8760h = 2B16h) through the ring
+before a Gouraud draw, the write that stalled the ME earlier in boot 5.
+It did not stall this time, and the depth runs after it stayed correct.
+That one run does not support "a threshold stall leaves the DB broken",
+and does not rule it out either: the stall itself did not recur.
+
+What boot 5 held that boot 6 does not is not known. Boot 5 had carried
+about 70 probe runs, several CP halts and soft resets, and the ME stalls
+of the threshold writes before the first depth draw. Watch for the
+constant in the Direct3D HAL's first depth runs; if it returns, the
+leads above still stand.

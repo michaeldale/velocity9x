@@ -22,11 +22,11 @@ lost the `vbe` driver's software Direct3D (the `ati` family's default
 request is 0). 3D through the CP: AMD's RV630 microcode runs
 ([record](../decisions/2026-11-13-rv630-cp-ring-test.md)), the first
 solid draw is exact ([record](../decisions/2026-11-13-rv630-first-3d-draw.md)),
-and Gouraud and textured (modulate) draws are exact; depth writes one
-constant Z for every fragment, open
-([record](../decisions/2026-11-13-rv630-gouraud-texture-depth.md),
-[issue](../issues/2026-11-13-rv630-depth-constant-z.md)). Next: the depth
-issue's leads, then the Direct3D HAL on `struct v9x_r6_3d_state`. Other register facts
+and Gouraud and textured (modulate) draws are exact
+([record](../decisions/2026-11-13-rv630-gouraud-texture-depth.md)). Depth
+wrote one constant Z in boot 5 and is correct after a reset (boot 6), Z16
+LESS exact ([issue](../issues/2026-11-13-rv630-depth-constant-z.md), not
+reproduced). Next: the Direct3D HAL on `struct v9x_r6_3d_state`. Other register facts
 below come from Linux `radeon` source.
 
 Target: the RV630 (`1002:9588`, Gigabyte SUBSYS `1458:216C`) as a new
