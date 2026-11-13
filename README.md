@@ -12,7 +12,7 @@ All of them draw through one shared render core. It runs these with
 hardware 3D:
 - **Intel:** GMA 900, GMA 950, GMA 3150, GMA X3100, HD Graphics
   (Ironlake), HD 4000 and HD 4600;
-- **AMD and ATI:** Radeon HD 5450, HD 5770, HD 7470, HD 7660D, R3E
+- **AMD and ATI:** Radeon HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D, R3E
   (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
   Rage IIC;
 - **others:** S3 ViRGE and Trio3D, Matrox Millennium II and Mystique, SiS
@@ -35,31 +35,29 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.48.0
+## Current version: 0.49.0
 
-[Download](releases/0.48.0/README.md) ·
+[Download](releases/0.49.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.48.0:
-- **Intel GMA X3100 and the GMA 4500 family: see-through textures that
-  also write depth now draw.** Half-Life's grates, fences, ladders and
-  some doors, and parts of Incoming, were missing. They now draw in two
-  passes, as colour-keyed ones have since 0.44.0. Half-Life confirmed by
-  its reporter on a GMA 4500MHD; the GMA X3100 that once hung on this
-  case draws it without a hang
-  ([record](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
-- **Intel GMA X3100 laptop: the panel's own 1280x800.** Its video BIOS
-  describes the panel's mode as 1024x768 and stretched that; the driver
-  now writes the panel's timing into the BIOS's mode table at boot, so
-  1280x800 is offered and set unscaled. On the one machine measured
-  (HP, GM965); other chips are not enabled
-  ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)).
-- **Every package: DirectDraw and Direct3D surfaces wider than the
-  screen.** They were refused, which Direct3D 8 reported as an internal
-  driver error; 3DMark 2001 SE's Advanced Pixel Shader asks for one
-  ([record](docs/decisions/2026-11-12-gen3-aps-call-log.md)).
+New in 0.49.0:
+- **AMD Radeon HD 2600 XT: hardware acceleration.** DirectDraw on the
+  DMA engine with page flips, and Direct3D and OpenGL on the 3D engine
+  at 16 and 32 bpp. 3DMark 2000 and 2001 SE run to a score and the
+  Quake 3 demo at 65.9 fps, on one tester's card through remote help
+  ([plan](docs/plans/ati-rv630-hd2600xt.md)).
+- **Intel GMA 950 (945GSE): 32 MiB of texture memory in system RAM.**
+  On the HP Mini netbook 3,201 small textures fit where 390 did, and
+  Serious Sam no longer fails to create textures
+  ([record](docs/decisions/2026-11-12-intel-gen3-texture-pool-games.md)).
+- **Intel GMA 900 to 3150: two texture stages in Direct3D.** 3DMark 2001
+  SE's Dragothic draws its sky and dragon, no longer white
+  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
+- **Intel HD 4600: 3DMark 2001 SE's Car Chase with compressed textures
+  no longer hangs the chip**
+  ([issue](docs/issues/2026-11-13-haswell-3dmark2001se-car-chase-dxt-gpu-hang.md)).
 
 ### Known issues
 
@@ -70,12 +68,12 @@ New in 0.48.0:
   ([issue](docs/issues/2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md)).
 - **Full-screen DOS on cards other than the GMA 950, HD 4600 and S3
   ViRGE/DX:** the 0.45.0 fix is in every package but has not been run
-  on them. If the desktop does not come back, keep DOS windowed.
+  on them. If the desktop does not come back, keep DOS windowed. On the
+  GMA 950 it has not been run since the 0.49.0 texture memory either.
 - **Glide and 3DCIF DLLs from 0.23.0 or earlier** do not work with this
   driver. Replace any copy in a game's folder with this release's.
-- **GMA 950:** 3DMark 2001 SE's Dragothic draws its sky white
-  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)),
-  and its Advanced Pixel Shader test reports itself unsupported.
+- **GMA 950:** 3DMark 2001 SE's Advanced Pixel Shader test reports
+  itself unsupported.
   Starting a Half-Life multiplayer game in OpenGL can leave the screen
   stuck; press Escape and resume
   ([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).
@@ -84,8 +82,14 @@ New in 0.48.0:
   465973 after the pilot-name screen), and the game is slow with some
   render faults its reporter still sees; the cause is not found
   ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
-- **`ati` HD 5000-7000:** the desktop copy above is on by the same design
-  as on the R3E and R7E but has not been measured on them.
+- **`ati` HD 5000-7000 and HD 2600 XT:** the desktop copy above is on by
+  the same design as on the R3E and R7E but has not been measured on
+  them. On an HD 5570, one reporter sees a small flickering square
+  follow the mouse over a full-screen game; not reproduced here
+  ([issue](docs/issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)).
+- **HD 2600 XT:** once, before a reset, its depth buffer held one
+  constant value, so 3D drew in the wrong order; not seen since
+  ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
 - **S3 Trio64:** a second or two of cyan garbage at Windows shutdown,
   before the safe-to-turn-off screen; cosmetic
   ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
@@ -102,6 +106,10 @@ New in 0.48.0:
 
 ### Recent releases
 
+- **0.48.0:** see-through textures that write depth draw on the GMA X3100
+  and GMA 4500 family (Half-Life's grates and doors); the GMA X3100
+  laptop's panel at its own 1280x800; surfaces wider than the screen on
+  every package.
 - **0.47.0:** DirectX 8 pixel shader 1.1 on the GMA 900, 950, 3100 and
   3150 (3DMark 2001 SE completes on the GMA 950, 528); the `ati`
   package's Radeons draw the desktop into a copy in system memory, and
@@ -182,7 +190,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
-| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off; Dragothic's sky draws white. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
+| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. From 0.49.0, 32 MiB of texture memory in system RAM (this chip only), and two Direct3D texture stages (the GMA 900, 3100 and 3150 too, not run): Dragothic's sky and dragon draw. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes once hung this chip; from 0.48.0 it is drawn in two passes, as colour keys with depth writes have been since 0.44.0, and runs without a hang. From 0.48.0 the panel's own 1280x800, set unscaled by writing its timing into the BIOS's mode table ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)) |
@@ -202,6 +210,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
 | ATI Radeon X1200 IGP (RS690, `1002:791F`), from 0.37.0 | `ati` | R300-class, by register writes | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys and mipmaps; DirectDraw on the 2D engine and page flips. Rollcage and 3DMark 2000. From 0.38.0 OpenGL and Glide draw on the 3D engine: the OpenGL and Glide 2 probes pass; 3DCIF not run. One tester's Sempron machine through remote help; 16 MiB of the 128 MiB carve-out used; modes from the VBE |
+| AMD Radeon HD 2600 XT (RV630, `1002:9588`), from 0.49.0 | `ati` | R600, through AMD's RV630 CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, fog and colour keys; OpenGL; DirectDraw on the DMA engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000, 3DMark 2001 SE and Quake 3. One tester's Gigabyte card through remote help; 128 MiB of its 256 MiB used; modes from the VBE. Glide and 3DCIF not run; the screen is not write-combined |
 | AMD Radeon HD 5770 (Juniper, `1002:68B8`), from 0.34.0 | `ati` | Evergreen, through AMD's Juniper CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 up to 1600x1200. One tester's machine through remote help; modes from the VBE. The Glide 2 probe passes |
 | AMD Radeon HD 5570 (Redwood, `1002:68D9`), from 0.40.0 | `ati` | Evergreen, through AMD's Redwood CP microcode | Recognised, untested: the HD 5770's path with Redwood's numbers, from one reporter's survey. Nothing has run on one yet |
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
@@ -258,7 +267,7 @@ it sets modes itself: up to 1024x768 at 8 and 16 bpp on most cards, True
 Color and 1280x1024 on the S3 cards, 1024x576 on the GMA 950's panel, 1024x600 on the GMA 3150's, and from 0.48.0 1280x800 on the GMA X3100 laptop's.
 Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
 where the table says otherwise. On the `vbe` package (0.46.0) and the
-`ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0) it draws into a
+`ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0) and HD 2600 XT (0.49.0) it draws into a
 copy of the desktop in system memory, so reading the screen does not
 cross the bus; `C:\V9XDIAG\NOSHADOW.TXT` turns that off. No card has a
 hardware cursor.
@@ -292,6 +301,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
 | ATI Rage 128 Pro | DirectDraw, flips | Yes | Not run | Yes | No | Yes | Not run |
 | ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe (0.38.0) | No | Glide 2 probe only (0.38.0) | Not run |
+| AMD Radeon HD 2600 XT (0.49.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 5570 (0.40.0, recognised, untested) | Not run | Not run | Not run | Not run | No | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
@@ -313,7 +323,7 @@ from the records the [changelog](CHANGELOG.md) links.
 Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
-  Graphics 4600 and the Millennium II (the Mystique, the HD 5450, HD 7470,
+  Graphics 4600 and the Millennium II (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
   HD 5770, HD 7660D, the R3E, the R7E and the X1200: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
@@ -346,6 +356,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 | AMD Radeon HD 7470 (A10-5700) | not run | not run; Quake 3 `demo001` 34.6 fps | 0.34.0 build |
 | AMD Radeon HD 5770 (Core 2 Duo E7500) | not run | not run; Quake 3 `demo001` 49.3 fps at 1024x768x32, 50.6 at 1280x1024x32 | 0.34.0 build |
 | AMD Radeon HD 7660D (A10-5700) | not run | not run; Quake 3 `demo001` 33.4 fps at 1280x1024x32 | 0.35.0 build |
+| AMD Radeon HD 2600 XT (i5-3570K) | not run | not run; Quake 3 `demo001` 65.9 fps at 640x480x16 | 0.49.0 build |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
@@ -394,9 +405,9 @@ The **DDI 6** selector on the Velocity9x Advanced tab sets this, and takes
 effect the next time a program starts, with no restart:
 
 - **Automatic** (the default): DDI 6 for any program that uses Direct3D 8,
-  the older interface for everything else. On the Rage 128 Pro and the HD
-  4600, whose two texture stages are offered through DDI 6, every program
-  gets DDI 6.
+  the older interface for everything else. On the Rage 128 Pro, the HD
+  4600 and, from 0.49.0, the GMA 900, 950, 3100 and 3150, whose two
+  texture stages are offered through DDI 6, every program gets DDI 6.
 - **Never**: the older interface for every program. Direct3D 8 games then
   get no hardware device.
 - **Always**: DDI 6 for every Direct3D program.
