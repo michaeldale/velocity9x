@@ -1,0 +1,70 @@
+# GM965: the texture pool's Phase 2 mapping probe stops the machine
+
+Date: 2026-11-14. Status: open. The machine has not been reached since;
+which step stopped it is not known.
+
+Machine: TOMMOHP (`M-KYHT4Q`, Tom Rossell's HP laptop, GM965 GMA X3100
+`8086:2A02`), through remote help, on the driver the 0.50.0 release checks
+left (boot record: `Stage=enable-ok`, `DpmiMap=01000000:ok`,
+`MtrrWrite=ok s=3 b=d0000001 m=ff000800`, `[IntelPool]
+Result=not-gated-device`).
+
+## What was run
+
+`G3PM.VXD` + `V9XG3PM.EXE`, the netbook's Phase 2 probe
+(`2026-11-12-intel-gen3-texture-pool-phase2.md`), extended for the GM965
+the way Phase 0's probe was
+(`../decisions/2026-11-13-intel-gm965-texture-pool-phase0.md`): `2A02`
+added to the VxD's device list, and the publisher passing GTTMMADR +
+512 KiB as the GTT base. Not committed. Both files were put in
+`C:\V9XREMOTE\JOBS\G3PL` and hashed back, then `V9XG3PM.EXE` was started
+with its defaults: allocate 8,192 pages, write their PTEs into entries
+`800`-`27FF`, a pattern through the aperture and back, two 640x480 mode
+cycles, check, restore.
+
+## What happened
+
+The agent took the `exec` (the relay shows the command delivered) and
+never checked in again: no result, and no answer for the eight minutes
+watched after. The probe's exec timeout was 180 s, so this is not a slow
+run. Phase 0's read-only probe ran twice on this machine the day before
+without trouble.
+
+Nothing the probe does survives a power cycle: the VxD is loaded
+dynamically, the BIOS rebuilds the GTT at boot, and no file the driver
+reads was changed.
+
+## Not known
+
+- The step. The publisher writes each step's name to
+  `C:\V9XDIAG\V9XG3PM.INI` before running it; the file is the first thing
+  to read when the machine is back, if the write reached the disk.
+- Whether the machine hung, faulted to a blue screen, or lost only its
+  network.
+
+## What differs from the netbook's passing run, none of it tested
+
+- The GTT is written at GTTMMADR + 512 KiB, not through a GTTADR BAR. The
+  2026-11-13 Phase 0 record only read it.
+- Gen4 PTEs carry address bits 35:32 in bits 7:4. The frames Phase 0 saw
+  were below 4 GiB, so the entries written should match Gen3's; the probe
+  does not check.
+- The driver maps and write-combines 16 MiB of GMADR here, where the
+  netbook's maps 64 MiB. The probe maps the pool's 32 MiB itself, so its
+  range (GMADR 8 to 40 MiB) is half under the driver's WC MTRR and half
+  under the UC default.
+- The mode cycle goes through the 0.48.0 panel-timing patch on this
+  machine (1280x800 through a rewritten VBIOS slot).
+- Spec update 316274-009 erratum 4: visual corruption with integrated
+  graphics under Vista's paging model with Flex Memory in dual-channel
+  asymmetric mode. Corruption, not a hang, and this machine's DIMM
+  layout is not known.
+
+## Next
+
+- The owner has to restart the machine. Then read `V9XG3PM.INI`.
+- Do not run the map probe on this machine again as it is. Split it so
+  each step is its own run with its own flushed record (map and read back
+  PTEs only; then the aperture pattern; then the mode cycle), starting
+  with the smallest: one PTE.
+- The driver's pool path stays gated to the netbook.

@@ -125,9 +125,12 @@ H_CF8                   equ 108
 H_APERTURE              equ 112
 
 VxD_LOCKED_DATA_SEG
+; The Gen3 parts this family claims, and the GM965 2A02 (Gen4): the same
+; 4-byte entries, 65,536 of them for its 256 MiB GMADR, at GTTMMADR +
+; 512 KiB, which the publisher passes as the base (gen3_pool_probe.asm).
 G3MDevices label word
-    dw 2592h, 27a2h, 27aeh, 0a011h, 29c2h
-G3M_DEVICE_COUNT        equ 5
+    dw 2592h, 27a2h, 27aeh, 0a011h, 29c2h, 2a02h
+G3M_DEVICE_COUNT        equ 6
 
 G3MResult    dd G3M_MAGIC
              dd (G3M_HEADER_DWORDS - 1) dup (0)

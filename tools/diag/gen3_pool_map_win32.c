@@ -55,6 +55,14 @@
 #define V9X_GTTADR_MASK      0xfffc0000ul
 #define V9X_BSM_MASK         0xfff00000ul
 
+/* The GM965 (Gen4, 8086:2A02) has no GTTADR: its GTT is GTTMMADR (10h) +
+ * 512 KiB (datasheet 316273 21.1.10; gen3_pool_probe_win32.c). */
+#define V9X_CFG_ID           0x00ul
+#define V9X_CFG_GTTMMADR     0x10ul
+#define V9X_GM965_ID         0x2a028086ul
+#define V9X_GTTMMADR_MASK    0xfff00000ul
+#define V9X_GM965_GTT_OFFSET 0x00080000ul
+
 /* 256 MiB GMADR, 65,536 entries; the driver maps 64 MiB of it since
  * 01496faa (gma950_hw16.c), and the pool must lie inside that. */
 #define V9X_G3PM_APERTURE    0x10000000ul
@@ -372,8 +380,14 @@ void WINAPI V9xGen3PoolMapEntry(void)
         ExitProcess(2u);
     }
 
-    v9x_request.bar3 =
-        v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTADR) & V9X_GTTADR_MASK;
+    if (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID) == V9X_GM965_ID) {
+        v9x_request.bar3 =
+            (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR) &
+             V9X_GTTMMADR_MASK) + V9X_GM965_GTT_OFFSET;
+    } else {
+        v9x_request.bar3 =
+            v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTADR) & V9X_GTTADR_MASK;
+    }
     v9x_request.gmadr =
         v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GMADR) & V9X_GMADR_MASK;
     v9x_request.first = plan.first_entry;
