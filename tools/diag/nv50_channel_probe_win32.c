@@ -182,6 +182,9 @@ static DWORD v9x_flush_none;
 static DWORD v9x_ib_unmapped;
 static DWORD v9x_push_unmapped;
 static DWORD v9x_push_class02;
+/* /timeline: run 26's samples inside the kick's own run. Off by default:
+ * that run never returned, and a hang there loses the whole put run. */
+static DWORD v9x_timeline;
 
 /* COMP_VM 3 << 29 | KIND_VM 7Fh << 22 | target VM | access VM | class 02h. */
 #define V9X_DMA_FLAGS0_FROM_MEMORY 0x7fc00002ul
@@ -1446,7 +1449,7 @@ static int v9x_stage_fifo(void)
      * FFFFFFFF rather than hang, so the run can sample through the
      * failure. Each sample is PTIMER, the BAR1 word, PMC_INTR, PFIFO_INTR
      * and PGRAPH status, then a PTIMER-read delay. */
-    for (index = 0ul; index < V9X_TIMELINE_SAMPLES; ++index) {
+    for (index = 0ul; v9x_timeline != 0ul && index < V9X_TIMELINE_SAMPLES; ++index) {
         timeline[index][0] = v9x_read(0x009400ul);
         timeline[index][1] = v9x_op(V9X_OP_VRAM_READ, V9X_NV50_INST,
                                     0ul, 0ul);
@@ -1485,7 +1488,7 @@ static int v9x_stage_fifo(void)
     }
     v9x_status_publish("FifoPut", &s);
     v9x_flush();
-    for (index = 0ul; index < V9X_TIMELINE_SAMPLES; ++index) {
+    for (index = 0ul; v9x_timeline != 0ul && index < V9X_TIMELINE_SAMPLES; ++index) {
         char text[56];
         char word[10];
         DWORD column;
@@ -1796,6 +1799,7 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_ib_unmapped = v9x_switch_given("/ib:unmapped") ? 1ul : 0ul;
     v9x_push_unmapped = v9x_switch_given("/push:unmapped") ? 1ul : 0ul;
     v9x_push_class02 = v9x_switch_given("/push:class02") ? 1ul : 0ul;
+    v9x_timeline = v9x_switch_given("/timeline") ? 1ul : 0ul;
     v9x_stop_after_fifo = v9x_switch_given("/stop:fifo") ? 1ul : 0ul;
     v9x_stop_after_gr = v9x_switch_given("/stop:gr") ? 1ul : 0ul;
 
