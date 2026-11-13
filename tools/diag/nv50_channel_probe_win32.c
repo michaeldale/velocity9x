@@ -124,6 +124,8 @@
 #define V9X_PFIFO_2044_VALUE 0x01003ffful
 #define V9X_PFIFO_INTR_EN_VALUE 0xbffffffful
 #define V9X_PFIFO_CACHE1_PUSH 0x003200ul
+/* The resident channel's IB get (fifo\nv04.c nv04_fifo_intr_dma_pusher). */
+#define V9X_PFIFO_IB_GET     0x003334ul
 #define V9X_PFIFO_CACHE1_PULL 0x003250ul
 /* The VM block read in pre: 100C00h-100C9Ch. */
 #define V9X_VM_DUMP_WORDS     40ul
@@ -1690,6 +1692,9 @@ static int v9x_stage_gr(void)
     struct v9x_status_ops s;
     struct v9x_nv50_push push;
     DWORD get_wait;
+    DWORD idle_wait;
+    DWORD gr_intr;
+    int timed_out;
 
     /* The 502D bind as IB entry 1. */
     v9x_ops_begin();
@@ -1699,21 +1704,29 @@ static int v9x_stage_gr(void)
                   push.count);
     v9x_ib_write(1ul, V9X_PUSH_GR, push.count);
     v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT, 2ul);
-    get_wait = v9x_wait(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_GET,
-                        0xfffffffful, 2ul);
+    /* GET from the pusher's own register, PFIFO 3334h, which holds the
+     * resident channel's IB get (run 29 read 1 there after one entry).
+     * USERD is not read: those reads lost the card in runs 3 and 6. */
+    get_wait = v9x_wait(V9X_PFIFO_IB_GET, 0xfffffffful, 2ul);
     v9x_op(V9X_OP_DELAY, 100000ul, 0ul, 0ul);
-    v9x_status_request(&s, V9X_STATUS_ALL);
+    idle_wait = v9x_wait(V9X_PGRAPH_STATUS, 0xfffffffful, 0ul);
+    v9x_status_request(&s, V9X_STATUS_GR);
     if (!v9x_run("gr")) {
         v9x_finish("GR-REFUSED", 6u);
     }
     v9x_put("Gr", "GetWait", get_wait);
+    v9x_put("Gr", "IdleWait", idle_wait);
     v9x_status_publish("Gr", &s);
+    timed_out = v9x_timed_out(get_wait);
+    gr_intr = v9x_value(s.gr_intr);
     v9x_flush();
-    if (v9x_timed_out(get_wait)) {
+    v9x_vram_check("gr");
+    v9x_pusher_state();
+    if (timed_out) {
         v9x_text("Gr", "Result", "TIMEOUT");
         return 0;
     }
-    if (v9x_value(s.gr_intr) != 0ul) {
+    if (gr_intr != 0ul) {
         v9x_text("Gr", "Result", "PGRAPH-INTR");
         return 0;
     }
@@ -1741,6 +1754,7 @@ static int v9x_stage_fill(void)
     DWORD first_bad_y = 0xfffffffful;
     DWORD first_bad_word = 0ul;
     int inside;
+    int timed_out;
 
     v9x_ops_begin();
     v9x_push_stage(V9X_PUSH_FILL, &push);
@@ -1753,18 +1767,21 @@ static int v9x_stage_fill(void)
                   push.count);
     v9x_ib_write(2ul, V9X_PUSH_FILL, push.count);
     v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT, 3ul);
-    get_wait = v9x_wait(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_GET,
-                        0xfffffffful, 3ul);
+    get_wait = v9x_wait(V9X_PFIFO_IB_GET, 0xfffffffful, 3ul);
+    v9x_op(V9X_OP_DELAY, 100000ul, 0ul, 0ul);
     /* PGRAPH idle: 400700h zero (gr\g84.c reads it as the busy word). */
     idle_wait = v9x_wait(V9X_PGRAPH_STATUS, 0xfffffffful, 0ul);
-    v9x_status_request(&s, V9X_STATUS_ALL);
+    v9x_status_request(&s, V9X_STATUS_GR);
     if (!v9x_run("fill")) {
         v9x_finish("FILL-REFUSED", 7u);
     }
     v9x_put("Fill", "GetWait", get_wait);
     v9x_put("Fill", "IdleWait", idle_wait);
     v9x_status_publish("Fill", &s);
+    timed_out = v9x_timed_out(get_wait);
     v9x_flush();
+    v9x_vram_check("fill");
+    v9x_pusher_state();
 
     /* The surface, back through BAR1, a block of rows per run. */
     for (row = 0ul; row < V9X_FILL_HEIGHT; row += rows_per_run) {
@@ -1817,7 +1834,7 @@ static int v9x_stage_fill(void)
         v9x_key("Fill", "FirstBadWord", first_bad_word);
     }
     v9x_flush();
-    if (v9x_timed_out(get_wait)) {
+    if (timed_out) {
         v9x_text("Fill", "Result", "TIMEOUT");
         return 0;
     }
