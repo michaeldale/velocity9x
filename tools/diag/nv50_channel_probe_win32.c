@@ -1846,6 +1846,143 @@ static int v9x_stage_fill(void)
     return 0;
 }
 
+/*
+ * Step 4.0 of docs\plans\nvidia-gt218-nv50-engine.md: a 502D copy, as IB
+ * entry 3. The source block, 16x16 at (0, 0), straddles the filled
+ * rectangle's corner at (8, 4), so it holds both the pattern and the
+ * colour and a copy that lands a pixel off shows. It goes to (100, 50),
+ * which the fill left as pattern. Every pixel of the surface is then
+ * read back and compared, the top byte excepted (X8R8G8B8).
+ */
+#define V9X_PUSH_COPY        192ul
+#define V9X_COPY_SRC_X       0ul
+#define V9X_COPY_SRC_Y       0ul
+#define V9X_COPY_DST_X       100ul
+#define V9X_COPY_DST_Y       50ul
+#define V9X_COPY_SIZE        16ul
+
+static DWORD v9x_copy_expected(DWORD px, DWORD py)
+{
+    if (px >= V9X_COPY_DST_X && px < V9X_COPY_DST_X + V9X_COPY_SIZE &&
+        py >= V9X_COPY_DST_Y && py < V9X_COPY_DST_Y + V9X_COPY_SIZE) {
+        px = px - V9X_COPY_DST_X + V9X_COPY_SRC_X;
+        py = py - V9X_COPY_DST_Y + V9X_COPY_SRC_Y;
+    }
+    if (px >= V9X_FILL_X && px < V9X_FILL_X + V9X_FILL_SIZE &&
+        py >= V9X_FILL_Y && py < V9X_FILL_Y + V9X_FILL_SIZE) {
+        return V9X_FILL_COLOUR;
+    }
+    return V9X_FILL_PATTERN & V9X_COLOUR_MASK;
+}
+
+static int v9x_stage_copy(void)
+{
+    struct v9x_status_ops s;
+    struct v9x_nv50_push push;
+    DWORD get_wait;
+    DWORD idle_wait;
+    DWORD rows_per_run = V9X_N5CH_BLOCK / (V9X_FILL_PITCH / 4ul);
+    DWORD row;
+    DWORD rows;
+    DWORD x;
+    DWORD copied_ok = 0ul;
+    DWORD copied_bad = 0ul;
+    DWORD rest_ok = 0ul;
+    DWORD rest_bad = 0ul;
+    DWORD first_bad_x = 0xfffffffful;
+    DWORD first_bad_y = 0xfffffffful;
+    DWORD first_bad_word = 0ul;
+    int timed_out;
+
+    v9x_ops_begin();
+    v9x_push_stage(V9X_PUSH_COPY, &push);
+    v9x_nv50_push_copy(&push, V9X_WINDOW_VRAM + V9X_FILL_OFFSET,
+                       V9X_FILL_PITCH, V9X_FILL_WIDTH, V9X_FILL_HEIGHT,
+                       V9X_502D_FORMAT_X8R8G8B8,
+                       V9X_COPY_SRC_X, V9X_COPY_SRC_Y,
+                       V9X_COPY_DST_X, V9X_COPY_DST_Y,
+                       V9X_COPY_SIZE, V9X_COPY_SIZE);
+    v9x_vram_data(V9X_NV50_PUSH + V9X_PUSH_COPY * 4ul, push.words,
+                  push.count);
+    v9x_ib_write(3ul, V9X_PUSH_COPY, push.count);
+    v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT, 4ul);
+    get_wait = v9x_wait(V9X_PFIFO_IB_GET, 0xfffffffful, 4ul);
+    v9x_op(V9X_OP_DELAY, 100000ul, 0ul, 0ul);
+    idle_wait = v9x_wait(V9X_PGRAPH_STATUS, 0xfffffffful, 0ul);
+    v9x_status_request(&s, V9X_STATUS_GR);
+    if (!v9x_run("copy")) {
+        v9x_finish("COPY-REFUSED", 7u);
+    }
+    v9x_put("Copy", "GetWait", get_wait);
+    v9x_put("Copy", "IdleWait", idle_wait);
+    v9x_status_publish("Copy", &s);
+    timed_out = v9x_timed_out(get_wait);
+    v9x_flush();
+    v9x_vram_check("copy");
+    v9x_pusher_state();
+
+    for (row = 0ul; row < V9X_FILL_HEIGHT; row += rows_per_run) {
+        rows = V9X_FILL_HEIGHT - row;
+        if (rows > rows_per_run) {
+            rows = rows_per_run;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_FILL_OFFSET + row * V9X_FILL_PITCH,
+               rows * (V9X_FILL_PITCH / 4ul), 0ul);
+        if (!v9x_run("copy-readback")) {
+            v9x_finish("READBACK-REFUSED", 7u);
+        }
+        for (x = 0ul; x < rows * (V9X_FILL_PITCH / 4ul); ++x) {
+            DWORD px = x % (V9X_FILL_PITCH / 4ul);
+            DWORD py = row + x / (V9X_FILL_PITCH / 4ul);
+            DWORD word = v9x_result.block[x] & V9X_COLOUR_MASK;
+            int copied = px >= V9X_COPY_DST_X &&
+                         px < V9X_COPY_DST_X + V9X_COPY_SIZE &&
+                         py >= V9X_COPY_DST_Y &&
+                         py < V9X_COPY_DST_Y + V9X_COPY_SIZE;
+
+            if (word == v9x_copy_expected(px, py)) {
+                if (copied) {
+                    ++copied_ok;
+                } else {
+                    ++rest_ok;
+                }
+                continue;
+            }
+            if (copied) {
+                ++copied_bad;
+            } else {
+                ++rest_bad;
+            }
+            if (first_bad_x == 0xfffffffful) {
+                first_bad_x = px;
+                first_bad_y = py;
+                first_bad_word = v9x_result.block[x];
+            }
+        }
+    }
+    v9x_number("Copy", "CopiedOk", copied_ok);
+    v9x_number("Copy", "CopiedBad", copied_bad);
+    v9x_number("Copy", "RestOk", rest_ok);
+    v9x_number("Copy", "RestBad", rest_bad);
+    if (first_bad_x != 0xfffffffful) {
+        v9x_number("Copy", "FirstBadX", first_bad_x);
+        v9x_number("Copy", "FirstBadY", first_bad_y);
+        v9x_key("Copy", "FirstBadWord", first_bad_word);
+    }
+    v9x_flush();
+    if (timed_out) {
+        v9x_text("Copy", "Result", "TIMEOUT");
+        return 0;
+    }
+    if (copied_bad == 0ul && rest_bad == 0ul) {
+        v9x_text("Copy", "Result", "PASS");
+        return 1;
+    }
+    v9x_text("Copy", "Result", "PIXELS-DIFFER");
+    return 0;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -1912,6 +2049,9 @@ void __stdcall V9xNv50ChannelEntry(void)
     }
     if (!v9x_stage_fill()) {
         v9x_finish("FILL-FAILED", 7u);
+    }
+    if (!v9x_stage_copy()) {
+        v9x_finish("COPY-FAILED", 7u);
     }
     v9x_finish("COMPLETE", 0u);
 }

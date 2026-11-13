@@ -332,6 +332,77 @@ void v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
                          4ul, points);
 }
 
+void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
+                        v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+                        v9x_u32 format,
+                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                        v9x_u32 w, v9x_u32 h)
+{
+    v9x_u32 dst[10];
+    v9x_u32 src_format[2];
+    v9x_u32 src[5];
+    v9x_u32 blit[12];
+
+    v9x_nv50_push_one(push, V9X_502D_SET_SRC_CONTEXT_DMA,
+                      V9X_NV50_HANDLE_DMA_VM);
+
+    /* The destination, as the fill sets it. */
+    dst[0] = format;
+    dst[1] = V9X_502D_LAYOUT_PITCH;
+    dst[2] = 0ul;
+    dst[3] = 1ul;
+    dst[4] = 0ul;
+    dst[5] = pitch;
+    dst[6] = width;
+    dst[7] = height;
+    dst[8] = 0ul;
+    dst[9] = surface;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_DST_FORMAT,
+                         10ul, dst);
+
+    /* The source: format and layout at 230h, then pitch, width, height
+     * and address from 244h. The words between belong to block-linear
+     * surfaces and are left alone. */
+    src_format[0] = format;
+    src_format[1] = V9X_502D_LAYOUT_PITCH;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SRC_FORMAT,
+                         2ul, src_format);
+    src[0] = pitch;
+    src[1] = width;
+    src[2] = height;
+    src[3] = 0ul;
+    src[4] = surface;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SRC_PITCH,
+                         5ul, src);
+
+    v9x_nv50_push_one(push, V9X_502D_SET_CLIP_ENABLE, 0ul);
+    v9x_nv50_push_one(push, V9X_502D_SET_OPERATION,
+                      V9X_502D_OPERATION_SRCCOPY);
+    v9x_nv50_push_one(push, V9X_502D_SET_SAFE_OVERLAP, 1ul);
+    v9x_nv50_push_one(push, V9X_502D_BLIT_CONTROL,
+                      V9X_502D_BLIT_POINT_CENTER);
+
+    /* The blit, 8B0h-8DCh in one run: destination rectangle, a scale of
+     * exactly 1 each way (fraction, integer), then the source corner
+     * (fraction, integer). Writing the last word starts it. The order and
+     * the control value are how nouveau's X driver copied (recalled, not
+     * in the saved sources); the probe's readback decides them. */
+    blit[0] = dx;
+    blit[1] = dy;
+    blit[2] = w;
+    blit[3] = h;
+    blit[4] = 0ul;
+    blit[5] = 1ul;
+    blit[6] = 0ul;
+    blit[7] = 1ul;
+    blit[8] = 0ul;
+    blit[9] = sx;
+    blit[10] = 0ul;
+    blit[11] = sy;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_BLIT_DST_X0,
+                         12ul, blit);
+}
+
 void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry)
 {
     /* Address low; address high (0 here) | length in dwords << 10. */

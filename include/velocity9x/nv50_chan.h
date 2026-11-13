@@ -145,6 +145,15 @@
 #define V9X_502D_SET_DST_HEIGHT           0x021cul
 #define V9X_502D_SET_DST_OFFSET_UPPER     0x0220ul
 #define V9X_502D_SET_DST_OFFSET_LOWER     0x0224ul
+/* The source surface and the blit (cl502d.h; BLIT_CONTROL's fields from
+ * Mesa's nv50_2d.xml.h: bit 0 origin corner, bit 4 bilinear). */
+#define V9X_502D_SET_SRC_CONTEXT_DMA      0x0188ul
+#define V9X_502D_SET_SRC_FORMAT           0x0230ul
+#define V9X_502D_SET_SRC_PITCH            0x0244ul
+#define V9X_502D_SET_SAFE_OVERLAP         0x0888ul
+#define V9X_502D_BLIT_CONTROL             0x088cul
+#define V9X_502D_BLIT_DST_X0              0x08b0ul
+#define V9X_502D_BLIT_POINT_CENTER        0ul
 #define V9X_502D_SET_CLIP_ENABLE          0x0290ul
 #define V9X_502D_SET_OPERATION            0x02acul
 #define V9X_502D_RENDER_SOLID_PRIM_MODE   0x0580ul
@@ -224,6 +233,14 @@ void v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
                         v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
                         v9x_u32 format, v9x_u32 colour,
                         v9x_u32 x, v9x_u32 y, v9x_u32 w, v9x_u32 h);
+/* A 1:1 copy of w x h pixels from (sx, sy) to (dx, dy) inside one
+ * pitch-linear surface at VM address surface. Safe overlap is asked for,
+ * so the rectangles may overlap. */
+void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
+                        v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+                        v9x_u32 format,
+                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                        v9x_u32 w, v9x_u32 h);
 /* The two words of an IB entry for words dwords at VM address addr, a
  * main (not subroutine) entry (chan506f.c gpfifo_push). */
 void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry);

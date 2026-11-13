@@ -264,6 +264,51 @@ static void test_push(void)
     CHECK(words[28] == 64ul);
     CHECK(words[29] == 64ul);
 
+    /* A 1:1 copy inside one surface: source DMA bind; the destination
+     * run (11 words); source format and layout (3); source pitch to
+     * address (6); clip, operation, safe overlap, blit control (8); the
+     * twelve blit words from 8B0h (13). */
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_copy(&push, 0x08200000ul, 512ul, 128ul, 72ul,
+                       V9X_502D_FORMAT_X8R8G8B8,
+                       32ul, 4ul, 8ul, 6ul, 64ul, 64ul);
+    CHECK(push.overflow == 0ul);
+    CHECK(push.count == 2ul + 11ul + 3ul + 6ul + 8ul + 13ul);
+    CHECK(words[0] == 0x00046188ul);
+    CHECK(words[1] == V9X_NV50_HANDLE_DMA_VM);
+    CHECK(words[2] == 0x00286200ul);
+    CHECK(words[12] == 0x08200000ul);
+    CHECK(words[13] == 0x00086230ul);
+    CHECK(words[14] == 0xe6ul);
+    CHECK(words[15] == 1ul);
+    CHECK(words[16] == 0x00146244ul);
+    CHECK(words[17] == 512ul);
+    CHECK(words[18] == 128ul);
+    CHECK(words[19] == 72ul);
+    CHECK(words[20] == 0ul);
+    CHECK(words[21] == 0x08200000ul);
+    CHECK(words[22] == 0x00046290ul);
+    CHECK(words[24] == 0x000462acul);
+    CHECK(words[25] == 3ul);
+    CHECK(words[26] == 0x00046888ul);
+    CHECK(words[27] == 1ul);
+    CHECK(words[28] == 0x0004688cul);
+    CHECK(words[29] == 0ul);
+    /* 8B0h: dst x, y, w, h; du/dx and dv/dy = 1.0; src x, y. */
+    CHECK(words[30] == 0x003068b0ul);
+    CHECK(words[31] == 8ul);
+    CHECK(words[32] == 6ul);
+    CHECK(words[33] == 64ul);
+    CHECK(words[34] == 64ul);
+    CHECK(words[35] == 0ul);
+    CHECK(words[36] == 1ul);
+    CHECK(words[37] == 0ul);
+    CHECK(words[38] == 1ul);
+    CHECK(words[39] == 0ul);
+    CHECK(words[40] == 32ul);
+    CHECK(words[41] == 0ul);
+    CHECK(words[42] == 4ul);
+
     v9x_nv50_push_init(&push, words, 2ul);
     v9x_nv50_push_bind_2d(&push);
     CHECK(push.overflow == 1ul);
