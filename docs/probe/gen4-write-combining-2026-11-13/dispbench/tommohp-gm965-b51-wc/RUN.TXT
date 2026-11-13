@@ -1,0 +1,21 @@
+ConfigId=tommohp-gm965-b51-wc
+Environment=metal
+Endpoint=relay:M-KYHT4Q
+Guest=TOMMOHP
+GuestUptimeMs=109170
+GuestBootCounter=51
+Agent=0.16.0 dev-fault-3
+Build=95c470c
+Version=v0.12.0+13
+Mode=
+ToolOrder=DBCAPS,DBTIME,DBGDI,DBDD,DB3D
+Arguments=/env:metal /config:tommohp-gm965-b51-wc
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=per-program
+Tool.DBCAPS ok 7.4s 20261113-193925\DBCAPS.INI
+Tool.DBTIME ok 13.7s 20261113-193925\DBTIME.INI
+Tool.DBGDI ok 44.7s 20261113-193925\DBGDI.INI
+Tool.DBDD ok 40.5s 20261113-193925\DBDD.INI
+Tool.DB3D ok 53.7s 20261113-193925\DB3D.INI

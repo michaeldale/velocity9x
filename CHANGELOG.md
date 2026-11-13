@@ -6,6 +6,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.50.0 - not yet released
 
+- **`intel-gma` package, GMA X3100 (GM965) and the GMA 4500 family (G45,
+  Q45, GM45): the screen and textures are written write-combined.** These
+  four chips were left uncached when the GMA 950 and the Ironlake got
+  write-combining in 0.30.1. On a GMA X3100 laptop writes to video memory
+  went from 130 to 3,310 MB/s, a full-screen fill costs a 25th of what it
+  did, texture uploads a 12th, and 3DMark 2000 ran to 1224 (774 on the
+  0.48.0 code, a different build). On a GMA 4500MHD: 101 to 2,550 MB/s.
+  The release probes pass on both. The G45 and Q45 take the same change
+  and have not run it
+  ([record](docs/decisions/2026-11-13-gm965-write-combining.md)).
+
 ## 0.49.0 - 2026-11-13
 
 - **`ati` package: the Radeon HD 2600 XT (RV630, `1002:9588`) gets

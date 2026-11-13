@@ -626,7 +626,18 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
     "hardware-gen4",
     0,
     v9x_gm965_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /*
+     * Write-combined, as Ironlake below, which runs the same Gen4 engine:
+     * the family's 16 MiB mapping, drained before each RING_TAIL and
+     * display flip in the HAL. TOMMOHP's BIOS leaves the GMADR under the
+     * UC default with five pairs free; uncached it wrote the aperture at
+     * 130 MB/s (docs\decisions\2026-11-13-gm965-write-combining.md).
+     */
+    1u
 };
 
 /*
@@ -673,7 +684,13 @@ const V9X_HW16_DEVICE v9x_g45_x4500_device = {
     "hardware-gen4",
     0,
     v9x_g4x_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965: the same engine and submit path
+     * (docs\decisions\2026-11-13-gm965-write-combining.md). Not run. */
+    1u
 };
 
 const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
@@ -686,7 +703,12 @@ const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
     "hardware-gen4",
     0,
     v9x_g4x_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965 (see the G45 above). Not run. */
+    1u
 };
 
 /*
@@ -705,5 +727,10 @@ const V9X_HW16_DEVICE v9x_gm45_gma4500mhd_device = {
     "hardware-gen4",
     0,
     v9x_g4x_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965 (see the G45 above). */
+    1u
 };
