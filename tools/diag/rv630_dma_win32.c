@@ -256,6 +256,31 @@ static int v9x_rowfill;
 static int v9x_fill_nowait;
 static DWORD v9x_step_count;
 static DWORD v9x_step_wptr[V9X_FILL_STEPS_MAX];
+
+/*
+ * /copyplan replaces the fill with the copy that stalled the engine at
+ * 3DMark 2000's start (docs\issues\2026-11-13-rv630-dma-copy-stall-
+ * 3dmark2000.md): rows of /cpd: dwords from a source at pitch /cpsp:
+ * bytes, offset /cpso: into V9X_CP_SRC, to a destination at pitch /cpdp:
+ * from /cpdo: into V9X_CP_DST, /cpr: rows, all hex. The defaults are the
+ * stalled copy's shape: D2h dwords, source pitch 800h from 25Ch (its rows
+ * sat at ...A5C and ...25C), destination pitch 348h from DD0h, six rows.
+ * The source holds a pattern and the destination guards; every row is
+ * checked.
+ */
+#define V9X_CP_SRC              0x8000ul
+#define V9X_CP_SRC_BYTES        0x4000ul
+#define V9X_CP_DST              0xc000ul
+#define V9X_CP_DST_BYTES        0x2800ul
+#define V9X_CP_SEED             0x40000004ul
+#define V9X_CP_ROWS_MAX         16ul
+static int v9x_copyplan;
+static DWORD v9x_cp_dwords = 0xd2ul;
+static DWORD v9x_cp_rows = 6ul;
+static DWORD v9x_cp_src_pitch = 0x800ul;
+static DWORD v9x_cp_dst_pitch = 0x348ul;
+static DWORD v9x_cp_src_offset = 0x25cul;
+static DWORD v9x_cp_dst_offset = 0xdd0ul;
 static DWORD v9x_at_step_wait[V9X_FILL_STEPS_MAX];
 
 /* Indices into v9x_result.op_results of the values the report needs. */
@@ -500,6 +525,34 @@ static void v9x_build_rowfill(DWORD g)
     }
 }
 
+/* /copyplan's rows, one COPY each, as eng_r6.c's plan emits them. */
+static void v9x_build_copyplan(DWORD g)
+{
+    DWORD row;
+
+    for (row = 0ul; row < v9x_cp_rows; ++row) {
+        v9x_ring_copy(v9x_cp_dwords,
+                      g + V9X_CP_DST + v9x_cp_dst_offset +
+                          row * v9x_cp_dst_pitch,
+                      g + V9X_CP_SRC + v9x_cp_src_offset +
+                          row * v9x_cp_src_pitch);
+    }
+}
+
+/* Whether /copyplan's switches fit the window, dword-aligned. */
+static int v9x_copyplan_fits(void)
+{
+    return v9x_cp_dwords != 0ul && v9x_cp_rows != 0ul &&
+        v9x_cp_rows <= V9X_CP_ROWS_MAX &&
+        ((v9x_cp_src_pitch | v9x_cp_dst_pitch | v9x_cp_src_offset |
+          v9x_cp_dst_offset) & 3ul) == 0ul &&
+        v9x_cp_src_offset + (v9x_cp_rows - 1ul) * v9x_cp_src_pitch +
+            v9x_cp_dwords * 4ul <= V9X_CP_SRC_BYTES &&
+        v9x_cp_dst_offset + (v9x_cp_rows - 1ul) * v9x_cp_dst_pitch +
+            v9x_cp_dwords * 4ul <= V9X_CP_DST_BYTES &&
+        v9x_cp_rows * 4ul + 64ul <= V9X_RING_MAX_DWORDS;
+}
+
 /* Call 2's op list. g is the scratch window's GPU address. */
 static void v9x_build_run(DWORD g)
 {
@@ -519,7 +572,9 @@ static void v9x_build_run(DWORD g)
     wptr_1 = v9x_ring_close();
 
     v9x_step_count = 0ul;
-    if (v9x_rowfill) {
+    if (v9x_copyplan) {
+        v9x_build_copyplan(g);
+    } else if (v9x_rowfill) {
         v9x_build_rowfill(g);
     } else {
         v9x_build_doubling(g);
@@ -540,6 +595,12 @@ static void v9x_build_run(DWORD g)
     v9x_op(V9X_OP_VRAM_FILL, V9X_FILL_DST, V9X_TARGET_DWORDS,
            V9X_GUARD_VALUE);
     v9x_op(V9X_OP_VRAM_FILL, V9X_RECT, V9X_RECT_DWORDS, V9X_GUARD_VALUE);
+    if (v9x_copyplan) {
+        v9x_op(V9X_OP_VRAM_PATTERN, V9X_CP_SRC, V9X_CP_SRC_BYTES / 4ul,
+               V9X_CP_SEED);
+        v9x_op(V9X_OP_VRAM_FILL, V9X_CP_DST, V9X_CP_DST_BYTES / 4ul,
+               V9X_GUARD_VALUE);
+    }
     for (index = 0ul; index < v9x_ring_count; ++index) {
         v9x_op(V9X_OP_VRAM_WRITE, V9X_RING + index * 4ul, v9x_ring[index],
                0ul);
@@ -620,6 +681,9 @@ static void v9x_build_run(DWORD g)
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_OVERLAP, V9X_OVERLAP_DWORDS, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_FILL_DST, V9X_TARGET_DWORDS, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_RECT, V9X_RECT_DWORDS, 0ul);
+    if (v9x_copyplan) {
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_CP_DST, V9X_CP_DST_BYTES / 4ul, 0ul);
+    }
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
     v9x_at_after_reset = v9x_op(V9X_OP_MMIO_READ, V9X_RV_SRBM_SOFT_RESET,
@@ -629,8 +693,17 @@ static void v9x_build_run(DWORD g)
 
     v9x_number("Run", "FillSeedDwords", v9x_fill_seed);
     v9x_text("Run", "FillSerial", v9x_fill_serial ? "yes" : "no");
-    v9x_text("Run", "FillShape", v9x_rowfill ? "rect-from-seed-row" :
+    v9x_text("Run", "FillShape", v9x_copyplan ? "copy-plan" :
+                                 v9x_rowfill ? "rect-from-seed-row" :
                                                "doubling");
+    if (v9x_copyplan) {
+        v9x_key("Run", "CopyDwords", v9x_cp_dwords);
+        v9x_key("Run", "CopyRows", v9x_cp_rows);
+        v9x_key("Run", "CopySrcPitch", v9x_cp_src_pitch);
+        v9x_key("Run", "CopyDstPitch", v9x_cp_dst_pitch);
+        v9x_key("Run", "CopySrcOffset", v9x_cp_src_offset);
+        v9x_key("Run", "CopyDstOffset", v9x_cp_dst_offset);
+    }
     v9x_text("Run", "FillWaits", v9x_fill_nowait ? "no" : "yes");
     v9x_number("Run", "FillSteps", v9x_step_count);
     v9x_number("Run", "Ops", v9x_request.count);
@@ -775,6 +848,55 @@ static void v9x_verify(void)
         v9x_key("Result", key, overlap[V9X_OVERLAP_SHIFT + index]);
     }
 
+    if (v9x_copyplan) {
+        const DWORD *dst = fill + V9X_TARGET_DWORDS + V9X_RECT_DWORDS;
+        DWORD row;
+        DWORD good_rows = 0ul;
+        DWORD guards_bad = 0ul;
+        DWORD at;
+        DWORD in_row;
+        char key[16];
+
+        v9x_text("Result", "Fill", "SKIPPED");
+        /* Each row: how many of its dwords are the source's. */
+        for (row = 0ul; row < v9x_cp_rows; ++row) {
+            DWORD good = 0ul;
+
+            for (index = 0ul; index < v9x_cp_dwords; ++index) {
+                at = (v9x_cp_dst_offset + row * v9x_cp_dst_pitch) / 4ul +
+                     index;
+                if (dst[at] == v9x_pattern(V9X_CP_SEED,
+                                           (v9x_cp_src_offset +
+                                            row * v9x_cp_src_pitch) / 4ul +
+                                           index)) {
+                    ++good;
+                }
+            }
+            lstrcpyA(key, "CopyRow");
+            v9x_decimal(key + 7, row);
+            v9x_number("Result", key, good);
+            if (good == v9x_cp_dwords) {
+                ++good_rows;
+            }
+        }
+        /* Every destination dword outside the rows keeps its guard. */
+        for (index = 0ul; index < V9X_CP_DST_BYTES / 4ul; ++index) {
+            in_row = 0ul;
+            for (row = 0ul; row < v9x_cp_rows; ++row) {
+                at = (v9x_cp_dst_offset + row * v9x_cp_dst_pitch) / 4ul;
+                if (index >= at && index < at + v9x_cp_dwords) {
+                    in_row = 1ul;
+                }
+            }
+            if (!in_row && dst[index] != V9X_GUARD_VALUE) {
+                ++guards_bad;
+            }
+        }
+        v9x_number("Result", "CopyRowsExact", good_rows);
+        v9x_number("Result", "CopyGuardsBad", guards_bad);
+        v9x_pass("CopyPlan", good_rows == v9x_cp_rows && guards_bad == 0ul);
+        return;
+    }
     if (v9x_rowfill) {
         v9x_text("Result", "Fill", "SKIPPED");
         v9x_verify_rect(fill + V9X_TARGET_DWORDS);
@@ -824,6 +946,43 @@ static int v9x_switch_given(const char *switch_text)
         ++line;
     }
     return 0;
+}
+
+/* The hex value after switch_text (which ends in ':'), or fallback. */
+static DWORD v9x_switch_hex(const char *switch_text, DWORD fallback)
+{
+    const char *line;
+    int length;
+    DWORD value;
+    int digits;
+    char c;
+
+    line = GetCommandLineA();
+    length = lstrlenA(switch_text);
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, switch_text, length) == CSTR_EQUAL) {
+            line += length;
+            value = 0ul;
+            digits = 0;
+            for (;;) {
+                c = *line++;
+                if (c >= '0' && c <= '9') {
+                    value = (value << 4) | (DWORD)(c - '0');
+                } else if (c >= 'a' && c <= 'f') {
+                    value = (value << 4) | (DWORD)(c - 'a' + 10);
+                } else if (c >= 'A' && c <= 'F') {
+                    value = (value << 4) | (DWORD)(c - 'A' + 10);
+                } else {
+                    break;
+                }
+                ++digits;
+            }
+            return digits != 0 ? value : fallback;
+        }
+        ++line;
+    }
+    return fallback;
 }
 
 static void v9x_finish(const char *result, UINT code)
@@ -886,7 +1045,12 @@ void __stdcall V9xRv630DmaEntry(void)
     v9x_key("Before", "MC_VM_FB_LOCATION", r[at_fb]);
     v9x_key("Before", "GRBM_STATUS", r[at_grbm]);
 
-    if ((v9x_saved[0] & V9X_RV_DMA_RB_ENABLE) != 0ul ||
+    /* /takeover runs over a ring the ati driver enabled, for a boot in
+     * which the HAL has already given the engine up (EngineFlags without
+     * ENGINE_VALID in V9XTRACE): the run resets the block first and puts
+     * every register back after. */
+    if (((v9x_saved[0] & V9X_RV_DMA_RB_ENABLE) != 0ul &&
+         !v9x_switch_given("/takeover")) ||
         (r[at_reset] & V9X_RV_SOFT_RESET_DMA) != 0ul) {
         CloseHandle(device);
         v9x_finish("ENGINE-NOT-AS-READ", 3u);
@@ -915,6 +1079,16 @@ void __stdcall V9xRv630DmaEntry(void)
     v9x_fill_serial = v9x_switch_given("/serial");
     v9x_rowfill = v9x_switch_given("/rowfill");
     v9x_fill_nowait = v9x_switch_given("/nowait");
+    v9x_copyplan = v9x_switch_given("/copyplan");
+    v9x_cp_dwords = v9x_switch_hex("/cpd:", v9x_cp_dwords);
+    v9x_cp_rows = v9x_switch_hex("/cpr:", v9x_cp_rows);
+    v9x_cp_src_pitch = v9x_switch_hex("/cpsp:", v9x_cp_src_pitch);
+    v9x_cp_dst_pitch = v9x_switch_hex("/cpdp:", v9x_cp_dst_pitch);
+    v9x_cp_src_offset = v9x_switch_hex("/cpso:", v9x_cp_src_offset);
+    v9x_cp_dst_offset = v9x_switch_hex("/cpdo:", v9x_cp_dst_offset);
+    if (v9x_copyplan && !v9x_copyplan_fits()) {
+        v9x_finish("COPYPLAN-OUTSIDE-WINDOW", 6u);
+    }
     v9x_build_run(g);
     if (!v9x_dioc(device)) {
         CloseHandle(device);

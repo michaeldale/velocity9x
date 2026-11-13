@@ -85,7 +85,7 @@ static void base_fill(struct v9x_r6_dma_fill *fill)
     fill->target_offset = 0ul;
     fill->pitch_bytes = 256ul;
     fill->bytes_per_pixel = 2ul;
-    fill->left = 10ul;
+    fill->left = 12ul;
     fill->top = 20ul;
     fill->width = 40ul;
     fill->height = 30ul;
@@ -100,9 +100,9 @@ static void base_copy(struct v9x_r6_dma_copy *copy)
     copy->source_pitch_bytes = 256ul;
     copy->destination_pitch_bytes = 256ul;
     copy->bytes_per_pixel = 2ul;
-    copy->source_left = 10ul;
+    copy->source_left = 12ul;
     copy->source_top = 10ul;
-    copy->destination_left = 50ul;
+    copy->destination_left = 52ul;
     copy->destination_top = 100ul;
     copy->width = 30ul;
     copy->height = 20ul;
@@ -199,20 +199,20 @@ static void test_fill(void)
     base_fill(&fill);
     CHECK(check_fill(&fill));
     CHECK(v9x_r6_dma_plan_fill(&fill, &plan) == V9X_STATUS_OK);
-    CHECK(plan.seed_offset == 20ul * 256ul + 20ul);
+    CHECK(plan.seed_offset == 20ul * 256ul + 24ul);
     CHECK(plan.seed_bytes == 80ul);
     CHECK(plan.value == 0x12341234ul);
     CHECK(plan.rows == 29ul);
     CHECK(plan.row_dwords == 20ul);
-    CHECK(plan.source == R6_GPU_BASE + 20ul * 256ul + 20ul);
+    CHECK(plan.source == R6_GPU_BASE + 20ul * 256ul + 24ul);
     CHECK(plan.source_step == 0ul);
-    CHECK(plan.destination == R6_GPU_BASE + 21ul * 256ul + 20ul);
+    CHECK(plan.destination == R6_GPU_BASE + 21ul * 256ul + 24ul);
     CHECK(plan.destination_step == 256ul);
 
     /* 8 and 32 bpp. */
     base_fill(&fill);
     fill.bytes_per_pixel = 1ul;
-    fill.left = 12ul;
+    fill.left = 16ul;
     fill.width = 64ul;
     fill.color = 0xa5ul;
     CHECK(check_fill(&fill));
@@ -254,6 +254,15 @@ static void test_fill_refusals(void)
     /* Off dwords is the CPU's: there is no byte copy. */
     base_fill(&fill);
     fill.left = 11ul;
+    CHECK(v9x_r6_dma_plan_fill(&fill, &plan) == V9X_STATUS_UNSUPPORTED);
+    /* On a dword but not 8 bytes: the seed row would be a COPY source the
+     * engine hung on (V9X_R6_DMA_ADDRESS_ALIGN). So is a pitch of 4 bytes
+     * past 8. */
+    base_fill(&fill);
+    fill.left = 10ul;
+    CHECK(v9x_r6_dma_plan_fill(&fill, &plan) == V9X_STATUS_UNSUPPORTED);
+    base_fill(&fill);
+    fill.pitch_bytes = 260ul;
     CHECK(v9x_r6_dma_plan_fill(&fill, &plan) == V9X_STATUS_UNSUPPORTED);
     base_fill(&fill);
     fill.width = 41ul;
@@ -302,7 +311,7 @@ static void test_copy(void)
     copy.bytes_per_pixel = 1ul;
     copy.destination_offset = 32768ul;
     copy.destination_pitch_bytes = 200ul;
-    copy.source_left = 4ul;
+    copy.source_left = 8ul;
     copy.destination_left = 8ul;
     copy.width = 32ul;
     copy.destination_top = 5ul;
@@ -337,9 +346,9 @@ static void test_copy_overlap(void)
     CHECK(plan.destination_step == 0ul - 256ul);
     CHECK(check_copy(&copy));
 
-    /* Down by one row and right by two pixels. */
+    /* Down by one row and right by four pixels (8 bytes). */
     base_copy(&copy);
-    copy.destination_left = copy.source_left + 2ul;
+    copy.destination_left = copy.source_left + 4ul;
     copy.destination_top = copy.source_top + 1ul;
     CHECK(check_copy(&copy));
 
@@ -361,7 +370,7 @@ static void test_copy_overlap(void)
     base_copy(&copy);
     copy.source_left = 20ul;
     copy.destination_top = copy.source_top;
-    copy.destination_left = 14ul;
+    copy.destination_left = 16ul;
     CHECK(check_copy(&copy));
 
     /* Overlapping between two pitches: the row order cannot be chosen. */
@@ -380,6 +389,20 @@ static void test_copy_refusals(void)
     /* Off dwords: no byte copy on R6xx. */
     base_copy(&copy);
     copy.source_left = 11ul;
+    CHECK(v9x_r6_dma_plan_copy(&copy, &plan) == V9X_STATUS_UNSUPPORTED);
+    /* On a dword but not 8 bytes: a source there hung the engine, a
+     * destination there was written elsewhere (3DMark 2000's first copy,
+     * screen from x 302 into a pitch-840 surface). */
+    base_copy(&copy);
+    copy.source_left = 10ul;
+    CHECK(v9x_r6_dma_plan_copy(&copy, &plan) == V9X_STATUS_UNSUPPORTED);
+    base_copy(&copy);
+    copy.destination_left = 50ul;
+    CHECK(v9x_r6_dma_plan_copy(&copy, &plan) == V9X_STATUS_UNSUPPORTED);
+    /* A destination pitch on 4 bytes past 8: its first row starts on 8
+     * (100 * 252 + 104), the next does not. */
+    base_copy(&copy);
+    copy.destination_pitch_bytes = 252ul;
     CHECK(v9x_r6_dma_plan_copy(&copy, &plan) == V9X_STATUS_UNSUPPORTED);
     base_copy(&copy);
     copy.width = 31ul;

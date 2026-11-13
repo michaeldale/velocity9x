@@ -30,7 +30,9 @@ reproduced). The Direct3D HAL runs (`r6_cp.c`, `d3d_r6.c`): V9XD32
 /bpp16 passes, mip chains included (boot 9), no timeouts
 ([record](../decisions/2026-11-13-rv630-direct3d-hal-first-light.md)).
 Fog and the colour key pass V9XD32 (boot 10); specular is built but
-not judged by any check. Next: a game.
+not judged by any check. 3DMark 2000 runs to its score once DMA copies
+keep both ends on 8 bytes ([record](../decisions/2026-11-13-rv630-dma-copy-alignment.md));
+open: mip chains it places outside the layout, flips. Next: flips, 3DMark 2001 SE.
 Other register facts
 below come from Linux `radeon` source.
 

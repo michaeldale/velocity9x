@@ -78,6 +78,14 @@
 #define V9X_R6_DMA_COUNT_MAX            0x0000fffeul
 #define V9X_R6_DMA_NOP                  0xf0000000ul
 
+/* A COPY's source and destination both start on 8 bytes. Measured on
+ * M-NZHWBR with V9XRVDMA /copyplan (docs\decisions\2026-11-13-rv630-dma-
+ * copy-alignment.md): a source on 4 bytes only hung the engine past its
+ * soft reset (3DMark 2000's first copy did, boots 10 and 11); a
+ * destination on 4 bytes only was written elsewhere; any dword count,
+ * odd ones too, is copied exactly. */
+#define V9X_R6_DMA_ADDRESS_ALIGN        8ul
+
 /* Linux pads every DMA submission to 16 dwords. */
 #define V9X_R6_DMA_ALIGN_DWORDS         16ul
 

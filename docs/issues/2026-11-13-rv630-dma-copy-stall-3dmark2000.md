@@ -1,8 +1,9 @@
 # RV630: a DMA copy stalls at 3DMark 2000's start; the engine is given up and Direct3D refused
 
 Date: 2026-11-13
-Status: **open.** Blocks 3DMark 2000 (and any program that makes the
-same copy) on the HD 2600 XT row.
+Status: **fixed in source, measured.** A COPY's source and destination
+must start on 8 bytes; the DMA plans now send anything else to the CPU,
+and 3DMark 2000 runs to its score (boot 15). See the end.
 
 Machine: M-NZHWBR, Radeon HD 2600 XT (`1002:9588`), the `ati` driver of
 `4080c5b2` (Direct3D through the CP, DirectDraw fill and copy on the DMA
@@ -52,3 +53,23 @@ read pointer, so it is deterministic.
   row count, to find the rule.
 - Linux `r600_copy_dma` copies only page-aligned blocks; whether the
   engine has a limit Linux never meets.
+
+## Cause and fix (boots 11-15)
+
+V9XRVDMA `/copyplan` replayed the copy inside its window and found the
+rule ([record](../decisions/2026-11-13-rv630-dma-copy-alignment.md)): a
+source on 4 bytes but not 8 hangs the engine, and the DMA soft reset does
+not recover it (boot 11 stayed busy, `DMA_STATUS 44809046`); a
+destination on 4 bytes only is written elsewhere; odd dword counts are
+fine. `r6_dma.c` now plans a fill or copy only when both ends of every
+row start on 8 bytes (`V9X_R6_DMA_ADDRESS_ALIGN`).
+
+Boot 15, the fix installed: V9XD32 /bpp16 still passes (Failures 0), and
+3DMark 2000's default run (1024x768x16, triple buffer) finished in 5.7
+minutes with a score (4,465), no idle or FIFO timeout, the engine valid
+throughout, no draw refused. Captures `boot15-*` beside the earlier ones.
+
+Seen in the same run, not investigated: `MipGapShape` rose by 3,929 (mip
+chains whose next level is not where the layout puts it, sampled at
+level 0 only), and `DrawsIntoPresented` by about 947,000 (the row has no
+flips; whether that shows as tearing was not looked at).

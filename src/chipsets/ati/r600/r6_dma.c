@@ -130,9 +130,13 @@ v9x_status v9x_r6_dma_plan_fill(const struct v9x_r6_dma_fill *fill,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
-    /* Every row starts and ends on a dword and is a row COPY can move. */
-    if (((fill->gpu_base + start) & 3ul) != 0ul || !v9x_r6_row_ok(width_bytes) ||
-        (fill->height > 1ul && (fill->pitch_bytes & 3ul) != 0ul)) {
+    /* Every row starts on 8 bytes, as a COPY's source and destination must
+     * (V9X_R6_DMA_ADDRESS_ALIGN), ends on a dword, and is a row COPY can
+     * move. */
+    if (((fill->gpu_base + start) & (V9X_R6_DMA_ADDRESS_ALIGN - 1ul)) != 0ul ||
+        !v9x_r6_row_ok(width_bytes) ||
+        (fill->height > 1ul &&
+         (fill->pitch_bytes & (V9X_R6_DMA_ADDRESS_ALIGN - 1ul)) != 0ul)) {
         return V9X_STATUS_UNSUPPORTED;
     }
 
@@ -189,13 +193,18 @@ v9x_status v9x_r6_dma_plan_copy(const struct v9x_r6_dma_copy *copy,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
-    /* No byte copy on R6xx: both sides on dwords, every row too. */
-    if (((copy->gpu_base + source_start) & 3ul) != 0ul ||
-        ((copy->gpu_base + destination_start) & 3ul) != 0ul ||
+    /* Both sides of every row start on 8 bytes (V9X_R6_DMA_ADDRESS_ALIGN),
+     * and rows are whole dwords: there is no byte copy on R6xx. */
+    if (((copy->gpu_base + source_start) &
+         (V9X_R6_DMA_ADDRESS_ALIGN - 1ul)) != 0ul ||
+        ((copy->gpu_base + destination_start) &
+         (V9X_R6_DMA_ADDRESS_ALIGN - 1ul)) != 0ul ||
         !v9x_r6_row_ok(width_bytes) ||
         (copy->height > 1ul &&
-         ((copy->source_pitch_bytes & 3ul) != 0ul ||
-          (copy->destination_pitch_bytes & 3ul) != 0ul))) {
+         ((copy->source_pitch_bytes &
+           (V9X_R6_DMA_ADDRESS_ALIGN - 1ul)) != 0ul ||
+          (copy->destination_pitch_bytes &
+           (V9X_R6_DMA_ADDRESS_ALIGN - 1ul)) != 0ul))) {
         return V9X_STATUS_UNSUPPORTED;
     }
 
