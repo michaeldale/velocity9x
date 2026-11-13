@@ -28,7 +28,8 @@
 ;   VRAM data      - a run of the data area into the scratch window: the
 ;                    ring, shaders and vertices V9XEG3D lays out.
 ;   (V9XEG3D adds Linux evergreen_gpu_init's configuration registers for
-;   Cedar to both allow-lists; see the lists below.)
+;   Cedar to both allow-lists; V9XR63D adds r600_gpu_init's for the RV630
+;   to the read list only; see the lists below.)
 ;   delay          - a count of SRBM_STATUS reads, at most EC_DELAY_MAX.
 ;   VRAM ops       - write, read, fill, pattern, read block, all at aligned
 ;                    offsets inside the scratch window.
@@ -216,7 +217,24 @@ ECReadWindows label dword
     dd 8e10h, 8e14h     ; SQ_LSTMP_RING_BASE
     dd 8e18h, 8e1ch     ; SQ_HSTMP_RING_BASE
     dd 9150h, 9154h     ; CGTS_SM_CTRL_REG
-EC_READ_WINDOW_COUNT    equ 60
+    ; r600_gpu_init's registers for the RV630 that the lists above lack
+    ; (V9XR63D, 9588 only; r600d.h), read so they can be put back through
+    ; the ring, and RAMCFG, which GB_TILING_CONFIG is composed from. No
+    ; write offset is added: V9XR63D writes these through the CP.
+    dd 2408h, 240ch     ; RAMCFG
+    dd 88c8h, 88d0h     ; VGT_GS_PER_ES, VGT_ES_PER_GS
+    dd 88e8h, 88ech     ; VGT_GS_PER_VS
+    dd 8b20h, 8b24h     ; PA_SC_MULTI_CHIP_CNTL
+    dd 8b40h, 8b50h     ; PA_SC_AA_SAMPLE_LOCS_2S, _4S, _8S_WD0, _8S_WD1
+    dd 8bf0h, 8bf4h     ; PA_SC_ENHANCE
+    dd 8c10h, 8c18h     ; SQ_STACK_RESOURCE_MGMT_1, _2 (R6xx's offsets)
+    dd 9054h, 9058h     ; SX_DEBUG_1 (R6xx's offset)
+    dd 9608h, 960ch     ; TC_CNTL
+    dd 9714h, 9718h     ; VC_ENHANCE
+    dd 9830h, 9834h     ; DB_DEBUG
+    dd 9838h, 983ch     ; DB_WATERMARKS
+    dd 98f0h, 98f4h     ; GB_TILING_CONFIG
+EC_READ_WINDOW_COUNT    equ 73
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.

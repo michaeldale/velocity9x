@@ -131,6 +131,10 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\evergreen\eg_dma.c',
         # R6xx async DMA: fill and copy plans, no I/O.
         'src\chipsets\ati\r600\r6_dma.c',
+        # R6xx shader words: the solid VS and PS, no I/O.
+        'src\chipsets\ati\r600\r6_shader.c',
+        # R6xx PM4 streams: RV630 gpu_init, default state, a solid draw.
+        'src\chipsets\ati\r600\r6_3d.c',
         # Evergreen CP microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\evergreen\eg_cp_microcode.c',
         # Evergreen shader words and the bring-up shaders, no I/O.
@@ -394,6 +398,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_rs690_3d.c',
         'tests\host\test_eg_dma.c',
         'tests\host\test_r6_dma.c',
+        'tests\host\test_r6_3d.c',
         'tests\host\test_eg_shader.c',
         'tests\host\test_eg_3d.c',
         'tests\host\test_cm_shader.c',

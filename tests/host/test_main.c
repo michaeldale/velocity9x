@@ -359,6 +359,12 @@ unsigned int v9x_run_eg_dma_tests(void);
  * operation. */
 unsigned int v9x_run_r6_dma_tests(void);
 
+/* tests\host\test_r6_3d.c: R6xx PM4 streams for the RV630's first draw:
+ * packets and register offsets against xf86-video-ati and Linux r600d.h,
+ * r600_gpu_init's RV630 numbers, xf86's default state, and the solid VS and
+ * PS against xf86's own shader macros. */
+unsigned int v9x_run_r6_3d_tests(void);
+
 /* tests\host\test_vi_sdma.c: Carrizo SDMA packets from Evergreen's DMA
  * plans, run through a model of the engine the write probe measured, and
  * the generated microcode's edges. */
@@ -1560,6 +1566,7 @@ int main(int argc, char **argv)
     failures += v9x_run_rs690_3d_tests();
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_r6_dma_tests();
+    failures += v9x_run_r6_3d_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();
