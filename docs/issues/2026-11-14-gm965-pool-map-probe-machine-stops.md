@@ -68,3 +68,28 @@ reads was changed.
   PTEs only; then the aperture pattern; then the mode cycle), starting
   with the smallest: one PTE.
 - The driver's pool path stays gated to the netbook.
+
+## 2026-11-14, later: it came back by itself, and the probe passes
+
+Status now: open, not reproduced; the cause is not known.
+
+The machine answered again at 09:04 on the same boot (55): it had not
+been restarted. Its agent log has `exec-start` at 02:33:36 and
+`exec-complete` at 09:02:45, exit `FFFFFFFD` after 23,352 s, with a poll
+gap of 23,353 s: the whole system stood still for 6.5 hours inside the
+probe's MAP call (`V9XG3PM.INI`: `Step=map`, the allocation accepted),
+then carried on. A read-only `G3PL` run found the pool's entries all
+`7FF7E001`, hash `90EB6205`, and the free-page count back.
+
+The probe was then staged, shrunk and given a time-stamp watchdog, proved
+on the netbook, and run on this machine from 4 pages and PTEs only up to
+the full 8,192 pages with two mode cycles: every run passes, none times
+out, the same frames included
+([record](../decisions/2026-11-14-intel-gm965-texture-pool-phase2.md)).
+
+So the "which step" question above has no answer: nothing in MAP is slow
+or wrong when the machine is awake. The untested lead is the machine's
+state at 02:33: 76 minutes without input, unattended, and back at the
+moment its owner may have touched it. The test is the staged probe at
+full size after 80 minutes or more without input; its watchdog turns a
+slow aperture into a `TimedOut` line instead of a frozen machine.

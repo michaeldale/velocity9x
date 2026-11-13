@@ -79,6 +79,22 @@ G3M_ST_STATE_REFUSED    equ 00010000h
 G3M_ST_FREE_FAILED      equ 00020000h
 G3M_ST_TABLE_FAILED     equ 00040000h
 G3M_ST_NOT_ACCEPTED     equ 00080000h
+G3M_ST_TIMED_OUT        equ 00100000h
+
+; How far MAP goes (G3M_IN_STAGE; 0 means all of it). Added after the full
+; run froze a GM965 for 6.5 hours inside MAP
+; (docs\issues\2026-11-14-gm965-pool-map-probe-machine-stops.md): each
+; stage is a run of its own, and no loop outlasts G3M_WATCHDOG_HIGH.
+G3M_STAGE_PTES          equ 1 ; write the PTEs, post, read them back
+G3M_STAGE_APERTURE      equ 2 ; and map the aperture range, untouched
+G3M_STAGE_ONE_DWORD     equ 3 ; and one dword through it and back
+G3M_STAGE_PATTERN       equ 4 ; and the whole pattern
+
+; The watchdog reads the time-stamp counter, which no interrupt has to
+; service: a loop stops once its high dword has advanced this far, 2 to 4
+; times 2^32 cycles (4 to 9 s at 1 GHz, 2 to 4 s at 2 GHz).
+G3M_WATCHDOG_HIGH       equ 2
+G3M_WATCHDOG_EVERY      equ 000000ffh ; dwords between looks, minus one
 
 ; Input from V9XG3PM.EXE, the same block on every call.
 G3M_IN_BAR3             equ 0
@@ -88,10 +104,11 @@ G3M_IN_GMADR            equ 12
 G3M_IN_BSM              equ 16
 G3M_IN_STOLEN           equ 20
 G3M_IN_ACCEPT           equ 24
-G3M_IN_BYTES            equ 28
+G3M_IN_STAGE            equ 28
+G3M_IN_BYTES            equ 32
 
 ; Output: header then the page table. Must match struct v9x_g3pm_result.
-G3M_HEADER_DWORDS       equ 32
+G3M_HEADER_DWORDS       equ 40
 G3M_RESULT_DWORDS       equ (G3M_HEADER_DWORDS + G3M_PAGE_MAX)
 
 ; Header offsets, bytes.
@@ -123,6 +140,11 @@ H_REFUSED_FRAME         equ 100
 H_READ_MS               equ 104
 H_CF8                   equ 108
 H_APERTURE              equ 112
+H_WRITE_KCYC            equ 116 ; the pattern write, cycles / 1024
+H_READ_KCYC             equ 120 ; the aperture read back, cycles / 1024
+H_DWORDS                equ 124 ; dwords the pattern covered
+H_PTE_KCYC              equ 128 ; writing the PTEs, cycles / 1024
+H_PTE_CHECK_KCYC        equ 132 ; reading them back
 
 VxD_LOCKED_DATA_SEG
 ; The Gen3 parts this family claims, and the GM965 2A02 (Gen4): the same
@@ -149,6 +171,10 @@ G3MLinear    dd 0
 G3MSaved     dd 0
 G3MMapped    dd 0
 G3MStarted   dd 0
+G3MStage     dd 0
+G3MDwords    dd 0      ; dwords of pattern written and compared
+G3MTscLo     dd 0      ; the watchdog's start
+G3MTscHi     dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -197,6 +223,43 @@ G3M_Device_Found:
     clc
     ret
 EndProc G3M_Device_Known
+
+; Start the watchdog and the cycle count. RDTSC by its bytes: the
+; assembler is in .486p.
+BeginProc G3M_Tsc_Start
+    push    eax
+    push    edx
+    db      0fh, 31h                    ; rdtsc
+    mov     G3MTscLo, eax
+    mov     G3MTscHi, edx
+    pop     edx
+    pop     eax
+    ret
+EndProc G3M_Tsc_Start
+
+; Returns CF set once the loop has run G3M_WATCHDOG_HIGH since the start.
+BeginProc G3M_Watchdog
+    push    eax
+    push    edx
+    db      0fh, 31h                    ; rdtsc
+    sub     edx, G3MTscHi
+    cmp     edx, G3M_WATCHDOG_HIGH      ; CF set while below the limit
+    cmc
+    pop     edx
+    pop     eax
+    ret
+EndProc G3M_Watchdog
+
+; Returns EAX = cycles since the start, divided by 1024.
+BeginProc G3M_Tsc_Elapsed
+    push    edx
+    db      0fh, 31h                    ; rdtsc
+    sub     eax, G3MTscLo
+    sbb     edx, G3MTscHi
+    shrd    eax, edx, 10
+    pop     edx
+    ret
+EndProc G3M_Tsc_Elapsed
 
 ; ESI = address of the pool's first PTE. Returns ESI unchanged.
 BeginProc G3M_Pte_Base
@@ -257,13 +320,13 @@ G3M_Free_Done:
 EndProc G3M_Free
 
 ; ESI = base of a mapping holding the pattern. Returns EAX = mismatches,
-; EDX = first mismatching dword index, ECX = its value.
+; EDX = first mismatching dword index, ECX = its value. Stops, with
+; G3M_ST_TIMED_OUT set, if the watchdog its caller started runs out.
 BeginProc G3M_Compare
     push    ebx
     push    edi
     push    ebp
-    mov     ebp, G3MCount
-    shl     ebp, 10                     ; dwords
+    mov     ebp, G3MDwords
     xor     ebx, ebx                    ; index
     xor     edi, edi                    ; mismatches
     mov     edx, 0ffffffffh
@@ -283,8 +346,16 @@ G3M_Compare_Counted:
 G3M_Compare_Same:
     add     esi, 4
     inc     ebx
+    test    ebx, G3M_WATCHDOG_EVERY
+    jnz     short G3M_Compare_More
+    call    G3M_Watchdog
+    jnc     short G3M_Compare_More
+    or      G3MResult[H_STATUS], G3M_ST_TIMED_OUT
+    jmp     short G3M_Compare_End
+G3M_Compare_More:
     cmp     ebx, ebp
     jb      short G3M_Compare_Next
+G3M_Compare_End:
     mov     eax, edi
     pop     ebp
     pop     edi
@@ -505,6 +576,7 @@ G3M_Map_Page_Refused:
     ; aperture page i is linear page i.
 G3M_Map_Write:
     wbinvd
+    call    G3M_Tsc_Start
     call    G3M_Pte_Base
     mov     edi, esi
     mov     esi, OFFSET32 G3MPages
@@ -523,10 +595,19 @@ G3M_Map_Pte_Next:
     ; The read that posts the writes, as Linux's intel-gtt does.
     mov     eax, [edi-4]
     mov     G3MResult[H_LAST_PTE], eax
+    call    G3M_Tsc_Elapsed
+    mov     G3MResult[H_PTE_KCYC], eax
+    call    G3M_Tsc_Start
     call    G3M_Check_Ptes
     mov     G3MResult[H_PTE_BAD], eax
+    push    eax
+    call    G3M_Tsc_Elapsed
+    mov     G3MResult[H_PTE_CHECK_KCYC], eax
+    pop     eax
     test    eax, eax
     jnz     G3M_Map_Done
+    cmp     G3MStage, G3M_STAGE_APERTURE
+    jb      G3M_Map_Done
 
     mov     eax, G3MFirst
     shl     eax, 12
@@ -542,11 +623,23 @@ G3M_Map_Pte_Next:
 G3M_Map_Pattern:
     mov     G3MAperture, eax
     mov     G3MResult[H_APERTURE], eax
+    cmp     G3MStage, G3M_STAGE_ONE_DWORD
+    jb      G3M_Map_Done
+    ; One dword at stage 3, the pool's every dword at stage 4.
+    mov     eax, 1
+    cmp     G3MStage, G3M_STAGE_ONE_DWORD
+    je      short G3M_Map_Dwords
+    mov     eax, G3MCount
+    shl     eax, 10
+G3M_Map_Dwords:
+    mov     G3MDwords, eax
+    mov     G3MResult[H_DWORDS], eax
+
     VMMcall Get_System_Time
     mov     G3MStarted, eax
+    call    G3M_Tsc_Start
     mov     edi, G3MAperture
-    mov     ebp, G3MCount
-    shl     ebp, 10
+    mov     ebp, G3MDwords
     xor     ebx, ebx
 G3M_Map_Pattern_Next:
     mov     eax, ebx
@@ -555,28 +648,41 @@ G3M_Map_Pattern_Next:
     mov     [edi], eax
     add     edi, 4
     inc     ebx
+    test    ebx, G3M_WATCHDOG_EVERY
+    jnz     short G3M_Map_Pattern_More
+    call    G3M_Watchdog
+    jc      G3M_Map_Timed_Out
+G3M_Map_Pattern_More:
     cmp     ebx, ebp
     jb      short G3M_Map_Pattern_Next
     ; A locked operation drains the write-combining buffers.
     lock or dword ptr [esp], 0
+    call    G3M_Tsc_Elapsed
+    mov     G3MResult[H_WRITE_KCYC], eax
     VMMcall Get_System_Time
     sub     eax, G3MStarted
     mov     G3MResult[H_WRITE_MS], eax
 
     VMMcall Get_System_Time
     mov     G3MStarted, eax
+    call    G3M_Tsc_Start
     mov     esi, G3MAperture
     call    G3M_Compare
     mov     G3MResult[H_AP_BAD], eax
     mov     G3MResult[H_AP_FIRST], edx
     mov     G3MResult[H_AP_ACTUAL], ecx
+    call    G3M_Tsc_Elapsed
+    mov     G3MResult[H_READ_KCYC], eax
     VMMcall Get_System_Time
     sub     eax, G3MStarted
     mov     G3MResult[H_READ_MS], eax
+    test    G3MResult[H_STATUS], G3M_ST_TIMED_OUT
+    jnz     G3M_Map_Done
 
     ; Whether the aperture reached these pages: no line of them can be in
     ; the cache from before, so after WBINVD the linear mapping reads RAM.
     wbinvd
+    call    G3M_Tsc_Start
     mov     esi, G3MLinear
     call    G3M_Compare
     mov     G3MResult[H_RAM_BAD], eax
@@ -585,7 +691,18 @@ G3M_Map_Pattern_Next:
     ; The read just pulled lines into the cache; drop them so nothing
     ; cached is ever written back over the pool.
     wbinvd
+    test    G3MResult[H_STATUS], G3M_ST_TIMED_OUT
+    jnz     short G3M_Map_Done
     or      G3MResult[H_STATUS], G3M_ST_PATTERN_DONE
+    jmp     short G3M_Map_Done
+
+    ; The write loop ran out of time: say how far it got and stop. The
+    ; publisher goes straight to UNMAP.
+G3M_Map_Timed_Out:
+    mov     G3MResult[H_DWORDS], ebx
+    call    G3M_Tsc_Elapsed
+    mov     G3MResult[H_WRITE_KCYC], eax
+    or      G3MResult[H_STATUS], G3M_ST_TIMED_OUT
     jmp     short G3M_Map_Done
 
 G3M_Map_State:
@@ -605,6 +722,9 @@ BeginProc G3M_Check
     mov     G3MResult[H_CHK_PTE_ACTUAL], ecx
     cmp     G3MAperture, 0
     je      short G3M_Check_Marked
+    cmp     G3MDwords, 0
+    je      short G3M_Check_Marked
+    call    G3M_Tsc_Start
     mov     esi, G3MAperture
     call    G3M_Compare
     mov     G3MResult[H_CHK_AP_BAD], eax
@@ -676,6 +796,13 @@ BeginProc G3M_W32_DeviceIoControl
     mov     G3MBsm, eax
     mov     eax, [ebp+G3M_IN_STOLEN]
     mov     G3MStolen, eax
+    mov     eax, [ebp+G3M_IN_STAGE]
+    test    eax, eax
+    jnz     short G3M_Dioc_Stage
+    mov     eax, G3M_STAGE_PATTERN
+G3M_Dioc_Stage:
+    mov     G3MStage, eax
+    mov     G3MDwords, 0
     mov     G3MAperture, 0
 G3M_Dioc_Do_Alloc:
     call    G3M_Alloc

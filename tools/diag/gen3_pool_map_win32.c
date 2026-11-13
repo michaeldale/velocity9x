@@ -20,6 +20,14 @@
  * Each step's name is written to C:\V9XDIAG\V9XG3PM.INI and flushed before
  * the step runs, so after a hang the file says which step did not return.
  * The optional argument is the number of mode cycles (default 2, 0 skips).
+ *
+ * Two more arguments make a small, staged run, added after the full run
+ * froze a GM965 for 6.5 hours inside MAP (docs\issues\2026-11-14-gm965-
+ * pool-map-probe-machine-stops.md): "cycles pages stage". `pages` maps
+ * that many pages instead of the plan's, from the plan's first entry;
+ * `stage` stops MAP early - 1 the PTEs only, 2 and the aperture range
+ * mapped but untouched, 3 and one dword through it, 4 everything. The
+ * VxD's loops stop themselves after a few seconds and say so (TimedOut).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -39,7 +47,7 @@
 #define V9X_G3PM_MAP         3u
 #define V9X_G3PM_CHECK       4u
 #define V9X_G3PM_UNMAP       5u
-#define V9X_G3PM_HEADER      32u
+#define V9X_G3PM_HEADER      40u
 #define V9X_G3PM_PAGE_MAX    8192u
 #define V9X_G3PM_CYCLES      2ul
 #define V9X_PCI_ADDRESS      ((WORD)0x0cf8u)
@@ -75,6 +83,13 @@
 #define V9X_ST_TABLE_COPIED  0x00000100ul
 #define V9X_ST_MAPPED        0x00000400ul
 #define V9X_ST_PATTERN_DONE  0x00001000ul
+#define V9X_ST_TIMED_OUT     0x00100000ul
+#define V9X_ST_APERTURE_FAILED 0x00000800ul
+
+#define V9X_STAGE_PTES       1ul
+#define V9X_STAGE_APERTURE   2ul
+#define V9X_STAGE_ONE_DWORD  3ul
+#define V9X_STAGE_PATTERN    4ul
 #define V9X_ST_RESTORED      0x00004000ul
 #define V9X_ST_FREED         0x00008000ul
 
@@ -91,6 +106,7 @@ struct v9x_g3pm_request {
     DWORD bsm;
     DWORD stolen;
     DWORD accept;
+    DWORD stage;
 };
 
 struct v9x_g3pm_result {
@@ -123,7 +139,12 @@ struct v9x_g3pm_result {
     DWORD read_ms;
     DWORD cf8;
     DWORD aperture;
-    DWORD reserved[3];
+    DWORD write_kcyc;
+    DWORD read_kcyc;
+    DWORD dwords;
+    DWORD pte_kcyc;
+    DWORD pte_check_kcyc;
+    DWORD reserved[6];
     DWORD page_table[V9X_G3PM_PAGE_MAX];
 };
 
@@ -206,6 +227,18 @@ static DWORD v9x_parse_count(const char *text, DWORD fallback)
         ++digits;
     }
     return digits != 0 ? value : fallback;
+}
+
+/* The text after one number and the blanks before it. */
+static const char *v9x_skip_count(const char *text)
+{
+    while (*text == ' ') {
+        ++text;
+    }
+    while (*text >= '0' && *text <= '9') {
+        ++text;
+    }
+    return text;
 }
 
 static const char *v9x_argument(void)
@@ -319,10 +352,39 @@ static v9x_u16 v9x_judge(const struct v9x_i9xx_pool_layout *layout,
     return v9x_i9xx_pool_check(layout, plan, v9x_frames, plan->entry_count);
 }
 
+/* A small run's pages: fewer than the plan's, so the whole-pool check does
+ * not apply; each page still goes through the driver's per-page check. */
+static v9x_u16 v9x_judge_few(const struct v9x_i9xx_pool_layout *layout,
+                             DWORD count)
+{
+    DWORD index;
+    v9x_u16 reason;
+
+    for (index = 0ul; index < count; ++index) {
+        if ((v9x_result.page_table[index] & V9X_PTE_PRESENT) == 0ul) {
+            return V9X_I9XX_POOL_ZERO_PAGE;
+        }
+        reason = v9x_i9xx_pool_check_page(
+            layout, v9x_result.page_table[index] & V9X_PTE_FRAME);
+        if (reason != V9X_I9XX_POOL_OK) {
+            return reason;
+        }
+    }
+    v9x_key("Pages", "First", v9x_result.page_table[0] & V9X_PTE_FRAME);
+    return V9X_I9XX_POOL_OK;
+}
+
 static void v9x_publish_map(void)
 {
     v9x_key("Map", "LastPte", v9x_result.last_pte);
     v9x_key("Map", "PteMismatches", v9x_result.pte_bad);
+    v9x_key("Map", "PteWriteKcyc", v9x_result.pte_kcyc);
+    v9x_key("Map", "PteCheckKcyc", v9x_result.pte_check_kcyc);
+    v9x_key("Map", "Dwords", v9x_result.dwords);
+    v9x_key("Map", "WriteKcyc", v9x_result.write_kcyc);
+    v9x_key("Map", "ReadKcyc", v9x_result.read_kcyc);
+    v9x_text("Map", "TimedOut",
+             (v9x_result.status & V9X_ST_TIMED_OUT) != 0ul ? "yes" : "no");
     v9x_key("Map", "Aperture", v9x_result.aperture);
     v9x_key("Map", "WriteMs", v9x_result.write_ms);
     v9x_key("Map", "ReadMs", v9x_result.read_ms);
@@ -344,14 +406,30 @@ void WINAPI V9xGen3PoolMapEntry(void)
     HANDLE device;
     DWORD ggc;
     DWORD cycles;
+    DWORD pages;
+    DWORD stage;
+    DWORD first;
     DWORD mode_failures = 0ul;
+    const char *arguments;
     v9x_u16 reason;
     int pass;
 
     DeleteFileA(V9X_G3PM_PATH);
     v9x_text("Report", "Build", V9X_BUILD_ID);
     v9x_text("Report", "Result", "STARTED");
-    cycles = v9x_parse_count(v9x_argument(), V9X_G3PM_CYCLES);
+    arguments = v9x_argument();
+    cycles = v9x_parse_count(arguments, V9X_G3PM_CYCLES);
+    arguments = v9x_skip_count(arguments);
+    pages = v9x_parse_count(arguments, 0ul);
+    arguments = v9x_skip_count(arguments);
+    stage = v9x_parse_count(arguments, V9X_STAGE_PATTERN);
+    if (stage < V9X_STAGE_PTES || stage > V9X_STAGE_PATTERN) {
+        stage = V9X_STAGE_PATTERN;
+    }
+    /* A fourth number moves a small run to another first entry (decimal),
+     * for a machine whose driver already has a pool in the plan's. */
+    arguments = v9x_skip_count(arguments);
+    first = v9x_parse_count(arguments, 0ul);
 
     ggc = (v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) >> 16) & 0xfffful;
     memory.dwLength = sizeof(memory);
@@ -390,11 +468,24 @@ void WINAPI V9xGen3PoolMapEntry(void)
     }
     v9x_request.gmadr =
         v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GMADR) & V9X_GMADR_MASK;
+    if (pages == 0ul || pages > plan.entry_count) {
+        pages = plan.entry_count;
+    }
     v9x_request.first = plan.first_entry;
-    v9x_request.count = plan.entry_count;
+    if (first != 0ul && pages != plan.entry_count &&
+        first >= plan.first_entry &&
+        first + pages <= V9X_G3PM_GTT_ENTRIES) {
+        v9x_request.first = first;
+    }
+    v9x_key("Report", "FirstEntry", v9x_request.first);
+    v9x_request.count = pages;
     v9x_request.bsm = layout.bsm;
     v9x_request.stolen = layout.stolen_bytes;
     v9x_request.accept = 0ul;
+    v9x_request.stage = stage;
+    v9x_key("Report", "Pages", pages);
+    v9x_key("Report", "Stage", stage);
+    v9x_key("Report", "Cycles", cycles);
     v9x_key("Report", "Bar3", v9x_request.bar3);
     v9x_key("Report", "Gmadr", v9x_request.gmadr);
 
@@ -420,7 +511,8 @@ void WINAPI V9xGen3PoolMapEntry(void)
     v9x_key("Alloc", "Linear", v9x_result.linear);
     pass = (v9x_result.status & V9X_ST_TABLE_COPIED) != 0ul;
     if (pass) {
-        reason = v9x_judge(&layout, &plan);
+        reason = pages == plan.entry_count ? v9x_judge(&layout, &plan)
+                                           : v9x_judge_few(&layout, pages);
         v9x_key("Pages", "CheckReason", reason);
         v9x_request.accept = reason == V9X_I9XX_POOL_OK ? 1ul : 0ul;
         v9x_text("Pages", "Verdict",
@@ -431,12 +523,22 @@ void WINAPI V9xGen3PoolMapEntry(void)
         v9x_step("map");
         pass = v9x_call(device, V9X_G3PM_MAP);
         v9x_publish_map();
-        pass = pass && (v9x_result.status & V9X_ST_PATTERN_DONE) != 0ul;
+        /* What a stage has to have reached: the PTEs read back; then the
+         * aperture mapped; then the pattern, one dword or all, compared. */
+        pass = pass && (v9x_result.status & V9X_ST_MAPPED) != 0ul &&
+               (v9x_result.status & V9X_ST_TIMED_OUT) == 0ul;
+        if (stage >= V9X_STAGE_APERTURE) {
+            pass = pass && v9x_result.aperture != 0ul &&
+                   (v9x_result.status & V9X_ST_APERTURE_FAILED) == 0ul;
+        }
+        if (stage >= V9X_STAGE_ONE_DWORD) {
+            pass = pass && (v9x_result.status & V9X_ST_PATTERN_DONE) != 0ul;
+        }
     } else {
         pass = 0;
     }
 
-    if (pass && cycles != 0ul) {
+    if (pass && cycles != 0ul && stage == V9X_STAGE_PATTERN) {
         v9x_step("modes");
         mode_failures = v9x_mode_cycles(cycles);
     }
