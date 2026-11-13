@@ -317,6 +317,37 @@ static void test_push(void)
     v9x_nv50_ib_entry(0x0c022000ul, 30ul, entry);
     CHECK(entry[0] == 0x0c022000ul);
     CHECK(entry[1] == (30ul << 10));
+
+    /* A copy between two surfaces: the same words as the one-surface
+     * copy, the destination run naming one and the source run the other. */
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_blit(&push, 0x00400000ul, 1280ul, 320ul, 200ul,
+                       0x00100000ul, 4096ul, 1024ul, 768ul,
+                       V9X_502D_FORMAT_X8R8G8B8,
+                       0ul, 0ul, 100ul, 50ul, 320ul, 200ul);
+    CHECK(push.overflow == 0ul);
+    CHECK(push.count == 43ul);
+    CHECK(words[8] == 4096ul);
+    CHECK(words[9] == 1024ul);
+    CHECK(words[10] == 768ul);
+    CHECK(words[12] == 0x00100000ul);
+    CHECK(words[17] == 1280ul);
+    CHECK(words[18] == 320ul);
+    CHECK(words[19] == 200ul);
+    CHECK(words[21] == 0x00400000ul);
+    CHECK(words[31] == 100ul);
+    CHECK(words[32] == 50ul);
+    CHECK(words[33] == 320ul);
+    CHECK(words[34] == 200ul);
+    CHECK(words[40] == 0ul);
+    CHECK(words[42] == 0ul);
+
+    /* The three depths measured, and nothing else. */
+    CHECK(v9x_nv50_2d_format(1ul) == 0xf3ul);
+    CHECK(v9x_nv50_2d_format(2ul) == 0xe8ul);
+    CHECK(v9x_nv50_2d_format(4ul) == 0xe6ul);
+    CHECK(v9x_nv50_2d_format(3ul) == 0ul);
+    CHECK(v9x_nv50_2d_format(0ul) == 0ul);
 }
 
 unsigned int v9x_run_nv50_chan_tests(void)

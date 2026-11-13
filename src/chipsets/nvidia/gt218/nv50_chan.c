@@ -338,6 +338,20 @@ void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
                         v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
                         v9x_u32 w, v9x_u32 h)
 {
+    v9x_nv50_push_blit(push, surface, pitch, width, height,
+                       surface, pitch, width, height, format,
+                       sx, sy, dx, dy, w, h);
+}
+
+void v9x_nv50_push_blit(struct v9x_nv50_push *push,
+                        v9x_u32 src_surface, v9x_u32 src_pitch,
+                        v9x_u32 src_width, v9x_u32 src_height,
+                        v9x_u32 dst_surface, v9x_u32 dst_pitch,
+                        v9x_u32 dst_width, v9x_u32 dst_height,
+                        v9x_u32 format,
+                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                        v9x_u32 w, v9x_u32 h)
+{
     v9x_u32 dst[10];
     v9x_u32 src_format[2];
     v9x_u32 src[5];
@@ -352,11 +366,11 @@ void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
     dst[2] = 0ul;
     dst[3] = 1ul;
     dst[4] = 0ul;
-    dst[5] = pitch;
-    dst[6] = width;
-    dst[7] = height;
+    dst[5] = dst_pitch;
+    dst[6] = dst_width;
+    dst[7] = dst_height;
     dst[8] = 0ul;
-    dst[9] = surface;
+    dst[9] = dst_surface;
     v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_DST_FORMAT,
                          10ul, dst);
 
@@ -367,11 +381,11 @@ void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
     src_format[1] = V9X_502D_LAYOUT_PITCH;
     v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SRC_FORMAT,
                          2ul, src_format);
-    src[0] = pitch;
-    src[1] = width;
-    src[2] = height;
+    src[0] = src_pitch;
+    src[1] = src_width;
+    src[2] = src_height;
     src[3] = 0ul;
-    src[4] = surface;
+    src[4] = src_surface;
     v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SRC_PITCH,
                          5ul, src);
 
@@ -401,6 +415,20 @@ void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
     blit[11] = sy;
     v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_BLIT_DST_X0,
                          12ul, blit);
+}
+
+v9x_u32 v9x_nv50_2d_format(v9x_u32 bytes_per_pixel)
+{
+    if (bytes_per_pixel == 1ul) {
+        return V9X_502D_FORMAT_Y8;
+    }
+    if (bytes_per_pixel == 2ul) {
+        return V9X_502D_FORMAT_R5G6B5;
+    }
+    if (bytes_per_pixel == 4ul) {
+        return V9X_502D_FORMAT_X8R8G8B8;
+    }
+    return 0ul;
 }
 
 void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry)

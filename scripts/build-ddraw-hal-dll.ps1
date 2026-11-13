@@ -128,6 +128,13 @@ $sources = @(
     # host-tested builder.
     "src\display32\engines\eng_nv3.c",
     "src\chipsets\nvidia\nv3_2d.c",
+    # The GT218 2D engine: one PFIFO channel and class 502D, its
+    # structures, context program and bring-up from the host-tested
+    # builders.
+    "src\display32\engines\eng_nv50.c",
+    "src\chipsets\nvidia\gt218\nv50_chan.c",
+    "src\chipsets\nvidia\gt218\nv50_grctx.c",
+    "src\chipsets\nvidia\gt218\nv50_init.c",
     # The RS690 2D engine: fill and copy through the host-tested builder;
     # flips on its AVIVO controller D1.
     "src\display32\engines\eng_rs690.c",

@@ -8,17 +8,41 @@
  * places 16 MiB into BAR3 (docs\decisions\2026-11-11-gt218-register-
  * probe.md). The card has 512 MiB.
  *
- * The VBE sets modes and the CPU draws (docs\plans\nvidia-gt218.md,
- * Phase 1). The aperture mapped is BAR1, not the VBE's window: with the
- * BAR VM off, as the BIOS leaves it, BAR1 + 0 shows the same desktop and
- * BAR1 holds distinct writes at 16, 32, 64, 128 and 256 MiB - 4 KiB with
- * no alias (docs\decisions\2026-11-11-gt218-bar-windows.md), so the
- * DirectDraw heap grows past the VBE's 14 MiB through it. No register is
- * read or written. Nothing NV3 applies: this chip has no NV3 engine, RAMIN
- * or PRAMDAC, so it supplies no engine descriptor and no reserve hook, and
- * the family's NV3 paths stay off.
+ * The VBE sets modes. The aperture mapped is BAR1, not the VBE's window:
+ * with the BAR VM off, as the BIOS leaves it, BAR1 + 0 shows the same
+ * desktop and BAR1 holds distinct writes at 16, 32, 64, 128 and 256 MiB -
+ * 4 KiB with no alias (docs\decisions\2026-11-11-gt218-bar-windows.md), so
+ * the DirectDraw heap grows past the VBE's 14 MiB through it.
+ *
+ * The engine hook has the mini-VDD map BAR0 and claims the 2D engine for
+ * DirectDraw fill and copy as NV50; the HAL engine (engines\eng_nv50.c)
+ * builds one PFIFO channel and brings PFIFO and PGRAPH up itself
+ * (docs\plans\nvidia-gt218-nv50-engine.md). The channel's structures
+ * live in the top megabyte of the mapping, which the reserve hook keeps
+ * off the heap. No register is read or written from here. Nothing NV3
+ * applies: this chip has no NV3 engine, RAMIN or PRAMDAC, and the
+ * family's NV3 paths stay off. GDI draws on the CPU (gdi_accel.c has no
+ * NV50 path).
  */
 #include "velocity9x/hw16.h"
+#include "velocity9x/engine_abi.h"
+#include "velocity9x/gt218_reserve.h"
+
+/* runtime.asm, nvidia family only. The BAR0 read is generic (a 32-bit
+ * memory BAR, 16 MiB aligned); the mini-VDD's map accepts chipset A8h
+ * beside NV3 since 2026-11-14 (V9XMAPI.INC). */
+extern unsigned short __far __pascal V9xPciReadNv3MmioBar(
+    unsigned long __far *base);
+extern unsigned short __far __pascal V9xMiniNv3MmioMap(
+    unsigned long bar0, unsigned long __far *linear);
+
+/* All of BAR0, as the mini-VDD maps it. */
+#define V9X_GT218_MMIO_BYTES 0x01000000ul
+
+/* Where the reserve starts (gt218_reserve.c decides), once the heap has been cut for it; 0 before
+ * that, or when there was no room, which leaves the HAL without an
+ * engine. */
+static unsigned long v9x_gt218_reserve_at;
 
 /*
  * 128 MiB of BAR1's 256 MiB: the size the Evergreen rows map on the same
@@ -45,6 +69,65 @@ unsigned long v9x_gt218_measure_video_memory(unsigned long mapped_bytes,
     return mapped_bytes;
 }
 
+/*
+ * The heap ends where the engine's reserve starts. External for
+ * nvidia_hw16.c's reserve_video_memory hook, which asks it only for this
+ * chip; a family-internal symbol, as the measure hook above is. Without
+ * room for the reserve above the visible screen the heap is left whole
+ * and no engine is claimed.
+ */
+unsigned long v9x_gt218_reserve_video_memory(unsigned long usable_bytes,
+                                             unsigned long visible_bytes)
+{
+    v9x_gt218_reserve_at = v9x_gt218_reserve_start(usable_bytes,
+                                                   visible_bytes);
+    if (v9x_gt218_reserve_at == 0ul) {
+        return usable_bytes;
+    }
+    return v9x_gt218_reserve_at;
+}
+
+static unsigned long v9x_gt218_reserve_offset(void)
+{
+    return v9x_gt218_reserve_at;
+}
+
+/* BAR0 mapped by the mini-VDD, which hands the window over only if
+ * PMC_BOOT_0 names chipset A8h. No register is touched from here. */
+static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
+{
+    unsigned long bar0 = 0ul;
+    unsigned long linear = 0ul;
+
+    (void)framebuffer_linear_base;
+    *control_linear_base = 0ul;
+    *mapped_aperture_bytes = 0ul;
+    *engine_type = V9X_DD_ENGINE_TYPE_NONE;
+    *engine_caps = 0ul;
+    *gtt_linear_base = 0ul;
+    *ring_linear_base = 0ul;
+    *ring_bytes = 0ul;
+
+    if (V9xPciReadNv3MmioBar(&bar0) == 0u) {
+        return;
+    }
+    if (V9xMiniNv3MmioMap(bar0, &linear) == 0u || linear == 0ul) {
+        return;
+    }
+    *control_linear_base = linear;
+    *mapped_aperture_bytes = V9X_GT218_MMIO_BYTES;
+    *engine_type = V9X_DD_ENGINE_TYPE_NV50;
+    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+}
+
 /* Not static: resolved by name in the link map by the per-object audit. */
 const V9X_HW16_DEVICE v9x_gt218_device = {
     0x10deu, 0x0a65u,
@@ -52,16 +135,14 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
     "10DE", "0A65",
     "nvidia-gt218-unavailable-v1",
     "vbe-lfb",
-    "none",
+    "directdraw-fill-copy",
     "not-advertised",
     0,
-    /* NULL: no engine yet. */
-    0,
+    v9x_gt218_fill_engine,
     V9X_GT218_FRAMEBUFFER_BAR,
     0u,                     /* packed_pitch */
     V9X_GT218_MAP_BYTES,
-    /* NULL: no engine reserve. */
-    0,
+    v9x_gt218_reserve_offset,
     /*
      * Write-combine over the memory reported, clamped to the mapping, as
      * the vbe package did on this card (boot 81: MTRR 0, 8 MiB at

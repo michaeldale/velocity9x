@@ -245,6 +245,14 @@ unsigned long v9x_gt218_measure_video_memory(unsigned long mapped_bytes,
     (void)reported_bytes;
     return mapped_bytes;
 }
+/* gt218_hw16.c's heap cut is not linked here; its arithmetic is
+ * gt218_reserve.c's, tested in test_nv50_init.c. */
+unsigned long v9x_gt218_reserve_video_memory(unsigned long usable_bytes,
+                                             unsigned long visible_bytes)
+{
+    (void)visible_bytes;
+    return usable_bytes;
+}
 
 void v9x_s3_publish_diagnostics(const V9X_HW16_DEVICE *device,
                                 v9x_hw16_write_fn write)

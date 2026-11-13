@@ -13,7 +13,7 @@
     SchemaVersion = 1
     Id = 'nvidia'
     DisplayName = 'NVIDIA RIVA 128 and GeForce 210'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set and CPU drawing only.'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw fill and copy at 8, 16 and 32 bpp, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -78,12 +78,16 @@
             Adapter = 'NVIDIA GeForce 210'
             ClockDetector = 'nvidia-gt218-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Tier-0: no engine, the CPU draws
-            # (docs\plans\nvidia-gt218.md, Phase 1).
-            Acceleration = 'none'
+            # The 2D engine, class 502D on one PFIFO channel, measured exact
+            # on the card at 8, 16 and 32 bpp by the probe
+            # (docs\decisions\2026-11-14-gt218-502d-engine-measurements.md).
+            # The HAL engine itself has not yet run on a card
+            # (docs\plans\nvidia-gt218-nv50-engine.md, step 4.4). GDI
+            # draws on the CPU.
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'NV50'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # What the seen card's VBE reports through 4F00h (224 x 64 KiB),
             # not the card's memory
             # (docs\decisions\2026-11-11-m-bxmfa8-gt218-first-look.md).
@@ -101,7 +105,7 @@
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
             )
 
-            Objects = @('gt218_hw16')
+            Objects = @('gt218_hw16', 'gt218_reserve')
 
             # No register sequence at tier-0, as for the RIVA 128 row.
             Audit = @{
@@ -141,6 +145,7 @@
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'riva128_hw16'; Path = 'src\chipsets\nvidia\riva128\riva128_hw16.c' }
             @{ Name = 'gt218_hw16'; Path = 'src\chipsets\nvidia\gt218\gt218_hw16.c' }
+            @{ Name = 'gt218_reserve'; Path = 'src\chipsets\nvidia\gt218\gt218_reserve.c' }
             @{ Name = 'nvidia_hw16'; Path = 'src\chipsets\nvidia\nvidia_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }

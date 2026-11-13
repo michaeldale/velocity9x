@@ -32,6 +32,9 @@ extern const V9X_HW16_DEVICE v9x_gt218_device;
 /* gt218_hw16.c: the GT218's heap, the whole of its BAR1 mapping. */
 extern unsigned long v9x_gt218_measure_video_memory(
     unsigned long mapped_bytes, unsigned long reported_bytes);
+/* gt218_hw16.c: the heap cut short of the NV50 engine's reserve. */
+extern unsigned long v9x_gt218_reserve_video_memory(
+    unsigned long usable_bytes, unsigned long visible_bytes);
 
 /* runtime.asm, nvidia family only: BAR0 through the engine selector. */
 extern unsigned short __far __pascal V9xNv3Selector(unsigned long linear);
@@ -143,14 +146,18 @@ static void v9x_nvidia_publish_diagnostics(const V9X_HW16_DEVICE *device,
  * (docs\decisions\2026-11-02-riva128-register-probe.md), which the 2D
  * engine's bring-up writes after every mode set. Kept off the heap at
  * every depth, engine claimed or not, so a surface never sits where the
- * engine's tables go. RIVA 128 only: RAMIN at the top of video memory is an
- * NV3 fact, and where the GT218 keeps its instance memory is not measured.
+ * engine's tables go. RAMIN at the top of video memory is an NV3 fact. The
+ * GT218 keeps its channel's structures where the driver puts them, the top
+ * megabyte of its mapping, and cuts its own heap (gt218_hw16.c).
  */
 #define V9X_NVIDIA_RAMIN_BYTES 0x00008000ul
 
 static unsigned long v9x_nvidia_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
+    if (v9x_hw16_active_device() == &v9x_gt218_device) {
+        return v9x_gt218_reserve_video_memory(usable_bytes, visible_bytes);
+    }
     if (v9x_hw16_active_device() != &v9x_riva128_device) {
         return usable_bytes;
     }

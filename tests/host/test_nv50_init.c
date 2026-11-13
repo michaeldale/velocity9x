@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "velocity9x/nv50_init.h"
+#include "velocity9x/gt218_reserve.h"
 
 /*
  * The GT218 bring-up list (src\chipsets\nvidia\gt218\nv50_init.c)
@@ -189,9 +190,38 @@ static void test_ring(void)
     CHECK(v9x_nv50_ib_next(511ul) == 0ul);
 }
 
+/* The channel's region fits the reserve, and a megabyte boundary suits
+ * the page table's 64 KiB pages; both at compile time. */
+typedef char test_nv50_region_fits_reserve[
+    (V9X_NV50_REGION_BYTES <= V9X_GT218_RESERVE_BYTES) ? 1 : -1];
+typedef char test_nv50_reserve_page_aligned[
+    ((V9X_GT218_RESERVE_BYTES & (V9X_NV50_PAGE_BYTES - 1ul)) == 0ul) ?
+    1 : -1];
+
+/* gt218_reserve.c: the engine's megabyte at the top of the mapping. */
+static void test_reserve(void)
+{
+    /* The 128 MiB mapping measured on M-BXMFA8: the last megabyte. */
+    CHECK(v9x_gt218_reserve_start(0x08000000ul, 0x00180000ul) ==
+          0x07f00000ul);
+    /* An odd-sized mapping: the last whole megabyte that fits. */
+    CHECK(v9x_gt218_reserve_start(0x040c0000ul, 0x00180000ul) ==
+          0x03f00000ul);
+    /* No room: smaller than the reserve, or it would cover the screen. */
+    CHECK(v9x_gt218_reserve_start(0x000c0000ul, 0ul) == 0ul);
+    CHECK(v9x_gt218_reserve_start(0x00100000ul, 0ul) == 0ul);
+    CHECK(v9x_gt218_reserve_start(0x00400000ul, 0x00380000ul) == 0ul);
+    CHECK(v9x_gt218_reserve_start(0x00400000ul, 0x00300000ul) ==
+          0x00300000ul);
+    /* Outside the 512 MiB the channel's VM maps. */
+    CHECK(v9x_gt218_reserve_start(0x20000000ul, 0ul) == 0x1ff00000ul);
+    CHECK(v9x_gt218_reserve_start(0x20100000ul, 0ul) == 0ul);
+}
+
 unsigned int v9x_run_nv50_init_tests(void)
 {
     failures = 0u;
+    test_reserve();
     test_fifo();
     test_gr();
     test_bind();

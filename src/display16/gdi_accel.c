@@ -1633,6 +1633,13 @@ void v9x_gdi_accel_configure(void)
              (v9x_u32)v9x_driver_pdevice->deBitsPixel / 8ul) != V9X_TRUE)) {
         enabled = 0ul;
     }
+    /* The GT218's engine serves DirectDraw only, from the HAL
+     * (engines\eng_nv50.c); nothing here drives it, so no primitive is
+     * reported as enabled (docs\plans\nvidia-gt218-nv50-engine.md, GDI is
+     * step 5). */
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
+        enabled = 0ul;
+    }
 #endif
     /* A latched poison outlives a mode switch, so a ReEnable must not
      * re-enable what a timeout turned off. */

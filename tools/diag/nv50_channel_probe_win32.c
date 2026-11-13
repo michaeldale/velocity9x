@@ -1966,7 +1966,6 @@ static int v9x_stage_copy(void)
 #define V9X_DEPTH_FIRST      0x00220000ul
 #define V9X_DEPTH_STEP       0x00020000ul
 #define V9X_PUSH_DEPTH       256ul
-#define V9X_502D_FORMAT_Y8   0xf3ul
 
 static DWORD v9x_ib_next = 4ul;
 static DWORD v9x_push_next = V9X_PUSH_DEPTH;

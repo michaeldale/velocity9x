@@ -166,6 +166,9 @@
 #define V9X_502D_FORMAT_R5G6B5            0xe8ul
 #define V9X_502D_FORMAT_X8R8G8B8          0xe6ul
 #define V9X_502D_FORMAT_A8R8G8B8          0xcful
+/* One 8-bit channel, written as given: the 8 bpp surface format run 34
+ * measured on M-BXMFA8. */
+#define V9X_502D_FORMAT_Y8                0xf3ul
 
 /* What the caller needs after the build: absolute video memory addresses
  * (base + offset) and the register values they imply. */
@@ -241,6 +244,22 @@ void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
                         v9x_u32 format,
                         v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
                         v9x_u32 w, v9x_u32 h);
+/* The same copy between two surfaces of one format, each with its own
+ * address, pitch and size. Measured on a card only as the one-surface
+ * case above (run 33 on M-BXMFA8); two surfaces put different values in
+ * the same words. */
+void v9x_nv50_push_blit(struct v9x_nv50_push *push,
+                        v9x_u32 src_surface, v9x_u32 src_pitch,
+                        v9x_u32 src_width, v9x_u32 src_height,
+                        v9x_u32 dst_surface, v9x_u32 dst_pitch,
+                        v9x_u32 dst_width, v9x_u32 dst_height,
+                        v9x_u32 format,
+                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                        v9x_u32 w, v9x_u32 h);
+/* The 502D surface format for a desktop depth in bytes per pixel: 1, 2
+ * (5:6:5) and 4, the three measured in run 34. 0 for any other, which the
+ * engine must not draw at. */
+v9x_u32 v9x_nv50_2d_format(v9x_u32 bytes_per_pixel);
 /* The two words of an IB entry for words dwords at VM address addr, a
  * main (not subroutine) entry (chan506f.c gpfifo_push). */
 void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry);
