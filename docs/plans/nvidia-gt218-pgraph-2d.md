@@ -157,7 +157,9 @@ behind runs 14-26, found from an mmiotrace of nouveau on a second GT218:
 the page directory offset (200h, not 1400h) and the page table's block
 entries. Record:
 [2026-11-13-gt218-nouveau-trace-pd-offset.md](../decisions/2026-11-13-gt218-nouveau-trace-pd-offset.md).
-Next is step 4. The history below is kept as written.
+Next is step 4, planned in
+[nvidia-gt218-nv50-engine.md](nvidia-gt218-nv50-engine.md). The history
+below is kept as written.
 
 **Status (2026-11-12): paused at 3a after 14 runs and 11 resets.**
 [docs/decisions/2026-11-11-gt218-channel-probe-run1-hang.md](../decisions/2026-11-11-gt218-channel-probe-run1-hang.md)
