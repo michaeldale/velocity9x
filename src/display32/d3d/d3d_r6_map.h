@@ -10,7 +10,7 @@
  *
  * What Evergreen draws that this does not, yet: specular and fog (the
  * draw goes ahead without them: the lit shaders are not ported), a source
- * colour key (refused), and mip chains (level 0 alone is sampled).
+ * colour key (refused).
  */
 #ifndef VELOCITY9X_D3D_R6_MAP_H
 #define VELOCITY9X_D3D_R6_MAP_H
@@ -36,6 +36,10 @@ typedef struct v9x_d3d_r6_texture {
     v9x_u32 has_key;
     /* An XRGB8888 texture: its fourth byte is not alpha. */
     v9x_u32 opaque;
+    /* 1, or the levels of a chain d3d_r6.c placed by Evergreen's layout
+     * (v9x_eg_3d_mip_layout), level 1 at mip_offset. */
+    v9x_u32 levels;
+    v9x_u32 mip_offset;
 } V9X_D3D_R6_TEXTURE;
 
 /*

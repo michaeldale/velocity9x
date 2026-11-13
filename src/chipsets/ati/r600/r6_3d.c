@@ -851,6 +851,12 @@ void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value)
 #define R6_SAMPLER_MIN_SHIFT        12
 #define R6_SAMPLER_FILTERS          0x00007e00ul
 #define R6_SAMPLER_MC_TRUNCATE      0x00001000ul
+/* WORD0 MIP_FILTER 18:17; WORD1 MAX_LOD 19:10 in 4.6 fixed point (Mesa
+ * r600d.h S_03C000_MIP_FILTER, S_03C004_MAX_LOD; r600_state.c S_FIXED(,
+ * 6)). */
+#define R6_SAMPLER_MIP_SHIFT        17
+#define R6_SAMPLER_MAX_LOD_SHIFT    10
+#define R6_LOD_ONE                  64ul
 
 /* The SPI: SEMANTIC_n a byte each in SPI_VS_OUT_ID_0; input n as the
  * default state sets it, DEFAULT_VAL(1) | SEL_CENTROID, and SEL_LINEAR
@@ -1049,7 +1055,12 @@ static int v9x_r6_3d_state_valid(const struct v9x_r6_3d_state *state)
                                  state->texture_pitch) !=
              state->texture_pitch ||
          state->texture_pitch > V9X_R6_3D_PITCH_MAX ||
-         state->texture_height > V9X_R6_3D_PITCH_MAX)) {
+         state->texture_height > V9X_R6_3D_PITCH_MAX ||
+         state->texture_levels > V9X_R6_MIP_LEVELS_MAX ||
+         (state->texture_levels > 1ul &&
+          (state->d3d_order == 0ul ||
+           !v9x_r6_3d_aligned(state->texture_mip_gpu) ||
+           state->mip_filter > V9X_R6_MIP_LINEAR)))) {
         return 0;
     }
     return state->vertex_stride != 0ul &&
@@ -1188,7 +1199,8 @@ v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
         values[1] = (state->texture_height - 1ul) |
                     (state->texture_format << R6_TEX_FORMAT_SHIFT);
         values[2] = state->texture_gpu >> 8;
-        values[3] = state->texture_gpu >> 8;
+        values[3] = (state->texture_levels > 1ul ? state->texture_mip_gpu
+                                                 : state->texture_gpu) >> 8;
         if (state->d3d_order == 0ul) {
             values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_ARGB;
         } else if (state->texture_format == V9X_R6_COLOR_5_6_5 ||
@@ -1197,12 +1209,20 @@ v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
         } else {
             values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_XYZW;
         }
-        values[5] = 0ul;
+        /* LAST_LEVEL, the chain's last; BASE_LEVEL 0. */
+        values[5] = state->texture_levels > 1ul ?
+                    state->texture_levels - 1ul : 0ul;
         values[6] = R6_TEX_VALID_TEXTURE;
         v9x_r6_pm4_set(stream, R6_SQ_TEX_RESOURCE_PS_0, values,
                        R6_TEX_RESOURCE_DWORDS);
+        /* The mip filter and MAX_LOD the last level, MIN_LOD 0. */
         values[0] = state->sampler_word0;
         values[1] = 0ul;
+        if (state->texture_levels > 1ul) {
+            values[0] |= state->mip_filter << R6_SAMPLER_MIP_SHIFT;
+            values[1] = ((state->texture_levels - 1ul) * R6_LOD_ONE) <<
+                        R6_SAMPLER_MAX_LOD_SHIFT;
+        }
         values[2] = (state->sampler_word0 & R6_SAMPLER_FILTERS) == 0ul ?
                     R6_SAMPLER_MC_TRUNCATE : 0ul;
         v9x_r6_pm4_set(stream, R6_SQ_TEX_SAMPLER_PS_0, values,

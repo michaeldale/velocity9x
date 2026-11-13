@@ -59,11 +59,15 @@ static int v9x_d3d_r6_factor(v9x_u32 factor, int source, v9x_u32 *code)
     return 0;
 }
 
-/* A filter's in-level part: point or bilinear. A mip filter samples level
- * 0 with its in-level filter, as no chain is placed yet; a magnification
- * filter is NEAREST or LINEAR only. */
-static int v9x_d3d_r6_filter(v9x_u32 filter, int magnify, v9x_u32 *bilinear)
+/* Direct3D's filters as the filter within a level and the filter between
+ * levels, Evergreen's reading (d3d_eg_map.c): MIPNEAREST point and
+ * nearest level, MIPLINEAR bilinear and nearest level, LINEARMIPNEAREST
+ * point between two levels, LINEARMIPLINEAR trilinear. A magnification
+ * filter is NEAREST or LINEAR, with no mip filter. */
+static int v9x_d3d_r6_filter(v9x_u32 filter, int magnify, v9x_u32 *bilinear,
+                             v9x_u32 *mip)
 {
+    *mip = V9X_R6_MIP_NONE;
     switch (filter) {
     case V9X_R3D_FILTER_NEAREST:
         *bilinear = 0ul;
@@ -72,12 +76,20 @@ static int v9x_d3d_r6_filter(v9x_u32 filter, int magnify, v9x_u32 *bilinear)
         *bilinear = 1ul;
         return 1;
     case V9X_R3D_FILTER_MIPNEAREST:
-    case V9X_R3D_FILTER_LINEARMIPNEAREST:
         *bilinear = 0ul;
+        *mip = V9X_R6_MIP_POINT;
         return !magnify;
     case V9X_R3D_FILTER_MIPLINEAR:
+        *bilinear = 1ul;
+        *mip = V9X_R6_MIP_POINT;
+        return !magnify;
+    case V9X_R3D_FILTER_LINEARMIPNEAREST:
+        *bilinear = 0ul;
+        *mip = V9X_R6_MIP_LINEAR;
+        return !magnify;
     case V9X_R3D_FILTER_LINEARMIPLINEAR:
         *bilinear = 1ul;
+        *mip = V9X_R6_MIP_LINEAR;
         return !magnify;
     }
     return 0;
@@ -139,6 +151,7 @@ static v9x_u32 v9x_d3d_r6_map_texture(const V9X_R3D_DRAW *draw,
     v9x_u32 shader_op;
     v9x_u32 mag;
     v9x_u32 min;
+    v9x_u32 mip;
     v9x_u32 clamp;
 
     if (texture == 0 || texture->format == V9X_D3D_R6_TEXTURE_UNKNOWN) {
@@ -162,9 +175,24 @@ static v9x_u32 v9x_d3d_r6_map_texture(const V9X_R3D_DRAW *draw,
         !v9x_d3d_r6_address(sampler->address, &clamp)) {
         return V9X_D3D_EG_REFUSE_TEXTURE_ADDRESS;
     }
-    if (!v9x_d3d_r6_filter(sampler->mag_filter, 1, &mag) ||
-        !v9x_d3d_r6_filter(sampler->min_filter, 0, &min)) {
+    if (!v9x_d3d_r6_filter(sampler->mag_filter, 1, &mag, &mip) ||
+        !v9x_d3d_r6_filter(sampler->min_filter, 0, &min, &mip)) {
         return V9X_D3D_EG_REFUSE_TEXTURE_FILTER;
+    }
+    /* A chain is sampled across its levels under a mip filter; one level,
+     * or a plain filter, reads level 0 alone. */
+    if (texture->levels > 1ul && mip != V9X_R6_MIP_NONE) {
+        if (texture->levels > V9X_R6_MIP_LEVELS_MAX ||
+            ((heap_gpu + texture->mip_offset) &
+             (V9X_D3D_EG_SURFACE_ALIGN - 1ul)) != 0ul) {
+            return V9X_D3D_EG_REFUSE_TEXTURE_SHAPE;
+        }
+        state->texture_levels = texture->levels;
+        state->texture_mip_gpu = heap_gpu + texture->mip_offset;
+        state->mip_filter = mip;
+    } else {
+        state->texture_levels = 1ul;
+        state->mip_filter = V9X_R6_MIP_NONE;
     }
     /* No kill shader yet: a keyed texture drawn unkeyed would show the
      * key colour, so it is refused. */

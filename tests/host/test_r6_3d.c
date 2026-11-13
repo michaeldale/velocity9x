@@ -1719,6 +1719,37 @@ static void test_build_state(void)
           buffer[at + 4ul] == ((1ul << 14) | (0ul << 16) | (1ul << 19) |
                                (2ul << 22) | (5ul << 25)));
     state.texture_opaque = 0ul;
+    /* A chain of 4 levels, trilinear: WORD3 MIP_ADDRESS level 1 / 256,
+     * WORD5 LAST_LEVEL 3; sampler WORD0 MIP_FILTER(LINEAR 2) << 17, WORD1
+     * MAX_LOD 3.0 in 4.6 (C0h) << 10. */
+    state.texture_levels = 4ul;
+    state.texture_mip_gpu = WINDOW_GPU + 0x9000ul;
+    state.mip_filter = V9X_R6_MIP_LINEAR;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x38000ul);
+    CHECK(at < stream.count &&
+          buffer[at + 2ul] == (WINDOW_GPU + 0x8000ul) >> 8 &&
+          buffer[at + 3ul] == (WINDOW_GPU + 0x9000ul) >> 8 &&
+          buffer[at + 5ul] == 3ul);
+    at = find_reg(buffer, stream.count, 0x3c000ul);
+    CHECK(at < stream.count &&
+          buffer[at] == (state.sampler_word0 | (2ul << 17)) &&
+          buffer[at + 1ul] == (0xc0ul << 10));
+    /* A misaligned level 1, and a chain in xf86's order, are refused. */
+    state.texture_mip_gpu = WINDOW_GPU + 0x9080ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT && stream.count == 0ul);
+    state.texture_mip_gpu = WINDOW_GPU + 0x9000ul;
+    state.d3d_order = 0ul;
+    state.texture_format = V9X_R6_COLOR_8_8_8_8;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT && stream.count == 0ul);
+    state.d3d_order = 1ul;
+    state.texture_levels = 0ul;
+    state.mip_filter = V9X_R6_MIP_NONE;
     state.texture_format = V9X_R6_COLOR_1_5_5_5;
     /* A 16-bit pitch of 64 texels is not 256 bytes: refused. */
     state.texture_pitch = 64ul;

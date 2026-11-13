@@ -27,9 +27,9 @@ and Gouraud and textured (modulate) draws are exact
 wrote one constant Z in boot 5 and is correct after a reset (boot 6), Z16
 LESS exact ([issue](../issues/2026-11-13-rv630-depth-constant-z.md), not
 reproduced). The Direct3D HAL runs (`r6_cp.c`, `d3d_r6.c`): V9XD32
-/bpp16 passes everything but T21's mipmaps, no timeouts
+/bpp16 passes, mip chains included (boot 9), no timeouts
 ([record](../decisions/2026-11-13-rv630-direct3d-hal-first-light.md)).
-Next: mip chains, the lit shaders (specular, fog, colour key), a game.
+Next: the lit shaders (specular, fog, colour key), a game.
 Other register facts
 below come from Linux `radeon` source.
 

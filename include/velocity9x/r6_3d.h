@@ -430,7 +430,27 @@ struct v9x_r6_3d_state {
      * XRGB8888 texture), so W reads the constant 1, as a 565 texture's
      * always does. */
     v9x_u32 texture_opaque;
+    /*
+     * 0 or 1 for a single level; more for a chain laid out as Evergreen's
+     * (eg_3d.h, v9x_eg_3d_mip_layout: every level's pitch its width
+     * rounded to MAX(64, 256 / bytes a texel), the levels back to back),
+     * which is also libdrm's r6_surface_init_linear_aligned for R6xx:
+     * level 1 at texture_mip_gpu (256-byte aligned), sampled with
+     * mip_filter (V9X_R6_MIP_*) over LODs 0 to levels - 1. RESOURCE_WORD3
+     * MIP_ADDRESS, WORD5 LAST_LEVEL; SAMPLER_WORD0 MIP_FILTER, WORD1
+     * MAX_LOD in 4.6 fixed point (Mesa r600_state.c; Evergreen's is 4.8).
+     */
+    v9x_u32 texture_levels;
+    v9x_u32 texture_mip_gpu;
+    v9x_u32 mip_filter;
 };
+
+/* SQ_TEX_SAMPLER_WORD0's MIP_FILTER (bits 18:17); a chain's level count
+ * is LAST_LEVEL's four bits plus one, capped as Evergreen's. */
+#define V9X_R6_MIP_NONE       0ul
+#define V9X_R6_MIP_POINT      1ul
+#define V9X_R6_MIP_LINEAR     2ul
+#define V9X_R6_MIP_LEVELS_MAX 12ul
 
 /* Register words. func is V9X_R6_FUNC_*; factors V9X_R6_BLEND_*. The
  * blend word carries the factors only (R6xx's CB_BLEND0_CONTROL has no

@@ -48,6 +48,8 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_R6_TEXTURE *texture)
     texture->offset = 0x00200000ul;
     texture->has_key = 0ul;
     texture->opaque = 0ul;
+    texture->levels = 1ul;
+    texture->mip_offset = 0ul;
 }
 
 static v9x_u32 map(const V9X_R3D_DRAW *draw,
@@ -184,6 +186,33 @@ static void test_textured(void)
           state.sampler_word0 ==
               v9x_r6_3d_sampler(0ul, 0ul, V9X_R6_TEX_CLAMP_LAST_TEXEL,
                                 V9X_R6_TEX_CLAMP_LAST_TEXEL));
+    CHECK(state.texture_levels == 1ul && state.mip_filter == 0ul);
+    /* A chain of 6 levels under each mip filter: within-level filter and
+     * mip filter, level 1's address; a plain filter reads level 0. */
+    texture.levels = 6ul;
+    texture.mip_offset = 0x00204000ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.texture_levels == 6ul &&
+          state.texture_mip_gpu == HEAP_GPU + 0x00204000ul &&
+          state.mip_filter == V9X_R6_MIP_POINT &&
+          state.sampler_word0 ==
+              v9x_r6_3d_sampler(0ul, 0ul, V9X_R6_TEX_CLAMP_LAST_TEXEL,
+                                V9X_R6_TEX_CLAMP_LAST_TEXEL));
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.mip_filter == V9X_R6_MIP_LINEAR &&
+          state.sampler_word0 ==
+              v9x_r6_3d_sampler(0ul, 1ul, V9X_R6_TEX_CLAMP_LAST_TEXEL,
+                                V9X_R6_TEX_CLAMP_LAST_TEXEL));
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_NONE && state.texture_levels == 1ul &&
+          state.mip_filter == V9X_R6_MIP_NONE);
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    texture.mip_offset = 0x00204080ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+          V9X_D3D_EG_REFUSE_TEXTURE_SHAPE);
+    texture.levels = 1ul;
     /* A mip filter is no magnification filter. */
     draw.texture.mag_filter = V9X_R3D_FILTER_MIPLINEAR;
     CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==

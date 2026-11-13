@@ -1,8 +1,8 @@
-# HD 2600 XT: Direct3D through the CP, V9XD32 at 16 bpp passes all but mipmaps
+# HD 2600 XT: Direct3D through the CP, V9XD32 at 16 bpp passes (mip chains from boot 9)
 
 Date: 2026-11-13
 
-Status: **measured, one card, boots 7 and 8.** M-NZHWBR's HD 2600 XT
+Status: **measured, one card, boots 7, 8 and 9.** M-NZHWBR's HD 2600 XT
 (`1002:9588`, RV630) on the `ati` driver built from this commit's tree
 (dirty against `020dd1c5`), installed by WININIT renames. The Direct3D
 step of [the plan](../plans/ati-rv630-hd2600xt.md), after V9XR63D drew
@@ -59,13 +59,29 @@ filter samples level 0. The depth constant of boot 5
 ([issue](../issues/2026-11-13-rv630-depth-constant-z.md)) did not appear
 in either boot.
 
+## Mip chains (boot 9): V9XD32 passes
+
+Chains are now placed in one block in Evergreen's layout
+(`v9x_eg_3d_mip_layout`: every level's pitch its width rounded to
+MAX(64, 256 / bytes a texel), the levels back to back), which is also
+libdrm's `r6_surface_init_linear_aligned` for R6xx, and sampled with
+RESOURCE_WORD3 at level 1, WORD5 LAST_LEVEL, SAMPLER_WORD0 MIP_FILTER and
+WORD1 MAX_LOD in Mesa r600_state.c's 4.6 fixed point (Evergreen's
+measured 4.8 is not R6xx's). V9XD32 /bpp16 on boot 9: T21 levels 0-3
+`F800`, `07E0`, `001F`, `FFFF` (red, green, blue, white), `T21Ok=0F`;
+every other check as on boot 8; **Failures 0, Result PASS**, no
+timeouts. Capture `boot9-V9XD32-bpp16.TXT`.
+
+Only MIPNEAREST was judged (T21's filter). Four quad sizes landing on
+four different levels says the LOD scale and the level addresses are
+right to the nearest level; trilinear blending is untested.
+
 ## Not done, not measured
 
 - Specular and fog: drawn without them and not advertised (T20's fog and
   ADD bits are outside its expectation for that reason). The lit shaders
   are not ported.
 - A source colour key: refused, not advertised (TRANSPARENCY off).
-- Mip chains (T21).
 - 32 bpp: the row lists no 32 bpp mode, so the XRGB8888 target path is
   host-tested only.
 - Any game or benchmark; OpenGL and Glide (no r3d engine id).

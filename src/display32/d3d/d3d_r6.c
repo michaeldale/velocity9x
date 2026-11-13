@@ -16,9 +16,9 @@
  * as Evergreen's does.
  *
  * Not yet: specular and fog (drawn without them, and not offered in the
- * caps), a source colour key (refused, and not offered), mip chains
- * (level 0 sampled under every mip filter), OpenGL and Glide (no r3d
- * engine id).
+ * caps), a source colour key (refused, and not offered), OpenGL and
+ * Glide (no r3d engine id). Mip chains are placed and sampled in
+ * Evergreen's layout (v9x_eg_3d_mip_layout).
  */
 #include "d3d_internal.h"
 #include "d3d_r6_map.h"
@@ -155,7 +155,6 @@ static int v9x_d3d_r6_texture_format(const V9X_DD_SURFACE_LCL *surface,
 /*
  * What d3d_r6_map.c accepts: Evergreen's caps without specular, fog and
  * the colour key (TRANSPARENCY), which the R6xx shaders do not draw yet.
- * The mip filters are offered and sample level 0.
  */
 static void v9x_d3d_r6_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -287,6 +286,68 @@ static int v9x_d3d_r6_ready(void)
     return v9x_r6_cp_ready();
 }
 
+/*
+ * A mip chain's levels, counted as far as each sits where Evergreen's
+ * layout puts it (v9x_eg_3d_mip_layout, libdrm's R6xx linear-aligned
+ * layout too; its V9X_EG_COLOR_* numbers are R6xx's) - create_surface
+ * placed it there in one block - with level 0's pitch the layout's. The
+ * first attached level that is not ends the chain; a chain of one is no
+ * chain. d3d_eg.c's resolve, counted in the same diagnostics.
+ */
+static void v9x_d3d_r6_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
+                                     DWORD bytes, V9X_D3D_R6_TEXTURE *texture)
+{
+    v9x_u32 offsets[V9X_D3D_R6_LEVELS_MAX];
+    v9x_u32 pitches[V9X_D3D_R6_LEVELS_MAX];
+    v9x_u32 total;
+    const V9X_DD_SURFACE_LCL *level = surface;
+    DWORD longest = texture->width > texture->height ? texture->width
+                                                     : texture->height;
+    DWORD possible = 1ul;
+    DWORD found = 1ul;
+
+    ++v9x_hal->d3d_diagnostics.mip_chain_checks;
+    while (longest > 1ul && possible < V9X_D3D_R6_LEVELS_MAX) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (!v9x_eg_3d_mip_layout(texture->format, texture->width,
+                              texture->height, possible, offsets, pitches,
+                              &total) ||
+        texture->pitch_texels != pitches[0]) {
+        return;
+    }
+    while (found < possible) {
+        const V9X_DD_ATTACH_NODE *node =
+            (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
+        const V9X_DD_SURFACE_LCL *next = 0;
+
+        while (node != 0) {
+            if (node->object != 0 && node->object != level &&
+                (node->object->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+                next = node->object;
+                break;
+            }
+            node = node->next;
+        }
+        if (next == 0 || next->lpGbl == 0 ||
+            v9x_surface_offset(next) != texture->offset + offsets[found] ||
+            (DWORD)next->lpGbl->lPitch != pitches[found] * bytes) {
+            if (next != 0) {
+                ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+            }
+            break;
+        }
+        ++found;
+        level = next;
+    }
+    v9x_hal->d3d_diagnostics.mip_chain_levels = found;
+    if (found > 1ul) {
+        texture->levels = found;
+        texture->mip_offset = texture->offset + offsets[1];
+    }
+}
+
 /* The bound texture's level 0 as the map takes it. */
 static void v9x_d3d_r6_resolve_texture(const V9X_R3D_TEXTURE *sampler,
                                        V9X_D3D_R6_TEXTURE *texture)
@@ -299,6 +360,8 @@ static void v9x_d3d_r6_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->format = V9X_D3D_R6_TEXTURE_UNKNOWN;
     texture->has_key = 0ul;
     texture->opaque = 0ul;
+    texture->levels = 1ul;
+    texture->mip_offset = 0ul;
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
@@ -318,8 +381,12 @@ static void v9x_d3d_r6_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->pitch_texels = (DWORD)surface->lpGbl->lPitch / bytes;
     texture->offset = offset;
+    texture->mip_offset = offset;
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         texture->has_key = 1ul;
+    }
+    if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
+        v9x_d3d_r6_resolve_chain(surface, bytes, texture);
     }
 }
 
@@ -527,6 +594,9 @@ static DWORD v9x_d3d_r6_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     V9X_DD_SURFACE_LCL *surface;
     v9x_u32 pitches[V9X_D3D_R6_LEVELS_MAX];
     v9x_u32 rows[V9X_D3D_R6_LEVELS_MAX];
+    v9x_u32 offsets[V9X_D3D_R6_LEVELS_MAX];
+    v9x_u32 total = 0ul;
+    DWORD base = 0ul;
     DWORD bytes = 0ul;
     DWORD format;
     DWORD width;
@@ -597,6 +667,27 @@ static DWORD v9x_d3d_r6_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             }
             pitches[level] = v9x_r6_3d_texture_pitch(format, width) * bytes;
             rows[level] = height;
+        }
+        /* A chain in one block, where the sampler finds its levels from
+         * the base and MIP_ADDRESS (v9x_eg_3d_mip_layout, as d3d_eg.c). */
+        if (data->dwSCnt > 1ul) {
+            if (!v9x_eg_3d_mip_layout(format,
+                                      (DWORD)surface->lpGbl->wWidth,
+                                      (DWORD)surface->lpGbl->wHeight,
+                                      data->dwSCnt, offsets, pitches,
+                                      &total)) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            for (level = 0ul; level < data->dwSCnt; ++level) {
+                pitches[level] *= bytes;
+            }
+            if (v9x_d3d_place_chain(data, V9X_D3D_EG_SURFACE_ALIGN, total,
+                                    offsets, pitches, &base) != 0ul) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            ++v9x_hal->d3d_diagnostics.texture_placed;
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
         }
     }
     if (v9x_d3d_place_each(data, V9X_D3D_EG_SURFACE_ALIGN, pitches,
