@@ -93,3 +93,26 @@ state at 02:33: 76 minutes without input, unattended, and back at the
 moment its owner may have touched it. The test is the staged probe at
 full size after 80 minutes or more without input; its watchdog turns a
 slow aperture into a `TimedOut` line instead of a frozen machine.
+
+## 2026-11-14, 10:53: a blue screen, and the idle test passes
+
+The owner (through Michael): the machine showed a blue screen; no text
+was noted. So the 6.5 hours were a fault waiting for a key, not a slow
+loop, and the watchdog would not have caught it.
+
+The idle test ran at 10:52, 90 minutes after this project's last command
+to the machine (whether the owner touched it in between is not known),
+gentlest step first: the IGD's config space (`V9XHSW.EXE`, port I/O
+only), the read-only `G3PL`, then `V9XG3PM` at stages 1, 2, 3 and 4 on 4
+pages and at full size. Every step passes; the full run's times match
+the morning's (write 197 ms, read back 1,247 ms). The IGD's config space
+is byte for byte the awake baseline taken at 09:23: command word 0007,
+power state D0 (`PMCSR` at D4h = 0000). Evidence in
+`../probe/gm965-texture-pool-phase2-2026-11-14/idle/`.
+
+The idle lead is not supported, as far as this test reached an idle
+machine. The fault has happened once in what is now 21 MAP calls on this
+boot (the first), and never in the staged binary. What the first run had
+that the others did not, apart from being first: the unstaged binary,
+and 76 minutes since boot-time activity. Not known which, if either,
+matters. The blue screen's own text is the missing evidence.

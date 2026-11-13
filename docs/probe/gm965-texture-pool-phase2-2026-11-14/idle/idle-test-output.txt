@@ -1,0 +1,15 @@
+start 10:52:34
+BootCounter        : 55
+UptimeMilliseconds : 34829142
+hsw exit=0
+Config.00=8680022A070090000C00000300008000
+Config.D0=01002300000001010101009434000000
+g3pl: exit=0 Result=COMPLETE EqualFirst=00002020 Hash=90EB6205 CopyResult=FFFFFFFF Verdict=ACCEPTED 
+g3pm 0 4 1: exit=0 Result=PASS Step=done Status=0000E549 PteMismatches=00000000 TimedOut=no WriteMs=00000000 ReadMs=00000000 ApertureMismatches=00000000 RamMismatches=00000000 PteMismatches=00000000 ApertureMismatches=00000000 RestoreMismatches=00000000 
+g3pm 0 4 2: exit=0 Result=PASS Step=done Status=0000E549 PteMismatches=00000000 TimedOut=no WriteMs=00000000 ReadMs=00000000 ApertureMismatches=00000000 RamMismatches=00000000 PteMismatches=00000000 ApertureMismatches=00000000 RestoreMismatches=00000000 
+g3pm 0 4 3: exit=0 Result=PASS Step=done Status=0000F549 PteMismatches=00000000 TimedOut=no WriteMs=00000000 ReadMs=00000000 ApertureMismatches=00000000 RamMismatches=00000000 PteMismatches=00000000 ApertureMismatches=00000000 RestoreMismatches=00000000 
+g3pm 0 4 4: exit=0 Result=PASS Step=done Status=0000F549 PteMismatches=00000000 TimedOut=no WriteMs=00000000 ReadMs=00000001 ApertureMismatches=00000000 RamMismatches=00000000 PteMismatches=00000000 ApertureMismatches=00000000 RestoreMismatches=00000000 
+g3pm 0 8192 4: exit=0 Result=PASS Step=done Status=0000F549 PteMismatches=00000000 TimedOut=no WriteMs=000000C5 ReadMs=000004DF ApertureMismatches=00000000 RamMismatches=00000000 PteMismatches=00000000 ApertureMismatches=00000000 RestoreMismatches=00000000 
+ALL PASS 10:54:57
+
+[exited with code 0]
