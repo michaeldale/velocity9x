@@ -143,3 +143,14 @@ driver fault. Two things are left:
 They also ask whether DirectX 6.1 could cause their Virtua Cop 2
 Direct3D flicker. Not checked; they are leaving the machine unchanged
 until asked.
+
+## Released (2026-11-13, 0.48.0)
+
+The reporter ran the released 0.48.0 package: textures and models draw
+correctly, so the fix holds outside the test build. The crosshair is
+still missing with the first two of Quake 2's three crosshairs; the
+third ("Angle") draws as one small dot, which looks like a crosshair
+drawn wrongly rather than not drawn. Quake 2's crosshairs are small
+pictures with transparent pixels, so alpha test or very small textures
+on the Evergreen GL path are the first place to look; not checked. No
+log came with this report.

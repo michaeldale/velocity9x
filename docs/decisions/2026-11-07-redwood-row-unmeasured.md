@@ -213,3 +213,44 @@ kept outside the repository:
   `5977e375`), so the fault is in a module at `0x10000000`, not the HAL;
   which program is not recorded.
 - **Moto Racer** needs 16 bpp and flickers there; no file covers it.
+
+## Third report (2026-11-13, 0.48.0)
+
+The reporter's comment on issue 16 after installing the released 0.48.0
+`ati` package, still DirectX 6.1a. No files came with it, so every line
+below is their account; nothing here was measured.
+
+| Program | Report on 0.48.0 | Reading |
+|---|---|---|
+| Desktop | moving and switching windows much smoother | first field sighting of the 0.47.0 screen shadow on Evergreen, which the changelog marks unmeasured there |
+| Bug! 320x240 | leaving the game no longer hangs; 640x480 works | which change fixed it is not known: the 0.45.0 screen-switch hook and the 0.46.0/0.47.0 shadow are candidates |
+| Bug!, both modes | a small flickering square follows the mouse over the game; new since earlier versions | filed: [`../issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md`](../issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md) |
+| Moto Racer menus | still flicker | unchanged; still no files |
+| Quake 2 OpenGL | textures and models correct; crosshair missing; the third crosshair ("Angle") draws as one small dot | confirms the non-square mip fix (`aaf42da9`) in a release; crosshair added to that issue |
+| Quake 1 (DOS, software) | music and sound, no picture: the DOS window keeps the loading screen; Alt+Enter gives black with a cursor | see below |
+| DOS games at 16 colours | enter and exit cleanly; Quake 1 runs | `vga.drv`, as recorded above; says nothing of our display driver |
+
+**Quake 1 in a DOS box.** This adds one fact: the same machine runs Quake
+1 under `vga.drv` (16 colours) and not under ours, so the fault is in the
+Velocity9x install. Our mini-VDD stays loaded in the `vga.drv` setup
+too, which points at the display driver rather than the VDD; not
+confirmed. Not reproduced on any of our machines, and no
+other record covers DOS graphics programs on Evergreen. A run with the
+`vbe` package on the same card would say whether it is the `ati`
+family's or shared.
+
+**DirectX.** The reporter asks whether to move from 6 to 7, mainly for
+Moto Racer's flicker. Moto Racer asks for DirectX 3 and reaches the
+driver through the same DDI on either, so no change is expected; that is
+reasoning, not a measurement. The advice is to stay on 6.1a until the
+files below are in, so one thing changes at a time.
+
+## Owed after the third report
+
+- Bug!'s cursor square with `C:\V9XDIAG\NOSHADOW.TXT` present (one
+  reboot): gone or not.
+- Moto Racer: desktop depth, the game's mode, `V9XDD.INI` after it.
+- Quake 2: `V9XGL.LOG` from one session with the crosshair on. On our
+  side, whether the crosshair draws on Caicos or Trinity.
+- Quake 1 DOS: the same run on the `vbe` package.
+- Still owed from before: V9XD32 at 16 and 32 bpp.
