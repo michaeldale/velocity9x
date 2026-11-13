@@ -53,7 +53,7 @@ v9x_u32 v9x_r6_shader_solid_ps(v9x_u32 *out);
  *
  * Longest of these shaders, in dwords, for a caller's buffers.
  */
-#define V9X_R6_SHADER_DWORDS_MAX    24u
+#define V9X_R6_SHADER_DWORDS_MAX    32u
 
 /*
  * Gouraud: a vertex of x, y, z, w then r, g, b, a, eight floats (32
@@ -142,11 +142,55 @@ v9x_u32 v9x_r6_shader_modulate_ps(v9x_u32 *out);
 v9x_u32 v9x_r6_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out);
 v9x_u32 v9x_r6_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
 
+/*
+ * The Direct3D shaders with specular, fog and a source colour key,
+ * Evergreen's (eg_shader.h, v9x_eg_shader_d3d_vs_lit and _ps_built) in
+ * R6xx forms. The VS also fetches the specular dword (offset 20, four
+ * normalised bytes in memory order: B, G, R, and the fog factor in A)
+ * into R3 and exports it last: parameter 0 the colour, 1 the texel
+ * coordinate when textured, then specular. 4 GPRs.
+ *
+ * R6xx has no interpolation instructions: the SPI writes input n into GPR
+ * n, so the PS starts with the colour in R0, the coordinate in R1 when
+ * textured, and specular in R2 textured, R1 not. Then, as Evergreen's:
+ * the texel sampled into R0 (REPLACE) or R1 (MODULATE); with a key, a
+ * texel whose B, G and R each lie within key_tolerance of key is killed
+ * (R3 = texel - key, the largest |difference| into R3.x, KILLGT); R0 *= R1
+ * for MODULATE; specular's RGB added and clamped; fog: R0.rgb = fog +
+ * f * (R0.rgb - fog) with f specular's A. Alpha is the op's throughout.
+ * The fog colour and the key are ALU literals (SRC_SEL 253), each group's
+ * three padded to four, as Evergreen's measured groups carry them; they
+ * are floats' bits in memory order (B, G, R), which the engine computes.
+ * The PS is built per draw and sent with the batch. 3 GPRs, 4 with a key
+ * (its draw needs DB_SHADER_CONTROL KILL_ENABLE, r6_3d.h kill).
+ */
+#define V9X_R6_D3D_SPECULAR_OFFSET  20ul
+#define V9X_R6_D3D_VS_LIT_GPRS      4ul
+#define V9X_R6_D3D_LIT_INTERPOLANTS(textured) ((textured) != 0ul ? 3ul : 2ul)
+#define V9X_R6_D3D_LIT_PS_GPRS(color_key) ((color_key) != 0ul ? 4ul : 3ul)
+#define V9X_R6_LIT_PS_DWORDS_MAX    128u
+struct v9x_r6_d3d_ps {
+    v9x_u32 op;              /* V9X_R6_D3D_OP_* */
+    v9x_u32 specular;
+    v9x_u32 fog;
+    v9x_u32 fog_literal[3];  /* B, G, R as floats' bits */
+    v9x_u32 color_key;
+    v9x_u32 key[3];          /* B, G, R as floats' bits */
+    v9x_u32 key_tolerance;   /* a float's bits */
+};
+v9x_u32 v9x_r6_shader_d3d_vs_lit(v9x_u32 textured, v9x_u32 *out);
+/* Up to V9X_R6_LIT_PS_DWORDS_MAX dwords; the count. */
+v9x_u32 v9x_r6_shader_d3d_ps_lit(const struct v9x_r6_d3d_ps *ps,
+                                 v9x_u32 *out);
+
 /* The HAL's shader slots, each 256 bytes in the CP's window (r6_cp.c):
- * the two Direct3D VSs, then the PS for each op in V9X_R6_D3D_OP_* order. */
+ * the two Direct3D VSs, the PS for each op in V9X_R6_D3D_OP_* order, then
+ * the two lit VSs. The lit PSs are built per draw. */
 #define V9X_R6_SLOT_VS              0ul
 #define V9X_R6_SLOT_VS_TEXTURED     1ul
 #define V9X_R6_SLOT_PS_FIRST        2ul /* + V9X_R6_D3D_OP_* */
-#define V9X_R6_SLOT_COUNT           5ul
+#define V9X_R6_SLOT_VS_LIT          5ul
+#define V9X_R6_SLOT_VS_LIT_TEXTURED 6ul
+#define V9X_R6_SLOT_COUNT           7ul
 
 #endif

@@ -129,6 +129,98 @@ static int v9x_d3d_r6_op(v9x_u32 op, v9x_u32 *shader_op)
     return 0;
 }
 
+/*
+ * A colour key in its texture's format as the floats the sampler returns
+ * for B, G and R, each field's value over its maximum, with a tolerance
+ * of half a step of the finest: d3d_eg_map.c's v9x_d3d_eg_key (the
+ * V9X_R6_COLOR_* numbers are Evergreen's). A 1555 or 4444 key's alpha is
+ * not compared: Direct3D keys on colour.
+ */
+static void v9x_d3d_r6_key(v9x_u32 format, v9x_u32 key,
+                           struct v9x_r6_d3d_ps *lit)
+{
+    v9x_u32 shift_g;
+    v9x_u32 shift_r;
+    v9x_u32 max_b;
+    v9x_u32 max_g;
+    v9x_u32 max_r;
+
+    switch (format) {
+    case V9X_R6_COLOR_5_6_5:
+        shift_g = 5ul;
+        shift_r = 11ul;
+        max_b = 31ul;
+        max_g = 63ul;
+        max_r = 31ul;
+        break;
+    case V9X_R6_COLOR_1_5_5_5:
+        shift_g = 5ul;
+        shift_r = 10ul;
+        max_b = 31ul;
+        max_g = 31ul;
+        max_r = 31ul;
+        break;
+    case V9X_R6_COLOR_4_4_4_4:
+        shift_g = 4ul;
+        shift_r = 8ul;
+        max_b = 15ul;
+        max_g = 15ul;
+        max_r = 15ul;
+        break;
+    case V9X_R6_COLOR_8_8_8_8:
+        shift_g = 8ul;
+        shift_r = 16ul;
+        max_b = 255ul;
+        max_g = 255ul;
+        max_r = 255ul;
+        break;
+    default:
+        return;
+    }
+    lit->color_key = 1ul;
+    lit->key[0] = v9x_eg_unorm_float_bits(key & max_b, max_b);
+    lit->key[1] = v9x_eg_unorm_float_bits((key >> shift_g) & max_g, max_g);
+    lit->key[2] = v9x_eg_unorm_float_bits((key >> shift_r) & max_r, max_r);
+    lit->key_tolerance = v9x_eg_unorm_float_bits(1ul, 2ul * max_g);
+}
+
+/* Specular, fog and the key into lit, and the lit shaders into the
+ * state, when the draw needs any of them (d3d_eg_map.c's rule). */
+static void v9x_d3d_r6_map_lit(const V9X_R3D_DRAW *draw,
+                               const V9X_D3D_R6_TEXTURE *texture,
+                               v9x_u32 textured,
+                               struct v9x_r6_3d_state *state,
+                               v9x_u32 *vs_slot, v9x_u32 *ps_slot,
+                               struct v9x_r6_d3d_ps *lit)
+{
+    v9x_u32 index;
+
+    lit->op = *ps_slot - V9X_R6_SLOT_PS_FIRST;
+    lit->specular = draw->specular_enable != 0ul ? 1ul : 0ul;
+    lit->fog = draw->fog_enable != 0ul ? 1ul : 0ul;
+    lit->color_key = 0ul;
+    lit->key_tolerance = 0ul;
+    for (index = 0ul; index < 3ul; ++index) {
+        lit->fog_literal[index] = v9x_eg_unorm_float_bits(
+            (draw->fog_color >> (8ul * index)) & 0xfful, 255ul);
+        lit->key[index] = 0ul;
+    }
+    if (textured != 0ul && draw->color_key_enable != 0ul &&
+        texture->has_key != 0ul) {
+        v9x_d3d_r6_key(texture->format, texture->key, lit);
+        state->kill = lit->color_key;
+    }
+    if (lit->specular == 0ul && lit->fog == 0ul && lit->color_key == 0ul) {
+        return;
+    }
+    state->vs_gprs = V9X_R6_D3D_VS_LIT_GPRS;
+    state->ps_gprs = V9X_R6_D3D_LIT_PS_GPRS(lit->color_key);
+    state->interpolants = V9X_R6_D3D_LIT_INTERPOLANTS(textured);
+    *vs_slot = textured != 0ul ? V9X_R6_SLOT_VS_LIT_TEXTURED
+                               : V9X_R6_SLOT_VS_LIT;
+    *ps_slot = V9X_D3D_R6_PS_LIT;
+}
+
 /* A float's bits for ref / 255, the SX's alpha reference. */
 static v9x_u32 v9x_d3d_r6_alpha_ref(v9x_u32 ref)
 {
@@ -194,11 +286,6 @@ static v9x_u32 v9x_d3d_r6_map_texture(const V9X_R3D_DRAW *draw,
         state->texture_levels = 1ul;
         state->mip_filter = V9X_R6_MIP_NONE;
     }
-    /* No kill shader yet: a keyed texture drawn unkeyed would show the
-     * key colour, so it is refused. */
-    if (draw->color_key_enable != 0ul && texture->has_key != 0ul) {
-        return V9X_D3D_EG_REFUSE_COLOR_KEY;
-    }
     state->has_texture = 1ul;
     state->texture_gpu = heap_gpu + texture->offset;
     state->texture_width = texture->width;
@@ -220,9 +307,11 @@ v9x_u32 v9x_d3d_r6_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 depth_bytes,
                             struct v9x_r6_3d_state *state,
                             v9x_u32 *vs_slot,
-                            v9x_u32 *ps_slot)
+                            v9x_u32 *ps_slot,
+                            struct v9x_r6_d3d_ps *lit)
 {
     unsigned char *bytes = (unsigned char *)state;
+    v9x_u32 reason;
     v9x_u32 bytes_per_pixel;
     v9x_u32 index;
     v9x_u32 code;
@@ -355,8 +444,14 @@ v9x_u32 v9x_d3d_r6_map_draw(const V9X_R3D_DRAW *draw,
         state->interpolants = 1ul;
         *vs_slot = V9X_R6_SLOT_VS;
         *ps_slot = V9X_R6_SLOT_PS_FIRST + V9X_R6_D3D_OP_NONE;
+        v9x_d3d_r6_map_lit(draw, texture, 0ul, state, vs_slot, ps_slot, lit);
         return V9X_D3D_EG_REFUSE_NONE;
     }
     *vs_slot = V9X_R6_SLOT_VS_TEXTURED;
-    return v9x_d3d_r6_map_texture(draw, texture, heap_gpu, state, ps_slot);
+    reason = v9x_d3d_r6_map_texture(draw, texture, heap_gpu, state, ps_slot);
+    if (reason != V9X_D3D_EG_REFUSE_NONE) {
+        return reason;
+    }
+    v9x_d3d_r6_map_lit(draw, texture, 1ul, state, vs_slot, ps_slot, lit);
+    return V9X_D3D_EG_REFUSE_NONE;
 }

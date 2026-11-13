@@ -1,8 +1,8 @@
-# HD 2600 XT: Direct3D through the CP, V9XD32 at 16 bpp passes (mip chains from boot 9)
+# HD 2600 XT: Direct3D through the CP, V9XD32 at 16 bpp passes (mips boot 9, fog and key boot 10)
 
 Date: 2026-11-13
 
-Status: **measured, one card, boots 7, 8 and 9.** M-NZHWBR's HD 2600 XT
+Status: **measured, one card, boots 7 to 10.** M-NZHWBR's HD 2600 XT
 (`1002:9588`, RV630) on the `ati` driver built from this commit's tree
 (dirty against `020dd1c5`), installed by WININIT renames. The Direct3D
 step of [the plan](../plans/ati-rv630-hd2600xt.md), after V9XR63D drew
@@ -76,12 +76,32 @@ Only MIPNEAREST was judged (T21's filter). Four quad sizes landing on
 four different levels says the LOD scale and the level addresses are
 right to the nearest level; trilinear blending is untested.
 
+## Specular, fog and the colour key (boot 10): V9XD32 passes
+
+Evergreen's lit shaders in R6xx forms (`r6_shader.c`,
+`v9x_r6_shader_d3d_vs_lit`, `_ps_lit`): the VS fetches the specular
+dword as a fourth input; the PS, built per draw into the arena, kills a
+keyed texel (R3 = texel - key, the largest |difference|, KILLGT against
+a tolerance), modulates, adds specular clamped, and fogs by specular's
+alpha, the fog colour and key as ALU literals. R6xx has no interpolation
+step, so the PS reads its inputs where the SPI put them (specular in R2
+textured, R1 not). The ALU clause's COUNT includes its literal pairs
+(Mesa's ndw / 2). Specular, vertex and table fog and TRANSPARENCY are
+advertised again (`HalTriRasterCaps=1B0`, `HalTriTextureCaps=0D`).
+
+V9XD32 /bpp16 on boot 10: `T20Ok=FF03`, `T20Expected=FF03` - fog full
+and half, the key's four quadrants (the keyed one gone to the background
+`8410`, red, blue and white kept), the alpha test and its lightmap pass;
+every other check as on boot 9; **Failures 0, Result PASS**, no
+timeouts. Capture `boot10-V9XD32-bpp16.TXT`.
+
+Specular is not judged by any V9XD32 check: built and host-tested, not
+measured. T20's ADD and DECALALPHA bits are outside its expectation (not
+advertised, not built), as on Evergreen.
+
 ## Not done, not measured
 
-- Specular and fog: drawn without them and not advertised (T20's fog and
-  ADD bits are outside its expectation for that reason). The lit shaders
-  are not ported.
-- A source colour key: refused, not advertised (TRANSPARENCY off).
+- Specular on the card (above).
 - 32 bpp: the row lists no 32 bpp mode, so the XRGB8888 target path is
   host-tested only.
 - Any game or benchmark; OpenGL and Glide (no r3d engine id).

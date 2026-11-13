@@ -1357,6 +1357,101 @@ static void test_d3d_shaders(void)
     want[i++] = 0ul;
     CHECK(v9x_r6_shader_d3d_ps(V9X_R6_D3D_OP_REPLACE, got) == i &&
           memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+
+    /* The lit VS textured: VTX ADDR(6) CNT(4); POS0 R1; PARAM0 R0, PARAM1
+     * R2 (EXPORT); PARAM2 R3 (EXPORT_DONE, the end); fetches at 12: R1,
+     * R2, R3 = specular at 20, R0 = colour at 16, both NORM unsigned. */
+    for (textured = 0ul; textured < 2ul; ++textured) {
+        v9x_u32 fetch = textured ? 12ul : 8ul;
+        v9x_u32 count = textured ? 4ul : 3ul;
+
+        i = v9x_r6_shader_d3d_vs_lit(textured, got);
+        CHECK(i == fetch + count * 4ul && i <= V9X_R6_SHADER_DWORDS_MAX);
+        CHECK(got[0] == fetch / 2ul &&
+              got[1] == X_CF_DWORD1(0, 0, 0, X_I_COUNT(count), 0, 0, 0,
+                                    X_SQ_CF_INST_VTX, 0, 1));
+        /* The last export: PARAM (2 << 13) base 1 or 2 from R3. */
+        CHECK(got[textured ? 8ul : 6ul] ==
+                  ((textured ? 2ul : 1ul) | (2ul << 13) | (3ul << 15)));
+        CHECK(fetch_order_ok(got, fetch, count) &&
+              fetch_counts_ok(got, fetch, count) &&
+              fetch_mega_first(got, fetch, count));
+        /* The last two fetches: specular into R3 at 20, colour into R0 at
+         * 16, format 1Ah NORM unsigned. */
+        CHECK(got[i - 7ul] == ((0x1aul << 22) | 3ul | (1ul << 12) |
+                               (2ul << 15) | (3ul << 18)) &&
+              (got[i - 6ul] & 0xfffful) == 20ul);
+        CHECK(got[i - 3ul] == ((0x1aul << 22) | (1ul << 12) | (2ul << 15) |
+                               (3ul << 18)) &&
+              (got[i - 2ul] & 0xfffful) == 16ul);
+    }
+}
+
+/* The lit PS: the CF words as the layout says, the ALU clause's COUNT
+ * covering its literal pairs, and the key's KILLGT. */
+static void test_d3d_lit_ps(void)
+{
+    struct v9x_r6_d3d_ps ps;
+    v9x_u32 got[V9X_R6_LIT_PS_DWORDS_MAX];
+    v9x_u32 count;
+    v9x_u32 tex_at;
+    v9x_u32 at;
+    v9x_u32 kills = 0ul;
+
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_R6_D3D_OP_MODULATE;
+    ps.specular = 1ul;
+    ps.fog = 1ul;
+    ps.fog_literal[0] = 0x3f800000ul;
+    ps.color_key = 1ul;
+    ps.key[2] = 0x3f800000ul;
+    ps.key_tolerance = 0x3c000000ul;
+    count = v9x_r6_shader_d3d_ps_lit(&ps, got);
+    CHECK(count <= V9X_R6_LIT_PS_DWORDS_MAX);
+    /* ALU dwords: the key's group 6 + 4 literal, 2 MAX 4, KILLGT 2 + 2
+     * literal; MUL 8; ADD 6; fog 6 + 4, MUL 6, 6 + 4: 58 from 8, so the
+     * texture clause at 68 (on 16 bytes) and COUNT 29 (Mesa's ndw / 2,
+     * literals included). EXPORT_DONE PIXEL 0 from R0 with BARRIER and
+     * the end: 94200688h. */
+    tex_at = 68ul;
+    CHECK(count == tex_at + 4ul);
+    CHECK(got[0] == tex_at / 2ul &&
+          got[1] == X_CF_DWORD1(0, 0, 0, X_I_COUNT(1), 0, 0, 0,
+                                X_SQ_CF_INST_TEX, 0, 1));
+    CHECK(got[2] == 4ul &&
+          got[3] == X_CF_ALU_DWORD1(0, 0, 0, X_I_COUNT(29), 0,
+                                    X_SQ_CF_INST_ALU, 0, 1));
+    CHECK(got[4] == 0ul && got[5] == 0x94200688ul);
+    /* The sample: R1 = t0 at R1, normalised. */
+    CHECK(got[tex_at] == 0x00010010ul &&
+          got[tex_at + 1ul] == (0x30000000ul | 1ul | (1ul << 12) |
+                                (2ul << 15) | (3ul << 18)));
+    /* The key's first slot: ADD R3.x = R1.x - L.x (SRC1 253, NEG). */
+    CHECK(got[8] == (1ul | (253ul << 13) | (1ul << 25)) &&
+          got[9] == (0x10ul | (3ul << 21)));
+    for (at = 8ul; at + 1ul < tex_at; at += 2ul) {
+        if (((got[at + 1ul] >> 8) & 0x3fful) == 0x2dul &&
+            (got[at] & 0x1fful) == 253ul) {
+            ++kills;
+            CHECK((got[at + 1ul] & 0x10ul) == 0ul &&
+                  got[at + 2ul] == 0x3c000000ul);
+        }
+    }
+    CHECK(kills == 1ul);
+
+    /* Specular alone, untextured: no texture clause; ALU 3 slots, R1 the
+     * specular, ADD R0.c = R0.c + R1.c clamped. */
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_R6_D3D_OP_NONE;
+    ps.specular = 1ul;
+    count = v9x_r6_shader_d3d_ps_lit(&ps, got);
+    CHECK(count == 14ul);
+    CHECK(got[0] == 4ul &&
+          got[1] == X_CF_ALU_DWORD1(0, 0, 0, X_I_COUNT(3), 0,
+                                    X_SQ_CF_INST_ALU, 0, 1) &&
+          got[2] == 0ul && got[3] == 0x94200688ul);
+    CHECK(got[8] == (0ul | (1ul << 13)) &&
+          got[9] == (0x80000010ul));
 }
 
 /*
@@ -1863,6 +1958,7 @@ unsigned int v9x_run_r6_3d_tests(void)
     test_shaders();
     test_interp_shaders();
     test_d3d_shaders();
+    test_d3d_lit_ps();
     test_state_words();
     test_build_state();
     test_draw_flush();

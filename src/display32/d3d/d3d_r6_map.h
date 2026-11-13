@@ -8,9 +8,10 @@
  * (d3d_eg_map.h, V9X_D3D_EG_REFUSE_*), so V9XTRACE's policy counters read
  * the same on both.
  *
- * What Evergreen draws that this does not, yet: specular and fog (the
- * draw goes ahead without them: the lit shaders are not ported), a source
- * colour key (refused).
+ * A draw with specular, fog or a source colour key takes the lit shaders
+ * (r6_shader.h, v9x_r6_shader_d3d_ps_lit): ps_slot is then
+ * V9X_D3D_R6_PS_LIT, and the engine builds the PS from lit and sends it
+ * with the batch, as Evergreen's does.
  */
 #ifndef VELOCITY9X_D3D_R6_MAP_H
 #define VELOCITY9X_D3D_R6_MAP_H
@@ -19,6 +20,9 @@
 #include "velocity9x/r6_3d.h"
 #include "velocity9x/r6_shader.h"
 #include "d3d_eg_map.h"
+
+/* ps_slot for a draw whose PS the engine builds from lit. */
+#define V9X_D3D_R6_PS_LIT 0xfffffffful
 
 /* A texture format no R6xx path here samples. */
 #define V9X_D3D_R6_TEXTURE_UNKNOWN 0xfffffffful
@@ -32,8 +36,10 @@ typedef struct v9x_d3d_r6_texture {
     v9x_u32 height;
     v9x_u32 pitch_texels;
     v9x_u32 offset;
-    /* The surface's source colour key is set (DDRAWISURF_HASCKEYSRCBLT). */
+    /* The surface's source colour key, in its own format, when it has one
+     * (DDRAWISURF_HASCKEYSRCBLT). */
     v9x_u32 has_key;
+    v9x_u32 key;
     /* An XRGB8888 texture: its fourth byte is not alpha. */
     v9x_u32 opaque;
     /* 1, or the levels of a chain d3d_r6.c placed by Evergreen's layout
@@ -57,6 +63,7 @@ v9x_u32 v9x_d3d_r6_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 depth_bytes,
                             struct v9x_r6_3d_state *state,
                             v9x_u32 *vs_slot,
-                            v9x_u32 *ps_slot);
+                            v9x_u32 *ps_slot,
+                            struct v9x_r6_d3d_ps *lit);
 
 #endif

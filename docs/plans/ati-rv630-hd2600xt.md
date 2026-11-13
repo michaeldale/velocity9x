@@ -29,7 +29,8 @@ LESS exact ([issue](../issues/2026-11-13-rv630-depth-constant-z.md), not
 reproduced). The Direct3D HAL runs (`r6_cp.c`, `d3d_r6.c`): V9XD32
 /bpp16 passes, mip chains included (boot 9), no timeouts
 ([record](../decisions/2026-11-13-rv630-direct3d-hal-first-light.md)).
-Next: the lit shaders (specular, fog, colour key), a game.
+Fog and the colour key pass V9XD32 (boot 10); specular is built but
+not judged by any check. Next: a game.
 Other register facts
 below come from Linux `radeon` source.
 

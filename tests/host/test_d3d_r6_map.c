@@ -56,8 +56,10 @@ static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_R6_TEXTURE *texture, v9x_u32 depth_bytes,
                    struct v9x_r6_3d_state *state, v9x_u32 *vs, v9x_u32 *ps)
 {
+    struct v9x_r6_d3d_ps lit;
+
     return v9x_d3d_r6_map_draw(draw, texture, HEAP_GPU, depth_bytes, state,
-                               vs, ps);
+                               vs, ps, &lit);
 }
 
 static void test_untextured(void)
@@ -241,7 +243,8 @@ static void test_textured(void)
           V9X_D3D_EG_REFUSE_NONE);
     draw.color_key_enable = 1ul;
     CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
-          V9X_D3D_EG_REFUSE_COLOR_KEY);
+          V9X_D3D_EG_REFUSE_NONE && ps == V9X_D3D_R6_PS_LIT &&
+          state.kill == 1ul);
     /* Cylindrical wrap, and a second unit. */
     base_texture(&draw, &texture);
     draw.color_key_enable = 0ul;
@@ -287,9 +290,66 @@ static void test_explicit_and_fill(void)
     CHECK(map(&draw, 0, 2ul, &state, &vs, &ps) == V9X_D3D_EG_REFUSE_EXPLICIT);
 }
 
+static void test_lit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_R6_TEXTURE texture;
+    struct v9x_r6_3d_state state;
+    struct v9x_r6_d3d_ps lit;
+    v9x_u32 vs;
+    v9x_u32 ps;
+
+    /* Specular untextured: the lit VS, a built PS, two interpolants. */
+    base_draw(&draw);
+    draw.specular_enable = 1ul;
+    CHECK(v9x_d3d_r6_map_draw(&draw, 0, HEAP_GPU, 0ul, &state, &vs, &ps,
+                              &lit) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(vs == V9X_R6_SLOT_VS_LIT && ps == V9X_D3D_R6_PS_LIT &&
+          lit.op == V9X_R6_D3D_OP_NONE && lit.specular == 1ul &&
+          lit.fog == 0ul && lit.color_key == 0ul &&
+          state.vs_gprs == 4ul && state.ps_gprs == 3ul &&
+          state.interpolants == 2ul && state.kill == 0ul);
+
+    /* Fog textured: the fog colour 0x00RRGGBB as B, G, R floats. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.fog_enable = 1ul;
+    draw.fog_color = 0x00ff8000ul;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(vs == V9X_R6_SLOT_VS_LIT_TEXTURED && ps == V9X_D3D_R6_PS_LIT &&
+          lit.op == V9X_R6_D3D_OP_MODULATE && lit.fog == 1ul &&
+          lit.fog_literal[0] == 0ul &&
+          lit.fog_literal[1] == v9x_eg_unorm_float_bits(0x80ul, 255ul) &&
+          lit.fog_literal[2] == 0x3f800000ul &&
+          state.interpolants == 3ul);
+
+    /* A 565 key, pure red F800h: B 0, G 0, R 1.0; tolerance 1 / 126. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.texture.op = V9X_R3D_TEXOP_DECAL;
+    draw.color_key_enable = 1ul;
+    texture.has_key = 1ul;
+    texture.key = 0xf800ul;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(lit.op == V9X_R6_D3D_OP_REPLACE && lit.color_key == 1ul &&
+          lit.key[0] == 0ul && lit.key[1] == 0ul &&
+          lit.key[2] == 0x3f800000ul &&
+          lit.key_tolerance == v9x_eg_unorm_float_bits(1ul, 126ul) &&
+          state.kill == 1ul && state.ps_gprs == 4ul);
+
+    /* Neither: the plain slots. */
+    base_draw(&draw);
+    CHECK(v9x_d3d_r6_map_draw(&draw, 0, HEAP_GPU, 0ul, &state, &vs, &ps,
+                              &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          vs == V9X_R6_SLOT_VS && ps == V9X_R6_SLOT_PS_FIRST);
+}
+
 unsigned int v9x_run_d3d_r6_map_tests(void)
 {
     failures = 0u;
+    test_lit();
     test_untextured();
     test_depth_blend_alpha();
     test_textured();

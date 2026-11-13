@@ -420,6 +420,10 @@ static int v9x_r6_cp_upload_shaders(void)
             count = v9x_r6_shader_d3d_vs(0ul, words);
         } else if (which == V9X_R6_SLOT_VS_TEXTURED) {
             count = v9x_r6_shader_d3d_vs(1ul, words);
+        } else if (which == V9X_R6_SLOT_VS_LIT) {
+            count = v9x_r6_shader_d3d_vs_lit(0ul, words);
+        } else if (which == V9X_R6_SLOT_VS_LIT_TEXTURED) {
+            count = v9x_r6_shader_d3d_vs_lit(1ul, words);
         } else {
             count = v9x_r6_shader_d3d_ps(which - V9X_R6_SLOT_PS_FIRST, words);
         }

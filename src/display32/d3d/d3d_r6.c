@@ -15,10 +15,10 @@
  * Every batch carries the whole state: the default state, then its own,
  * as Evergreen's does.
  *
- * Not yet: specular and fog (drawn without them, and not offered in the
- * caps), a source colour key (refused, and not offered), OpenGL and
- * Glide (no r3d engine id). Mip chains are placed and sampled in
- * Evergreen's layout (v9x_eg_3d_mip_layout).
+ * Mip chains are placed and sampled in Evergreen's layout
+ * (v9x_eg_3d_mip_layout). A draw with specular, fog or a source colour key
+ * takes the lit shaders, its PS built per draw into the arena as
+ * Evergreen's. Not yet: OpenGL and Glide (no r3d engine id).
  */
 #include "d3d_internal.h"
 #include "d3d_r6_map.h"
@@ -153,8 +153,9 @@ static int v9x_d3d_r6_texture_format(const V9X_DD_SURFACE_LCL *surface,
 }
 
 /*
- * What d3d_r6_map.c accepts: Evergreen's caps without specular, fog and
- * the colour key (TRANSPARENCY), which the R6xx shaders do not draw yet.
+ * What d3d_r6_map.c accepts: Evergreen's caps - specular, vertex and
+ * table fog by the factor the core leaves in the specular alpha, and the
+ * source colour key (TRANSPARENCY).
  */
 static void v9x_d3d_r6_describe_caps(V9X_DD_SHARED *shared)
 {
@@ -188,7 +189,9 @@ static void v9x_d3d_r6_describe_caps(V9X_DD_SHARED *shared)
     tri->dwMiscCaps = V9X_D3DPMISCCAPS_CULLNONE | V9X_D3DPMISCCAPS_CULLCW |
                       V9X_D3DPMISCCAPS_CULLCCW | V9X_D3DPMISCCAPS_MASKZ;
     tri->dwRasterCaps = V9X_D3DPRASTERCAPS_ZTEST |
-                        V9X_D3DPRASTERCAPS_SUBPIXEL;
+                        V9X_D3DPRASTERCAPS_SUBPIXEL |
+                        V9X_D3DPRASTERCAPS_FOGVERTEX |
+                        V9X_D3DPRASTERCAPS_FOGTABLE;
     tri->dwZCmpCaps =
         V9X_D3DPCMPCAPS_NEVER | V9X_D3DPCMPCAPS_LESS |
         V9X_D3DPCMPCAPS_EQUAL | V9X_D3DPCMPCAPS_LESSEQUAL |
@@ -203,10 +206,14 @@ static void v9x_d3d_r6_describe_caps(V9X_DD_SHARED *shared)
     tri->dwDestBlendCaps = tri->dwSrcBlendCaps;
     tri->dwShadeCaps =
         V9X_D3DPSHADECAPS_COLORFLATRGB | V9X_D3DPSHADECAPS_COLORGOURAUDRGB |
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
-        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
+        V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
-                         V9X_D3DPTEXTURECAPS_ALPHA;
+                         V9X_D3DPTEXTURECAPS_ALPHA |
+                         V9X_D3DPTEXTURECAPS_TRANSPARENCY;
     tri->dwTextureFilterCaps = V9X_D3DPTFILTERCAPS_NEAREST |
                                V9X_D3DPTFILTERCAPS_LINEAR |
                                V9X_D3DPTFILTERCAPS_MIPNEAREST |
@@ -384,6 +391,7 @@ static void v9x_d3d_r6_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->mip_offset = offset;
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         texture->has_key = 1ul;
+        texture->key = surface->ddckCKSrcBltLow;
     }
     if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
         v9x_d3d_r6_resolve_chain(surface, bytes, texture);
@@ -423,7 +431,7 @@ static void v9x_d3d_r6_count_refusal(const V9X_R3D_DRAW *draw, v9x_u32 reason)
 static v9x_u32 v9x_d3d_r6_map(const V9X_R3D_DRAW *draw,
                               struct v9x_r6_3d_state *state,
                               v9x_u32 *vs_slot, v9x_u32 *ps_slot,
-                              DWORD *pipe_config)
+                              DWORD *pipe_config, struct v9x_r6_d3d_ps *lit)
 {
     V9X_D3D_R6_TEXTURE texture;
     DWORD heap_gpu;
@@ -439,7 +447,7 @@ static v9x_u32 v9x_d3d_r6_map(const V9X_R3D_DRAW *draw,
     }
     return v9x_d3d_r6_map_draw(draw, &texture, heap_gpu,
                                v9x_d3d_r6_depth_bytes(draw), state, vs_slot,
-                               ps_slot);
+                               ps_slot, lit);
 }
 
 static int v9x_d3d_r6_accepts(const V9X_R3D_DRAW *draw)
@@ -449,21 +457,29 @@ static int v9x_d3d_r6_accepts(const V9X_R3D_DRAW *draw)
     v9x_u32 ps_slot;
     v9x_u32 reason;
     DWORD pipe_config;
+    struct v9x_r6_d3d_ps lit;
 
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
-    reason = v9x_d3d_r6_map(draw, &state, &vs_slot, &ps_slot, &pipe_config);
+    reason = v9x_d3d_r6_map(draw, &state, &vs_slot, &ps_slot, &pipe_config,
+                            &lit);
     if (reason != V9X_D3D_EG_REFUSE_NONE && reason < 20ul) {
         ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
     }
     return reason == V9X_D3D_EG_REFUSE_NONE;
 }
 
+/* The lit PS of the draw in hand (r6_shader.h, v9x_r6_shader_d3d_ps_lit). */
+static v9x_u32 v9x_d3d_r6_lit_ps[V9X_R6_LIT_PS_DWORDS_MAX];
+
 /*
  * A run of triangles, in batches of at most V9X_D3D_R6_CHUNK_TRIANGLES:
  * each batch's vertices copied into the CP's arena as they are, then the
- * default state, the batch's state, the draw and the cache flush.
+ * default state, the batch's state, the draw and the cache flush. A lit
+ * draw's PS goes into the arena ahead of each batch's vertices, as
+ * Evergreen's: it holds the fog colour and the key, and the arena is the
+ * only space not reused before the GPU has read it.
  */
 static int v9x_d3d_r6_draw(const V9X_R3D_DRAW *draw,
                            const V9X_R3D_VERTEX *vertices,
@@ -482,22 +498,39 @@ static int v9x_d3d_r6_draw(const V9X_R3D_DRAW *draw,
     v9x_u32 vs_slot;
     v9x_u32 ps_slot;
     v9x_u32 reason;
+    DWORD ps_dwords = 0ul;
+    struct v9x_r6_d3d_ps lit;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
         !v9x_d3d_r6_ready()) {
         return 0;
     }
     started = V9X_TIME_BEGIN();
-    reason = v9x_d3d_r6_map(draw, &state, &vs_slot, &ps_slot, &pipe_config);
+    reason = v9x_d3d_r6_map(draw, &state, &vs_slot, &ps_slot, &pipe_config,
+                            &lit);
     if (reason != V9X_D3D_EG_REFUSE_NONE) {
         v9x_d3d_r6_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
     }
     state.vs_gpu = v9x_r6_cp_shader_gpu(vs_slot);
-    state.ps_gpu = v9x_r6_cp_shader_gpu(ps_slot);
+    if (ps_slot == V9X_D3D_R6_PS_LIT) {
+        ps_dwords = v9x_r6_shader_d3d_ps_lit(&lit, v9x_d3d_r6_lit_ps);
+    } else {
+        state.ps_gpu = v9x_r6_cp_shader_gpu(ps_slot);
+    }
 
     while (triangle_count != 0ul) {
+        if (ps_dwords != 0ul) {
+            if (!v9x_r6_cp_vertex_space(ps_dwords * 4ul, &linear, &gpu)) {
+                V9X_TIME_END(V9X_TIME_DECODE, started);
+                return 0;
+            }
+            for (index = 0ul; index < ps_dwords; ++index) {
+                linear[index] = v9x_d3d_r6_lit_ps[index];
+            }
+            state.ps_gpu = gpu;
+        }
         chunk = triangle_count > V9X_D3D_R6_CHUNK_TRIANGLES ?
                 V9X_D3D_R6_CHUNK_TRIANGLES : triangle_count;
         dwords = chunk * 3ul * V9X_D3D_R6_VERTEX_DWORDS;

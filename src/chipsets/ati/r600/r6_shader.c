@@ -550,3 +550,211 @@ v9x_u32 v9x_r6_shader_d3d_ps(v9x_u32 op, v9x_u32 *out)
     at += v9x_r6_shader_sample(1ul, 1ul, out + at);
     return at;
 }
+
+v9x_u32 v9x_r6_shader_d3d_vs_lit(v9x_u32 textured, v9x_u32 *out)
+{
+    v9x_u32 fetch_at = textured != 0ul ? 12ul : 8ul;
+    v9x_u32 at;
+
+    /* VTX, POS0 from R1, PARAM0 from R0, textured PARAM1 from R2, then
+     * specular from R3 as the last parameter (EXPORT_DONE, the end); the
+     * fetch clause on the next 16-byte boundary. */
+    out[0] = fetch_at / 2ul;
+    out[1] = v9x_r6_shader_cf_word1(R6_CF_INST_VTX,
+                                    textured != 0ul ? 4ul : 3ul, 0ul, 1ul);
+    out[2] = v9x_r6_shader_export_word0(R6_EXPORT_POS, R6_EXPORT_POS0, 1ul);
+    out[3] = v9x_r6_shader_export_word1(1ul, 0ul, 1ul);
+    out[4] = v9x_r6_shader_export_word0(R6_EXPORT_PARAM, 0ul, 0ul);
+    out[5] = v9x_r6_shader_export_word1_inst(R6_CF_INST_EXPORT, 0ul, 0ul);
+    at = 6ul;
+    if (textured != 0ul) {
+        out[at++] = v9x_r6_shader_export_word0(R6_EXPORT_PARAM, 1ul, 2ul);
+        out[at++] = v9x_r6_shader_export_word1_inst(R6_CF_INST_EXPORT, 0ul,
+                                                    0ul);
+    }
+    out[at++] = v9x_r6_shader_export_word0(R6_EXPORT_PARAM,
+                                           textured != 0ul ? 2ul : 1ul, 3ul);
+    out[at++] = v9x_r6_shader_export_word1_inst(R6_CF_INST_EXPORT_DONE, 1ul,
+                                                0ul);
+    while (at < fetch_at) {
+        out[at++] = 0ul;
+    }
+    /* R1 position, R2 coordinate, R3 specular, R0 colour last; every fetch
+     * a mega-fetch, the colours normalised and unsigned. */
+    at += v9x_r6_shader_fetch(1ul, 0ul, R6_FETCH_COUNT_MESA, 1ul,
+                              R6_FMT_32_32_32_32_FLOAT, R6_SEL_Z, R6_SEL_W,
+                              out + at);
+    if (textured != 0ul) {
+        at += v9x_r6_shader_fetch(2ul, R6_D3D_UV_OFFSET, R6_FETCH_COUNT_MESA,
+                                  1ul, R6_FMT_32_32_FLOAT, R6_SEL_0,
+                                  R6_SEL_1, out + at);
+    }
+    at += v9x_r6_shader_fetch(3ul, V9X_R6_D3D_SPECULAR_OFFSET,
+                              R6_FETCH_COUNT_MESA, 1ul, R6_FMT_8_8_8_8,
+                              R6_SEL_Z, R6_SEL_W, out + at);
+    out[at - 3ul] &= ~((3ul << R6_VTX_NUM_FORMAT_SHIFT) |
+                       R6_VTX_COMP_SIGNED);
+    at += v9x_r6_shader_fetch(0ul, R6_D3D_COLOUR_OFFSET, R6_FETCH_COUNT_MESA,
+                              1ul, R6_FMT_8_8_8_8, R6_SEL_Z, R6_SEL_W,
+                              out + at);
+    out[at - 3ul] &= ~((3ul << R6_VTX_NUM_FORMAT_SHIFT) |
+                       R6_VTX_COMP_SIGNED);
+    return at;
+}
+
+/* The lit PS's ALU words (xf86 r600_reg_auto_r6xx.h): ALU_DWORD0
+ * SRC0_NEG bit 12, SRC1_NEG bit 25; R6xx_ALU_DWORD1_OP2 SRC0_ABS bit 0,
+ * SRC1_ABS bit 1; SQ_ALU_SRC_LITERAL 253, whose channel picks the group's
+ * literal dword; OP2 ADD 0, MAX 3, KILLGT 2Dh. */
+#define R6_ALU_SRC0_NEG         0x00001000ul
+#define R6_ALU_SRC1_NEG         0x02000000ul
+#define R6_ALU_SRC0_ABS         0x00000001ul
+#define R6_ALU_SRC1_ABS         0x00000002ul
+#define R6_ALU_SRC_LITERAL      253ul
+#define R6_OP2_ADD              0x00ul
+#define R6_OP2_MAX              0x03ul
+#define R6_OP2_KILLGT           0x2dul
+/* Option bits for v9x_r6_shader_op2 beyond the hardware's. */
+#define R6_OP_NEG1              0x1ul
+#define R6_OP_ABS0              0x2ul
+#define R6_OP_ABS1              0x4ul
+#define R6_OP_CLAMP             0x8ul
+#define R6_OP_NO_WRITE          0x10ul
+/* The lit PS's layout: three CF words padded to 8 dwords, the combine
+ * clause at 8, the texture clause after it on a 16-byte boundary. Key
+ * temporary R3. */
+#define R6_LIT_ALU_DWORD        8ul
+#define R6_LIT_KEY_GPR          3ul
+
+/* One OP2 slot: dst.dst_chan = inst(src0.chan0, src1.chan1). */
+static v9x_u32 v9x_r6_shader_op2(v9x_u32 inst, v9x_u32 src0, v9x_u32 chan0,
+                                 v9x_u32 src1, v9x_u32 chan1,
+                                 v9x_u32 options, v9x_u32 dst,
+                                 v9x_u32 dst_chan, v9x_u32 last,
+                                 v9x_u32 *out)
+{
+    out[0] = src0 | (chan0 << R6_ALU_SRC0_ELEM_SHIFT) |
+             (src1 << R6_ALU_SRC1_SEL_SHIFT) |
+             (chan1 << R6_ALU_SRC1_ELEM_SHIFT) |
+             ((options & R6_OP_NEG1) != 0ul ? R6_ALU_SRC1_NEG : 0ul) |
+             (last != 0ul ? R6_ALU_LAST : 0ul);
+    out[1] = ((options & R6_OP_ABS0) != 0ul ? R6_ALU_SRC0_ABS : 0ul) |
+             ((options & R6_OP_ABS1) != 0ul ? R6_ALU_SRC1_ABS : 0ul) |
+             ((options & R6_OP_NO_WRITE) != 0ul ? 0ul : R6_ALU_WRITE) |
+             (inst << R6_ALU_INST_SHIFT) |
+             (dst << R6_ALU_DST_GPR_SHIFT) |
+             (dst_chan << R6_ALU_DST_ELEM_SHIFT) |
+             ((options & R6_OP_CLAMP) != 0ul ? R6_ALU_CLAMP : 0ul);
+    return 2ul;
+}
+
+/* R(dst).c = R(src).c + L.c (or - L.c) for c in x, y, z, the literal in
+ * the group's trailing dwords, three padded to four. Returns dwords; the
+ * slots are three. */
+static v9x_u32 v9x_r6_shader_literal_group(v9x_u32 src, v9x_u32 dst,
+                                           v9x_u32 negate,
+                                           const v9x_u32 *literal,
+                                           v9x_u32 *out)
+{
+    v9x_u32 at = 0ul;
+    v9x_u32 chan;
+
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        at += v9x_r6_shader_op2(R6_OP2_ADD, src, chan, R6_ALU_SRC_LITERAL,
+                                chan, negate != 0ul ? R6_OP_NEG1 : 0ul, dst,
+                                chan, chan == 2ul, out + at);
+    }
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        out[at++] = literal[chan];
+    }
+    out[at++] = 0ul;
+    return at;
+}
+
+v9x_u32 v9x_r6_shader_d3d_ps_lit(const struct v9x_r6_d3d_ps *ps,
+                                 v9x_u32 *out)
+{
+    v9x_u32 textured = ps->op != V9X_R6_D3D_OP_NONE;
+    v9x_u32 texel = ps->op == V9X_R6_D3D_OP_REPLACE ? 0ul : 1ul;
+    v9x_u32 spec = textured != 0ul ? 2ul : 1ul;
+    v9x_u32 temp = textured != 0ul ? 1ul : 2ul;
+    v9x_u32 at = R6_LIT_ALU_DWORD;
+    v9x_u32 cf = 0ul;
+    v9x_u32 slots = 0ul;
+    v9x_u32 chan;
+
+    /* The key on the texel as sampled, before the op changes it: R3 =
+     * texel - key, R3.x = max(|R3.x|, |R3.y|, |R3.z|), then KILLGT
+     * (tolerance > R3.x), the tolerance a literal of its own group. */
+    if (ps->color_key != 0ul && textured != 0ul) {
+        at += v9x_r6_shader_literal_group(texel, R6_LIT_KEY_GPR, 1ul,
+                                          ps->key, out + at);
+        at += v9x_r6_shader_op2(R6_OP2_MAX, R6_LIT_KEY_GPR, R6_SEL_X,
+                                R6_LIT_KEY_GPR, R6_SEL_Y,
+                                R6_OP_ABS0 | R6_OP_ABS1, R6_LIT_KEY_GPR,
+                                R6_SEL_X, 1ul, out + at);
+        at += v9x_r6_shader_op2(R6_OP2_MAX, R6_LIT_KEY_GPR, R6_SEL_X,
+                                R6_LIT_KEY_GPR, R6_SEL_Z, R6_OP_ABS1,
+                                R6_LIT_KEY_GPR, R6_SEL_X, 1ul, out + at);
+        at += v9x_r6_shader_op2(R6_OP2_KILLGT, R6_ALU_SRC_LITERAL, R6_SEL_X,
+                                R6_LIT_KEY_GPR, R6_SEL_X, R6_OP_NO_WRITE,
+                                0ul, R6_SEL_X, 1ul, out + at);
+        out[at++] = ps->key_tolerance;
+        out[at++] = 0ul;
+    }
+    /* MODULATE: R0 *= R1 in all four channels, Evergreen's in-place group
+     * (measured there, V9XEG3D /d3dfog). */
+    if (ps->op == V9X_R6_D3D_OP_MODULATE) {
+        for (chan = 0ul; chan < 4ul; ++chan) {
+            at += v9x_r6_shader_op2(R6_OP2_MUL, 0ul, chan, 1ul, chan,
+                                    R6_OP_CLAMP, 0ul, chan, chan == 3ul,
+                                    out + at);
+        }
+    }
+    /* Specular adds to RGB and saturates; alpha is the op's. */
+    if (ps->specular != 0ul) {
+        for (chan = 0ul; chan < 3ul; ++chan) {
+            at += v9x_r6_shader_op2(R6_OP2_ADD, 0ul, chan, spec, chan,
+                                    R6_OP_CLAMP, 0ul, chan, chan == 2ul,
+                                    out + at);
+        }
+    }
+    /* Fog: temp = R0 - fog, temp *= f (specular's W), R0 = temp + fog.
+     * The temporary is the coordinate's register textured (the texel
+     * there is used up) and R2 untextured. */
+    if (ps->fog != 0ul) {
+        at += v9x_r6_shader_literal_group(0ul, temp, 1ul, ps->fog_literal,
+                                          out + at);
+        for (chan = 0ul; chan < 3ul; ++chan) {
+            at += v9x_r6_shader_op2(R6_OP2_MUL, temp, chan, spec, R6_SEL_W,
+                                    0ul, temp, chan, chan == 2ul, out + at);
+        }
+        at += v9x_r6_shader_literal_group(temp, 0ul, 0ul, ps->fog_literal,
+                                          out + at);
+    }
+    slots = (at - R6_LIT_ALU_DWORD) / 2ul;
+
+    /* The clauses: the sample first when textured, then the combine,
+     * then R0 to MRT 0. */
+    if (textured != 0ul) {
+        v9x_u32 tex_at = (at + 3ul) & ~3ul;
+
+        while (at < tex_at) {
+            out[at++] = 0ul;
+        }
+        out[cf++] = tex_at / 2ul;
+        out[cf++] = v9x_r6_shader_cf_word1(R6_CF_INST_TEX, 1ul, 0ul, 1ul);
+        at += v9x_r6_shader_sample(1ul, texel, out + at);
+    }
+    if (slots != 0ul) {
+        out[cf++] = R6_LIT_ALU_DWORD / 2ul;
+        out[cf++] = ((slots - 1ul) << R6_CF_ALU_COUNT_SHIFT) |
+                    (R6_CF_INST_ALU << R6_CF_ALU_INST_SHIFT) | R6_CF_BARRIER;
+    }
+    out[cf++] = v9x_r6_shader_export_word0(R6_EXPORT_PIXEL, 0ul, 0ul);
+    out[cf++] = v9x_r6_shader_export_word1(1ul, 1ul, 1ul);
+    while (cf < R6_LIT_ALU_DWORD) {
+        out[cf++] = 0ul;
+    }
+    return at;
+}
