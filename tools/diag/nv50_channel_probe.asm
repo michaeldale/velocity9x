@@ -129,6 +129,15 @@ NCReadWindows label dword
     dd 003200h, 003204h ; cache1 push
     dd 003250h, 003254h ; cache1 pull
     dd 0032ech, 003300h ; runlist count, address, 32FC
+    ; The DMA pusher's state, the eight registers nv04_fifo_intr_dma_pusher
+    ; reads (fifo\nv04.c). Run 13 lost the card after a sweep of all of
+    ; CACHE1 under the misplaced page directory; these are read only on
+    ; request, in a run of their own (run 28).
+    dd 003220h, 00322ch ; push, (3224h), state
+    dd 003240h, 003248h ; DMA put, DMA get
+    dd 003320h, 003324h ; put high
+    dd 003328h, 00332ch ; get high
+    dd 003330h, 003338h ; IB put, IB get
     dd 009400h, 009408h ; PTIMER time
     dd 100c80h, 100c84h ; VM flush
     dd 100c00h, 100ca0h ; VM: fault page (100C08h), flush, fault status
@@ -153,7 +162,7 @@ NCReadWindows label dword
     ; card reads there time out (FFFFFFFF, tens of ms) and the card leaves
     ; configuration space soon after (runs 3, 6 and 13 of
     ; docs\decisions\2026-11-11-gt218-channel-probe-run1-hang.md).
-NC_READ_WINDOW_COUNT    equ 33
+NC_READ_WINDOW_COUNT    equ 38
 
 ; Writes accepted: start, limit (exclusive).
 NCWriteWindows label dword
