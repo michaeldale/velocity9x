@@ -273,6 +273,14 @@ V9X_NV3_MMIO_BYTES      equ 01000000h
 V9X_NV3_PMC_BOOT_0      equ 00000000h
 V9X_NV3_BOOT_CHIP_MASK  equ 000f0000h
 V9X_NV3_BOOT_CHIP_NV3   equ 00030000h
+; The same service maps BAR0 for the GT218 (GeForce 210), whose 2D engine
+; also needs all 16 MiB (Michael's choice, 2026-11-14: widen this check
+; rather than add a second service). From NV10 on PMC_BOOT_0 holds the
+; chipset in bits 28:20; A8h is the GT218, 0A8280B1h on M-BXMFA8
+; (docs\decisions\2026-11-11-gt218-register-probe.md). That value's bits
+; 19:16 are 2, so it cannot pass as chip 3.
+V9X_NV50_BOOT_CHIPSET_MASK  equ 1ff00000h
+V9X_NV50_BOOT_CHIPSET_GT218 equ 0a800000h
 V9xNv3MmioBase   dd 0
 V9xNv3MmioLinear dd 0
 ENDIF
@@ -3865,14 +3873,19 @@ V9xMini_Api_Nv3MmioMap_Map:
     je      short V9xMini_Api_Nv3MmioMap_Failed
     mov     V9xNv3MmioLinear, eax
 
-    ; PMC_BOOT_0 must name chip 3; a BAR whose decode is off reads all
-    ; ones and fails this too.
+    ; PMC_BOOT_0 must name chip 3 or chipset A8h (the GT218); a BAR whose
+    ; decode is off reads all ones and fails both.
 V9xMini_Api_Nv3MmioMap_Check:
     mov     edx, V9xNv3MmioLinear
     mov     eax, [edx+V9X_NV3_PMC_BOOT_0]
+    mov     ecx, eax
     and     eax, V9X_NV3_BOOT_CHIP_MASK
     cmp     eax, V9X_NV3_BOOT_CHIP_NV3
+    je      short V9xMini_Api_Nv3MmioMap_Known
+    and     ecx, V9X_NV50_BOOT_CHIPSET_MASK
+    cmp     ecx, V9X_NV50_BOOT_CHIPSET_GT218
     jne     short V9xMini_Api_Nv3MmioMap_Refused
+V9xMini_Api_Nv3MmioMap_Known:
     mov     [ebp.Client_EBX], edx
     mov     [ebp.Client_AX], 1
     ret

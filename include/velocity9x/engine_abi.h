@@ -121,6 +121,17 @@
  * register. No Direct3D engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_RS690    14ul
+/*
+ * NVIDIA GT218 (NV50 family, nouveau's NVA8) 2D engine
+ * (engines\eng_nv50.c): solid fill and screen copy through class 502D
+ * on one PFIFO channel in IB mode, its structures in a reserve at the
+ * top of the BAR1 mapping, built by src\chipsets\nvidia\gt218\
+ * (nv50_chan.c, nv50_grctx.c, nv50_init.c). Measured exact at 8, 16 and
+ * 32 bpp, overlapping copies included, on M-BXMFA8
+ * (docs\decisions\2026-11-14-gt218-502d-engine-measurements.md). No
+ * Direct3D engine, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_NV50         15ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

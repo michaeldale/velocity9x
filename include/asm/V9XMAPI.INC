@@ -604,6 +604,10 @@ V9XMINI_FN_VI_MAP           EQU 0029h
 ; handed over only if PMC_BOOT_0 (+0) names chip 3 in bits 19:16 (envytools
 ; pmc.rst; 00030122h on M-7V636C), so a window that decodes something else
 ; is never used. Only the nvidia family image implements it.
+;
+; Since 2026-11-14 it also serves the GT218 (GeForce 210), whose BAR0 is
+; the same 16 MiB: the window is handed over as well when PMC_BOOT_0 names
+; chipset A8h in bits 28:20 (0A8280B1h on M-BXMFA8). The name stays NV3's.
 V9XMINI_FN_NV3_MMIO_MAP     EQU 002Ah
 
 ; ATI Radeon X1200 IGP (RS690): map the 64 KiB register BAR (BAR2) for the
