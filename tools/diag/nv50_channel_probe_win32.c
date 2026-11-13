@@ -1983,6 +1983,230 @@ static int v9x_stage_copy(void)
     return 0;
 }
 
+/*
+ * Step 4.0 items 2 and 3: overlapping copies, and 16 and 8 bpp. One test
+ * per depth on a surface of its own. The CPU writes a gradient, so every
+ * pixel differs from its neighbours; the engine then fills a rectangle
+ * and makes two copies whose source and destination overlap, one moving
+ * down and right, one up and left. The same three operations are applied
+ * to a model in memory, with a copy that reads the whole source first
+ * (what DirectDraw expects of an overlapping blit), and the surface read
+ * back through BAR1 is compared with the model pixel for pixel. Each
+ * operation is a kick of its own; a PGRAPH or PFIFO interrupt, a pusher
+ * error or a timeout ends the test.
+ */
+#define V9X_DEPTH_PIXELS     (V9X_FILL_WIDTH * V9X_FILL_HEIGHT)
+#define V9X_DEPTH_FIRST      0x00220000ul
+#define V9X_DEPTH_STEP       0x00020000ul
+#define V9X_PUSH_DEPTH       256ul
+#define V9X_502D_FORMAT_Y8   0xf3ul
+
+static DWORD v9x_ib_next = 4ul;
+static DWORD v9x_push_next = V9X_PUSH_DEPTH;
+static DWORD v9x_model[V9X_DEPTH_PIXELS];
+static DWORD v9x_model_copy[V9X_DEPTH_PIXELS];
+static DWORD v9x_depth_words[V9X_DEPTH_PIXELS];
+
+/* Kick one pushbuffer and wait for it. Nonzero when it ran clean. */
+static int v9x_kick(const char *section, const struct v9x_nv50_push *push,
+                    DWORD first_word)
+{
+    struct v9x_status_ops s;
+    DWORD get_wait;
+    DWORD idle_wait;
+    DWORD pusher;
+    DWORD clean;
+
+    v9x_vram_data(V9X_NV50_PUSH + first_word * 4ul, push->words,
+                  push->count);
+    v9x_ib_write(v9x_ib_next, first_word, push->count);
+    ++v9x_ib_next;
+    v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT,
+              v9x_ib_next);
+    get_wait = v9x_wait(V9X_PFIFO_IB_GET, 0xfffffffful, v9x_ib_next);
+    v9x_op(V9X_OP_DELAY, 100000ul, 0ul, 0ul);
+    idle_wait = v9x_wait(V9X_PGRAPH_STATUS, 0xfffffffful, 0ul);
+    pusher = v9x_read(0x003228ul);
+    v9x_status_request(&s, V9X_STATUS_GR);
+    if (!v9x_run(section)) {
+        v9x_finish("KICK-REFUSED", 7u);
+    }
+    clean = !v9x_timed_out(get_wait) && !v9x_timed_out(idle_wait) &&
+            v9x_value(s.gr_intr) == 0ul &&
+            (v9x_value(pusher) >> 29) == 0ul;
+    v9x_put(section, "GetWait", get_wait);
+    v9x_put(section, "IdleWait", idle_wait);
+    v9x_put(section, "PusherState", pusher);
+    v9x_status_publish(section, &s);
+    v9x_flush();
+    return clean != 0ul;
+}
+
+static void v9x_model_copy_rect(DWORD sx, DWORD sy, DWORD dx, DWORD dy,
+                                DWORD w, DWORD h)
+{
+    DWORD x;
+    DWORD y;
+
+    for (y = 0ul; y < V9X_DEPTH_PIXELS; ++y) {
+        v9x_model_copy[y] = v9x_model[y];
+    }
+    for (y = 0ul; y < h; ++y) {
+        for (x = 0ul; x < w; ++x) {
+            v9x_model[(dy + y) * V9X_FILL_WIDTH + dx + x] =
+                v9x_model_copy[(sy + y) * V9X_FILL_WIDTH + sx + x];
+        }
+    }
+}
+
+/* Pack the model's pixels into dwords, or compare dwords with it. */
+static DWORD v9x_depth_pixel(const DWORD *words, DWORD index, DWORD bytes)
+{
+    if (bytes == 4ul) {
+        return words[index] & V9X_COLOUR_MASK;
+    }
+    if (bytes == 2ul) {
+        return (words[index / 2ul] >> ((index & 1ul) * 16ul)) & 0xfffful;
+    }
+    return (words[index / 4ul] >> ((index & 3ul) * 8ul)) & 0xfful;
+}
+
+static int v9x_stage_depth(const char *section, DWORD number, DWORD bytes,
+                           DWORD format, DWORD colour)
+{
+    struct v9x_nv50_push push;
+    DWORD offset = V9X_DEPTH_FIRST + number * V9X_DEPTH_STEP;
+    DWORD pitch = V9X_FILL_WIDTH * bytes;
+    DWORD words = V9X_DEPTH_PIXELS * bytes / 4ul;
+    DWORD mask = bytes == 4ul ? V9X_COLOUR_MASK
+                              : (bytes == 2ul ? 0xfffful : 0xfful);
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD at;
+    DWORD ok = 0ul;
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_word = 0ul;
+    char name[24];
+
+    /* The gradient, into the model and, packed, into the surface. */
+    for (index = 0ul; index < words; ++index) {
+        v9x_depth_words[index] = 0ul;
+    }
+    for (index = 0ul; index < V9X_DEPTH_PIXELS; ++index) {
+        x = index % V9X_FILL_WIDTH;
+        y = index / V9X_FILL_WIDTH;
+        v9x_model[index] = ((y << 16) | (x << 8) | ((x * 3ul) ^ (y * 7ul)))
+                           & mask;
+        if (bytes == 2ul) {
+            v9x_model[index] = ((y << 8) | x) & mask;
+        }
+        if (bytes == 4ul) {
+            v9x_depth_words[index] = v9x_model[index];
+        } else if (bytes == 2ul) {
+            v9x_depth_words[index / 2ul] |=
+                v9x_model[index] << ((index & 1ul) * 16ul);
+        } else {
+            v9x_depth_words[index / 4ul] |=
+                v9x_model[index] << ((index & 3ul) * 8ul);
+        }
+    }
+
+    /* The fill. */
+    v9x_ops_begin();
+    v9x_vram_data(offset, v9x_depth_words, words);
+    v9x_push_stage(v9x_push_next, &push);
+    v9x_nv50_push_fill(&push, V9X_WINDOW_VRAM + offset, pitch,
+                       V9X_FILL_WIDTH, V9X_FILL_HEIGHT, format, colour,
+                       V9X_FILL_X, V9X_FILL_Y, V9X_FILL_SIZE,
+                       V9X_FILL_SIZE);
+    lstrcpyA(name, section);
+    lstrcatA(name, "Fill");
+    if (!v9x_kick(name, &push, v9x_push_next)) {
+        v9x_text(section, "Result", "FILL-NOT-CLEAN");
+        return 0;
+    }
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    for (y = V9X_FILL_Y; y < V9X_FILL_Y + V9X_FILL_SIZE; ++y) {
+        for (x = V9X_FILL_X; x < V9X_FILL_X + V9X_FILL_SIZE; ++x) {
+            v9x_model[y * V9X_FILL_WIDTH + x] = colour & mask;
+        }
+    }
+
+    /* Down and right: 32x32 from (16, 16) to (24, 20). */
+    v9x_ops_begin();
+    v9x_push_stage(v9x_push_next, &push);
+    v9x_nv50_push_copy(&push, V9X_WINDOW_VRAM + offset, pitch,
+                       V9X_FILL_WIDTH, V9X_FILL_HEIGHT, format,
+                       16ul, 16ul, 24ul, 20ul, 32ul, 32ul);
+    lstrcpyA(name, section);
+    lstrcatA(name, "CopyDown");
+    if (!v9x_kick(name, &push, v9x_push_next)) {
+        v9x_text(section, "Result", "COPY-DOWN-NOT-CLEAN");
+        return 0;
+    }
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_model_copy_rect(16ul, 16ul, 24ul, 20ul, 32ul, 32ul);
+
+    /* Up and left: 40x30 from (60, 30) to (50, 24). */
+    v9x_ops_begin();
+    v9x_push_stage(v9x_push_next, &push);
+    v9x_nv50_push_copy(&push, V9X_WINDOW_VRAM + offset, pitch,
+                       V9X_FILL_WIDTH, V9X_FILL_HEIGHT, format,
+                       60ul, 30ul, 50ul, 24ul, 40ul, 30ul);
+    lstrcpyA(name, section);
+    lstrcatA(name, "CopyUp");
+    if (!v9x_kick(name, &push, v9x_push_next)) {
+        v9x_text(section, "Result", "COPY-UP-NOT-CLEAN");
+        return 0;
+    }
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_model_copy_rect(60ul, 30ul, 50ul, 24ul, 40ul, 30ul);
+    v9x_vram_check(section);
+
+    /* Back through BAR1, a block at a time, against the model. */
+    for (at = 0ul; at < words; at += V9X_N5CH_BLOCK) {
+        DWORD count = words - at;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, offset + at * 4ul, count, 0ul);
+        if (!v9x_run("depth-readback")) {
+            v9x_finish("READBACK-REFUSED", 7u);
+        }
+        for (index = 0ul; index < count; ++index) {
+            v9x_depth_words[at + index] = v9x_result.block[index];
+        }
+    }
+    for (index = 0ul; index < V9X_DEPTH_PIXELS; ++index) {
+        DWORD pixel = v9x_depth_pixel(v9x_depth_words, index, bytes);
+
+        if (pixel == v9x_model[index]) {
+            ++ok;
+            continue;
+        }
+        ++bad;
+        if (first_bad == 0xfffffffful) {
+            first_bad = index;
+            first_bad_word = pixel;
+        }
+    }
+    v9x_number(section, "PixelsOk", ok);
+    v9x_number(section, "PixelsBad", bad);
+    if (first_bad != 0xfffffffful) {
+        v9x_number(section, "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number(section, "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key(section, "FirstBadPixel", first_bad_word);
+        v9x_key(section, "FirstBadModel", v9x_model[first_bad]);
+    }
+    v9x_text(section, "Result", bad == 0ul ? "PASS" : "PIXELS-DIFFER");
+    v9x_flush();
+    return bad == 0ul;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -2052,6 +2276,28 @@ void __stdcall V9xNv50ChannelEntry(void)
     }
     if (!v9x_stage_copy()) {
         v9x_finish("COPY-FAILED", 7u);
+    }
+    /* Every depth runs even if one fails: a failure at 8 bpp says
+     * nothing about 16. The run's result names the first that failed. */
+    {
+        int ok32 = v9x_stage_depth("Depth32", 0ul, 4ul,
+                                   V9X_502D_FORMAT_X8R8G8B8,
+                                   V9X_FILL_COLOUR);
+        int ok16 = v9x_stage_depth("Depth16", 1ul, 2ul,
+                                   V9X_502D_FORMAT_R5G6B5, 0xa5c3ul);
+        int ok8 = v9x_stage_depth("Depth8", 2ul, 1ul,
+                                  V9X_502D_FORMAT_Y8, 0x5dul);
+
+        v9x_pusher_state();
+        if (!ok32) {
+            v9x_finish("DEPTH32-FAILED", 7u);
+        }
+        if (!ok16) {
+            v9x_finish("DEPTH16-FAILED", 7u);
+        }
+        if (!ok8) {
+            v9x_finish("DEPTH8-FAILED", 7u);
+        }
     }
     v9x_finish("COMPLETE", 0u);
 }
