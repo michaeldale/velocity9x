@@ -131,12 +131,31 @@ boot 15 it runs to its score. Captures in
 The scores are recorded, not compared: boot 17's flips wait for the
 blank and boot 15 had none.
 
+## 32 bpp and 3DMark 2001 SE (boot 17)
+
+"The row has no 32 bpp modes", above, was wrong: the manifest's baseline
+table lists 8 and 16 bpp, but the driver offers the BIOS's 32 bpp modes
+too (V9XDDP's mode list, `boot16-V9XDD.INI`, modes 6-8).
+
+- V9XD32 with no switch (640x480x32): every check as at 16 bpp,
+  **Failures 0, Result PASS** (`boot17-V9XD32-bpp32.TXT`). So the
+  XRGB8888 target in Direct3D's order is measured.
+- 3DMark 2001 SE's benchmark at its saved settings (1024x768x32, 32-bit
+  textures, software T&L, low detail): ran to a score, 1376, in 6.3
+  minutes; `FlipHandled` +4,936, `FlipTakenAtDone` +4,919; no idle or
+  FIFO timeout, no policy refusal, no mip gap; `DrawsIntoPresented` +11.
+  Two Car Chase frames are kept
+  ([`3dmark2001se/`](../probe/rv630-d3d-2026-11-13/3dmark2001se/)) and
+  look right by eye. Which of its tests ran was not read (its details
+  page); the tests that need features this HAL does not offer are
+  skipped by the program.
+
 ## Not done, not measured
 
 - Specular on the card (above).
-- 32 bpp: the row lists no 32 bpp mode, so the XRGB8888 target path is
-  host-tested only.
-- Any game beyond 3DMark 2000; OpenGL and Glide (no r3d engine id).
+- Which 3DMark 2001 SE tests ran; the 17 flips not confirmed at done and
+  the 11 draws into the presented page in that run.
+- Other games; OpenGL and Glide (no r3d engine id).
 - A chain that still finds no block in 128 MiB falls back as before
   (level 0 only); not met.
 - The partial depth fill on the CP: V9XD32's clears were whole-surface.

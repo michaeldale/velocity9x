@@ -33,7 +33,8 @@ Fog and the colour key pass V9XD32 (boot 10); specular is built but
 not judged by any check. 3DMark 2000 runs to its score once DMA copies
 keep both ends on 8 bytes ([record](../decisions/2026-11-13-rv630-dma-copy-alignment.md));
 Flips on D1GRPH and a 128 MiB heap (no mip chain left unplaced) since
-boots 16 and 17. Next: 3DMark 2001 SE, 32 bpp modes, OpenGL.
+boots 16 and 17. V9XD32 passes at 32 bpp and 3DMark 2001 SE runs to a score (boot 17).
+Next: OpenGL, specular on the card.
 Other register facts
 below come from Linux `radeon` source.
 
