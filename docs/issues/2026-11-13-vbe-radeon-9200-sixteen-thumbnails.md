@@ -159,3 +159,56 @@ From the reporter:
 - a photo of the "16 thumbnails" form if it shows again.
 
 The earlier list's Windows version, mode, photo and files are answered.
+
+## 2026-11-14: the reporter's answers
+
+Relayed by Michael:
+
+> I don't have the ATI driver installed—only Velocity and WinVBE—but
+> this issue was already occurring before I installed WinVBE.
+> I restarted my PC a couple of times to try and reproduce the 16
+> thumbnails.
+> The issue only happens when I attempt to change the display settings,
+> so I'm unable to test other resolutions or color depths.
+
+- **No ATI driver installed.** The leftover-ATI-software candidate
+  loses its support. The `6E94` and `6E80` escapes are then from
+  something else, and what sends them is not known. The A8U4I5 match
+  was a weak basis: one machine, and nothing recorded there says ATI
+  software was installed either.
+- **"WinVBE" is installed too.** What it is (another display driver, a
+  utility) and what it installs was not checked here. The fault predates
+  it, by the reporter's account.
+- **The three loads were restarts.**
+- **`MarkedInstances=3`** is consistent with an install history of more
+  than one card and driver
+  ([`2026-10-03-several-velocity9x-display-instances-block-mode-sync.md`](2026-10-03-several-velocity9x-display-instances-block-mode-sync.md)).
+  Since 2026-10-04 the sync picks the live instance when exactly one is
+  live; here it stayed a no-op, so none or several of the three counted
+  as live. The mode list Display Properties shows is therefore not the
+  one in `V9XMODES.INI`. Whether that bears on the fault is not known.
+- "Attempt to change the display settings" and the earlier "right when
+  you click the Settings tab" may be the same moment or two. Not
+  settled.
+
+Checked in the tree: the `vbe` INF binds through `PCI\CC_0300` only, so
+it does not claim the card's second function (class 0380) by itself; a
+Have Disk install forced onto it would. `ValidateMode`, which the
+Settings tab calls for each mode, is a table lookup and a memory check
+and makes no BIOS call.
+
+The cause is not known. Still standing: a BIOS call made for the
+Settings tab, something in this install's three instances, or WinVBE.
+
+### Owed
+
+- `V9XMSW.EXE /set:800x600x16` from the package, without opening
+  Display Properties, and `C:\V9XDIAG\V9XMSW.INI` after it. It says
+  whether a live mode switch works on this card, and gives the reporter
+  another mode.
+- Whether the screen breaks on the click on the Settings tab, or on
+  Apply.
+- The entries under Display adapters in Device Manager, and what WinVBE
+  is.
+- If they are willing: remove every display adapter entry in Safe Mode,
+  restart, install `vbe` once, and try the Settings tab again.
