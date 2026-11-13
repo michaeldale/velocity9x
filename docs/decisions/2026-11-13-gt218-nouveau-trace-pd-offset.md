@@ -150,6 +150,44 @@ what yet, because the registers that describe it (CACHE1's DMA state,
 read list after run 13, when reads of them timed out. That was with the
 broken page directory; whether they answer now is not known.
 
+## Runs 28 and 29 (boot 106): IB_EMPTY, a second layout fault, and a clean fetch
+
+**Run 28**, the 5c1e3c4a probe with `/pusher` added to run 27's
+switches: after everything else is logged, a run of its own reads the
+registers `nv04_fifo_intr_dma_pusher` reads (fifo/nv04.c, fetched
+2026-11-14 with mmu/g84.c, whose `pd_offset` is indeed 200h). They
+answered, and the card stayed up: state (3228h) `A0000000`, error 5,
+**IB_EMPTY**; IB get 0, IB put 1; DMA get and put 0; push (3220h)
+`00400040`. PFIFO read an IB entry of length 0 where the probe had
+written one of one word.
+
+The cause is in the page table. `nv50_vmm_pgt_pte` writes one value to
+every entry of a block: the block's first address, with the contiguity
+hint. `nv50_chan.c` gave each entry its own address with the 128-page
+hint, which the comparison of 2026-11-12 had passed as "matches". The
+chip adds the page's index within the block itself, so only the first
+page of each 128 resolved correctly. The IB ring at page 802h resolved
+to page 804h, inside the zeroed context image. The instance block, at
+page 800h, was unaffected, which is why run 27 got as far as it did.
+
+`nv50_chan.c` now writes the block base (08516d1e); the host test
+checks every entry and failed before the change.
+
+**Run 29**, the same switches with that fix (built as
+`5c1e3c4a-dirty`). Log: `run29-V9XN5CH.LOG` (from line 7559).
+
+- After the kick: PMC_INTR 0, **PFIFO_INTR 0**, no master abort, no VM
+  trap. 2500h reads `00000101` where earlier runs read 1.
+- Pusher state: **IB get 1 = IB put 1; DMA get = DMA put = `08022004`**,
+  the pushbuffer's address plus the one word it held; state 0, no error.
+- 50 samples over 1.5 s unchanged, BAR1 intact, the machine up.
+
+PFIFO fetched the IB entry and the pushbuffer through the channel's VM
+and consumed it without complaint. That is step 3a of the PGRAPH plan,
+with an empty push: the channel works. Not yet done: a push that does
+something (the REF_CNT and semaphore push, then SET_OBJECT and the
+fill).
+
 Other differences from the trace, left as they are
 until the corrected layout has been tried:
 
