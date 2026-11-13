@@ -2019,8 +2019,9 @@ static int v9x_kick(const char *section, const struct v9x_nv50_push *push,
 
     v9x_vram_data(V9X_NV50_PUSH + first_word * 4ul, push->words,
                   push->count);
+    /* The ring's index wraps at its 512 entries (RAMFC + 54h). */
     v9x_ib_write(v9x_ib_next, first_word, push->count);
-    ++v9x_ib_next;
+    v9x_ib_next = (v9x_ib_next + 1ul) % V9X_NV50_IB_ENTRIES;
     v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT,
               v9x_ib_next);
     get_wait = v9x_wait(V9X_PFIFO_IB_GET, 0xfffffffful, v9x_ib_next);
@@ -2040,6 +2041,86 @@ static int v9x_kick(const char *section, const struct v9x_nv50_push *push,
     v9x_status_publish(section, &s);
     v9x_flush();
     return clean != 0ul;
+}
+
+/*
+ * Step 4.0 item 4: 600 kicks, more than the ring's 512 entries. One
+ * small fill, written once; each kick is a new IB entry naming it, PUT
+ * moved on by one modulo the ring, and a wait for PFIFO's IB get to
+ * reach it. 150 kicks to a VxD run, to stay inside the op list.
+ */
+#define V9X_MANY_KICKS       600ul
+#define V9X_MANY_PER_RUN     150ul
+
+static int v9x_stage_many(void)
+{
+    struct v9x_nv50_push push;
+    DWORD waits[V9X_MANY_PER_RUN];
+    DWORD first_word = v9x_push_next;
+    DWORD done = 0ul;
+    DWORD timeouts = 0ul;
+    DWORD fifo_intr;
+    DWORD gr_intr;
+    DWORD state;
+    DWORD ib_get;
+    DWORD index;
+    DWORD count;
+    int clean = 1;
+
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    while (done < V9X_MANY_KICKS && clean) {
+        count = V9X_MANY_KICKS - done;
+        if (count > V9X_MANY_PER_RUN) {
+            count = V9X_MANY_PER_RUN;
+        }
+        v9x_ops_begin();
+        if (done == 0ul) {
+            v9x_push_stage(first_word, &push);
+            v9x_nv50_push_fill(&push, V9X_WINDOW_VRAM + V9X_DEPTH_FIRST,
+                               V9X_FILL_WIDTH * 4ul, V9X_FILL_WIDTH,
+                               V9X_FILL_HEIGHT, V9X_502D_FORMAT_X8R8G8B8,
+                               V9X_FILL_COLOUR, 0ul, 0ul, 4ul, 4ul);
+            v9x_vram_data(V9X_NV50_PUSH + first_word * 4ul, push.words,
+                          push.count);
+        }
+        for (index = 0ul; index < count; ++index) {
+            v9x_ib_write(v9x_ib_next, first_word, push.count);
+            v9x_ib_next = (v9x_ib_next + 1ul) % V9X_NV50_IB_ENTRIES;
+            v9x_write(V9X_NV50_USERD(V9X_CHID) + V9X_NV50_USERD_IB_PUT,
+                      v9x_ib_next);
+            waits[index] = v9x_wait(V9X_PFIFO_IB_GET, 0xfffffffful,
+                                    v9x_ib_next);
+        }
+        v9x_wait(V9X_PGRAPH_STATUS, 0xfffffffful, 0ul);
+        fifo_intr = v9x_read(V9X_NV50_PFIFO_INTR);
+        gr_intr = v9x_read(0x400100ul);
+        state = v9x_read(0x003228ul);
+        ib_get = v9x_read(V9X_PFIFO_IB_GET);
+        if (!v9x_run("many")) {
+            v9x_finish("MANY-REFUSED", 7u);
+        }
+        for (index = 0ul; index < count; ++index) {
+            if (v9x_timed_out(waits[index])) {
+                ++timeouts;
+            }
+        }
+        done += count;
+        v9x_number("Many", "Kicks", done);
+        v9x_number("Many", "Timeouts", timeouts);
+        v9x_put("Many", "PfifoIntr", fifo_intr);
+        v9x_put("Many", "PgraphIntr", gr_intr);
+        v9x_put("Many", "PusherState", state);
+        v9x_put("Many", "IbGet", ib_get);
+        clean = timeouts == 0ul && v9x_value(fifo_intr) == 0ul &&
+                v9x_value(gr_intr) == 0ul &&
+                (v9x_value(state) >> 29) == 0ul &&
+                v9x_value(ib_get) == v9x_ib_next;
+        v9x_flush();
+        v9x_vram_check("many");
+    }
+    v9x_text("Many", "Result", clean ? "PASS" : "NOT-CLEAN");
+    v9x_flush();
+    return clean;
 }
 
 static void v9x_model_copy_rect(DWORD sx, DWORD sy, DWORD dx, DWORD dy,
@@ -2276,6 +2357,11 @@ void __stdcall V9xNv50ChannelEntry(void)
     }
     if (!v9x_stage_copy()) {
         v9x_finish("COPY-FAILED", 7u);
+    }
+    /* /many: carry the IB ring past its end before the depth tests, so
+     * they run on a ring that has wrapped. */
+    if (v9x_switch_given("/many") && !v9x_stage_many()) {
+        v9x_finish("MANY-FAILED", 7u);
     }
     /* Every depth runs even if one fails: a failure at 8 bpp says
      * nothing about 16. The run's result names the first that failed. */
