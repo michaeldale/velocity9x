@@ -4,8 +4,39 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.50.0 - not yet released
+## 0.50.0 - 2026-11-14
 
+- **`intel-gma` package, HD 4600: the Unreal Tournament 2004 demo runs,
+  lit and with its floors whole.** It stopped at its first frame with
+  "Critical Error". Five fixes, each measured on the i5-4570 with the
+  botmatch DM-Rankin, 12 bots:
+  - DXT1, DXT3 and DXT5 cube textures are offered and laid out; the
+    runtime refused UT2004's compressed cube map. The layout rule is
+    from Mesa, not the PRM, and no frame has shown a cube face.
+  - Indexed draws whose base offset is not whole vertices are drawn;
+    935 a run were skipped.
+  - The doubled texture blend (MODULATE2X) is drawn on the chip. 73 %
+    of UT2004's draws use it; they drew at half the light, and its
+    lightmaps were dropped.
+  - Cube textures in fixed-function stages draw through the pixel
+    shader path; 11,577 batches a run were refused.
+  - Two-texture triangles that reach past the 8K span are cut, not
+    dropped; these were the see-through floor patches.
+
+  The botmatch runs at 32.9 fps at the install settings, nothing
+  refused, no engine timeouts. Whether the reflections look right is not
+  judged
+  ([issue](docs/issues/2026-11-13-haswell-ut2004-demo-dxt5-cube-create-refused.md)).
+  The HD 4000 shares this code but keeps MODULATE2X off until one has
+  run it; no Ivy Bridge ran this release.
+- **`intel-gma` package, GMA 900, 950, 3100 and 3150: lightmaps drawn
+  with the doubled blend.** A two-texture draw whose second stage is
+  MODULATE2X now runs on the chip, and such triangles past the chip's
+  guard band are cut instead of dropped. On the GMA 950 netbook UT2004's
+  botmatch draws its lightmaps at 4.23 fps (0.49.0: 4.26 without them),
+  nothing refused. A single doubled stage is still drawn at half the
+  light; the shader route that would draw it cost 37 % of the frame
+  rate and was left out.
 - **`intel-gma` package, GMA X3100 (GM965) and the GMA 4500 family (G45,
   Q45, GM45): the screen and textures are written write-combined.** These
   four chips were left uncached when the GMA 950 and the Ironlake got

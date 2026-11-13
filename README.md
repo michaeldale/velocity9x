@@ -35,29 +35,23 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.49.0
+## Current version: 0.50.0
 
-[Download](releases/0.49.0/README.md) ·
+[Download](releases/0.50.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.49.0:
-- **AMD Radeon HD 2600 XT: hardware acceleration.** DirectDraw on the
-  DMA engine with page flips, and Direct3D and OpenGL on the 3D engine
-  at 16 and 32 bpp. 3DMark 2000 and 2001 SE run to a score and the
-  Quake 3 demo at 65.9 fps, on one tester's card through remote help
-  ([plan](docs/plans/ati-rv630-hd2600xt.md)).
-- **Intel GMA 950 (945GSE): 32 MiB of texture memory in system RAM.**
-  On the HP Mini netbook 3,201 small textures fit where 390 did, and
-  Serious Sam no longer fails to create textures
-  ([record](docs/decisions/2026-11-12-intel-gen3-texture-pool-games.md)).
-- **Intel GMA 900 to 3150: two texture stages in Direct3D.** 3DMark 2001
-  SE's Dragothic draws its sky and dragon, no longer white
-  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
-- **Intel HD 4600: 3DMark 2001 SE's Car Chase with compressed textures
-  no longer hangs the chip**
-  ([issue](docs/issues/2026-11-13-haswell-3dmark2001se-car-chase-dxt-gpu-hang.md)).
+New in 0.50.0:
+- **Intel HD 4600: the Unreal Tournament 2004 demo runs**, lit, with
+  compressed cube maps and whole floors: 32.9 fps in a 12-bot botmatch
+  ([issue](docs/issues/2026-11-13-haswell-ut2004-demo-dxt5-cube-create-refused.md)).
+- **Intel GMA 900 to 3150: lightmaps drawn with the doubled blend
+  (MODULATE2X).** UT2004 on the GMA 950 netbook shows its lightmaps,
+  at 4.2 fps.
+- **Intel GMA X3100 and GMA 4500 family: write-combined video memory.**
+  Writes to the screen went from 130 to 3,310 MB/s on a GMA X3100
+  ([record](docs/decisions/2026-11-13-gm965-write-combining.md)).
 
 ### Known issues
 
@@ -97,6 +91,10 @@ New in 0.49.0:
   terrain red ([issue](docs/issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)).
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts
   sometimes times out and is skipped; later frames draw.
+- **`vbe` package, Radeon 9250:** one reporter's screen breaks into
+  coloured blocks when Display Properties' Settings tab is opened; not
+  reproduced, cause unknown
+  ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
 - **RIVA 128ZX:** not finished. Most of 3DMark 2000 is refused and not
   drawn, and one Glide 2 probe check fails.
 - **Older, not rerun since:** on the HD 5450, trees vanish and reappear in
@@ -106,6 +104,10 @@ New in 0.49.0:
 
 ### Recent releases
 
+- **0.49.0:** hardware acceleration on the Radeon HD 2600 XT; 32 MiB of
+  texture memory in system RAM on the GMA 950; two texture stages in
+  Direct3D on the GMA 900 to 3150; the HD 4600's Car Chase hang with
+  compressed textures fixed.
 - **0.48.0:** see-through textures that write depth draw on the GMA X3100
   and GMA 4500 family (Half-Life's grates and doors); the GMA X3100
   laptop's panel at its own 1280x800; surfaces wider than the screen on
@@ -350,7 +352,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 
 | Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
 |---|---|---|---|
-| Intel HD Graphics 4600 (i5-4570) | 137.6 fps (windowed) | not run; Half-Life `-gl` 174.4 fps (windowed); Quake 3 `demo001` 56.9 fps | 0.36.0 |
+| Intel HD Graphics 4600 (i5-4570) | 137.6 fps (windowed); UT2004 demo botmatch 32.9 fps (0.50.0 build) | not run; Half-Life `-gl` 174.4 fps (windowed); Quake 3 `demo001` 56.9 fps | 0.36.0 |
 | AMD Radeon HD 5450 | not run | not run; Quake 3 `demo001` 63.6 fps | 0.32.0 |
 | AMD Radeon R7E (Carrizo, GX-420GI) | not run | not run; Quake 3 `demo001` 21.3 fps | 0.33.0 |
 | AMD Radeon HD 7470 (A10-5700) | not run | not run; Quake 3 `demo001` 34.6 fps | 0.34.0 build |
@@ -440,6 +442,9 @@ issue: Nature's distant terrain and mountains draw white. DirectX 7
 programs keep the older interface; `[Velocity9x.Direct3DDdi]
 <program>=7` sets one program back if it breaks
 ([record](docs/decisions/2026-10-30-haswell-ddi8-ps11-record.md)).
+From 0.50.0 DXT cube textures and the doubled blend (MODULATE2X) are
+offered too, and the Unreal Tournament 2004 demo runs
+([issue](docs/issues/2026-11-13-haswell-ut2004-demo-dxt5-cube-create-refused.md)).
 
 On the GMA 900, 950, 3100 and 3150, from 0.47.0, DirectX 8 programs get
 DDI 8 with **pixel shader 1.1** on the Gen3 engine, four texture stages,
