@@ -149,6 +149,15 @@ $sources = @(
     # host-tested builder, in the same ring window.
     "src\display32\engines\eng_r6.c",
     "src\chipsets\ati\r600\r6_dma.c",
+    # The R6xx 3D engine: the CP and its microcode (licence in
+    # NOTICES.TXT), the PM4 streams and shaders, the neutral draw to them,
+    # and the engine that submits them.
+    "src\display32\engines\r6_cp.c",
+    "src\chipsets\ati\r600\r6_cp_microcode.c",
+    "src\chipsets\ati\r600\r6_3d.c",
+    "src\chipsets\ati\r600\r6_shader.c",
+    "src\display32\d3d\d3d_r6_map.c",
+    "src\display32\d3d\d3d_r6.c",
     # The Evergreen 3D engine: the CP and its microcode (licence in
     # NOTICES.TXT), the PM4 streams and shaders, the neutral draw to them,
     # and the engine that submits them.

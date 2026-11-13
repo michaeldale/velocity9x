@@ -404,6 +404,10 @@ unsigned int v9x_run_eg_3d_tests(void);
  * state, its refusals, and the builder taking what it maps. */
 unsigned int v9x_run_d3d_eg_map_tests(void);
 
+/* tests\host\test_d3d_r6_map.c: the neutral draw to R6xx (HD 2600 XT)
+ * batch state in Direct3D's order, and its refusals. */
+unsigned int v9x_run_d3d_r6_map_tests(void);
+
 /* tests\host\test_d3d_vi_map.c: the neutral draw to Carrizo TL-draw
  * state and its refusals. */
 unsigned int v9x_run_d3d_vi_map_tests(void);
@@ -1576,6 +1580,7 @@ int main(int argc, char **argv)
     failures += v9x_run_cm_3d_tests();
     failures += v9x_run_eg_3d_tests();
     failures += v9x_run_d3d_eg_map_tests();
+    failures += v9x_run_d3d_r6_map_tests();
     failures += v9x_run_d3d_vi_map_tests();
     failures += v9x_run_d3d_r128_map_tests();
     failures += v9x_run_d3d_rs690_map_tests();

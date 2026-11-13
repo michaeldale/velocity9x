@@ -65,3 +65,7 @@ about 70 probe runs, several CP halts and soft resets, and the ME stalls
 of the threshold writes before the first depth draw. Watch for the
 constant in the Direct3D HAL's first depth runs; if it returns, the
 leads above still stand.
+
+The HAL's first runs, boots 7 and 8: V9XD32's depth checks (T3, T5, T8)
+pass through `d3d_r6.c`
+([record](../decisions/2026-11-13-rv630-direct3d-hal-first-light.md)).

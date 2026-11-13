@@ -111,6 +111,14 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
             return V9X_D3D_SELECT_NONE;
         }
         return V9X_D3D_SELECT_RS690;
+    case V9X_DD_ENGINE_TYPE_ATI_R600:
+        /* The HD 2600 XT: cedar_hw16.c stamps CAP_D3D only when the
+         * mini-VDD mapped the window the CP's ring, shaders and vertices
+         * share with the DMA ring; without it DMA serves DirectDraw alone. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+            return V9X_D3D_SELECT_NONE;
+        }
+        return V9X_D3D_SELECT_R600;
     default:
         return V9X_D3D_SELECT_NONE;
     }

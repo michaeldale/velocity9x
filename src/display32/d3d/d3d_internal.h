@@ -815,6 +815,8 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv3;
 
 /* ATI Radeon X1200 IGP (RS690), by register writes, in d3d_rs690.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rs690;
+/* d3d/d3d_r6.c: the HD 2600 XT's (RV630) shader core through the CP. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r6;
 
 
 /*

@@ -1259,6 +1259,106 @@ static void test_interp_shaders(void)
           fetch_mega_first(got, 8ul, 2ul));
 }
 
+/* xf86's NUM_FORMAT_ALL NORM and FORMAT_COMP_ALL unsigned (both 0), and
+ * its TEX_NORMALIZED coordinate type (1). FMT_8_8_8_8 is the FMT_
+ * enumeration's 26th. */
+#define X_FMT_8_8_8_8            26
+#define X_SQ_NUM_FORMAT_NORM     0
+#define X_SQ_FORMAT_COMP_UNSIGNED 0
+#define X_TEX_NORMALIZED         1
+
+static void test_d3d_shaders(void)
+{
+    v9x_u32 got[V9X_R6_SHADER_DWORDS_MAX];
+    v9x_u32 want[V9X_R6_SHADER_DWORDS_MAX];
+    v9x_u32 textured;
+    v9x_u32 i;
+
+    /* The D3D VS: VTX ADDR(4) CNT(2 or 3); POS0 from R1; PARAM0 from R0
+     * (EXPORT_DONE, the end, untextured; EXPORT textured); textured,
+     * PARAM1 from R2, the end; R1 = sx sy sz rhw at 0, R2 = tu tv 0 1 at
+     * 24, R0 = the D3DCOLOR at 16 as FMT_8_8_8_8 NORM unsigned - every
+     * fetch a mega-fetch of 32, R0 last. */
+    for (textured = 0ul; textured < 2ul; ++textured) {
+        i = 0ul;
+        want[i++] = 4ul;
+        want[i++] = X_CF_DWORD1(0, 0, 0, X_I_COUNT(textured ? 3 : 2), 0, 0,
+                                0, X_SQ_CF_INST_VTX, 0, 1);
+        i += x_export(want + i, X_CF_POS0, X_SQ_EXPORT_POS, 1,
+                      X_SQ_CF_INST_EXPORT_DONE, 0, 1);
+        if (textured) {
+            i += x_export(want + i, 0, X_SQ_EXPORT_PARAM, 0,
+                          X_SQ_CF_INST_EXPORT, 0, 0);
+            i += x_export(want + i, 1, X_SQ_EXPORT_PARAM, 2,
+                          X_SQ_CF_INST_EXPORT_DONE, 1, 0);
+        } else {
+            i += x_export(want + i, 0, X_SQ_EXPORT_PARAM, 0,
+                          X_SQ_CF_INST_EXPORT_DONE, 1, 0);
+            want[i++] = 0ul;
+            want[i++] = 0ul;
+        }
+        i += x_fetch(want + i, 1, 0, 32, 1, X_FMT_32_32_32_32_FLOAT,
+                     X_SQ_SEL_Z, X_SQ_SEL_W);
+        if (textured) {
+            i += x_fetch(want + i, 2, 24, 32, 1, X_FMT_32_32_FLOAT,
+                         X_SQ_SEL_0, X_SQ_SEL_1);
+        }
+        want[i++] = X_VTX_DWORD0(0, 0, 0, 0, 0, 0, X_SQ_SEL_X,
+                                 X_MEGA_FETCH_COUNT(32));
+        want[i++] = X_VTX_DWORD1_GPR(0, 0, X_SQ_SEL_X, X_SQ_SEL_Y,
+                                     X_SQ_SEL_Z, X_SQ_SEL_W, 0,
+                                     X_FMT_8_8_8_8, X_SQ_NUM_FORMAT_NORM,
+                                     X_SQ_FORMAT_COMP_UNSIGNED, 0);
+        want[i++] = X_VTX_DWORD2(16, 0, 0, 1);
+        want[i++] = 0ul;
+        CHECK(v9x_r6_shader_d3d_vs(textured, got) == i);
+        CHECK(i <= V9X_R6_SHADER_DWORDS_MAX);
+        CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+        CHECK(fetch_order_ok(got, 8ul, textured ? 3ul : 2ul) &&
+              fetch_counts_ok(got, 8ul, textured ? 3ul : 2ul) &&
+              fetch_mega_first(got, 8ul, textured ? 3ul : 2ul));
+    }
+    /* By hand: the colour fetch's DWORD1, R0, X Y Z W, format 1Ah, NORM,
+     * unsigned: 1Ah << 22 | the selects. */
+    CHECK(got[17] == ((0x1aul << 22) | (0ul << 9) | (1ul << 12) |
+                      (2ul << 15) | (3ul << 18)));
+
+    /* NONE: the Gouraud PS. */
+    i = v9x_r6_shader_gouraud_ps(want);
+    CHECK(v9x_r6_shader_d3d_ps(V9X_R6_D3D_OP_NONE, got) == i &&
+          memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* MODULATE: the modulate PS but the sample normalised (COORD_TYPE_X
+     * and _Y). */
+    i = v9x_r6_shader_modulate_ps(want);
+    want[17] = X_TEX_DWORD1(1, 0, X_SQ_SEL_X, X_SQ_SEL_Y, X_SQ_SEL_Z,
+                            X_SQ_SEL_W, 0, X_TEX_NORMALIZED,
+                            X_TEX_NORMALIZED, X_TEX_UNNORMALIZED,
+                            X_TEX_UNNORMALIZED);
+    CHECK(v9x_r6_shader_d3d_ps(V9X_R6_D3D_OP_MODULATE, got) == i &&
+          memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* REPLACE: TEX ADDR(4) CNT(1); R1 to MRT 0, the end; padding; SAMPLE
+     * R1 = t0 at R1.xy01, normalised. */
+    i = 0ul;
+    want[i++] = 4ul;
+    want[i++] = X_CF_DWORD1(0, 0, 0, X_I_COUNT(1), 0, 0, 0,
+                            X_SQ_CF_INST_TEX, 0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PIXEL, 1,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 1);
+    while (i < 8ul) {
+        want[i++] = 0ul;
+    }
+    want[i++] = X_TEX_DWORD0(X_SQ_TEX_INST_SAMPLE, 0, 0, 0, 1, 0, 0);
+    want[i++] = X_TEX_DWORD1(1, 0, X_SQ_SEL_X, X_SQ_SEL_Y, X_SQ_SEL_Z,
+                             X_SQ_SEL_W, 0, X_TEX_NORMALIZED,
+                             X_TEX_NORMALIZED, X_TEX_UNNORMALIZED,
+                             X_TEX_UNNORMALIZED);
+    want[i++] = X_TEX_DWORD2(0, 0, 0, 0, X_SQ_SEL_X, X_SQ_SEL_Y,
+                             X_SQ_SEL_0, X_SQ_SEL_1);
+    want[i++] = 0ul;
+    CHECK(v9x_r6_shader_d3d_ps(V9X_R6_D3D_OP_REPLACE, got) == i &&
+          memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+}
+
 /*
  * The state words and registers. Each expected value is written with
  * Mesa r600d.h's field positions (S_0288xx_*), beside xf86's names.
@@ -1572,6 +1672,65 @@ static void test_build_state(void)
     v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
     CHECK(v9x_r6_3d_build_state(&state, &stream) ==
           V9X_STATUS_INVALID_ARGUMENT && stream.count == 0ul);
+    /* A 16-bit texture is refused in xf86's order, as is a 565 target. */
+    state.texture_pitch = 128ul;
+    state.texture_format = V9X_R6_COLOR_5_6_5;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT && stream.count == 0ul);
+
+    /* Direct3D's order: a 565 target, SWAP_STD - S_0280A0_FORMAT(COLOR_5_6_5
+     * 8) << 2, COMP_SWAP 0, BLEND_CLAMP (bit 20), SOURCE_FORMAT (bit 27) -
+     * and a 565 texture read X, Y, Z, 1 (DST_SEL_W SQ_SEL_1 5), its pitch
+     * 128 texels (256-byte group / 2 bytes), its sync over 2 bytes a texel. */
+    state.d3d_order = 1ul;
+    state.target_format = V9X_R6_COLOR_5_6_5;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(walks(buffer, stream.count));
+    at = find_reg(buffer, stream.count, 0x280a0ul);
+    CHECK(at < stream.count &&
+          buffer[at] == ((0x08ul << 2) | (1ul << 20) | (1ul << 27)));
+    at = find_reg(buffer, stream.count, 0x38000ul);
+    CHECK(at < stream.count &&
+          buffer[at] == (1ul | (1ul << 3) | (15ul << 8) | (63ul << 19)) &&
+          buffer[at + 1ul] == (7ul | (0x08ul << 26)) &&
+          buffer[at + 4ul] == ((1ul << 14) | (0ul << 16) | (1ul << 19) |
+                               (2ul << 22) | (5ul << 25)));
+    /* 1555 and 8888 read X, Y, Z, W; the target's 8888 still SWAP_STD. */
+    state.texture_format = V9X_R6_COLOR_1_5_5_5;
+    state.target_format = V9X_R6_COLOR_8_8_8_8;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x38000ul);
+    CHECK(at < stream.count &&
+          buffer[at + 4ul] == ((1ul << 14) | (0ul << 16) | (1ul << 19) |
+                               (2ul << 22) | (3ul << 25)));
+    at = find_reg(buffer, stream.count, 0x280a0ul);
+    CHECK(at < stream.count &&
+          buffer[at] == ((0x1aul << 2) | (1ul << 20) | (1ul << 27)));
+    /* An opaque texture (XRGB8888) reads W as 1. */
+    state.texture_format = V9X_R6_COLOR_8_8_8_8;
+    state.texture_opaque = 1ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x38000ul);
+    CHECK(at < stream.count &&
+          buffer[at + 4ul] == ((1ul << 14) | (0ul << 16) | (1ul << 19) |
+                               (2ul << 22) | (5ul << 25)));
+    state.texture_opaque = 0ul;
+    state.texture_format = V9X_R6_COLOR_1_5_5_5;
+    /* A 16-bit pitch of 64 texels is not 256 bytes: refused. */
+    state.texture_pitch = 64ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT && stream.count == 0ul);
+    /* The pitch rule itself. */
+    CHECK(v9x_r6_3d_texture_pitch(V9X_R6_COLOR_8_8_8_8, 1ul) == 64ul &&
+          v9x_r6_3d_texture_pitch(V9X_R6_COLOR_8_8_8_8, 65ul) == 128ul &&
+          v9x_r6_3d_texture_pitch(V9X_R6_COLOR_4_4_4_4, 64ul) == 128ul &&
+          v9x_r6_3d_texture_pitch(V9X_R6_COLOR_5_6_5, 129ul) == 256ul &&
+          v9x_r6_3d_texture_pitch(0x13ul, 64ul) == 0ul);
 
     /* Blending, alpha test, kill, a write mask, linear interpolation. */
     base_state(&state);
@@ -1672,6 +1831,7 @@ unsigned int v9x_run_r6_3d_tests(void)
     test_vertices();
     test_shaders();
     test_interp_shaders();
+    test_d3d_shaders();
     test_state_words();
     test_build_state();
     test_draw_flush();

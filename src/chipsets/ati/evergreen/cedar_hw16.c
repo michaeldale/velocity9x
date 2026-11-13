@@ -132,9 +132,11 @@ static unsigned long v9x_cedar_map_value;
                                   V9X_DD_ENGINE_CAP_FLIP | \
                                   V9X_DD_ENGINE_CAP_D3D | \
                                   V9X_DD_ENGINE_CAP_EG_TRINITY)
-/* No flips and no Direct3D on the R6xx row yet: fill and copy alone. */
+/* No flips on the R6xx row yet. Direct3D through the CP (r6_cp.c,
+ * d3d_r6.c) once the 3D window is mapped, as on the Evergreen rows. */
 #define V9X_RV630_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
-                                V9X_DD_ENGINE_CAP_SCREEN_COPY)
+                                V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                V9X_DD_ENGINE_CAP_D3D)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_type,
                                       unsigned long claimed_caps,
@@ -476,7 +478,7 @@ const V9X_HW16_DEVICE v9x_r600_rv630_device = {
     "ati-r600-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,                      /* direct3d: none yet */
+    "hardware-r600-cp",
     0,
     v9x_rv630_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */

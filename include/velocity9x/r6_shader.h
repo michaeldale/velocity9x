@@ -116,4 +116,37 @@ v9x_u32 v9x_r6_shader_gouraud_zexport_ps(v9x_u32 *out);
 v9x_u32 v9x_r6_shader_modulate_vs(v9x_u32 *out);
 v9x_u32 v9x_r6_shader_modulate_ps(v9x_u32 *out);
 
+/*
+ * Direct3D, for d3d_r6.c: Evergreen's D3D shaders (eg_shader.h) in the
+ * R6xx forms above. The VS fetches the render core's 32-byte TL vertex as
+ * it is (r3d.h, V9X_R3D_VERTEX): sx, sy, sz, rhw into R1, exported as the
+ * position (PA_CL_VTE_CNTL takes x, y, z as divided and w as rhw, the
+ * VTE word Evergreen measured perspective-correct); textured, tu and tv
+ * at 24 into R2 as (u, v, 0, 1), parameter 1; the D3DCOLOR at 16 into R0
+ * as four normalised unsigned bytes in memory order - B, G, R, A - last,
+ * parameter 0. The target and texture are then in the builder's
+ * d3d_order. Every fetch a mega-fetch, the modulate VS's rule.
+ *
+ * The PS for one op: NONE the Gouraud PS (R0 to MRT 0); REPLACE samples
+ * at R1, normalised, and exports the texel; MODULATE is the modulate PS
+ * with normalised coordinates, colour times texel in all four channels.
+ * Not yet run on a card.
+ */
+#define V9X_R6_D3D_STRIDE           32ul
+#define V9X_R6_D3D_OP_NONE          0ul
+#define V9X_R6_D3D_OP_REPLACE       1ul
+#define V9X_R6_D3D_OP_MODULATE      2ul
+#define V9X_R6_D3D_VS_GPRS(textured) ((textured) != 0ul ? 3ul : 2ul)
+#define V9X_R6_D3D_PS_GPRS(op) ((op) == V9X_R6_D3D_OP_MODULATE ? 3ul : \
+                                (op) == V9X_R6_D3D_OP_REPLACE ? 2ul : 1ul)
+v9x_u32 v9x_r6_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out);
+v9x_u32 v9x_r6_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
+
+/* The HAL's shader slots, each 256 bytes in the CP's window (r6_cp.c):
+ * the two Direct3D VSs, then the PS for each op in V9X_R6_D3D_OP_* order. */
+#define V9X_R6_SLOT_VS              0ul
+#define V9X_R6_SLOT_VS_TEXTURED     1ul
+#define V9X_R6_SLOT_PS_FIRST        2ul /* + V9X_R6_D3D_OP_* */
+#define V9X_R6_SLOT_COUNT           5ul
+
 #endif

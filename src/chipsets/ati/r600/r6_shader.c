@@ -448,3 +448,105 @@ v9x_u32 v9x_r6_shader_modulate_ps(v9x_u32 *out)
     out[at++] = 0ul;
     return at;
 }
+
+/* The Direct3D shaders' fetch formats and the texture's normalised
+ * coordinates: VTX_DWORD1 DATA_FORMAT FMT_8_8_8_8 (1Ah) with NUM_FORMAT_ALL
+ * NORM (0) and FORMAT_COMP_ALL unsigned, a D3DCOLOR's bytes as four
+ * fractions; TEX_WORD1 COORD_TYPE_X and _Y (bits 28, 29), coordinates in
+ * 0-1 rather than texels (xf86's r600_shader.h TEX_WORD1). */
+#define R6_FMT_8_8_8_8           0x1aul
+#define R6_TEX_COORD_NORMALISED  0x30000000ul
+#define R6_D3D_COLOUR_OFFSET     16ul
+#define R6_D3D_UV_OFFSET         24ul
+#define R6_D3D_REPLACE_TEX_DWORD 8ul
+
+/* One sample of texture 0 with sampler 0 at src_gpr's (x, y), normalised,
+ * into dst_gpr's XYZW. */
+static v9x_u32 v9x_r6_shader_sample(v9x_u32 src_gpr, v9x_u32 dst_gpr,
+                                    v9x_u32 *out)
+{
+    out[0] = R6_TEX_INST_SAMPLE | (src_gpr << R6_TEX_SRC_GPR_SHIFT);
+    out[1] = dst_gpr |
+             (R6_SEL_X << R6_TEX_DST_SEL_SHIFT) |
+             (R6_SEL_Y << (R6_TEX_DST_SEL_SHIFT + 3)) |
+             (R6_SEL_Z << (R6_TEX_DST_SEL_SHIFT + 6)) |
+             (R6_SEL_W << (R6_TEX_DST_SEL_SHIFT + 9)) |
+             R6_TEX_COORD_NORMALISED;
+    out[2] = (R6_SEL_X << R6_TEX_SRC_SEL_SHIFT) |
+             (R6_SEL_Y << (R6_TEX_SRC_SEL_SHIFT + 3)) |
+             (R6_SEL_0 << (R6_TEX_SRC_SEL_SHIFT + 6)) |
+             (R6_SEL_1 << (R6_TEX_SRC_SEL_SHIFT + 9));
+    out[3] = 0ul;
+    return R6_FETCH_DWORDS;
+}
+
+v9x_u32 v9x_r6_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out)
+{
+    v9x_u32 at;
+
+    /* 0: the vertex clause at 8, two or three fetches; 1: R1 to the
+     * position; 2: R0 to parameter 0, the program's end untextured; 3,
+     * textured: R2 to parameter 1, the end. The modulate VS's exports. */
+    out[0] = R6_CLAUSE_DWORD / 2ul;
+    out[1] = v9x_r6_shader_cf_word1(R6_CF_INST_VTX,
+                                    textured != 0ul ? 3ul : 2ul, 0ul, 1ul);
+    out[2] = v9x_r6_shader_export_word0(R6_EXPORT_POS, R6_EXPORT_POS0, 1ul);
+    out[3] = v9x_r6_shader_export_word1(1ul, 0ul, 1ul);
+    out[4] = v9x_r6_shader_export_word0(R6_EXPORT_PARAM, 0ul, 0ul);
+    if (textured != 0ul) {
+        out[5] = v9x_r6_shader_export_word1_inst(R6_CF_INST_EXPORT, 0ul,
+                                                 0ul);
+        out[6] = v9x_r6_shader_export_word0(R6_EXPORT_PARAM, 1ul, 2ul);
+        out[7] = v9x_r6_shader_export_word1_inst(R6_CF_INST_EXPORT_DONE,
+                                                 1ul, 0ul);
+    } else {
+        out[5] = v9x_r6_shader_export_word1(1ul, 1ul, 0ul);
+        out[6] = 0ul;
+        out[7] = 0ul;
+    }
+    /* Every fetch a mega-fetch of its own, R0 - the vertex index's
+     * register - last (the modulate VS, measured). R1: sx, sy, sz, rhw;
+     * R2: tu, tv, 0, 1; R0: the D3DCOLOR's bytes, B, G, R, A. */
+    at = R6_CLAUSE_DWORD;
+    at += v9x_r6_shader_fetch(1ul, 0ul, R6_FETCH_COUNT_MESA, 1ul,
+                              R6_FMT_32_32_32_32_FLOAT, R6_SEL_Z, R6_SEL_W,
+                              out + at);
+    if (textured != 0ul) {
+        at += v9x_r6_shader_fetch(2ul, R6_D3D_UV_OFFSET, R6_FETCH_COUNT_MESA,
+                                  1ul, R6_FMT_32_32_FLOAT, R6_SEL_0,
+                                  R6_SEL_1, out + at);
+    }
+    at += v9x_r6_shader_fetch(0ul, R6_D3D_COLOUR_OFFSET, R6_FETCH_COUNT_MESA,
+                              1ul, R6_FMT_8_8_8_8, R6_SEL_Z, R6_SEL_W,
+                              out + at);
+    /* Normalised and unsigned: the fetch helper's scaled, signed fields
+     * cleared for the colour. */
+    out[at - 3ul] &= ~((3ul << R6_VTX_NUM_FORMAT_SHIFT) |
+                       R6_VTX_COMP_SIGNED);
+    return at;
+}
+
+v9x_u32 v9x_r6_shader_d3d_ps(v9x_u32 op, v9x_u32 *out)
+{
+    v9x_u32 at;
+
+    if (op == V9X_R6_D3D_OP_MODULATE) {
+        at = v9x_r6_shader_modulate_ps(out);
+        out[R6_MOD_TEX_DWORD + 1ul] |= R6_TEX_COORD_NORMALISED;
+        return at;
+    }
+    if (op != V9X_R6_D3D_OP_REPLACE) {
+        return v9x_r6_shader_gouraud_ps(out);
+    }
+    /* 0: the texture clause at 8, one sample, R1 = texel at R1; 1: R1 to
+     * MRT 0, the program's end; 2, 3: padding. */
+    out[0] = R6_D3D_REPLACE_TEX_DWORD / 2ul;
+    out[1] = v9x_r6_shader_cf_word1(R6_CF_INST_TEX, 1ul, 0ul, 1ul);
+    out[2] = v9x_r6_shader_export_word0(R6_EXPORT_PIXEL, 0ul, 1ul);
+    out[3] = v9x_r6_shader_export_word1(1ul, 1ul, 1ul);
+    for (at = 4ul; at < R6_D3D_REPLACE_TEX_DWORD; ++at) {
+        out[at] = 0ul;
+    }
+    at += v9x_r6_shader_sample(1ul, 1ul, out + at);
+    return at;
+}

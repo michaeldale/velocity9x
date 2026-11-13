@@ -301,7 +301,8 @@ void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value);
  * gpu_high); blending is enabled in CB_COLOR_CONTROL, not in the blend
  * word, hence blend_enable; one texture level only, linear aligned (no
  * mip chain yet); the colour buffer and the texture are ARGB8888 only,
- * the one format measured on this family (the solid draw).
+ * the one format measured on this family (the solid draw), unless
+ * d3d_order allows the 16-bit formats.
  *
  * GPU addresses are 256-byte aligned. The target is linear general, as
  * the solid draw drew it; pitch a multiple of 8. The depth buffer is Z16,
@@ -312,6 +313,13 @@ void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value);
  * (tile_mode 1), its pitch a multiple of V9X_R6_TEXTURE_PITCH_ALIGN.
  */
 #define V9X_R6_COLOR_8_8_8_8        0x1aul   /* COLOR_ and FMT_8_8_8_8 */
+/* The 16-bit formats Direct3D draws to and samples (xf86's
+ * r600_reg_auto_r6xx.h CB_COLOR0_INFO FORMAT, the same numbers as the
+ * texture's FMT_*): blue in the low field of each, which the shader's x
+ * reads and writes in d3d_order. Not yet measured on this family. */
+#define V9X_R6_COLOR_5_6_5          0x08ul
+#define V9X_R6_COLOR_1_5_5_5        0x0aul
+#define V9X_R6_COLOR_4_4_4_4        0x0bul
 #define V9X_R6_INTERPOLANTS_MAX     3ul
 /* xf86 drmmode_get_pitch_align for R600 and later: linear aligned
  * MAX(64, group_bytes / bpe); 1D tiled ("micro") MAX(8, group_bytes /
@@ -319,6 +327,14 @@ void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value);
  * 0, M-NZHWBR's 8A12h), so 64 texels of 32 bits and 16 pixels of Z16. */
 #define V9X_R6_TEXTURE_PITCH_ALIGN  64ul
 #define V9X_R6_DEPTH_PITCH_ALIGN    16ul
+#define V9X_R6_GROUP_BYTES          256ul
+
+/* Bytes a texel of a V9X_R6_COLOR_* format takes; 0 for any other. */
+v9x_u32 v9x_r6_3d_texel_bytes(v9x_u32 format);
+/* A linear-aligned texture's pitch in texels for width: width rounded up
+ * to MAX(64, group bytes / bytes a texel), xf86's drmmode_get_pitch_align
+ * - 64 texels at 32 bits, 128 at 16. 0 for a format not sampled here. */
+v9x_u32 v9x_r6_3d_texture_pitch(v9x_u32 format, v9x_u32 width);
 
 /* Comparison functions, DB_DEPTH_CONTROL's ZFUNC and SX_ALPHA_TEST_
  * CONTROL's ALPHA_FUNC alike: NEVER 0 ... ALWAYS 7. */
@@ -398,6 +414,22 @@ struct v9x_r6_3d_state {
      * over the texture and the vertices alone, xf86's ranged syncs (the
      * vertex cache alone, without the texture cache). */
     v9x_u32 ranged_syncs;
+    /*
+     * Zero: xf86's channel order, the probes' - an ARGB8888 target and
+     * texture only, the target written with COMP_SWAP 1 and the texture
+     * read through xf86's ARGB swizzle, so the shader's x, y, z, w are R,
+     * G, B, A. Nonzero: Direct3D's, Evergreen's (eg_3d.c): the shader's
+     * x, y, z, w are the format's fields from the low end - B, G, R, A in
+     * memory order for ARGB8888, as the D3D VS fetches a D3DCOLOR - the
+     * target written with SWAP_STD and the texture read XYZW (a 565
+     * texture's W the constant 1). The target may then be RGB565 or
+     * ARGB8888 and the texture any V9X_R6_COLOR_* above.
+     */
+    v9x_u32 d3d_order;
+    /* In d3d_order, nonzero: the texture's fourth field is not alpha (an
+     * XRGB8888 texture), so W reads the constant 1, as a 565 texture's
+     * always does. */
+    v9x_u32 texture_opaque;
 };
 
 /* Register words. func is V9X_R6_FUNC_*; factors V9X_R6_BLEND_*. The

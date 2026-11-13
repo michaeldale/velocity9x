@@ -366,7 +366,7 @@ static void v9x_r6_give_up(void)
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
 }
 
-static int v9x_r6_wait_idle(int wait)
+static int v9x_r6_dma_idle(int wait)
 {
     if (!v9x_r6_validate()) {
         return 0;
@@ -390,6 +390,51 @@ static int v9x_r6_wait_idle(int wait)
     return 0;
 }
 
+/* Idle for whatever needs the drawing: the DMA engine's work, and the
+ * CP's (r6_cp.c), which shares the same VRAM. */
+static int v9x_r6_wait_idle(int wait)
+{
+    return v9x_r6_dma_idle(wait) && v9x_r6_cp_drain(wait);
+}
+
+int v9x_r6_dma_settle(void)
+{
+    if (!v9x_r6_validated() || !v9x_r6_dirty) {
+        return 1;
+    }
+    return v9x_r6_dma_idle(1);
+}
+
+/*
+ * A Z buffer the Direct3D engine draws is 1D tiled (d3d_r6.c), so a linear
+ * rectangle of it is the wrong pixels. A constant over all of it is the
+ * same value in every pixel whatever the tiling, so the whole surface is
+ * filled, its rows padded to the tile as d3d_r6.c placed them; a fill of
+ * less than that is drawn on the CP instead (v9x_d3d_r6_depth_fill), as
+ * eng_eg.c does for the same reason.
+ */
+#define V9X_R6_DEPTH_TILE_ROWS 8ul
+
+static int v9x_r6_tiled_depth_fill(const V9X_DDHAL_BLTDATA *data,
+                                   struct v9x_r6_dma_fill *fill)
+{
+    const V9X_DD_SURFACE_LCL *surface = data->lpDDDestSurface;
+
+    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        !v9x_d3d_depth_tiled()) {
+        return 1;
+    }
+    if (fill->left != 0ul || fill->top != 0ul ||
+        fill->width != (DWORD)surface->lpGbl->wWidth ||
+        fill->height != (DWORD)surface->lpGbl->wHeight) {
+        return 0;
+    }
+    fill->width = fill->pitch_bytes / fill->bytes_per_pixel;
+    fill->height = (fill->height + V9X_R6_DEPTH_TILE_ROWS - 1ul) &
+                   ~(V9X_R6_DEPTH_TILE_ROWS - 1ul);
+    return 1;
+}
+
 /* The CPU's seed row, through the heap mapping: the engine is idle, so
  * nothing it queued can land on the row after this. */
 static void v9x_r6_write_seed(const struct v9x_r6_dma_plan *plan)
@@ -411,6 +456,11 @@ static int v9x_r6_run(const struct v9x_r6_dma_plan *plan)
     DWORD used;
     DWORD row;
 
+    /* The CP's drawing finished first: the DMA engine must not read a
+     * surface the CP is still writing, or write one it still reads. A CP
+     * that times out is given up by r6_cp.c and its work dropped, so the
+     * operation goes ahead either way. */
+    (void)v9x_r6_cp_drain(1);
     if (!v9x_r6_poll_idle(V9X_R6_WAIT_SPINS)) {
         v9x_r6_give_up();
         return V9X_BLT_BUSY;
@@ -468,6 +518,10 @@ static int v9x_r6_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     fill.width = (DWORD)(data->rDest[2] - data->rDest[0]);
     fill.height = (DWORD)(data->rDest[3] - data->rDest[1]);
     fill.color = data->bltFX.dwFillColor;
+    if (!v9x_r6_tiled_depth_fill(data, &fill)) {
+        return v9x_d3d_r6_depth_fill(data->lpDDDestSurface, data->rDest,
+                                     data->bltFX.dwFillColor, wait);
+    }
     if (v9x_r6_dma_plan_fill(&fill, &plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }

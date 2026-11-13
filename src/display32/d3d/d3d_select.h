@@ -44,6 +44,8 @@
 #define V9X_D3D_SELECT_GEN7      16ul
 /* The RS690's R300-class 3D core, by register writes. */
 #define V9X_D3D_SELECT_RS690     17ul
+/* The HD 2600 XT's R6xx shader core, through the CP (d3d_r6.c). */
+#define V9X_D3D_SELECT_R600      18ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

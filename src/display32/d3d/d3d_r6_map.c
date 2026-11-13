@@ -1,0 +1,334 @@
+/*
+ * The neutral draw description to R6xx batch state; see d3d_r6_map.h.
+ * d3d_eg_map.c's rules, on r6_3d.c's register words.
+ */
+#include "d3d_r6_map.h"
+
+#define V9X_D3D_R6_ALPHA_REF_MASK 0xfful
+/* A texture side the caps publish. */
+#define V9X_D3D_R6_TEXTURE_SIDE_MAX 2048ul
+
+/* Direct3D's compare functions, NEVER to ALWAYS, are the chip's ZFUNC and
+ * ALPHA_FUNC codes plus one. */
+static int v9x_d3d_r6_compare(v9x_u32 func, v9x_u32 *code)
+{
+    if (func < V9X_R3D_CMP_NEVER || func > V9X_R3D_CMP_ALWAYS) {
+        return 0;
+    }
+    *code = func - V9X_R3D_CMP_NEVER;
+    return 1;
+}
+
+/* Direct3D's blend factors to the CB's. Destination alpha is refused, as
+ * on Evergreen: neither target holds alpha the application put there.
+ * SRCALPHASAT is a source factor only. */
+static int v9x_d3d_r6_factor(v9x_u32 factor, int source, v9x_u32 *code)
+{
+    switch (factor) {
+    case V9X_R3D_BLEND_ZERO:
+        *code = V9X_R6_BLEND_ZERO;
+        return 1;
+    case V9X_R3D_BLEND_ONE:
+        *code = V9X_R6_BLEND_ONE;
+        return 1;
+    case V9X_R3D_BLEND_SRCCOLOR:
+        *code = V9X_R6_BLEND_SRC_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_INVSRCCOLOR:
+        *code = V9X_R6_BLEND_ONE_MINUS_SRC_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_SRCALPHA:
+        *code = V9X_R6_BLEND_SRC_ALPHA;
+        return 1;
+    case V9X_R3D_BLEND_INVSRCALPHA:
+        *code = V9X_R6_BLEND_ONE_MINUS_SRC_ALPHA;
+        return 1;
+    case V9X_R3D_BLEND_DESTCOLOR:
+        *code = V9X_R6_BLEND_DST_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_INVDESTCOLOR:
+        *code = V9X_R6_BLEND_ONE_MINUS_DST_COLOR;
+        return 1;
+    case V9X_R3D_BLEND_SRCALPHASAT:
+        if (source) {
+            *code = V9X_R6_BLEND_SRC_ALPHA_SATURATE;
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+/* A filter's in-level part: point or bilinear. A mip filter samples level
+ * 0 with its in-level filter, as no chain is placed yet; a magnification
+ * filter is NEAREST or LINEAR only. */
+static int v9x_d3d_r6_filter(v9x_u32 filter, int magnify, v9x_u32 *bilinear)
+{
+    switch (filter) {
+    case V9X_R3D_FILTER_NEAREST:
+        *bilinear = 0ul;
+        return 1;
+    case V9X_R3D_FILTER_LINEAR:
+        *bilinear = 1ul;
+        return 1;
+    case V9X_R3D_FILTER_MIPNEAREST:
+    case V9X_R3D_FILTER_LINEARMIPNEAREST:
+        *bilinear = 0ul;
+        return !magnify;
+    case V9X_R3D_FILTER_MIPLINEAR:
+    case V9X_R3D_FILTER_LINEARMIPLINEAR:
+        *bilinear = 1ul;
+        return !magnify;
+    }
+    return 0;
+}
+
+static int v9x_d3d_r6_address(v9x_u32 address, v9x_u32 *clamp)
+{
+    switch (address) {
+    case V9X_R3D_ADDRESS_WRAP:
+        *clamp = V9X_R6_TEX_WRAP;
+        return 1;
+    case V9X_R3D_ADDRESS_MIRROR:
+        *clamp = V9X_R6_TEX_MIRROR;
+        return 1;
+    case V9X_R3D_ADDRESS_CLAMP:
+        *clamp = V9X_R6_TEX_CLAMP_LAST_TEXEL;
+        return 1;
+    }
+    return 0;
+}
+
+/* Direct3D's DX5 texture blends to a PS, Evergreen's reading
+ * (d3d_eg_map.c): DECAL and COPY take the texel (REPLACE); MODULATE and
+ * MODULATEALPHA multiply colour and alpha. */
+static int v9x_d3d_r6_op(v9x_u32 op, v9x_u32 *shader_op)
+{
+    switch (op) {
+    case V9X_R3D_TEXOP_DECAL:
+    case V9X_R3D_TEXOP_COPY:
+        *shader_op = V9X_R6_D3D_OP_REPLACE;
+        return 1;
+    case V9X_R3D_TEXOP_MODULATE:
+    case V9X_R3D_TEXOP_MODULATEALPHA:
+        *shader_op = V9X_R6_D3D_OP_MODULATE;
+        return 1;
+    }
+    return 0;
+}
+
+/* A float's bits for ref / 255, the SX's alpha reference. */
+static v9x_u32 v9x_d3d_r6_alpha_ref(v9x_u32 ref)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } converted;
+
+    converted.value = (float)(long)(ref & V9X_D3D_R6_ALPHA_REF_MASK) / 255.0f;
+    return converted.bits;
+}
+
+static v9x_u32 v9x_d3d_r6_map_texture(const V9X_R3D_DRAW *draw,
+                                      const V9X_D3D_R6_TEXTURE *texture,
+                                      v9x_u32 heap_gpu,
+                                      struct v9x_r6_3d_state *state,
+                                      v9x_u32 *ps_slot)
+{
+    const V9X_R3D_TEXTURE *sampler = &draw->texture;
+    v9x_u32 shader_op;
+    v9x_u32 mag;
+    v9x_u32 min;
+    v9x_u32 clamp;
+
+    if (texture == 0 || texture->format == V9X_D3D_R6_TEXTURE_UNKNOWN) {
+        return V9X_D3D_EG_REFUSE_TEXTURE_FORMAT;
+    }
+    if (texture->width == 0ul || texture->height == 0ul ||
+        texture->width > V9X_D3D_R6_TEXTURE_SIDE_MAX ||
+        texture->height > V9X_D3D_R6_TEXTURE_SIDE_MAX ||
+        texture->pitch_texels < texture->width ||
+        v9x_r6_3d_texture_pitch(texture->format, texture->pitch_texels) !=
+            texture->pitch_texels ||
+        ((heap_gpu + texture->offset) &
+         (V9X_D3D_EG_SURFACE_ALIGN - 1ul)) != 0ul) {
+        return V9X_D3D_EG_REFUSE_TEXTURE_SHAPE;
+    }
+    if (!v9x_d3d_r6_op(sampler->op, &shader_op)) {
+        return V9X_D3D_EG_REFUSE_TEXTURE_OP;
+    }
+    /* The cylindrical WRAPU/WRAPV states have no sampler function. */
+    if (sampler->wrap_u != 0ul || sampler->wrap_v != 0ul ||
+        !v9x_d3d_r6_address(sampler->address, &clamp)) {
+        return V9X_D3D_EG_REFUSE_TEXTURE_ADDRESS;
+    }
+    if (!v9x_d3d_r6_filter(sampler->mag_filter, 1, &mag) ||
+        !v9x_d3d_r6_filter(sampler->min_filter, 0, &min)) {
+        return V9X_D3D_EG_REFUSE_TEXTURE_FILTER;
+    }
+    /* No kill shader yet: a keyed texture drawn unkeyed would show the
+     * key colour, so it is refused. */
+    if (draw->color_key_enable != 0ul && texture->has_key != 0ul) {
+        return V9X_D3D_EG_REFUSE_COLOR_KEY;
+    }
+    state->has_texture = 1ul;
+    state->texture_gpu = heap_gpu + texture->offset;
+    state->texture_width = texture->width;
+    state->texture_height = texture->height;
+    state->texture_pitch = texture->pitch_texels;
+    state->texture_format = texture->format;
+    state->texture_opaque = texture->opaque != 0ul ? 1ul : 0ul;
+    state->sampler_word0 = v9x_r6_3d_sampler(mag, min, clamp, clamp);
+    state->vs_gprs = V9X_R6_D3D_VS_GPRS(1ul);
+    state->ps_gprs = V9X_R6_D3D_PS_GPRS(shader_op);
+    state->interpolants = 2ul;
+    *ps_slot = V9X_R6_SLOT_PS_FIRST + shader_op;
+    return V9X_D3D_EG_REFUSE_NONE;
+}
+
+v9x_u32 v9x_d3d_r6_map_draw(const V9X_R3D_DRAW *draw,
+                            const V9X_D3D_R6_TEXTURE *texture,
+                            v9x_u32 heap_gpu,
+                            v9x_u32 depth_bytes,
+                            struct v9x_r6_3d_state *state,
+                            v9x_u32 *vs_slot,
+                            v9x_u32 *ps_slot)
+{
+    unsigned char *bytes = (unsigned char *)state;
+    v9x_u32 bytes_per_pixel;
+    v9x_u32 index;
+    v9x_u32 code;
+    v9x_u32 src;
+    v9x_u32 dst;
+    v9x_u32 mask;
+
+    for (index = 0ul; index < sizeof(*state); ++index) {
+        bytes[index] = 0u;
+    }
+    /* Levels in CPU memory are not sampled, and there is one texture
+     * unit: the fallback draws those. */
+    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
+        draw->texture1.object != 0) {
+        return V9X_D3D_EG_REFUSE_EXPLICIT;
+    }
+
+    /* The target: RGB565 or XRGB8888, linear general, its pitch a whole
+     * number of 8-pixel tiles and its base on 256 bytes. */
+    state->d3d_order = 1ul;
+    if (draw->target.format == V9X_R3D_FORMAT_RGB565) {
+        bytes_per_pixel = 2ul;
+        state->target_format = V9X_R6_COLOR_5_6_5;
+    } else if (draw->target.format == V9X_R3D_FORMAT_XRGB8888) {
+        /* The X byte is not the application's to have drawn: alpha
+         * writes off, as Evergreen's. */
+        bytes_per_pixel = 4ul;
+        state->target_format = V9X_R6_COLOR_8_8_8_8;
+    } else {
+        return V9X_D3D_EG_REFUSE_TARGET;
+    }
+    if (draw->target.width == 0ul || draw->target.height == 0ul ||
+        (draw->target.pitch % (8ul * bytes_per_pixel)) != 0ul ||
+        draw->target.pitch / bytes_per_pixel < draw->target.width ||
+        ((heap_gpu + draw->target.offset) &
+         (V9X_D3D_EG_SURFACE_ALIGN - 1ul)) != 0ul) {
+        return V9X_D3D_EG_REFUSE_TARGET;
+    }
+    state->target_gpu = heap_gpu + draw->target.offset;
+    state->target_pitch = draw->target.pitch / bytes_per_pixel;
+    state->target_height = draw->target.height;
+    state->scissor_right = draw->target.width;
+    state->scissor_bottom = draw->target.height;
+
+    /* An explicit draw's scissor must be a non-empty rectangle inside the
+     * target. Its write mask must write every colour channel or none (the
+     * depth fill): which CB_TARGET_MASK bit is which channel in d3d_order
+     * is not measured, so a partial mask goes to the fallback. */
+    if (draw->explicit_state != 0ul) {
+        if (draw->scissor_left >= draw->scissor_right ||
+            draw->scissor_top >= draw->scissor_bottom ||
+            draw->scissor_right > draw->target.width ||
+            draw->scissor_bottom > draw->target.height) {
+            return V9X_D3D_EG_REFUSE_EXPLICIT;
+        }
+        state->scissor_left = draw->scissor_left;
+        state->scissor_top = draw->scissor_top;
+        state->scissor_right = draw->scissor_right;
+        state->scissor_bottom = draw->scissor_bottom;
+        mask = draw->write_mask & (V9X_D3D_EG_WRITE_RED |
+                                   V9X_D3D_EG_WRITE_GREEN |
+                                   V9X_D3D_EG_WRITE_BLUE);
+        if (mask == 0ul) {
+            state->masked_channels = V9X_R6_CHANNEL_RED |
+                                     V9X_R6_CHANNEL_GREEN |
+                                     V9X_R6_CHANNEL_BLUE;
+        } else if (mask != (V9X_D3D_EG_WRITE_RED | V9X_D3D_EG_WRITE_GREEN |
+                            V9X_D3D_EG_WRITE_BLUE)) {
+            return V9X_D3D_EG_REFUSE_EXPLICIT;
+        }
+    }
+
+    /* Depth, when enabled and bound: Z16 as d3d_r6.c places it, rows
+     * padded to the tile. Disabled, the DB has no buffer. */
+    if (draw->depth_enable != 0ul && draw->depth.object != 0 &&
+        draw->depth.pitch != 0ul) {
+        if (depth_bytes != 2ul ||
+            ((draw->depth.pitch / 2ul) % V9X_R6_DEPTH_PITCH_ALIGN) != 0ul ||
+            (draw->depth.pitch % 2ul) != 0ul ||
+            draw->depth.pitch / 2ul < draw->target.width ||
+            draw->depth.height < draw->target.height ||
+            ((heap_gpu + draw->depth.offset) &
+             (V9X_D3D_EG_SURFACE_ALIGN - 1ul)) != 0ul) {
+            return V9X_D3D_EG_REFUSE_DEPTH_SURFACE;
+        }
+        if (!v9x_d3d_r6_compare(draw->depth_func, &code)) {
+            return V9X_D3D_EG_REFUSE_DEPTH_FUNC;
+        }
+        state->has_depth = 1ul;
+        state->depth_gpu = heap_gpu + draw->depth.offset;
+        state->depth_pitch = draw->depth.pitch / 2ul;
+        state->depth_height =
+            (draw->depth.height + V9X_D3D_EG_DEPTH_TILE_ROWS - 1ul) &
+            ~(V9X_D3D_EG_DEPTH_TILE_ROWS - 1ul);
+        state->depth_control =
+            v9x_r6_3d_depth_control(1ul, draw->depth_write, code);
+    }
+
+    /* R6xx enables blending in CB_COLOR_CONTROL, the factors apart. */
+    if (draw->blend_enable != 0ul) {
+        if (!v9x_d3d_r6_factor(draw->src_blend, 1, &src) ||
+            !v9x_d3d_r6_factor(draw->dst_blend, 0, &dst)) {
+            return V9X_D3D_EG_REFUSE_BLEND;
+        }
+        state->blend_enable = 1ul;
+        state->blend_control = v9x_r6_3d_blend(1ul, src, dst);
+    } else {
+        state->blend_control = v9x_r6_3d_blend(0ul, 0ul, 0ul);
+    }
+    if (draw->alpha_test_enable != 0ul) {
+        if (!v9x_d3d_r6_compare(draw->alpha_func, &code)) {
+            return V9X_D3D_EG_REFUSE_ALPHA_FUNC;
+        }
+        state->alpha_test_control = v9x_r6_3d_alpha_test(1ul, code);
+        state->alpha_ref = v9x_d3d_r6_alpha_ref(draw->alpha_ref);
+    } else {
+        state->alpha_test_control =
+            v9x_r6_3d_alpha_test(0ul, V9X_R6_FUNC_ALWAYS);
+    }
+
+    /* rhw in w, perspective-correct; pixel centres at whole coordinates,
+     * Direct3D's. Every RV630 has the vertex cache (r6_3d.h). */
+    state->perspective = 1ul;
+    state->pixel_centre_half = 0ul;
+    state->vertex_cache = 1ul;
+    state->vertex_stride = V9X_R6_D3D_STRIDE;
+    if (draw->texture.object == 0) {
+        state->vs_gprs = V9X_R6_D3D_VS_GPRS(0ul);
+        state->ps_gprs = V9X_R6_D3D_PS_GPRS(V9X_R6_D3D_OP_NONE);
+        state->interpolants = 1ul;
+        *vs_slot = V9X_R6_SLOT_VS;
+        *ps_slot = V9X_R6_SLOT_PS_FIRST + V9X_R6_D3D_OP_NONE;
+        return V9X_D3D_EG_REFUSE_NONE;
+    }
+    *vs_slot = V9X_R6_SLOT_VS_TEXTURED;
+    return v9x_d3d_r6_map_texture(draw, texture, heap_gpu, state, ps_slot);
+}

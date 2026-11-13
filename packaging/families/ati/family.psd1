@@ -706,9 +706,13 @@
             # (docs\decisions\2026-11-13-rv630-dma-write-probe.md); the rest
             # is drawn by the CPU (docs\plans\ati-rv630-hd2600xt.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            # The R6xx shader core through the CP on AMD's RV630 microcode
+            # (d3d_r6.c): its Gouraud, textured and Z16 streams drawn exactly
+            # by V9XR63D on this card
+            # (docs\decisions\2026-11-13-rv630-gouraud-texture-depth.md).
+            Direct3D = 'hardware-r600-cp'
             EngineType = 'ATI_R600'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # What M-NZHWBR's VBE 4F00h reports; CONFIG_MEMSIZE says 256 MiB
             # (docs\decisions\2026-11-13-rv630-register-probe.md).
             VideoMemoryBytes = 16777216

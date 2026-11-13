@@ -909,6 +909,13 @@ void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value)
 #define R6_TEX_REQUEST_SIZE_1       0x00004000ul
 /* SQ_SEL_Z << 16 | SQ_SEL_Y << 19 | SQ_SEL_X << 22 | SQ_SEL_W << 25 */
 #define R6_TEX_SWIZZLE_ARGB         0x060a0000ul
+/* d3d_order's swizzles, Evergreen's (eg_3d.c): X, Y, Z, W as stored, and
+ * for a 565 texture W the constant 1 (SQ_SEL_1, 5), which has no fourth
+ * field and would otherwise sample alpha 0. */
+#define R6_TEX_SWIZZLE_XYZW         ((0ul << 16) | (1ul << 19) | \
+                                     (2ul << 22) | (3ul << 25))
+#define R6_TEX_SWIZZLE_XYZ1         ((0ul << 16) | (1ul << 19) | \
+                                     (2ul << 22) | (5ul << 25))
 #define R6_TEX_VALID_TEXTURE        0x80000000ul /* TYPE(2) << 30 */
 #define R6_TEX_RESOURCE_DWORDS      7ul
 #define R6_TEX_SAMPLER_DWORDS       3ul
@@ -955,6 +962,50 @@ v9x_u32 v9x_r6_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
            ((min_bilinear != 0ul ? 1ul : 0ul) << R6_SAMPLER_MIN_SHIFT);
 }
 
+v9x_u32 v9x_r6_3d_texel_bytes(v9x_u32 format)
+{
+    switch (format) {
+    case V9X_R6_COLOR_5_6_5:
+    case V9X_R6_COLOR_1_5_5_5:
+    case V9X_R6_COLOR_4_4_4_4:
+        return 2ul;
+    case V9X_R6_COLOR_8_8_8_8:
+        return 4ul;
+    }
+    return 0ul;
+}
+
+v9x_u32 v9x_r6_3d_texture_pitch(v9x_u32 format, v9x_u32 width)
+{
+    v9x_u32 bytes = v9x_r6_3d_texel_bytes(format);
+    v9x_u32 align;
+
+    if (bytes == 0ul || width == 0ul) {
+        return 0ul;
+    }
+    align = V9X_R6_GROUP_BYTES / bytes;
+    if (align < V9X_R6_TEXTURE_PITCH_ALIGN) {
+        align = V9X_R6_TEXTURE_PITCH_ALIGN;
+    }
+    return (width + align - 1ul) & ~(align - 1ul);
+}
+
+/* The formats a state's order allows: ARGB8888 alone in xf86's, and in
+ * d3d_order RGB565 too for a target, every V9X_R6_COLOR_* for a texture. */
+static int v9x_r6_3d_target_format_ok(const struct v9x_r6_3d_state *state)
+{
+    return state->target_format == V9X_R6_COLOR_8_8_8_8 ||
+           (state->d3d_order != 0ul &&
+            state->target_format == V9X_R6_COLOR_5_6_5);
+}
+
+static int v9x_r6_3d_texture_format_ok(const struct v9x_r6_3d_state *state)
+{
+    return state->texture_format == V9X_R6_COLOR_8_8_8_8 ||
+           (state->d3d_order != 0ul &&
+            v9x_r6_3d_texel_bytes(state->texture_format) != 0ul);
+}
+
 static int v9x_r6_3d_state_valid(const struct v9x_r6_3d_state *state)
 {
     if (!v9x_r6_3d_aligned(state->target_gpu) ||
@@ -962,7 +1013,7 @@ static int v9x_r6_3d_state_valid(const struct v9x_r6_3d_state *state)
         state->target_pitch > V9X_R6_3D_PITCH_MAX ||
         state->target_height == 0ul ||
         state->target_height > V9X_R6_3D_PITCH_MAX ||
-        state->target_format != V9X_R6_COLOR_8_8_8_8) {
+        !v9x_r6_3d_target_format_ok(state)) {
         return 0;
     }
     if (state->scissor_left >= state->scissor_right ||
@@ -992,26 +1043,30 @@ static int v9x_r6_3d_state_valid(const struct v9x_r6_3d_state *state)
     if (state->has_texture != 0ul &&
         (!v9x_r6_3d_aligned(state->texture_gpu) ||
          state->texture_width == 0ul || state->texture_height == 0ul ||
+         !v9x_r6_3d_texture_format_ok(state) ||
          state->texture_pitch < state->texture_width ||
-         (state->texture_pitch % V9X_R6_TEXTURE_PITCH_ALIGN) != 0ul ||
+         v9x_r6_3d_texture_pitch(state->texture_format,
+                                 state->texture_pitch) !=
+             state->texture_pitch ||
          state->texture_pitch > V9X_R6_3D_PITCH_MAX ||
-         state->texture_height > V9X_R6_3D_PITCH_MAX ||
-         state->texture_format != V9X_R6_COLOR_8_8_8_8)) {
+         state->texture_height > V9X_R6_3D_PITCH_MAX)) {
         return 0;
     }
     return state->vertex_stride != 0ul &&
            state->vertex_bytes >= state->vertex_stride;
 }
 
-/* r600_set_render_target for a linear general ARGB8888 target, as
- * v9x_r6_3d_solid writes it (measured, M-NZHWBR): the base and the rv6xx
+/* r600_set_render_target for a linear general target, as v9x_r6_3d_solid
+ * writes it (measured, M-NZHWBR, ARGB8888): the base and the rv6xx
  * SURFACE_BASE_UPDATE, CMASK and FMASK on the target, the size with the
- * height rounded up to 8, COLOR_8_8_8_8 with COMP_SWAP 1, BLEND_CLAMP and
- * SOURCE_FORMAT. */
+ * height rounded up to 8, the format with COMP_SWAP 1 (xf86's order) or
+ * SWAP_STD (d3d_order, Evergreen's), BLEND_CLAMP and SOURCE_FORMAT. */
 static void v9x_r6_3d_render_target(struct v9x_r6_pm4 *stream,
-                                    v9x_u32 gpu, v9x_u32 pitch,
-                                    v9x_u32 height)
+                                    const struct v9x_r6_3d_state *state)
 {
+    v9x_u32 gpu = state->target_gpu;
+    v9x_u32 pitch = state->target_pitch;
+    v9x_u32 height = state->target_height;
     v9x_u32 height8 = (height + R6_TILE_EDGE - 1ul) & ~(R6_TILE_EDGE - 1ul);
 
     v9x_r6_pm4_set1(stream, R6_CB_COLOR0_BASE, gpu >> 8);
@@ -1027,10 +1082,10 @@ static void v9x_r6_3d_render_target(struct v9x_r6_pm4 *stream,
     v9x_r6_pm4_set1(stream, R6_CB_COLOR0_VIEW, 0ul);
     v9x_r6_pm4_set1(stream, R6_CB_COLOR0_MASK, 0ul);
     v9x_r6_pm4_set1(stream, R6_CB_COLOR0_INFO,
-                    (R6_COLOR_8_8_8_8 << R6_CB_FORMAT_SHIFT) |
+                    (state->target_format << R6_CB_FORMAT_SHIFT) |
                     (R6_CB_ARRAY_LINEAR_GENERAL << R6_CB_ARRAY_MODE_SHIFT) |
-                    R6_CB_COMP_SWAP_ARGB | R6_CB_BLEND_CLAMP |
-                    R6_CB_SOURCE_FORMAT);
+                    (state->d3d_order != 0ul ? 0ul : R6_CB_COMP_SWAP_ARGB) |
+                    R6_CB_BLEND_CLAMP | R6_CB_SOURCE_FORMAT);
 }
 
 /*
@@ -1123,7 +1178,8 @@ v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
     if (state->has_texture != 0ul) {
         v9x_r6_3d_cache_sync(stream, state, V9X_R6_SYNC_TC_ACTION,
                              state->texture_pitch * state->texture_height *
-                             R6_TEXEL_BYTES_8888, state->texture_gpu);
+                             v9x_r6_3d_texel_bytes(state->texture_format),
+                             state->texture_gpu);
         values[0] = R6_TEX_DIM_2D |
                     (R6_ARRAY_LINEAR_ALIGNED << R6_TEX_TILE_MODE_SHIFT) |
                     (((state->texture_pitch >> 3) - 1ul) <<
@@ -1133,7 +1189,14 @@ v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
                     (state->texture_format << R6_TEX_FORMAT_SHIFT);
         values[2] = state->texture_gpu >> 8;
         values[3] = state->texture_gpu >> 8;
-        values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_ARGB;
+        if (state->d3d_order == 0ul) {
+            values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_ARGB;
+        } else if (state->texture_format == V9X_R6_COLOR_5_6_5 ||
+                   state->texture_opaque != 0ul) {
+            values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_XYZ1;
+        } else {
+            values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_XYZW;
+        }
         values[5] = 0ul;
         values[6] = R6_TEX_VALID_TEXTURE;
         v9x_r6_pm4_set(stream, R6_SQ_TEX_RESOURCE_PS_0, values,
@@ -1148,8 +1211,7 @@ v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
 
     /* The colour buffer, its write mask, ROP copy with target 0's
      * blending on or off, and the factors. */
-    v9x_r6_3d_render_target(stream, state->target_gpu, state->target_pitch,
-                            state->target_height);
+    v9x_r6_3d_render_target(stream, state);
     v9x_r6_pm4_set1(stream, R6_CB_TARGET_MASK,
                     (state->write_alpha != 0ul ? R6_CB_WRITE_ARGB
                                                : R6_CB_WRITE_RGB) &

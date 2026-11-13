@@ -653,6 +653,26 @@ DWORD v9x_eg_cp_shader_gpu(DWORD which);
  * 31:0, zero until the engine is validated. */
 int v9x_eg_dma_settle(void);
 int v9x_eg_heap_address(DWORD *high, DWORD *low);
+/* The R6xx CP (HD 2600 XT), in engines/r6_cp.c, Evergreen's contract
+ * above: ready, submit, drain and vertex_space as v9x_eg_cp_*. addresses
+ * gives the heap's GPU address (R6xx's are 32 bits) and
+ * CC_GC_SHADER_PIPE_CONFIG, which the default state takes, read without
+ * starting the CP; shader_gpu a slot's address (r6_shader.h,
+ * V9X_R6_SLOT_*) once addresses has answered. */
+int v9x_r6_cp_ready(void);
+int v9x_r6_cp_submit(const v9x_u32 *dwords, DWORD count);
+int v9x_r6_cp_drain(int wait);
+int v9x_r6_cp_vertex_space(DWORD bytes, volatile DWORD **linear, DWORD *gpu);
+int v9x_r6_cp_addresses(DWORD *heap_gpu, DWORD *pipe_config);
+DWORD v9x_r6_cp_shader_gpu(DWORD which);
+/* engines/eng_r6.c: waits for DMA work queued since the engine was last
+ * idle, so a 3D batch never reads what a fill or copy has yet to write.
+ * Non-zero when idle, or when the DMA engine is not running. */
+int v9x_r6_dma_settle(void);
+/* d3d/d3d_r6.c: a rectangle of a 1D-tiled Z16 drawn on the CP, for
+ * eng_r6.c's fills short of the whole surface (as v9x_d3d_eg_depth_fill). */
+int v9x_d3d_r6_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait);
 /* engines/eng_vi.c, for eg_scanout.c on Carrizo: dma_settle waits for the
  * SDMA work queued since the engine was last idle (non-zero when idle, or
  * when it is not running); heap_address gives the heap's GPU address as
