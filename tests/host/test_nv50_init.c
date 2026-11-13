@@ -1,0 +1,201 @@
+#include <stdio.h>
+#include <string.h>
+
+#include "velocity9x/nv50_init.h"
+
+/*
+ * The GT218 bring-up list (src\chipsets\nvidia\gt218\nv50_init.c)
+ * against the sequence the step 3 probe ran on M-BXMFA8, which is
+ * nouveau's nv50_fifo_init, trap enable, nv50_gr_init and channel bind.
+ */
+
+static unsigned int failures = 0u;
+#define CHECK(e) do { if (!(e)) { \
+    printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, #e); \
+    ++failures; } } while (0)
+
+#define BASE 0x08000000ul
+#define PMC  0xdff3f113ul
+
+static v9x_u32 region[V9X_NV50_REGION_WORDS];
+static struct v9x_nv50_chan_layout layout;
+static struct v9x_nv50_init_op ops[V9X_NV50_INIT_OPS_MAX];
+static struct v9x_nv50_init_list list;
+
+static v9x_status build_for(v9x_u32 chipset, v9x_u32 units, v9x_u32 max)
+{
+    struct v9x_nv50_grctx_input grctx;
+    struct v9x_nv50_init_input input;
+
+    grctx.chipset = 0xa8ul;
+    grctx.units = 0xf3010001ul;
+    grctx.gddr5 = 0ul;
+    if (v9x_nv50_chan_build(BASE, 1ul, &grctx, region,
+                            V9X_NV50_REGION_WORDS, &layout) !=
+        V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_STATE;
+    }
+    input.chipset = chipset;
+    input.units = units;
+    input.pmc_enable = PMC;
+    return v9x_nv50_init_build(&input, &layout, ops, max, &list);
+}
+
+static int is_write(v9x_u32 at, v9x_u32 reg, v9x_u32 value)
+{
+    return ops[at].kind == V9X_NV50_INIT_WRITE && ops[at].reg == reg &&
+           ops[at].value == value;
+}
+
+/* The first index at or after from that writes reg, or count. */
+static v9x_u32 find_write(v9x_u32 from, v9x_u32 reg)
+{
+    v9x_u32 at;
+
+    for (at = from; at < list.count; ++at) {
+        if (ops[at].kind == V9X_NV50_INIT_WRITE && ops[at].reg == reg) {
+            return at;
+        }
+    }
+    return list.count;
+}
+
+static void test_fifo(void)
+{
+    v9x_u32 at;
+    v9x_u32 index;
+
+    CHECK(build_for(0xa8ul, 0xf3010001ul, V9X_NV50_INIT_OPS_MAX) ==
+          V9X_STATUS_OK);
+    /* PFIFO reset through PMC_ENABLE, every other bit as found. */
+    CHECK(is_write(0ul, 0x000200ul, PMC & ~0x00000100ul));
+    CHECK(is_write(1ul, 0x000200ul, PMC | 0x00000100ul));
+    CHECK(is_write(2ul, 0x00250cul, 0x6f3cfc34ul));
+    CHECK(is_write(3ul, 0x002044ul, 0x01003ffful));
+    CHECK(is_write(4ul, 0x002100ul, 0xfffffffful));
+    CHECK(is_write(5ul, 0x002140ul, 0xbffffffful));
+    /* All 128 channel table entries cleared. */
+    for (index = 0ul; index < 128ul; ++index) {
+        CHECK(is_write(6ul + index, 0x002600ul + index * 4ul, 0ul));
+    }
+    /* An empty runlist and its wait, before CACHE1 is enabled. */
+    at = 6ul + 128ul;
+    CHECK(is_write(at, 0x0032f4ul, layout.runlist_reg));
+    CHECK(is_write(at + 1ul, 0x0032ecul, 0ul));
+    CHECK(ops[at + 2ul].kind == V9X_NV50_INIT_WAIT);
+    CHECK(ops[at + 2ul].reg == 0x0032ecul);
+    CHECK(ops[at + 2ul].mask == 0x00000100ul);
+    CHECK(ops[at + 2ul].value == 0ul);
+    CHECK(is_write(at + 3ul, 0x003200ul, 1ul));
+    CHECK(is_write(at + 4ul, 0x003250ul, 1ul));
+    CHECK(is_write(at + 5ul, 0x002500ul, 1ul));
+    /* The VM trap: acknowledged, then enabled (gt215_fb's value). */
+    CHECK(is_write(at + 6ul, 0x100c90ul, 0x800d0ffful));
+    CHECK(is_write(at + 7ul, 0x100c90ul, 0x000d0ffful));
+    CHECK(list.fifo_end == at + 8ul);
+}
+
+static void test_gr(void)
+{
+    v9x_u32 at = list.fifo_end;
+    v9x_u32 index;
+    v9x_u32 program;
+
+    /* PGRAPH reset, from PMC_ENABLE with PFIFO on. */
+    CHECK(is_write(at, 0x000200ul, (PMC | 0x100ul) & ~0x00201000ul));
+    CHECK(is_write(at + 1ul, 0x000200ul, PMC | 0x100ul | 0x00201000ul));
+    CHECK(is_write(at + 2ul, 0x40008cul, 4ul));
+    CHECK(is_write(at + 3ul, 0x400804ul, 0xc0000000ul));
+    CHECK(is_write(at + 8ul, 0x402000ul, 0xc0000000ul));
+    /* One TP (1540h bit 0), the A0-and-later addresses. */
+    CHECK(is_write(at + 9ul, 0x408600ul, 0xc0000000ul));
+    CHECK(is_write(at + 10ul, 0x408708ul, 0xc0000000ul));
+    CHECK(is_write(at + 11ul, 0x40831cul, 0xc0000000ul));
+    CHECK(is_write(at + 12ul, 0x400108ul, 0xfffffffful));
+    CHECK(is_write(at + 13ul, 0x400138ul, 0xfffffffful));
+    CHECK(is_write(at + 14ul, 0x400100ul, 0xfffffffful));
+    CHECK(is_write(at + 15ul, 0x40013cul, 0xfffffffful));
+    CHECK(is_write(at + 16ul, 0x400500ul, 0x00010001ul));
+    /* The context program: index 0, then every word in order. */
+    CHECK(is_write(at + 17ul, 0x400324ul, 0ul));
+    program = at + 18ul;
+    CHECK(layout.program_words == 124ul);
+    for (index = 0ul; index < layout.program_words; ++index) {
+        CHECK(is_write(program + index, 0x400328ul,
+                       layout.program[index]));
+    }
+    at = program + layout.program_words;
+    CHECK(is_write(at, 0x400824ul, 0ul));
+    CHECK(is_write(at + 3ul, 0x400830ul, 0ul));
+    CHECK(is_write(at + 4ul, 0x40032cul, 0ul));
+    CHECK(is_write(at + 5ul, 0x400330ul, 0ul));
+    /* Zcull for A8: 402CC0h, 402CA8h = 2, then 8 x 4 zeros. */
+    CHECK(is_write(at + 6ul, 0x402cc0ul, 0ul));
+    CHECK(is_write(at + 7ul, 0x402ca8ul, 2ul));
+    CHECK(is_write(at + 8ul, 0x402c20ul, 0ul));
+    CHECK(is_write(at + 8ul + 31ul, 0x402c9cul, 0ul));
+    CHECK(list.gr_end == at + 8ul + 32ul);
+}
+
+static void test_bind(void)
+{
+    v9x_u32 at = list.gr_end;
+
+    CHECK(is_write(at, 0x002604ul, layout.chan_entry));
+    CHECK(is_write(at + 1ul, 0x0032f4ul, layout.runlist_reg));
+    CHECK(is_write(at + 2ul, 0x0032ecul, 1ul));
+    CHECK(ops[at + 3ul].kind == V9X_NV50_INIT_WAIT);
+    CHECK(ops[at + 3ul].reg == 0x0032ecul);
+    CHECK(ops[at + 3ul].mask == 0x00000100ul);
+    CHECK(list.count == at + 4ul);
+    CHECK(list.count <= V9X_NV50_INIT_OPS_MAX);
+}
+
+static void test_variants(void)
+{
+    v9x_u32 at;
+
+    /* Two TPs: a second set of trap enables, 800h on. */
+    CHECK(build_for(0xa8ul, 0xf3010003ul, V9X_NV50_INIT_OPS_MAX) ==
+          V9X_STATUS_OK);
+    CHECK(find_write(0ul, 0x408e00ul) != list.count);
+    CHECK(find_write(0ul, 0x408f08ul) != list.count);
+    CHECK(find_write(0ul, 0x408b1cul) != list.count);
+
+    /* Before A0h: the other trap addresses, and zcull 800h alone. */
+    CHECK(build_for(0x86ul, 0xf3010001ul, V9X_NV50_INIT_OPS_MAX) ==
+          V9X_STATUS_OK);
+    CHECK(find_write(0ul, 0x408900ul) != list.count);
+    CHECK(find_write(0ul, 0x408600ul) == list.count);
+    at = find_write(0ul, 0x402ca8ul);
+    CHECK(at != list.count && ops[at].value == 0x00000800ul);
+    CHECK(find_write(0ul, 0x402cc0ul) == list.count);
+
+    /* A0h itself: zcull 802h. */
+    CHECK(build_for(0xa0ul, 0xf3010001ul, V9X_NV50_INIT_OPS_MAX) ==
+          V9X_STATUS_OK);
+    at = find_write(0ul, 0x402ca8ul);
+    CHECK(at != list.count && ops[at].value == 0x00000802ul);
+
+    /* Too small a buffer is refused, not truncated. */
+    CHECK(build_for(0xa8ul, 0xf3010001ul, 100ul) ==
+          V9X_STATUS_INTEGER_OVERFLOW);
+}
+
+static void test_ring(void)
+{
+    CHECK(v9x_nv50_ib_next(0ul) == 1ul);
+    CHECK(v9x_nv50_ib_next(510ul) == 511ul);
+    CHECK(v9x_nv50_ib_next(511ul) == 0ul);
+}
+
+unsigned int v9x_run_nv50_init_tests(void)
+{
+    failures = 0u;
+    test_fifo();
+    test_gr();
+    test_bind();
+    test_variants();
+    test_ring();
+    return failures;
+}

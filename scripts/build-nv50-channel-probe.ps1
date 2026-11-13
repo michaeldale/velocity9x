@@ -91,6 +91,7 @@ if (-not [Text.Encoding]::ASCII.GetString($vxdBytes).Contains('N5CH_DDB')) {
 $sources = @(
     (Join-Path $repoRoot 'tools\diag\nv50_channel_probe_win32.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_chan.c'),
+    (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_init.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_grctx.c')
 )
 $objects = @()

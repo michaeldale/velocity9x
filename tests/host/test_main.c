@@ -329,6 +329,10 @@ unsigned int v9x_run_nv50_grctx_tests(void);
  * pushbuffer words against nouveau's encodings. */
 unsigned int v9x_run_nv50_chan_tests(void);
 
+/* tests\host\test_nv50_init.c: the GT218 register bring-up list against
+ * the sequence the step 3 probe ran. */
+unsigned int v9x_run_nv50_init_tests(void);
+
 /* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
  * 3dfx driver builds for them. */
 unsigned int v9x_run_tdfx_hwc_tests(void);
@@ -1549,6 +1553,7 @@ int main(int argc, char **argv)
     failures += v9x_run_nv3_3d_tests();
     failures += v9x_run_nv50_grctx_tests();
     failures += v9x_run_nv50_chan_tests();
+    failures += v9x_run_nv50_init_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_rs690_2d_tests();

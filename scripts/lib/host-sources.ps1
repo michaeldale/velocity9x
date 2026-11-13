@@ -119,6 +119,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\gt218\nv50_grctx.c',
         # GT218 channel, VM, objects and 2D pushbuffer words, no I/O.
         'src\chipsets\nvidia\gt218\nv50_chan.c',
+        # GT218 register bring-up as an ordered list, no I/O.
+        'src\chipsets\nvidia\gt218\nv50_init.c',
         # Rage 128 2D engine: init, fill and copy register values, no I/O.
         'src\chipsets\ati\rage128\r128_2d.c',
         # Rage 128 3D: CCE state and primitive packet streams, no I/O.
@@ -387,6 +389,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_nv3_3d.c',
         'tests\host\test_nv50_grctx.c',
         'tests\host\test_nv50_chan.c',
+        'tests\host\test_nv50_init.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
         'tests\host\test_rs690_2d.c',

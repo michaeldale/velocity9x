@@ -32,6 +32,7 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/nv50_chan.h"
+#include "velocity9x/nv50_init.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -722,6 +723,7 @@ static void v9x_status_publish(const char *section,
 /* ---- The stages. ---- */
 
 static DWORD v9x_pmc_enable_found;
+static DWORD v9x_units_found;
 
 /* The window's last page, which neither the region (B0000h bytes) nor the
  * fill target (2 MiB + 36 KiB) reaches: one marker written and read back
@@ -865,6 +867,7 @@ static void v9x_stage_region(void)
         v9x_finish("UNITS-REFUSED", 3u);
     }
     grctx.units = v9x_value(row);
+    v9x_units_found = grctx.units;
     /* PFB 100714h type 1 on boot 82: DDR2 or DDR3, not GDDR5 (4). */
     grctx.gddr5 = 0ul;
     v9x_key("Region", "Units", grctx.units);
@@ -1384,6 +1387,51 @@ static void v9x_pusher_state(void)
     v9x_vram_check("pusher");
 }
 
+/*
+ * The register bring-up, built once by nv50_init.c from the layout, the
+ * units mask and PMC_ENABLE as the pre stage read them. The probe replays
+ * it in three VxD runs (PFIFO, PGRAPH, the bind) so each part is logged
+ * before the next starts; the HAL engine replays the same list.
+ */
+static struct v9x_nv50_init_op v9x_init_ops[V9X_NV50_INIT_OPS_MAX];
+static struct v9x_nv50_init_list v9x_init_list;
+
+static void v9x_init_build(void)
+{
+    struct v9x_nv50_init_input input;
+
+    input.chipset = (v9x_result.boot0 >> 20) & 0x1fful;
+    input.units = v9x_units_found;
+    input.pmc_enable = v9x_pmc_enable_found;
+    if (v9x_nv50_init_build(&input, &v9x_layout, v9x_init_ops,
+                            V9X_NV50_INIT_OPS_MAX, &v9x_init_list) !=
+        V9X_STATUS_OK) {
+        v9x_finish("INIT-LIST-FAILED", 5u);
+    }
+    v9x_number("Init", "Ops", v9x_init_list.count);
+    v9x_number("Init", "FifoEnd", v9x_init_list.fifo_end);
+    v9x_number("Init", "GrEnd", v9x_init_list.gr_end);
+}
+
+/* Add ops [from, to) of the list to the run being built. Returns the op
+ * index of the last wait among them, for its result. */
+static DWORD v9x_replay(DWORD from, DWORD to)
+{
+    DWORD last_wait = V9X_OP_NOT_READ;
+    DWORD at;
+
+    for (at = from; at < to; ++at) {
+        if (v9x_init_ops[at].kind == V9X_NV50_INIT_WAIT) {
+            last_wait = v9x_wait(v9x_init_ops[at].reg,
+                                 v9x_init_ops[at].mask,
+                                 v9x_init_ops[at].value);
+        } else {
+            v9x_write(v9x_init_ops[at].reg, v9x_init_ops[at].value);
+        }
+    }
+    return last_wait;
+}
+
 static void v9x_stage_gr_init(void);
 
 static int v9x_stage_fifo(void)
@@ -1408,40 +1456,14 @@ static int v9x_stage_fifo(void)
     DWORD timeline[V9X_TIMELINE_SAMPLES][5];
     char trap_key[8];
 
+    v9x_init_build();
     v9x_ops_begin();
-    /* nv50_fifo_init: reset PFIFO, its constants, interrupt status and
-     * enables (status only: PMC_INTR_EN is not touched), the channel
-     * table cleared. */
-    v9x_write(V9X_NV50_PMC_ENABLE,
-              v9x_pmc_enable_found & ~V9X_NV50_PMC_ENABLE_PFIFO);
-    v9x_write(V9X_NV50_PMC_ENABLE,
-              v9x_pmc_enable_found | V9X_NV50_PMC_ENABLE_PFIFO);
-    v9x_write(V9X_PFIFO_250C, V9X_PFIFO_250C_VALUE);
-    v9x_write(V9X_PFIFO_2044, V9X_PFIFO_2044_VALUE);
-    v9x_write(V9X_NV50_PFIFO_INTR, 0xfffffffful);
-    v9x_write(V9X_NV50_PFIFO_INTR_EN, V9X_PFIFO_INTR_EN_VALUE);
-    for (index = 0ul; index < V9X_NV50_PFIFO_CHAN_COUNT; ++index) {
-        v9x_write(V9X_NV50_PFIFO_CHAN(index), 0ul);
-    }
-    /* nv50_fifo_init commits a runlist before CACHE1 is enabled: with no
-     * channel yet, an empty one (nv50_runl_commit, count 0), then waits
-     * for the update (32ECh bit 8). Runs 1-19 committed only at the bind. */
-    v9x_write(V9X_NV50_PFIFO_RUNLIST_ADDR, v9x_layout.runlist_reg);
-    v9x_write(V9X_NV50_PFIFO_RUNLIST_COUNT, 0ul);
-    empty_wait = v9x_wait(V9X_NV50_PFIFO_RUNLIST_COUNT,
-                          V9X_NV50_PFIFO_RUNLIST_BUSY, 0ul);
-    v9x_write(V9X_PFIFO_CACHE1_PUSH, 1ul);
-    v9x_write(V9X_PFIFO_CACHE1_PULL, 1ul);
-    v9x_write(V9X_NV50_PFIFO_CACHES, 1ul);
-    /* nv50_fb_init's trap enable. Runs 1-16 never wrote it, so their
-     * 100C90h-9Ch readings showed no fault whether there was one or not. */
-    /* First nv50_fb_intr's acknowledge (enable | bit 31), so a trap left
-     * latched by an earlier run in the same boot (run 22 left one) is not
-     * read as this run's. */
+    /* nv50_fifo_init, the empty runlist and the VM trap enable, replayed
+     * from the host-tested list (nv50_init.c). The trap register is read
+     * before and after: a trap an earlier run left latched shows in the
+     * first reading. */
     trap_stale = v9x_read(V9X_NV50_VM_TRAP);
-    v9x_write(V9X_NV50_VM_TRAP,
-              V9X_NV50_VM_TRAP_ENABLE | V9X_NV50_VM_TRAP_PENDING);
-    v9x_write(V9X_NV50_VM_TRAP, V9X_NV50_VM_TRAP_ENABLE);
+    empty_wait = v9x_replay(0ul, v9x_init_list.fifo_end);
     trap_enable = v9x_read(V9X_NV50_VM_TRAP);
     if (!v9x_run("fifo-init")) {
         v9x_finish("FIFO-REFUSED", 5u);
@@ -1465,11 +1487,7 @@ static int v9x_stage_fifo(void)
     /* Channel 1: bound and started (g84.c bind, nv50.c start), then the
      * runlist naming it, and the wait nouveau makes for the update. */
     v9x_ops_begin();
-    v9x_write(V9X_NV50_PFIFO_CHAN(V9X_CHID), v9x_layout.chan_entry);
-    v9x_write(V9X_NV50_PFIFO_RUNLIST_ADDR, v9x_layout.runlist_reg);
-    v9x_write(V9X_NV50_PFIFO_RUNLIST_COUNT, v9x_layout.runlist_count);
-    runlist_wait = v9x_wait(V9X_NV50_PFIFO_RUNLIST_COUNT,
-                            V9X_NV50_PFIFO_RUNLIST_BUSY, 0ul);
+    runlist_wait = v9x_replay(v9x_init_list.gr_end, v9x_init_list.count);
     if (!v9x_run("fifo-bind")) {
         v9x_finish("FIFO-REFUSED", 5u);
     }
@@ -1621,62 +1639,11 @@ static int v9x_stage_fifo(void)
 static void v9x_stage_gr_init(void)
 {
     struct v9x_status_ops s;
-    DWORD index;
-    DWORD enable_now;
-    DWORD read_enable;
 
-    /* PMC_ENABLE as it is now, PFIFO back on. */
+    /* PGRAPH reset, nv50_gr_init and the context program, replayed from
+     * the host-tested list (nv50_init.c), which is what runs 27-39 ran. */
     v9x_ops_begin();
-    read_enable = v9x_read(V9X_NV50_PMC_ENABLE);
-    if (!v9x_run("gr-enable")) {
-        v9x_finish("GR-REFUSED", 6u);
-    }
-    enable_now = v9x_value(read_enable);
-
-    v9x_ops_begin();
-    /* Reset PGRAPH (mc gt215: 00201000h). */
-    v9x_write(V9X_NV50_PMC_ENABLE,
-              enable_now & ~V9X_NV50_PMC_ENABLE_PGRAPH);
-    v9x_write(V9X_NV50_PMC_ENABLE,
-              enable_now | V9X_NV50_PMC_ENABLE_PGRAPH);
-
-    /* nv50_gr_init, in its order (gr\nv50.c). */
-    v9x_write(V9X_PGRAPH_CTXCTL, 0x00000004ul);
-    v9x_write(0x400804ul, V9X_TRAP_RESET);
-    v9x_write(0x406800ul, V9X_TRAP_RESET);
-    v9x_write(0x400c04ul, V9X_TRAP_RESET);
-    v9x_write(0x401800ul, V9X_TRAP_RESET);
-    v9x_write(0x405018ul, V9X_TRAP_RESET);
-    v9x_write(0x402000ul, V9X_TRAP_RESET);
-    /* Per TP in 1540h bits 15:0: TP 0 only on this card. */
-    v9x_write(0x408600ul, V9X_TRAP_RESET);
-    v9x_write(0x408708ul, V9X_TRAP_RESET);
-    v9x_write(0x40831cul, V9X_TRAP_RESET);
-    v9x_write(V9X_PGRAPH_TRAP, 0xfffffffful);
-    v9x_write(0x400138ul, 0xfffffffful);
-    v9x_write(V9X_PGRAPH_INTR, 0xfffffffful);
-    v9x_write(0x40013cul, 0xfffffffful);
-    v9x_write(V9X_PGRAPH_FIFO, 0x00010001ul);
-    /* nv50_grctx_init: the context program. */
-    v9x_write(V9X_PGRAPH_CTXPROG_INDEX, 0ul);
-    for (index = 0ul; index < v9x_layout.program_words; ++index) {
-        v9x_write(V9X_PGRAPH_CTXPROG_DATA, v9x_layout.program[index]);
-    }
-    v9x_write(0x400824ul, 0ul);
-    v9x_write(0x400828ul, 0ul);
-    v9x_write(0x40082cul, 0ul);
-    v9x_write(0x400830ul, 0ul);
-    v9x_write(0x40032cul, 0ul);
-    v9x_write(0x400330ul, 0ul);
-    /* Zcull for A8 (not A0/AA/AC). */
-    v9x_write(0x402cc0ul, 0ul);
-    v9x_write(0x402ca8ul, 0x00000002ul);
-    for (index = 0ul; index < 8ul; ++index) {
-        v9x_write(0x402c20ul + index * 0x10ul, 0ul);
-        v9x_write(0x402c24ul + index * 0x10ul, 0ul);
-        v9x_write(0x402c28ul + index * 0x10ul, 0ul);
-        v9x_write(0x402c2cul + index * 0x10ul, 0ul);
-    }
+    v9x_replay(v9x_init_list.fifo_end, v9x_init_list.gr_end);
     v9x_op(V9X_OP_DELAY, 1000ul, 0ul, 0ul);
     v9x_status_request(&s, V9X_STATUS_GR);
     if (!v9x_run("gr-init")) {
@@ -2459,16 +2426,22 @@ void __stdcall V9xNv50ChannelEntry(void)
     }
     v9x_stage_region();
     v9x_vram_check("region");
-    if (!v9x_stage_pramin()) {
-        v9x_finish("PRAMIN-DIFFERS", 4u);
+    /* /lean: only what the HAL engine will do. The region is written and
+     * the bring-up list replayed; the PRAMIN check, the flush page, the
+     * PCIe reads, PMC_ENABLE = FFFFFFFFh, the BAR channel and the BAR
+     * flush are all left out, as nv50_init.c leaves them out. */
+    if (!v9x_switch_given("/lean")) {
+        if (!v9x_stage_pramin()) {
+            v9x_finish("PRAMIN-DIFFERS", 4u);
+        }
+        v9x_stage_flush_page();
+        if (v9x_stop_after_region != 0ul) {
+            v9x_finish("STOPPED-AFTER-REGION", 0u);
+        }
+        v9x_stage_pcie();
+        v9x_stage_mc();
+        v9x_stage_bar();
     }
-    v9x_stage_flush_page();
-    if (v9x_stop_after_region != 0ul) {
-        v9x_finish("STOPPED-AFTER-REGION", 0u);
-    }
-    v9x_stage_pcie();
-    v9x_stage_mc();
-    v9x_stage_bar();
     if (!v9x_stage_fifo()) {
         v9x_finish("FIFO-FAILED", 5u);
     }
