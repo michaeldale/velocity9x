@@ -139,7 +139,7 @@ before (the semaphore push, the 502D bind, the fill, the copy, and
 32, 16 and 8 bpp with 0 bad pixels each). The list is the sequence the
 earlier runs ran.
 
-**Run 41**, after a restart (boot 107, 38 s after the agent came up),
+**Run 41**, after a restart (boot 107, at 38 s on Windows' tick count),
 `/lean /pusher`: the region written through BAR1 and the list replayed,
 and nothing else. No PRAMIN check, no flush page (100C08h read 0), no
 PCIe reads, no PMC_ENABLE = FFFFFFFFh, no BAR channel (1704h is 0 after
