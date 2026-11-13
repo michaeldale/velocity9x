@@ -119,7 +119,38 @@ capability.
   the probe's gr stage makes (40008Ch = 4, the trap resets, the
   interrupt registers, 400500h = `00010001`, the program upload, zcull).
 
-Not run on any card. Other differences from the trace, left as they are
+## Run 27 on M-BXMFA8 (boot 106, 2026-11-14): the corrected layout survives the kick
+
+The owner was told beforehand and switched the machine on. The probe at
+2807fb60 (built as `dde43228-dirty`; the in-kick timeline of run 26 is
+now behind `/timeline` and was off), `/push:empty /flush:none
+/push:class02 /stop:fifo`. Log:
+`build/driver-results/m-bxmfa8-gt218-boot84/run27-V9XN5CH.LOG` (from
+line 5851).
+
+- The region read back, PRAMIN passed, 2604h is `80080042` (RAMFC at
+  + 4200h).
+- After the kick: PCI status `00100007` (no master abort), 100C90h
+  `000D0FFF` (no VM trap).
+- All 50 samples over the next 1.5 s answered, with the same values.
+  The BAR1 marker read back afterwards, configuration space was
+  unchanged, and the probe ended `EMPTY-PUSH-SURVIVED`. **The machine
+  kept running**, the first kick of a mapped IB and push that did not
+  stop it in 27 runs.
+- From the first reading after the kick, **PMC_INTR `00000100` and
+  PFIFO_INTR `00001000`**: PFIFO's DMA pusher raised an error
+  (nouveau's `nv04_fifo_intr` names bit 12 DMA_PUSHER) and it stayed
+  latched. PGRAPH_INTR 0, PGRAPH status 0.
+
+So the page directory offset was the fault behind runs 14-26, as the
+trace said. What is left is smaller: the DMA pusher rejects something in
+this empty push or in the channel's pusher state. The probe cannot say
+what yet, because the registers that describe it (CACHE1's DMA state,
+3220h-3244h and the IB ones at 3320h-3334h) were taken out of the VxD's
+read list after run 13, when reads of them timed out. That was with the
+broken page directory; whether they answer now is not known.
+
+Other differences from the trace, left as they are
 until the corrected layout has been tried:
 
 - RAMFC + 7Ch is `30000001` in the trace; the probe writes `30000FFF`
