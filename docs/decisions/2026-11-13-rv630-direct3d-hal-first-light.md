@@ -150,12 +150,34 @@ too (V9XDDP's mode list, `boot16-V9XDD.INI`, modes 6-8).
   page); the tests that need features this HAL does not offer are
   skipped by the program.
 
+## OpenGL (boot 18)
+
+The engine now describes itself to the render interface
+(`V9X_R3D_ABI_ENGINE_R600`, 16; renderer "Velocity9x Radeon HD 2600 XT";
+hardware textures 1 to 2048, powers of two, as Cedar's). Before that the
+ICD would have kept every texture on the CPU, which the map refuses.
+Captures in [`../probe/rv630-d3d-2026-11-13/opengl/`](../probe/rv630-d3d-2026-11-13/opengl/).
+
+- V9XGLP: `Result=PASS`, `LifetimeFailures=0`. `LitResult=differ` (0 of
+  40), as on every released engine but the HD 4600 (the GMA 950, GM45,
+  R7E and R3E read the same in the 0.47.0 release checks).
+- Quake 3 demo 1.11, the owner's settings (640x480 fullscreen, 16-bit
+  colour, 16-bit Z), `timedemo 1`, `demo demo001`: **1346 frames, 20.4
+  s, 65.9 fps**, twice; `GL_RENDERER` as above; no engine timeout and no
+  policy refusal in the trace after it. One windowed frame is kept
+  (`boot18-q3-windowed.png`): lightmapped walls, blended decals, flames,
+  text and the weapon draw as expected by eye.
+
+V9XTRACE's frame grabs did not fire under the ICD (the files it left
+were the 3DMark run's); not looked into.
+
 ## Not done, not measured
 
 - Specular on the card (above).
 - Which 3DMark 2001 SE tests ran; the 17 flips not confirmed at done and
   the 11 draws into the presented page in that run.
-- Other games; OpenGL and Glide (no r3d engine id).
+- Other games; Glide; OpenGL with a partial colour mask (refused by the
+  map) and at 32 bpp.
 - A chain that still finds no block in 128 MiB falls back as before
   (level 0 only); not met.
 - The partial depth fill on the CP: V9XD32's clears were whole-surface.

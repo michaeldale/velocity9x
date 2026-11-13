@@ -34,7 +34,8 @@ not judged by any check. 3DMark 2000 runs to its score once DMA copies
 keep both ends on 8 bytes ([record](../decisions/2026-11-13-rv630-dma-copy-alignment.md));
 Flips on D1GRPH and a 128 MiB heap (no mip chain left unplaced) since
 boots 16 and 17. V9XD32 passes at 32 bpp and 3DMark 2001 SE runs to a score (boot 17).
-Next: OpenGL, specular on the card.
+OpenGL through the ICD: V9XGLP passes and the Quake 3 demo runs (boot 18).
+Next: specular on the card, Glide, write combining.
 Other register facts
 below come from Linux `radeon` source.
 

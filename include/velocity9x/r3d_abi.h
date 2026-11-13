@@ -265,6 +265,9 @@ typedef struct v9x_r3d_abi_state {
 /* The RIVA 128's NV3 engine (d3d_nv3.c), 2026-11-07, on the same terms;
  * it described as 0 until then. */
 #define V9X_R3D_ABI_ENGINE_NV3      15ul
+/* The R6xx CP engine (d3d_r6.c, the HD 2600 XT), 2026-11-13, on the same
+ * terms; it described as 0 until then. */
+#define V9X_R3D_ABI_ENGINE_R600     16ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;
