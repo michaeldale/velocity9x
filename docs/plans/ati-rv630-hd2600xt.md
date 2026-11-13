@@ -19,7 +19,14 @@ the same day with DirectDraw fill and copy on DMA (engine type 15,
 16 bpp, the ring drawn through, no timeouts
 ([record](../decisions/2026-11-13-rv630-directdraw-on-dma.md)). The row
 lost the `vbe` driver's software Direct3D (the `ati` family's default
-request is 0). Next: 8 and 32 bpp through the HAL, then flips on D1. Other register facts
+request is 0). 3D through the CP: AMD's RV630 microcode runs
+([record](../decisions/2026-11-13-rv630-cp-ring-test.md)), the first
+solid draw is exact ([record](../decisions/2026-11-13-rv630-first-3d-draw.md)),
+and Gouraud and textured (modulate) draws are exact; depth writes one
+constant Z for every fragment, open
+([record](../decisions/2026-11-13-rv630-gouraud-texture-depth.md),
+[issue](../issues/2026-11-13-rv630-depth-constant-z.md)). Next: the depth
+issue's leads, then the Direct3D HAL on `struct v9x_r6_3d_state`. Other register facts
 below come from Linux `radeon` source.
 
 Target: the RV630 (`1002:9588`, Gigabyte SUBSYS `1458:216C`) as a new

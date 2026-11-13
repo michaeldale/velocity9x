@@ -802,3 +802,475 @@ void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value)
 {
     v9x_r6_pm4_set1(stream, V9X_R6_SCRATCH_REG0, value);
 }
+
+/*
+ * The batch state's registers and fields, each in xf86's
+ * r600_reg_auto_r6xx.h and Mesa r600's r600d.h at the same offset and
+ * position (the host test holds them to both).
+ */
+#define R6_DB_DEPTH_SIZE            0x28000ul
+#define R6_DB_DEPTH_BASE            0x2800cul
+#define R6_PA_SC_VPORT_ZMIN_0       0x282d0ul
+#define R6_SX_ALPHA_REF             0x28438ul
+#define R6_PA_CL_VTE_CNTL           0x28818ul
+#define R6_PA_SU_VTX_CNTL           0x28c08ul
+#define R6_DB_RENDER_OVERRIDE       0x28d10ul
+#define R6_DB_HTILE_SURFACE         0x28d24ul
+/* DB_SRESULTS_COMPARE_STATE0, _STATE1, DB_PRELOAD_CONTROL. */
+#define R6_DB_SRESULTS_COMPARE_STATE0 0x28d28ul
+#define R6_DB_SRESULTS_DWORDS       3ul
+#define R6_DB_PREFETCH_LIMIT        0x28d34ul
+/* The PS's texture resource 0 (SQ_TEX_RESOURCE_ps 0, 28 bytes each) and
+ * sampler 0 (SQ_TEX_SAMPLER_WORD_ps 0, 12 bytes each). */
+#define R6_SQ_TEX_RESOURCE_PS_0     0x38000ul
+#define R6_SQ_TEX_SAMPLER_PS_0      0x3c000ul
+
+/* DB_DEPTH_CONTROL: Z_ENABLE, Z_WRITE_ENABLE, ZFUNC 6:4. */
+#define R6_DEPTH_Z_ENABLE           0x00000002ul
+#define R6_DEPTH_Z_WRITE            0x00000004ul
+#define R6_DEPTH_ZFUNC_SHIFT        4
+#define R6_FUNC_MASK                7ul
+/* CB_BLEND0_CONTROL: COLOR_SRCBLEND 4:0, COLOR_COMB_FCN 7:5 (0, DST_PLUS_
+ * SRC), COLOR_DESTBLEND 12:8, ALPHA_ 20:16, 23:21 and 28:24. */
+#define R6_BLEND_FACTOR_MASK        0x1ful
+#define R6_BLEND_COLOR_DST_SHIFT    8
+#define R6_BLEND_ALPHA_SRC_SHIFT    16
+#define R6_BLEND_ALPHA_DST_SHIFT    24
+/* CB_COLOR_CONTROL: PER_MRT_BLEND and TARGET_BLEND_ENABLE's target 0, as
+ * r600_set_render_target sets them on every R6xx after the R600. */
+#define R6_CB_PER_MRT_BLEND         0x00000080ul
+#define R6_CB_TARGET0_BLEND         0x00000100ul
+/* SX_ALPHA_TEST_CONTROL: ALPHA_FUNC 2:0, ALPHA_TEST_ENABLE 3. */
+#define R6_ALPHA_TEST_ENABLE        0x00000008ul
+/* SQ_TEX_SAMPLER_WORD0: CLAMP_Y 5:3, CLAMP_Z 8:6 (left WRAP, 0, as xf86),
+ * XY_MAG_FILTER 11:9, XY_MIN_FILTER 14:12; WORD2's MC_COORD_TRUNCATE,
+ * which xf86 sets for point filtering only. */
+#define R6_SAMPLER_CLAMP_MASK       7ul
+#define R6_SAMPLER_CLAMP_Y_SHIFT    3
+#define R6_SAMPLER_MAG_SHIFT        9
+#define R6_SAMPLER_MIN_SHIFT        12
+#define R6_SAMPLER_FILTERS          0x00007e00ul
+#define R6_SAMPLER_MC_TRUNCATE      0x00001000ul
+
+/* The SPI: SEMANTIC_n a byte each in SPI_VS_OUT_ID_0; input n as the
+ * default state sets it, DEFAULT_VAL(1) | SEL_CENTROID, and SEL_LINEAR
+ * for linear interpolation; PERSP_ and LINEAR_GRADIENT_ENA. */
+#define R6_SPI_SEMANTIC_BITS        8ul
+#define R6_SPI_PS_INPUT_DEFAULT     0x00000900ul
+#define R6_SPI_PS_INPUT_LINEAR      0x00001000ul
+#define R6_SPI_PERSP_GRADIENT_ENA   0x10000000ul
+#define R6_SPI_LINEAR_GRADIENT_ENA  0x20000000ul
+#define R6_SPI_EXPORT_COUNT_SHIFT   1
+#define R6_SPI_PS_IN_CONTROL_DWORDS 3ul
+/* PA_CL_VTE_CNTL VTX_XY_FMT | VTX_Z_FMT: x, y and z already in window
+ * space, w as given (Evergreen's measured value). PA_SU_VTX_CNTL:
+ * ROUND_MODE(2) | QUANT_MODE(5), xf86's, and PIX_CENTER for centres at
+ * +0.5. */
+#define R6_VTE_XY_Z_WINDOW          0x00000300ul
+#define R6_VTX_CNTL_ROUND           0x0000002cul
+#define R6_VTX_CNTL_CENTRE_HALF     0x00000001ul
+
+/* DB_SHADER_CONTROL: DUAL_EXPORT_ENABLE as xf86's default state; Z_ORDER
+ * EARLY_Z_THEN_LATE_Z (1 << 4), or LATE_Z (0) when the PS may kill or
+ * alpha test is on, as Mesa's r600_update_db_shader_control ("RE_Z ...
+ * seems to cause lockup on r6xx/r7xx"); KILL_ENABLE. */
+#define R6_DB_SHADER_DUAL_EXPORT    0x00000200ul
+#define R6_DB_SHADER_EARLY_Z        0x00000010ul
+#define R6_DB_SHADER_KILL           0x00000040ul
+/* DB_RENDER_OVERRIDE: FORCE_HIZ_ENABLE, FORCE_HIS_ENABLE0 and 1 all
+ * FORCE_DISABLE (2), as Mesa's r600_emit_db_misc_state sets them without
+ * HTILE, and xf86's FORCE_SHADER_Z_ORDER kept. */
+#define R6_DB_RENDER_OVERRIDE_VALUE 0x0000006aul
+/* DB_DEPTH_INFO: FORMAT DEPTH_16, ARRAY_MODE 18:15 (R6xx's place for it;
+ * Evergreen's DB_Z_INFO has it at 7:4). DB_DEPTH_SIZE: PITCH_TILE_MAX
+ * 9:0, SLICE_TILE_MAX 29:10. SURFACE_BASE_UPDATE's DEPTH_BASE (xf86's
+ * r600_reg.h, Mesa's SURFACE_BASE_UPDATE_DEPTH). */
+#define R6_DB_FORMAT_DEPTH_16       1ul
+#define R6_DB_ARRAY_MODE_SHIFT      15
+#define R6_ARRAY_1D_TILED_THIN1     2ul
+#define R6_DB_SLICE_SHIFT           10
+#define R6_SURFACE_BASE_DEPTH       0x00000001ul
+#define R6_DB_DEPTH_DWORDS          2ul
+/* PA_SU_POLY_OFFSET_DB_FMT_CNTL (xf86 r600_reg_auto_r6xx.h, Mesa
+ * R_028DF8): POLY_OFFSET_NEG_NUM_DB_BITS 7:0, (char)-16 for Z16. */
+#define R6_PA_SU_POLY_OFFSET_DB_FMT_CNTL 0x28df8ul
+#define R6_DB_BITS_Z16              0x000000f0ul
+
+/* SQ_TEX_RESOURCE_WORD0: DIM 2:0, TILE_MODE 6:3, PITCH 18:8 (8-texel
+ * units less one), TEX_WIDTH 31:19; WORD1 TEX_HEIGHT 12:0, DATA_FORMAT
+ * 31:26; WORD4 REQUEST_SIZE(1) and DST_SEL Z, Y, X, W (xf86's swizzle for
+ * a 32-bit source: R from byte 2, G 1, B 0, A 3); WORD6 TYPE. */
+#define R6_TEX_DIM_2D               1ul
+#define R6_TEX_TILE_MODE_SHIFT      3
+#define R6_ARRAY_LINEAR_ALIGNED     1ul
+#define R6_TEX_PITCH_SHIFT          8
+#define R6_TEX_WIDTH_SHIFT          19
+#define R6_TEX_FORMAT_SHIFT         26
+#define R6_TEX_REQUEST_SIZE_1       0x00004000ul
+/* SQ_SEL_Z << 16 | SQ_SEL_Y << 19 | SQ_SEL_X << 22 | SQ_SEL_W << 25 */
+#define R6_TEX_SWIZZLE_ARGB         0x060a0000ul
+#define R6_TEX_VALID_TEXTURE        0x80000000ul /* TYPE(2) << 30 */
+#define R6_TEX_RESOURCE_DWORDS      7ul
+#define R6_TEX_SAMPLER_DWORDS       3ul
+
+#define R6_DI_PT_TRILIST            0x04ul
+#define R6_CB_WRITE_RGB             0x00000007ul
+#define R6_TEXEL_BYTES_8888         4ul
+#define R6_TILE_EDGE                8ul
+#define R6_TILE_PIXELS              64ul
+
+v9x_u32 v9x_r6_3d_depth_control(v9x_u32 enable, v9x_u32 write, v9x_u32 func)
+{
+    return (enable != 0ul ? R6_DEPTH_Z_ENABLE : 0ul) |
+           (write != 0ul ? R6_DEPTH_Z_WRITE : 0ul) |
+           ((func & R6_FUNC_MASK) << R6_DEPTH_ZFUNC_SHIFT);
+}
+
+/* One pair of factors for colour and alpha, added. */
+v9x_u32 v9x_r6_3d_blend(v9x_u32 enable, v9x_u32 src, v9x_u32 dst)
+{
+    if (enable == 0ul) {
+        src = V9X_R6_BLEND_ONE;
+        dst = V9X_R6_BLEND_ZERO;
+    }
+    src &= R6_BLEND_FACTOR_MASK;
+    dst &= R6_BLEND_FACTOR_MASK;
+    return src | (dst << R6_BLEND_COLOR_DST_SHIFT) |
+           (src << R6_BLEND_ALPHA_SRC_SHIFT) |
+           (dst << R6_BLEND_ALPHA_DST_SHIFT);
+}
+
+v9x_u32 v9x_r6_3d_alpha_test(v9x_u32 enable, v9x_u32 func)
+{
+    return (func & R6_FUNC_MASK) |
+           (enable != 0ul ? R6_ALPHA_TEST_ENABLE : 0ul);
+}
+
+v9x_u32 v9x_r6_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
+                          v9x_u32 clamp_u, v9x_u32 clamp_v)
+{
+    return (clamp_u & R6_SAMPLER_CLAMP_MASK) |
+           ((clamp_v & R6_SAMPLER_CLAMP_MASK) << R6_SAMPLER_CLAMP_Y_SHIFT) |
+           ((mag_bilinear != 0ul ? 1ul : 0ul) << R6_SAMPLER_MAG_SHIFT) |
+           ((min_bilinear != 0ul ? 1ul : 0ul) << R6_SAMPLER_MIN_SHIFT);
+}
+
+static int v9x_r6_3d_state_valid(const struct v9x_r6_3d_state *state)
+{
+    if (!v9x_r6_3d_aligned(state->target_gpu) ||
+        state->target_pitch == 0ul || (state->target_pitch & 7ul) != 0ul ||
+        state->target_pitch > V9X_R6_3D_PITCH_MAX ||
+        state->target_height == 0ul ||
+        state->target_height > V9X_R6_3D_PITCH_MAX ||
+        state->target_format != V9X_R6_COLOR_8_8_8_8) {
+        return 0;
+    }
+    if (state->scissor_left >= state->scissor_right ||
+        state->scissor_top >= state->scissor_bottom ||
+        state->scissor_right > state->target_pitch ||
+        state->scissor_bottom > state->target_height) {
+        return 0;
+    }
+    if (state->has_depth != 0ul &&
+        (!v9x_r6_3d_aligned(state->depth_gpu) || state->depth_pitch == 0ul ||
+         (state->depth_pitch % V9X_R6_DEPTH_PITCH_ALIGN) != 0ul ||
+         state->depth_height == 0ul ||
+         (state->depth_height % R6_TILE_EDGE) != 0ul ||
+         state->depth_pitch > V9X_R6_3D_PITCH_MAX ||
+         state->depth_height > V9X_R6_3D_PITCH_MAX ||
+         state->depth_pitch < state->scissor_right ||
+         state->depth_height < state->scissor_bottom)) {
+        return 0;
+    }
+    if (!v9x_r6_3d_aligned(state->vs_gpu) ||
+        !v9x_r6_3d_aligned(state->ps_gpu) ||
+        state->vs_gprs == 0ul || state->ps_gprs == 0ul ||
+        state->interpolants == 0ul ||
+        state->interpolants > V9X_R6_INTERPOLANTS_MAX) {
+        return 0;
+    }
+    if (state->has_texture != 0ul &&
+        (!v9x_r6_3d_aligned(state->texture_gpu) ||
+         state->texture_width == 0ul || state->texture_height == 0ul ||
+         state->texture_pitch < state->texture_width ||
+         (state->texture_pitch % V9X_R6_TEXTURE_PITCH_ALIGN) != 0ul ||
+         state->texture_pitch > V9X_R6_3D_PITCH_MAX ||
+         state->texture_height > V9X_R6_3D_PITCH_MAX ||
+         state->texture_format != V9X_R6_COLOR_8_8_8_8)) {
+        return 0;
+    }
+    return state->vertex_stride != 0ul &&
+           state->vertex_bytes >= state->vertex_stride;
+}
+
+/* r600_set_render_target for a linear general ARGB8888 target, as
+ * v9x_r6_3d_solid writes it (measured, M-NZHWBR): the base and the rv6xx
+ * SURFACE_BASE_UPDATE, CMASK and FMASK on the target, the size with the
+ * height rounded up to 8, COLOR_8_8_8_8 with COMP_SWAP 1, BLEND_CLAMP and
+ * SOURCE_FORMAT. */
+static void v9x_r6_3d_render_target(struct v9x_r6_pm4 *stream,
+                                    v9x_u32 gpu, v9x_u32 pitch,
+                                    v9x_u32 height)
+{
+    v9x_u32 height8 = (height + R6_TILE_EDGE - 1ul) & ~(R6_TILE_EDGE - 1ul);
+
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_BASE, gpu >> 8);
+    v9x_r6_pm4_put(stream,
+                   v9x_r6_pm4_header(V9X_R6_P3_SURFACE_BASE_UPDATE, 1ul));
+    v9x_r6_pm4_put(stream, R6_SURFACE_BASE_COLOR0);
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_TILE, gpu >> 8);
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_FRAG, gpu >> 8);
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_SIZE,
+                    ((pitch >> 3) - 1ul) |
+                    (((pitch * height8) / R6_CB_TILE_PIXELS - 1ul) <<
+                     R6_CB_SLICE_SHIFT));
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_VIEW, 0ul);
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_MASK, 0ul);
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR0_INFO,
+                    (R6_COLOR_8_8_8_8 << R6_CB_FORMAT_SHIFT) |
+                    (R6_CB_ARRAY_LINEAR_GENERAL << R6_CB_ARRAY_MODE_SHIFT) |
+                    R6_CB_COMP_SWAP_ARGB | R6_CB_BLEND_CLAMP |
+                    R6_CB_SOURCE_FORMAT);
+}
+
+/*
+ * A read cache invalidated before the batch reads what the CPU wrote:
+ * over all of memory (CP_COHER_SIZE all ones, base 0), as Mesa's
+ * r600_flush_emit and Linux's r600_fence_ring_emit sync, or with
+ * ranged_syncs over size bytes at gpu, as xf86's r600_set_vtx_resource
+ * and r600_set_tex_resource do. M-NZHWBR's /modulate drew the previous
+ * run's Gouraud colours from the same vertex address after xf86's ranged
+ * VC sync (V9XR63D runs c and d). The whole-memory TC and VC sync that
+ * ends every run (v9x_r6_3d_flush) had not cleared those lines either, so
+ * this form is Mesa's and Linux's, not yet a measured cure.
+ */
+static void v9x_r6_3d_cache_sync(struct v9x_r6_pm4 *stream,
+                                 const struct v9x_r6_3d_state *state,
+                                 v9x_u32 actions, v9x_u32 size, v9x_u32 gpu)
+{
+    if (state->ranged_syncs != 0ul) {
+        v9x_r6_pm4_surface_sync(stream, actions, size, gpu);
+        return;
+    }
+    v9x_r6_pm4_surface_sync(stream, actions, V9X_R6_SYNC_ALL, 0ul);
+}
+
+v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
+                                 struct v9x_r6_pm4 *stream)
+{
+    v9x_u32 values[R6_TEX_RESOURCE_DWORDS];
+    v9x_u32 index;
+    v9x_u32 ids;
+    v9x_u32 input;
+    v9x_u32 control;
+    v9x_u32 tl;
+    v9x_u32 br;
+
+    if (state == 0 || stream == 0 || !v9x_r6_3d_state_valid(state)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    /* r600_vs_setup and r600_ps_setup, as the solid draw: the shader
+     * cache flushed over each shader, NUM_GPRS, the PS with
+     * UNCACHED_FIRST_INST and one colour exported. */
+    v9x_r6_pm4_surface_sync(stream, V9X_R6_SYNC_SH_ACTION,
+                            V9X_R6_3D_SHADER_SYNC_BYTES, state->vs_gpu);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_START_VS, state->vs_gpu >> 8);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_RESOURCES_VS, state->vs_gprs);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_CF_OFFSET_VS, 0ul);
+    v9x_r6_pm4_surface_sync(stream, V9X_R6_SYNC_SH_ACTION,
+                            V9X_R6_3D_SHADER_SYNC_BYTES, state->ps_gpu);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_START_PS, state->ps_gpu >> 8);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_RESOURCES_PS,
+                    state->ps_gprs | R6_PGM_UNCACHED_FIRST_INST);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_EXPORTS_PS, R6_PS_EXPORTS_COLOR);
+    v9x_r6_pm4_set1(stream, R6_SQ_PGM_CF_OFFSET_PS, 0ul);
+
+    /* The interpolants: VS parameter n carries semantic n, PS input n
+     * reads it into GPR n. r600_set_spi writes NUM_INTERP alone; the
+     * gradient enable is Mesa's (r600_update_ps_state sets
+     * PERSP_GRADIENT_ENA always, LINEAR_ for a linear input), both
+     * documented R6xx fields, so a choice between them is not left to a
+     * reset value. */
+    ids = 0ul;
+    for (index = 0ul; index < state->interpolants; ++index) {
+        ids |= index << (R6_SPI_SEMANTIC_BITS * index);
+        input = index | R6_SPI_PS_INPUT_DEFAULT |
+                (state->perspective != 0ul ? 0ul : R6_SPI_PS_INPUT_LINEAR);
+        v9x_r6_pm4_set1(stream, R6_SPI_PS_INPUT_CNTL_0 + 4ul * index, input);
+    }
+    v9x_r6_pm4_set1(stream, R6_SPI_VS_OUT_ID_0, ids);
+    v9x_r6_pm4_set1(stream, R6_SPI_VS_OUT_CONFIG,
+                    (state->interpolants - 1ul) << R6_SPI_EXPORT_COUNT_SHIFT);
+    values[0] = state->interpolants |
+                (state->perspective != 0ul ? R6_SPI_PERSP_GRADIENT_ENA
+                                           : R6_SPI_LINEAR_GRADIENT_ENA);
+    values[1] = 0ul;
+    values[2] = 0ul;
+    v9x_r6_pm4_set(stream, R6_SPI_PS_IN_CONTROL_0, values,
+                   R6_SPI_PS_IN_CONTROL_DWORDS);
+    v9x_r6_pm4_set1(stream, R6_PA_CL_VTE_CNTL, R6_VTE_XY_Z_WINDOW);
+    v9x_r6_pm4_set1(stream, R6_PA_SU_VTX_CNTL,
+                    R6_VTX_CNTL_ROUND |
+                    (state->pixel_centre_half != 0ul ?
+                     R6_VTX_CNTL_CENTRE_HALF : 0ul));
+
+    /* r600_set_tex_resource and r600_set_tex_sampler as R600PrepareCopy
+     * fills them for an untiled 32-bit source: the texture cache flushed
+     * (over all of memory, or over the texture with ranged_syncs), linear
+     * aligned, one level, xf86's ARGB swizzle; the sampler with
+     * MC_COORD_TRUNCATE for point filtering only. */
+    if (state->has_texture != 0ul) {
+        v9x_r6_3d_cache_sync(stream, state, V9X_R6_SYNC_TC_ACTION,
+                             state->texture_pitch * state->texture_height *
+                             R6_TEXEL_BYTES_8888, state->texture_gpu);
+        values[0] = R6_TEX_DIM_2D |
+                    (R6_ARRAY_LINEAR_ALIGNED << R6_TEX_TILE_MODE_SHIFT) |
+                    (((state->texture_pitch >> 3) - 1ul) <<
+                     R6_TEX_PITCH_SHIFT) |
+                    ((state->texture_width - 1ul) << R6_TEX_WIDTH_SHIFT);
+        values[1] = (state->texture_height - 1ul) |
+                    (state->texture_format << R6_TEX_FORMAT_SHIFT);
+        values[2] = state->texture_gpu >> 8;
+        values[3] = state->texture_gpu >> 8;
+        values[4] = R6_TEX_REQUEST_SIZE_1 | R6_TEX_SWIZZLE_ARGB;
+        values[5] = 0ul;
+        values[6] = R6_TEX_VALID_TEXTURE;
+        v9x_r6_pm4_set(stream, R6_SQ_TEX_RESOURCE_PS_0, values,
+                       R6_TEX_RESOURCE_DWORDS);
+        values[0] = state->sampler_word0;
+        values[1] = 0ul;
+        values[2] = (state->sampler_word0 & R6_SAMPLER_FILTERS) == 0ul ?
+                    R6_SAMPLER_MC_TRUNCATE : 0ul;
+        v9x_r6_pm4_set(stream, R6_SQ_TEX_SAMPLER_PS_0, values,
+                       R6_TEX_SAMPLER_DWORDS);
+    }
+
+    /* The colour buffer, its write mask, ROP copy with target 0's
+     * blending on or off, and the factors. */
+    v9x_r6_3d_render_target(stream, state->target_gpu, state->target_pitch,
+                            state->target_height);
+    v9x_r6_pm4_set1(stream, R6_CB_TARGET_MASK,
+                    (state->write_alpha != 0ul ? R6_CB_WRITE_ARGB
+                                               : R6_CB_WRITE_RGB) &
+                    ~state->masked_channels);
+    v9x_r6_pm4_set1(stream, R6_CB_COLOR_CONTROL,
+                    R6_ROP3_COPY |
+                    (state->blend_enable != 0ul ?
+                     R6_CB_PER_MRT_BLEND | R6_CB_TARGET0_BLEND : 0ul));
+    v9x_r6_pm4_set1(stream, R6_CB_BLEND0_CONTROL, state->blend_control);
+
+    /* The DB: shader order, HiZ and HiS off, the depth buffer or none. */
+    control = R6_DB_SHADER_DUAL_EXPORT;
+    if (state->kill != 0ul) {
+        control |= R6_DB_SHADER_KILL;
+    } else if ((state->alpha_test_control & R6_ALPHA_TEST_ENABLE) == 0ul) {
+        control |= R6_DB_SHADER_EARLY_Z;
+    }
+    v9x_r6_pm4_set1(stream, R6_DB_SHADER_CONTROL, control);
+    v9x_r6_pm4_set1(stream, R6_DB_RENDER_OVERRIDE,
+                    R6_DB_RENDER_OVERRIDE_VALUE);
+    /* The DB context registers Mesa clears and xf86's default state never
+     * writes: DB_HTILE_SURFACE (r600_emit_db_state without HTILE), and
+     * DB_SRESULTS_COMPARE_STATE0 and 1 and DB_PRELOAD_CONTROL (Mesa's
+     * initial context). Left as the card had them, a stencil-results
+     * compare enable or an HTILE preload could reject fragments; V9XR63D
+     * /depth's first run on M-NZHWBR drew nothing and wrote no depth. */
+    v9x_r6_pm4_set1(stream, R6_DB_HTILE_SURFACE, 0ul);
+    v9x_r6_pm4_set(stream, R6_DB_SRESULTS_COMPARE_STATE0, v9x_r6_zeros,
+                   R6_DB_SRESULTS_DWORDS);
+    if (state->has_depth != 0ul) {
+        /* Mesa r600_emit_framebuffer_state's order: DB_DEPTH_SIZE and
+         * _VIEW, DB_DEPTH_BASE and _INFO, DB_PREFETCH_LIMIT (height in
+         * tiles less one), then SURFACE_BASE_UPDATE, which Mesa sends for
+         * the depth base on every R6xx after the R600 as xf86 sends it for
+         * the colour base. */
+        values[0] = ((state->depth_pitch >> 3) - 1ul) |
+                    (((state->depth_pitch * state->depth_height) /
+                      R6_TILE_PIXELS - 1ul) << R6_DB_SLICE_SHIFT);
+        values[1] = 0ul;
+        v9x_r6_pm4_set(stream, R6_DB_DEPTH_SIZE, values, R6_DB_DEPTH_DWORDS);
+        values[0] = state->depth_gpu >> 8;
+        values[1] = R6_DB_FORMAT_DEPTH_16 |
+                    (R6_ARRAY_1D_TILED_THIN1 << R6_DB_ARRAY_MODE_SHIFT);
+        v9x_r6_pm4_set(stream, R6_DB_DEPTH_BASE, values, R6_DB_DEPTH_DWORDS);
+        v9x_r6_pm4_set1(stream, R6_DB_PREFETCH_LIMIT,
+                        state->depth_height / R6_TILE_EDGE - 1ul);
+        v9x_r6_pm4_put(stream,
+                       v9x_r6_pm4_header(V9X_R6_P3_SURFACE_BASE_UPDATE, 1ul));
+        v9x_r6_pm4_put(stream, R6_SURFACE_BASE_DEPTH);
+        /* The depth format's bits for the rasteriser, as Mesa's
+         * r600_emit_polygon_offset sets them for Z16 (NEG_NUM_DB_BITS
+         * -16); the default state left 0. Not shown to matter: every
+         * fragment's Z reached the DB as 1.0 without it (V9XR63D runs c-f)
+         * and this is one of the candidates. */
+        v9x_r6_pm4_set1(stream, R6_PA_SU_POLY_OFFSET_DB_FMT_CNTL,
+                        R6_DB_BITS_Z16);
+    } else {
+        v9x_r6_pm4_set1(stream, R6_DB_DEPTH_INFO, 0ul);
+    }
+    v9x_r6_pm4_set1(stream, R6_DB_DEPTH_CONTROL,
+                    state->has_depth != 0ul ? state->depth_control : 0ul);
+    /* The viewport's Z range, 0 to 1: the DB clamps Z to it, and neither
+     * xf86's default state nor this one wrote it before. */
+    values[0] = 0ul;
+    values[1] = R6_FLOAT_ONE;
+    v9x_r6_pm4_set(stream, R6_PA_SC_VPORT_ZMIN_0, values, 2ul);
+    v9x_r6_pm4_set1(stream, R6_SX_ALPHA_TEST_CONTROL,
+                    state->alpha_test_control);
+    v9x_r6_pm4_set1(stream, R6_SX_ALPHA_REF, state->alpha_ref);
+
+    /* The screen scissor at the target, the generic and window scissors at
+     * the draw's rectangle. */
+    v9x_r6_3d_scissor(stream, R6_PA_SC_SCREEN_SCISSOR_TL, 0ul,
+                      state->target_pitch | (state->target_height << 16));
+    tl = state->scissor_left | (state->scissor_top << 16) |
+         R6_WINDOW_OFFSET_DISABLE;
+    br = state->scissor_right | (state->scissor_bottom << 16);
+    v9x_r6_3d_scissor(stream, R6_PA_SC_GENERIC_SCISSOR_TL, tl, br);
+    v9x_r6_3d_scissor(stream, R6_PA_SC_WINDOW_SCISSOR_TL, tl, br);
+
+    /* r600_set_vtx_resource: the vertex cache (with one, the texture
+     * cache too, as Mesa's r600_flush_emit and Linux's r600_fence_ring_emit
+     * invalidate both) synced, then the VS's resource 0. */
+    control = V9X_R6_SYNC_TC_ACTION;
+    if (state->vertex_cache != 0ul) {
+        control = state->ranged_syncs != 0ul ? V9X_R6_SYNC_VC_ACTION :
+                  V9X_R6_SYNC_VC_ACTION | V9X_R6_SYNC_TC_ACTION;
+    }
+    v9x_r6_3d_cache_sync(stream, state, control, state->vertex_bytes,
+                         state->vertex_gpu);
+    values[0] = state->vertex_gpu;
+    values[1] = state->vertex_bytes - 1ul;
+    values[2] = state->vertex_stride << R6_VTX_STRIDE_SHIFT;
+    values[3] = R6_VTX_MEM_REQUEST_SIZE_1;
+    values[4] = 0ul;
+    values[5] = 0ul;
+    values[6] = R6_VTX_VALID_BUFFER;
+    v9x_r6_pm4_set(stream, R6_SQ_VTX_RESOURCE_VS_0, values, 7ul);
+    return stream->overflow != 0ul ? V9X_STATUS_INSUFFICIENT_MEMORY
+                                   : V9X_STATUS_OK;
+}
+
+void v9x_r6_3d_draw(struct v9x_r6_pm4 *stream, v9x_u32 vertex_count)
+{
+    v9x_r6_pm4_set1(stream, V9X_R6_VGT_PRIMITIVE_TYPE, R6_DI_PT_TRILIST);
+    v9x_r6_pm4_put(stream, v9x_r6_pm4_header(V9X_R6_P3_INDEX_TYPE, 1ul));
+    v9x_r6_pm4_put(stream, R6_DI_INDEX_SIZE_16_BIT);
+    v9x_r6_pm4_put(stream, v9x_r6_pm4_header(V9X_R6_P3_NUM_INSTANCES, 1ul));
+    v9x_r6_pm4_put(stream, 1ul);
+    v9x_r6_pm4_put(stream, v9x_r6_pm4_header(V9X_R6_P3_DRAW_INDEX_AUTO, 2ul));
+    v9x_r6_pm4_put(stream, vertex_count);
+    v9x_r6_pm4_put(stream, R6_DI_SRC_SEL_AUTO_INDEX);
+}
+
+void v9x_r6_3d_flush(struct v9x_r6_pm4 *stream)
+{
+    v9x_r6_pm4_put(stream, v9x_r6_pm4_header(V9X_R6_P3_EVENT_WRITE, 1ul));
+    v9x_r6_pm4_put(stream, R6_CACHE_FLUSH_AND_INV);
+    v9x_r6_pm4_set1(stream, V9X_R6_WAIT_UNTIL, R6_WAIT_3D_IDLE_CLEAN);
+    v9x_r6_pm4_surface_sync(stream,
+                            V9X_R6_SYNC_CB_ACTION | V9X_R6_SYNC_CB0_DEST_BASE |
+                            V9X_R6_SYNC_TC_ACTION | V9X_R6_SYNC_VC_ACTION,
+                            V9X_R6_SYNC_ALL, 0ul);
+}

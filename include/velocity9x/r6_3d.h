@@ -1,7 +1,8 @@
 /*
  * ATI R6xx (Radeon HD 2600 XT, RV630) 3D command streams: PM4 packets for
  * the command processor, r600_gpu_init's configuration for the RV630, the
- * default state, and one solid rectangle drawn through the shader core.
+ * default state, one solid rectangle drawn through the shader core, and
+ * one batch of triangles' state (struct v9x_r6_3d_state).
  *
  * Pure policy, no I/O; host-tested (tests\host\test_r6_3d.c). Not yet run
  * on a card: V9XR63D (tools\diag\rv630_3d_win32.c) is the first to send
@@ -132,9 +133,11 @@
 
 /* SURFACE_SYNC actions (CP_COHER_CNTL, r600_reg_r6xx.h). */
 #define V9X_R6_SYNC_CB0_DEST_BASE       0x00000040ul
+#define V9X_R6_SYNC_DB_DEST_BASE        0x00004000ul
 #define V9X_R6_SYNC_TC_ACTION           0x00800000ul
 #define V9X_R6_SYNC_VC_ACTION           0x01000000ul
 #define V9X_R6_SYNC_CB_ACTION           0x02000000ul
+#define V9X_R6_SYNC_DB_ACTION           0x04000000ul
 #define V9X_R6_SYNC_SH_ACTION           0x08000000ul
 /* CP_COHER_SIZE of all ones: everything, base ignored. */
 #define V9X_R6_SYNC_ALL                 0xfffffffful
@@ -279,5 +282,150 @@ v9x_u32 v9x_r6_3d_float_bits(v9x_u32 value);
  * v9x_r6_3d_solid's WAIT_UNTIL that is once the 3D pipe is idle and
  * clean. */
 void v9x_r6_3d_fence(struct v9x_r6_pm4 *stream, v9x_u32 value);
+
+/*
+ * One batch's state after v9x_r6_3d_default_state, shaped as Evergreen's
+ * struct v9x_eg_3d_state (eg_3d.h) so a later d3d_r6.c can map Direct3D
+ * onto it the way d3d_eg.c does. Not yet run on a card: V9XR63D /gouraud,
+ * /depth and /modulate are its first users.
+ *
+ * Every register and field here is in both xf86-video-ati 6.14.6's
+ * r600_reg_auto_r6xx.h and Mesa r600's r600d.h; the values follow xf86's
+ * R6xx paths (r600_set_render_target, r600_set_tex_resource,
+ * r600_set_tex_sampler, r600_set_spi, R600PrepareCopy) where xf86 has one
+ * and Mesa r600_state.c's where it does not (the depth buffer, the depth
+ * test, alpha test, DB_RENDER_OVERRIDE). Where they differ, r6_3d.c says
+ * which was chosen and why.
+ *
+ * Differences from Evergreen's state: R6xx addresses are 32 bits (no
+ * gpu_high); blending is enabled in CB_COLOR_CONTROL, not in the blend
+ * word, hence blend_enable; one texture level only, linear aligned (no
+ * mip chain yet); the colour buffer and the texture are ARGB8888 only,
+ * the one format measured on this family (the solid draw).
+ *
+ * GPU addresses are 256-byte aligned. The target is linear general, as
+ * the solid draw drew it; pitch a multiple of 8. The depth buffer is Z16,
+ * 1D tiled: Mesa's r600_init_depth_surface gives the DB no linear mode
+ * (LINEAR_ALIGNED maps to 1D_TILED_THIN1), and Evergreen's DB measured the
+ * same. Its pitch is a multiple of V9X_R6_DEPTH_PITCH_ALIGN and its height
+ * of 8. The texture is linear aligned, as xf86 sets an untiled source
+ * (tile_mode 1), its pitch a multiple of V9X_R6_TEXTURE_PITCH_ALIGN.
+ */
+#define V9X_R6_COLOR_8_8_8_8        0x1aul   /* COLOR_ and FMT_8_8_8_8 */
+#define V9X_R6_INTERPOLANTS_MAX     3ul
+/* xf86 drmmode_get_pitch_align for R600 and later: linear aligned
+ * MAX(64, group_bytes / bpe); 1D tiled ("micro") MAX(8, group_bytes /
+ * (8 * bpe)). The RV630's group is 256 bytes (GB_TILING_CONFIG GROUP_SIZE
+ * 0, M-NZHWBR's 8A12h), so 64 texels of 32 bits and 16 pixels of Z16. */
+#define V9X_R6_TEXTURE_PITCH_ALIGN  64ul
+#define V9X_R6_DEPTH_PITCH_ALIGN    16ul
+
+/* Comparison functions, DB_DEPTH_CONTROL's ZFUNC and SX_ALPHA_TEST_
+ * CONTROL's ALPHA_FUNC alike: NEVER 0 ... ALWAYS 7. */
+#define V9X_R6_FUNC_NEVER           0ul
+#define V9X_R6_FUNC_LESS            1ul
+#define V9X_R6_FUNC_ALWAYS          7ul
+
+/* CB_BLEND0_CONTROL factors (BLEND_*). */
+#define V9X_R6_BLEND_ZERO                0ul
+#define V9X_R6_BLEND_ONE                 1ul
+#define V9X_R6_BLEND_SRC_COLOR           2ul
+#define V9X_R6_BLEND_ONE_MINUS_SRC_COLOR 3ul
+#define V9X_R6_BLEND_SRC_ALPHA           4ul
+#define V9X_R6_BLEND_ONE_MINUS_SRC_ALPHA 5ul
+#define V9X_R6_BLEND_DST_ALPHA           6ul
+#define V9X_R6_BLEND_ONE_MINUS_DST_ALPHA 7ul
+#define V9X_R6_BLEND_DST_COLOR           8ul
+#define V9X_R6_BLEND_ONE_MINUS_DST_COLOR 9ul
+#define V9X_R6_BLEND_SRC_ALPHA_SATURATE  10ul
+
+/* Sampler addressing (SQ_TEX_*). */
+#define V9X_R6_TEX_WRAP             0ul
+#define V9X_R6_TEX_MIRROR           1ul
+#define V9X_R6_TEX_CLAMP_LAST_TEXEL 2ul
+
+/* CB_TARGET_MASK's target-0 bits for an ARGB8888 target with COMP_SWAP 1:
+ * the shader's x, y, z, w are R, G, B, A (xf86's pmask: R 1, G 2, B 4,
+ * A 8). */
+#define V9X_R6_CHANNEL_RED          0x1ul
+#define V9X_R6_CHANNEL_GREEN        0x2ul
+#define V9X_R6_CHANNEL_BLUE         0x4ul
+
+struct v9x_r6_3d_state {
+    v9x_u32 target_gpu;
+    v9x_u32 target_pitch;
+    v9x_u32 target_height;
+    v9x_u32 target_format;       /* V9X_R6_COLOR_8_8_8_8 */
+    v9x_u32 write_alpha;
+    v9x_u32 masked_channels;     /* V9X_R6_CHANNEL_*, not written */
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
+    v9x_u32 has_depth;
+    v9x_u32 depth_gpu;           /* Z16, 1D tiled */
+    v9x_u32 depth_pitch;
+    v9x_u32 depth_height;        /* a multiple of 8 */
+    v9x_u32 depth_control;       /* v9x_r6_3d_depth_control */
+    v9x_u32 blend_enable;
+    v9x_u32 blend_control;       /* v9x_r6_3d_blend */
+    v9x_u32 alpha_test_control;  /* v9x_r6_3d_alpha_test */
+    v9x_u32 alpha_ref;           /* a float's bits */
+    v9x_u32 perspective;         /* nonzero: perspective interpolation */
+    v9x_u32 pixel_centre_half;   /* nonzero: centres at +0.5 */
+    v9x_u32 vs_gpu;
+    v9x_u32 vs_gprs;
+    v9x_u32 ps_gpu;
+    v9x_u32 ps_gprs;
+    v9x_u32 interpolants;        /* 1 to V9X_R6_INTERPOLANTS_MAX */
+    v9x_u32 kill;                /* nonzero: the PS may kill pixels */
+    v9x_u32 has_texture;
+    v9x_u32 texture_gpu;
+    v9x_u32 texture_width;
+    v9x_u32 texture_height;
+    v9x_u32 texture_pitch;
+    v9x_u32 texture_format;      /* V9X_R6_COLOR_8_8_8_8 */
+    v9x_u32 sampler_word0;       /* v9x_r6_3d_sampler */
+    v9x_u32 vertex_gpu;
+    v9x_u32 vertex_stride;
+    v9x_u32 vertex_bytes;
+    /* Nonzero on a part with a vertex cache (the RV630; not RV610, RV620
+     * or RS780/880, xf86's r600_set_vtx_resource): the vertices are synced
+     * through it rather than the texture cache. */
+    v9x_u32 vertex_cache;
+    /* Zero: the texture and vertex caches are invalidated over all of
+     * memory before the batch, as Mesa and Linux sync them. Nonzero:
+     * over the texture and the vertices alone, xf86's ranged syncs (the
+     * vertex cache alone, without the texture cache). */
+    v9x_u32 ranged_syncs;
+};
+
+/* Register words. func is V9X_R6_FUNC_*; factors V9X_R6_BLEND_*. The
+ * blend word carries the factors only (R6xx's CB_BLEND0_CONTROL has no
+ * enable bit); disabled, it says ONE, ZERO. */
+v9x_u32 v9x_r6_3d_depth_control(v9x_u32 enable, v9x_u32 write,
+                                v9x_u32 func);
+v9x_u32 v9x_r6_3d_blend(v9x_u32 enable, v9x_u32 src, v9x_u32 dst);
+v9x_u32 v9x_r6_3d_alpha_test(v9x_u32 enable, v9x_u32 func);
+/* SQ_TEX_SAMPLER_WORD0: clamp_u and clamp_v (V9X_R6_TEX_*), Z wrapped, no
+ * mip or Z filter, as xf86's R600TextureSetup; a nonzero filter argument
+ * is bilinear, zero point. */
+v9x_u32 v9x_r6_3d_sampler(v9x_u32 mag_bilinear, v9x_u32 min_bilinear,
+                          v9x_u32 clamp_u, v9x_u32 clamp_v);
+
+/* The batch's state. INVALID_ARGUMENT, with nothing written, for a state
+ * the hardware cannot take as given; INSUFFICIENT_MEMORY when the stream
+ * overflowed. */
+v9x_status v9x_r6_3d_build_state(const struct v9x_r6_3d_state *state,
+                                 struct v9x_r6_pm4 *stream);
+/* A triangle list of vertex_count vertices from the bound buffer. */
+void v9x_r6_3d_draw(struct v9x_r6_pm4 *stream, v9x_u32 vertex_count);
+/* r600_finish_op's end, over everything: CACHE_FLUSH_AND_INV (which
+ * flushes the colour and depth caches), WAIT_UNTIL 3D idle clean, then
+ * the colour, texture and vertex caches synced over all of memory
+ * (CP_COHER_SIZE all ones, as r600_fence_ring_emit syncs). No DB action:
+ * Mesa's r600_flush_emit leaves the DB's CP coherency off on R6xx ("there
+ * are hw bugs") and relies on the event, and xf86 never syncs the DB. */
+void v9x_r6_3d_flush(struct v9x_r6_pm4 *stream);
 
 #endif

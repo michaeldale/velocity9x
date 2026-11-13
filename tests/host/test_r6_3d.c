@@ -877,6 +877,791 @@ static void test_shaders(void)
           got[11] == 0xe0001910ul);
 }
 
+/*
+ * xf86's TEX_DWORD0-2 (r600_shader.h lines 338-345), and the opcode and
+ * format numbers the interpolated shaders add, each from xf86's
+ * r600_reg_auto_r6xx.h / r600_reg_r6xx.h (X_) beside Mesa r600's
+ * r600_isa.c R600 column and r600_formats.h (M_): two sources per value.
+ */
+#define X_TEX_DWORD0(ti, bfm, fwq, rid, src_gpr, sr, ac) \
+    ((v9x_u32)(((ti) << 0) | ((bfm) << 5) | ((fwq) << 7) | ((rid) << 8) | \
+     ((src_gpr) << 16) | ((sr) << 23) | ((ac) << 24)))
+#define X_TEX_DWORD1(dst_gpr, dr, dsx, dsy, dsz, dsw, lb, ctx, cty, ctz, ctw) \
+    ((v9x_u32)(((dst_gpr) << 0) | ((dr) << 7) | ((dsx) << 9) | \
+     ((dsy) << 12) | ((dsz) << 15) | ((dsw) << 18) | ((lb) << 21) | \
+     ((ctx) << 28) | ((cty) << 29) | ((ctz) << 30) | \
+     ((v9x_u32)(ctw) << 31)))
+#define X_TEX_DWORD2(ox, oy, oz, sid, ssx, ssy, ssz, ssw) \
+    ((v9x_u32)(((ox) << 0) | ((oy) << 5) | ((oz) << 10) | ((sid) << 15) | \
+     ((ssx) << 20) | ((ssy) << 23) | ((ssz) << 26) | \
+     ((v9x_u32)(ssw) << 29)))
+#define X_SQ_CF_INST_TEX         0x01
+#define X_SQ_CF_INST_EXPORT      0x27
+#define X_SQ_OP2_INST_MUL        0x01
+#define X_SQ_TEX_INST_SAMPLE     0x10
+/* r600_reg_r6xx.h's FMT_ enumeration: FMT_32_32_32_32 = 34, then
+ * FMT_32_32_32_32_FLOAT. */
+#define X_FMT_32_32_32_32_FLOAT  35
+#define X_TEX_UNNORMALIZED       0
+#define M_MUL                    0x01
+#define M_MOV                    0x19
+#define M_SAMPLE                 0x10
+#define M_CF_TEX                 0x01
+#define M_CF_VTX                 0x02
+#define M_CF_ALU                 0x08
+#define M_CF_EXPORT              0x27
+#define M_CF_EXPORT_DONE         0x28
+#define M_FMT_32_32_FLOAT        0x1e
+#define M_FMT_32_32_32_32_FLOAT  0x23
+
+/* xf86's value beside Mesa's; the TEX_WORD fields as xf86's macros place
+ * them beside Mesa r600_sq.h's S_SQ_TEX_WORDn_* positions (SRC_GPR 16,
+ * DST_SEL_X 9, COORD_TYPE_X 28, SAMPLER_ID 15, SRC_SEL_X 20, SRC_SEL_W
+ * 29); the DB's coherency bits (r600_reg_r6xx.h, S_0085F0_*). */
+static const v9x_u32 source_pairs[][2] = {
+    { X_SQ_CF_INST_TEX, M_CF_TEX },
+    { X_SQ_CF_INST_VTX, M_CF_VTX },
+    { X_SQ_CF_INST_ALU, M_CF_ALU },
+    { X_SQ_CF_INST_EXPORT, M_CF_EXPORT },
+    { X_SQ_CF_INST_EXPORT_DONE, M_CF_EXPORT_DONE },
+    { X_SQ_OP2_INST_MUL, M_MUL },
+    { X_SQ_OP2_INST_MOV, M_MOV },
+    { X_SQ_TEX_INST_SAMPLE, M_SAMPLE },
+    { X_FMT_32_32_FLOAT, M_FMT_32_32_FLOAT },
+    { X_FMT_32_32_32_32_FLOAT, M_FMT_32_32_32_32_FLOAT },
+    { X_TEX_DWORD0(0, 0, 0, 0, 1, 0, 0), 1ul << 16 },
+    { X_TEX_DWORD1(0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0),
+      (1ul << 9) | (1ul << 28) },
+    { X_TEX_DWORD2(0, 0, 0, 1, 1, 0, 0, 1),
+      (1ul << 15) | (1ul << 20) | (1ul << 29) },
+    { V9X_R6_SYNC_DB_ACTION, 1ul << 26 },
+    { V9X_R6_SYNC_DB_DEST_BASE, 1ul << 14 }
+};
+#define SOURCE_PAIRS (sizeof(source_pairs) / sizeof(source_pairs[0]))
+
+/* A vertex fetch as xf86 writes one: VTX_DWORD0, VTX_DWORD1_GPR, DWORD2,
+ * pad. mega_count is MEGA_FETCH_COUNT's argument, bytes. */
+static v9x_u32 x_fetch(v9x_u32 *want, v9x_u32 dst_gpr, v9x_u32 offset,
+                       v9x_u32 mega_count, v9x_u32 mega, v9x_u32 format,
+                       v9x_u32 sel_z, v9x_u32 sel_w)
+{
+    want[0] = X_VTX_DWORD0(0, 0, 0, 0, 0, 0, X_SQ_SEL_X,
+                           X_MEGA_FETCH_COUNT(mega_count));
+    want[1] = X_VTX_DWORD1_GPR(dst_gpr, 0, X_SQ_SEL_X, X_SQ_SEL_Y, sel_z,
+                               sel_w, 0, format, X_SQ_NUM_FORMAT_SCALED,
+                               X_SQ_FORMAT_COMP_SIGNED, 0);
+    want[2] = X_VTX_DWORD2(offset, 0, 0, mega);
+    want[3] = 0ul;
+    return 4ul;
+}
+
+/* An export of one register, XYZW. */
+static v9x_u32 x_export(v9x_u32 *want, v9x_u32 base, v9x_u32 type,
+                        v9x_u32 gpr, v9x_u32 inst, v9x_u32 eop, v9x_u32 b)
+{
+    want[0] = X_EXP_DWORD0(base, type, gpr, 0, 0, X_ELEM_SIZE(0));
+    want[1] = X_EXP_DWORD1_SWIZ(X_SQ_SEL_X, X_SQ_SEL_Y, X_SQ_SEL_Z,
+                                X_SQ_SEL_W, 0, X_BURST_COUNT(1), eop, 0,
+                                inst, 0, b);
+    return 2ul;
+}
+
+/* Four slots of op, dst.c = src0.c op src1.c, clamped, as xf86's solid
+ * (MOV) and composite (MUL) PSs write them. */
+static v9x_u32 x_alu4(v9x_u32 *want, v9x_u32 op, v9x_u32 src0, v9x_u32 src1,
+                      v9x_u32 dst)
+{
+    v9x_u32 channel;
+
+    for (channel = 0ul; channel < 4ul; ++channel) {
+        want[channel * 2ul] = X_ALU_DWORD0(src0, 0, channel, 0, src1, 0,
+                                           channel, 0, 0, 0,
+                                           channel == 3ul ? 1 : 0);
+        want[channel * 2ul + 1ul] =
+            X_R6XX_ALU_DWORD1_OP2(0, 0, 0, 0, 1, 0, 0, op, 0, dst, 0,
+                                  channel, 1);
+    }
+    return 8ul;
+}
+
+/* A vertex clause of count fetches at dword first: no fetch reads its
+ * index GPR (VTX_DWORD0 SRC_GPR, 22:16) after an earlier fetch of the
+ * clause wrote it (VTX_DWORD1_GPR DST_GPR, 6:0). Every fetch indexes by
+ * R0.x; every xf86 VS writes R0 with its last fetch. */
+static int fetch_order_ok(const v9x_u32 *shader, v9x_u32 first,
+                          v9x_u32 count)
+{
+    v9x_u32 written = 0ul;
+    v9x_u32 index;
+    v9x_u32 src;
+
+    for (index = 0ul; index < count; ++index) {
+        src = (shader[first + index * 4ul] >> 16) & 0x7ful;
+        if ((written & (1ul << src)) != 0ul) {
+            return 0;
+        }
+        written |= 1ul << (shader[first + index * 4ul + 1ul] & 0x1ful);
+    }
+    return 1;
+}
+
+/* No fetch of the clause asks for more than 32 bytes (VTX_DWORD0
+ * MEGA_FETCH_COUNT, 31:26, at most 1Fh): Mesa's R600 fetches use 1Fh,
+ * xf86's mega-fetches 24 bytes at most. (The first /modulate VS's 40, 27h,
+ * was in place when M-NZHWBR drew wrong colours, but those were most
+ * likely stale vertex-cache lines: a rule from the sources, not a
+ * measured fault.) */
+static int fetch_counts_ok(const v9x_u32 *shader, v9x_u32 first,
+                           v9x_u32 count)
+{
+    v9x_u32 index;
+
+    for (index = 0ul; index < count; ++index) {
+        if ((shader[first + index * 4ul] >> 26) > 0x1ful) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* The clause's first fetch is a mega-fetch (VTX_DWORD2 MEGA_FETCH, bit
+ * 19): a mini-fetch takes its data from the mega-fetch before it, and
+ * every xf86 VS starts with one while Mesa sets it on every fetch. Three
+ * mini-fetches alone halved green and blue on M-NZHWBR (V9XR63D runs e
+ * and f). */
+static int fetch_mega_first(const v9x_u32 *shader, v9x_u32 first,
+                            v9x_u32 count)
+{
+    return count != 0ul && (shader[first + 2ul] & 0x00080000ul) != 0ul;
+}
+
+/* One ALU group of slots OP2 slots: no slot's DST_GPR (ALU_WORD1 27:21) is
+ * a GPR any slot reads (ALU_WORD0 SRC0_SEL 8:0, SRC1_SEL 21:13, below
+ * 128). */
+static int alu_group_writes_unread(const v9x_u32 *alu, v9x_u32 slots)
+{
+    v9x_u32 read = 0ul;
+    v9x_u32 index;
+    v9x_u32 sel;
+
+    for (index = 0ul; index < slots; ++index) {
+        sel = alu[index * 2ul] & 0x1fful;
+        if (sel < 32ul) {
+            read |= 1ul << sel;
+        }
+        sel = (alu[index * 2ul] >> 13) & 0x1fful;
+        if (sel < 32ul) {
+            read |= 1ul << sel;
+        }
+    }
+    for (index = 0ul; index < slots; ++index) {
+        if ((read & (1ul << ((alu[index * 2ul + 1ul] >> 21) & 0x1ful))) !=
+            0ul) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void test_interp_shaders(void)
+{
+    v9x_u32 got[V9X_R6_SHADER_DWORDS_MAX];
+    v9x_u32 want[V9X_R6_SHADER_DWORDS_MAX];
+    v9x_u32 i;
+
+    /* Each value in both sources. */
+    for (i = 0ul; i < SOURCE_PAIRS; ++i) {
+        CHECK(source_pairs[i][0] == source_pairs[i][1]);
+    }
+
+    /* Gouraud VS: VTX ADDR(4) CNT(2); POS0 from R1; PARAM0 from R0, the
+     * end; R1.xyzw MEGA(32) at 0, R0.xyzw MINI(16) at 16. */
+    i = 0ul;
+    want[i++] = 4ul;
+    want[i++] = X_CF_DWORD1(0, 0, 0, X_I_COUNT(2), 0, 0, 0,
+                            X_SQ_CF_INST_VTX, 0, 1);
+    i += x_export(want + i, X_CF_POS0, X_SQ_EXPORT_POS, 1,
+                  X_SQ_CF_INST_EXPORT_DONE, 0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PARAM, 0,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 0);
+    want[i++] = 0ul;
+    want[i++] = 0ul;
+    i += x_fetch(want + i, 1, 0, 32, 1, X_FMT_32_32_32_32_FLOAT,
+                 X_SQ_SEL_Z, X_SQ_SEL_W);
+    i += x_fetch(want + i, 0, 16, 16, 0, X_FMT_32_32_32_32_FLOAT,
+                 X_SQ_SEL_Z, X_SQ_SEL_W);
+    CHECK(i == V9X_R6_GOURAUD_VS_DWORDS);
+    CHECK(v9x_r6_shader_gouraud_vs(got) == V9X_R6_GOURAUD_VS_DWORDS);
+    CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* By hand: the first fetch's MEGA_FETCH_COUNT 31 << 26, and its DWORD1
+     * (R1, X Y Z W, format 23h, scaled, signed). */
+    CHECK(got[8] == 0x7c000000ul && got[9] == 0x68cd1001ul &&
+          got[14] == 16ul);
+
+    /* Gouraud PS: the solid PS's layout, R0 for constant 0. */
+    i = 0ul;
+    want[i++] = X_CF_ALU_DWORD0(2, 0, 0, 0);
+    want[i++] = X_CF_ALU_DWORD1(0, 0, 0, X_I_COUNT(4), 0, X_SQ_CF_INST_ALU,
+                                0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PIXEL, 0,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 1);
+    i += x_alu4(want + i, X_SQ_OP2_INST_MOV, 0, 0, 0);
+    CHECK(i == V9X_R6_GOURAUD_PS_DWORDS);
+    CHECK(v9x_r6_shader_gouraud_ps(got) == V9X_R6_GOURAUD_PS_DWORDS);
+    CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* The solid PS's words but for source 0: GPR 0, not 256. */
+    CHECK(got[4] == 0ul && got[5] == 0x80001910ul &&
+          got[10] == 0x81800c00ul);
+
+    /* Modulate VS: VTX ADDR(4) CNT(3); POS0 from R1; PARAM0 (EXPORT) from
+     * R0; PARAM1 (EXPORT_DONE, the end) from R2; R1 MEGA(40) at 0,
+     * R2.xy01 MINI(8) at 32, R0 MINI(16) at 16 - R0 last, as every xf86
+     * VS fetches it. */
+    i = 0ul;
+    want[i++] = 4ul;
+    want[i++] = X_CF_DWORD1(0, 0, 0, X_I_COUNT(3), 0, 0, 0,
+                            X_SQ_CF_INST_VTX, 0, 1);
+    i += x_export(want + i, X_CF_POS0, X_SQ_EXPORT_POS, 1,
+                  X_SQ_CF_INST_EXPORT_DONE, 0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PARAM, 0, X_SQ_CF_INST_EXPORT,
+                  0, 0);
+    i += x_export(want + i, 1, X_SQ_EXPORT_PARAM, 2,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 0);
+    /* Each fetch as Mesa's R600 fetch shader writes one
+     * (r600_create_vertex_fetch_shader, r600_bytecode_vtx_build):
+     * mega_fetch_count 0x1F, MEGA_FETCH(1) before Cayman. */
+    i += x_fetch(want + i, 1, 0, 32, 1, X_FMT_32_32_32_32_FLOAT,
+                 X_SQ_SEL_Z, X_SQ_SEL_W);
+    i += x_fetch(want + i, 2, 32, 32, 1, X_FMT_32_32_FLOAT, X_SQ_SEL_0,
+                 X_SQ_SEL_1);
+    i += x_fetch(want + i, 0, 16, 32, 1, X_FMT_32_32_32_32_FLOAT,
+                 X_SQ_SEL_Z, X_SQ_SEL_W);
+    CHECK(i == V9X_R6_MODULATE_VS_DWORDS);
+    CHECK(v9x_r6_shader_modulate_vs(got) == V9X_R6_MODULATE_VS_DWORDS);
+    CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* By hand: MEGA_FETCH (bit 19) with offset 0, 32 and 16. */
+    CHECK(got[5] == 0x13800688ul && got[8] == 0x7c000000ul &&
+          got[10] == 0x00080000ul && got[14] == 0x00080020ul &&
+          got[18] == 0x00080010ul);
+    CHECK(fetch_order_ok(got, 8ul, 3ul));
+    CHECK(fetch_counts_ok(got, 8ul, 3ul));
+    CHECK(fetch_mega_first(got, 8ul, 3ul));
+
+    /* Modulate PS: TEX ADDR(8) CNT(1); ALU ADDR(4) CNT(4); R2 to MRT 0,
+     * the end; R2 = R1 * R0 clamped, xf86's composite MUL; SAMPLE R1 = t0
+     * at R1.xy01, unnormalised, sampler 0. */
+    i = 0ul;
+    want[i++] = 8ul;
+    want[i++] = X_CF_DWORD1(0, 0, 0, X_I_COUNT(1), 0, 0, 0,
+                            X_SQ_CF_INST_TEX, 0, 1);
+    want[i++] = X_CF_ALU_DWORD0(4, 0, 0, 0);
+    want[i++] = X_CF_ALU_DWORD1(0, 0, 0, X_I_COUNT(4), 0, X_SQ_CF_INST_ALU,
+                                0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PIXEL, 2,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 1);
+    want[i++] = 0ul;
+    want[i++] = 0ul;
+    i += x_alu4(want + i, X_SQ_OP2_INST_MUL, 1, 0, 2);
+    want[i++] = X_TEX_DWORD0(X_SQ_TEX_INST_SAMPLE, 0, 0, 0, 1, 0, 0);
+    want[i++] = X_TEX_DWORD1(1, 0, X_SQ_SEL_X, X_SQ_SEL_Y, X_SQ_SEL_Z,
+                             X_SQ_SEL_W, 0, X_TEX_UNNORMALIZED,
+                             X_TEX_UNNORMALIZED, X_TEX_UNNORMALIZED,
+                             X_TEX_UNNORMALIZED);
+    want[i++] = X_TEX_DWORD2(0, 0, 0, 0, X_SQ_SEL_X, X_SQ_SEL_Y,
+                             X_SQ_SEL_0, X_SQ_SEL_1);
+    want[i++] = 0ul;
+    CHECK(i == V9X_R6_MODULATE_PS_DWORDS);
+    CHECK(v9x_r6_shader_modulate_ps(got) == V9X_R6_MODULATE_PS_DWORDS);
+    CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* By hand: TEX with BARRIER, MUL with WRITE and CLAMP, the sample, its
+     * source swizzle X Y 0 1. */
+    CHECK(got[1] == 0x80800000ul && got[9] == 0x80400110ul &&
+          got[4] == 0x00010000ul && got[16] == 0x00010010ul &&
+          got[17] == 0x000d1001ul && got[18] == 0xb0800000ul);
+    /* No ALU slot writes a GPR its group reads. */
+    CHECK(alu_group_writes_unread(got + 8, 4ul));
+
+    /* The Z-export PS: ALU ADDR(4) CNT(5); EXPORT PIXEL 61 (CF_PIXEL_Z)
+     * from R1; EXPORT_DONE PIXEL 0 from R0, the end; four MOVs R0 = R0,
+     * then MOV R1.x = C0.x, the second group. */
+    i = 0ul;
+    want[i++] = X_CF_ALU_DWORD0(4, 0, 0, 0);
+    want[i++] = X_CF_ALU_DWORD1(0, 0, 0, X_I_COUNT(5), 0, X_SQ_CF_INST_ALU,
+                                0, 1);
+    i += x_export(want + i, 61, X_SQ_EXPORT_PIXEL, 1, X_SQ_CF_INST_EXPORT,
+                  0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PIXEL, 0,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 1);
+    want[i++] = 0ul;
+    want[i++] = 0ul;
+    i += x_alu4(want + i, X_SQ_OP2_INST_MOV, 0, 0, 0);
+    want[i++] = X_ALU_DWORD0(X_ALU_SRC_CFILE_BASE + 0, 0, 0, 0, 0, 0, 0, 0,
+                             0, 0, 1);
+    want[i++] = X_R6XX_ALU_DWORD1_OP2(0, 0, 0, 0, 1, 0, 0,
+                                      X_SQ_OP2_INST_MOV, 0, 1, 0, 0, 1);
+    CHECK(i == V9X_R6_ZEXPORT_PS_DWORDS);
+    CHECK(v9x_r6_shader_gouraud_zexport_ps(got) ==
+          V9X_R6_ZEXPORT_PS_DWORDS);
+    CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    /* By hand: export base 61 with type PIXEL 0 and R1 << 15; EXPORT
+     * (27h) with BARRIER. */
+    CHECK(got[2] == (61ul | (1ul << 15)) && got[3] == 0x93800688ul);
+
+    /* The Z-constant VS: VTX ADDR(8) CNT(2); ALU ADDR(4) CNT(2); POS0
+     * from R1; PARAM0 from R0, the end; MOV R1.z = C0.x, MOV R1.w = C0.y
+     * (unclamped, one group); padding; the Gouraud fetches at 16. With
+     * write_w zero, only the first MOV, closing the group. */
+    i = 0ul;
+    want[i++] = 8ul;
+    want[i++] = X_CF_DWORD1(0, 0, 0, X_I_COUNT(2), 0, 0, 0,
+                            X_SQ_CF_INST_VTX, 0, 1);
+    want[i++] = X_CF_ALU_DWORD0(4, 0, 0, 0);
+    want[i++] = X_CF_ALU_DWORD1(0, 0, 0, X_I_COUNT(2), 0, X_SQ_CF_INST_ALU,
+                                0, 1);
+    i += x_export(want + i, X_CF_POS0, X_SQ_EXPORT_POS, 1,
+                  X_SQ_CF_INST_EXPORT_DONE, 0, 1);
+    i += x_export(want + i, 0, X_SQ_EXPORT_PARAM, 0,
+                  X_SQ_CF_INST_EXPORT_DONE, 1, 0);
+    want[i++] = X_ALU_DWORD0(X_ALU_SRC_CFILE_BASE + 0, 0, 0, 0, 0, 0, 0, 0,
+                             0, 0, 0);
+    want[i++] = X_R6XX_ALU_DWORD1_OP2(0, 0, 0, 0, 1, 0, 0,
+                                      X_SQ_OP2_INST_MOV, 0, 1, 0, 2, 0);
+    want[i++] = X_ALU_DWORD0(X_ALU_SRC_CFILE_BASE + 0, 0, 1, 0, 0, 0, 0, 0,
+                             0, 0, 1);
+    want[i++] = X_R6XX_ALU_DWORD1_OP2(0, 0, 0, 0, 1, 0, 0,
+                                      X_SQ_OP2_INST_MOV, 0, 1, 0, 3, 0);
+    while (i < 16ul) {
+        want[i++] = 0ul;
+    }
+    i += x_fetch(want + i, 1, 0, 32, 1, X_FMT_32_32_32_32_FLOAT,
+                 X_SQ_SEL_Z, X_SQ_SEL_W);
+    i += x_fetch(want + i, 0, 16, 16, 0, X_FMT_32_32_32_32_FLOAT,
+                 X_SQ_SEL_Z, X_SQ_SEL_W);
+    CHECK(i == V9X_R6_ZCONST_VS_DWORDS);
+    CHECK(v9x_r6_shader_gouraud_vs_zconst(1ul, got) ==
+          V9X_R6_ZCONST_VS_DWORDS);
+    CHECK(memcmp(got, want, i * sizeof(v9x_u32)) == 0);
+    CHECK(fetch_order_ok(got, 16ul, 2ul) && fetch_counts_ok(got, 16ul, 2ul) &&
+          fetch_mega_first(got, 16ul, 2ul));
+    /* By hand: MOV R1.z (DST_ELEM 2 << 29 = 40000000h, R1 << 21). */
+    CHECK(got[9] == 0x40201910ul && got[11] == 0x60201910ul);
+    CHECK(v9x_r6_shader_gouraud_vs_zconst(0ul, got) ==
+          V9X_R6_ZCONST_VS_DWORDS);
+    CHECK(got[3] == want[3] - (1ul << 18) && got[8] == (want[8] | 0x80000000ul) &&
+          got[10] == 0ul && got[11] == 0ul);
+
+    /* The other VSs keep the rule too. */
+    CHECK(v9x_r6_shader_solid_vs(got) == V9X_R6_SOLID_VS_DWORDS &&
+          fetch_order_ok(got, 8ul, 1ul) && fetch_counts_ok(got, 8ul, 1ul) &&
+          fetch_mega_first(got, 8ul, 1ul));
+    CHECK(v9x_r6_shader_gouraud_vs(got) == V9X_R6_GOURAUD_VS_DWORDS &&
+          fetch_order_ok(got, 8ul, 2ul) && fetch_counts_ok(got, 8ul, 2ul) &&
+          fetch_mega_first(got, 8ul, 2ul));
+}
+
+/*
+ * The state words and registers. Each expected value is written with
+ * Mesa r600d.h's field positions (S_0288xx_*), beside xf86's names.
+ */
+static void test_state_words(void)
+{
+    /* S_028800_Z_ENABLE(1) | S_028800_Z_WRITE_ENABLE(1) |
+     * S_028800_ZFUNC(FRAG_LESS 1). */
+    CHECK(v9x_r6_3d_depth_control(1ul, 1ul, V9X_R6_FUNC_LESS) ==
+          ((1ul << 1) | (1ul << 2) | (1ul << 4)));
+    CHECK(v9x_r6_3d_depth_control(0ul, 0ul, V9X_R6_FUNC_ALWAYS) ==
+          (7ul << 4));
+    /* COLOR_SRCBLEND 0, COLOR_DESTBLEND 8, ALPHA_SRCBLEND 16,
+     * ALPHA_DESTBLEND 24; BLEND_SRC_ALPHA 4, ONE_MINUS_SRC_ALPHA 5. */
+    CHECK(v9x_r6_3d_blend(1ul, V9X_R6_BLEND_SRC_ALPHA,
+                          V9X_R6_BLEND_ONE_MINUS_SRC_ALPHA) ==
+          (4ul | (5ul << 8) | (4ul << 16) | (5ul << 24)));
+    CHECK(v9x_r6_3d_blend(0ul, V9X_R6_BLEND_SRC_ALPHA,
+                          V9X_R6_BLEND_ONE_MINUS_SRC_ALPHA) ==
+          (1ul | (1ul << 16)));
+    /* S_028410_ALPHA_FUNC(7) | S_028410_ALPHA_TEST_ENABLE(1). */
+    CHECK(v9x_r6_3d_alpha_test(1ul, V9X_R6_FUNC_ALWAYS) == (7ul | 8ul));
+    /* R600PrepareCopy's sampler: CLAMP_LAST_TEXEL in X and Y, WRAP in Z,
+     * POINT: 12h. Bilinear: XY_MAG_FILTER at 9, XY_MIN_FILTER at 12. */
+    CHECK(v9x_r6_3d_sampler(0ul, 0ul, V9X_R6_TEX_CLAMP_LAST_TEXEL,
+                            V9X_R6_TEX_CLAMP_LAST_TEXEL) == 0x12ul);
+    CHECK(v9x_r6_3d_sampler(1ul, 1ul, V9X_R6_TEX_WRAP, V9X_R6_TEX_WRAP) ==
+          ((1ul << 9) | (1ul << 12)));
+}
+
+static void base_state(struct v9x_r6_3d_state *state)
+{
+    memset(state, 0, sizeof(*state));
+    state->target_gpu = WINDOW_GPU + 0x7000ul;
+    state->target_pitch = 64ul;
+    state->target_height = 8ul;
+    state->target_format = V9X_R6_COLOR_8_8_8_8;
+    state->write_alpha = 1ul;
+    state->scissor_right = 64ul;
+    state->scissor_bottom = 8ul;
+    state->blend_control = v9x_r6_3d_blend(0ul, 0ul, 0ul);
+    state->alpha_test_control = v9x_r6_3d_alpha_test(0ul,
+                                                     V9X_R6_FUNC_ALWAYS);
+    state->perspective = 1ul;
+    state->pixel_centre_half = 1ul;
+    state->vs_gpu = WINDOW_GPU + 0x5000ul;
+    state->vs_gprs = V9X_R6_GOURAUD_VS_GPRS;
+    state->ps_gpu = WINDOW_GPU + 0x5200ul;
+    state->ps_gprs = V9X_R6_GOURAUD_PS_GPRS;
+    state->interpolants = 1ul;
+    state->vertex_gpu = WINDOW_GPU + 0x5400ul;
+    state->vertex_stride = V9X_R6_GOURAUD_STRIDE;
+    state->vertex_bytes = 6ul * V9X_R6_GOURAUD_STRIDE;
+    state->vertex_cache = 1ul;
+}
+
+static void test_build_state(void)
+{
+    struct v9x_r6_pm4 stream;
+    struct v9x_r6_3d_state state;
+    v9x_u32 at;
+
+    /* Gouraud: one interpolant, no depth, no texture. */
+    base_state(&state);
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(walks(buffer, stream.count));
+    /* Shaders as the solid draw sets them: SQ_PGM_START_VS 28858h,
+     * RESOURCES_VS 28868h, START_PS 28840h, RESOURCES_PS 28850h with
+     * UNCACHED_FIRST_INST (bit 28), EXPORTS_PS 28854h 2. */
+    at = find_reg(buffer, stream.count, 0x28858ul);
+    CHECK(at < stream.count && buffer[at] == (WINDOW_GPU + 0x5000ul) >> 8);
+    at = find_reg(buffer, stream.count, 0x28868ul);
+    CHECK(at < stream.count && buffer[at] == 2ul);
+    at = find_reg(buffer, stream.count, 0x28850ul);
+    CHECK(at < stream.count && buffer[at] == (1ul | (1ul << 28)));
+    /* SPI (r600d.h R_028644, R_028614, R_0286C4, R_0286CC):
+     * S_028644_SEMANTIC(0) | DEFAULT_VAL(1) | SEL_CENTROID(1);
+     * VS_EXPORT_COUNT(0); NUM_INTERP(1) | PERSP_GRADIENT_ENA(1), then
+     * SPI_PS_IN_CONTROL_1 and SPI_INTERP_CONTROL_0 0, as r600_set_spi. */
+    at = find_reg(buffer, stream.count, 0x28644ul);
+    CHECK(at < stream.count && buffer[at] == ((1ul << 8) | (1ul << 11)));
+    CHECK(find_reg(buffer, stream.count, 0x28648ul) == stream.count);
+    at = find_reg(buffer, stream.count, 0x28614ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    at = find_reg(buffer, stream.count, 0x286c4ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    at = find_reg(buffer, stream.count, 0x286ccul);
+    CHECK(at < stream.count && buffer[at] == (1ul | (1ul << 28)) &&
+          buffer[at + 1ul] == 0ul && buffer[at + 2ul] == 0ul &&
+          buffer[at - 2ul] == XF86_PACK3(0x69, 4));
+    /* PA_CL_VTE_CNTL S_028818_VTX_XY_FMT(1) | VTX_Z_FMT(1); PA_SU_VTX_CNTL
+     * PIX_CENTER_HALF | ROUND_MODE(2) | QUANT_MODE(5): xf86's 2Dh. */
+    at = find_reg(buffer, stream.count, 0x28818ul);
+    CHECK(at < stream.count && buffer[at] == ((1ul << 8) | (1ul << 9)));
+    at = find_reg(buffer, stream.count, 0x28c08ul);
+    CHECK(at < stream.count && buffer[at] == 0x2dul);
+    /* No texture: no SET_RESOURCE at 38000h, no sampler. */
+    CHECK(find_reg(buffer, stream.count, 0x38000ul) == stream.count);
+    CHECK(find_reg(buffer, stream.count, 0x3c000ul) == stream.count);
+    /* The colour buffer as the solid draw's, then all four channels, ROP
+     * copy without blending, ONE ZERO. */
+    at = find_reg(buffer, stream.count, 0x28040ul);
+    CHECK(at < stream.count && buffer[at] == (WINDOW_GPU + 0x7000ul) >> 8 &&
+          buffer[at + 1ul] == XF86_PACK3(0x73, 1) && buffer[at + 2ul] == 2ul);
+    at = find_reg(buffer, stream.count, 0x280a0ul);
+    CHECK(at < stream.count &&
+          buffer[at] == ((0x1aul << 2) | (1ul << 16) | (1ul << 20) |
+                         (1ul << 27)));
+    at = find_reg(buffer, stream.count, 0x28060ul);
+    CHECK(at < stream.count && buffer[at] == (7ul | (7ul << 10)));
+    at = find_reg(buffer, stream.count, 0x28238ul);
+    CHECK(at < stream.count && buffer[at] == 0xful);
+    at = find_reg(buffer, stream.count, 0x28808ul);
+    CHECK(at < stream.count && buffer[at] == 0x00cc0000ul);
+    at = find_reg(buffer, stream.count, 0x28780ul);
+    CHECK(at < stream.count && buffer[at] == 0x00010001ul);
+    /* DB_SHADER_CONTROL S_02880C_Z_ORDER(EARLY_Z_THEN_LATE_Z) |
+     * DUAL_EXPORT_ENABLE(1): the default state's 210h.
+     * DB_RENDER_OVERRIDE S_028D10_FORCE_HIZ_ENABLE(2) | HIS_ENABLE0(2) |
+     * HIS_ENABLE1(2) | FORCE_SHADER_Z_ORDER(1). No depth buffer:
+     * DB_DEPTH_INFO DEPTH_INVALID, DB_DEPTH_CONTROL 0. */
+    at = find_reg(buffer, stream.count, 0x2880cul);
+    CHECK(at < stream.count && buffer[at] == ((1ul << 4) | (1ul << 9)));
+    at = find_reg(buffer, stream.count, 0x28d10ul);
+    CHECK(at < stream.count &&
+          buffer[at] == (2ul | (2ul << 2) | (2ul << 4) | (1ul << 6)));
+    at = find_reg(buffer, stream.count, 0x28010ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    CHECK(find_reg(buffer, stream.count, 0x28000ul) == stream.count);
+    /* The DB registers no default state wrote, cleared as Mesa clears
+     * them (r600d.h R_028D24_DB_HTILE_SURFACE, R_028D28_DB_SRESULTS_
+     * COMPARE_STATE0, R_028D2C_..._STATE1, R_028D30_DB_PRELOAD_CONTROL;
+     * xf86 r600_reg_r6xx.h / r600_reg_auto_r6xx.h the same offsets). */
+    at = find_reg(buffer, stream.count, 0x28d24ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    at = find_reg(buffer, stream.count, 0x28d28ul);
+    CHECK(at < stream.count && buffer[at] == 0ul &&
+          buffer[at + 1ul] == 0ul && buffer[at + 2ul] == 0ul &&
+          buffer[at - 2ul] == XF86_PACK3(0x69, 4));
+    at = find_reg(buffer, stream.count, 0x28800ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    /* R_0282D0_PA_SC_VPORT_ZMIN_0 0, R_0282D4_PA_SC_VPORT_ZMAX_0 1.0. */
+    at = find_reg(buffer, stream.count, 0x282d0ul);
+    CHECK(at < stream.count && buffer[at] == 0ul &&
+          buffer[at + 1ul] == float_of(1.0f));
+    /* SX_ALPHA_TEST_CONTROL ALWAYS, off; SX_ALPHA_REF 0. */
+    at = find_reg(buffer, stream.count, 0x28410ul);
+    CHECK(at < stream.count && buffer[at] == 7ul);
+    at = find_reg(buffer, stream.count, 0x28438ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    /* Scissors. */
+    at = find_reg(buffer, stream.count, 0x28030ul);
+    CHECK(at < stream.count && buffer[at] == 0ul &&
+          buffer[at + 1ul] == (64ul | (8ul << 16)));
+    at = find_reg(buffer, stream.count, 0x28240ul);
+    CHECK(at < stream.count && buffer[at] == 0x80000000ul &&
+          buffer[at + 1ul] == (64ul | (8ul << 16)));
+    at = find_reg(buffer, stream.count, 0x28204ul);
+    CHECK(at < stream.count && buffer[at] == 0x80000000ul);
+    /* The vertex resource, stride 32, synced through the vertex cache;
+     * the last packet of the state. */
+    at = find_reg(buffer, stream.count, 0x39180ul);
+    CHECK(at < stream.count && buffer[at] == WINDOW_GPU + 0x5400ul &&
+          buffer[at + 1ul] == 6ul * 32ul - 1ul &&
+          buffer[at + 2ul] == (32ul << 8) && buffer[at + 3ul] == 1ul &&
+          buffer[at + 6ul] == 0xc0000000ul && at + 7ul == stream.count);
+    /* The vertex and texture caches invalidated over all of memory
+     * (Mesa r600_flush_emit, Linux r600_fence_ring_emit: VC_ACTION bit 24,
+     * TC_ACTION bit 23, size FFFFFFFFh, base 0): a ranged VC sync left
+     * the previous run's vertices in the cache on M-NZHWBR. */
+    CHECK(buffer[at - 7ul] == XF86_PACK3(0x43, 4) &&
+          buffer[at - 6ul] == ((1ul << 24) | (1ul << 23)) &&
+          buffer[at - 5ul] == 0xfffffffful && buffer[at - 4ul] == 0ul);
+    /* With ranged_syncs, xf86's form: VC alone over the 192 bytes. */
+    state.ranged_syncs = 1ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x39180ul);
+    CHECK(at < stream.count && buffer[at - 6ul] == (1ul << 24) &&
+          buffer[at - 5ul] == 1ul &&
+          buffer[at - 4ul] == (WINDOW_GPU + 0x5400ul) >> 8);
+    /* No vertex cache: the texture cache alone. */
+    state.ranged_syncs = 0ul;
+    state.vertex_cache = 0ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x39180ul);
+    CHECK(at < stream.count && buffer[at - 6ul] == (1ul << 23) &&
+          buffer[at - 5ul] == 0xfffffffful);
+
+    /* Depth: Z16 1D tiled, LESS with writes. */
+    base_state(&state);
+    state.has_depth = 1ul;
+    state.depth_gpu = WINDOW_GPU + 0x9000ul;
+    state.depth_pitch = 64ul;
+    state.depth_height = 8ul;
+    state.depth_control = v9x_r6_3d_depth_control(1ul, 1ul,
+                                                  V9X_R6_FUNC_LESS);
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(walks(buffer, stream.count));
+    /* S_028000_PITCH_TILE_MAX(64 / 8 - 1) | S_028000_SLICE_TILE_MAX(64 *
+     * 8 / 64 - 1); DB_DEPTH_VIEW 0; DB_DEPTH_BASE; DB_DEPTH_INFO
+     * S_028010_FORMAT(V_028010_DEPTH_16) |
+     * S_028010_ARRAY_MODE(V_0280A0_ARRAY_1D_TILED_THIN1), the mode at bit
+     * 15 (xf86 DB_DEPTH_INFO__ARRAY_MODE_shift 15); DB_PREFETCH_LIMIT 8 /
+     * 8 - 1; SURFACE_BASE_UPDATE DEPTH_BASE (1). */
+    at = find_reg(buffer, stream.count, 0x28000ul);
+    CHECK(at < stream.count && buffer[at] == (7ul | (7ul << 10)) &&
+          buffer[at + 1ul] == 0ul);
+    at = find_reg(buffer, stream.count, 0x2800cul);
+    CHECK(at < stream.count && buffer[at] == (WINDOW_GPU + 0x9000ul) >> 8 &&
+          buffer[at + 1ul] == (1ul | (2ul << 15)));
+    at = find_reg(buffer, stream.count, 0x28d34ul);
+    CHECK(at < stream.count && buffer[at] == 0ul &&
+          buffer[at + 1ul] == XF86_PACK3(0x73, 1) && buffer[at + 2ul] == 1ul);
+    at = find_reg(buffer, stream.count, 0x28800ul);
+    CHECK(at < stream.count && buffer[at] == 0x16ul);
+    /* PA_SU_POLY_OFFSET_DB_FMT_CNTL S_028DF8_POLY_OFFSET_NEG_NUM_DB_BITS
+     * ((char)-16), Mesa's for Z16. */
+    at = find_reg(buffer, stream.count, 0x28df8ul);
+    CHECK(at < stream.count && buffer[at] == 0xf0ul);
+    /* Refused: a depth pitch not a multiple of 16 or a height not of 8. */
+    state.depth_pitch = 72ul;
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.depth_pitch = 64ul;
+    state.depth_height = 12ul;
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Modulate: two interpolants and a 64x8 ARGB8888 texture. */
+    base_state(&state);
+    state.vs_gprs = V9X_R6_MODULATE_VS_GPRS;
+    state.ps_gprs = V9X_R6_MODULATE_PS_GPRS;
+    state.interpolants = 2ul;
+    state.has_texture = 1ul;
+    state.texture_gpu = WINDOW_GPU + 0x8000ul;
+    state.texture_width = 64ul;
+    state.texture_height = 8ul;
+    state.texture_pitch = 64ul;
+    state.texture_format = V9X_R6_COLOR_8_8_8_8;
+    state.sampler_word0 = v9x_r6_3d_sampler(0ul, 0ul,
+                                            V9X_R6_TEX_CLAMP_LAST_TEXEL,
+                                            V9X_R6_TEX_CLAMP_LAST_TEXEL);
+    state.vertex_stride = V9X_R6_MODULATE_STRIDE;
+    state.vertex_bytes = 6ul * V9X_R6_MODULATE_STRIDE;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    CHECK(walks(buffer, stream.count));
+    /* Inputs 0 and 1 (900h, 901h, the default state's), SEMANTIC_1(1),
+     * VS_EXPORT_COUNT(1), NUM_INTERP(2). */
+    at = find_reg(buffer, stream.count, 0x28648ul);
+    CHECK(at < stream.count && buffer[at] == 0x901ul);
+    at = find_reg(buffer, stream.count, 0x28614ul);
+    CHECK(at < stream.count && buffer[at] == 0x100ul);
+    at = find_reg(buffer, stream.count, 0x286c4ul);
+    CHECK(at < stream.count && buffer[at] == 2ul);
+    at = find_reg(buffer, stream.count, 0x286ccul);
+    CHECK(at < stream.count && buffer[at] == (2ul | (1ul << 28)));
+    /* r600_set_tex_resource for R600PrepareCopy's 32-bit source, id 0
+     * (SET_RESOURCE, body offset 0): S_038000_DIM(2D 1) |
+     * S_038000_TILE_MODE(LINEAR_ALIGNED 1) | S_038000_PITCH(64 / 8 - 1) |
+     * S_038000_TEX_WIDTH(63); S_038004_TEX_HEIGHT(7) |
+     * S_038004_DATA_FORMAT(FMT_8_8_8_8 1Ah); base and mip base / 256;
+     * S_038010_REQUEST_SIZE(1) | DST_SEL_X(Z) | _Y(Y) | _Z(X) | _W(W);
+     * LAST_LEVEL 0; S_038018_TYPE(VALID_TEXTURE 2). The texture cache
+     * flushed over its 2 KiB first. */
+    at = find_reg(buffer, stream.count, 0x38000ul);
+    CHECK(at < stream.count && buffer[at - 2ul] == XF86_PACK3(0x6d, 8) &&
+          buffer[at - 1ul] == 0ul);
+    CHECK(at < stream.count &&
+          buffer[at] == (1ul | (1ul << 3) | (7ul << 8) | (63ul << 19)));
+    CHECK(at < stream.count && buffer[at + 1ul] == (7ul | (0x1aul << 26)));
+    CHECK(at < stream.count &&
+          buffer[at + 2ul] == (WINDOW_GPU + 0x8000ul) >> 8 &&
+          buffer[at + 3ul] == (WINDOW_GPU + 0x8000ul) >> 8);
+    CHECK(at < stream.count &&
+          buffer[at + 4ul] == ((1ul << 14) | (2ul << 16) | (1ul << 19) |
+                               (0ul << 22) | (3ul << 25)));
+    CHECK(at < stream.count && buffer[at + 5ul] == 0ul &&
+          buffer[at + 6ul] == (2ul << 30));
+    CHECK(at >= 7ul && buffer[at - 7ul] == XF86_PACK3(0x43, 4) &&
+          buffer[at - 6ul] == (1ul << 23) &&
+          buffer[at - 5ul] == 0xfffffffful && buffer[at - 4ul] == 0ul);
+    /* With ranged_syncs, xf86's: over the texture's 2 KiB. */
+    state.ranged_syncs = 1ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x38000ul);
+    CHECK(at >= 7ul && buffer[at - 6ul] == (1ul << 23) &&
+          buffer[at - 5ul] == 8ul &&
+          buffer[at - 4ul] == (WINDOW_GPU + 0x8000ul) >> 8);
+    state.ranged_syncs = 0ul;
+    /* r600_set_tex_sampler: SET_SAMPLER (6Eh) at 0; WORD0 12h; WORD1 0
+     * (LOD 0 to 0); WORD2 MC_COORD_TRUNCATE (bit 12) for point. */
+    at = find_reg(buffer, stream.count, 0x3c000ul);
+    CHECK(at < stream.count && buffer[at - 2ul] == XF86_PACK3(0x6e, 4) &&
+          buffer[at - 1ul] == 0ul && buffer[at] == 0x12ul &&
+          buffer[at + 1ul] == 0ul && buffer[at + 2ul] == (1ul << 12));
+    /* Bilinear: no truncation. */
+    state.sampler_word0 = v9x_r6_3d_sampler(1ul, 1ul, V9X_R6_TEX_WRAP,
+                                            V9X_R6_TEX_WRAP);
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x3c008ul);
+    CHECK(at < stream.count && buffer[at] == 0ul);
+    /* Refused: a texture pitch not a multiple of 64. */
+    state.texture_pitch = 96ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT && stream.count == 0ul);
+
+    /* Blending, alpha test, kill, a write mask, linear interpolation. */
+    base_state(&state);
+    state.blend_enable = 1ul;
+    state.blend_control = v9x_r6_3d_blend(1ul, V9X_R6_BLEND_SRC_ALPHA,
+                                          V9X_R6_BLEND_ONE_MINUS_SRC_ALPHA);
+    state.alpha_test_control = v9x_r6_3d_alpha_test(1ul, V9X_R6_FUNC_LESS);
+    state.write_alpha = 0ul;
+    state.masked_channels = V9X_R6_CHANNEL_GREEN;
+    state.perspective = 0ul;
+    state.pixel_centre_half = 0ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    /* CB_COLOR_CONTROL ROP3 CCh | PER_MRT_BLEND | TARGET_BLEND_ENABLE(1),
+     * as r600_set_render_target for RV6xx. */
+    at = find_reg(buffer, stream.count, 0x28808ul);
+    CHECK(at < stream.count &&
+          buffer[at] == (0x00cc0000ul | (1ul << 7) | (1ul << 8)));
+    at = find_reg(buffer, stream.count, 0x28238ul);
+    CHECK(at < stream.count && buffer[at] == 0x5ul);
+    /* Alpha test on: LATE_Z (Z_ORDER 0). */
+    at = find_reg(buffer, stream.count, 0x2880cul);
+    CHECK(at < stream.count && buffer[at] == (1ul << 9));
+    /* S_028644_SEL_LINEAR(1) and LINEAR_GRADIENT_ENA; PIX_CENTER off. */
+    at = find_reg(buffer, stream.count, 0x28644ul);
+    CHECK(at < stream.count && buffer[at] == (0x900ul | (1ul << 12)));
+    at = find_reg(buffer, stream.count, 0x286ccul);
+    CHECK(at < stream.count && buffer[at] == (1ul | (1ul << 29)));
+    at = find_reg(buffer, stream.count, 0x28c08ul);
+    CHECK(at < stream.count && buffer[at] == 0x2cul);
+    state.kill = 1ul;
+    state.alpha_test_control = 0ul;
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    at = find_reg(buffer, stream.count, 0x2880cul);
+    CHECK(at < stream.count && buffer[at] == ((1ul << 6) | (1ul << 9)));
+
+    /* Refused: no interpolants, too many, another target format, a
+     * scissor past the target, an overflowed stream. */
+    base_state(&state);
+    state.interpolants = 0ul;
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    state.interpolants = V9X_R6_INTERPOLANTS_MAX + 1ul;
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.target_format = 0x08ul;
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    state.scissor_right = 72ul;
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    base_state(&state);
+    v9x_r6_pm4_begin(&stream, buffer, 40ul);
+    CHECK(v9x_r6_3d_build_state(&state, &stream) ==
+          V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
+static void test_draw_flush(void)
+{
+    struct v9x_r6_pm4 stream;
+
+    /* r600_draw_auto with V_008958_DI_PT_TRILIST (4, xf86 DI_PT_TRILIST). */
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_r6_3d_draw(&stream, 18ul);
+    CHECK(stream.count == 10ul && walks(buffer, stream.count));
+    CHECK(buffer[0] == 0xc0016800ul &&
+          buffer[1] == (0x8958ul - 0x8000ul) / 4ul && buffer[2] == 4ul);
+    CHECK(buffer[3] == XF86_PACK3(0x2a, 1) && buffer[4] == 0ul &&
+          buffer[5] == XF86_PACK3(0x2f, 1) && buffer[6] == 1ul &&
+          buffer[7] == XF86_PACK3(0x2d, 2) && buffer[8] == 18ul &&
+          buffer[9] == 2ul);
+
+    /* CACHE_FLUSH_AND_INV_EVENT, WAIT_UNTIL 3D idle clean, SURFACE_SYNC of
+     * CB_ACTION | CB0_DEST_BASE | TC_ACTION | VC_ACTION (bits 25, 6, 23,
+     * 24), size all ones, base 0, poll 10: no DB action (bits 26, 14). */
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_r6_3d_flush(&stream);
+    CHECK(stream.count == 10ul && walks(buffer, stream.count));
+    CHECK(buffer[0] == XF86_PACK3(0x46, 1) && buffer[1] == 0x16ul);
+    CHECK(buffer[4] == ((1ul << 15) | (1ul << 17)));
+    CHECK(buffer[5] == XF86_PACK3(0x43, 4) &&
+          buffer[6] == ((1ul << 25) | (1ul << 6) | (1ul << 23) |
+                        (1ul << 24)) &&
+          buffer[7] == 0xfffffffful && buffer[8] == 0ul && buffer[9] == 10ul);
+    CHECK((buffer[6] & ((1ul << 26) | (1ul << 14))) == 0ul);
+}
+
 unsigned int v9x_run_r6_3d_tests(void)
 {
     failures = 0u;
@@ -886,5 +1671,9 @@ unsigned int v9x_run_r6_3d_tests(void)
     test_solid();
     test_vertices();
     test_shaders();
+    test_interp_shaders();
+    test_state_words();
+    test_build_state();
+    test_draw_flush();
     return failures;
 }

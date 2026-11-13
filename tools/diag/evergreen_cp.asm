@@ -117,6 +117,16 @@ EC_OP_VRAM_PATTERN      equ 11  ; a offset, b dwords, c seed
 EC_OP_DELAY             equ 12  ; a SRBM_STATUS reads
 EC_OP_STREAM            equ 13  ; a port, b first data dword, c dwords
 EC_OP_VRAM_DATA         equ 14  ; a window offset, b first data dword, c dwords
+EC_OP_MMIO_INDEXED      equ 15  ; a register offset, b dwords -> block area
+; EC_OP_MMIO_INDEXED's registers: R6xx's context registers (r600d.h,
+; 28000h-28FFFh), past the RV630's direct register map, read as Linux's
+; r100_mm_rreg_slow reads a register past rmmio_size: MM_INDEX (0h) the
+; offset, MM_DATA (4h) the value (radeon_reg.h). Reads only (V9XR63D
+; /ctxdump).
+EC_INDEXED_FIRST        equ 28000h
+EC_INDEXED_LIMIT        equ 29000h
+EC_MM_INDEX             equ 0h
+EC_MM_DATA              equ 4h
 EC_DELAY_MAX            equ 100000
 EC_SRBM_STATUS          equ 0e50h
 EC_GRBM_SOFT_RESET      equ 8020h
@@ -234,7 +244,14 @@ ECReadWindows label dword
     dd 9830h, 9834h     ; DB_DEBUG
     dd 9838h, 983ch     ; DB_WATERMARKS
     dd 98f0h, 98f4h     ; GB_TILING_CONFIG
-EC_READ_WINDOW_COUNT    equ 73
+    ; V9XR63D /cfgdump (RV630, reads only): the PA, SC, SX, SPI and DB
+    ; config blocks around the registers r600_gpu_init and xf86 write,
+    ; read once after a draw to look for the constant Z the DB writes.
+    dd 8a00h, 8c00h     ; PA_CL_* .. PA_SC_* config
+    dd 9000h, 9060h     ; SX config, SX_DEBUG_1
+    dd 9100h, 9140h     ; SPI_CONFIG_CNTL .. SPI_CONFIG_CNTL_1
+    dd 9800h, 9900h     ; DB config, DB_DEBUG, DB_WATERMARKS, GB_*
+EC_READ_WINDOW_COUNT    equ 77
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.
@@ -848,6 +865,53 @@ EC_Exec_Not_Stream:
     xor     eax, eax
     jmp     EC_Exec_Done
 EC_Exec_Not_Vram_Data:
+
+    ; Registers through MM_INDEX / MM_DATA into the block area: a = the
+    ; first offset, b = the count, all inside EC_INDEXED_FIRST..LIMIT.
+    ; Interrupts are off while MM_INDEX is borrowed (Linux holds
+    ; mmio_idx_lock with interrupts off), and its value is put back.
+    ; Returns the block index of the first value, as EC_OP_VRAM_BLOCK.
+    cmp     eax, EC_OP_MMIO_INDEXED
+    jne     EC_Exec_Not_Indexed
+    test    edx, 3
+    jnz     EC_Exec_Refused
+    mov     ecx, [esi+8]
+    test    ecx, ecx
+    jz      EC_Exec_Refused
+    cmp     ecx, EC_BLOCK_DWORDS
+    ja      EC_Exec_Refused
+    cmp     edx, EC_INDEXED_FIRST
+    jb      EC_Exec_Refused
+    mov     ebx, ecx
+    shl     ebx, 2
+    add     ebx, edx
+    cmp     ebx, EC_INDEXED_LIMIT
+    ja      EC_Exec_Refused
+    mov     eax, ECResult[40]
+    mov     ebx, eax
+    add     ebx, ecx
+    cmp     ebx, EC_BLOCK_DWORDS
+    ja      EC_Exec_Refused
+    mov     ECResult[40], ebx
+    push    eax
+    lea     edi, ECBlock[eax*4]
+    mov     ebx, ECMmio
+    pushfd
+    cli
+    push    dword ptr [ebx+EC_MM_INDEX]
+EC_Exec_Indexed_Next:
+    mov     [ebx+EC_MM_INDEX], edx
+    mov     eax, [ebx+EC_MM_DATA]
+    mov     [edi], eax
+    add     edi, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short EC_Exec_Indexed_Next
+    pop     dword ptr [ebx+EC_MM_INDEX]
+    popfd
+    pop     eax
+    jmp     EC_Exec_Done
+EC_Exec_Not_Indexed:
 
     cmp     eax, EC_OP_SAVE
     jne     short EC_Exec_Not_Save
