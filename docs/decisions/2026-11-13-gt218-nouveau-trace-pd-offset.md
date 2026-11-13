@@ -84,6 +84,41 @@ two objects above it at + E000h and + E020h. `tests/host/test_nv50_chan.c`
 asserts the page directory offset at compile time; it failed against the
 old header and passes now. The probe takes the layout from the header.
 
+## A second trace, with the channel in use
+
+Same target and card, a fresh boot with nouveau blacklisted, the script
+at 8ef86e57: it loads nouveau and then runs 30 frames of `kmscube`
+through Mesa 25.0.7's nouveau driver (renderer `NVA8`, 29 frames
+rendered, no nouveau error) between two trace markers. Copies of the
+reduced files are in `build/driver-results/bringupkit-gt218-20261113/`.
+The captured `lspci -vvv` also shows the root port `00:02.0` has no AER
+capability.
+
+- **The kick is a plain write.** Mesa's channel is channel 2 (2608h =
+  `003FA942`, then `803FA942`; runlist count 2). The kernel wrote IB PUT
+  at USERD + 8Ch (BAR0 `C0408C`) 487 times, counting up from 1, and
+  never read channel 2's USERD. The probe's kick is the same write.
+- **Channel 2's instance block has channel 1's layout**: page directory
+  + 200h, RAMFC + 4200h with the same words (7Ch `30000001` again),
+  RAMHT + 5400h, push DMA object `7FC00002` at + FFE0h.
+- **PGRAPH's engine pointer is at + 20h**, as the probe has it:
+  `00190000`, limit, start, start, with a 4C000h-byte context. nouveau
+  clears bit 31 of the channel's table entry before writing it and sets
+  it again after.
+- **Objects**: 502Dh is one word `0000502D`, and its RAMHT context is
+  `00100437` (engine 1 << 20 | offset >> 4). This is the probe's
+  encoding.
+- **The context program and image are ours, word for word.** nouveau
+  uploaded 124 program words to 400328h; `nv50_grctx.c`, built with gcc
+  on the target for chipset A8 and 1540h `F3010001` (this card reads the
+  same), gives the same 124. The image nouveau wrote has 945 non-zero
+  words, and ours has the same 945 at the same offsets with the same
+  values. Step 1 of the PGRAPH plan had no reference to compare with;
+  this is it.
+- nouveau's `nv50_gr_init` writes, in the trace's order, are the ones
+  the probe's gr stage makes (40008Ch = 4, the trap resets, the
+  interrupt registers, 400500h = `00010001`, the program upload, zcull).
+
 Not run on any card. Other differences from the trace, left as they are
 until the corrected layout has been tried:
 
