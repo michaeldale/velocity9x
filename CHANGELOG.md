@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.51.0 - not yet released
+
 ## 0.50.0 - 2026-11-14
 
 - **`intel-gma` package, HD 4600: the Unreal Tournament 2004 demo runs,
