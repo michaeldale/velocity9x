@@ -341,7 +341,19 @@ static void v9x_d3d_r6_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
             v9x_surface_offset(next) != texture->offset + offsets[found] ||
             (DWORD)next->lpGbl->lPitch != pitches[found] * bytes) {
             if (next != 0) {
+                /* The gap, for V9XTRACE: where the level was expected and
+                 * where it is, the top's size, and the level's pitch with
+                 * its index in the top byte. */
                 ++v9x_hal->d3d_diagnostics.mip_gap_shape;
+                v9x_hal->d3d_diagnostics.mip_gap_expected =
+                    texture->offset + offsets[found];
+                v9x_hal->d3d_diagnostics.mip_gap_actual =
+                    next->lpGbl != 0 ? v9x_surface_offset(next) : 0ul;
+                v9x_hal->d3d_diagnostics.mip_tree_last_shape =
+                    texture->width | (texture->height << 16);
+                v9x_hal->d3d_diagnostics.mip_tree_last_offset =
+                    (next->lpGbl != 0 ? (DWORD)next->lpGbl->lPitch : 0ul) |
+                    (found << 24);
             }
             break;
         }
@@ -714,8 +726,14 @@ static DWORD v9x_d3d_r6_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             for (level = 0ul; level < data->dwSCnt; ++level) {
                 pitches[level] *= bytes;
             }
-            if (v9x_d3d_place_chain(data, V9X_D3D_EG_SURFACE_ALIGN, total,
-                                    offsets, pitches, &base) != 0ul) {
+            level = v9x_d3d_place_chain(data, V9X_D3D_EG_SURFACE_ALIGN, total,
+                                        offsets, pitches, &base);
+            if (level != 0ul) {
+                /* DirectDraw then places the levels itself, apart: the
+                 * chain is drawn from level 0 alone. Counted with the
+                 * reason (d3d_internal.h, V9X_D3D_PLACE_*). */
+                ++v9x_hal->d3d_diagnostics.mip_tree_declined;
+                v9x_hal->d3d_diagnostics.mip_tree_declined_last = level;
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
             ++v9x_hal->d3d_diagnostics.texture_placed;

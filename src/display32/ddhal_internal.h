@@ -669,6 +669,10 @@ DWORD v9x_r6_cp_shader_gpu(DWORD which);
  * idle, so a 3D batch never reads what a fill or copy has yet to write.
  * Non-zero when idle, or when the DMA engine is not running. */
 int v9x_r6_dma_settle(void);
+/* engines/eng_r6.c, for rs690_scanout.c's flips on the RV630: the GPU
+ * address D1GRPH takes for a surface byte_offset into the heap; zero
+ * until the engine is validated or for an offset outside the heap. */
+int v9x_r6_flip_address(DWORD byte_offset, DWORD *address);
 /* d3d/d3d_r6.c: a rectangle of a 1D-tiled Z16 drawn on the CP, for
  * eng_r6.c's fills short of the whole surface (as v9x_d3d_eg_depth_fill). */
 int v9x_d3d_r6_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,

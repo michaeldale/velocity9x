@@ -78,8 +78,8 @@
  * BAR (docs\decisions\2026-11-13-rv630-register-probe.md); its DMA engine's
  * rules were measured there (docs\decisions\2026-11-13-rv630-dma-write-
  * probe.md). A board whose BAR2 is 64 KiB but not 128 KiB aligned is
- * refused by the BAR read and stays tier-0. Not write-combined, and no
- * larger heap: neither was measured on this card.
+ * refused by the BAR read and stays tier-0. Not write-combined: that was
+ * not measured on this card. The heap is the Evergreen rows' 128 MiB.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -132,10 +132,12 @@ static unsigned long v9x_cedar_map_value;
                                   V9X_DD_ENGINE_CAP_FLIP | \
                                   V9X_DD_ENGINE_CAP_D3D | \
                                   V9X_DD_ENGINE_CAP_EG_TRINITY)
-/* No flips on the R6xx row yet. Direct3D through the CP (r6_cp.c,
- * d3d_r6.c) once the 3D window is mapped, as on the Evergreen rows. */
+/* Flips through D1GRPH (rs690_scanout.c, the RS690's AVIVO sequence).
+ * Direct3D through the CP (r6_cp.c, d3d_r6.c) once the 3D window is
+ * mapped, as on the Evergreen rows. */
 #define V9X_RV630_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
                                 V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                V9X_DD_ENGINE_CAP_FLIP | \
                                 V9X_DD_ENGINE_CAP_D3D)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_type,
@@ -468,7 +470,7 @@ const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
     V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
 
-/* Not static, for the same audit. The family's 16 MiB heap, Stage A write
+/* Not static, for the same audit. The 128 MiB heap map, Stage A write
  * combining; the shadow on, as the vbe driver it replaces ran this card
  * (V9XHW.INI ScreenShadow=on, 2026-11-13 audit). */
 const V9X_HW16_DEVICE v9x_r600_rv630_device = {
@@ -483,7 +485,10 @@ const V9X_HW16_DEVICE v9x_r600_rv630_device = {
     v9x_rv630_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
-    0ul,                    /* map_bytes: the family's */
+    /* The Evergreen rows' 128 MiB heap: in the VBE's 16 MiB, 3DMark 2000
+     * had 6,837 mip chains find no block (M-NZHWBR boot 16) and drew
+     * them from level 0. The card's CONFIG_MEMSIZE is 256 MiB. */
+    V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
     0u,                     /* write_combine: Stage A */
     0,                      /* write_combine_fallback */

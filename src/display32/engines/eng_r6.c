@@ -405,6 +405,19 @@ int v9x_r6_dma_settle(void)
     return v9x_r6_dma_idle(1);
 }
 
+/* The heap is linear from its GPU address, and R6xx's D1GRPH surface
+ * address is that 32-bit address. */
+int v9x_r6_flip_address(DWORD byte_offset, DWORD *address)
+{
+    if (address == 0 || !v9x_r6_validate() ||
+        byte_offset >= v9x_hal->fb.vram_bytes ||
+        v9x_r6_heap_gpu + byte_offset < v9x_r6_heap_gpu) {
+        return 0;
+    }
+    *address = v9x_r6_heap_gpu + byte_offset;
+    return 1;
+}
+
 /*
  * A Z buffer the Direct3D engine draws is 1D tiled (d3d_r6.c), so a linear
  * rectangle of it is the wrong pixels. A constant over all of it is the

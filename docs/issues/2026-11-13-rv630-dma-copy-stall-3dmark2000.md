@@ -73,3 +73,9 @@ Seen in the same run, not investigated: `MipGapShape` rose by 3,929 (mip
 chains whose next level is not where the layout puts it, sampled at
 level 0 only), and `DrawsIntoPresented` by about 947,000 (the row has no
 flips; whether that shows as tearing was not looked at).
+
+Both followed up (boots 16 and 17,
+[record](../decisions/2026-11-13-rv630-direct3d-hal-first-light.md)): the
+row now flips through D1GRPH, after which `DrawsIntoPresented` does not
+move; and the gaps were chains that found no block in the 16 MiB heap
+(`MipTreeDeclined`, reason 4), gone with the 128 MiB heap.

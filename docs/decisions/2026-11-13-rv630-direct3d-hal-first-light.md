@@ -99,10 +99,44 @@ Specular is not judged by any V9XD32 check: built and host-tested, not
 measured. T20's ADD and DECALALPHA bits are outside its expectation (not
 advertised, not built), as on Evergreen.
 
+## 3DMark 2000, flips and the heap (boots 15-17)
+
+3DMark 2000's default run (1024x768x16, triple buffer) first needed the
+DMA copy rule ([record](2026-11-13-rv630-dma-copy-alignment.md)); from
+boot 15 it runs to its score. Captures in
+[`../probe/rv630-d3d-2026-11-13/3dmark2000/`](../probe/rv630-d3d-2026-11-13/3dmark2000/).
+
+| Boot | Build adds | Score | Flips | Mip chains | Timeouts, refusals |
+|---|---|---|---|---|---|
+| 15 | DMA 8-byte rule | 4465 | none (no FLIP cap); `DrawsIntoPresented` +947k | `MipGapShape` +3,929 | 0, 0 |
+| 16 | FLIP on D1GRPH; gap diagnostics | not read | `FlipHandled` +11,365, `FlipTakenAtDone` +11,364; `DrawsIntoPresented` unchanged | `MipTreeDeclined` +6,837, reason 4 (no heap room); `MipGapShape` +2,026 | 0, 0 |
+| 17 | 128 MiB heap | 3187 | +11,553, taken +11,552 | declined 0, gaps 0 | 0, 0 |
+
+- **Flips**: `rs690_scanout.c` now serves engine type 15 too - the same
+  AVIVO D1 registers and the routine Linux gives `rv6xx_asic`
+  (`rs600_page_flip`) - with the address from `eng_r6.c` (the heap's GPU
+  address plus the offset). V9XDDP: 20 flips in 332 ms, 17 ms at most,
+  one a 60 Hz blank. Its `FlipPixelOk` reads 0, as on every target
+  ([issue](../issues/2026-09-02-flippixelok-is-uninterpretable.md)). With
+  flips the driver's frame grabs work; two Game 1 frames are kept
+  (`boot16-game1-grab*.png`): terrain, fog, alpha-tested trees and the
+  blended HUD draw as expected by eye.
+- **Mip gaps**: in the VBE's 16 MiB heap a chain often found no single
+  block (`V9X_D3D_PLACE_ALLOC`), DirectDraw then placed its levels apart,
+  and the chain was drawn from level 0. The row now maps the Evergreen
+  rows' 128 MiB (`V9X_CEDAR_MAP_BYTES`; `vram=134217728` in V9XBOOT.INI,
+  the card's CONFIG_MEMSIZE is 256 MiB), and boot 17 declines none.
+- V9XD32 /bpp16 passes on boots 15, 16 and 17.
+
+The scores are recorded, not compared: boot 17's flips wait for the
+blank and boot 15 had none.
+
 ## Not done, not measured
 
 - Specular on the card (above).
 - 32 bpp: the row lists no 32 bpp mode, so the XRGB8888 target path is
   host-tested only.
-- Any game or benchmark; OpenGL and Glide (no r3d engine id).
+- Any game beyond 3DMark 2000; OpenGL and Glide (no r3d engine id).
+- A chain that still finds no block in 128 MiB falls back as before
+  (level 0 only); not met.
 - The partial depth fill on the CP: V9XD32's clears were whole-surface.

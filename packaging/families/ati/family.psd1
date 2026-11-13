@@ -712,7 +712,8 @@
             # (docs\decisions\2026-11-13-rv630-gouraud-texture-depth.md).
             Direct3D = 'hardware-r600-cp'
             EngineType = 'ATI_R600'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
+            # FLIP: D1GRPH, the RS690's sequence (rs690_scanout.c).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What M-NZHWBR's VBE 4F00h reports; CONFIG_MEMSIZE says 256 MiB
             # (docs\decisions\2026-11-13-rv630-register-probe.md).
             VideoMemoryBytes = 16777216
