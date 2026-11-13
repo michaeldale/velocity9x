@@ -2288,6 +2288,132 @@ static int v9x_stage_depth(const char *section, DWORD number, DWORD bytes,
     return bad == 0ul;
 }
 
+/*
+ * Step 4.0 item 5, /check: is a channel an earlier run brought up still
+ * there? Nothing is initialised or rewritten. The run rebuilds the region
+ * in memory only, to know what the words should be, reads the registers
+ * the bring-up set and a sample of the region through BAR1, and logs
+ * each beside its expected value. Only if the channel's table entry, the
+ * runlist and PGRAPH's context still name this channel, and the sampled
+ * words all match, does it go on to use the channel: the 32 bpp depth
+ * test, continuing the IB ring from where PFIFO's get stands. Run
+ * before and after a desktop mode change, it says what a mode set costs
+ * the engine.
+ */
+static void v9x_stage_check(void)
+{
+    static const DWORD regs[] = {
+        0x000200ul, 0x002500ul, 0x002604ul, 0x0032ecul, 0x0032f4ul,
+        0x003200ul, 0x003250ul, 0x003334ul, 0x003330ul, 0x003244ul,
+        0x003240ul, 0x003228ul, 0x002100ul, 0x002140ul, 0x002044ul,
+        0x00250cul, 0x40008cul, 0x400100ul, 0x400700ul, 0x40032cul,
+        0x400500ul, 0x001704ul, 0x100c90ul
+    };
+    static const DWORD words[] = {
+        V9X_NV50_INST_ENG + V9X_NV50_ENG_GR,
+        V9X_NV50_INST_ENG + V9X_NV50_ENG_GR + 8ul,
+        V9X_NV50_INST_PD,
+        V9X_NV50_INST_RAMFC + 0x3cul,
+        V9X_NV50_INST_RAMFC + 0x50ul,
+        V9X_NV50_INST_RAMFC + 0x80ul,
+        V9X_NV50_INST_RAMFC + 0x98ul,
+        V9X_NV50_INST_DMA_VM,
+        V9X_NV50_INST_OBJ_2D,
+        V9X_NV50_PT + 0x800ul * 8ul,
+        V9X_NV50_PT + 0x802ul * 8ul,
+        V9X_NV50_RUNLIST,
+        V9X_NV50_GRCTX + 0x10cul,
+        V9X_NV50_GRCTX + 0x220ul
+    };
+    struct v9x_nv50_grctx_input grctx;
+    DWORD reg_ops[sizeof(regs) / sizeof(regs[0])];
+    DWORD word_ops[sizeof(words) / sizeof(words[0])];
+    DWORD units;
+    DWORD index;
+    DWORD matches = 0ul;
+    DWORD chan;
+    DWORD runlist;
+    DWORD ctx;
+    DWORD ib_get;
+    DWORD ib_put;
+    char key[16];
+    v9x_status status;
+
+    grctx.chipset = (v9x_result.boot0 >> 20) & 0x1fful;
+    v9x_ops_begin();
+    units = v9x_read(V9X_PBUS_UNITS);
+    if (!v9x_run("check-units")) {
+        v9x_finish("UNITS-REFUSED", 3u);
+    }
+    grctx.units = v9x_value(units);
+    grctx.gddr5 = 0ul;
+    status = v9x_nv50_chan_build(V9X_WINDOW_VRAM, V9X_CHID, &grctx,
+                                 v9x_region, V9X_NV50_REGION_WORDS,
+                                 &v9x_layout);
+    if (status != V9X_STATUS_OK) {
+        v9x_finish("BUILD-FAILED", 4u);
+    }
+
+    v9x_ops_begin();
+    for (index = 0ul; index < sizeof(regs) / sizeof(regs[0]); ++index) {
+        reg_ops[index] = v9x_read(regs[index]);
+    }
+    for (index = 0ul; index < sizeof(words) / sizeof(words[0]); ++index) {
+        word_ops[index] = v9x_op(V9X_OP_VRAM_READ, words[index], 0ul, 0ul);
+    }
+    if (!v9x_run("check")) {
+        v9x_finish("CHECK-REFUSED", 4u);
+    }
+    for (index = 0ul; index < sizeof(regs) / sizeof(regs[0]); ++index) {
+        lstrcpyA(key, "R");
+        v9x_hex(key + 1, regs[index], 6);
+        v9x_put("Check", key, reg_ops[index]);
+    }
+    for (index = 0ul; index < sizeof(words) / sizeof(words[0]); ++index) {
+        lstrcpyA(key, "W");
+        v9x_hex(key + 1, words[index], 5);
+        v9x_put("Check", key, word_ops[index]);
+        lstrcpyA(key, "X");
+        v9x_hex(key + 1, words[index], 5);
+        v9x_key("Check", key, v9x_region[words[index] / 4ul]);
+        if (v9x_value(word_ops[index]) == v9x_region[words[index] / 4ul]) {
+            ++matches;
+        }
+    }
+    chan = v9x_value(reg_ops[2]);
+    runlist = v9x_value(reg_ops[4]);
+    ctx = v9x_value(reg_ops[19]);
+    ib_get = v9x_value(reg_ops[7]);
+    ib_put = v9x_value(reg_ops[8]);
+    v9x_number("Check", "WordsMatching", matches);
+    v9x_number("Check", "WordsSampled", sizeof(words) / sizeof(words[0]));
+    v9x_key("Check", "ExpectChannel", v9x_layout.chan_entry);
+    v9x_key("Check", "ExpectRunlist", v9x_layout.runlist_reg);
+    v9x_key("Check", "ExpectContext",
+            0x80000000ul | (v9x_layout.inst_addr >> 12));
+    v9x_flush();
+
+    if (chan != v9x_layout.chan_entry ||
+        runlist != v9x_layout.runlist_reg ||
+        ctx != (0x80000000ul | (v9x_layout.inst_addr >> 12)) ||
+        ib_get != ib_put ||
+        matches != sizeof(words) / sizeof(words[0])) {
+        v9x_text("Check", "State", "CHANGED");
+        v9x_finish("CHECK-STATE-CHANGED", 0u);
+    }
+    v9x_text("Check", "State", "HELD");
+    v9x_flush();
+
+    /* The channel as found: one fill and two copies on it. */
+    v9x_ib_next = ib_get;
+    if (!v9x_stage_depth("Check32", 0ul, 4ul, V9X_502D_FORMAT_X8R8G8B8,
+                         V9X_FILL_COLOUR)) {
+        v9x_finish("CHECK-DRAW-FAILED", 7u);
+    }
+    v9x_pusher_state();
+    v9x_finish("CHECK-HELD-AND-DRAWS", 0u);
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -2328,6 +2454,9 @@ void __stdcall V9xNv50ChannelEntry(void)
     v9x_flush();
 
     v9x_stage_pre();
+    if (v9x_switch_given("/check")) {
+        v9x_stage_check();
+    }
     v9x_stage_region();
     v9x_vram_check("region");
     if (!v9x_stage_pramin()) {
