@@ -148,7 +148,10 @@ backed up as they are today. Then, recorded with counters:
 
 2026-11-14: **4.0 is complete**, every item measured on M-BXMFA8
 ([the record](../decisions/2026-11-14-gt218-502d-engine-measurements.md)).
-4.1 is next.
+**4.1 is done**: the bring-up list (`nv50_init.c`), the copy push and
+the ring step are host-tested, the probe replays the list, and a lean
+run from a cold boot passed with the list and nothing else (item 7 of
+the record). 4.2 is next.
 
 ## Decisions owed
 

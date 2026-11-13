@@ -126,6 +126,36 @@ needs no rebuild after a mode set. A cheap guard stays worth having,
 because what was not tested can still lose the state: a full-screen DOS
 box, standby and resume, and a display-driver restart.
 
+## 7. The bring-up list from nv50_init.c, and nothing else (runs 40-41)
+
+Step 4.1. The probe at f46768cd (built as `7c3eae2c-dirty`) replays the
+register bring-up from the host-tested list in `nv50_init.c` (328
+operations for this card: 142 for PFIFO and the trap enable, 182 for
+PGRAPH and the context program, 4 for the bind) in place of its own
+copies.
+
+**Run 40**, boot 106, `/flush:none /pusher`: every stage passed as
+before (the semaphore push, the 502D bind, the fill, the copy, and
+32, 16 and 8 bpp with 0 bad pixels each). The list is the sequence the
+earlier runs ran.
+
+**Run 41**, after a restart (boot 107, 38 s after the agent came up),
+`/lean /pusher`: the region written through BAR1 and the list replayed,
+and nothing else. No PRAMIN check, no flush page (100C08h read 0), no
+PCIe reads, no PMC_ENABLE = FFFFFFFFh, no BAR channel (1704h is 0 after
+a boot, run 18) and no BAR flush. Log: `run41-V9XN5CH.LOG` (from line
+15748).
+
+- Trap.Before 0, the enable took; both runlist waits 0.
+- The semaphore push released `FEED0001`; the 502D bind, fill and copy
+  passed; 32, 16 and 8 bpp each had 0 bad pixels of 9216;
+  `Report.Result COMPLETE`. No master abort.
+
+So the engine needs exactly two things from a cold card: the channel's
+structures in video memory and `nv50_init.c`'s list. The BAR channel,
+the BAR flush, the flush page and the PMC_ENABLE write, which the probe
+carried from runs 16 to 19, are not needed.
+
 ## Step 4.0 is complete
 
 Every item the plan listed is measured. For the engine: fill and copy
