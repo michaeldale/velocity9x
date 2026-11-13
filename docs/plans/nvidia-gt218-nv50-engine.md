@@ -151,7 +151,11 @@ backed up as they are today. Then, recorded with counters:
 **4.1 is done**: the bring-up list (`nv50_init.c`), the copy push and
 the ring step are host-tested, the probe replays the list, and a lean
 run from a cold boot passed with the list and nothing else (item 7 of
-the record). 4.2 is next.
+the record). **4.2 is part done**: the engine type, its D3D selection
+and the mini-VDD's BAR0 map for chipset A8h are in (Michael chose to
+widen the NV3 service's identity check). The GT218 row's engine
+descriptor and reserve hook move to 4.3, so the row never claims an
+engine the HAL has no code for.
 
 ## Decisions owed
 
