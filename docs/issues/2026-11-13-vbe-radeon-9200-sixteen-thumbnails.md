@@ -1,8 +1,10 @@
 # vbe on a Radeon 9200: sixteen illegible thumbnails of the screen
 
 Date: 2026-11-13
-Status: open. Field report only: no files, no photo, not reproduced. No
-RV280 card is on any of our machines.
+Status: open. Field report, not reproduced: no RV280 card is on any of
+our machines. Files and photos arrived 2026-11-14 (section below): a
+Radeon 9250 on Windows 98 SE, 0.49.0 too, clean boot, the screen breaks
+when the Settings tab is clicked.
 
 Source: a user comment relayed by Michael on 2026-11-13; where it was
 posted was not given. The reporter's words:
@@ -70,3 +72,90 @@ From the reporter:
 - the result on 0.49.0.
 
 Here: nothing can be measured without an RV280 card or the files.
+
+## 2026-11-14: the reporter's files and photos, on 0.49.0
+
+Evidence: [`../probe/field-radeon-9250-vbe-2026-11-13/`](../probe/field-radeon-9250-vbe-2026-11-13/),
+seven diagnostic files and three photos of the CRT, relayed by Michael.
+With them, a second message from the reporter:
+
+> So far, I've only tested it on Windows 98SE; it happens right when you
+> click the "Settings" tab in "Display Properties," but when the screen
+> becomes distorted, the 16 thumbnails aren't always visible
+
+So: Windows 98 SE, not Windows 95. The card in the files is the Radeon
+9250 (`1002:5960`), which makes this the reporter of the RV280 surveys
+or someone with the same card. The build is `4357fc87`, which is in
+`v0.49.0` and not in `v0.48.0`: 0.49.0 shows it too, as expected.
+
+### What the files show
+
+- **The boot is clean.** `Stage=enable-ok`, `VbeDetail=ok`, mode `0101`
+  640x480x8. The driver's pitch (640) and the BIOS's own answer
+  (`VbeScanBytes=640`) agree. All 50 linear modes were described; 30
+  rows published.
+- `Adapter=Generic VESA adapter`, `Acceleration=none`,
+  `ScreenShadow=on`, write-combining set on `D0000000` for 16 MiB
+  (`MtrrWrite=ok`).
+- `V9XSYNC.INI`: `MarkedInstances=3`, `Status=no-op`,
+  `Reason=multiple-marked-instances`. Three display driver instances
+  carry our mark on this install.
+- `V9XESC.INI` has two escapes this driver does not answer and Windows
+  does not define: `6E94` (with input `00000000 0000000B 000002DC
+  00000000`) and `6E80`. In every other `V9XESC.INI` in `docs/probe`,
+  `6E80` and `6E76` appear on one machine only: A8U4I5 while it carried
+  an ATI Rage XL. Reading, not established: a 6Exx escape is ATI
+  software's private call, so ATI software is installed and talking to
+  the display driver on this machine.
+- `V9XTRAIL.TXT` has three loads, 09:32:00, 09:33:00 and 09:34:31, each
+  to `enable-ok`. The trail is appended across boots, so this is three
+  boots or three loads in one session; the files do not say which.
+
+### What the photos show
+
+Taken 09:36 to 09:37, after the last load.
+
+- Not small copies of the desktop. The picture is coarse cells, about
+  80 across, each cell holding one repeated shape (a filled box with a
+  thin edge, or a vertical bar), in white, black, blue, cyan and
+  magenta.
+- The third photo has 12 rows of cells with blank lines between the
+  rows.
+
+Reading, not measured: that is what a VGA text mode looks like when it
+decodes a graphics frame buffer as characters and attributes, with the
+font plane overwritten. The card was moved out of the VBE graphics mode,
+or part of the way out, while Windows went on drawing at 640x480x8.
+
+### What this does to the hypotheses
+
+1. Mode-set geometry mismatch at boot: not supported. Pitch and scan
+   length agree and the desktop is good until the Settings tab is
+   clicked.
+2. A 16-colour first boot: dead. The desktop is 8 bpp.
+3. Second head: open, not addressed by these files.
+4. Monitor: dead. The fault is triggered by a click.
+5. **New: something reprograms the card when the Settings tab opens.**
+   Candidates, none tested:
+   - ATI's Display Properties pages or tray software, left from ATI's
+     own driver, reaching the chip directly when Display Properties
+     loads them. The 6Exx escapes point this way.
+   - A BIOS call Windows 98 makes for that tab that this ATI BIOS
+     answers by touching the mode.
+   The Settings tab opens without this on every `vbe` machine we have,
+   so the cause is particular to this card, its BIOS or this install.
+
+Not explained: the "16 thumbnails" the reporter first described. No
+photo shows them, and they say it is not always what appears.
+
+### Owed
+
+From the reporter:
+- whether ATI software is installed (Add/Remove Programs, a tray icon,
+  ATI tabs in Display Properties), and the result with it removed;
+- which of the other tabs in Display Properties were clicked first, and
+  whether the fault needs the Settings tab or any tab;
+- whether the three loads in `V9XTRAIL.TXT` were three restarts;
+- a photo of the "16 thumbnails" form if it shows again.
+
+The earlier list's Windows version, mode, photo and files are answered.
