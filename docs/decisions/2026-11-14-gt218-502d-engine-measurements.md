@@ -32,10 +32,38 @@ nouveau's X driver, not in the saved sources; this run is their
 evidence. A copy with centre origin lands exactly, with no half-pixel
 shift.
 
+## 2 and 3. Overlapping copies, and 32, 16 and 8 bpp: all pass (run 34)
+
+The probe at 43c16bd3 (built as `4dd7a97b-dirty`). After run 33's
+stages, a test per depth on a 128x72 surface of its own: a CPU gradient
+(every pixel differs from its neighbours), an engine fill of 64x64 at
+(8, 4), an overlapping copy down and right (32x32 from (16, 16) to
+(24, 20)), and one up and left (40x30 from (60, 30) to (50, 24)), a kick
+each. The same operations ran on a model in memory whose copy reads
+the whole source first. Log: `run34-V9XN5CH.LOG` (from line 10550).
+
+| Depth | 502D format | Fill colour | Pixels matching the model |
+| --- | --- | --- | --- |
+| 32 bpp | E6h, X8R8G8B8 | `00A5C3E1` | 9216 of 9216 |
+| 16 bpp | E8h, R5G6B5 | `A5C3` | 9216 of 9216 |
+| 8 bpp | F3h | `5D` | 9216 of 9216 |
+
+Every one of the nine kicks: PGRAPH_INTR 0, trap 0, idle, pusher error
+0. IB get = put = 13 at the end; the machine up.
+
+So, for the engine:
+
+- **An overlapping copy is correct in both directions** with safe
+  overlap set, with the same push; the engine need not order or split
+  it.
+- **16 bpp R5G6B5 is exact**, the full 16 bits (the fill colour has bit
+  15 and bit 5 set). The RIVA 128's bit-15 problem does not exist here.
+- **8 bpp works with format F3h** for the surface and the solid colour;
+  the value is written as given.
+- The destination and source formats can be the same value in one push.
+
 ## Not yet run
 
-2. Overlapping copies, each direction.
-3. 16 bpp and 8 bpp fills and copies.
 4. Several hundred kicks, to wrap the IB ring.
 5. A mode set with the channel up.
 6. The push DMA object in class 3Dh.
