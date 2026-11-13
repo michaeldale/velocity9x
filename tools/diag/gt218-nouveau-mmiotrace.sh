@@ -55,6 +55,23 @@ modprobe nouveau
 sleep "$SETTLE_SECONDS"
 echo "MARK gt218 settle done" > "$TRACING/trace_marker"
 
+# A workload that makes nouveau kick a channel. The first trace showed
+# its load creates channel 1 and never uses it. kmscube through Mesa's
+# nouveau driver creates a second channel with a PGRAPH context and
+# submits pushbuffers; the kernel does the kick, so it is in the trace.
+# 30 frames, bounded, on whichever DRM card is the NVIDIA one.
+if command -v kmscube >/dev/null 2>&1; then
+    for vendor in /sys/class/drm/card[0-9]/device/vendor; do
+        if [ "$(cat "$vendor")" = 0x10de ]; then
+            CARD=/dev/dri/$(basename "$(dirname "$(dirname "$vendor")")")
+            echo "MARK gt218 kmscube start" > "$TRACING/trace_marker"
+            timeout 120 kmscube -D "$CARD" -c 30 > "$OUT/kmscube.txt" 2>&1 \
+                || echo "kmscube exit $?" >> "$OUT/kmscube.txt"
+            echo "MARK gt218 kmscube done" > "$TRACING/trace_marker"
+        fi
+    done
+fi
+
 # The reader first: the tracer cannot be changed while trace_pipe is open
 # (the first run failed here with EBUSY and left mmiotrace on).
 sleep 2
