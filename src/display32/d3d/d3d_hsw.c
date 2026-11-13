@@ -217,8 +217,14 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
     1ul,            /* texture_stages: the difference */
     1ul,            /* guard_band_ddi6: measured on W9QI75E0, boot 12 */
     1ul,            /* dxt_textures */
-    /* modulate2x: the same kernels */
-    V9X_D3D_MODULATE2X_ONE | V9X_D3D_MODULATE2X_TWO
+    /*
+     * modulate2x: none. Haswell's kernels have the op, but no Ivy Bridge
+     * has run it - both HD 4000 machines were offline for the 0.50.0
+     * checks - and Gen7 has hung on a stage pairing nobody has found
+     * (docs\issues\2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md).
+     * So a doubled stage is drawn as in 0.49.0 until one has.
+     */
+    0ul
 };
 
 /* One texture unit as the sampler reads it. */
