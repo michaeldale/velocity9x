@@ -188,6 +188,33 @@ with an empty push: the channel works. Not yet done: a push that does
 something (the REF_CNT and semaphore push, then SET_OBJECT and the
 fill).
 
+## Run 30 (boot 106): PFIFO executes methods and writes video memory
+
+The 510bb2a3 probe (built as `b9817a6a-dirty`), `/flush:none
+/push:class02 /pusher /stop:fifo`, so the push is run 14's: REF_CNT,
+`SET_CONTEXT_DMA_SEMAPHORE` (60h) = the VM DMA object, then SEMAPHOREA-D
+releasing `FEED0001` at video memory 128 MiB + 3F0000h. Log:
+`run30-V9XN5CH.LOG` (from line 8425).
+
+- **The semaphore word read `FEED0001` through BAR1 on the first poll**
+  (it was zeroed before the kick). PFIFO ran the methods and wrote into
+  video memory through the channel's VM and the DMA object.
+- Pusher state: IB get 1 = put 1; DMA get = put = `08022024`, the push
+  address plus its nine words; state `00000020`, error bits 31:29 = 0.
+- PMC_INTR 0, PFIFO_INTR 0, no master abort, no VM trap, BAR1 marker
+  intact, the machine up.
+
+The probe ended `FIFO-FAILED` / `NOT-FETCHED`. That verdict was wrong,
+and the fault is the probe's: it tested the runlist wait and the
+semaphore value at the end of the stage, from op results that later
+runs had overwritten. The values logged when their runs returned are
+the ones above. The verdict now keeps both at the time (not rerun).
+
+Step 3a of the PGRAPH plan passes: PFIFO alone, a channel, a push that
+is fetched and executed. Its pass condition was "GET reaches PUT"; the
+measure used is the pusher's own registers and a semaphore word, since
+USERD is not read.
+
 Other differences from the trace, left as they are
 until the corrected layout has been tried:
 

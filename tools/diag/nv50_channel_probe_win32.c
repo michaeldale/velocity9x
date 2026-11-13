@@ -1391,6 +1391,12 @@ static int v9x_stage_fifo(void)
     DWORD runlist_wait;
     DWORD sema_wait;
     DWORD sema;
+    /* An op's result lasts only until the next run, so the two the
+     * verdict needs are kept when their runs return. Run 30 read them at
+     * the end, from later runs' results, and called a fetched push
+     * NOT-FETCHED. */
+    int runlist_timed_out;
+    DWORD sema_value;
     DWORD trap_enable;
     DWORD trap_stale;
     DWORD empty_wait;
@@ -1466,6 +1472,7 @@ static int v9x_stage_fifo(void)
         v9x_finish("FIFO-REFUSED", 5u);
     }
     v9x_put("Fifo", "RunlistWait", runlist_wait);
+    runlist_timed_out = v9x_timed_out(runlist_wait);
     v9x_flush();
     v9x_pcie_status("fifo-bind");
 
@@ -1577,6 +1584,7 @@ static int v9x_stage_fifo(void)
     }
     v9x_put("Fifo", "SemaWait", sema_wait);
     v9x_put("Fifo", "Sema", sema);
+    sema_value = v9x_value(sema);
     v9x_flush();
 
     /* About a second of PTIMER reads, then the card checked again. */
@@ -1591,8 +1599,7 @@ static int v9x_stage_fifo(void)
     v9x_vram_check("fifo-settle");
     v9x_pusher_state();
 
-    if (v9x_timed_out(runlist_wait) ||
-        v9x_value(sema) != V9X_SEMA_VALUE) {
+    if (runlist_timed_out || sema_value != V9X_SEMA_VALUE) {
         v9x_text("Fifo", "Result", "NOT-FETCHED");
         return 0;
     }
