@@ -6,6 +6,63 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.49.0 - not yet released
 
+- **`ati` package: the Radeon HD 2600 XT (RV630, `1002:9588`) gets
+  hardware acceleration.** It ran on the `vbe` package's software
+  renderer before. DirectDraw fills and copies run on the DMA engine,
+  flips go through the display controller at the blank, and Direct3D
+  and OpenGL draw through the command processor on AMD's RV630
+  microcode, with a 128 MiB heap. On the one card measured (a tester's
+  machine through remote help, modes from the VBE): V9XD32 passes at 16
+  and 32 bpp, fog and colour keys included; V9XGLP passes; 3DMark 2000
+  and 3DMark 2001 SE run to a score; the Quake 3 demo's `demo001` ran at
+  65.9 fps at 640x480x16
+  ([plan](docs/plans/ati-rv630-hd2600xt.md),
+  [Direct3D](docs/decisions/2026-11-13-rv630-direct3d-hal-first-light.md),
+  [DMA copies](docs/decisions/2026-11-13-rv630-dma-copy-alignment.md)).
+  Not run on it: Glide, 3DCIF, GDI and mode changes, full-screen DOS.
+  Specular is built but no check judges it. The screen is not
+  write-combined. Once, before a reset, its depth buffer held one
+  constant value; not seen since
+  ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
+- **`intel-gma` package, GMA 950 (945GSE, `8086:27AE`): 32 MiB of
+  texture memory in system RAM.** The driver maps 32 MiB of ordinary RAM
+  into the chip's address space at boot, on machines with at least
+  512 MiB, and textures go there first. On the HP
+  Mini netbook, 3,201 small textures fit where 390 did; Serious Sam's
+  demo kept all 488 of its textures on the chip with no failed creates
+  or evictions, where an October run failed 1,494; Half-Life and Quake 2
+  run as before; 3DMark 2001 SE completes. `V9X3D OFF` turns the pool
+  off with the rest of the 3D. Other Gen3 chips (GMA 900, 3100, 3150,
+  other GMA 950 parts) get no pool until each is measured
+  ([decisions](docs/decisions/2026-11-12-intel-gen3-texture-pool-decisions.md),
+  [driver](docs/decisions/2026-11-12-intel-gen3-texture-pool-phase3.md),
+  [games](docs/decisions/2026-11-12-intel-gen3-texture-pool-games.md)).
+  Not run: a full-screen DOS box with the pool mapped.
+- **`intel-gma` package, GMA 900, 950, 3100 and 3150: two texture
+  stages in Direct3D, offered to every program.** Direct3D drew only the
+  first stage of a multi-stage texture blend, so 3DMark 2001 SE's
+  Dragothic dragon had flat white horns and neck. Stage 1 now runs on the
+  chip's second texture unit; a third stage that multiplies by the
+  vertex colour is folded into the first two, and any other third stage
+  is still dropped. DirectX 6 and 7 programs are now offered the DirectX
+  8 driver interface (DDI 6) too. With the texture pool above, Dragothic's
+  sky also draws; the frames grabbed show no white left, though a full
+  run has not been watched on the panel since
+  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
+  On the GMA 950 the release probes pass and Half-Life's Direct3D timedemo
+  runs textured; the other chips are not run.
+- **`intel-gma` package, HD 4600: 3DMark 2001 SE's Car Chase with
+  compressed textures no longer hangs the chip.** A DXT texture with no
+  room in video memory was handed to DirectDraw, which cannot place one;
+  the render engine timed out, every later draw was refused and DDRAW.DLL
+  faulted at every start until Windows restarted. The driver now reports
+  such a texture out of video memory, so Direct3D 8 evicts and retries,
+  as on Gen3. On the i5-4570 the full run with compressed textures
+  completes (2519) with no timeout
+  ([issue](docs/issues/2026-11-13-haswell-3dmark2001se-car-chase-dxt-gpu-hang.md)).
+  How DirectDraw's placement hung the engine is not established. The HD
+  4000 shares this code and is not run.
+
 ## 0.48.0 - 2026-11-12
 
 - **Every package: DirectDraw and Direct3D surfaces may be wider than
