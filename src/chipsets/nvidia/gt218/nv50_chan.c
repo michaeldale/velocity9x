@@ -103,10 +103,16 @@ static void v9x_nv50_build_vm(v9x_u32 *region, v9x_u32 base)
                  (base + V9X_NV50_PT) | V9X_NV50_PDE_64K_VRAM);
 
     /* The identity: VM address = video memory address. Every 128-page
-     * block is aligned, so every entry carries the largest hint. */
+     * block is aligned, so every entry carries the largest hint, and with
+     * it the block's first address, the same value in all 128 entries, as
+     * nv50_vmm_pgt_pte writes it. The chip adds the page's place in the
+     * block itself. Until 2026-11-14 each entry had its own address, so
+     * every page but the first of a block resolved too high (run 28 on
+     * M-BXMFA8: the IB ring read as empty). */
     for (page = 0ul; page < pages; ++page) {
         v9x_nv50_put(region, V9X_NV50_PT + page * 8ul,
-                     page * V9X_NV50_PAGE_BYTES |
+                     (page & ~(V9X_NV50_PTE_BLOCK_PAGES - 1ul)) *
+                     V9X_NV50_PAGE_BYTES |
                      (V9X_NV50_PTE_LOG2BLK_MAX << V9X_NV50_PTE_LOG2BLK_SHIFT) |
                      V9X_NV50_PTE_VALID);
     }

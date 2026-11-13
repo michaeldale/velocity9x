@@ -108,17 +108,24 @@ static void test_vm(void)
     CHECK(word_at(V9X_NV50_INST_PD) == ((BASE + V9X_NV50_PT) | 1ul));
     CHECK(word_at(V9X_NV50_INST_PD + 4ul) == 0ul);
     CHECK(word_at(V9X_NV50_INST_PD + 8ul) == 0ul);
-    /* The identity, valid, log2blk 7, high word (kind) 0. */
+    /* The identity, valid, log2blk 7, high word (kind) 0. Every entry of
+     * a 128-page block carries the block's first address, not its own
+     * (vmmnv50.c nv50_vmm_pgt_pte writes one value to the whole block).
+     * With its own address in each, the chip added the page's index in
+     * the block again and read the IB from the wrong place: run 28 on
+     * M-BXMFA8, DMA pusher error IB_EMPTY. */
     for (page = 0ul; page < V9X_NV50_VM_BYTES / V9X_NV50_PAGE_BYTES;
          ++page) {
         if (word_at(V9X_NV50_PT + page * 8ul) !=
-            ((page << 16) | 0x381ul) ||
+            (((page & ~0x7ful) << 16) | 0x381ul) ||
             word_at(V9X_NV50_PT + page * 8ul + 4ul) != 0ul) {
             ++bad;
         }
     }
     CHECK(bad == 0ul);
     CHECK(word_at(V9X_NV50_PT + 0x0c00ul * 8ul) == 0x0c000381ul);
+    /* Page 802h, where the probe's IB ring lives: block base 800h. */
+    CHECK(word_at(V9X_NV50_PT + 0x0802ul * 8ul) == 0x08000381ul);
 }
 
 static void test_objects(void)
