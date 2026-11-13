@@ -52,6 +52,16 @@
 #define V9X_GTTADR_MASK      0xfffc0000ul
 #define V9X_BSM_MASK         0xfff00000ul
 
+/* The GM965 (Gen4, 8086:2A02) has no GTTADR: config 1Ch is GMADR's high
+ * dword, and the GTT is GTTMMADR (10h, 1 MiB) + 512 KiB - datasheet 316273
+ * 21.1.10, as runtime.asm V9xPciReadIntelGttConfig reads it. Measured on
+ * TOMMOHP (docs\decisions\2026-10-20-gm965-tommohp-tier0-and-mmio.md). */
+#define V9X_CFG_ID           0x00ul
+#define V9X_CFG_GTTMMADR     0x10ul
+#define V9X_GM965_ID         0x2a028086ul
+#define V9X_GTTMMADR_MASK    0xfff00000ul
+#define V9X_GM965_GTT_OFFSET 0x00080000ul
+
 /* The 945's GMADR is 256 MiB with 65,536 GTT entries
  * (2026-09-12-intel-phase2-gtt-inventory.md). */
 #define V9X_G3PL_APERTURE    0x10000000ul
@@ -345,7 +355,15 @@ void WINAPI V9xGen3PoolEntry(void)
 
     ggc = (v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) >> 16) & 0xfffful;
     bsm = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_BSM) & V9X_BSM_MASK;
-    bar3 = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTADR) & V9X_GTTADR_MASK;
+    if (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID) == V9X_GM965_ID) {
+        bar3 = (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR) &
+                V9X_GTTMMADR_MASK) + V9X_GM965_GTT_OFFSET;
+        v9x_text("Report", "GttFrom", "GTTMMADR+512K");
+    } else {
+        bar3 = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTADR) &
+               V9X_GTTADR_MASK;
+        v9x_text("Report", "GttFrom", "BAR3");
+    }
     memory.dwLength = sizeof(memory);
     GlobalMemoryStatus(&memory);
     v9x_key("Report", "Ggc", ggc);

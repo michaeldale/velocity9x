@@ -70,10 +70,14 @@ G3_RESULT_DWORDS        equ (G3_HEADER_DWORDS + G3_GTT_WINDOW + G3_PAGE_MAX)
 
 VxD_LOCKED_DATA_SEG
 ; Gen3 IGD device ids, function 0, the ones this family claims: 915GM 2592,
-; 945GM 27A2, 945GME/GSE 27AE, Pineview A011, G33 29C2.
+; 945GM 27A2, 945GME/GSE 27AE, Pineview A011, G33 29C2. Also the GM965
+; 2A02 (Gen4): its GTT has the same 4-byte entries and, for its 256 MiB
+; GMADR, the same 65,536 of them in 256 KiB, at GTTMMADR + 512 KiB rather
+; than a BAR3 (datasheet 316273 21.1.10; runtime.asm
+; V9xPciReadIntelGttConfig). The publisher passes that address as the base.
 G3Devices label word
-    dw 2592h, 27a2h, 27aeh, 0a011h, 29c2h
-G3_DEVICE_COUNT         equ 5
+    dw 2592h, 27a2h, 27aeh, 0a011h, 29c2h, 2a02h
+G3_DEVICE_COUNT         equ 6
 
 G3Result label dword
     dd G3_MAGIC                 ; 00 magic

@@ -16,7 +16,10 @@ Half-Life, Quake 2 and Serious Sam run on it; Serious Sam no longer fails
 a texture create or evicts
 ([record](../decisions/2026-11-12-intel-gen3-texture-pool-games.md)).
 Next: a DOS box with the pool mapped (operator present), the Dragothic
-sky, then the other Gen3 chips one record each. Three findings change the
+sky, then the other Gen3 chips one record each. Phase 0 ran on the GM965
+(Gen4) on 2026-11-13: 32 MiB allocates in one physical run, 64 MiB of
+GMADR maps, the pool's entries hold the scratch page
+([record](../decisions/2026-11-13-intel-gm965-texture-pool-phase0.md)). Three findings change the
 plan below: the aperture map is 64 MiB, not 8 + N; the HAL has to place
 pool textures itself (DirectDraw gives them a 4 KiB pitch); and a VBIOS
 mode set leaves the pool's PTEs alone, so item 6's re-apply is not needed
