@@ -215,6 +215,43 @@ is fetched and executed. Its pass condition was "GET reaches PUT"; the
 measure used is the pusher's own registers and a semaphore word, since
 USERD is not read.
 
+## Runs 31 and 32 (boot 106): the 2D object binds and the engine fills
+
+The 92669f60 probe (built as `a95ff5e9-dirty`): the gr and fill stages
+wait on PFIFO's own IB get (3334h) and PGRAPH idle (400700h = 0)
+where they waited on USERD. `/flush:none /push:class02 /pusher`, with
+`/stop:gr` for run 31 and no stop for run 32. Logs `run31-` and
+`run32-V9XN5CH.LOG` (from lines 8843 and 9324).
+
+**Run 31, step 3b.** The fifo stage passed (`Fifo.Result PASS`, the
+corrected verdict). Then the second IB entry, SET_OBJECT 502D on
+subchannel 3:
+
+- IB get 2 = put 2, DMA get = put = `08022110`, no pusher error.
+- **PGRAPH_INTR 0**, trap 0, status 0 (idle). 40032Ch reads `80008000`:
+  bit 31 with this channel's instance (08000000h >> 12). PGRAPH loaded
+  the channel's context, using the context program and image generated
+  by `nv50_grctx.c`.
+- PMC_INTR 0, PFIFO_INTR 0, no master abort, no VM trap.
+
+**Run 32, step 3c.** All three stages in one run. The third IB entry is
+a 64x64 X8R8G8B8 fill at (32, 4) of a 128x72 surface at video memory
+128 MiB + 2 MiB, which the CPU first filled with a pattern:
+
+- IB get 3 = put 3, DMA get = put = `08022268`, PGRAPH_INTR 0, idle.
+- Read back through BAR1: **4096 of 4096 pixels inside the rectangle
+  are the colour, 5120 of 5120 outside it still hold the pattern.**
+- `Fill.Result PASS`, `Report.Result COMPLETE`, the machine up.
+
+Step 3 of the PGRAPH plan passes, 3a to 3c: on this GT218 the driver's
+own channel, VM, context program and 502D methods fill a rectangle in
+video memory. The two encodings step 2 marked as recalled held for this
+case: the rectangle's second corner is exclusive (64x64 filled exactly).
+REF_CNT's readback at USERD + 48h was not checked.
+
+Still as tested only: the push DMA object in class 02h (`/push:class02`).
+The builder's default, 3Dh, has not been run with the corrected layout.
+
 Other differences from the trace, left as they are
 until the corrected layout has been tried:
 

@@ -150,6 +150,15 @@ each stopped on the first bounded wait that expires with a register dump:
 A hang means the owner power-cycles M-BXMFA8; the probe writes its INI
 before each sub-step.
 
+**Status (2026-11-14): step 3 passes, 3a to 3c, on M-BXMFA8** (runs
+27-32, boot 106): a push executes, the 502D object binds with no PGRAPH
+interrupt, and a 64x64 fill reads back exact. Two layout faults were
+behind runs 14-26, found from an mmiotrace of nouveau on a second GT218:
+the page directory offset (200h, not 1400h) and the page table's block
+entries. Record:
+[2026-11-13-gt218-nouveau-trace-pd-offset.md](../decisions/2026-11-13-gt218-nouveau-trace-pd-offset.md).
+Next is step 4. The history below is kept as written.
+
 **Status (2026-11-12): paused at 3a after 14 runs and 11 resets.**
 [docs/decisions/2026-11-11-gt218-channel-probe-run1-hang.md](../decisions/2026-11-11-gt218-channel-probe-run1-hang.md)
 records them. Changed from the design above, by measurement: the window
