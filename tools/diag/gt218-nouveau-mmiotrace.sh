@@ -55,10 +55,12 @@ modprobe nouveau
 sleep "$SETTLE_SECONDS"
 echo "MARK gt218 settle done" > "$TRACING/trace_marker"
 
-echo nop > "$TRACING/current_tracer"
+# The reader first: the tracer cannot be changed while trace_pipe is open
+# (the first run failed here with EBUSY and left mmiotrace on).
 sleep 2
 kill "$PIPE" 2>/dev/null || true
 wait "$PIPE" 2>/dev/null || true
+echo nop > "$TRACING/current_tracer"
 
 dmesg > "$OUT/dmesg-after.txt"
 cat /proc/fb > "$OUT/proc-fb-after.txt"
