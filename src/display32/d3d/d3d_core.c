@@ -775,22 +775,6 @@ static int v9x_d3d_context_stage0_modulate2x(const V9X_D3D_ENGINE_OPS *ops,
     return v9x_d3d_stage0_is_modulate2x(context);
 }
 
-/* Whether a doubled stage 0 drawn alone goes to the shader path instead:
- * an engine that runs shaders but has no one-stage MODULATE2X, Gen3,
- * whose one-unit programs have no room left in I9XXCODE. A DDI 8 draw
- * only; v9x_d3d_ps_fixed_shader writes its program. */
-static int v9x_d3d_context_stage0_shader2x(const V9X_D3D_ENGINE_OPS *ops,
-                                           const V9X_D3D_CONTEXT *context)
-{
-    if (ops == 0 || ops->limits == 0 || ops->draw_shader == 0 ||
-        (ops->limits->modulate2x & V9X_D3D_MODULATE2X_ONE) != 0ul ||
-        context->ddi8 == 0ul ||
-        context->stage_two != V9X_D3D_STAGES_ONE) {
-        return 0;
-    }
-    return v9x_d3d_stage0_is_modulate2x(context);
-}
-
 /*
  * The batch as the neutral core describes it, from the context: the three
  * surfaces resolved here, because they are DirectDraw's, and the render
@@ -4959,11 +4943,7 @@ static void v9x_d3d_dp2_express_stage(V9X_D3D_CONTEXT *context)
             blend = context->stage_alpha_op == V9X_D3DTOP_MODULATE
                         ? V9X_D3DTBLEND_MODULATEALPHA
                         : V9X_D3DTBLEND_MODULATE;
-        } else if (v9x_hal != 0 &&
-                   !v9x_d3d_context_stage0_shader2x(v9x_d3d_publish_engine(),
-                                                    context)) {
-            /* A doubled stage the shader path draws is not approximated;
-             * the DX5 blend set here is not what it draws by. */
+        } else if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_stage0_approximated;
         }
     }
@@ -7305,12 +7285,9 @@ static const V9X_D3D_PS_SHADER *v9x_d3d_ps_fixed_shader(
         return 0;
     }
     two = ops->limits->texture_stages >= 2ul;
-    /* A cube on a stage, or a doubled stage 0 drawn alone where the
-     * engine's one-stage programs cannot double (Gen3). */
     if (!v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[0].texture) &&
         !(two &&
-          v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[1].texture)) &&
-        !v9x_d3d_context_stage0_shader2x(ops, context)) {
+          v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[1].texture))) {
         return 0;
     }
     stage0.color_op = context->stage_color_op;
@@ -8107,9 +8084,7 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         op == V9X_D3DTOP_SELECTARG2 || op == V9X_D3DTOP_MODULATE ||
         op == V9X_D3DTOP_BLENDTEXTUREALPHA ||
         v9x_d3d_context_stage0_modulate2x(v9x_d3d_publish_engine(),
-                                          context) ||
-        v9x_d3d_context_stage0_shader2x(v9x_d3d_publish_engine(),
-                                        context)) {
+                                          context)) {
         data->dwNumPasses = 1ul;
         data->ddrval = V9X_DD_OK;
     } else {

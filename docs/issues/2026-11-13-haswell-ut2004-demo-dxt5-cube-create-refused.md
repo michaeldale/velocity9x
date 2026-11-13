@@ -390,8 +390,10 @@ cleanly (`appRequestExit(0)`) after about 10 minutes of wall time. V9XTRACE afte
 (`netbook-V9XSNA7-boot328.INI`): `BatchesEngineRefused` 0,
 `I9xxDrawsRefused` 0, `EngineIdleTimeouts` 0, `Dp2Undrawn` 0,
 `Dp2Malformed` 0; 74,306 DP2 calls, 65,395,277 triangles (the HD 4600's
-run: 63,364 and 65,451,861); `I9xxGuardCut` 243,074 (Gen3 cuts both
-units, so the HD 4600's floor-hole defect does not apply);
+run: 63,364 and 65,451,861); `I9xxGuardCut` 243,074, all of them
+one-unit triangles. (This record said here that Gen3 cut both units. It
+did not: Gen3 dropped a two-unit triangle past its band, as Haswell
+did, and it showed once Gen3 drew MODULATE2X pairs; see below.)
 `MipTreeDeclined` 26,730; `D3dTextureRefusedBounds` 24.
 
 What the counters say is not yet right on Gen3:
@@ -457,8 +459,57 @@ Readings:
   them, and what a refused batch draws on Gen3 now, is not measured.
 
 Michael ran the game on the netbook and judged it too slow to play;
-the features are kept. The netbook is left on the boot 330 measurement
+the features are kept. The netbook was left on the boot 330 measurement
 HAL.
+
+### No regression against 0.49.0, boots 331-332
+
+Michael asked that whatever would be a regression in the next release
+be fixed. Three were:
+
+1. **Two-unit triangles dropped at Gen3's band.** The 19,913 refused
+   batches were `v9x_d3d_i9xx_draw_classified` dropping every two-unit
+   triangle past Gen3's guard band, uncut: `I9xxGuardDropped` 149,488 in
+   boots 329 and 330, 0 at boot 328. The HD 4600's defect, on Gen3;
+   the record's note at boot 328 that Gen3 cut both units was wrong. It
+   now cuts them with `v9x_r3d_clip_triangle_uv1`, as Haswell does
+   since boot 243, and draws the fan with each corner's second pair.
+2. **The one-stage shader route.** It cost 37 % on the Atom. Removed:
+   a doubled stage 0 drawn alone is drawn as MODULATE on Gen3 again, as
+   in 0.49.0. Native doubled one-unit programs, built only where the
+   model is flat as the two-unit program is, are the way to draw it
+   right; not started.
+3. **Two-unit draws whose texture will not bind.** Boot 331, with 1 and
+   2 fixed, still refused 16 batches (22 draws, `I9xxRefuseLast` 4):
+   pairs whose base texture fails the bind (`D3dTextureRefusedBounds`,
+   24 in every run) and which 0.49.0 drew untextured as stage 0 alone.
+   A Direct3D batch has no CPU fallback, so refused meant undrawn. Gen3
+   now draws such a Direct3D draw with stage 0 alone, as the core draws
+   a pair the engine declines; an explicit (render interface) draw is
+   still refused.
+
+`run-checks.ps1` passed after each. HAL only over 0.49.0's DRV and VxD,
+the same botmatch after 180 s of uptime:
+
+| | boot 328 (0.49.0's behaviour) | boot 331 (1, 2) | boot 332 (1-3) |
+|---|---|---|---|
+| min / avg / max fps | 1.87 / 4.26 / 33.5 | 1.84 / 4.23 / 32.0 | 1.83 / 4.23 / 32.2 |
+| `BatchesEngineRefused` | 0 | 16 | 0 |
+| `I9xxDrawsRefused` | 0 | 22 | 0 |
+| `I9xxGuardCut` / `I9xxGuardDropped` | 243,074 / 0 | 243,060 / 0 | 243,060 / 0 |
+| `TwoUnitBatches` | 2,508 | 68,739 | 68,739 |
+| `Dp2Stage0Approximated` | 273,598 | 273,598 | 273,598 |
+
+Boot 332's HAL is SHA-256 `0DD5BC1F...`; the netbook is left on it.
+The difference from 0.49.0 is the 66,231 lightmap batches now drawn on
+two units, at no measured cost (one run each).
+
+The HD 4600 ran the build of boot 331 (SHA-256 `F802E8F5...`, the same
+code bar Gen3's change 3) at boot 244 with the install-default INIs:
+32.8 fps against boot 243's 32.9, every counter equal (`TwoUnitBatches`
+67,875, `TwoUnitDeclined` 727, `Dp2Stage0Approximated` 6,370,
+`BatchesEngineRefused` 0); the split of `modulate2x` into its two bits
+changed nothing there. Michael's 16-bit INIs were put back after.
 
 ## Runs that end at 30 s
 
@@ -492,7 +543,10 @@ and `V9XSNA7-boot235.INI` (V9XTRACE after the run). From boot 236:
 `netbook-UT2004-boot328.log`, `netbook-frame-boot328.png`; boot 329
 `netbook-benchmark-boot329.log`, `netbook-V9XSNA7-boot329.INI`,
 `netbook-frame-boot329.png`; boot 330 `netbook-benchmark-boot330.log`,
-`netbook-V9XSNA7-boot330.INI`. Boot 243:
+`netbook-V9XSNA7-boot330.INI`; boots 331 and 332
+`netbook-benchmark-boot33N.log`, `netbook-V9XSNA7-boot33N.INI`. The HD
+4600's boot 244: `benchmark-boot244.log`, `V9XSNA7-boot244.INI`.
+Boot 243:
 `benchmark-boot243.log`, `V9XSNA7-boot243.INI` (after the grab run),
 `floor-holes-before-after-0-3.png`, `floor-holes-before-after-4-7.png`
 and `frames-boot243-16bit.png`.

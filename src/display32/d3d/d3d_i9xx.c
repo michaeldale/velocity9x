@@ -197,9 +197,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     0ul,                        /* dxt_textures           */
     /*
      * MODULATE2X in the two-unit program (V9X_I9XX_COMBINE_MODULATE2X).
-     * Not on one stage: the one-unit programs are linked into I9XXCODE,
-     * which has no room for more, so a doubled single stage goes to the
-     * shader path (v9x_d3d_ps_fixed).
+     * Not on one stage yet: the one-unit programs need doubled forms, which
+     * would have to be built only where the model is flat, as the two-unit
+     * program is, since I9XXCODE is full. Until then a doubled single
+     * stage is drawn as MODULATE, as in 0.49.0.
      */
     V9X_D3D_MODULATE2X_TWO      /* modulate2x             */
 };
@@ -2753,6 +2754,13 @@ static void v9x_d3d_i9xx_note_batch(const V9X_D3DTLVERTEX *vertices,
 static V9X_R3D_VERTEX v9x_d3d_i9xx_clipped[V9X_R3D_CLIP_MAX_VERTICES];
 static V9X_R3D_VERTEX v9x_d3d_i9xx_fan[V9X_R3D_MAX_FAN_TRIANGLES * 3u];
 static V9X_R3D_DRAW v9x_d3d_i9xx_window;
+/* A two-unit cut (v9x_r3d_clip_triangle_uv1): its scratch, each clipped
+ * vertex's second pair, the fan's pairs, and the draw that carries them. */
+static V9X_R3D_VERTEX
+    v9x_d3d_i9xx_uv1_scratch[V9X_R3D_CLIP_MAX_VERTICES + 3u];
+static float v9x_d3d_i9xx_clipped_uv1[2u * V9X_R3D_CLIP_MAX_VERTICES];
+static float v9x_d3d_i9xx_fan_uv1[V9X_R3D_MAX_FAN_TRIANGLES * 3u * 2u];
+static V9X_R3D_DRAW v9x_d3d_i9xx_fan_window;
 
 /* Triangles first .. first + count - 1 of the draw, with a two-unit draw's
  * pairs moved along with them. */
@@ -2818,15 +2826,23 @@ static int v9x_d3d_i9xx_draw_classified(const V9X_R3D_DRAW *draw,
             ok = 0;
         }
         run_start = index + 1ul;
+        /* A two-unit triangle is cut with its second pair: it was dropped
+         * here until Direct3D sent two-unit draws (MODULATE2X), and
+         * UT2004's lightmapped floors then lost 149,488 triangles a
+         * botmatch on the netbook (boots 329-330). */
         if (draw->texcoords1 != 0) {
-            ++v9x_hal->d3d_diagnostics.i9xx_guard_dropped;
-            ok = 0;
-            continue;
+            corners = v9x_r3d_clip_triangle_uv1(
+                triangle, draw->texcoords1 + index * 3ul * 2ul,
+                v9x_d3d_i9xx_limits.coordinate_limit,
+                (float)draw->target.width, (float)draw->target.height,
+                v9x_d3d_i9xx_uv1_scratch, v9x_d3d_i9xx_clipped,
+                v9x_d3d_i9xx_clipped_uv1);
+        } else {
+            corners = v9x_r3d_clip_triangle(
+                triangle, v9x_d3d_i9xx_limits.coordinate_limit,
+                (float)draw->target.width, (float)draw->target.height,
+                v9x_d3d_i9xx_clipped);
         }
-        corners = v9x_r3d_clip_triangle(
-            triangle, v9x_d3d_i9xx_limits.coordinate_limit,
-            (float)draw->target.width, (float)draw->target.height,
-            v9x_d3d_i9xx_clipped);
         if (corners < 0) {
             ++v9x_hal->d3d_diagnostics.i9xx_guard_dropped;
             ok = 0;
@@ -2834,15 +2850,36 @@ static int v9x_d3d_i9xx_draw_classified(const V9X_R3D_DRAW *draw,
         }
         ++v9x_hal->d3d_diagnostics.i9xx_guard_cut;
         for (fan = 1; fan + 1 < corners; ++fan) {
+            DWORD pick;
+
             v9x_d3d_i9xx_fan[fans * 3ul] = v9x_d3d_i9xx_clipped[0];
             v9x_d3d_i9xx_fan[fans * 3ul + 1ul] = v9x_d3d_i9xx_clipped[fan];
             v9x_d3d_i9xx_fan[fans * 3ul + 2ul] =
                 v9x_d3d_i9xx_clipped[fan + 1];
+            if (draw->texcoords1 != 0) {
+                for (pick = 0ul; pick < 3ul; ++pick) {
+                    DWORD from = pick == 0ul ? 0ul : (DWORD)fan + pick - 1ul;
+
+                    v9x_d3d_i9xx_fan_uv1[(fans * 3ul + pick) * 2ul] =
+                        v9x_d3d_i9xx_clipped_uv1[from * 2ul];
+                    v9x_d3d_i9xx_fan_uv1[(fans * 3ul + pick) * 2ul + 1ul] =
+                        v9x_d3d_i9xx_clipped_uv1[from * 2ul + 1ul];
+                }
+            }
             ++fans;
         }
-        if (fans != 0ul &&
-            !v9x_d3d_i9xx_draw_triangles_body(
-                draw, (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan, fans)) {
+        if (fans != 0ul && draw->texcoords1 != 0) {
+            v9x_d3d_i9xx_fan_window = *draw;
+            v9x_d3d_i9xx_fan_window.texcoords1 = v9x_d3d_i9xx_fan_uv1;
+            if (!v9x_d3d_i9xx_draw_triangles_body(
+                    &v9x_d3d_i9xx_fan_window,
+                    (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan, fans)) {
+                ok = 0;
+            }
+        } else if (fans != 0ul &&
+                   !v9x_d3d_i9xx_draw_triangles_body(
+                       draw, (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan,
+                       fans)) {
             ok = 0;
         }
     }
@@ -3041,17 +3078,26 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      */
     textured = v9x_d3d_i9xx_bind_texture(&draw->texture, &map, &map_bytes);
     /*
-     * A second unit, for the render interface only. Its accepts() took
-     * both surfaces as bindable; a bind that still fails - the footprint
-     * against the aperture - refuses the draw, since drawing it with one
-     * unit would be a different picture.
+     * A second unit. Its accepts() took both surfaces as bindable; a bind
+     * that still fails - the footprint against the aperture - refuses an
+     * explicit draw, since drawing it with one unit would be a different
+     * picture. A Direct3D draw is drawn with stage 0 alone instead, as the
+     * core draws a pair the engine declines (v9x_d3d_dispatch_engine):
+     * untextured when its own texture is the one that will not bind. Since
+     * MODULATE2X made UT2004's lightmaps two-unit, refusing these left 22
+     * draws a botmatch undrawn on the netbook (boot 331) that 0.49.0 drew.
      */
     if (two_units) {
         if (textured == 0 ||
             !v9x_d3d_i9xx_bind_texture(&draw->texture1, &maps[1],
                                        &map1_bytes)) {
-            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+            if (draw->explicit_state != 0ul) {
+                return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+            }
+            two_units = 0;
         }
+    }
+    if (two_units) {
         maps[0] = map;
         combine[0].colour_op = draw->texture.color_op;
         combine[0].alpha_op = draw->texture.alpha_op;

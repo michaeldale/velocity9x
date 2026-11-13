@@ -530,8 +530,9 @@ typedef struct v9x_d3d_engine_limits {
      * exactly (V9X_R3D_COLOROP_MODULATE2X): V9X_D3D_MODULATE2X_ONE on a
      * one-stage draw, V9X_D3D_MODULATE2X_TWO on either unit of a two-unit
      * draw. Without TWO a doubled stage 1 is refused and stage 0 drawn
-     * alone; without ONE a doubled stage 0 goes to the shader path where
-     * the engine has one (v9x_d3d_ps_fixed), else is drawn as MODULATE.
+     * alone; without ONE a doubled stage 0 is drawn as MODULATE. Sending
+     * that stage to the shader path instead cost UT2004 37 % of its frame
+     * rate on the GMA 950 (the netbook, boots 329-330) and was removed.
      * UT2004 lights most of its world so (the 4570, boot 236). Appended
      * 2026-11-13; an initialiser that stops short leaves it zero.
      */
