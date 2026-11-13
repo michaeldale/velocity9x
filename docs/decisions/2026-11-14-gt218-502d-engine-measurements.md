@@ -119,8 +119,9 @@ page table, runlist, objects and context image as written. IB get moved
 on by three per run (0Dh, 10h, 13h), the three kicks of the run before.
 
 So, unlike the RIVA 128, **this card's VBIOS mode set does not disturb
-PFIFO, PGRAPH or the channel's memory**, across eight mode sets of each
-kind, and the channel outlives the process that built it. The engine
+PFIFO, PGRAPH or the channel's memory**, across four cycles of each
+kind (how many mode sets a cycle makes was not counted), and the channel
+outlives the process that built it. The engine
 needs no rebuild after a mode set. A cheap guard stays worth having,
 because what was not tested can still lose the state: a full-screen DOS
 box, standby and resume, and a display-driver restart.
