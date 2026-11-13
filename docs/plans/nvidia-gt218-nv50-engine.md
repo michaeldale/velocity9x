@@ -155,7 +155,12 @@ the record). **4.2 is part done**: the engine type, its D3D selection
 and the mini-VDD's BAR0 map for chipset A8h are in (Michael chose to
 widen the NV3 service's identity check). The GT218 row's engine
 descriptor and reserve hook move to 4.3, so the row never claims an
-engine the HAL has no code for.
+engine the HAL has no code for. **4.3 is built** (3751e5b8):
+`engines\eng_nv50.c`, the row's descriptor and reserve
+(`gt218_reserve.c`), the manifest row, and a two-surface copy in the
+builder. run-checks passes; nothing of it has run on a card. 4.4 is
+next, and its first question is the one thing 4.3 added that the probe
+never ran: a copy between two different surfaces.
 
 ## Decisions owed
 
