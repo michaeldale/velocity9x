@@ -1345,6 +1345,43 @@ static void v9x_sample_after_kick(void)
     }
 }
 
+/*
+ * /pusher: the DMA pusher's state (run 27 left PFIFO_INTR 1000h
+ * latched; run 28 read IB_EMPTY here). The registers and their order are
+ * nv04_fifo_intr_dma_pusher's; the error is state bits 31:29
+ * (2 INVALID_MTHD, 4 INVALID_CMD, 5 IB_EMPTY, 6 MEM_FAULT). A run of its
+ * own, made after the stage's other results are logged.
+ */
+static void v9x_pusher_state(void)
+{
+    static const DWORD regs[8] = {
+        0x003244ul, 0x003240ul, 0x003220ul, 0x003228ul,
+        0x003328ul, 0x003320ul, 0x003334ul, 0x003330ul
+    };
+    static const char *const names[8] = {
+        "DmaGet", "DmaPut", "Push", "State",
+        "GetHigh", "PutHigh", "IbGet", "IbPut"
+    };
+    DWORD ops[8];
+    DWORD index;
+
+    if (v9x_pusher == 0ul) {
+        return;
+    }
+    v9x_ops_begin();
+    for (index = 0ul; index < 8ul; ++index) {
+        ops[index] = v9x_read(regs[index]);
+    }
+    if (!v9x_run("pusher")) {
+        v9x_finish("PUSHER-REFUSED", 5u);
+    }
+    for (index = 0ul; index < 8ul; ++index) {
+        v9x_put("Pusher", names[index], ops[index]);
+    }
+    v9x_flush();
+    v9x_vram_check("pusher");
+}
+
 static void v9x_stage_gr_init(void);
 
 static int v9x_stage_fifo(void)
@@ -1526,35 +1563,7 @@ static int v9x_stage_fifo(void)
         }
         v9x_status_publish("FifoAfter", &s);
         v9x_flush();
-        /* /pusher: what the DMA pusher complained of (run 27 left
-         * PFIFO_INTR 1000h latched). The registers and their order are
-         * nv04_fifo_intr_dma_pusher's; the error is state bits 31:29
-         * (2 INVALID_MTHD, 4 INVALID_CMD, 5 IB_EMPTY, 6 MEM_FAULT). Last,
-         * in a run of its own, with every earlier result already logged. */
-        if (v9x_pusher != 0ul) {
-            static const DWORD regs[8] = {
-                0x003244ul, 0x003240ul, 0x003220ul, 0x003228ul,
-                0x003328ul, 0x003320ul, 0x003334ul, 0x003330ul
-            };
-            static const char *const names[8] = {
-                "DmaGet", "DmaPut", "Push", "State",
-                "GetHigh", "PutHigh", "IbGet", "IbPut"
-            };
-            DWORD ops[8];
-
-            v9x_ops_begin();
-            for (index = 0ul; index < 8ul; ++index) {
-                ops[index] = v9x_read(regs[index]);
-            }
-            if (!v9x_run("pusher")) {
-                v9x_finish("PUSHER-REFUSED", 5u);
-            }
-            for (index = 0ul; index < 8ul; ++index) {
-                v9x_put("Pusher", names[index], ops[index]);
-            }
-            v9x_flush();
-            v9x_vram_check("pusher");
-        }
+        v9x_pusher_state();
         v9x_finish("EMPTY-PUSH-SURVIVED", 0u);
     }
 
@@ -1580,6 +1589,7 @@ static int v9x_stage_fifo(void)
     v9x_status_publish("FifoSettle", &s);
     v9x_flush();
     v9x_vram_check("fifo-settle");
+    v9x_pusher_state();
 
     if (v9x_timed_out(runlist_wait) ||
         v9x_value(sema) != V9X_SEMA_VALUE) {
