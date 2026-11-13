@@ -1087,7 +1087,7 @@ static void v9x_stage_flush_page(void)
  * 1704h names an instance block of its own, written as
  * nv50_bar_bar2_init writes it: plain, then with bit 30. The block is
  * 128 KiB of zeros (nv50_bar_oneinit's size), so its page directory at
- * + 1400h holds no valid entry. 1708h and 170Ch stay 0 (the VxD refuses
+ * + 200h (g84_bar) holds no valid entry. 1708h and 170Ch stay 0 (the VxD refuses
  * them), so BAR1 and BAR3 keep decoding video memory linearly, and the
  * desktop in BAR3 is not involved.
  *

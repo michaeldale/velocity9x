@@ -56,10 +56,10 @@ static void test_layout(void)
     CHECK(build() == V9X_STATUS_OK);
     CHECK(layout.inst_addr == BASE);
     CHECK((layout.inst_addr & 0xffful) == 0ul);
-    CHECK(layout.ramfc_addr == BASE + 0x5400ul);
+    CHECK(layout.ramfc_addr == BASE + 0x4200ul);
     CHECK((layout.ramfc_addr & 0xfful) == 0ul);
     /* RAMFC >> 8 with bit 31 (g84.c bind, nv50.c start). */
-    CHECK(layout.chan_entry == ((BASE + 0x5400ul) >> 8 | 0x80000000ul));
+    CHECK(layout.chan_entry == ((BASE + 0x4200ul) >> 8 | 0x80000000ul));
     CHECK(layout.runlist_reg == (BASE + V9X_NV50_RUNLIST) >> 12);
     CHECK(layout.runlist_count == 1ul);
     CHECK(word_at(V9X_NV50_RUNLIST) == CHID);
@@ -70,10 +70,23 @@ static void test_layout(void)
 
 /* Every structure inside the instance block stays clear of its
  * neighbours, checked at compile time. */
-typedef char test_nv50_cache_below_pd[
-    (V9X_NV50_INST_CACHE + 0x1000ul <= V9X_NV50_INST_PD) ? 1 : -1];
+/* The page directory is where G84 and later read it, instance + 200h
+ * (measured: nouveau's channel on a GT218, mmiotrace 2026-11-13). With
+ * it at NV50's 1400h and a DMA object at 200h, the chip read that object
+ * as PDE 0 (runs 14-26 on M-BXMFA8). */
+typedef char test_nv50_pd_at_g84_offset[
+    (V9X_NV50_INST_PD == 0x200ul) ? 1 : -1];
+typedef char test_nv50_eng_below_pd[
+    (V9X_NV50_INST_ENG + 0x200ul <= V9X_NV50_INST_PD) ? 1 : -1];
 typedef char test_nv50_pd_below_ramfc[
     (V9X_NV50_INST_PD + V9X_NV50_PD_BYTES <= V9X_NV50_INST_RAMFC) ? 1 : -1];
+typedef char test_nv50_ramfc_below_cache[
+    (V9X_NV50_INST_RAMFC + 0x100ul <= V9X_NV50_INST_CACHE) ? 1 : -1];
+typedef char test_nv50_cache_below_ramht[
+    (V9X_NV50_INST_CACHE + 0x1000ul <= V9X_NV50_INST_RAMHT) ? 1 : -1];
+typedef char test_nv50_ramht_below_objects[
+    (V9X_NV50_INST_RAMHT + V9X_NV50_RAMHT_BYTES <= V9X_NV50_INST_DMA_VM) ?
+    1 : -1];
 typedef char test_nv50_ramht_inside_inst[
     (V9X_NV50_INST_RAMHT + V9X_NV50_RAMHT_BYTES <= V9X_NV50_INST_BYTES) ?
     1 : -1];
@@ -120,8 +133,8 @@ static void test_objects(void)
     CHECK(word_at(V9X_NV50_INST_OBJ_2D + 0x04ul) == 0ul);
 
     /* RAMHT: engine << 20 | offset >> 4. */
-    CHECK(ramht_find(V9X_NV50_HANDLE_DMA_VM) == (0ul << 20 | 0x200ul >> 4));
-    CHECK(ramht_find(V9X_NV50_HANDLE_2D) == (1ul << 20 | 0x220ul >> 4));
+    CHECK(ramht_find(V9X_NV50_HANDLE_DMA_VM) == (0ul << 20 | 0xe000ul >> 4));
+    CHECK(ramht_find(V9X_NV50_HANDLE_2D) == (1ul << 20 | 0xe020ul >> 4));
     /* The DMA object lands at its own hash slot. */
     CHECK(word_at(V9X_NV50_INST_RAMHT +
                   v9x_nv50_ramht_hash(V9X_NV50_HANDLE_DMA_VM) * 8ul) ==
@@ -153,14 +166,14 @@ static void test_engine_and_ramfc(void)
 
     CHECK(word_at(ramfc + 0x3cul) == 0x403f6078ul);
     CHECK(word_at(ramfc + 0x44ul) == 0x01003ffful);
-    CHECK(word_at(ramfc + 0x48ul) == 0x200ul >> 4);
+    CHECK(word_at(ramfc + 0x48ul) == 0xe000ul >> 4);
     CHECK(word_at(ramfc + 0x50ul) == BASE + V9X_NV50_IB);
     CHECK(word_at(ramfc + 0x54ul) == (9ul << 16));
     CHECK(word_at(ramfc + 0x60ul) == 0x7ffffffful);
     CHECK(word_at(ramfc + 0x7cul) == 0x30000ffful);
     CHECK(word_at(ramfc + 0x80ul) ==
-          ((3ul << 27) | (4ul << 24) | (0x6000ul >> 4)));
-    CHECK(word_at(ramfc + 0x88ul) == (BASE + 0x400ul) >> 10);
+          ((3ul << 27) | (4ul << 24) | (0x5400ul >> 4)));
+    CHECK(word_at(ramfc + 0x88ul) == (BASE + 0x4400ul) >> 10);
     CHECK(word_at(ramfc + 0x98ul) == BASE >> 12);
 }
 

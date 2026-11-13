@@ -33,22 +33,31 @@
 #define V9X_NV50_INST_ENG            0x00000ul
 /* PGRAPH's pointer within them (g84.c g84_ectx_bind, ptr0 20h). */
 #define V9X_NV50_ENG_GR              0x00020ul
-/* The VM DMA object the pushbuffer and the 2D engine use, 16 aligned. */
-#define V9X_NV50_INST_DMA_VM         0x00200ul
-/* The 502D object, 16 aligned (gr/nv50.c nv50_gr_object_bind). */
-#define V9X_NV50_INST_OBJ_2D         0x00220ul
-/* PFIFO's cache area, 1000h bytes, 400h aligned (g84.c). */
-#define V9X_NV50_INST_CACHE          0x00400ul
-/* The page directory, at the offset the hardware fixes
- * (mmu/nv50.c pd_offset 1400h): 2048 eight-byte entries. */
-#define V9X_NV50_INST_PD             0x01400ul
+/*
+ * The rest follows the order nouveau's g84 channel allocates it in
+ * (g84.c g84_chan_ramfc_write), as measured in an mmiotrace of nouveau
+ * on a GT218 (docs/decisions/2026-11-13-gt218-nouveau-trace-pd-offset.md):
+ * page directory + 200h, RAMFC + 4200h, cache + 4400h, RAMHT + 5400h.
+ *
+ * The page directory, at the offset the hardware fixes: 2048 eight-byte
+ * entries. G84 and later read it at + 200h; only the original NV50 uses
+ * 1400h (the saved mmu/nv50.c). This file had 1400h until 2026-11-13, with
+ * a DMA object at 200h, which the chip then read as PDE 0.
+ */
+#define V9X_NV50_INST_PD             0x00200ul
 #define V9X_NV50_PD_BYTES            0x04000ul
 /* RAMFC, 100h bytes, 100h aligned (g84.c). */
-#define V9X_NV50_INST_RAMFC          0x05400ul
+#define V9X_NV50_INST_RAMFC          0x04200ul
+/* PFIFO's cache area, 1000h bytes, 400h aligned (g84.c). */
+#define V9X_NV50_INST_CACHE          0x04400ul
 /* RAMHT, 8000h bytes: 4096 entries, a 12-bit hash (g84.c, ramht.c). */
-#define V9X_NV50_INST_RAMHT          0x06000ul
+#define V9X_NV50_INST_RAMHT          0x05400ul
 #define V9X_NV50_RAMHT_BYTES         0x08000ul
 #define V9X_NV50_RAMHT_BITS          12u
+/* The VM DMA object the pushbuffer and the 2D engine use, 16 aligned. */
+#define V9X_NV50_INST_DMA_VM         0x0e000ul
+/* The 502D object, 16 aligned (gr/nv50.c nv50_gr_object_bind). */
+#define V9X_NV50_INST_OBJ_2D         0x0e020ul
 
 /* The page table for the first PDE: 64 KiB pages, 8192 eight-byte entries,
  * 512 MiB (vmmnv50.c nv50_vmm_desc_16). */

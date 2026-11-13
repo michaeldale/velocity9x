@@ -55,7 +55,9 @@ nouveau's chipset table picks for 0xA8 (device/base.c, `nva8_chipset`):
    `400328h`) and the per-channel context image's non-zero defaults.
 3. **One channel, G84 style** (fifo/g84.c, fifo/nv50.c), hand-placed in
    video memory: a 64 KiB instance block with the page directory at
-   +1400h; a page table identity-mapping VRAM with 64 KiB pages; the
+   +200h (corrected 2026-11-13: 1400h is the original NV50's; see
+   [the trace record](../decisions/2026-11-13-gt218-nouveau-trace-pd-offset.md));
+   a page table identity-mapping VRAM with 64 KiB pages; the
    PGRAPH context image and its engine pointer at +20h in the engine
    area; a VM DMA object for the pushbuffer and the 2D engine; the 502D
    object; RAMHT (12-bit hash, entry = handle, engine << 20 | offset >>
