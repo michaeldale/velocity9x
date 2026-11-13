@@ -1,0 +1,120 @@
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+Untextured draw key 12: stages 6 vs 00000042 ps 00000000 cop0 3 carg0 2 lighting 0
+Untextured draw key 17: stages 6 vs 00000044 ps 00000000 cop0 3 carg0 2 lighting 0
+Device 3 released: 21158 draw calls, 4498182 primitives
+Draw keys: 22 (overflow 0)
+  key 0 stages 1 vs 00000142 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 348 draws, 696 prims
+  key 1 stages 1 vs 00000152 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 290 draws, 10440 prims
+  key 2 stages 1 vs 00000142 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 58 draws, 116 prims
+  key 3 stages 0 vs 00000044 ps 00000000 cop0 3 carg0 2 tci0 0 lighting 0 type0 0 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 57 draws, 114 prims
+  key 4 stages 1 vs 00000102 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 14 draws, 3608 prims
+  key 5 stages 1 vs 00000112 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 1 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 3 draws, 1824 prims
+  key 6 stages 7 vs 00000312 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 4 a1 2 a2 1 tci1 1 aop1 2 | stage2 010204: 417 draws, 854016 prims
+  key 7 stages 7 vs 00000112 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 9307 draws, 2405393 prims
+  key 8 stages 7 vs 00000112 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 208 draws, 22880 prims
+  key 9 stages 7 vs 00000112 ps 00000000 cop0 4 carg0 2 tci0 10001 lighting 1 type0 771 ttff0 103 addr0 1 | cop1 4 a1 2 a2 1 tci1 0 aop1 2 | stage2 010201: 596 draws, 267344 prims
+  key 10 stages 7 vs 00000252 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 7 a1 2 a2 1 tci1 1 aop1 2 | stage2 010201: 148 draws, 4864 prims
+  key 11 stages 7 vs 00000212 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 4 a1 2 a2 1 tci1 1 aop1 2 | stage2 010201: 357 draws, 504600 prims
+  key 12 stages 6 vs 00000042 ps 00000000 cop0 3 carg0 2 tci0 0 lighting 0 type0 768 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 112 draws, 1264 prims
+  key 13 stages 7 vs 00000005 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 3 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 2585 draws, 58768 prims
+  key 14 stages 7 vs 00000142 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 919 draws, 1838 prims
+  key 15 stages 7 vs 00000152 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 1023 draws, 51156 prims
+  key 16 stages 7 vs 00000142 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 3651 draws, 7302 prims
+  key 17 stages 6 vs 00000044 ps 00000000 cop0 3 carg0 2 tci0 0 lighting 0 type0 768 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 3 draws, 6 prims
+  key 18 stages 7 vs 00000102 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 690 draws, 134630 prims
+  key 19 stages 7 vs 00000152 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 4 a1 2 a2 1 tci1 30001 aop1 2 | stage2 010201: 256 draws, 154080 prims
+  key 20 stages 7 vs 00000104 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 75 draws, 150 prims
+  key 21 stages 7 vs 00000003 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 3 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 41 draws, 13093 prims
+Direct3DCreate8 220 -> 00a520c0 at 82399 ms from C:\UT2004DEMO\SYSTEM\D3DDRV.DLL
+D3D.GetDeviceCaps type 1 -> 0 PS ffff0101 (max 3f800000) VS fffe0000/0 streams 1 stages 4 simtex 4
+  maxtex 2048x2048 vol 0 aspect 0 texcaps 00034805 filter 0303033f cube 0303033f addr 00000007
+  caps2 00080000 dev 0008a650 pmisc 00000070 raster 00000190 blend 0000033f/0000033f stencil 00000000 fvf 00000004 texop 0000104f vp 00000000 prim 65535 idx 65535
+  caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000070
+  caps[09] 00000190 000000ff 0000033f 0000033f 000000ff 00084208 00034805 0303033f 0303033f
+  caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+  caps[27] 00000001 501502f9 c5fff800 c5fff800 45fff800 45fff800 00000000 00000000 00000004
+  caps[36] 0000104f 00000004 00000004 00000000 00000000 00000000 00000000 00000000 3f800000
+  caps[45] 0000ffff 0000ffff 00000001 000000ff fffe0000 00000000 ffff0101 3f800000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 827611204 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 861165636 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 894720068 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 21 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 23 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 1 fmt 22 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 77 -> 00000000
+CheckDepthStencilMatch type 1 adfmt 22 rt 22 ds 77 -> 00000000
+CreateDevice 1 type 1 flags 22 800x600 bbfmt 22 ds 77/1 -> 00000000
+GetAvailableTextureMem -> 26214400 (25600 KiB)
+CreateTexture 512x512 levels 2 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateTexture 128x128 levels 8 usage 0 fmt 21 pool 1 -> 00000000
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 00000003
+  declaration 6 dwords
+    000: 20000000 40020000 40020003 40010007 40010008 ffffffff
+Skip experiment: draws with vs 00000000 skipped
+CreateTexture 512x512 levels 2 usage 0 fmt 827611204 pool 1 -> 00000000
+  (repeated 3 more)
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 00000005
+  declaration 8 dwords
+    000: 20000000 40020000 40020003 20000001 40040006 20000002 40010007 ffffffff
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 00000007
+  declaration 6 dwords
+    000: 20000000 40020000 40040005 40010007 40010008 ffffffff
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 00000009
+  declaration 10 dwords
+    000: 20000000 40020000 40020003 20000001 40040006 20000002 40040005 20000003
+    008: 40010007 ffffffff
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 0000000b
+  declaration 5 dwords
+    000: 20000000 40020000 40020003 40010007 ffffffff
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 0000000d
+  declaration 6 dwords
+    000: 20000000 40020000 40020003 40040005 40010007 ffffffff
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 0000000f
+  declaration 5 dwords
+    000: 20000000 40020000 40040005 40010007 ffffffff
+CreateVertexShader ver 00000000 tokens 0 usage 10 -> 00000000 handle 00000011
+  declaration 18 dwords
+    000: 20000000 40020000 40020003 20000001 40040006 20000002 40010007 20000003
+    008: 40010008 20000004 40010009 20000005 4001000a 20000006 4001000b 20000007
+    016: 4001000c ffffffff
+GetAvailableTextureMem -> 25165824 (24576 KiB)
+CreateTexture 512x512 levels 10 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateTexture 256x256 levels 9 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateTexture 512x512 levels 10 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateTexture 256x256 levels 9 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateTexture 256x256 levels 9 usage 0 fmt 861165636 pool 1 -> 00000000
+CreateTexture 512x512 levels 10 usage 0 fmt 827611204 pool 1 -> 00000000
+  (repeated 2 more)
+CreateTexture 256x256 levels 9 usage 0 fmt 894720068 pool 1 -> 00000000
+  (repeated 1 more)
+CreateTexture 512x512 levels 10 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateTexture 1024x256 levels 9 usage 0 fmt 861165636 pool 1 -> 00000000
+CreateTexture 256x256 levels 9 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateTexture 256x256 levels 9 usage 0 fmt 894720068 pool 1 -> 00000000
+  (repeated 3 more)
+CreateTexture 512x512 levels 10 usage 0 fmt 827611204 pool 1 -> 00000000
+  (repeated 1 more)
+CreateTexture 256x256 levels 9 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateTexture 512x512 levels 10 usage 0 fmt 861165636 pool 1 -> 00000000
+CreateTexture 1024x1024 levels 11 usage 0 fmt 861165636 pool 1 -> 00000000
+CreateTexture 512x512 levels 10 usage 0 fmt 827611204 pool 1 -> 00000000
+  (repeated 3 more)
+CreateTexture 128x128 levels 8 usage 0 fmt 861165636 pool 1 -> 00000000
+CreateTexture 128x128 levels 8 usage 0 fmt 21 pool 1 -> 00000000
+CreateTexture 128x128 levels 1 usage 0 fmt 21 pool 1 -> 00000000
+CreateTexture 128x128 levels 8 usage 0 fmt 861165636 pool 1 -> 00000000
+CreateTexture 128x128 levels 8 usage 0 fmt 894720068 pool 1 -> 00000000
+  (repeated 4 more)
+CreateTexture 128x128 levels 8 usage 0 fmt 827611204 pool 1 -> 00000000
+CreateTexture 32x32 levels 6 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateTexture 64x64 levels 7 usage 0 fmt 894720068 pool 1 -> 00000000
+CreateTexture 128x128 levels 8 usage 0 fmt 894720068 pool 1 -> 00000000
+  (repeated 4 more)
+CreateCubeTexture 128 levels 8 usage 0 fmt 894720068 pool 1 -> 8876086c
