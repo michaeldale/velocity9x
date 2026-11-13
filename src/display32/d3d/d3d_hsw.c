@@ -183,7 +183,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     /* DXT1/3/5 as BC1-3, placed in block trees (v9x_d3d_hsw_tree). */
     1ul,            /* dxt_textures */
     /* 2 C Ct, a general combine (V9X_HSW_PS_OP_MODULATE2X). */
-    1ul             /* modulate2x */
+    V9X_D3D_MODULATE2X_ONE | V9X_D3D_MODULATE2X_TWO /* modulate2x */
 };
 
 /*
@@ -217,7 +217,8 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
     1ul,            /* texture_stages: the difference */
     1ul,            /* guard_band_ddi6: measured on W9QI75E0, boot 12 */
     1ul,            /* dxt_textures */
-    1ul             /* modulate2x: the same kernels */
+    /* modulate2x: the same kernels */
+    V9X_D3D_MODULATE2X_ONE | V9X_D3D_MODULATE2X_TWO
 };
 
 /* One texture unit as the sampler reads it. */

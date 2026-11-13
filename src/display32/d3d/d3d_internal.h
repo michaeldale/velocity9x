@@ -356,6 +356,10 @@ typedef struct v9x_d3d_texture {
  * these numbers and nothing else, which is why they are a struct and not four
  * more function pointers.
  */
+/* V9X_D3D_ENGINE_LIMITS modulate2x bits. */
+#define V9X_D3D_MODULATE2X_ONE 1ul
+#define V9X_D3D_MODULATE2X_TWO 2ul
+
 typedef struct v9x_d3d_engine_limits {
     /* The 16 bpp framebuffer depth every engine renders to; a 32 bpp one
      * as well when target_pitch_max_xrgb8888 below is nonzero. */
@@ -522,12 +526,14 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD dxt_textures;
     /*
-     * Nonzero when the engine draws D3DTOP_MODULATE2X of the texel and the
-     * input exactly (V9X_R3D_COLOROP_MODULATE2X), on one stage or either of
-     * two. Without it a doubled stage 1 is refused and stage 0 drawn alone,
-     * and a doubled stage 0 is drawn as MODULATE, as before. UT2004 lights
-     * most of its world so (the 4570, boot 236). Appended 2026-11-13; an
-     * initialiser that stops short leaves it zero.
+     * Where the engine draws D3DTOP_MODULATE2X of the texel and the input
+     * exactly (V9X_R3D_COLOROP_MODULATE2X): V9X_D3D_MODULATE2X_ONE on a
+     * one-stage draw, V9X_D3D_MODULATE2X_TWO on either unit of a two-unit
+     * draw. Without TWO a doubled stage 1 is refused and stage 0 drawn
+     * alone; without ONE a doubled stage 0 goes to the shader path where
+     * the engine has one (v9x_d3d_ps_fixed), else is drawn as MODULATE.
+     * UT2004 lights most of its world so (the 4570, boot 236). Appended
+     * 2026-11-13; an initialiser that stops short leaves it zero.
      */
     DWORD modulate2x;
     /*

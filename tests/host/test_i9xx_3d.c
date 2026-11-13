@@ -3205,6 +3205,9 @@ static v9x_u32 v9x_test_find_packet(const v9x_u32 *stream, v9x_u32 count,
 /* Direct3D's ADD is the render interface's COLOROP 5 (r3d.h). */
 typedef char v9x_assert_i9xx_combine_add_is_5[
     V9X_I9XX_COMBINE_ADD == 5ul ? 1 : -1];
+/* And its MODULATE2X COLOROP 6. */
+typedef char v9x_assert_i9xx_combine_modulate2x_is_6[
+    V9X_I9XX_COMBINE_MODULATE2X == 6ul ? 1 : -1];
 
 static void test_two_unit_stream(void)
 {
@@ -3316,7 +3319,51 @@ static void test_two_unit_stream(void)
     CHECK(program[22] == (0x01009ca0ul | V9X_I9XX_FS_A0_SATURATE) &&
           program[23] == 0x01230001ul);
 
-    ops[0].colour_op = 6ul;
+    /* Direct3D's MODULATE2X (COLOROP 6, r3d.h): UT2004's lightmap, a base
+     * replaced and a lightmap doubled over it (the 4570, boot 236, the
+     * d3d8 proxy). Unit 1 is two instructions: mul R2.xyz, R2, R1, then
+     * add_sat R2.xyz, R2, R2, the product doubled and clamped as D3D
+     * clamps a stage. One instruction more than ADD's program. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_REPLACE;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_REPLACE;
+    ops[1].colour_op = V9X_I9XX_COMBINE_MODULATE2X;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_KEEP;
+    CHECK(v9x_i9xx_two_unit_program_extent(ops, 0ul) == 37ul);
+    CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
+                                          &produced) == V9X_STATUS_OK);
+    CHECK(produced == 37ul);
+    CHECK(program[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 35ul));
+    CHECK(program[28] == 0x03009c08ul && program[29] == 0x01230101ul);
+    CHECK(program[31] == (0x01009c08ul | V9X_I9XX_FS_A0_SATURATE) &&
+          program[32] == 0x01230201ul && program[33] == 0x23000000ul);
+    /* mov oC, R2 last */
+    CHECK(program[34] == 0x02203c08ul && program[35] == 0x01230000ul);
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, 1ul, 8ul,
+                                     &limits, &unit1);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) == V9X_I9XX_P5_OK);
+    /* On unit 0 it doubles the texel times the diffuse colour, T8. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_MODULATE2X;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_MODULATE;
+    CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
+                                          &produced) == V9X_STATUS_OK);
+    CHECK(program[22] == 0x03009ca0ul && program[23] == 0x01230001ul);
+    CHECK(program[25] == (0x01009c08ul | V9X_I9XX_FS_A0_SATURATE) &&
+          program[26] == 0x01230201ul);
+    /* Every pairing with it decodes, fog on and off. */
+    for (i = 0ul; i < 36ul; ++i) {
+        ops[0].colour_op = 1ul + (i % 6ul);
+        ops[0].alpha_op = (i / 6ul) % 3ul;
+        ops[1].colour_op = 1ul + (i / 6ul);
+        ops[1].alpha_op = i % 3ul;
+        count = v9x_test_two_unit_stream(stream, 2304ul, ops, i & 1ul, 3ul,
+                                         &limits, &unit1);
+        CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits,
+                                              &unit1, &index) ==
+              V9X_I9XX_P5_OK);
+    }
+
+    ops[0].colour_op = 7ul;
     CHECK(v9x_i9xx_two_unit_program_extent(ops, 0ul) == 0ul);
     CHECK(v9x_i9xx_build_two_unit_program(ops, 0ul, program, 96ul,
                                           &produced) != V9X_STATUS_OK);

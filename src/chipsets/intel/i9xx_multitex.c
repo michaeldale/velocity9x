@@ -102,7 +102,7 @@ static v9x_u16 v9x_i9xx_mt_known(const struct v9x_i9xx_combine *units)
     }
     for (unit = 0ul; unit < V9X_I9XX_TEXTURE_UNITS_MAX; ++unit) {
         if (units[unit].colour_op < V9X_I9XX_COMBINE_REPLACE ||
-            units[unit].colour_op > V9X_I9XX_COMBINE_ADD ||
+            units[unit].colour_op > V9X_I9XX_COMBINE_MODULATE2X ||
             units[unit].alpha_op > V9X_I9XX_ALPHA_MODULATE) {
             return V9X_FALSE;
         }
@@ -113,7 +113,8 @@ static v9x_u16 v9x_i9xx_mt_known(const struct v9x_i9xx_combine *units)
 /* Instructions (three dwords each) one unit's colour combine takes. */
 static v9x_u32 v9x_i9xx_mt_colour_steps(v9x_u32 op)
 {
-    return (op == V9X_I9XX_COMBINE_DECAL || op == V9X_I9XX_COMBINE_BLEND)
+    return (op == V9X_I9XX_COMBINE_DECAL || op == V9X_I9XX_COMBINE_BLEND ||
+            op == V9X_I9XX_COMBINE_MODULATE2X)
                ? 2ul : 1ul;
 }
 
@@ -190,6 +191,22 @@ static v9x_u32 v9x_i9xx_mt_unit(v9x_u32 *stream, v9x_u32 unit,
                                 prev_type, prev_nr,
                                 V9X_I9XX_FS_A1_SWIZZLE_XYZW,
                                 r, unit, 0ul, 0ul, 0ul, 2ul);
+        break;
+    case V9X_I9XX_COMBINE_MODULATE2X:
+        /* mul R2.xyz, Cp, Rt; add_sat R2.xyz, R2, R2: the product
+         * unclamped, then doubled and clamped, so a product above one
+         * half clamps at one as D3D's stage does. */
+        at += v9x_i9xx_mt_arith(stream + at, V9X_I9XX_FS_A0_MUL, r,
+                                V9X_I9XX_MT_COLOR, V9X_I9XX_FS_CHANNEL_XYZ,
+                                prev_type, prev_nr,
+                                V9X_I9XX_FS_A1_SWIZZLE_XYZW,
+                                r, unit, 0ul, 0ul, 0ul, 2ul);
+        at += v9x_i9xx_mt_arith(stream + at,
+                                V9X_I9XX_FS_A0_ADD | V9X_I9XX_FS_A0_SATURATE,
+                                r, V9X_I9XX_MT_COLOR, V9X_I9XX_FS_CHANNEL_XYZ,
+                                r, V9X_I9XX_MT_COLOR,
+                                V9X_I9XX_FS_A1_SWIZZLE_XYZW,
+                                r, V9X_I9XX_MT_COLOR, 0ul, 0ul, 0ul, 2ul);
         break;
     case V9X_I9XX_COMBINE_DECAL:
         /* add R3, Rt, -Cp; mad R2.xyz, Rt.wwww, R3, Cp. All four channels

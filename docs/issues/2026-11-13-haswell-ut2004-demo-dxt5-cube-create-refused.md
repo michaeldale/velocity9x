@@ -371,6 +371,95 @@ after, hash-checked. One grab run under his settings (boot 243,
 `frames-boot243-16bit.png`): 38.8 fps, 0 refused, no holes in the eight
 frames.
 
+## The GMA 950 netbook, boot 328
+
+The same demo on W9QI2BE2 (HP Mini 110, Atom N280, 945GSE), released
+0.49.0's DRV and VxD with this HAL alone (SHA-256 `EC4723B0...`, the
+code of `008436c8`; no shared-ABI, DRV or mini-VDD change since 0.49.0),
+by WININIT rename and `reset`. Installed with its defaults (Michael
+accepted the EULA in chat), `UT2004.ini` changed only to 640x480 in
+both client sections, since this video BIOS has no 800x600 mode. The
+same botmatch, started 4.6 minutes after the reset:
+
+```
+1.869585 / 4.258847 / 33.482544 fps -- Score = 4.276170   rand[11503]
+```
+
+640x480, 32-bit back buffer, D24X8. It ran to its end and exited
+cleanly (`appRequestExit(0)`) after about 10 minutes of wall time. V9XTRACE after it
+(`netbook-V9XSNA7-boot328.INI`): `BatchesEngineRefused` 0,
+`I9xxDrawsRefused` 0, `EngineIdleTimeouts` 0, `Dp2Undrawn` 0,
+`Dp2Malformed` 0; 74,306 DP2 calls, 65,395,277 triangles (the HD 4600's
+run: 63,364 and 65,451,861); `I9xxGuardCut` 243,074 (Gen3 cuts both
+units, so the HD 4600's floor-hole defect does not apply);
+`MipTreeDeclined` 26,730; `D3dTextureRefusedBounds` 24.
+
+What the counters say is not yet right on Gen3:
+
+- No DXT: Gen3's limits stop before `dxt_textures`, so DDI 8 offers
+  none and UT2004 ran on uncompressed textures.
+- No MODULATE2X: `Dp2Stage0Approximated` 273,598 and `TwoUnitBatches`
+  2,508, as on the HD 4600 before boot 238. Vertex lighting at half and
+  lightmaps dropped; `netbook-frame-boot328.png`, one frame the agent's
+  screenshot caught mid-run, is evenly lit.
+- The cube-map shader route did not run: `Ps11Fogged` 0, where the HD
+  4600 counted 12,014 fogged shader triangles in the same botmatch.
+  Gen3 claims cubes and refused nothing, so its cube draws went another
+  way, probably sampled as a 2D texture. Not measured.
+
+The 4.3 fps is one run on an Atom whose runtime does the transform and
+lighting in software; nothing here says where the time goes.
+
+### Gen3 MODULATE2X, boots 329 and 330
+
+Two parts (uncommitted at the time):
+
+- **Two-unit draws:** `V9X_I9XX_COMBINE_MODULATE2X` (6, the render
+  interface's COLOROP 6) in `i9xx_multitex.c`: `mul R2.xyz, Cp, Rt;
+  add_sat R2.xyz, R2, R2`. The two-unit decoder licenses it unchanged.
+  Host tests in `test_two_unit_stream` (written first, seen to fail):
+  the encodings on either unit, and all 36 pairings decode with and
+  without fog.
+- **One stage:** Gen3's one-unit programs are linked into I9XXCODE,
+  which has no room left, so a doubled stage 0 drawn alone goes to the
+  shader path as `v9x_d3d_ps_fixed`'s program
+  (`v9x_d3d_context_stage0_shader2x`). `modulate2x` is now two bits:
+  `V9X_D3D_MODULATE2X_ONE` and `_TWO`; Haswell and Ivy Bridge set both,
+  Gen3 `_TWO` only.
+
+`build-host.ps1` and `run-checks.ps1` passed. HAL only by WININIT
+rename over 0.49.0's DRV and VxD. Boot 329 runs both parts (SHA-256
+`EB420E77...`). Boot 330 runs a measurement HAL with the one-stage
+route switched off, so the two-unit part alone (SHA-256
+`0C859885...`). Same botmatch, 640x480x32, after 180 s of uptime:
+
+| | boot 328 (before) | boot 330 (two-unit only) | boot 329 (both) |
+|---|---|---|---|
+| min / avg / max fps | 1.87 / 4.26 / 33.5 | 1.85 / 4.35 / 33.2 | 1.29 / 2.74 / 21.2 |
+| `TwoUnitBatches` | 2,508 | 68,739 | 68,739 |
+| `Dp2Stage0Approximated` | 273,598 | 273,598 | 124,332 |
+| `Ps11Fogged` | 0 | 0 | 921,624 |
+| `BatchesEngineRefused` | 0 | 19,913 | 19,913 |
+| `I9xxDrawsRefused` | 0 | 18 | 20 |
+
+Readings:
+
+- The two-unit part costs nothing measurable and draws the lightmaps:
+  68,739 two-unit batches where 2,508 were. `netbook-frame-boot329.png`
+  shows shading where boot 328's frame was evenly lit.
+- The one-stage shader route costs 37 % of the frame rate on this
+  Atom, and takes only about half of the doubled stages (124,332 still
+  approximated, cause not looked at).
+- The 19,913 refused batches come with the two-unit part, not the
+  shader route: the same count with the route off. They are two-unit
+  pairs `v9x_d3d_i9xx_accepts` rejects - before, the same pairs were
+  refused by the core and drawn as stage 0 alone. Which test rejects
+  them, and what a refused batch draws on Gen3 now, is not measured.
+
+Michael ran the game on the netbook and judged it too slow to play;
+the features are kept. The netbook is left on the boot 330 measurement
+HAL.
+
 ## Runs that end at 30 s
 
 Two runs (boots 237 and 238, the first after each reset) ended after
@@ -398,7 +487,12 @@ and `V9XSNA7-boot235.INI` (V9XTRACE after the run). From boot 236:
 `V9XSNA7-boot238-run7.INI` (the full run, cumulative over the boot),
 `frames-boot238.png` and `lighting-before-after.png`. Boot 240:
 `caps2-at-draw-boot240.txt`. Boot 241: `benchmark-boot241.log`,
-`V9XSNA7-boot241.INI` and `frames-boot241.png`. Boot 243:
+`V9XSNA7-boot241.INI` and `frames-boot241.png`. The netbook: boot 328
+`netbook-benchmark-boot328.log`, `netbook-V9XSNA7-boot328.INI`,
+`netbook-UT2004-boot328.log`, `netbook-frame-boot328.png`; boot 329
+`netbook-benchmark-boot329.log`, `netbook-V9XSNA7-boot329.INI`,
+`netbook-frame-boot329.png`; boot 330 `netbook-benchmark-boot330.log`,
+`netbook-V9XSNA7-boot330.INI`. Boot 243:
 `benchmark-boot243.log`, `V9XSNA7-boot243.INI` (after the grab run),
 `floor-holes-before-after-0-3.png`, `floor-holes-before-after-4-7.png`
 and `frames-boot243-16bit.png`.

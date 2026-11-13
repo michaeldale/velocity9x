@@ -193,7 +193,15 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * on the CPU again. What they send is what they sent; v9x_d3d_i9xx_draw
      * cuts past 1,024 pixels as the core cut past the target.
      */
-    1ul                         /* guard_band_ddi6        */
+    1ul,                        /* guard_band_ddi6        */
+    0ul,                        /* dxt_textures           */
+    /*
+     * MODULATE2X in the two-unit program (V9X_I9XX_COMBINE_MODULATE2X).
+     * Not on one stage: the one-unit programs are linked into I9XXCODE,
+     * which has no room for more, so a doubled single stage goes to the
+     * shader path (v9x_d3d_ps_fixed).
+     */
+    V9X_D3D_MODULATE2X_TWO      /* modulate2x             */
 };
 
 /*
@@ -3599,6 +3607,7 @@ typedef char v9x_assert_i9xx_combine_numbers[
      V9X_R3D_ABI_COLOROP_DECALALPHA == V9X_I9XX_COMBINE_DECAL &&
      V9X_R3D_ABI_COLOROP_BLEND == V9X_I9XX_COMBINE_BLEND &&
      V9X_R3D_COLOROP_ADD == V9X_I9XX_COMBINE_ADD &&
+     V9X_R3D_COLOROP_MODULATE2X == V9X_I9XX_COMBINE_MODULATE2X &&
      V9X_R3D_ABI_ALPHAOP_FRAGMENT == V9X_I9XX_ALPHA_KEEP &&
      V9X_R3D_ABI_ALPHAOP_REPLACE == V9X_I9XX_ALPHA_REPLACE &&
      V9X_R3D_ABI_ALPHAOP_MODULATE == V9X_I9XX_ALPHA_MODULATE) ? 1 : -1];
@@ -3631,7 +3640,7 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
                 !v9x_d3d_i9xx_texture_bindable(
                     (const V9X_DD_SURFACE_LCL *)unit[k]->object) ||
                 unit[k]->color_op < V9X_I9XX_COMBINE_REPLACE ||
-                unit[k]->color_op > V9X_I9XX_COMBINE_ADD ||
+                unit[k]->color_op > V9X_I9XX_COMBINE_MODULATE2X ||
                 unit[k]->alpha_op > V9X_I9XX_ALPHA_MODULATE ||
                 (unit[k]->address != V9X_R3D_ADDRESS_WRAP &&
                  unit[k]->address != V9X_R3D_ADDRESS_MIRROR &&
