@@ -695,6 +695,9 @@ int v9x_r6_cp_drain(int wait);
 int v9x_r6_cp_vertex_space(DWORD bytes, volatile DWORD **linear, DWORD *gpu);
 int v9x_r6_cp_addresses(DWORD *heap_gpu, DWORD *pipe_config);
 DWORD v9x_r6_cp_shader_gpu(DWORD which);
+/* V9X_R6_CHIP_RV610 for the engine the RV610 row stamps, else
+ * V9X_R6_CHIP_RV630 (r6_3d.h). */
+v9x_u32 v9x_r6_cp_chip(void);
 /* engines/eng_r6.c: waits for DMA work queued since the engine was last
  * idle, so a 3D batch never reads what a fill or copy has yet to write.
  * Non-zero when idle, or when the DMA engine is not running. */

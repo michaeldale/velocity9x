@@ -209,6 +209,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-23 Rage 128: the CCE's ring is a bus-master address, not video memory](2026-10-23-rage128-cce-ring-not-in-vram.md)
 - [2026-10-23 Rage 128: a CCE ring in the AGP aperture fetches and idles, but not our packets](2026-10-23-rage128-cce-ring-agp-fetches-but-wrong-data.md)
 - [2026-10-23 0.28.0 release checks: Rage 128 games, and the GMA 950 against 0.24.0's set](2026-10-23-0.28.0-release-checks-a8u4i5-netbook.md)
+- [2026-11-15 The Radeon HD 2400 Pro (RV610) joins the ati family: DirectDraw on its DMA engine, Direct3D and OpenGL through its CP, every probe passing](2026-11-15-rv610-hd2400pro-bring-up.md)
 
 ## Matrox
 
@@ -336,6 +337,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-12 Intel Gen3 texture pool, Phase 2: 32 MiB of RAM mapped through the GTT, a pattern through the aperture lands in the right pages, and a VBIOS mode set leaves the PTEs alone](2026-11-12-intel-gen3-texture-pool-phase2.md)
 - [2026-11-12 Intel Gen3 texture pool, Phase 3: the driver maps 32 MiB of system RAM at boot, publishes it as a texture-only heap, and the GMA 950 samples textures from it exactly; every netbook probe passes and 3DMark 2001 SE completes](2026-11-12-intel-gen3-texture-pool-phase3.md)
 - [2026-11-12 Intel Gen3 texture pool: Half-Life, Quake 2 and Serious Sam run on the netbook; Serious Sam holds 488 hardware textures with no failed creates or evictions](2026-11-12-intel-gen3-texture-pool-games.md)
+- [2026-11-14 The HD 4600 renders at 400 MHz under load: the BIOS's request stands because nothing programs RPS, and RP0 is 1150](2026-11-14-haswell-render-clock-400mhz.md)
+- [2026-11-14 The HD 4600 asks for RP0 at engine open: 1150 MHz is granted at once and held under load](2026-11-14-haswell-render-clock-rp0.md)
 
 ## SiS
 

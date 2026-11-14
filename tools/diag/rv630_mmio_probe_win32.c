@@ -50,6 +50,7 @@
 #define V9X_PCI_DEVICES      32ul
 #define V9X_VENDOR_ATI       0x1002ul
 #define V9X_DEVICE_RV630     0x9588ul
+#define V9X_DEVICE_RV610     0x94c3ul /* HD 2400 Pro, read for its survey */
 
 #define V9X_ST_ATI             0x00000001ul
 #define V9X_ST_BASE_INVALID    0x00000002ul
@@ -486,7 +487,8 @@ static DWORD v9x_find_device(void)
             config = V9X_PCI_ENABLE | (bus << 16) | (slot << 11);
             id = v9x_config_read(config, 0ul);
             if ((id & 0xfffful) == V9X_VENDOR_ATI &&
-                (id >> 16) == V9X_DEVICE_RV630) {
+                ((id >> 16) == V9X_DEVICE_RV630 ||
+                 (id >> 16) == V9X_DEVICE_RV610)) {
                 return config;
             }
         }

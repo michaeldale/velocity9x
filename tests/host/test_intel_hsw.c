@@ -352,6 +352,57 @@ static void test_protected_bytes(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+static void test_rps_request(void)
+{
+    v9x_u32 request;
+
+    /* The i5-4570, 2026-11-14: RP_STATE_CAP 00040717 (RP0 1150, RP1 350,
+     * RPn 200 MHz); RP0 is asked for, in RPNSWREQ's 31:24. */
+    CHECK(v9x_intel_hsw_rps_request(0x00040717ul, &request) ==
+          V9X_STATUS_OK);
+    CHECK(request == 0x17000000ul);
+
+    /* Bits above RPn are not read. */
+    CHECK(v9x_intel_hsw_rps_request(0xff040717ul, &request) ==
+          V9X_STATUS_OK);
+    CHECK(request == 0x17000000ul);
+
+    /* RP0 equal to RPn is a part with one clock: still asked for. */
+    CHECK(v9x_intel_hsw_rps_request(0x00040404ul, &request) ==
+          V9X_STATUS_OK);
+    CHECK(request == 0x04000000ul);
+
+    /* A GT asleep or gone reads 0 or all ones: nothing asked for. */
+    CHECK(v9x_intel_hsw_rps_request(0ul, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(request == 0ul);
+    CHECK(v9x_intel_hsw_rps_request(0xfffffffful, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(request == 0ul);
+
+    /* Out of order, a zero RPn, or an RP0 RPSTAT1's 7-bit field cannot
+     * report: not understood. */
+    CHECK(v9x_intel_hsw_rps_request(0x00170704ul, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_intel_hsw_rps_request(0x00041707ul, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_intel_hsw_rps_request(0x00000717ul, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_intel_hsw_rps_request(0x00040780ul, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(request == 0ul);
+
+    CHECK(v9x_intel_hsw_rps_request(0x00040717ul, 0) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* RPSTAT1 as read on the i5-4570: BIOS 400 MHz, then 1150 granted. */
+    CHECK(v9x_intel_hsw_rps_actual_mhz(0x00040400ul) == 400ul);
+    CHECK(v9x_intel_hsw_rps_actual_mhz(0x00048b88ul) == 1150ul);
+    CHECK(v9x_intel_hsw_rps_actual_mhz(0x00040b88ul) == 1150ul);
+    CHECK(v9x_intel_hsw_rps_request_mhz(0x17000000ul) == 1150ul);
+    CHECK(v9x_intel_hsw_rps_request_mhz(0x08000000ul) == 400ul);
+}
+
 unsigned int v9x_run_intel_hsw_tests(void)
 {
     failures = 0u;
@@ -361,5 +412,6 @@ unsigned int v9x_run_intel_hsw_tests(void)
     test_pte();
     test_heap_plan();
     test_protected_bytes();
+    test_rps_request();
     return failures;
 }

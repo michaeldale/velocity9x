@@ -298,3 +298,51 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
     *protected_bytes = stolen_top - base;
     return V9X_STATUS_OK;
 }
+
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 rp_state_cap,
+                                                  v9x_u32 *request)
+{
+    v9x_u32 rp0;
+    v9x_u32 rp1;
+    v9x_u32 rpn;
+
+    if (request == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *request = 0ul;
+
+    rp0 = rp_state_cap & 0xfful;
+    rp1 = (rp_state_cap >> 8) & 0xfful;
+    rpn = (rp_state_cap >> 16) & 0xfful;
+    if (rpn == 0ul || rp1 < rpn || rp0 < rp1 ||
+        rp0 > V9X_INTEL_HSW_RPS_CAGF_MASK) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    *request = rp0 << V9X_INTEL_HSW_RPS_REQ_SHIFT;
+    return V9X_STATUS_OK;
+}
+
+/*
+ * Units to MHz in 16 bits: at most 255 x 50, and a 32-bit multiply in the
+ * 16-bit driver is a near call to __U4M in _TEXT, which HSWCODE cannot
+ * reach (wlink E2052; include\velocity9x\leaf16.h).
+ */
+static v9x_u32 v9x_intel_hsw_rps_mhz(v9x_u32 units)
+{
+    unsigned short small = (unsigned short)(units & 0xfful);
+
+    return (v9x_u32)(unsigned short)(small *
+                                     (unsigned short)V9X_INTEL_HSW_RPS_MHZ_UNIT);
+}
+
+v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_actual_mhz(v9x_u32 rpstat1)
+{
+    return v9x_intel_hsw_rps_mhz((rpstat1 >> V9X_INTEL_HSW_RPS_CAGF_SHIFT) &
+                                 V9X_INTEL_HSW_RPS_CAGF_MASK);
+}
+
+v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_request_mhz(v9x_u32 rpnswreq)
+{
+    return v9x_intel_hsw_rps_mhz((rpnswreq >> V9X_INTEL_HSW_RPS_REQ_SHIFT) &
+                                 V9X_INTEL_HSW_RPS_REQ_MASK);
+}

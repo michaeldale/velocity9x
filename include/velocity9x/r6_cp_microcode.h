@@ -17,5 +17,7 @@
 
 extern const v9x_u32 v9x_r6_rv630_pfp_microcode[V9X_R6_PFP_MICROCODE_DWORDS];
 extern const v9x_u32 v9x_r6_rv630_me_microcode[V9X_R6_ME_MICROCODE_DWORDS];
+/* The HD 2400 Pro's (RV610) own ME; its PFP is the RV630's. */
+extern const v9x_u32 v9x_r6_rv610_me_microcode[V9X_R6_ME_MICROCODE_DWORDS];
 
 #endif

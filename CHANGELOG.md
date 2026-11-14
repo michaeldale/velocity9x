@@ -4,8 +4,38 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.51.0 - not yet released
+## 0.52.0 - not yet released
 
+- **`ati` package: the ATI Radeon HD 2400 Pro (RV610, `1002:94C3`).**
+  The HD 2600 XT's driver, with the RV610's own command-processor
+  microcode, one pipe, four hardware contexts and no vertex cache: Direct3D
+  and OpenGL through its shader core, DirectDraw fills, copies and page
+  flips on its DMA engine. On one Sapphire card through remote help every
+  release probe passes and 3DMark 2000 completes (2989). Depth testing is
+  wrong after the driver first starts the command processor on a boot,
+  until the next restart, as on the HD 2600 XT
+  ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)). The RV620
+  and the Radeon HD 3200/4200 IGPs, which Linux treats alike, are not
+  claimed
+  ([record](docs/decisions/2026-11-15-rv610-hd2400pro-bring-up.md)).
+
+## 0.51.0 - 2026-11-14
+
+- **`intel-gma` package, Haswell (HD 4600 class): the graphics core now
+  runs at its full clock.** Nothing set the core's clock, so it stayed at
+  the 400 MHz the BIOS leaves, idle or busy, though the HD 4600 in our
+  test machine can run at 1150 MHz. The driver now asks for the chip's
+  maximum when it starts the engine, and the chip grants it at once and
+  holds it under load. On that machine 3DMark 2001 SE scored 3159 at
+  1150 MHz against 2357 at 400, on the same boot. UT2004's botmatch at
+  16-bit with low textures ran 46.8 and 46.9 fps at the two clocks: the
+  core's speed does not limit that game at those settings. The idle
+  desktop now runs at 1150 MHz too (the driver keeps the core awake
+  anyway), so expect more idle power and heat, which nobody measured.
+  Measured on one desktop HD 4600 only; Ivy Bridge (HD 4000) is not
+  included
+  ([measurement](docs/decisions/2026-11-14-haswell-render-clock-400mhz.md),
+  [driver](docs/decisions/2026-11-14-haswell-render-clock-rp0.md)).
 - **`intel-gma` package, HD 4600 (Haswell): environment bump mapping and
   DOT3 bump mapping in Direct3D 8 and 9 programs.** A program that sets
   a bump-map texture stage (`BUMPENVMAP`, up to three stages) or a DOT3
@@ -19,12 +49,32 @@ build identifier so exact guest-tested binaries remain traceable.
   ([issue](docs/issues/2026-11-14-haswell-3dmark2001se-dot3-renderer-fault.md)
   for a fault in the DOT3 test that turned out to be a test tool of
   ours). The GMA 900 and 950 class (Gen3), which also runs pixel
-  shaders, shares the code: on a GMA 950 netbook the Environment Bump
-  Mapping test now runs (10.1 fps), and the DOT3 test still reads "Not
-  supported by hardware", because the driver does not report specular
-  shading on that class and 3DMark does not try the test without it.
-  DirectX 7 programs are unchanged
+  shaders, shares the code: on a GMA 950 netbook both tests now run,
+  Environment Bump Mapping at 10.2 fps and DOT3 Bump Mapping at 5.8 fps,
+  in a full run that scored 988. DirectX 7 programs are unchanged
   ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
+- **`intel-gma` package, GMA 900 and 950 class (Gen3): specular
+  highlights.** The driver ignored a program's specular colour on these
+  chips and did not advertise specular shading; it now adds the colour
+  after the textures, as Direct3D defines, in every DirectX version, and
+  advertises it. 3DMark 2001 SE's DOT3 test needed that. Measured on one
+  GMA 950 netbook by a probe and by 3DMark 2001 SE; nobody has compared
+  a lit scene's picture with another card's
+  ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
+- **`intel-gma` package, GMA 900 and 950 class (Gen3): surfaces drawn
+  with two textures at once were half a pixel up and to the left** of
+  everything else in Direct3D, since two-texture drawing came to these
+  chips in 0.49.0. They now line up. Found and checked with a
+  probe; 3DMark 2000, 3DMark 2001 SE and Half-Life ran on the fix on a
+  GMA 950 netbook
+  ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
+- **`intel-gma` package, HD 4600 and Gen3: bump mapping with luminance**
+  (`BUMPENVMAPLUMINANCE`) in Direct3D 8 and 9 programs, with one texture
+  format for it on each: L6V5U5 on the HD 4600, X8L8V8U8 on the GMA 900
+  and 950 class. Each chip read the other format wrongly in our probe,
+  so that one is not offered. Checked by a probe only; no game or
+  benchmark here uses it. Ivy Bridge (HD 4000) is not included
+  ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
 - **`intel-gma` package, GMA X3100 (GM965): 32 MiB of texture memory in
   system RAM**, as the GMA 950 got in 0.49.0. The BIOS gives this chip at
   most 8 MiB, of which Direct3D could use about 4.5. The driver now maps

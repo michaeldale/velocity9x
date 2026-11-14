@@ -97,6 +97,67 @@ const struct v9x_r6_reg_update
     { V9X_R6_VC_ENHANCE, 0ul, 0ul }
 };
 
+/*
+ * The RV610's (r600.c r600_gpu_init, CHIP_RV610 branches): the RV630's
+ * table with seven values changed. SQ_MS_FIFO_SIZES is replaced, not
+ * edited: CACHE_FIFO_SIZE(0xa) | FETCH_FIFO_HIWATER(0xa) |
+ * DONE_FIFO_HIWATER(0xe0) | ALU_UPDATE_FIFO_HIWATER(0x8). SQ_CONFIG loses
+ * VC_ENABLE ("no vertex cache"), both from what was read and from the set.
+ */
+#define R6_SQ_MS_FIFO_RV610     0x08e00a0aul
+#define R6_SQ_VC_ENABLE         0x00000001ul
+#define R6_SQ_CONFIG_KEEP_RV610 (R6_SQ_CONFIG_KEEP & ~R6_SQ_VC_ENABLE)
+#define R6_SQ_CONFIG_INIT_RV610 (R6_SQ_CONFIG_INIT & ~R6_SQ_VC_ENABLE)
+/* NUM_GS_GPRS(17) | NUM_ES_GPRS(17) */
+#define R6_SQ_GPR_2_RV610       0x00110011ul
+#define R6_VGT_CACHE_TC_ONLY    0x00000001ul /* CACHE_INVALIDATION(TC_ONLY) */
+/* VGT_GS_PER_ES: max_pipes (1) * 16, + 32 for RV610/RV620/RS780/RS880. */
+#define R6_VGT_GS_PER_ES_RV610  48ul
+#define R6_TC_CNTL_RV610        0x00000100ul /* TC_L2_SIZE(8) */
+
+static const struct v9x_r6_reg_update
+    v9x_r6_rv610_gpu_init[V9X_R6_RV630_GPU_INIT_COUNT] = {
+    { V9X_R6_GRBM_CNTL, 0ul, R6_GRBM_CNTL_VALUE },
+    { V9X_R6_GB_TILING_CONFIG, 0ul, 0ul },
+    { V9X_R6_CP_QUEUE_THRESHOLDS, 0ul, R6_CP_QUEUE_VALUE },
+    { V9X_R6_CP_MEQ_THRESHOLDS, 0ul, R6_CP_MEQ_VALUE },
+    { V9X_R6_TA_CNTL_AUX, 0ul, R6_TA_CNTL_AUX_INIT },
+    { V9X_R6_SX_DEBUG_1, 0xfffffffful, R6_SX_DEBUG_1_SET },
+    { V9X_R6_DB_DEBUG, 0ul, R6_DB_DEBUG_INIT },
+    { V9X_R6_DB_WATERMARKS, 0ul, R6_DB_WATERMARKS_VALUE },
+    { V9X_R6_PA_SC_MULTI_CHIP_CNTL, 0ul, 0ul },
+    { V9X_R6_VGT_NUM_INSTANCES, 0ul, 0ul },
+    { V9X_R6_SPI_CONFIG_CNTL, 0ul, 0ul },
+    { V9X_R6_SPI_CONFIG_CNTL_1, 0ul, 0ul },
+    { V9X_R6_SQ_MS_FIFO_SIZES, 0ul, R6_SQ_MS_FIFO_RV610 },
+    { V9X_R6_SQ_CONFIG, R6_SQ_CONFIG_KEEP_RV610, R6_SQ_CONFIG_INIT_RV610 },
+    { V9X_R6_SQ_GPR_RESOURCE_MGMT_1, 0ul, R6_SQ_GPR_1_INIT },
+    { V9X_R6_SQ_GPR_RESOURCE_MGMT_2, 0ul, R6_SQ_GPR_2_RV610 },
+    { V9X_R6_SQ_THREAD_RESOURCE_MGMT, 0ul, R6_SQ_THREAD_INIT },
+    { V9X_R6_SQ_STACK_RESOURCE_MGMT_1, 0ul, R6_SQ_STACK_1_VALUE },
+    { V9X_R6_SQ_STACK_RESOURCE_MGMT_2, 0ul, R6_SQ_STACK_2_VALUE },
+    { V9X_R6_VGT_CACHE_INVALIDATION, 0ul, R6_VGT_CACHE_TC_ONLY },
+    { V9X_R6_PA_SC_AA_SAMPLE_LOCS_2S, 0ul, R6_AA_LOCS_2S },
+    { V9X_R6_PA_SC_AA_SAMPLE_LOCS_4S, 0ul, R6_AA_LOCS_4S },
+    { V9X_R6_PA_SC_AA_SAMPLE_LOCS_8S_WD0, 0ul, R6_AA_LOCS_8S_WD0 },
+    { V9X_R6_PA_SC_AA_SAMPLE_LOCS_8S_WD1, 0ul, R6_AA_LOCS_8S_WD1 },
+    { V9X_R6_VGT_ES_PER_GS, 0ul, R6_VGT_ES_PER_GS_VALUE },
+    { V9X_R6_VGT_GS_PER_ES, 0ul, R6_VGT_GS_PER_ES_RV610 },
+    { V9X_R6_VGT_GS_PER_VS, 0ul, R6_VGT_GS_PER_VS_VALUE },
+    { V9X_R6_VGT_GS_VERTEX_REUSE, 0ul, R6_VGT_GS_REUSE_VALUE },
+    { V9X_R6_PA_SC_LINE_STIPPLE_STATE, 0ul, 0ul },
+    { V9X_R6_TC_CNTL, 0ul, R6_TC_CNTL_RV610 },
+    { V9X_R6_PA_CL_ENHANCE, 0ul, R6_PA_CL_ENHANCE_VALUE },
+    { V9X_R6_PA_SC_ENHANCE, 0ul, R6_PA_SC_ENHANCE_VALUE },
+    { V9X_R6_VC_ENHANCE, 0ul, 0ul }
+};
+
+const struct v9x_r6_reg_update *v9x_r6_3d_gpu_init_table(v9x_u32 chip)
+{
+    return chip == V9X_R6_CHIP_RV610 ? v9x_r6_rv610_gpu_init :
+                                       v9x_r6_rv630_gpu_init;
+}
+
 /* RAMCFG's fields (r600d.h) and GB_TILING_CONFIG's (DCP_TILING_CONFIG's
  * field macros, which r600_gpu_init uses for both). */
 #define R6_RAMCFG_BANKS_MASK    0x00000001ul /* NOOFBANK */
@@ -125,6 +186,16 @@ v9x_u32 v9x_r6_rv630_tiling_config(v9x_u32 ramcfg)
             R6_TILING_GROUP_SHIFT) |
            (rows << R6_TILING_ROW_SHIFT) | R6_TILING_BANK_SWAPS_1 |
            (rows << R6_TILING_SPLIT_SHIFT);
+}
+
+v9x_u32 v9x_r6_3d_tiling_config(v9x_u32 chip, v9x_u32 ramcfg)
+{
+    /* One tile pipe is PIPE_TILING(0): the same word without the RV630's
+     * two-pipe field. */
+    if (chip == V9X_R6_CHIP_RV610) {
+        return v9x_r6_rv630_tiling_config(ramcfg) & ~R6_TILING_PIPE_2;
+    }
+    return v9x_r6_rv630_tiling_config(ramcfg);
 }
 
 v9x_u32 v9x_r6_pm4_header(v9x_u32 op, v9x_u32 body_dwords)
@@ -240,30 +311,35 @@ void v9x_r6_pm4_pad(struct v9x_r6_pm4 *stream)
  * max_hw_contexts - 1, PACKET3_ME_INITIALIZE_DEVICE_ID(1), 0, 0. */
 #define R6_ME_INIT_WORD2        0x3ul
 #define R6_RV630_HW_CONTEXTS    8ul
+#define R6_RV610_HW_CONTEXTS    4ul
 #define R6_ME_INIT_DEVICE_ID    0x00010000ul
 
-void v9x_r6_3d_me_initialize(struct v9x_r6_pm4 *stream)
+void v9x_r6_3d_me_initialize(struct v9x_r6_pm4 *stream, v9x_u32 chip)
 {
     v9x_r6_pm4_put(stream,
                    v9x_r6_pm4_header(V9X_R6_P3_ME_INITIALIZE,
                                      V9X_R6_ME_INITIALIZE_DWORDS - 1ul));
     v9x_r6_pm4_put(stream, 0x1ul);
     v9x_r6_pm4_put(stream, R6_ME_INIT_WORD2);
-    v9x_r6_pm4_put(stream, R6_RV630_HW_CONTEXTS - 1ul);
+    v9x_r6_pm4_put(stream, (chip == V9X_R6_CHIP_RV610 ?
+                                R6_RV610_HW_CONTEXTS :
+                                R6_RV630_HW_CONTEXTS) - 1ul);
     v9x_r6_pm4_put(stream, R6_ME_INIT_DEVICE_ID);
     v9x_r6_pm4_put(stream, 0ul);
     v9x_r6_pm4_put(stream, 0ul);
 }
 
-void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream,
+void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream, v9x_u32 chip,
                         const v9x_u32 *read_values, v9x_u32 tiling_config)
 {
+    const struct v9x_r6_reg_update *table;
     const struct v9x_r6_reg_update *update;
     v9x_u32 index;
     v9x_u32 value;
 
+    table = v9x_r6_3d_gpu_init_table(chip);
     for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
-        update = &v9x_r6_rv630_gpu_init[index];
+        update = &table[index];
         /* The CP's own queue thresholds are not written through its ring:
          * Linux writes them from r600_gpu_init, which r600_startup runs
          * with the CP halted, and the BIOS leaves both at Linux's values
@@ -377,6 +453,11 @@ void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream,
  * 40/40/32/16 stack entries. */
 #define R6_SQ_GPR_1_XF86            0x40240054ul
 #define R6_SQ_THREAD_XF86           0x04042890ul
+/* RV610 (xf86's CHIP_FAMILY_RV610 numbers, r600_sq_setup's "no VC"):
+ * SQ_CONFIG without VC_ENABLE; 136 PS, 48 VS, 4 GS, 4 ES threads. GPRs
+ * and stacks as the RV630's. */
+#define R6_SQ_CONFIG_XF86_RV610     0xe400000cul
+#define R6_SQ_THREAD_XF86_RV610     0x04043088ul
 /* GRADIENT_CREDIT(3) | TD_FIFO_CREDIT(28) */
 #define R6_TA_CNTL_AUX_XF86         0x07000003ul
 /* "0x82000000 ?" in xf86; r600_gpu_init writes 80000000h for the RV630
@@ -419,7 +500,7 @@ void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream,
 #define R6_ZERO_RUN_MAX             17u
 static const v9x_u32 v9x_r6_zeros[R6_ZERO_RUN_MAX] = { 0ul };
 
-void v9x_r6_3d_default_state(struct v9x_r6_pm4 *stream,
+void v9x_r6_3d_default_state(struct v9x_r6_pm4 *stream, v9x_u32 chip,
                              v9x_u32 cc_gc_shader_pipe_config,
                              v9x_u32 fs_gpu)
 {
@@ -463,13 +544,15 @@ void v9x_r6_3d_default_state(struct v9x_r6_pm4 *stream,
     v9x_r6_pm4_set(stream, R6_CB_COLOR0_BASE, v9x_r6_zeros,
                    R6_CB_COLOR_BASES);
 
-    /* r600_sq_setup with xf86's RV630 numbers. They differ from
-     * r600_gpu_init's split (44/44/2 GPRs, 18 GS and ES; 79/78/4/31
+    /* r600_sq_setup with xf86's numbers for the chip. They differ from
+     * r600_gpu_init's split (44/44/2 GPRs, 18 or 17 GS and ES; 79/78/4/31
      * threads), which this replaces as xf86 replaces the kernel's. */
-    values[0] = R6_SQ_CONFIG_XF86;
+    values[0] = chip == V9X_R6_CHIP_RV610 ? R6_SQ_CONFIG_XF86_RV610 :
+                                            R6_SQ_CONFIG_XF86;
     values[1] = R6_SQ_GPR_1_XF86;
     values[2] = 0ul;
-    values[3] = R6_SQ_THREAD_XF86;
+    values[3] = chip == V9X_R6_CHIP_RV610 ? R6_SQ_THREAD_XF86_RV610 :
+                                            R6_SQ_THREAD_XF86;
     values[4] = R6_SQ_STACK_1_VALUE;
     values[5] = R6_SQ_STACK_2_VALUE;
     v9x_r6_pm4_set(stream, V9X_R6_SQ_CONFIG, values, 6ul);
@@ -725,9 +808,12 @@ v9x_status v9x_r6_3d_solid(const struct v9x_r6_3d_solid *solid,
     v9x_r6_pm4_set(stream, R6_SQ_ALU_CONSTANT_PS_0, values, 4ul);
 
     /* r600_finish_op's r600_set_vtx_resource: the vertex cache synced over
-     * the vertices (RV630 has one), then the VS's resource 0: base, size
-     * in bytes - 1, stride 8, MEM_REQUEST_SIZE 1, a valid buffer. */
-    v9x_r6_pm4_surface_sync(stream, V9X_R6_SYNC_VC_ACTION,
+     * the vertices (the RV630 has one; the RV610 fetches them through the
+     * texture cache), then the VS's resource 0: base, size in bytes - 1,
+     * stride 8, MEM_REQUEST_SIZE 1, a valid buffer. */
+    v9x_r6_pm4_surface_sync(stream,
+                            solid->no_vertex_cache != 0ul ?
+                                V9X_R6_SYNC_TC_ACTION : V9X_R6_SYNC_VC_ACTION,
                             V9X_R6_3D_VERTEX_DWORDS * 4ul,
                             solid->vertex_gpu);
     values[0] = solid->vertex_gpu;

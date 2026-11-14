@@ -78,6 +78,10 @@ v9x_u16 v9x_d3d_i9xx_bind_map_at(
 #define V9X_D3D_I9XX_DDPF_BUMPDUDV    0x00080000ul
 #define V9X_D3D_I9XX_DDPF_D3DFORMAT   0x00200000ul
 #define V9X_D3D_I9XX_D3DFMT_V8U8      60ul
+/* With a luminance, for BUMPENVMAPLUMINANCE, by code only: L6V5U5 as
+ * MT_16BIT_BUMP_655LDVDU, X8L8V8U8 as MT_32BIT_XLVU8888. */
+#define V9X_D3D_I9XX_D3DFMT_L6V5U5    61ul
+#define V9X_D3D_I9XX_D3DFMT_X8L8V8U8  62ul
 #define V9X_D3D_I9XX_D3DFMT_Q8W8V8U8  63ul
 
 v9x_u16 v9x_d3d_i9xx_map_format(v9x_u32 flags, v9x_u32 fourcc,

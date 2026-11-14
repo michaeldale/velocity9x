@@ -83,7 +83,9 @@ v9x_u16 v9x_i9xx_map_format_known(v9x_u32 format)
     if (format == V9X_I9XX_MAPSURF_32BIT_ARGB8888 ||
         format == V9X_I9XX_MAPSURF_32BIT_XRGB8888 ||
         format == V9X_I9XX_MAPSURF_32BIT_QWVU8888 ||
-        format == V9X_I9XX_MAPSURF_16BIT_88DVDU) {
+        format == V9X_I9XX_MAPSURF_16BIT_88DVDU ||
+        format == V9X_I9XX_MAPSURF_16BIT_655LDVDU ||
+        format == V9X_I9XX_MAPSURF_32BIT_XLVU8888) {
         return V9X_TRUE;
     }
 #endif

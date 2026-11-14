@@ -447,6 +447,7 @@ static v9x_u32 v9x_d3d_r6_map(const V9X_R3D_DRAW *draw,
 {
     V9X_D3D_R6_TEXTURE texture;
     DWORD heap_gpu;
+    v9x_u32 reason;
 
     /* Every address in the batch is the heap's or the window's: without
      * them located the batch would point at the wrong memory. */
@@ -457,9 +458,16 @@ static v9x_u32 v9x_d3d_r6_map(const V9X_R3D_DRAW *draw,
     if (draw->texture.object != 0) {
         v9x_d3d_r6_resolve_texture(&draw->texture, &texture);
     }
-    return v9x_d3d_r6_map_draw(draw, &texture, heap_gpu,
-                               v9x_d3d_r6_depth_bytes(draw), state, vs_slot,
-                               ps_slot, lit);
+    reason = v9x_d3d_r6_map_draw(draw, &texture, heap_gpu,
+                                 v9x_d3d_r6_depth_bytes(draw), state, vs_slot,
+                                 ps_slot, lit);
+    /* The RV610 has no vertex cache: its vertex buffers are synced through
+     * the texture cache (r6_3d.c's build_state, xf86's
+     * r600_set_vtx_resource). */
+    if (v9x_r6_cp_chip() == V9X_R6_CHIP_RV610) {
+        state->vertex_cache = 0ul;
+    }
+    return reason;
 }
 
 static int v9x_d3d_r6_accepts(const V9X_R3D_DRAW *draw)
@@ -562,7 +570,8 @@ static int v9x_d3d_r6_draw(const V9X_R3D_DRAW *draw,
          * points it at the solid VS. */
         v9x_r6_pm4_begin(&stream, v9x_d3d_r6_stream,
                          V9X_D3D_R6_STREAM_DWORDS);
-        v9x_r6_3d_default_state(&stream, pipe_config, state.vs_gpu);
+        v9x_r6_3d_default_state(&stream, v9x_r6_cp_chip(), pipe_config,
+                                state.vs_gpu);
         if (v9x_r6_3d_build_state(&state, &stream) != V9X_STATUS_OK) {
             v9x_hal->d3d_diagnostics.draws_target_last = state.target_gpu;
             v9x_hal->d3d_diagnostics.draws_pitch_last = state.target_pitch;

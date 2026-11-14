@@ -202,7 +202,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * program is, since I9XXCODE is full. Until then a doubled single
      * stage is drawn as MODULATE, as in 0.49.0.
      */
-    V9X_D3D_MODULATE2X_TWO      /* modulate2x             */
+    V9X_D3D_MODULATE2X_TWO,     /* modulate2x             */
+    /* MT_32BIT_XLVU8888 reads as du, dv, luminance exactly (the netbook,
+     * boot 341, FfBemL8). MT_16BIT_BUMP_655LDVDU had one pixel of 984
+     * wrong by 66 in a channel there, cause not found, and is not
+     * published. */
+    V9X_D3D_BUMP_LUM_X8L8V8U8   /* bump_luminance         */
 };
 
 /*
@@ -2186,8 +2191,9 @@ static int v9x_d3d_i9xx_bind_depth_surface(const V9X_R3D_DRAW *draw,
  *
  * STILL DELIBERATELY ABSENT:
  *
- *  - No table fog, no lines, no specular, no colour key on the runtime
- *    path. (Vertex fog since 2026-10-04; the alpha test since 2026-09-25.)
+ *  - No table fog, no lines, no colour key on the runtime path. (Vertex
+ *    fog since 2026-10-04; the alpha test since 2026-09-25; specular
+ *    since 2026-11-14.)
  *  - No anisotropy.
  *
  * The distinction this function has to get right is unchanged: a capability
@@ -2293,7 +2299,14 @@ static void v9x_d3d_i9xx_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND |
         /* Fog interpolated across the triangle from its vertices, and flat
          * by the core's provoking-vertex copy, which includes specular. */
-        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD;
+        V9X_D3DPSHADECAPS_FOGFLAT | V9X_D3DPSHADECAPS_FOGGOURAUD |
+        /* The specular colour, added after the texture stages by the
+         * specular form of each program (V9X_I9XX_FOG_SPECULAR) and by
+         * the pixel-shader path's own programs; flat as fog is. Without
+         * it 3DMark 2001 SE does not try its DOT3 test (the netbook,
+         * boot 334). */
+        V9X_D3DPSHADECAPS_SPECULARFLATRGB |
+        V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB;
     /*
      * LESS alone, and that is the point of publishing it rather than leaving
      * the field zero: the runtime asks what comparisons exist, and an engine
@@ -2932,6 +2945,8 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
     DWORD *speculars = v9x_d3d_i9xx_speculars;
     /* Vertex fog: FOGENABLE, with the factor in each specular alpha. */
     DWORD fog = draw != 0 && draw->fog_enable != 0ul ? 1ul : 0ul;
+    /* Every vertex's specular dword ORed: whether any has a colour. */
+    DWORD specular_any = 0ul;
     /* DST_BUF_VARS for an XRGB8888 target or a 32-bit depth buffer (set
      * below, once the depth binding is known); zero keeps the 565, 16-bit
      * depth block as built. */
@@ -3174,9 +3189,8 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
         colors[vertex] = vertices[vertex].color;
         /* The specular dword, BGRA in memory as the primary is, whose alpha
          * Direct3D defines as the fog factor. */
-        if (fog != 0ul) {
-            speculars[vertex] = vertices[vertex].specular;
-        }
+        speculars[vertex] = vertices[vertex].specular;
+        specular_any |= speculars[vertex];
         /*
          * tu and tv, which sit past color and specular in the vertex - bits[6]
          * and bits[7]. Copied only when something will sample them, so an
@@ -3205,6 +3219,25 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
             v9x_d3d_i9xx_uv1[(vertex * 2ul) + 1ul] =
                 v9x_d3d_i9xx_finite_uv(pair[1]);
         }
+    }
+
+    /*
+     * SPECULARENABLE, where some vertex has a specular colour: the fog
+     * stream, with the program's specular form (V9X_I9XX_FOG_SPECULAR).
+     * Only then, because Direct3D's older interfaces start with it on and
+     * a batch of black speculars would pay for a longer vertex and program
+     * to add nothing. Without FOGENABLE the alpha is not a fog factor and
+     * may hold anything, so it is set to 1, no fog, which the program's
+     * blend leaves the colour through exactly.
+     */
+    if (draw->specular_enable != 0ul &&
+        (specular_any & 0x00fffffful) != 0ul) {
+        if (fog == 0ul) {
+            for (vertex = 0ul; vertex < count; ++vertex) {
+                speculars[vertex] |= 0xff000000ul;
+            }
+        }
+        fog |= 1ul | V9X_I9XX_FOG_SPECULAR;
     }
 
     /*
@@ -3352,10 +3385,15 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      * declaring a coordinate set. The decoder checks the pairing too.
      */
     if (fog != 0ul) {
-        if (v9x_i9xx_build_fog_program(
-                textured != 0 ? program : V9X_I9XX_FOGPROG_UNTEXTURED,
-                stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
-                &produced) != V9X_STATUS_OK) {
+        DWORD form = textured != 0 ? program : V9X_I9XX_FOGPROG_UNTEXTURED;
+
+        if (((fog & V9X_I9XX_FOG_SPECULAR) != 0ul
+                 ? v9x_i9xx_build_fog_specular_program(
+                       form, stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                       &produced)
+                 : v9x_i9xx_build_fog_program(
+                       form, stream + at, V9X_I9XX_SUBMIT_DWORDS - at,
+                       &produced)) != V9X_STATUS_OK) {
             return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_PROGRAM);
         }
     } else if ((textured != 0

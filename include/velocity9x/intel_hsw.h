@@ -332,6 +332,37 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
     v9x_u32 bdsm, v9x_u32 stolen_bytes, v9x_u32 reserved_reg,
     v9x_u32 *protected_bytes);
 
+/*
+ * The render clock (docs\decisions\2026-11-14-haswell-render-clock-
+ * 400mhz.md). Nothing manages RPS, so without a request the GT stays at
+ * the BIOS's 400 MHz however busy it is; the i5-4570 grants a request of
+ * RP0 at once and holds it under load. One static request at engine open,
+ * no interrupt-driven turbo: the driver holds forcewake for the whole
+ * session, so the GT never idles down either way.
+ *
+ * Addresses and fields are i915's (GEN6_RP_STATE_CAP through the MCHBAR
+ * mirror, GEN6_RPNSWREQ with HSW_FREQUENCY at 31:24, GEN6_RPSTAT1 with
+ * HSW_CAGF at 13:7), 50 MHz a unit; the public PRM does not lay them out.
+ *
+ * v9x_intel_hsw_rps_request: RPNSWREQ for RP0 from RP_STATE_CAP (RP0 7:0,
+ * RP1 15:8, RPn 23:16). UNSUPPORTED, request 0, for a cap whose RPn is 0,
+ * whose fields are out of order, or whose RP0 RPSTAT1's 7-bit field could
+ * not report - an asleep GT reads 0, a gone one all ones.
+ */
+#define V9X_INTEL_HSW_RP_STATE_CAP   ((v9x_u32)0x00145998ul)
+#define V9X_INTEL_HSW_RPNSWREQ       ((v9x_u32)0x0000a008ul)
+#define V9X_INTEL_HSW_RPSTAT1        ((v9x_u32)0x0000a01cul)
+#define V9X_INTEL_HSW_RPS_MHZ_UNIT   ((v9x_u32)50ul)
+#define V9X_INTEL_HSW_RPS_REQ_SHIFT  24
+#define V9X_INTEL_HSW_RPS_REQ_MASK   ((v9x_u32)0xfful)
+#define V9X_INTEL_HSW_RPS_CAGF_SHIFT 7
+#define V9X_INTEL_HSW_RPS_CAGF_MASK  ((v9x_u32)0x7ful)
+
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 rp_state_cap,
+                                                  v9x_u32 *request);
+v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_actual_mhz(v9x_u32 rpstat1);
+v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_request_mhz(v9x_u32 rpnswreq);
+
 v9x_status V9X_I9XX_FAR v9x_intel_hsw_plan_heap(
     const struct v9x_intel_hsw_heap_inputs *in,
     struct v9x_intel_hsw_heap_plan *out);

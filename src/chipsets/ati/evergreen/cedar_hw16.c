@@ -139,6 +139,15 @@ static unsigned long v9x_cedar_map_value;
                                 V9X_DD_ENGINE_CAP_SCREEN_COPY | \
                                 V9X_DD_ENGINE_CAP_FLIP | \
                                 V9X_DD_ENGINE_CAP_D3D)
+/* The RV610 (HD 2400 Pro): the RV630's DMA engine and D1 flips, and
+ * Direct3D through the CP on its own ME microcode, contexts, tiling and
+ * texture-cache vertex fetch (r6_3d.c), all four of V9XR63D's draws exact
+ * on M-NZHWBR (docs\decisions\2026-11-15-rv610-hd2400pro-bring-up.md). */
+#define V9X_RV610_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                V9X_DD_ENGINE_CAP_FLIP | \
+                                V9X_DD_ENGINE_CAP_D3D | \
+                                V9X_DD_ENGINE_CAP_R6_RV610)
 
 static void v9x_evergreen_fill_engine(unsigned long claimed_type,
                                       unsigned long claimed_caps,
@@ -279,8 +288,11 @@ static void v9x_trinity_fill_engine(unsigned long framebuffer_linear_base,
                               ring_linear_base, ring_bytes);
 }
 
-/* The R6xx row: Evergreen's BAR read, map and diagnostics, R6xx's engine
- * (eng_r6.c), fill and copy only. */
+/* The R6xx rows: Evergreen's BAR read, map and diagnostics, R6xx's engine
+ * (eng_r6.c). One hook for both chips, picking the caps by the active row:
+ * a second hook of its own put the family's _TEXT 13 bytes over budget. */
+extern const V9X_HW16_DEVICE v9x_r600_rv610_device;
+
 static void v9x_rv630_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *control_linear_base,
                                   unsigned long *mapped_aperture_bytes,
@@ -292,7 +304,11 @@ static void v9x_rv630_fill_engine(unsigned long framebuffer_linear_base,
 {
     (void)framebuffer_linear_base;
     v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_R600,
-                              V9X_RV630_CLAIMED_CAPS, control_linear_base,
+                              v9x_hw16_active_device() ==
+                                      &v9x_r600_rv610_device ?
+                                  V9X_RV610_CLAIMED_CAPS :
+                                  V9X_RV630_CLAIMED_CAPS,
+                              control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -488,6 +504,29 @@ const V9X_HW16_DEVICE v9x_r600_rv630_device = {
     /* The Evergreen rows' 128 MiB heap: in the VBE's 16 MiB, 3DMark 2000
      * had 6,837 mip chains find no block (M-NZHWBR boot 16) and drew
      * them from level 0. The card's CONFIG_MEMSIZE is 256 MiB. */
+    V9X_CEDAR_MAP_BYTES,
+    0,                      /* engine_reserve_offset */
+    0u,                     /* write_combine: Stage A */
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW
+};
+
+/* Not static, for the same audit. The RV630's row with the RV610's id: the
+ * same BAR layout and 256 MiB at GPU E0000000 on M-NZHWBR's Sapphire board,
+ * subsystem 174B:E370 (docs\decisions\2026-11-15-rv610-hd2400pro-
+ * bring-up.md); the same heap, Stage A and shadow choices. */
+const V9X_HW16_DEVICE v9x_r600_rv610_device = {
+    0x1002u, 0x94C3u,
+    "ATI Radeon HD 2400 Pro (RV610)",
+    "1002", "94C3",
+    "ati-r600-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-r600-cp",
+    0,
+    v9x_rv630_fill_engine,  /* the R6xx hook: caps by row */
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
     0u,                     /* write_combine: Stage A */

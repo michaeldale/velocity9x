@@ -151,9 +151,11 @@ void v9x_d3d_ps_forget(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
  *     passes CURRENT is recalled from the reference rasterizer, not
  *     measured. 3DMark 2001 SE's bump test has the base map on stage 0,
  *     the bump map on 1 and the environment on 2 (the 4570, boot 247,
- *     d3d8 proxy). Two bump stages in a row are refused, and so is
- *     BUMPENVMAPLUMINANCE, no luminance bump format being published
- *     (V8U8 and Q8W8V8U8 only).
+ *     d3d8 proxy). Two bump stages in a row are refused.
+ *   - BUMPENVMAPLUMINANCE likewise, by texbeml: stage N+1's colour is
+ *     then multiplied by the bump texel's third channel times the bump
+ *     stage's BUMPENVLSCALE plus its BUMPENVLOFFSET. L6V5U5 and X8L8V8U8
+ *     carry that channel; over V8U8 it reads as the sampler fills it.
  *
  * The texture factor is c0, and c1 holds it signed for DOTPRODUCT3, so no
  * constant takes a modifier; v9x_d3d_ps_fixed_env fills both.

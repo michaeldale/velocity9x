@@ -776,6 +776,16 @@ v9x_status v9x_i9xx_build_vertex_run(
 #define V9X_I9XX_MAPSURF_32BIT_XRGB8888  ((v9x_u32)0x00000190ul)
 #define V9X_I9XX_MAPSURF_32BIT_QWVU8888  ((v9x_u32)0x000001a0ul)
 #define V9X_I9XX_MAPSURF_16BIT_88DVDU    ((v9x_u32)0x00000128ul)
+/*
+ * The two bump formats with a luminance, for BUMPENVMAPLUMINANCE:
+ * MAPSURF_16BIT with MT_16BIT_BUMP_655LDVDU (6) and MAPSURF_32BIT with
+ * MT_32BIT_XLVU8888 (7), Mesa's i915_reg.h codes, each << 3. As with the
+ * two signed ones no driver selects them: that du is the first channel,
+ * dv the second and the luminance, unsigned, the third is read from the
+ * names, UNMEASURED until a probe samples them.
+ */
+#define V9X_I9XX_MAPSURF_16BIT_655LDVDU  ((v9x_u32)0x00000130ul)
+#define V9X_I9XX_MAPSURF_32BIT_XLVU8888  ((v9x_u32)0x000001b8ul)
 /* MS3's surface-size field, MAPSURF_32BIT in it. */
 #define V9X_I9XX_MAPSURF_SIZE_MASK       ((v9x_u32)0x00000380ul)
 #define V9X_I9XX_MAPSURF_32BIT           ((v9x_u32)0x00000180ul)
@@ -1678,6 +1688,28 @@ v9x_u32 v9x_i9xx_phase5_execution_crc(void);
 /* Extent and builder of a fog program; zero / INVALID for an unknown one. */
 v9x_u32 v9x_i9xx_fog_program_extent(v9x_u32 program);
 v9x_status v9x_i9xx_build_fog_program(
+    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
+/*
+ * SPECULARENABLE, 32-bit side only (i9xx_fog.c, i9xx_multitex.c): the fog
+ * stream as it is - S4 SPEC_FOG, the specular dword after the primary
+ * colour, C0 loaded - with one instruction more in the program, ahead of
+ * the fog blend:
+ *
+ *   add_sat R1.xyz, colour, T9     colour + specular, clamped as Direct3D
+ *                                  clamps it; R1 is then the colour
+ *
+ * Without FOGENABLE the caller sends each vertex a fog factor of 1 (alpha
+ * FFh), and the blend that follows leaves the colour as it is: R2 is
+ * -C0 + C0, and oC is the colour plus that. ADD and its saturate bit are
+ * Mesa's i915_reg.h A0_ADD and A0_DEST_SATURATE, as the two-unit program's
+ * ADD has used them. The flag goes in the `fog` argument of a stream's
+ * builders and of the decoder's limits, beside any non-zero value meaning
+ * the fog form; only the program builders and the decoder's length check
+ * read it.
+ */
+#define V9X_I9XX_FOG_SPECULAR            ((v9x_u32)0x00000002ul)
+v9x_u32 v9x_i9xx_fog_specular_program_extent(v9x_u32 program);
+v9x_status v9x_i9xx_build_fog_specular_program(
     v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written);
 /* C0 = (r, g, b, 1) from three float bit patterns, each in [0, 1]. */
 v9x_status v9x_i9xx_build_fog_constants(

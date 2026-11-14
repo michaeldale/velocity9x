@@ -183,7 +183,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
     /* DXT1/3/5 as BC1-3, placed in block trees (v9x_d3d_hsw_tree). */
     1ul,            /* dxt_textures */
     /* 2 C Ct, a general combine (V9X_HSW_PS_OP_MODULATE2X). */
-    V9X_D3D_MODULATE2X_ONE | V9X_D3D_MODULATE2X_TWO /* modulate2x */
+    V9X_D3D_MODULATE2X_ONE | V9X_D3D_MODULATE2X_TWO, /* modulate2x */
+    /* R5G5_SNORM_B6_UNORM reads as du, dv, luminance (the 4570, boot
+     * 261, FfBemL6); X8B8_UNORM_G8R8_SNORM came back wrong in every
+     * pixel there and is not published. Ivy Bridge, below, has run
+     * neither and publishes neither. */
+    V9X_D3D_BUMP_LUM_L6V5U5     /* bump_luminance */
 };
 
 /*
@@ -1148,7 +1153,9 @@ static void v9x_d3d_hsw_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
 static int v9x_d3d_hsw_fixed_texture(const V9X_D3D_HSW_TEXTURE *unit)
 {
     return !unit->cube && unit->format != V9X_HSW_FMT_R8G8B8A8_SNORM &&
-           unit->format != V9X_HSW_FMT_R8G8_SNORM;
+           unit->format != V9X_HSW_FMT_R8G8_SNORM &&
+           unit->format != V9X_HSW_FMT_R5G5_SNORM_B6_UNORM &&
+           unit->format != V9X_HSW_FMT_X8B8_UNORM_G8R8_SNORM;
 }
 
 /* The draw as this engine's state, or the reason it cannot be. */

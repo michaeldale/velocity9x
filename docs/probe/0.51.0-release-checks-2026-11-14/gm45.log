@@ -1,0 +1,13 @@
+[+0:05] agent 0.15.0, boot 36, desktop True
+[+0:35] push-tree C:\V9XSTAGE attempt 1 failed, exit 20
+[+1:30] staged 8 files; resetting
+[+3:03] reset: boot 36 -> 37
+[+3:41] installed: 8 of 8
+[+4:29] probes in place: sent 7 of 7
+[+5:26] V9XD32 default exit=0
+[+6:02] V9XD32 ddi5 exit=0
+[+6:24] V9XGLP.EXE exit=0
+[+6:36] V9XGLIDP.EXE exit=0
+[+6:45] V9XR3DP.EXE exit=0
+[+6:59] V9XWPRS.EXE exit=0
+[+7:09] V9XFBCMP.EXE exit=0

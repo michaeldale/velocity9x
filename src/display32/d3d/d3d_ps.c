@@ -287,6 +287,7 @@ void v9x_d3d_ps_forget(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
 #define V9X_D3D_PSF_OP_DP3   8ul
 #define V9X_D3D_PSF_OP_TEX   66ul
 #define V9X_D3D_PSF_OP_TEXBEM 67ul
+#define V9X_D3D_PSF_OP_TEXBEML 68ul
 #define V9X_D3D_PSF_REG      0x80000000ul
 /* A source's modifier field (27:24): _bx2, 2x - 1. */
 #define V9X_D3D_PSF_SIGNED   ((v9x_u32)V9X_PS11_SRC_SIGN << 24)
@@ -544,7 +545,7 @@ v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stages, v9x_u32 count,
 
         enabled[i] = i < count && (i == 0ul || enabled[i - 1ul]) &&
                      s->color_op != V9X_D3D_PSF_TOP_DISABLE;
-        bump[i] = enabled[i] && s->color_op == V9X_D3D_PSF_TOP_BUMPENVMAP;
+        bump[i] = enabled[i] && v9x_d3d_psf_is_bump(s->color_op);
         samples[i] = 0;
         if (!enabled[i] || bump[i]) {
             continue;
@@ -582,8 +583,13 @@ v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stages, v9x_u32 count,
         }
         if (i != 0ul && bump[i - 1ul]) {
             /* texbem tN, tN-1: stage N at its coordinates moved by the
-             * bump matrix times the bump map's (du, dv). */
-            v9x_d3d_psf_put(&b, V9X_D3D_PSF_OP_TEXBEM);
+             * bump matrix times the bump map's (du, dv). texbeml for
+             * BUMPENVMAPLUMINANCE: the same, its colour then scaled by
+             * the bump texel's third channel. */
+            v9x_d3d_psf_put(&b, stages[i - 1ul].color_op ==
+                                        V9X_D3D_PSF_TOP_BUMPENVMAPLUMINANCE
+                                    ? V9X_D3D_PSF_OP_TEXBEML
+                                    : V9X_D3D_PSF_OP_TEXBEM);
             v9x_d3d_psf_put(&b, v9x_d3d_psf_reg(V9X_PS11_FILE_TEXTURE, i) |
                                     (V9X_D3D_PSF_MASK_ALL << 16));
             v9x_d3d_psf_put(&b,
@@ -656,7 +662,8 @@ void v9x_d3d_ps_fixed_env(const V9X_PS11_PROGRAM *program,
         v9x_u32 to = inst->dst_reg;
         v9x_u32 from = inst->src[0].reg;
 
-        if (inst->op != V9X_PS11_TEXBEM || to >= V9X_D3D_PS_STAGES ||
+        if ((inst->op != V9X_PS11_TEXBEM &&
+             inst->op != V9X_PS11_TEXBEML) || to >= V9X_D3D_PS_STAGES ||
             from >= V9X_D3D_PS_STAGES) {
             continue;
         }

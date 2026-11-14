@@ -361,6 +361,9 @@ typedef struct v9x_d3d_texture {
  * more function pointers.
  */
 /* V9X_D3D_ENGINE_LIMITS modulate2x bits. */
+/* limits->bump_luminance. */
+#define V9X_D3D_BUMP_LUM_X8L8V8U8 1ul
+#define V9X_D3D_BUMP_LUM_L6V5U5   2ul
 #define V9X_D3D_MODULATE2X_ONE 1ul
 #define V9X_D3D_MODULATE2X_TWO 2ul
 
@@ -541,6 +544,18 @@ typedef struct v9x_d3d_engine_limits {
      * 2026-11-13; an initialiser that stops short leaves it zero.
      */
     DWORD modulate2x;
+    /*
+     * The bump formats with a luminance the engine's sampler has been
+     * measured reading as du, dv, luminance (V9XD32 T19's FfBemL rows):
+     * V9X_D3D_BUMP_LUM_X8L8V8U8, V9X_D3D_BUMP_LUM_L6V5U5, or both. DDI 8
+     * publishes those, and BUMPENVMAPLUMINANCE with any
+     * (v9x_d3d_formats8, v9x_d3d_caps8). Haswell reads L6V5U5 and gets
+     * X8L8V8U8 wrong in every pixel (the 4570, boot 261); Gen3 reads
+     * X8L8V8U8 exactly and L6V5U5 with one pixel in 984 off (the netbook,
+     * boot 341). Appended 2026-11-14; an initialiser that stops short
+     * leaves it zero.
+     */
+    DWORD bump_luminance;
     /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an

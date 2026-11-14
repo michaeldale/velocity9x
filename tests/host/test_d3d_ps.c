@@ -410,6 +410,16 @@ static void ffb_sample(void *user, v9x_u32 stage, v9x_u32 count,
     }
 }
 
+/* As ffb_sample, the bump texel carrying a luminance of 0.75 third. */
+static void ffl_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                       const float *coords, float rgba[4])
+{
+    ffb_sample(user, stage, count, coords, rgba);
+    if (stage == 0ul) {
+        rgba[2] = 0.75f;
+    }
+}
+
 /* Three stages: the base texel, a (du, dv) pair, and stage 2's own
  * coordinates. */
 static void ff3_sample(void *user, v9x_u32 stage, v9x_u32 count,
@@ -593,11 +603,28 @@ static void fixed_bump_tests(void)
         CHECK(v9x_d3d_ps_fixed(three, 3ul, 0, tokens) == 0ul);
     }
 
-    /* The luminance form has no format here to read a luminance from. */
+    /* The luminance form: as BUMPENVMAP, and stage 1's colour times the
+     * bump texel's third channel scaled and offset by the bump stage's
+     * own terms (0.75 x 0.5 + 0.25 is 0.625), alpha left alone. Stage 1's
+     * own terms are not read. */
+    for (s = 0ul; s < V9X_D3D_PS_STAGES; ++s) {
+        v9x_d3d_ps_stage_reset(&stages[s], s);
+    }
+    stages[0].bump[0] = 0.5f;
+    stages[0].bump[3] = 0.5f;
+    stages[0].lscale = 0.5f;
+    stages[0].loffset = 0.25f;
+    stages[1].lscale = 8.0f;
+    stages[1].loffset = 8.0f;
     ff_stage(&s0, TOP_BUMPENVMAPLUMINANCE, TA_TEXTURE, TA_CURRENT,
              TOP_SELECT1, TA_TEXTURE, TA_CURRENT);
     ff_stage(&s1, TOP_SELECT1, TA_TEXTURE, TA_CURRENT,
              TOP_SELECT1, TA_TEXTURE, TA_CURRENT);
+    CHECK(ffe_run(&s0, &s1, stages, 0ul, ffl_sample, out) &&
+          ff_is(out, 0.15625f, 0.390625f, 0.3125f, 1.0f));
+    CHECK(needs2(&s0, &s1, 1));
+    /* A luminance bump stage moving another bump stage is not drawn. */
+    s1.color_op = TOP_BUMPENVMAP;
     CHECK(fixed2(&s0, &s1, 1, 0, tokens) == 0ul);
 
     /* Ordinary stages need no shader. */

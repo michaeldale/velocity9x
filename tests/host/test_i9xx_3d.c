@@ -3636,6 +3636,139 @@ static void test_runtime_fog(void)
 }
 
 /*
+ * SPECULARENABLE: the specular colour added after the texture stages, in
+ * the fog form of each program, which already declares T9 and whose
+ * vertices already carry the specular dword. V9X_I9XX_FOG_SPECULAR in the
+ * `fog` argument asks for it: one add_sat into the colour's xyz ahead of
+ * the fog blend, three dwords.
+ */
+static void test_runtime_specular(void)
+{
+    struct v9x_i9xx_decode_limits limits;
+    struct v9x_i9xx_decode_unit1 unit1;
+    struct v9x_i9xx_combine ops[2];
+    static v9x_u32 stream[2304];
+    v9x_u32 program[40];
+    v9x_u32 xyzw[3ul * 4ul];
+    v9x_u32 colors[3];
+    v9x_u32 speculars[3];
+    v9x_u32 produced = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index = 0ul;
+    v9x_u32 count;
+    v9x_u32 vertex;
+    const v9x_u32 lit = 1ul | V9X_I9XX_FOG_SPECULAR;
+    const v9x_u32 half = 0x3f000000ul;
+    const v9x_u32 surface = 0x00200000ul;
+    const v9x_u32 pitch = 1024ul;
+    const v9x_u32 width = 512ul;
+    const v9x_u32 height = 384ul;
+
+    /* Each fog form, three dwords longer. */
+    CHECK(v9x_i9xx_fog_specular_program_extent(
+              V9X_I9XX_FOGPROG_UNTEXTURED) == 19ul);
+    CHECK(v9x_i9xx_fog_specular_program_extent(V9X_I9XX_TEXPROG_DECAL) ==
+          25ul);
+    CHECK(v9x_i9xx_fog_specular_program_extent(
+              V9X_I9XX_TEXPROG_MODULATE_ALPHA) == 31ul);
+    CHECK(v9x_i9xx_fog_specular_program_extent(7ul) == 0ul);
+
+    /* Untextured: dcl T8, dcl T9, then add_sat R1.xyz, T8, T9, and the
+     * fog blend reading R1 where the plain form reads T8; alpha still
+     * the vertex's. */
+    CHECK(v9x_i9xx_build_fog_specular_program(V9X_I9XX_FOGPROG_UNTEXTURED,
+                                              program, 40ul, &produced) ==
+          V9X_STATUS_OK);
+    CHECK(produced == 19ul);
+    CHECK(program[0] == (V9X_I9XX_3DSTATE_PIXEL_SHADER | 17ul));
+    CHECK(program[1] == 0x190a3c00ul && program[4] == 0x190a7c00ul);
+    CHECK(program[7] == (V9X_I9XX_FS_A0_ADD | V9X_I9XX_FS_A0_SATURATE |
+                         (V9X_I9XX_FS_REG_TYPE_R << V9X_I9XX_FS_TYPE_SHIFT) |
+                         (1ul << V9X_I9XX_FS_NR_SHIFT) |
+                         V9X_I9XX_FS_CHANNEL_XYZ |
+                         (V9X_I9XX_FS_REG_TYPE_T <<
+                          V9X_I9XX_FS_A0_SRC0_TYPE_SHIFT) |
+                         (V9X_I9XX_FS_T_DIFFUSE <<
+                          V9X_I9XX_FS_A0_SRC0_NR_SHIFT)));
+    /* The blend's second source is R1 now: type R, number 1. */
+    CHECK(((program[14] >> V9X_I9XX_FS_A1_SRC1_TYPE_SHIFT) & 7ul) ==
+          V9X_I9XX_FS_REG_TYPE_R);
+    CHECK(((program[14] >> V9X_I9XX_FS_A1_SRC1_NR_SHIFT) & 0x1ful) == 1ul);
+    /* mov oC.w, T8, as the plain form's. */
+    CHECK(program[16] == 0x022020a0ul);
+    /* The modulate form adds into the product it already has in R1. */
+    CHECK(v9x_i9xx_build_fog_specular_program(
+              V9X_I9XX_TEXPROG_MODULATE_ALPHA, program, 40ul, &produced) ==
+          V9X_STATUS_OK);
+    CHECK(produced == 31ul);
+    CHECK(v9x_i9xx_build_fog_specular_program(7ul, program, 40ul,
+                                              &produced) != V9X_STATUS_OK);
+
+    /* A stream of it is licensed only as what it says it is. */
+    for (vertex = 0ul; vertex < 3ul; ++vertex) {
+        xyzw[vertex * 4ul + 0ul] = 0x43200000ul + vertex;
+        xyzw[vertex * 4ul + 1ul] = 0x42f00000ul;
+        xyzw[vertex * 4ul + 2ul] = half;
+        xyzw[vertex * 4ul + 3ul] = 0x3f800000ul;
+        colors[vertex] = 0xff808080ul;
+        speculars[vertex] = 0xff102030ul;
+    }
+    v9x_test_limits(&limits, surface, pitch * height,
+                    V9X_I9XX_SCENE_RUNTIME);
+    limits.target_pitch = pitch;
+    limits.target_width = width;
+    limits.target_height = height;
+    limits.fog = lit;
+    CHECK(v9x_i9xx_build_runtime_state_fog(surface, pitch, width, height, 0,
+                                           0ul, 0ul, 0ul, 0ul, 0ul, 0ul,
+                                           0ul, 0ul, lit, stream + at,
+                                           2304ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fog_constants(half, half, half, stream + at,
+                                       2304ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fog_specular_program(V9X_I9XX_FOGPROG_UNTEXTURED,
+                                              stream + at, 2304ul - at,
+                                              &produced) == V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_build_fogged_runtime_run(xyzw, colors, speculars, 0, 1ul,
+                                            width, height, stream + at,
+                                            2304ul - at, &produced) ==
+          V9X_STATUS_OK);
+    at += produced;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) ==
+          V9X_I9XX_P5_OK);
+    limits.fog = 1ul;
+    CHECK(v9x_i9xx_decode_phase5_stream(stream, at, &limits, &index) !=
+          V9X_I9XX_P5_OK);
+
+    /* Two units: the same add into R2 before the output, and the
+     * decoder's grammar takes it. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_MODULATE;
+    ops[0].alpha_op = V9X_I9XX_ALPHA_MODULATE;
+    ops[1].colour_op = V9X_I9XX_COMBINE_MODULATE;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_MODULATE;
+    CHECK(v9x_i9xx_two_unit_program_extent(ops, lit) ==
+          v9x_i9xx_two_unit_program_extent(ops, 1ul) + 3ul);
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, lit, 8ul, &limits,
+                                     &unit1);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) == V9X_I9XX_P5_OK);
+    /* The largest batch still fits the HAL's stream with it: both units
+     * BLEND, 64 triangles. */
+    ops[0].colour_op = V9X_I9XX_COMBINE_BLEND;
+    ops[1].colour_op = V9X_I9XX_COMBINE_BLEND;
+    ops[1].alpha_op = V9X_I9XX_ALPHA_REPLACE;
+    count = v9x_test_two_unit_stream(stream, 2304ul, ops, lit, 64ul,
+                                     &limits, &unit1);
+    CHECK(count + V9X_I9XX_BREADCRUMB_STREAM_DWORDS <= 2304ul);
+    CHECK(v9x_i9xx_decode_two_unit_stream(stream, count, &limits, &unit1,
+                                          &index) == V9X_I9XX_P5_OK);
+}
+
+/*
  * A batch of more than three triangles, which the runtime path refused until
  * 2026-09-16 because it shared the scene table's bound.
  *
@@ -4906,9 +5039,34 @@ static void test_i9xx_surface_map_formats(void)
     CHECK(v9x_d3d_i9xx_map_format(bump, 0ul, 16ul, 0x00fful, 0xff00ul, 0ul,
                                   0ul, &format, &bytes) == V9X_TRUE);
     CHECK(format == V9X_I9XX_MAPSURF_16BIT_88DVDU && bytes == 2ul);
+    /* The two with a luminance, L6V5U5 (61) and X8L8V8U8 (62): Mesa's
+     * MT_16BIT_BUMP_655LDVDU 6 and MT_32BIT_XLVU8888 7, each << 3. */
+    CHECK(v9x_d3d_i9xx_map_format(d3dformat, 61ul, 16ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == 0x00000130ul && bytes == 2ul);
+    CHECK(v9x_d3d_i9xx_map_format(fourcc, 62ul, 0ul, 0ul, 0ul, 0ul, 0ul,
+                                  &format, &bytes) == V9X_TRUE);
+    CHECK(format == 0x000001b8ul && bytes == 4ul);
+    /* As the DirectX 8 runtime describes them: BUMPDUDV and
+     * BUMPLUMINANCE (000C0000h) with masks. */
+    CHECK(v9x_d3d_i9xx_map_format(0x000c0000ul, 0ul, 32ul, 0x00fful,
+                                  0xff00ul, 0x00ff0000ul, 0ul, &format,
+                                  &bytes) == V9X_TRUE);
+    CHECK(format == 0x000001b8ul && bytes == 4ul);
+    CHECK(v9x_d3d_i9xx_map_format(0x000c0000ul, 0ul, 16ul, 0x001ful,
+                                  0x03e0ul, 0xfc00ul, 0ul, &format,
+                                  &bytes) == V9X_TRUE);
+    CHECK(format == 0x00000130ul && bytes == 2ul);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_16BIT_655LDVDU) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_format_known(V9X_I9XX_MAPSURF_32BIT_XLVU8888) !=
+          V9X_FALSE);
+    CHECK(v9x_i9xx_map_texel_bytes(V9X_I9XX_MAPSURF_16BIT_655LDVDU) == 2ul);
+    CHECK(v9x_i9xx_map_texel_bytes(V9X_I9XX_MAPSURF_32BIT_XLVU8888) == 4ul);
 
     /* Refused, nothing written: 555 with no alpha bit, ABGR order, 24-bit,
-     * a bump format with luminance, an unknown code, palettes. */
+     * DirectX 7's bump description with a luminance mask, a code with no
+     * map type here (V16U16, 64), palettes. */
     format = 99ul;
     bytes = 99ul;
     CHECK(v9x_d3d_i9xx_map_format(rgb, 0ul, 16ul, 0x7c00ul, 0x03e0ul,
@@ -4926,7 +5084,7 @@ static void test_i9xx_surface_map_formats(void)
     CHECK(v9x_d3d_i9xx_map_format(bump, 0ul, 16ul, 0x00fful, 0xff00ul,
                                   0x00ff0000ul, 0ul, &format, &bytes) ==
           V9X_FALSE);
-    CHECK(v9x_d3d_i9xx_map_format(d3dformat, 61ul, 16ul, 0ul, 0ul, 0ul, 0ul,
+    CHECK(v9x_d3d_i9xx_map_format(d3dformat, 64ul, 32ul, 0ul, 0ul, 0ul, 0ul,
                                   &format, &bytes) == V9X_FALSE);
     CHECK(v9x_d3d_i9xx_map_format(0ul, 0ul, 8ul, 0ul, 0ul, 0ul, 0ul,
                                   &format, &bytes) == V9X_FALSE);
@@ -6996,6 +7154,7 @@ unsigned int v9x_run_i9xx_3d_tests(void)
     test_decoder_runtime_mode();
     test_runtime_textured_and_depth();
     test_runtime_fog();
+    test_runtime_specular();
 #if V9X_I9XX_TWO_UNITS
     test_two_unit_stream();
 #endif

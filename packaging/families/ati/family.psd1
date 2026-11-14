@@ -740,6 +740,53 @@
             }
             MapSymbols = @('v9x_r600_rv630_device')
         }
+        @{
+            Id = 'rv610'
+            Name = 'ATI Radeon HD 2400 Pro (RV610)'
+            VendorId = '1002'
+            DeviceId = '94C3'
+            # No SubsystemId: M-NZHWBR's Sapphire board reads E370:174B.
+            DeviceDesc = 'Velocity9x ATI Radeon HD 2400 Pro (RV610)'
+            Adapter = 'ATI Radeon HD 2400 Pro (RV610)'
+            ClockDetector = 'ati-r600-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # The RV630's DMA engine and its rules; the register survey found
+            # the same BAR layout and DMA block on this card
+            # (docs\decisions\2026-11-15-rv610-hd2400pro-bring-up.md).
+            Acceleration = 'directdraw-fill-copy'
+            # The R6xx shader core through the CP on its own RV610_me
+            # microcode (the PFP is the RV630's), with r600_gpu_init's RV610
+            # values and vertex fetch through the texture cache: V9XR63D's
+            # solid, Gouraud, textured and Z16 draws exact on this card
+            # (docs\decisions\2026-11-15-rv610-hd2400pro-bring-up.md).
+            Direct3D = 'hardware-r600-cp'
+            EngineType = 'ATI_R600'
+            # FLIP: D1GRPH, as on the RV630. The row also stamps the
+            # V9X_DD_ENGINE_CAP_R6_RV610 identity bit.
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            # What M-NZHWBR's VBE 4F00h reports with this card;
+            # CONFIG_MEMSIZE says 256 MiB.
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table; this card's BIOS lists all seven
+            # (V9XBOOT.INI, 2026-11-15).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_r600_rv610_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -958,6 +1005,10 @@
             }
             @{
                 ChipId = 'rv630'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rv610'
                 Emulator = 'none'
             }
         )

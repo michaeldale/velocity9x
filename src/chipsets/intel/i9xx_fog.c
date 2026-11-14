@@ -5,6 +5,7 @@
  * only v9x_i9xx_fog_program_extent from it, for the decoder.
  */
 #include "velocity9x/intel_gen3_3d.h"
+#include "velocity9x/i9xx_fs.h"
 
 /*
  * THE FOG PROGRAMS: each program in i9xx_fragprog.c, with its result blended
@@ -67,10 +68,25 @@ static v9x_u32 v9x_i9xx_fs_arith(v9x_u32 *stream, v9x_u32 opcode,
     return 3ul;
 }
 
-v9x_status v9x_i9xx_build_fog_program(
-    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+/* The specular form's one instruction more (intel_gen3_3d.h). */
+#define V9X_I9XX_FOG_SPECULAR_DWORDS 3ul
+
+v9x_u32 v9x_i9xx_fog_specular_program_extent(v9x_u32 program)
 {
     v9x_u32 extent = v9x_i9xx_fog_program_extent(program);
+
+    return extent != 0ul ? extent + V9X_I9XX_FOG_SPECULAR_DWORDS : 0ul;
+}
+
+/* Either form: `specular` non-zero adds the specular colour to the
+ * program's colour before the fog blend. */
+static v9x_status v9x_i9xx_fog_program(
+    v9x_u32 program, v9x_u32 specular, v9x_u32 *stream, v9x_u32 capacity,
+    v9x_u32 *written)
+{
+    v9x_u32 extent = specular != 0ul
+                         ? v9x_i9xx_fog_specular_program_extent(program)
+                         : v9x_i9xx_fog_program_extent(program);
     v9x_u32 at = 0ul;
     v9x_u32 color_type;
     v9x_u32 color_nr;
@@ -149,6 +165,25 @@ v9x_status v9x_i9xx_build_fog_program(
                                 V9X_I9XX_FS_REG_TYPE_T, V9X_I9XX_FS_T_DIFFUSE,
                                 0ul, 0ul, 2ul);
     }
+    if (specular != 0ul) {
+        /* add_sat R1.xyz, colour, T9: the specular colour, clamped as
+         * Direct3D clamps the sum. Into R1 whatever the colour was - the
+         * product already there, the texel in R0 or the vertex colour -
+         * and R1 is the colour from here on; the alpha stays where it
+         * was, so nothing reads a channel of R1 this did not write. */
+        at += v9x_i9xx_fs_arith(stream + at,
+                                V9X_I9XX_FS_A0_ADD | V9X_I9XX_FS_A0_SATURATE,
+                                V9X_I9XX_FS_REG_TYPE_R,
+                                V9X_I9XX_FOG_REG_COLOR,
+                                V9X_I9XX_FS_CHANNEL_XYZ,
+                                color_type, color_nr,
+                                V9X_I9XX_FS_A1_SWIZZLE_XYZW,
+                                V9X_I9XX_FS_REG_TYPE_T,
+                                V9X_I9XX_FS_T_SPECULAR,
+                                0ul, 0ul, 2ul);
+        color_type = V9X_I9XX_FS_REG_TYPE_R;
+        color_nr = V9X_I9XX_FOG_REG_COLOR;
+    }
     /* mad R2, -T9.wwww, C0, C0: the fog colour weighted by (1 - f). All
      * four channels, so nothing later reads an unwritten temporary. */
     at += v9x_i9xx_fs_arith(stream + at, V9X_I9XX_FS_A0_MAD,
@@ -181,6 +216,18 @@ v9x_status v9x_i9xx_build_fog_program(
     }
     *written = at;
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_i9xx_build_fog_program(
+    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    return v9x_i9xx_fog_program(program, 0ul, stream, capacity, written);
+}
+
+v9x_status v9x_i9xx_build_fog_specular_program(
+    v9x_u32 program, v9x_u32 *stream, v9x_u32 capacity, v9x_u32 *written)
+{
+    return v9x_i9xx_fog_program(program, 1ul, stream, capacity, written);
 }
 
 /*

@@ -63,6 +63,7 @@
 /* The Radeon HD 2600 XT (RV630, R6xx): the DMA engine behind DirectDraw;
  * see cedar_hw16.c's R6xx row. */
 #define V9X_PCI_DEVICE_RV630_9588       ((v9x_u16)0x9588u)
+#define V9X_PCI_DEVICE_RV610_94C3       ((v9x_u16)0x94C3u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

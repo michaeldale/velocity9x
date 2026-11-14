@@ -298,6 +298,17 @@ int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
                first == V9X_D3D_HSW_V8U8_DU &&
                second == V9X_D3D_HSW_V8U8_DV && third == 0ul) {
         d3d = V9X_D3D_HSW_D3DFMT_V8U8;
+    } else if ((flags & V9X_D3D_HSW_DDPF_BUMPDUDV) != 0ul && bits == 32ul &&
+               first == V9X_D3D_HSW_V8U8_DU &&
+               second == V9X_D3D_HSW_V8U8_DV && third == 0x00ff0000ul) {
+        /* The two with a luminance, as the DirectX 8 runtime hands a
+         * texture of them to the driver: BUMPDUDV and BUMPLUMINANCE with
+         * masks, no code (the 4570, boot 260, V9XPS.LOG). */
+        d3d = V9X_D3D_HSW_D3DFMT_X8L8V8U8;
+    } else if ((flags & V9X_D3D_HSW_DDPF_BUMPDUDV) != 0ul && bits == 16ul &&
+               first == 0x0000001ful && second == 0x000003e0ul &&
+               third == 0x0000fc00ul) {
+        d3d = V9X_D3D_HSW_D3DFMT_L6V5U5;
     }
     if (d3d == V9X_D3D_HSW_D3DFMT_Q8W8V8U8) {
         *format = V9X_HSW_FMT_R8G8B8A8_SNORM;
@@ -309,6 +320,19 @@ int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
         *format = V9X_HSW_FMT_R8G8_SNORM;
         *has_alpha = 0;
         *bytes = 2ul;
+        return 1;
+    }
+    /* With a luminance. */
+    if (d3d == V9X_D3D_HSW_D3DFMT_L6V5U5) {
+        *format = V9X_HSW_FMT_R5G5_SNORM_B6_UNORM;
+        *has_alpha = 0;
+        *bytes = 2ul;
+        return 1;
+    }
+    if (d3d == V9X_D3D_HSW_D3DFMT_X8L8V8U8) {
+        *format = V9X_HSW_FMT_X8B8_UNORM_G8R8_SNORM;
+        *has_alpha = 0;
+        *bytes = 4ul;
         return 1;
     }
     return 0;

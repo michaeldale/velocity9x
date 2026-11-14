@@ -3894,6 +3894,14 @@ static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
                                   const float *uv1, v9x_u32 triangles)
 {
     unsigned long mode = v9x_d3d_cull_mode(context);
+    /* Onto the engine's pixel centres, as the list builder moves a
+     * one-stage batch in its staging (v9x_d3d_centre_offset). This path
+     * moved nothing until 2026-11-14, and a two-stage draw on Gen3 landed
+     * half a pixel up and left of every other: V9XD32's FfTwo drew 37
+     * pixels outside its triangle (the netbook, boot 342), the number a
+     * shader draw had unmoved (boot 303), and none with the move (boot
+     * 344). */
+    float offset = v9x_d3d_centre_offset(ops);
     DWORD kept = 0ul;
     DWORD index;
     DWORD word;
@@ -3902,17 +3910,20 @@ static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
     if (triangles > (v9x_u32)V9X_D3D_INDEXED_BATCH) {
         return 0;
     }
-    if (mode != V9X_R3D_CULL_NONE) {
+    if (mode != V9X_R3D_CULL_NONE || offset != 0.0f) {
         for (index = 0ul; index < triangles; ++index) {
             const V9X_R3D_VERTEX *triangle = &vertices[index * 3ul];
 
-            if (v9x_r3d_cull_triangle(mode, triangle[0].sx, triangle[0].sy,
+            if (mode != V9X_R3D_CULL_NONE &&
+                v9x_r3d_cull_triangle(mode, triangle[0].sx, triangle[0].sy,
                                       triangle[1].sx, triangle[1].sy,
                                       triangle[2].sx, triangle[2].sy)) {
                 continue;
             }
             for (word = 0ul; word < 3ul; ++word) {
                 v9x_d3d_list_staging[kept * 3ul + word] = triangle[word];
+                v9x_d3d_list_staging[kept * 3ul + word].sx += offset;
+                v9x_d3d_list_staging[kept * 3ul + word].sy += offset;
             }
             for (word = 0ul; word < 6ul; ++word) {
                 v9x_d3d_two_units_uv1[kept * 6ul + word] =
@@ -8443,8 +8454,9 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
                             V9X_D3D_PS_TEXCOORD_SETS;
             /* BUMPENVMAP and DOTPRODUCT3 as fixed-function stage ops, drawn
              * through the stages' own ps.1.1 program (v9x_d3d_ps_fixed),
-             * so only where shaders run and only told to DDI 8. Not
-             * BUMPENVMAPLUMINANCE: no luminance bump format is published.
+             * so only where shaders run and only told to DDI 8.
+             * BUMPENVMAPLUMINANCE with them, as texbeml, where the engine
+             * has a format that carries a luminance (v9x_d3d_formats8).
              * 3DMark 2001 SE runs both of its bump tests on them (the
              * 4570, boot 258). Its DOT3 test faulted through boots 247 to
              * 256 only while a d3d8 logging proxy of ours sat in its
@@ -8452,6 +8464,9 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
              * renderer-fault.md. */
             caps->TextureOpCaps |= V9X_D3DTEXOPCAPS_BUMPENVMAP |
                                    V9X_D3DTEXOPCAPS_DOTPRODUCT3;
+            if (ops->limits != 0 && ops->limits->bump_luminance != 0ul) {
+                caps->TextureOpCaps |= V9X_D3DTEXOPCAPS_BUMPENVMAPLUMINANCE;
+            }
         }
     }
     /* Cube maps, with mips, of power-of-two sides: 3DMark 2001 SE calls
@@ -8469,12 +8484,12 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
 
 /* DDI 8's format list (d3d_caps8.h): the published texture formats, the
  * render depths and the engine's depth formats. */
-#define V9X_D3D_FORMATS8_ROOM 16ul
+#define V9X_D3D_FORMATS8_ROOM 20ul
 
 static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
-    DWORD textures[10];
+    DWORD textures[12];
     DWORD count = v9x_hal->d3d_global.dwNumTextureFormats;
     DWORD depths = v9x_hal->d3d_global.hwCaps.dwDeviceRenderBitDepth;
     DWORD renders = 0ul;
@@ -8498,6 +8513,18 @@ static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
     if (ops != 0 && ops->draw_shader != 0) {
         textures[count++] = V9X_D3DFMT_Q8W8V8U8;
         textures[count++] = V9X_D3DFMT_V8U8;
+        /* And those with a luminance, which BUMPENVMAPLUMINANCE's texbeml
+         * reads third, where the engine's sampler was measured reading
+         * them so (limits->bump_luminance). */
+        if (ops->limits != 0 &&
+            (ops->limits->bump_luminance & V9X_D3D_BUMP_LUM_X8L8V8U8) !=
+                0ul) {
+            textures[count++] = V9X_D3DFMT_X8L8V8U8;
+        }
+        if (ops->limits != 0 &&
+            (ops->limits->bump_luminance & V9X_D3D_BUMP_LUM_L6V5U5) != 0ul) {
+            textures[count++] = V9X_D3DFMT_L6V5U5;
+        }
     }
     /* DXT where the engine places and samples it: 3DMark 2001 SE's Nature
      * has its distant terrain and mountains only so (boot 154). */
@@ -10247,7 +10274,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         name = "Velocity9x RIVA 128";
     } else if (ops == &v9x_d3d_engine_r6) {
         out->engine = V9X_R3D_ABI_ENGINE_R600;
-        name = "Velocity9x Radeon HD 2600 XT";
+        /* The same engine on the RV610, named by its identity bit; it read
+         * "HD 2600 XT" there on its first boot (V9XGLP on M-NZHWBR,
+         * 2026-11-15). */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_R6_RV610) != 0ul) {
+            name = "Velocity9x Radeon HD 2400 Pro";
+        } else {
+            name = "Velocity9x Radeon HD 2600 XT";
+        }
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers

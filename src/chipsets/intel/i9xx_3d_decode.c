@@ -1680,6 +1680,13 @@ v9x_u16 v9x_i9xx_decode_phase5_stream(
                                textured != V9X_FALSE
                                    ? limits->texture_program
                                    : V9X_I9XX_FOGPROG_UNTEXTURED) - 1ul;
+#if V9X_I9XX_TWO_UNITS
+                    /* The specular form, one instruction longer; the
+                     * 16-bit driver never emits it. */
+                    if ((limits->fog & V9X_I9XX_FOG_SPECULAR) != 0ul) {
+                        want += 3ul;
+                    }
+#endif
                 } else if (limits->kind == V9X_I9XX_SCENE_RUNTIME &&
                     textured != V9X_FALSE) {
                     /* The program the engine declared, by length: zero is
