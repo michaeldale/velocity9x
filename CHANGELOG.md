@@ -19,12 +19,25 @@ build identifier so exact guest-tested binaries remain traceable.
   ([issue](docs/issues/2026-11-14-haswell-3dmark2001se-dot3-renderer-fault.md)
   for a fault in the DOT3 test that turned out to be a test tool of
   ours). The GMA 900 and 950 class (Gen3), which also runs pixel
-  shaders, shares the code: on a GMA 950 netbook the Environment Bump
-  Mapping test now runs (10.1 fps), and the DOT3 test still reads "Not
-  supported by hardware", because the driver does not report specular
-  shading on that class and 3DMark does not try the test without it.
-  DirectX 7 programs are unchanged
+  shaders, shares the code: on a GMA 950 netbook both tests now run,
+  Environment Bump Mapping at 10.2 fps and DOT3 Bump Mapping at 5.8 fps,
+  in a full run that scored 988. DirectX 7 programs are unchanged
   ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
+- **`intel-gma` package, GMA 900 and 950 class (Gen3): specular
+  highlights.** The driver ignored a program's specular colour on these
+  chips and did not advertise specular shading; it now adds the colour
+  after the textures, as Direct3D defines, in every DirectX version, and
+  advertises it. 3DMark 2001 SE's DOT3 test needed that. Measured on one
+  GMA 950 netbook by a probe and by 3DMark 2001 SE; nobody has compared
+  a lit scene's picture with another card's
+  ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
+- **`intel-gma` package, HD 4600 and Gen3: bump mapping with luminance**
+  (`BUMPENVMAPLUMINANCE`) in Direct3D 8 and 9 programs, with one texture
+  format for it on each: L6V5U5 on the HD 4600, X8L8V8U8 on the GMA 900
+  and 950 class. Each chip read the other format wrongly in our probe,
+  so that one is not offered. Checked by a probe only; no game or
+  benchmark here uses it. Ivy Bridge (HD 4000) is not included
+  ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
 - **`intel-gma` package, GMA X3100 (GM965): 32 MiB of texture memory in
   system RAM**, as the GMA 950 got in 0.49.0. The BIOS gives this chip at
   most 8 MiB, of which Direct3D could use about 4.5. The driver now maps

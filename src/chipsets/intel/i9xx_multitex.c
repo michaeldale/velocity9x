@@ -148,6 +148,10 @@ v9x_u32 v9x_i9xx_two_unit_program_extent(
         }
     }
     instructions += fog != 0ul ? 1ul + 3ul : 1ul;
+    /* The specular colour's add, ahead of the fog output. */
+    if ((fog & V9X_I9XX_FOG_SPECULAR) != 0ul) {
+        instructions += 1ul;
+    }
     return 1ul + instructions * 3ul;
 }
 
@@ -297,6 +301,17 @@ v9x_status v9x_i9xx_build_two_unit_program(
         at += v9x_i9xx_mt_unit(stream + at, unit, &units[unit]);
     }
 
+    if ((fog & V9X_I9XX_FOG_SPECULAR) != 0ul) {
+        /* add_sat R2.xyz, R2, T9: the specular colour after both units,
+         * clamped (intel_gen3_3d.h, V9X_I9XX_FOG_SPECULAR). */
+        at += v9x_i9xx_mt_arith(stream + at,
+                                V9X_I9XX_FS_A0_ADD | V9X_I9XX_FS_A0_SATURATE,
+                                r, V9X_I9XX_MT_COLOR, V9X_I9XX_FS_CHANNEL_XYZ,
+                                r, V9X_I9XX_MT_COLOR,
+                                V9X_I9XX_FS_A1_SWIZZLE_XYZW,
+                                V9X_I9XX_FS_REG_TYPE_T,
+                                V9X_I9XX_FS_T_SPECULAR, 0ul, 0ul, 0ul, 2ul);
+    }
     if (fog != 0ul) {
         /* The fog programs' tail on R2 (i9xx_fog.c): R4 = (1 - f) * C0,
          * oC.xyz = f * R2 + R4, oC.w = R2.w. */

@@ -341,8 +341,32 @@ static void test_signed_format(void)
                                     &alpha, &bytes));
     CHECK(format == V9X_HSW_FMT_R8G8_SNORM && bytes == 2ul);
 
+    /* The two with a luminance, by D3DFORMAT: L6V5U5 (61) and X8L8V8U8
+     * (62), du and dv signed below an unsigned luminance, no alpha. */
+    CHECK(v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_D3DFORMAT,
+                                    V9X_D3D_HSW_D3DFMT_L6V5U5, 0ul, 0ul,
+                                    0ul, 0ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_R5G5_SNORM_B6_UNORM && alpha == 0 &&
+          bytes == 2ul);
+    CHECK(v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_FOURCC,
+                                    V9X_D3D_HSW_D3DFMT_X8L8V8U8, 0ul, 0ul,
+                                    0ul, 0ul, &format, &alpha, &bytes));
+    CHECK(format == V9X_HSW_FMT_X8B8_UNORM_G8R8_SNORM && alpha == 0 &&
+          bytes == 4ul);
+    /* And as the DirectX 8 runtime describes them to the driver: BUMPDUDV
+     * and BUMPLUMINANCE (000C0000h) with du, dv and luminance masks. */
+    format = 0u;
+    CHECK(v9x_d3d_hsw_signed_format(0x000c0000ul, 0ul, 32ul, 0x00fful,
+                                    0xff00ul, 0x00ff0000ul, &format, &alpha,
+                                    &bytes));
+    CHECK(format == V9X_HSW_FMT_X8B8_UNORM_G8R8_SNORM && bytes == 4ul);
+    CHECK(v9x_d3d_hsw_signed_format(0x000c0000ul, 0ul, 16ul, 0x001ful,
+                                    0x03e0ul, 0xfc00ul, &format, &alpha,
+                                    &bytes));
+    CHECK(format == V9X_HSW_FMT_R5G5_SNORM_B6_UNORM && bytes == 2ul);
+
     /* Refused, nothing written: an RGB format, another D3DFORMAT,
-     * BUMPDUDV with luminance (L6V5U5, X8L8V8U8). */
+     * a bump description with masks that are neither format's. */
     format = 0x1234u;
     alpha = -1;
     bytes = 7ul;
@@ -353,11 +377,11 @@ static void test_signed_format(void)
                                      0ul, 0ul, 0ul, &format, &alpha,
                                      &bytes));
     CHECK(!v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_BUMPDUDV, 0ul, 16ul,
-                                     0x001ful, 0x03e0ul, 0xfc00ul, &format,
-                                     &alpha, &bytes));
-    CHECK(!v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_BUMPDUDV, 0ul, 32ul,
                                      0x00fful, 0xff00ul, 0x00ff0000ul,
                                      &format, &alpha, &bytes));
+    CHECK(!v9x_d3d_hsw_signed_format(V9X_D3D_HSW_DDPF_BUMPDUDV, 0ul, 32ul,
+                                     0x001ful, 0x03e0ul, 0xfc00ul, &format,
+                                     &alpha, &bytes));
     CHECK(format == 0x1234u && alpha == -1 && bytes == 7ul);
 }
 

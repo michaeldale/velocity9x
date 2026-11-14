@@ -20,6 +20,8 @@
 #define V9X_D3DFMT_A1R5G5B5 25ul
 #define V9X_D3DFMT_A4R4G4B4 26ul
 #define V9X_D3DFMT_V8U8     60ul
+#define V9X_D3DFMT_L6V5U5   61ul
+#define V9X_D3DFMT_X8L8V8U8 62ul
 #define V9X_D3DFMT_Q8W8V8U8 63ul
 #define V9X_D3DFMT_D16      80ul
 #define V9X_D3DFMT_D24X8    77ul

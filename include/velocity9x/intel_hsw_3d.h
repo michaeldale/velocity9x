@@ -142,6 +142,14 @@ v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
 #define V9X_HSW_FMT_R8G8B8A8_UNORM     ((v9x_u16)0x0c7u)
 #define V9X_HSW_FMT_R8G8B8A8_SNORM     ((v9x_u16)0x0c9u)
 #define V9X_HSW_FMT_R8G8_SNORM         ((v9x_u16)0x107u)
+/* The two bump formats with a luminance: du and dv signed in the two low
+ * channels, an unsigned luminance third (Vol 5 "Memory Views": channels
+ * are named from the least significant bit up, R5G5_SNORM_B6_UNORM its
+ * own example). Codes from Vol 2a SURFACE_FORMAT, raw-mode extraction.
+ * The volumes carry no table of what the sampler reads; R5G5_SNORM_B6_
+ * UNORM is named in Vol 7's ld message, the 32-bit one nowhere there. */
+#define V9X_HSW_FMT_X8B8_UNORM_G8R8_SNORM ((v9x_u16)0x0e6u)
+#define V9X_HSW_FMT_R5G5_SNORM_B6_UNORM   ((v9x_u16)0x119u)
 #define V9X_HSW_FMT_R32_FLOAT          ((v9x_u16)0x0d8u)
 #define V9X_HSW_FMT_R24_UNORM_X8       ((v9x_u16)0x0d9u)
 #define V9X_HSW_FMT_B8G8R8X8_UNORM     ((v9x_u16)0x0e9u)

@@ -8441,8 +8441,9 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
                             V9X_D3D_PS_TEXCOORD_SETS;
             /* BUMPENVMAP and DOTPRODUCT3 as fixed-function stage ops, drawn
              * through the stages' own ps.1.1 program (v9x_d3d_ps_fixed),
-             * so only where shaders run and only told to DDI 8. Not
-             * BUMPENVMAPLUMINANCE: no luminance bump format is published.
+             * so only where shaders run and only told to DDI 8.
+             * BUMPENVMAPLUMINANCE with them, as texbeml, where the engine
+             * has a format that carries a luminance (v9x_d3d_formats8).
              * 3DMark 2001 SE runs both of its bump tests on them (the
              * 4570, boot 258). Its DOT3 test faulted through boots 247 to
              * 256 only while a d3d8 logging proxy of ours sat in its
@@ -8450,6 +8451,9 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
              * renderer-fault.md. */
             caps->TextureOpCaps |= V9X_D3DTEXOPCAPS_BUMPENVMAP |
                                    V9X_D3DTEXOPCAPS_DOTPRODUCT3;
+            if (ops->limits != 0 && ops->limits->bump_luminance != 0ul) {
+                caps->TextureOpCaps |= V9X_D3DTEXOPCAPS_BUMPENVMAPLUMINANCE;
+            }
         }
     }
     /* Cube maps, with mips, of power-of-two sides: 3DMark 2001 SE calls
@@ -8467,12 +8471,12 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
 
 /* DDI 8's format list (d3d_caps8.h): the published texture formats, the
  * render depths and the engine's depth formats. */
-#define V9X_D3D_FORMATS8_ROOM 16ul
+#define V9X_D3D_FORMATS8_ROOM 20ul
 
 static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
 {
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
-    DWORD textures[10];
+    DWORD textures[12];
     DWORD count = v9x_hal->d3d_global.dwNumTextureFormats;
     DWORD depths = v9x_hal->d3d_global.hwCaps.dwDeviceRenderBitDepth;
     DWORD renders = 0ul;
@@ -8496,6 +8500,18 @@ static DWORD v9x_d3d_formats8(V9X_D3D_FORMAT8 *list)
     if (ops != 0 && ops->draw_shader != 0) {
         textures[count++] = V9X_D3DFMT_Q8W8V8U8;
         textures[count++] = V9X_D3DFMT_V8U8;
+        /* And those with a luminance, which BUMPENVMAPLUMINANCE's texbeml
+         * reads third, where the engine's sampler was measured reading
+         * them so (limits->bump_luminance). */
+        if (ops->limits != 0 &&
+            (ops->limits->bump_luminance & V9X_D3D_BUMP_LUM_X8L8V8U8) !=
+                0ul) {
+            textures[count++] = V9X_D3DFMT_X8L8V8U8;
+        }
+        if (ops->limits != 0 &&
+            (ops->limits->bump_luminance & V9X_D3D_BUMP_LUM_L6V5U5) != 0ul) {
+            textures[count++] = V9X_D3DFMT_L6V5U5;
+        }
     }
     /* DXT where the engine places and samples it: 3DMark 2001 SE's Nature
      * has its distant terrain and mountains only so (boot 154). */

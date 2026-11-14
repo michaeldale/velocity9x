@@ -87,12 +87,19 @@ int v9x_d3d_hsw_texel_format(v9x_u32 bits, int alpha_pixels, v9x_u32 red,
  * R8G8B8A8_SNORM, 4 bytes, with alpha (Q); with D3DFMT_V8U8 (60), or
  * DirectX 7's DDPF_BUMPDUDV of 16 bits, du FFh, dv FF00h and no
  * luminance, is R8G8_SNORM, 2 bytes. Bytes run U V W Q from the lowest,
- * which is R G B A. 0 for anything else, nothing written.
+ * which is R G B A. And the two with a luminance, for
+ * BUMPENVMAPLUMINANCE, by D3DFORMAT only: D3DFMT_L6V5U5 (61) is
+ * R5G5_SNORM_B6_UNORM, 2 bytes, and D3DFMT_X8L8V8U8 (62)
+ * X8B8_UNORM_G8R8_SNORM, 4 bytes, neither with alpha: du and dv signed
+ * in red and green, the luminance unsigned in blue, where texbeml reads
+ * it. 0 for anything else, nothing written.
  */
 #define V9X_D3D_HSW_DDPF_FOURCC    0x00000004ul
 #define V9X_D3D_HSW_DDPF_BUMPDUDV  0x00080000ul
 #define V9X_D3D_HSW_DDPF_D3DFORMAT 0x00200000ul
 #define V9X_D3D_HSW_D3DFMT_V8U8     60ul
+#define V9X_D3D_HSW_D3DFMT_L6V5U5   61ul
+#define V9X_D3D_HSW_D3DFMT_X8L8V8U8 62ul
 #define V9X_D3D_HSW_D3DFMT_Q8W8V8U8 63ul
 
 int v9x_d3d_hsw_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,

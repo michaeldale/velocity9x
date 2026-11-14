@@ -180,7 +180,9 @@ programs: a specular form of each one-unit program beside its fog form
 (`i9xx_fog.c`; the fog stream already carries the specular dword per
 vertex), the same in the two-unit builder (`i9xx_multitex.c`), and the
 decoder taught both. That is register-level work with its own
-measurements, not started.
+measurements, done the same day:
+[`2026-11-14-gen3-specular-and-bump-luminance.md`](2026-11-14-gen3-specular-and-bump-luminance.md),
+which also has `BUMPENVMAPLUMINANCE`.
 
 `FfSpec` on the HD 4600 (the 4570, the driver it was left on, the probe
 alone replaced; the boot number was not read): pass, worst channel

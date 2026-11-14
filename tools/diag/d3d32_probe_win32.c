@@ -3632,7 +3632,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 15ul
+#define D32_T19_PROGRAMS 17ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -3764,6 +3764,7 @@ typedef HRESULT (WINAPI *d32_d3d8_surf_unlock_fn)(D32_OBJECT *);
 #define D32_PT_TEXKILL           65ul
 #define D32_PT_TEX               66ul
 #define D32_PT_TEXBEM            67ul
+#define D32_PT_TEXBEML           68ul
 
 /* Fog after the shader: none; vertex fog, the factor each vertex's
  * specular alpha; or LINEAR table fog over D32_T19_FOG_START to _END of
@@ -3815,6 +3816,14 @@ typedef struct d32_t19_program {
  *            Skipped where ShadeCaps (DWORD 14) lacks
  *            D3DPSHADECAPS_SPECULARGOURAUDRGB (200h).
  *
+ *   FfBemL8  FfBem's stages with BUMPENVMAPLUMINANCE (23, cap 00400000h)
+ *   FfBemL6  over an X8L8V8U8 (62) and an L6V5U5 (61) map in stage 0:
+ *            texbeml, stage 1's colour times the map's luminance scaled
+ *            and offset by stage 0's BUMPENVLSCALE and BUMPENVLOFFSET
+ *            (22, 23). du and dv are read as signed over 127 or 15, the
+ *            luminance over 255 or 63. Skipped where CheckDeviceFormat
+ *            refuses the map.
+ *
  * Skipped, not counted, where D3DCAPS8 TextureOpCaps (DWORD 36) lacks the
  * op. ValidateDevice (IDirect3DDevice8 slot 64) is recorded beside each,
  * not judged. D3DRS_TEXTUREFACTOR is 60; D3DTOP_BUMPENVMAP 22 and
@@ -3849,9 +3858,21 @@ typedef struct d32_t19_fixed {
                            DISABLE                                     */
     DWORD specular;     /* SPECULARENABLE, and the row needs the
                            ShadeCaps bit, not a TextureOpCaps one      */
+    DWORD lum;          /* 1 or 2: stage 0 holds the X8L8V8U8 or the
+                           L6V5U5 luminance bump map, and its
+                           BUMPENVLSCALE and BUMPENVLOFFSET are set    */
 } D32_T19_FIXED;
 
-#define D32_T19_FIXED_ROWS 5ul
+#define D32_T19_FIXED_ROWS 7ul
+/* BUMPENVMAPLUMINANCE's terms for the luminance rows. */
+#define D32_T19_LSCALE 0.75f
+#define D32_T19_LOFFSET 0.125f
+#define D32_D3DTSS_BUMPENVLSCALE 22ul
+#define D32_D3DTSS_BUMPENVLOFFSET 23ul
+#define D32_TOP_BUMPENVMAPLUMINANCE 23ul
+#define D32_TEXOPCAPS_BUMPENVMAPLUMINANCE 0x00400000ul
+#define D32_D3DFMT_L6V5U5 61ul
+#define D32_D3DFMT_X8L8V8U8 62ul
 
 static const D32_T19_FIXED d32_t19_fixed[D32_T19_FIXED_ROWS] = {
     { D32_TEXOPCAPS_DOTPRODUCT3,
@@ -3892,12 +3913,34 @@ static const D32_T19_FIXED d32_t19_fixed[D32_T19_FIXED_ROWS] = {
       { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
       0ul,
       { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
-      1ul }
+      1ul },
+    /* FfBemL8 and FfBemL6: FfBem's stages with BUMPENVMAPLUMINANCE, over
+     * the X8L8V8U8 and the L6V5U5 map. */
+    { D32_TEXOPCAPS_BUMPENVMAPLUMINANCE,
+      { D32_TOP_BUMPENVMAPLUMINANCE, D32_TOP_SELECTARG1 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_SELECTARG1 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+      1ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      0ul, 1ul },
+    { D32_TEXOPCAPS_BUMPENVMAPLUMINANCE,
+      { D32_TOP_BUMPENVMAPLUMINANCE, D32_TOP_SELECTARG1 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_SELECTARG1 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+      1ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      0ul, 2ul }
 };
 
 /* The HAL device's TextureOpCaps and ShadeCaps, while T19 runs. */
 static DWORD d32_t19_texop_caps;
 static DWORD d32_t19_shade_caps;
+/* The luminance bump maps, X8L8V8U8 then L6V5U5, where the driver
+ * publishes them; and which one stage 0 holds while a row is judged. */
+static D32_OBJECT *d32_t19_lum[2];
+static DWORD d32_t19_lum_kind;
 
 /*
  * Step 5d's normal map: 8x8 D3DFMT_Q8W8V8U8 (63), managed, its texels
@@ -4071,7 +4114,19 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0), D32_PT_V(0),
         D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_T(0),
         D32_PT_ADD, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_V(1),
-        D32_PT_END }, 0ul, 5ul }
+        D32_PT_END }, 0ul, 5ul },
+    { "FfBemL8", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_TEXBEML, D32_PT_TO_T(1), D32_PT_T(0),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
+        D32_PT_END }, 0ul, 6ul },
+    { "FfBemL6", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_TEXBEML, D32_PT_TO_T(1), D32_PT_T(0),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
+        D32_PT_END }, 0ul, 7ul }
 };
 
 /* The Cube program's set 1 per vertex: directions whose plane passes near
@@ -4310,6 +4365,46 @@ static DWORD d32_t19_normal_texel(long x, long y)
            ((DWORD)(w & 0xffl) << 16) | ((DWORD)(q & 0xffl) << 24);
 }
 
+/* The luminance bump maps' texel: du and dv signed, moving through both
+ * signs and never the most negative code, and a luminance that is never
+ * 0. Kind 1 is X8L8V8U8, a byte each from the lowest; kind 2 L6V5U5, du
+ * in bits 4:0, dv in 9:5, the luminance in 15:10. */
+static DWORD d32_t19_lum_texel(DWORD kind, long x, long y)
+{
+    long u = x * 4l - 14l;
+    long v = 13l - y * 4l;
+    long l = 12l + x * 3l + y * 4l;
+
+    if (kind == 2ul) {
+        return ((DWORD)(u & 0x1fl)) | ((DWORD)(v & 0x1fl) << 5) |
+               ((DWORD)l << 10);
+    }
+    return ((DWORD)((u * 8l) & 0xffl)) | ((DWORD)((v * 8l) & 0xffl) << 8) |
+           ((DWORD)(l * 4l) << 16);
+}
+
+/* That texel as the sampler is taken to give it: du, dv, luminance, 1. */
+static void d32_t19_lum_rgba(DWORD kind, DWORD texel, float rgba[4])
+{
+    long u;
+    long v;
+
+    if (kind == 2ul) {
+        u = (long)(texel & 0x1ful);
+        v = (long)((texel >> 5) & 0x1ful);
+        rgba[0] = (float)(u > 15l ? u - 32l : u) / 15.0f;
+        rgba[1] = (float)(v > 15l ? v - 32l : v) / 15.0f;
+        rgba[2] = (float)((texel >> 10) & 0x3ful) / 63.0f;
+    } else {
+        u = (long)(texel & 0xfful);
+        v = (long)((texel >> 8) & 0xfful);
+        rgba[0] = (float)(u > 127l ? u - 256l : u) / 127.0f;
+        rgba[1] = (float)(v > 127l ? v - 256l : v) / 127.0f;
+        rgba[2] = (float)((texel >> 16) & 0xfful) / 255.0f;
+    }
+    rgba[3] = 1.0f;
+}
+
 /* A block's two 565 colours; colour 0's red is the larger, so it is the
  * larger number and DXT1 decodes four colours. */
 static void d32_t19_dxt_ends(long bx, long by, DWORD *c0, DWORD *c1)
@@ -4397,6 +4492,14 @@ static void d32_t19_sample(void *user, v9x_u32 stage, v9x_u32 count,
         rgba[1] = (float)((texel >> 8) & 0xfful) / 255.0f;
         rgba[2] = (float)(texel & 0xfful) / 255.0f;
         rgba[3] = (float)(texel >> 24) / 255.0f;
+        return;
+    }
+    if (d32_t19_lum_kind != 0ul && stage == 0ul) {
+        d32_t19_lum_rgba(d32_t19_lum_kind,
+                         d32_t19_lum_texel(d32_t19_lum_kind,
+                                           d32_t19_index(coords[0], unjudged),
+                                           d32_t19_index(coords[1], unjudged)),
+                         rgba);
         return;
     }
     if ((d32_t19_normal_stages & (1ul << stage)) != 0ul) {
@@ -4811,6 +4914,48 @@ static HRESULT d32_t19_normal_texture(D32_OBJECT *device, D32_OBJECT **map)
         *map, 0u);
 }
 
+/* A luminance bump map, kind 1 X8L8V8U8 or 2 L6V5U5: one level, filled
+ * through LockRect. */
+static HRESULT d32_t19_lum_texture(D32_OBJECT *device, DWORD kind,
+                                   D32_OBJECT **map)
+{
+    D32_D3DLOCKED_RECT locked;
+    HRESULT hr;
+    long x;
+    long y;
+
+    *map = 0;
+    hr = ((d32_d3d8_create_texture_fn)device->vtbl[D3DDEV8_CREATE_TEXTURE])(
+        device, (UINT)D32_T19_TEXELS, (UINT)D32_T19_TEXELS, 1u, 0ul,
+        kind == 2ul ? D32_D3DFMT_L6V5U5 : D32_D3DFMT_X8L8V8U8,
+        D32_D3DPOOL_MANAGED, map);
+    if (hr != 0 || *map == 0) {
+        *map = 0;
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    d32_zero(&locked, sizeof(locked));
+    hr = ((d32_d3d8_tex_lock_fn)(*map)->vtbl[D3DTEX8_LOCK_RECT])(
+        *map, 0u, &locked, 0, 0ul);
+    if (hr != 0 || locked.pBits == 0) {
+        return hr != 0 ? hr : (HRESULT)0x80004005ul;
+    }
+    for (y = 0l; y < D32_T19_TEXELS; ++y) {
+        BYTE *row = (BYTE *)locked.pBits + y * locked.Pitch;
+
+        for (x = 0l; x < D32_T19_TEXELS; ++x) {
+            DWORD texel = d32_t19_lum_texel(kind, x, y);
+
+            if (kind == 2ul) {
+                ((WORD *)row)[x] = (WORD)texel;
+            } else {
+                ((DWORD *)row)[x] = texel;
+            }
+        }
+    }
+    return ((d32_d3d8_tex_unlock_fn)(*map)->vtbl[D3DTEX8_UNLOCK_RECT])(
+        *map, 0u);
+}
+
 /* A DXT texture, one level, its blocks written through LockRect: for
  * DXT3 eight bytes of 4-bit alphas, low nibble first, then the colour
  * block - two 565 colours and 2-bit indices, texel 0 in the low bits. */
@@ -5027,6 +5172,12 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         d32_line(key, "skip-no-texop");
         return 1ul;
     }
+    if (fixed != 0 && fixed->lum != 0ul &&
+        d32_t19_lum[fixed->lum - 1ul] == 0) {
+        d32_line(key, "skip-no-lum-format");
+        return 1ul;
+    }
+    d32_t19_lum_kind = fixed != 0 ? fixed->lum : 0ul;
     d32_t19_cube_stages = p->cube;
     d32_t19_normal_stages = p->normal;
     d32_t19_dxt_kind = p->dxt;
@@ -5100,6 +5251,21 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
 
         d32_t19_fixed_states(device, fixed, env);
         rs(device, D32_RS_TEXTUREFACTOR, D32_T19_FACTOR);
+        /* A luminance row: its map in stage 0, and the terms texbeml
+         * scales by on that stage, where Direct3D keeps them. */
+        if (fixed->lum != 0ul) {
+            d32_stage_state_fn tss = (d32_stage_state_fn)
+                device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE];
+
+            d32_t19_key(p->name, "SetLumHr",
+                        (DWORD)((d32_set_texture_fn)
+                                device->vtbl[D3DDEV8_SET_TEXTURE])(
+                            device, 0ul, d32_t19_lum[fixed->lum - 1ul]));
+            tss(device, 0ul, D32_D3DTSS_BUMPENVLSCALE,
+                d32_float_bits(D32_T19_LSCALE));
+            tss(device, 0ul, D32_D3DTSS_BUMPENVLOFFSET,
+                d32_float_bits(D32_T19_LOFFSET));
+        }
         d32_t19_key(p->name, "ValidateHr",
                     (DWORD)((d32_d3d8_validate_fn)
                             device->vtbl[D3DDEV8_VALIDATE_DEVICE])(
@@ -5156,6 +5322,11 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                 judged.bump[2][m] = env->bump[1][m];
             }
         }
+        /* texbeml samples stage 1, so its terms are read there. */
+        if (fixed != 0 && fixed->lum != 0ul) {
+            judged.luminance[1][0] = D32_T19_LSCALE;
+            judged.luminance[1][1] = D32_T19_LOFFSET;
+        }
         verdict = d32_t19_judge(program, &parsed, &judged, vertex,
                                 (const BYTE *)locked.pBits,
                                 (DWORD)locked.Pitch, format);
@@ -5174,7 +5345,17 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     }
     if (fixed != 0) {
         d32_t19_fixed_states(device, 0, env);
+        if (fixed->lum != 0ul) {
+            d32_stage_state_fn tss = (d32_stage_state_fn)
+                device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE];
+
+            tss(device, 0ul, D32_D3DTSS_BUMPENVLSCALE, 0ul);
+            tss(device, 0ul, D32_D3DTSS_BUMPENVLOFFSET, 0ul);
+            ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
+                device, 0ul, d32_t19_stage0);
+        }
     }
+    d32_t19_lum_kind = 0ul;
     if ((p->cube & 0x2ul) != 0ul) {
         ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
             device, 1ul, d32_t19_stage1);
@@ -5352,6 +5533,25 @@ static DWORD d32_ps11(void)
             goto release;
         }
     }
+    /* The luminance bump maps, each where the driver publishes it. */
+    for (stage = 0ul; stage < 2ul; ++stage) {
+        hr = ((d32_d3d8_check_format_fn)d3d->vtbl[D3D8_CHECK_DEVICE_FORMAT])(
+            d3d, 0u, D32_D3DDEVTYPE_HAL, mode.Format, 0ul,
+            D32_D3DRTYPE_TEXTURE,
+            stage == 0ul ? D32_D3DFMT_X8L8V8U8 : D32_D3DFMT_L6V5U5);
+        wsprintfA(text, "T19Lum%luCheckHr", stage + 1ul);
+        d32_hx(text, (DWORD)hr);
+        if (hr == 0) {
+            hr = d32_t19_lum_texture(device, stage + 1ul,
+                                     &d32_t19_lum[stage]);
+            wsprintfA(text, "T19Lum%luHr", stage + 1ul);
+            d32_hx(text, (DWORD)hr);
+            if (hr != 0) {
+                reason = "no-lum-map";
+                goto release;
+            }
+        }
+    }
     d32_t19_texop_caps = caps[D32_D3DCAPS8_TEXTURE_OP_CAPS];
     d32_hx("T19TextureOpCaps", d32_t19_texop_caps);
     d32_t19_shade_caps = caps[D32_D3DCAPS8_SHADE_CAPS];
@@ -5425,6 +5625,13 @@ release:
     if (d32_t19_dxt3 != 0) {
         ((d32_release_fn)d32_t19_dxt3->vtbl[COM_RELEASE])(d32_t19_dxt3);
         d32_t19_dxt3 = 0;
+    }
+    for (stage = 0ul; stage < 2ul; ++stage) {
+        if (d32_t19_lum[stage] != 0) {
+            ((d32_release_fn)d32_t19_lum[stage]->vtbl[COM_RELEASE])(
+                d32_t19_lum[stage]);
+            d32_t19_lum[stage] = 0;
+        }
     }
     d32_t19_stage0 = 0;
     d32_t19_stage1 = 0;

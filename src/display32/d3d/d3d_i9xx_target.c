@@ -486,11 +486,26 @@ v9x_u16 v9x_d3d_i9xx_map_format(v9x_u32 flags, v9x_u32 fourcc,
                bits == 16ul && red == V9X_D3D_I9XX_V8U8_DU &&
                green == V9X_D3D_I9XX_V8U8_DV && blue == 0ul) {
         code = V9X_D3D_I9XX_D3DFMT_V8U8;
+    } else if ((flags & V9X_D3D_I9XX_DDPF_BUMPDUDV) != 0ul &&
+               bits == 32ul && red == V9X_D3D_I9XX_V8U8_DU &&
+               green == V9X_D3D_I9XX_V8U8_DV && blue == 0x00ff0000ul) {
+        /* The two with a luminance, as the DirectX 8 runtime hands them
+         * over: BUMPDUDV and BUMPLUMINANCE with masks, no code (the
+         * netbook, boot 340). */
+        code = V9X_D3D_I9XX_D3DFMT_X8L8V8U8;
+    } else if ((flags & V9X_D3D_I9XX_DDPF_BUMPDUDV) != 0ul &&
+               bits == 16ul && red == 0x0000001ful &&
+               green == 0x000003e0ul && blue == 0x0000fc00ul) {
+        code = V9X_D3D_I9XX_D3DFMT_L6V5U5;
     }
     if (code == V9X_D3D_I9XX_D3DFMT_Q8W8V8U8) {
         format = V9X_I9XX_MAPSURF_32BIT_QWVU8888;
     } else if (code == V9X_D3D_I9XX_D3DFMT_V8U8) {
         format = V9X_I9XX_MAPSURF_16BIT_88DVDU;
+    } else if (code == V9X_D3D_I9XX_D3DFMT_L6V5U5) {
+        format = V9X_I9XX_MAPSURF_16BIT_655LDVDU;
+    } else if (code == V9X_D3D_I9XX_D3DFMT_X8L8V8U8) {
+        format = V9X_I9XX_MAPSURF_32BIT_XLVU8888;
     } else if ((flags & V9X_D3D_I9XX_DDPF_RGB) == 0ul) {
         return V9X_FALSE;
     } else if (bits == 16ul) {
