@@ -12,11 +12,11 @@ All of them draw through one shared render core. It runs these with
 hardware 3D:
 - **Intel:** GMA 900, GMA 950, GMA 3150, GMA X3100, HD Graphics
   (Ironlake), HD 4000 and HD 4600;
-- **AMD and ATI:** Radeon HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D, R3E
+- **AMD and ATI:** Radeon HD 2400 Pro, HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D, R3E
   (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
   Rage IIC;
 - **others:** S3 ViRGE and Trio3D, Matrox Millennium II and Mystique, SiS
-  6326, NVIDIA RIVA 128ZX and 3dfx Voodoo4.
+  6326, NVIDIA RIVA 128ZX and GeForce 210, and 3dfx Voodoo4.
 
 The S3 Trio32/64 and the Matrox Millennium get 2D acceleration, and other
 cards run through their VESA video BIOS. The Intel GMA 4500 and GMA X4500
@@ -35,28 +35,24 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.51.0
+## Current version: 0.52.0
 
-[Download](releases/0.51.0/README.md) ·
+[Download](releases/0.52.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.51.0:
-- **Intel HD 4600: the graphics core runs at its full clock**, 1150 MHz
-  where it sat at the BIOS's 400. 3DMark 2001 SE went from 2357 to 3159
-  on the same boot
-  ([record](docs/decisions/2026-11-14-haswell-render-clock-rp0.md)).
-- **Intel HD 4600 and GMA 900 to 3150: environment and DOT3 bump mapping**
-  in Direct3D 8 and 9: 3DMark 2001 SE's two bump tests run instead of
-  reading "Not supported by hardware". The GMA 900 to 3150 also draw
-  specular highlights, and their two-texture surfaces moved half a pixel
-  onto everything else
-  ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
-- **Intel GMA X3100: 32 MiB of texture memory in system RAM**, as the GMA
-  950 has: 3DMark 2000 went from 1224 to 1706 on one laptop; and Direct3D
-  on the GMA X3100 to Ironlake no longer drops draws while the chip is busy
-  ([record](docs/decisions/2026-11-14-intel-gm965-texture-pool-driver-first-boot.md)).
+New in 0.52.0:
+- **ATI Radeon HD 2400 Pro (RV610), `ati` package:** Direct3D and OpenGL
+  through its shader core, DirectDraw fills, copies and page flips on its
+  DMA engine. On one card every release probe passes and 3DMark 2000
+  completes (2989)
+  ([record](docs/decisions/2026-11-15-rv610-hd2400pro-bring-up.md)).
+- **NVIDIA GeForce 210 (GT218), `nvidia` package:** the first
+  Tesla-generation card. DirectDraw and GDI fills and copies on the 2D
+  engine, Direct3D on the 3D engine at 16 and 32 bpp with 16-bit depth.
+  3DMark 2000 completes on one card (2762, 3052, 2765)
+  ([record](docs/decisions/2026-11-14-gt218-3d-d3d-builders.md)).
 
 ### Known issues
 
@@ -86,9 +82,16 @@ New in 0.51.0:
   them. On an HD 5570, one reporter sees a small flickering square
   follow the mouse over a full-screen game; not reproduced here
   ([issue](docs/issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)).
-- **HD 2600 XT:** once, before a reset, its depth buffer held one
-  constant value, so 3D drew in the wrong order; not seen since
+- **HD 2600 XT and HD 2400 Pro:** after the driver first starts the
+  command processor on a boot, the depth buffer can hold one constant
+  value, so 3D draws in the wrong order until the next restart
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
+- **GeForce 210:** the screen cannot be flipped, so each Direct3D frame
+  is presented by a copy, whose cost is not measured. Not yet working: a
+  Lock of a depth buffer, 24-bit depth with stencil, X8R8G8B8 textures.
+  OpenGL, Glide and 3DCIF have not been run. 3DMark 2000 ended in a crash
+  in two runs of five, traced to 3DMark reading past one of its own
+  arrays.
 - **S3 Trio64:** a second or two of cyan garbage at Windows shutdown,
   before the safe-to-turn-off screen; cosmetic
   ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
@@ -109,6 +112,9 @@ New in 0.51.0:
 
 ### Recent releases
 
+- **0.51.0:** the HD 4600's core at its full 1150 MHz (3DMark 2001 SE
+  2357 to 3159); environment and DOT3 bump mapping on the HD 4600 and GMA
+  900 to 3150; 32 MiB of texture memory in system RAM on the GMA X3100.
 - **0.50.0:** the Unreal Tournament 2004 demo runs on the HD 4600 (32.9
   fps in a 12-bot botmatch); lightmaps with the doubled blend on the GMA
   900 to 3150; write-combined video memory on the GMA X3100 and GMA 4500
@@ -251,6 +257,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
+| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only); no page flips, frames presented by a copy. 3DMark 2000. One tester's card through remote help; modes from the VBE. OpenGL, Glide and 3DCIF not run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
 
@@ -314,6 +321,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | ATI Rage 128 Pro | DirectDraw, flips | Yes | Not run | Yes | No | Yes | Not run |
 | ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe (0.38.0) | No | Glide 2 probe only (0.38.0) | Not run |
 | AMD Radeon HD 2600 XT (0.49.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
+| ATI Radeon HD 2400 Pro (0.52.0) | DirectDraw, flips | Yes | Not run | Probe | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 5570 (0.40.0, recognised, untested) | Not run | Not run | Not run | Not run | No | Not run | Not run |
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
@@ -328,6 +336,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Glide 2 probe only | Not run |
+| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI | Yes | Not run | Not run | No | Not run | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
@@ -336,7 +345,7 @@ Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600 and the Millennium II (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
-  HD 5770, HD 7660D, the R3E, the R7E and the X1200: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  HD 5770, HD 7660D, the R3E, the R7E, the X1200 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
