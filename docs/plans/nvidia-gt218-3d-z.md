@@ -13,7 +13,10 @@ kind-70h window and back is exact, and the tiled surface's raw words are
 in a different order, so the double mapping works
 ([record](../decisions/2026-11-14-gt218-tiled-alias-window.md)). Step 3
 passed (f5097622): the 3D engine draws a solid rectangle into a tiled
-target through the window, exact after the copy out. Next: step 4, Z.
+target through the window, exact after the copy out. Step 4 passed on
+boot 118: Z16 and Z24S8 depth tests, the near rectangle winning the
+overlap, once the screen scissor was bounded to the surface. Next: step
+5, the HAL.
 Part of phase 3 of
 [nvidia-gt218-3d.md](nvidia-gt218-3d.md), after solid, Gouraud and
 textured draws ran exact on M-BXMFA8 into pitch-linear targets

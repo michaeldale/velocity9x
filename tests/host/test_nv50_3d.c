@@ -631,6 +631,13 @@ static void test_depth(void)
     CHECK(((header >> 18) & 0x7fful) == 3ul);
     CHECK(words[at] == 128ul && words[at + 1ul] == 72ul &&
           words[at + 2ul] == 0x00010001ul);
+    /* The screen scissor bounded to the surface, as nv50_validate_fb
+     * sets it: the clear covers the screen scissor, and EXA's 8192 bound
+     * made the first Z16 clear on M-BXMFA8 overrun the 128-pixel surface
+     * (PROP trap SURF_WIDTH_OVERRUN). */
+    header = find_header(&push, 0x0ff4ul, &at);
+    CHECK(header != 0xfffffffful && words[at] == (128ul << 16) &&
+          words[at + 1ul] == (72ul << 16));
     header = find_header(&push, 0x12ccul, &at);
     CHECK(words[at] == 1ul);
     header = find_header(&push, 0x12e8ul, &at);

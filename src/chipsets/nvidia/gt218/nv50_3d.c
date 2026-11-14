@@ -658,6 +658,14 @@ void v9x_nv50_push_3d_zeta(struct v9x_nv50_push *push,
     horiz[2] = V9X_8597_ZETA_ONE_LAYER;
     v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_ZETA_HORIZ, 3ul,
                          horiz);
+
+    /* The screen scissor bounded to the surface, as nv50_validate_fb
+     * sets it (width and height in the high halves). EXA's setup leaves
+     * it at 8192, and a depth clear covers the screen scissor: the first
+     * Z16 clear on the card overran the 128-pixel surface and raised a
+     * PROP SURF_WIDTH_OVERRUN trap. */
+    v9x_nv50_3d_two(push, V9X_8597_SCREEN_SCISSOR_HORIZ, zeta->width << 16,
+                    zeta->height << 16);
     v9x_nv50_3d_one(push, V9X_8597_DEPTH_TEST_ENABLE, 1ul);
     v9x_nv50_3d_one(push, V9X_8597_DEPTH_WRITE_ENABLE, 1ul);
     v9x_nv50_3d_one(push, V9X_8597_DEPTH_TEST_FUNC, V9X_8597_DEPTH_FUNC_LESS);

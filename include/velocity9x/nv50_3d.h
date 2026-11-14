@@ -235,6 +235,7 @@ void v9x_nv50_push_3d_target(struct v9x_nv50_push *push,
 #define V9X_8597_CLEAR_DEPTH         0x0d90ul
 #define V9X_8597_ZETA_ADDRESS_HIGH   0x0fe0ul
 #define V9X_8597_ZETA_HORIZ          0x1228ul
+#define V9X_8597_SCREEN_SCISSOR_HORIZ 0x0ff4ul
 #define V9X_8597_DEPTH_TEST_ENABLE   0x12ccul
 #define V9X_8597_DEPTH_WRITE_ENABLE  0x12e8ul
 #define V9X_8597_DEPTH_TEST_FUNC     0x130cul

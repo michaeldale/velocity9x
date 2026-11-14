@@ -2,10 +2,10 @@
 
 Date: 2026-11-14
 
-Steps 1 and 2 of [docs/plans/nvidia-gt218-3d-z.md](../plans/nvidia-gt218-3d-z.md),
-on M-BXMFA8 (GeForce 210, GT218 A8), boot 117. Evidence:
+Steps 1 to 4 of [docs/plans/nvidia-gt218-3d-z.md](../plans/nvidia-gt218-3d-z.md),
+on M-BXMFA8 (GeForce 210, GT218 A8), boots 117 and 118. Evidence:
 `build/driver-results/m-bxmfa8-gt218-3d/z1-V9XN5CH.INI` and
-`z2-V9XN5CH.INI`.
+`z2-V9XN5CH.INI` onward, per step below.
 
 ## Step 1: the windows break nothing
 
@@ -73,9 +73,44 @@ an op list only once, so the third kick's run replayed the earlier
 kicks' ops, their PUT writes included, and moved PUT backwards. Each kick
 now begins its own list.
 
-## Not covered
+## Step 4: depth buffers through the Z windows
 
-- The Z windows (6Ch, 28h): nothing has addressed them yet.
+The stages `/z:depth16` and `/z:depth24` draw into the tiled target T
+(128x72, tile mode 10h) with a Z buffer of the same size and tile mode
+at window offset 3E0000h, addressed through the kind-6Ch (Z16, format
+13h) or kind-28h (Z24S8, format 16h) window. The draw: `ZETA_ADDRESS`,
+`ZETA_ENABLE`, `ZETA_HORIZ`, depth test LESS with writes, a depth clear
+to 1.0, then two 40x24 rectangles from a vertex program that passes z
+through (`v9x_nv50_3d_depth_vp`, result map 41060100h): near red at
+z 0.25 drawn first, far green at z 0.75 offset by (20, 12). T is then
+copied out and compared.
+
+**First run (`z5`, 322c1b24 before the fix, boot 117): a PROP trap.**
+`PGRAPH_INTR` 200000h, trap 100h; TP0's PROP status `80000004`, bit 2
+SURF_WIDTH_OVERRUN; TP1 clean. Its other words: E1Ch 80h, E20h D0000h,
+E24h 08000000h, the rest 0. Hypothesis taken: EXA's setup leaves the
+screen scissor at 8192 by 8192, and the depth clear covers the screen
+scissor (Mesa clears with `CLEAR_RECT_VIEWPORT` after
+`nv50_validate_fb` has set `SCREEN_SCISSOR_HORIZ`/`VERT` (FF4h) to the
+framebuffer's width and height), so the clear ran past the 128-pixel
+surface. The colour-only stages never cleared, which would explain why
+they never tripped it. Which of the clear and the draws overran was not
+isolated.
+
+**With `SCREEN_SCISSOR` set to (128<<16, 72<<16) in
+`v9x_nv50_push_3d_zeta` (boot 118, 322c1b24-dirty; `z8`, `z9`):**
+
+| Format | Red | Overlap red | Green | Pattern | Bad | Traps |
+| --- | --- | --- | --- | --- | --- | --- |
+| Z16 | 960 | 240 | 720 | 7536 | 0 | none |
+| Z24S8 | 960 | 240 | 720 | 7536 | 0 | none |
+
+The 240 overlap pixels kept the near rectangle's red although green was
+drawn after it, so the depth test runs and the clear set the buffer far.
+Both Z windows' kinds work as the format expects; whether a mismatched
+kind would trap (ZETA_STORAGE_TYPE_MISMATCH, 200h) was not tried.
+
+## Not covered
 - 16 bpp and 8 bpp surfaces through the window, other tile modes, and
   surfaces whose height is not a multiple of the block height.
 - Gouraud or textured draws into a tiled target (only the solid one).
