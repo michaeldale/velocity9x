@@ -457,8 +457,8 @@ static DWORD v9x_d3d_g4_texture_unit(const V9X_R3D_TEXTURE *texture,
         return V9X_D3D_G4_REFUSE_TEXTURE;
     }
     /* A sampled surface may lie in the texture pool, past stolen memory
-     * (the GM965 on the gated machine; docs\decisions\2026-11-14-intel-
-     * gm965-texture-pool-decisions.md). Targets and depth keep
+     * (the GM965; docs\decisions\2026-11-14-intel-gm965-texture-pool-
+     * decisions.md). Targets and depth keep
      * v9x_surface_offset: the pool holds textures only. */
     offset = v9x_surface_sample_offset(surface);
     if (offset == 0xfffffffful) {

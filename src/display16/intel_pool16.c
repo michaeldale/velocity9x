@@ -31,10 +31,9 @@
 #define V9X_POOL_ACCEPT     0x4C4F4F50ul
 #define V9X_POOL_STATE_MAPPED 2ul
 
-/* The gate: MICHAEL-NETBOOK's 945GSE, and the GM965, where the mini-VDD
- * narrows it to TOMMOHP by subsystem id and answers any other machine
- * refused-alloc, reason 3 (docs\decisions\2026-11-14-intel-gm965-texture-
- * pool-decisions.md). */
+/* The gate: MICHAEL-NETBOOK's 945GSE, and every GM965, measured on TOMMOHP
+ * (docs\decisions\2026-11-14-intel-gm965-texture-pool-decisions.md). The
+ * mini-VDD checks the device again. */
 #define V9X_POOL_DEVICE       0x27AEu
 #define V9X_POOL_DEVICE_GM965 0x2A02u
 

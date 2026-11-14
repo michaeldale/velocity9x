@@ -633,8 +633,7 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
      * texture pool's 32 MiB sits above the 8 MiB stolen run and the CPU
      * writes it through the aperture. TOMMOHP's DPMI host maps it
      * (docs\decisions\2026-11-13-intel-gm965-texture-pool-phase0.md).
-     * Every GM965 gets the mapping; only TOMMOHP gets a pool (the
-     * mini-VDD's gate).
+     * Every GM965 gets the mapping and the pool.
      */
     0x04000000ul,
     0,

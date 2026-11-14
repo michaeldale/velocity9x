@@ -6,6 +6,30 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.51.0 - not yet released
 
+- **`intel-gma` package, GMA X3100 (GM965): 32 MiB of texture memory in
+  system RAM**, as the GMA 950 got in 0.49.0. The BIOS gives this chip at
+  most 8 MiB, of which Direct3D could use about 4.5. The driver now maps
+  32 MiB of ordinary RAM into the chip's address space at boot, on
+  machines with at least 512 MiB, and textures go there first: on a GMA
+  X3100 laptop textures see 36.5 MiB, and 3DMark 2000 stopped recreating
+  its textures (1,629 creates in a run against 317,019) and scored 1706
+  against 1224. The screen mapping grows from 16 to 64 MiB, write-combined.
+  `V9X3D OFF` from DOS turns the pool off with the rest of the 3D. Measured
+  on one machine; the first run of the test tool that maps the pool ended
+  in a blue screen nobody could read, and fifty runs since have not
+  repeated it
+  ([decisions](docs/decisions/2026-11-14-intel-gm965-texture-pool-decisions.md),
+  [driver](docs/decisions/2026-11-14-intel-gm965-texture-pool-driver-first-boot.md),
+  [issue](docs/issues/2026-11-14-gm965-pool-map-probe-machine-stops.md)).
+  Not run with the pool: a full-screen DOS box, a mode change from
+  Display Properties, a game.
+- **`intel-gma` package, GMA X3100 to Ironlake (Gen4 and Gen5): Direct3D
+  no longer drops a draw while the chip is busy.** Before replacing a
+  shader, the driver waited about 20 ms for the chip to finish earlier
+  work and dropped the draw if it had not. 3DMark 2000 on a GMA X3100
+  lost 78 draws that way; it now waits, and loses none. Run on the GMA
+  X3100 only.
+
 ## 0.50.0 - 2026-11-14
 
 - **`intel-gma` package, HD 4600: the Unreal Tournament 2004 demo runs,

@@ -660,9 +660,7 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; table copy is the pool's frames in the order their PTEs are written, so
 ; aperture page i is allocation page i (measured, Phase 2 record).
 V9X_I9XX_POOL_DEVICE   equ 27ae8086h     ; the gate: MICHAEL-NETBOOK's 945GSE
-V9X_I9XX_POOL_DEVICE_GM965 equ 2a028086h ; and TOMMOHP's GM965, by subsystem
-V9X_I9XX_POOL_SUBSYS_GM965 equ 30c0103ch ; HP 103C:30C0 (config 2Ch)
-V9X_I9XX_POOL_CFG_SUBSYS equ 2ch
+V9X_I9XX_POOL_DEVICE_GM965 equ 2a028086h ; and every GM965
 V9X_I9XX_POOL_FRAME    equ 0fffff000h
 V9X_I9XX_POOL_CFG_ADDR equ 0cf8h         ; PCI configuration mechanism 1
 V9X_I9XX_POOL_CFG_DATA equ 0cfch
@@ -5072,12 +5070,11 @@ BeginProc V9xMini_I9xx_Pool_Alloc
     mov     edx, 2
     cmp     V9xI9xxGttValid, 0
     je      V9xMini_I9xx_Pool_Alloc_Refused
-    ; The gate. The netbook's 945GSE, whose GTT is BAR3's; or TOMMOHP's
-    ; GM965, whose GTT is in BAR0 and which is told from other GM965
-    ; machines by its subsystem id until the pool has run through boots
-    ; there (docs\decisions\2026-11-14-intel-gm965-texture-pool-
-    ; decisions.md). The same PTE serves both: every frame Windows 98
-    ; hands out is below 4 GiB, so Gen4's address bits 35:32 are zero.
+    ; The gate. The netbook's 945GSE, whose GTT is BAR3's; or any GM965,
+    ; whose GTT is in BAR0 (docs\decisions\2026-11-14-intel-gm965-texture-
+    ; pool-decisions.md; measured on TOMMOHP, opened to the design by
+    ; Michael's decision). The same PTE serves both: every frame Windows
+    ; 98 hands out is below 4 GiB, so Gen4's address bits 35:32 are zero.
     call    V9xMini_I9xx_Pool_Igd_Id
     cmp     eax, V9X_I9XX_POOL_DEVICE
     jne     short V9xMini_I9xx_Pool_Alloc_Gm965
@@ -5088,10 +5085,6 @@ BeginProc V9xMini_I9xx_Pool_Alloc
 V9xMini_I9xx_Pool_Alloc_Gm965:
     mov     edx, 3
     cmp     eax, V9X_I9XX_POOL_DEVICE_GM965
-    jne     V9xMini_I9xx_Pool_Alloc_Refused
-    mov     eax, V9X_I9XX_POOL_CFG_IGD + V9X_I9XX_POOL_CFG_SUBSYS
-    call    V9xMini_I9xx_Pool_Igd_Config
-    cmp     eax, V9X_I9XX_POOL_SUBSYS_GM965
     jne     V9xMini_I9xx_Pool_Alloc_Refused
     mov     edx, 2
     cmp     V9xI9xxGttInBar0, 1

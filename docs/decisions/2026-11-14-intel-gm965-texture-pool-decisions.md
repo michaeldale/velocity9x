@@ -11,6 +11,9 @@ Measurements it rests on: Phase 0
 Michael, 2026-11-14: start the port, on the `gm965-texture-pool` branch,
 with the pool not on by default for the GM965.
 
+**Superseded the same day: decision 2 is replaced by "every GM965"** (see
+the last section). The rest stands.
+
 ## Decisions
 
 1. **The Gen3 pool, unchanged in size and placement:** 32 MiB at GMADR
@@ -74,3 +77,21 @@ knows, and why it does not lift on probes alone.
   frames that look right.
 - A mode change and a full-screen DOS box with the pool mapped.
 - The blue screen either explained or not seen again in that time.
+
+## 2026-11-14, later: the gate is every GM965
+
+Michael, after the merge to main: the point of the release is the pool
+for every GM965, not one machine. Decision 2 is replaced: the mini-VDD
+accepts device `8086:2A02` with its GTT in BAR0, whatever the subsystem.
+The 2026-09-18 rule (no gated defaults on the dev driver) and the
+same-design rule (a fix measured on one chip goes to every chip of that
+design) both point the same way.
+
+The conditions above are no longer what opens the gate. They stay as
+what to watch on any GM965 that reports in: `[IntelPool]` in
+`INTELGTT.TXT` says whether a boot mapped a pool and, if not, which rule
+declined it. `V9X3D OFF` from DOS still turns it off.
+
+At the time of this change, TOMMOHP had mapped the pool on three boots
+(56-58) and run 3DMark 2000 on it twice. The one blue screen, in the
+first Phase 2 probe run, is unexplained.
