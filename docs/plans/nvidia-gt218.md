@@ -135,3 +135,6 @@ rather than VBE. V9XDDP and V9XD32 at 16 and 32 bpp.
 ### Phase 5 — flips through EVO
 
 ### Phase 6 — Direct3D (its own plan)
+
+[nvidia-gt218-3d.md](nvidia-gt218-3d.md): class 8597h on the existing
+channel, no microcode, shaders from Mesa's nv50 driver and EXA.
