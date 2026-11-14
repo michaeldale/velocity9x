@@ -160,7 +160,12 @@ engine the HAL has no code for. **4.3 is built** (3751e5b8):
 (`gt218_reserve.c`), the manifest row, and a two-surface copy in the
 builder. run-checks passes; nothing of it has run on a card. 4.4 is
 next, and its first question is the one thing 4.3 added that the probe
-never ran: a copy between two different surfaces.
+never ran: a copy between two different surfaces. **4.4 ran**
+(2026-11-14, M-BXMFA8 boot 108): the package installed, V9XDDP completes
+with every fill and copy check right at 16 bpp, and PFIFO's registers
+show the engine did them
+([the record](../decisions/2026-11-14-gt218-hal-engine-first-run.md)).
+Owed: 8 bpp through the HAL, and someone looking at the screen.
 
 ## Decisions owed
 
