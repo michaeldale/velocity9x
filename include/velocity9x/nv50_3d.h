@@ -94,6 +94,8 @@ struct v9x_nv50_3d_scratch {
     v9x_u32 fp_constants;
     /* The 1x1 texture a solid colour is drawn from. */
     v9x_u32 texel;
+    /* Room for a small texture, 256 bytes, 256 aligned. */
+    v9x_u32 texture;
 };
 
 #define V9X_NV50_3D_SCRATCH_VP       0x0000ul
@@ -103,6 +105,7 @@ struct v9x_nv50_3d_scratch {
 #define V9X_NV50_3D_SCRATCH_VP_DATA  0x4000ul
 #define V9X_NV50_3D_SCRATCH_FP_DATA  0x4100ul
 #define V9X_NV50_3D_SCRATCH_TEXEL    0x4800ul
+#define V9X_NV50_3D_SCRATCH_TEXTURE  0x4900ul
 #define V9X_NV50_3D_SCRATCH_BYTES    0x5000ul
 
 void v9x_nv50_3d_scratch_at(v9x_u32 base, struct v9x_nv50_3d_scratch *out);
@@ -146,6 +149,26 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
                                  v9x_u32 format, v9x_u32 x, v9x_u32 y,
                                  v9x_u32 w, v9x_u32 h);
 #define V9X_NV50_3D_RECT_WORDS_MAX   48ul
+
+/*
+ * A pitch-linear A8R8G8B8 texture at VM address texture, width x height
+ * texels, pitch bytes a row, as TIC entry 0 (Mesa nv50_create_texture_view
+ * for a texture with no memory type), TSC entry 0 nearest and repeating,
+ * and the vertex constants that scale texel coordinates by 1/width and
+ * 1/height. Same layout as the solid tables; texel is unused.
+ */
+void v9x_nv50_3d_texture_tables(v9x_u32 texture, v9x_u32 pitch,
+                                v9x_u32 width, v9x_u32 height,
+                                struct v9x_nv50_3d_solid *out);
+
+/* One rectangle (x, y, w, h) textured by TIC entry 0 across its whole
+ * area: the solid rectangle's draw, with source coordinates in texels of
+ * a src_w x src_h texture. */
+void v9x_nv50_push_3d_textured_rect(struct v9x_nv50_push *push,
+                                    v9x_u32 target, v9x_u32 pitch,
+                                    v9x_u32 height, v9x_u32 format,
+                                    v9x_u32 x, v9x_u32 y, v9x_u32 w,
+                                    v9x_u32 h, v9x_u32 src_w, v9x_u32 src_h);
 
 /*
  * Gouraud shading, the first programs of our own, built with the encoder

@@ -43,6 +43,7 @@ void v9x_nv50_3d_scratch_at(v9x_u32 base, struct v9x_nv50_3d_scratch *out)
     out->vp_constants = base + V9X_NV50_3D_SCRATCH_VP_DATA;
     out->fp_constants = base + V9X_NV50_3D_SCRATCH_FP_DATA;
     out->texel = base + V9X_NV50_3D_SCRATCH_TEXEL;
+    out->texture = base + V9X_NV50_3D_SCRATCH_TEXTURE;
 }
 
 /* TIC word 0 for an A8R8G8B8 texel (nv50_texture.h, EXA's _() macro):
@@ -222,6 +223,54 @@ void v9x_nv50_push_3d_setup(struct v9x_nv50_push *push,
                     V9X_8597_BOUND);
 }
 
+/* TIC word 2 for a pitch-linear texture (Mesa g80_texture.xml.h): the
+ * bits Mesa always sets (10001000h), border from the colour, normalized
+ * coordinates, pitch layout, 2D without mipmaps. It is also the word
+ * EXA's 1x1 solid texture uses. Word 5 carries a depth of 1. */
+#define V9X_NV50_TIC2_PITCH_2D       0xd005d000ul
+#define V9X_NV50_TIC5_DEPTH_ONE      0x00010000ul
+
+/* The IEEE single nearest to 1 / n, for a texture size; 0 for 0. */
+static v9x_u32 v9x_nv50_3d_reciprocal(v9x_u32 n)
+{
+    union {
+        float f;
+        v9x_u32 u;
+    } value;
+
+    if (n == 0ul) {
+        return 0ul;
+    }
+    value.f = 1.0f / (float)n;
+    return value.u;
+}
+
+void v9x_nv50_3d_texture_tables(v9x_u32 texture, v9x_u32 pitch,
+                                v9x_u32 width, v9x_u32 height,
+                                struct v9x_nv50_3d_solid *out)
+{
+    struct v9x_nv50_3d_scratch unused;
+    v9x_u32 unit;
+
+    /* Start from the solid tables: the same TSC and identity transform. */
+    v9x_nv50_3d_scratch_at(0ul, &unused);
+    v9x_nv50_3d_solid_tables(&unused, 0ul, out);
+
+    out->tic[1] = texture;
+    out->tic[2] = V9X_NV50_TIC2_PITCH_2D;
+    out->tic[3] = pitch;
+    out->tic[4] = width;
+    out->tic[5] = V9X_NV50_TIC5_DEPTH_ONE | height;
+    out->tic[6] = 0ul;
+    out->tic[7] = 0ul;
+    for (unit = 0ul; unit < 2ul; ++unit) {
+        v9x_u32 *c = out->vp_constants + unit * V9X_NV50_3D_UNIT_CONSTANTS;
+
+        c[9] = v9x_nv50_3d_reciprocal(width);
+        c[10] = v9x_nv50_3d_reciprocal(height);
+    }
+}
+
 /* Two 16-bit coordinates in one word, y high (nv50_accel.h PUSH_VTX2s). */
 static v9x_u32 v9x_nv50_3d_xy(v9x_u32 x, v9x_u32 y)
 {
@@ -267,6 +316,18 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
                                  v9x_u32 format, v9x_u32 x, v9x_u32 y,
                                  v9x_u32 w, v9x_u32 h)
 {
+    /* EXA passes the rectangle's own size as the source extent: with a
+     * 1x1 repeating texture every coordinate is the colour. */
+    v9x_nv50_push_3d_textured_rect(push, target, pitch, height, format, x,
+                                   y, w, h, w, h);
+}
+
+void v9x_nv50_push_3d_textured_rect(struct v9x_nv50_push *push,
+                                    v9x_u32 target, v9x_u32 pitch,
+                                    v9x_u32 height, v9x_u32 format,
+                                    v9x_u32 x, v9x_u32 y, v9x_u32 w,
+                                    v9x_u32 h, v9x_u32 src_w, v9x_u32 src_h)
+{
     /* PFP_S, the texture just written. */
     v9x_nv50_3d_target(push, target, pitch, height, format);
     v9x_nv50_3d_one(push, V9X_8597_FP_START_ID, 0ul);
@@ -280,9 +341,9 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
                     ((y + h) << 16) | y);
     v9x_nv50_3d_one(push, V9X_8597_VERTEX_BEGIN_GL,
                     V9X_8597_PRIMITIVE_TRIANGLES);
-    v9x_nv50_3d_vertex(push, 0ul, h * 2ul, x, y + h * 2ul);
+    v9x_nv50_3d_vertex(push, 0ul, src_h * 2ul, x, y + h * 2ul);
     v9x_nv50_3d_vertex(push, 0ul, 0ul, x, y);
-    v9x_nv50_3d_vertex(push, w * 2ul, 0ul, x + w * 2ul, y);
+    v9x_nv50_3d_vertex(push, src_w * 2ul, 0ul, x + w * 2ul, y);
     v9x_nv50_3d_one(push, V9X_8597_VERTEX_END_GL, 0ul);
 }
 

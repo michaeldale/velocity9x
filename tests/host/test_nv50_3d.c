@@ -295,6 +295,86 @@ static void test_gouraud_rect(void)
     CHECK(at + 1ul == push.count);
 }
 
+/* A pitch-linear 2D texture as Mesa's nv50_create_texture_view describes
+ * one with no memory type: TIC word 2 pitch layout, 2D without mipmaps,
+ * normalized, border from colour; word 3 the pitch, 4 the width, 5 a
+ * depth of 1 and the height. The vertex constants scale texels to [0, 1]. */
+static void test_texture_tables(void)
+{
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_3d_solid tables;
+    v9x_u32 index;
+
+    v9x_nv50_3d_scratch_at(SCRATCH, &scratch);
+    CHECK(scratch.texture == SCRATCH + 0x4900ul);
+    v9x_nv50_3d_texture_tables(scratch.texture, 64ul, 4ul, 4ul, &tables);
+    CHECK(tables.tic[0] == 0x2a712488ul);
+    CHECK(tables.tic[1] == scratch.texture);
+    CHECK(tables.tic[2] == 0xd005d000ul);
+    CHECK(tables.tic[3] == 64ul);
+    CHECK(tables.tic[4] == 4ul);
+    CHECK(tables.tic[5] == 0x00010004ul);
+    CHECK(tables.tic[6] == 0ul && tables.tic[7] == 0ul);
+    CHECK(tables.tsc[0] == 0x00024000ul && tables.tsc[1] == 0x51ul);
+    for (index = 0ul; index < 2ul; ++index) {
+        const v9x_u32 *c = tables.vp_constants + index * 11ul;
+
+        CHECK(c[0] == 0x3f800000ul && c[4] == 0x3f800000ul &&
+              c[8] == 0x3f800000ul);
+        /* 1/4 = 0.25f. */
+        CHECK(c[9] == 0x3e800000ul && c[10] == 0x3e800000ul);
+    }
+
+    /* A non-power-of-two size still gives the nearest float: 1/3. */
+    v9x_nv50_3d_texture_tables(scratch.texture, 64ul, 3ul, 5ul, &tables);
+    CHECK(tables.vp_constants[9] == 0x3eaaaaabul);
+    CHECK(tables.vp_constants[10] == 0x3e4ccccdul);
+}
+
+/* A textured rectangle: the solid rectangle's words, with source
+ * coordinates in texels so the texture spans the rectangle once. */
+static void test_textured_rect(void)
+{
+    static v9x_u32 rect[V9X_NV50_3D_RECT_WORDS_MAX];
+    struct v9x_nv50_push push;
+    v9x_u32 header;
+    v9x_u32 at = 0ul;
+
+    v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_textured_rect(&push, 0x08280000ul, 512ul, 72ul,
+                                   V9X_NV50_3D_RT_BGRX8, 16ul, 8ul, 40ul,
+                                   24ul, 4ul, 4ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header(&push, 0x15dcul, &at);
+    /* (0, 2 x 4) at (x, y + 2h); (0, 0) at (x, y); (2 x 4, 0) at
+     * (x + 2w, y). */
+    CHECK(rect[at + 2ul] == (8ul << 16) && rect[at + 5ul] == ((56ul << 16) |
+                                                              16ul));
+    CHECK(rect[at + 7ul] == 0ul && rect[at + 10ul] == ((8ul << 16) | 16ul));
+    CHECK(rect[at + 12ul] == 8ul && rect[at + 15ul] == ((8ul << 16) | 96ul));
+
+    /* With the source as large as the destination it is the solid
+     * rectangle, word for word. */
+    {
+        static v9x_u32 solid[V9X_NV50_3D_RECT_WORDS_MAX];
+        struct v9x_nv50_push other;
+        v9x_u32 index;
+
+        v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+        v9x_nv50_push_3d_textured_rect(&push, 0x08280000ul, 512ul, 72ul,
+                                       V9X_NV50_3D_RT_BGRX8, 16ul, 8ul,
+                                       40ul, 24ul, 40ul, 24ul);
+        v9x_nv50_push_init(&other, solid, V9X_NV50_3D_RECT_WORDS_MAX);
+        v9x_nv50_push_3d_solid_rect(&other, 0x08280000ul, 512ul, 72ul,
+                                    V9X_NV50_3D_RT_BGRX8, 16ul, 8ul, 40ul,
+                                    24ul);
+        CHECK(push.count == other.count);
+        for (index = 0ul; index < push.count; ++index) {
+            CHECK(rect[index] == solid[index]);
+        }
+    }
+}
+
 unsigned int v9x_run_nv50_3d_tests(void)
 {
     failures = 0u;
@@ -304,5 +384,7 @@ unsigned int v9x_run_nv50_3d_tests(void)
     test_solid_rect();
     test_gouraud_programs();
     test_gouraud_rect();
+    test_texture_tables();
+    test_textured_rect();
     return failures;
 }

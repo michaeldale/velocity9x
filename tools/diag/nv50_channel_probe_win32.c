@@ -2772,6 +2772,192 @@ static int v9x_stage_3d_gouraud(const char *section, DWORD number,
     return 0;
 }
 
+/*
+ * /3d:texture: a 4x4 pitch-linear A8R8G8B8 texture of 16 distinct
+ * colours (rows 64 bytes apart) stretched over the 40x24 rectangle with
+ * nearest sampling, so texel (i / 10, j / 6) covers pixel (i, j) and no
+ * pixel centre lies on a texel edge. At 32 bpp every pixel has one right
+ * value. At 16 bpp the expectation is each channel's top bits, which the
+ * first triangle's one colour suggested; the stage also counts pixels
+ * fitting a x31-and-round conversion, so the 16 colours settle it.
+ */
+#define V9X_3D_TEX_SIZE      4ul
+#define V9X_3D_TEX_PITCH     64ul
+#define V9X_3D_TEX_FIRST     0x00340000ul
+
+static DWORD v9x_3d_texel(DWORD column, DWORD row)
+{
+    DWORD k = row * V9X_3D_TEX_SIZE + column;
+    DWORD red = k * 16ul + 7ul;
+    DWORD green = 255ul - k * 16ul - 3ul;
+    DWORD blue = (k * 37ul + 11ul) & 0xfful;
+
+    return 0xff000000ul | (red << 16) | (green << 8) | blue;
+}
+
+static DWORD v9x_3d_565_top(DWORD argb)
+{
+    return (((argb >> 19) & 0x1ful) << 11) | (((argb >> 10) & 0x3ful) << 5) |
+           ((argb >> 3) & 0x1ful);
+}
+
+static DWORD v9x_3d_565_round(DWORD argb)
+{
+    DWORD red = (((argb >> 16) & 0xfful) * 31ul + 127ul) / 255ul;
+    DWORD green = (((argb >> 8) & 0xfful) * 63ul + 127ul) / 255ul;
+    DWORD blue = ((argb & 0xfful) * 31ul + 127ul) / 255ul;
+
+    return (red << 11) | (green << 5) | blue;
+}
+
+static int v9x_stage_3d_texture(const char *section, DWORD number,
+                                DWORD bytes, DWORD format)
+{
+    static DWORD texture[V9X_3D_TEX_SIZE * V9X_3D_TEX_PITCH / 4ul];
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_3d_solid tables;
+    struct v9x_nv50_push push;
+    /* Above the scratch at 3 MiB; the draw and Gouraud surfaces fill
+     * 2.5 to 3 MiB. */
+    DWORD offset = V9X_3D_TEX_FIRST + number * V9X_3D_DRAW_STEP;
+    DWORD pitch = V9X_FILL_WIDTH * bytes;
+    DWORD words = V9X_DEPTH_PIXELS * bytes / 4ul;
+    DWORD pattern = bytes == 4ul ? (V9X_FILL_PATTERN & V9X_COLOUR_MASK)
+                                 : (V9X_FILL_PATTERN & 0xfffful);
+    DWORD first_word = v9x_push_next;
+    DWORD block;
+    DWORD index;
+    DWORD pixel;
+    DWORD texel;
+    DWORD expected;
+    DWORD x;
+    DWORD y;
+    DWORD inside_ok = 0ul;
+    DWORD inside_bad = 0ul;
+    DWORD outside_ok = 0ul;
+    DWORD outside_bad = 0ul;
+    DWORD fits_round = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_pixel = 0ul;
+    DWORD first_bad_expected = 0ul;
+    int inside;
+
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    for (index = 0ul; index < sizeof(texture) / sizeof(texture[0]);
+         ++index) {
+        texture[index] = 0ul;
+    }
+    for (y = 0ul; y < V9X_3D_TEX_SIZE; ++y) {
+        for (x = 0ul; x < V9X_3D_TEX_SIZE; ++x) {
+            texture[y * (V9X_3D_TEX_PITCH / 4ul) + x] = v9x_3d_texel(x, y);
+        }
+    }
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    v9x_nv50_3d_texture_tables(scratch.texture, V9X_3D_TEX_PITCH,
+                               V9X_3D_TEX_SIZE, V9X_3D_TEX_SIZE, &tables);
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, offset, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TEXTURE, texture,
+                  sizeof(texture) / sizeof(texture[0]));
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TIC, tables.tic,
+                  V9X_NV50_3D_TIC_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TSC, tables.tsc,
+                  V9X_NV50_3D_TSC_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP_DATA,
+                  tables.vp_constants, V9X_NV50_3D_VP_CONSTANT_WORDS);
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_3d_textured_rect(&push, V9X_WINDOW_VRAM + offset, pitch,
+                                   V9X_FILL_HEIGHT, format, V9X_3D_DRAW_X,
+                                   V9X_3D_DRAW_Y, V9X_3D_DRAW_W,
+                                   V9X_3D_DRAW_H, V9X_3D_TEX_SIZE,
+                                   V9X_3D_TEX_SIZE);
+    if (push.overflow != 0ul) {
+        v9x_text(section, "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    if (!v9x_kick(section, &push, first_word)) {
+        v9x_text(section, "Result", "NOT-CLEAN");
+        return 0;
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, offset + block * 4ul, count, 0ul);
+        if (!v9x_run("3d-readback")) {
+            v9x_finish("3D-READBACK-REFUSED", 8u);
+        }
+        for (index = block * 4ul / bytes;
+             index < (block + count) * 4ul / bytes; ++index) {
+            pixel = v9x_depth_pixel(v9x_result.block,
+                                    index - block * 4ul / bytes, bytes);
+            x = index % V9X_FILL_WIDTH;
+            y = index / V9X_FILL_WIDTH;
+            inside = x >= V9X_3D_DRAW_X &&
+                     x < V9X_3D_DRAW_X + V9X_3D_DRAW_W &&
+                     y >= V9X_3D_DRAW_Y &&
+                     y < V9X_3D_DRAW_Y + V9X_3D_DRAW_H;
+            if (!inside) {
+                expected = pattern;
+            } else {
+                texel = v9x_3d_texel((x - V9X_3D_DRAW_X) / 10ul,
+                                     (y - V9X_3D_DRAW_Y) / 6ul);
+                expected = bytes == 4ul ? (texel & V9X_COLOUR_MASK)
+                                        : v9x_3d_565_top(texel);
+                if (bytes == 2ul && pixel == v9x_3d_565_round(texel)) {
+                    ++fits_round;
+                }
+            }
+            if (pixel == expected) {
+                if (inside) {
+                    ++inside_ok;
+                } else {
+                    ++outside_ok;
+                }
+                continue;
+            }
+            if (inside) {
+                ++inside_bad;
+            } else {
+                ++outside_bad;
+            }
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+                first_bad_pixel = pixel;
+                first_bad_expected = expected;
+            }
+        }
+    }
+    v9x_number(section, "InsideOk", inside_ok);
+    v9x_number(section, "InsideBad", inside_bad);
+    v9x_number(section, "OutsideOk", outside_ok);
+    v9x_number(section, "OutsideBad", outside_bad);
+    if (bytes == 2ul) {
+        v9x_number(section, "FitsTopBits", inside_ok);
+        v9x_number(section, "FitsX31Round", fits_round);
+    }
+    if (first_bad != 0xfffffffful) {
+        v9x_number(section, "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number(section, "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key(section, "FirstBadPixel", first_bad_pixel);
+        v9x_key(section, "FirstBadExpected", first_bad_expected);
+    }
+    v9x_flush();
+    if (inside_bad == 0ul && outside_bad == 0ul) {
+        v9x_text(section, "Result", "PASS");
+        return 1;
+    }
+    v9x_text(section, "Result", "PIXELS-DIFFER");
+    return 0;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -2910,6 +3096,20 @@ void __stdcall V9xNv50ChannelEntry(void)
         }
         if (!ok16) {
             v9x_finish("GOURAUD16-FAILED", 10u);
+        }
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/3d:texture")) {
+        int ok32 = v9x_stage_3d_texture("Texture32", 0ul, 4ul,
+                                        V9X_NV50_3D_RT_BGRX8);
+        int ok16 = v9x_stage_3d_texture("Texture16", 1ul, 2ul,
+                                        V9X_NV50_3D_RT_B5G6R5);
+
+        v9x_pusher_state();
+        if (!ok32) {
+            v9x_finish("TEXTURE32-FAILED", 11u);
+        }
+        if (!ok16) {
+            v9x_finish("TEXTURE16-FAILED", 11u);
         }
     }
     v9x_finish("COMPLETE", 0u);
