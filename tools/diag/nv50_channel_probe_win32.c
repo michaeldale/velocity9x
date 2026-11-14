@@ -3173,6 +3173,11 @@ static int v9x_stage_z_tiledrt(void)
         v9x_finish("Z-RT-REFUSED", 13u);
     }
 
+    /* A fresh op list for each kick: v9x_kick only adds to it, and the
+     * first run of this stage replayed every earlier kick's ops, PUT
+     * writes included, so the third kick moved PUT backwards and the
+     * pusher stopped with error 5. */
+    v9x_ops_begin();
     first = v9x_push_next;
     v9x_push_next += V9X_PUSH_STAGE_MAX;
     v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
@@ -3185,6 +3190,11 @@ static int v9x_stage_z_tiledrt(void)
         return 0;
     }
 
+    /* A fresh op list for each kick: v9x_kick only adds to it, and the
+     * first run of this stage replayed every earlier kick's ops, PUT
+     * writes included, so the third kick moved PUT backwards and the
+     * pusher stopped with error 5. */
+    v9x_ops_begin();
     first = v9x_push_next;
     v9x_push_next += V9X_PUSH_STAGE_MAX;
     v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
@@ -3197,6 +3207,11 @@ static int v9x_stage_z_tiledrt(void)
         return 0;
     }
 
+    /* A fresh op list for each kick: v9x_kick only adds to it, and the
+     * first run of this stage replayed every earlier kick's ops, PUT
+     * writes included, so the third kick moved PUT backwards and the
+     * pusher stopped with error 5. */
+    v9x_ops_begin();
     first = v9x_push_next;
     v9x_push_next += V9X_PUSH_STAGE_MAX;
     v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
