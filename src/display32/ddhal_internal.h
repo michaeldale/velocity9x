@@ -466,6 +466,14 @@ typedef struct v9x_engine32_ops {
                 DWORD bytes_per_pixel, int wait);
     int (*copy)(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
                 DWORD destination_offset, DWORD bytes_per_pixel, int wait);
+    /*
+     * The byte alignment the engine needs of a surface's start, published
+     * as DirectDraw's offscreen, overlay and alpha alignment when above
+     * the core's 8. APPENDED 2026-11-15: tables that stop short leave it
+     * zero, the core's 8. The GT218's 502D addresses surfaces from 256
+     * bytes (docs\decisions\2026-11-14-gt218-3d-d3d-builders.md).
+     */
+    DWORD surface_align;
 } V9X_ENGINE32_OPS;
 
 /* One table per engine, each in its own module under engines\. */

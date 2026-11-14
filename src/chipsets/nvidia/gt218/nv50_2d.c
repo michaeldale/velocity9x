@@ -48,12 +48,13 @@ static void v9x_nv50_push_one(struct v9x_nv50_push *push, v9x_u32 method,
 }
 
 /*
- * A pitch surface's address on 256 bytes, the remainder moved into its x
+ * A pitch source's address on 256 bytes, the remainder moved into its x
  * and width. V9XD32's T4Copy source on M-BXMFA8 sat C0h past a 256-byte
  * boundary and the engine copied from somewhere else: zeros at 16 bpp,
  * other data at 32. xf86-video-nouveau's EXA keeps every pixmap on 256
- * bytes. DirectDraw places surfaces on 8. A remainder that is not a
- * whole number of pixels is left as it was.
+ * bytes. A source widened past its pitch this way copied right (T4Copy,
+ * boot 121); a destination so widened trapped (boot 124), so this is for
+ * sources. A remainder that is not a whole number of pixels is left.
  */
 #define V9X_502D_ADDRESS_ALIGN       0x100ul
 
@@ -88,8 +89,6 @@ void V9X_NV50_FAR v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
 {
     v9x_u32 surface[10];
     v9x_u32 points[4];
-
-    v9x_nv50_2d_align(format, &dst, &x, &width);
 
     /* DST_FORMAT through DST_OFFSET_LOWER, 200h-224h, in one run: a
      * pitch-linear surface, one layer deep, block dimensions unused. */
@@ -149,8 +148,10 @@ void V9X_NV50_FAR v9x_nv50_push_blit(struct v9x_nv50_push *push,
     v9x_u32 src[5];
     v9x_u32 blit[12];
 
+    /* The source only: a destination widened past its pitch traps in
+     * PROP (3DMark 2000 on M-BXMFA8, boot 124), and the HAL declines an
+     * unaligned destination instead (eng_nv50.c). */
     v9x_nv50_2d_align(format, &src_surface, &sx, &src_width);
-    v9x_nv50_2d_align(format, &dst_surface, &dx, &dst_width);
 
     v9x_nv50_push_one(push, V9X_502D_SET_SRC_CONTEXT_DMA,
                       V9X_NV50_HANDLE_DMA_VM);

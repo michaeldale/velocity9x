@@ -55,6 +55,16 @@
 #define V9X_NV50_BOOT_CHIPSET_SHIFT 20u
 #define V9X_NV50_BOOT_CHIPSET_MASK  0x1fful
 
+/*
+ * 502D addresses a surface from 256 bytes. An unaligned source is
+ * addressed from below with x moved (nv50_2d.c); an unaligned destination
+ * cannot be, since widening it past its pitch traps in PROP (3DMark
+ * 2000's first blit, M-BXMFA8 boot 124), so fills and copies into one are
+ * declined to the CPU. The HAL asks DirectDraw for surfaces on 256 bytes
+ * (surface_align below), which makes that rare.
+ */
+#define V9X_NV50_SURFACE_ALIGN 0x100ul
+
 /* The one channel. Channel 0 is not usable on NV50 (fifo\nv50.c). */
 #define V9X_NV50_ENGINE_CHID 1ul
 
@@ -532,7 +542,8 @@ static int v9x_nv50_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                                        data->bltFX.dwFillColor, wait);
     }
     format = v9x_nv50_2d_format(bytes_per_pixel);
-    if (format == 0ul || v9x_nv50_format() != format) {
+    if (format == 0ul || v9x_nv50_format() != format ||
+        (offset & (V9X_NV50_SURFACE_ALIGN - 1ul)) != 0ul) {
         return V9X_BLT_DECLINED;
     }
     v9x_nv50_push_init(&push, words, V9X_NV50_PUSH_WORDS);
@@ -578,7 +589,8 @@ static int v9x_nv50_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
         return V9X_BLT_DECLINED;
     }
     format = v9x_nv50_2d_format(bytes_per_pixel);
-    if (format == 0ul || v9x_nv50_format() != format) {
+    if (format == 0ul || v9x_nv50_format() != format ||
+        (destination_offset & (V9X_NV50_SURFACE_ALIGN - 1ul)) != 0ul) {
         return V9X_BLT_DECLINED;
     }
     v9x_nv50_push_init(&push, words, V9X_NV50_PUSH_WORDS);
@@ -684,5 +696,6 @@ const V9X_ENGINE32_OPS v9x_engine32_nv50 = {
     v9x_nv50_can_blt,
     v9x_nv50_wait_idle,
     v9x_nv50_fill,
-    v9x_nv50_copy
+    v9x_nv50_copy,
+    V9X_NV50_SURFACE_ALIGN
 };

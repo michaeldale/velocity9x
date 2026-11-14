@@ -2865,6 +2865,18 @@ DWORD __stdcall DriverInit(DWORD context)
     shared->info.vmiData.dwTextureAlign = 8ul;
     shared->info.vmiData.dwZBufferAlign = 8ul;
     shared->info.vmiData.dwAlphaAlign = 8ul;
+    /* An engine that addresses surfaces from a coarser boundary asks for
+     * it, so the surfaces DirectDraw places are ones it can fill and copy
+     * (V9X_ENGINE32_OPS.surface_align). */
+    {
+        const V9X_ENGINE32_OPS *engine = v9x_engine32();
+
+        if (engine != 0 && engine->surface_align > 8ul) {
+            shared->info.vmiData.dwOffscreenAlign = engine->surface_align;
+            shared->info.vmiData.dwOverlayAlign = engine->surface_align;
+            shared->info.vmiData.dwAlphaAlign = engine->surface_align;
+        }
+    }
     shared->info.vmiData.dwNumHeaps = 1ul;
 
     shared->info.ddCaps.dwSize = sizeof(V9X_DDCORECAPS);

@@ -422,24 +422,27 @@ static void test_push(void)
     CHECK(words[31] == 4ul);
     CHECK(words[40] == 96ul);
     CHECK(words[42] == 2ul);
-    /* An unaligned destination: the same move on its side, for the
-     * destination x and width. */
+    /* Destinations are not moved: a destination widened past its pitch
+     * traps. 3DMark 2000's first blit on M-BXMFA8 (boot 124) went to a
+     * 420-pixel RGB565 surface with 840-byte rows at ...2DD0h; moved, it
+     * was 524 pixels wide and PROP trapped (TP0 status 80000001h). The
+     * engine declines such a destination instead (eng_nv50.c), and asks
+     * DirectDraw for 256-byte surfaces. */
     v9x_nv50_push_init(&push, words, 64ul);
     v9x_nv50_push_blit(&push, 0x00400000ul, 256ul, 64ul, 64ul,
                        0x00400140ul, 256ul, 64ul, 64ul,
                        V9X_502D_FORMAT_X8R8G8B8,
                        1ul, 0ul, 2ul, 0ul, 8ul, 8ul);
-    CHECK(words[9] == 64ul + 16ul);
-    CHECK(words[12] == 0x00400100ul);
-    CHECK(words[31] == 2ul + 16ul);
+    CHECK(words[9] == 64ul);
+    CHECK(words[12] == 0x00400140ul);
+    CHECK(words[31] == 2ul);
     CHECK(words[40] == 1ul);
-    /* The fill likewise. */
     v9x_nv50_push_init(&push, words, 64ul);
     v9x_nv50_push_fill(&push, 0x0c200040ul, 256ul, 64ul, 64ul,
                        V9X_502D_FORMAT_X8R8G8B8, 0ul, 3ul, 0ul, 8ul, 8ul);
-    CHECK(words[7] == 64ul + 16ul);
-    CHECK(words[10] == 0x0c200000ul);
-    CHECK(words[22] == 3ul + 16ul && words[24] == 3ul + 16ul + 8ul);
+    CHECK(words[7] == 64ul);
+    CHECK(words[10] == 0x0c200040ul);
+    CHECK(words[22] == 3ul && words[24] == 3ul + 8ul);
 
     /* The three depths measured, and nothing else. */
     CHECK(v9x_nv50_2d_format(1ul) == 0xf3ul);
