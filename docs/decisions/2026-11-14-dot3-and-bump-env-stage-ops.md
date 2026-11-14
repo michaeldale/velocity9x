@@ -135,6 +135,65 @@ The netbook's older d3d8 proxies (in both 3DMark folders since at least
 2026-11-12) are replaced by copies of the real runtime, its own
 `D3DR.DLL`; its agent has no `shell` verb to rename them.
 
+## Gen3 specular through the shader path: tried, measured, not kept
+
+The netbook, boots 335 to 339, the whole set each time, built dirty from
+`1f044d33`. Evidence in `netbook-specular-route/` of the probe folder.
+
+Gen3's one- and two-unit programs add no specular colour
+(`d3d_i9xx.c`), which is why it cannot claim the cap. The generator
+already adds specular last, and Gen3's shader path draws its programs.
+So: a DDI 8 draw with `SPECULARENABLE` taken through the stages' own
+program (two stages, the cascade ended at a stage reading a texture
+with none bound, as the fixed-function path draws it), and
+`SPECULARGOURAUDRGB` told to DDI 8 programs only. A pure helper with a
+host test seen to fail first (six checks against a stub), and a fifth
+probe row, `FfSpec`.
+
+| Boot | Build | Result |
+|---|---|---|
+| 335 | route and cap | probe set passes; V9XD32 DDI 8 PASS, `FfSpec` pass, ShadeCaps 00084208 |
+| 335 | the same | 3DMark 2001 SE bump tests: Environment Bump Mapping 10.1 fps, **DOT3 Bump Mapping 5.8 fps** |
+| 335 | the same | all 17 tests: 951; High Polygon Count 0.6 MTriangles/s and **N/A** (8 lights) |
+| 336 | neither (control) | High Polygon Count 0.7 / 0.6 |
+| 337 | route and cap | High Polygon Count 0.6 / **N/A** again |
+| 338 | cap, no route | High Polygon Count 0.7 / 0.6 |
+
+So the cap alone changes nothing in that test and the route breaks it.
+On boot 337 the driver's own account is clean: 3,078,828 triangles drawn
+under the program in the 8-light test's context (the same count in both
+runs), none dropped, no kernel refused, no malformed record, no fault,
+and the frame looks right
+(`3dmark2001se-boot337-route-8lights-frame.png`). The run of both tests
+took 46 s against 40 s. Why 3DMark writes N/A instead of a lower figure
+was not found.
+
+Not kept. The shader path gathers triangles one at a time into wide
+vertices and has no indexed run; it is the wrong place for a scene of
+plain lit triangles, as it was for UT2004's `MODULATE2X` stages (37 % of
+the frame rate, boots 329-330). The code, the limits field and the host
+test are out of the tree. `FfSpec` stays in V9XD32: it skips on Gen3
+(no cap) and judges the engine's own specular add elsewhere.
+
+What Gen3 specular needs instead is the specular colour in its own
+programs: a specular form of each one-unit program beside its fog form
+(`i9xx_fog.c`; the fog stream already carries the specular dword per
+vertex), the same in the two-unit builder (`i9xx_multitex.c`), and the
+decoder taught both. That is register-level work with its own
+measurements, not started.
+
+`FfSpec` on the HD 4600 (the 4570, the driver it was left on, the probe
+alone replaced; the boot number was not read): pass, worst channel
+error 9 of 9 at R5G6B5, V9XD32 PASS (`V9XD32-hsw-ffspec.TXT`). That is
+Haswell's fixed-function kernel adding the specular colour.
+
+The netbook did not come back from the restart that was to put the
+committed driver code on again (from boot 338, the cap-only build): the
+eight files were staged by WININIT rename and `reset` sent, and the
+agent has not answered since, nor the address. What it stopped on is
+not known; nobody has looked at it. If it boots, the staged files are
+`1f044d33`'s driver code.
+
 ## The DOT3 fault was our own proxy
 
 Through boots 247 to 256, 3DMark's DOT3 test ended in an access

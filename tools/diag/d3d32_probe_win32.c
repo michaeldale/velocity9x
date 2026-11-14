@@ -3632,7 +3632,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 14ul
+#define D32_T19_PROGRAMS 15ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -3759,6 +3759,7 @@ typedef HRESULT (WINAPI *d32_d3d8_surf_unlock_fn)(D32_OBJECT *);
 #define D32_PT_MOV               1ul
 #define D32_PT_MAD               4ul
 #define D32_PT_MUL               5ul
+#define D32_PT_ADD               2ul
 #define D32_PT_LRP               18ul
 #define D32_PT_TEXKILL           65ul
 #define D32_PT_TEX               66ul
@@ -3806,6 +3807,14 @@ typedef struct d32_t19_program {
  *   FfBem3   the base map, BUMPENVMAP on stage 1 and the environment on
  *            stage 2, as 3DMark 2001 SE's bump test has them.
  *
+ *   FfSpec   Direct3D's own stage 0, the texel times the vertex colour,
+ *            under D3DRS_SPECULARENABLE (29): the specular colour added
+ *            after the stages, colour only, saturated. Gen3 draws it
+ *            through the stages' program, its fixed-function path adding
+ *            none; elsewhere it judges the engine's own specular add.
+ *            Skipped where ShadeCaps (DWORD 14) lacks
+ *            D3DPSHADECAPS_SPECULARGOURAUDRGB (200h).
+ *
  * Skipped, not counted, where D3DCAPS8 TextureOpCaps (DWORD 36) lacks the
  * op. ValidateDevice (IDirect3DDevice8 slot 64) is recorded beside each,
  * not judged. D3DRS_TEXTUREFACTOR is 60; D3DTOP_BUMPENVMAP 22 and
@@ -3820,6 +3829,8 @@ typedef struct d32_t19_program {
 #define D32_TA_TFACTOR 3ul
 #define D32_TEXOPCAPS_BUMPENVMAP 0x00200000ul
 #define D32_TEXOPCAPS_DOTPRODUCT3 0x00800000ul
+#define D32_D3DCAPS8_SHADE_CAPS 14
+#define D32_SHADECAPS_SPECULARGOURAUDRGB 0x00000200ul
 /* c0 of d32_t19_env as a D3DCOLOR: 0.8, 0.6, 0.4 are 204, 153, 102. */
 #define D32_T19_FACTOR 0xe6cc9966ul
 
@@ -3836,9 +3847,11 @@ typedef struct d32_t19_fixed {
     DWORD bump_stage0;  /* the bump matrix on stage 0, stage 1's zero  */
     DWORD stage2[6];    /* stage 2's op, args, alpha op, args; op 0 is
                            DISABLE                                     */
+    DWORD specular;     /* SPECULARENABLE, and the row needs the
+                           ShadeCaps bit, not a TextureOpCaps one      */
 } D32_T19_FIXED;
 
-#define D32_T19_FIXED_ROWS 4ul
+#define D32_T19_FIXED_ROWS 5ul
 
 static const D32_T19_FIXED d32_t19_fixed[D32_T19_FIXED_ROWS] = {
     { D32_TEXOPCAPS_DOTPRODUCT3,
@@ -3869,11 +3882,22 @@ static const D32_T19_FIXED d32_t19_fixed[D32_T19_FIXED_ROWS] = {
       { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
       0ul,
       { D32_TOP_MODULATE, D32_TA_TEXTURE, D32_TA_CURRENT,
-        D32_TOP_MODULATE, D32_TA_TEXTURE, D32_TA_CURRENT } }
+        D32_TOP_MODULATE, D32_TA_TEXTURE, D32_TA_CURRENT } },
+    /* FfSpec: the texel times the vertex colour, the texel's alpha, and
+     * the specular colour enabled. */
+    { 0ul,
+      { D32_TOP_MODULATE, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      1ul }
 };
 
-/* The HAL device's TextureOpCaps, while T19 runs. */
+/* The HAL device's TextureOpCaps and ShadeCaps, while T19 runs. */
 static DWORD d32_t19_texop_caps;
+static DWORD d32_t19_shade_caps;
 
 /*
  * Step 5d's normal map: 8x8 D3DFMT_Q8W8V8U8 (63), managed, its texels
@@ -4040,7 +4064,14 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_TEXBEM, D32_PT_TO_T(2), D32_PT_T(1),
         D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_V(0),
         D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(2), D32_PT_R(0),
-        D32_PT_END }, 0ul, 4ul }
+        D32_PT_END }, 0ul, 4ul },
+    { "FfSpec", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0), D32_PT_V(0),
+        D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_T(0),
+        D32_PT_ADD, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_V(1),
+        D32_PT_END }, 0ul, 5ul }
 };
 
 /* The Cube program's set 1 per vertex: directions whose plane passes near
@@ -4987,7 +5018,12 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         d32_line(key, "skip-no-dxt");
         return 1ul;
     }
-    if (fixed != 0 && (d32_t19_texop_caps & fixed->needs) == 0ul) {
+    if (fixed != 0 && fixed->specular != 0ul) {
+        if ((d32_t19_shade_caps & D32_SHADECAPS_SPECULARGOURAUDRGB) == 0ul) {
+            d32_line(key, "skip-no-specular");
+            return 1ul;
+        }
+    } else if (fixed != 0 && (d32_t19_texop_caps & fixed->needs) == 0ul) {
         d32_line(key, "skip-no-texop");
         return 1ul;
     }
@@ -5031,6 +5067,9 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                                         ? D32_D3DFOG_LINEAR : D32_D3DFOG_NONE);
     rs(device, D32_RS_FOGSTART, d32_float_bits(D32_T19_FOG_START));
     rs(device, D32_RS_FOGEND, d32_float_bits(D32_T19_FOG_END));
+    /* The specular colour added for the row that asks, off for the rest. */
+    rs(device, D32_RS_SPECULARENABLE,
+       fixed != 0 && fixed->specular != 0ul ? 1ul : 0ul);
     /* The cube in stage 1 for a program that samples it. */
     if ((p->cube & 0x2ul) != 0ul) {
         d32_t19_key(p->name, "SetCubeHr",
@@ -5315,6 +5354,8 @@ static DWORD d32_ps11(void)
     }
     d32_t19_texop_caps = caps[D32_D3DCAPS8_TEXTURE_OP_CAPS];
     d32_hx("T19TextureOpCaps", d32_t19_texop_caps);
+    d32_t19_shade_caps = caps[D32_D3DCAPS8_SHADE_CAPS];
+    d32_hx("T19ShadeCaps", d32_t19_shade_caps);
     d32_hx("T19TextureCaps", caps[D32_D3DCAPS8_TEXTURE_CAPS]);
     if ((caps[D32_D3DCAPS8_TEXTURE_CAPS] & D32_D3DPTEXTURECAPS_CUBEMAP) !=
         0ul) {
