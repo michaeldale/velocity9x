@@ -51,7 +51,50 @@ Boot 1 of the ten the gate's conditions ask for.
 - A mode change, a full-screen DOS box, and nine more boots.
 - The blue screen of the first Phase 2 probe run remains unexplained.
 
+## Boot 57: 3DMark 2000, a full default run
+
+The same eight files installed again by the runner (8 of 8), `reset`,
+boot 57: `[IntelPool] Result=kept`. Boot 2 of ten. 3DMark 2000 v1.1 Pro,
+default benchmark (1024x768x16, 16-bit textures, triple buffer), watched
+by FlipHandled, V9XTRACE snapshots before and after, ten frames grabbed
+(`boot57-3dmark2000/`).
+
+| | Boot 57, pool | Boot 53, no pool, write-combined (2026-11-13) |
+|---|---|---|
+| Score | **1706** | 1224 |
+| Run time, flips | 5.7 min, 7,328 | 6.3 min, 5,687 |
+| Texture creates | 1,629 | 317,019 as that snapshot counts them |
+| Mip trees placed / declined for room | 1,453 / 236 | 212,155 / 199,452 |
+| Last mip tree's offset | `BB4000`, in the pool | `665000`, stolen memory |
+| Engine stalls, draws into the presented page | 0, 0 | 0, 0 |
+| Batches the engine refused | 78, all reason 13 | 0 |
+
+- **The pool is where the trees go**: the last tree placed is at aperture
+  offset `BB4000`, past the 8 MiB stolen run. This is the address the
+  boot-56 section lacked.
+- **3DMark stops recreating its textures.** Without the pool nearly every
+  mip tree was declined for room and the benchmark made 317,019 texture
+  creates in a run; with it, 1,629. The score follows (recorded, not
+  chased; boot 53's column is a different build and its snapshot's
+  baseline was not checked, so the pair is a direction).
+- **The ten grabbed frames look right**: textured terrain, trees, the
+  helicopter and the HUD, no garbage or missing texture
+  (`grabs-sheet.png`). All ten are from the first game test.
+- **236 trees were still declined for room** (reason 4) with 32 MiB of
+  pool. Not looked into: fragmentation, or trees larger than what is
+  free at that moment.
+- **78 batches refused, reason 13** (`V9X_D3D_G4_REFUSE_STATE`: the SF or
+  WM kernel would not write, or a VS/SF/WM/CC state would not encode),
+  of 1,860,541. Boot 53 had none. The texture's address is not part of
+  that path, so this is not the pool's memory; the likely reading,
+  untested, is a kernel or sampler combination 3DMark only reaches now
+  that its trees are placed and mip-filtered. Which draws, and whether
+  it shows on screen, is not known. Open.
+
+The seven probe runs after it pass (V9XD32 default and `/z24`, V9XGLP,
+V9XGLIDP, V9XR3DP, V9XWPRS, V9XFBCMP).
+
 ## State left behind
 
-TOMMOHP runs this build at boot 56 with the pool mapped. `V9XHEAP.EXE` is
-in `C:\V9XREL`.
+TOMMOHP runs this build at boot 57 with the pool mapped, 3DMark 2000 open
+at its score window. `V9XHEAP.EXE` is in `C:\V9XREL`.
