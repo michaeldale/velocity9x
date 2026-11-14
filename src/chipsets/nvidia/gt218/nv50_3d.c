@@ -32,6 +32,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 #include "velocity9x/nv50_3d.h"
+#include "velocity9x/nv50_shader.h"
 
 void v9x_nv50_3d_scratch_at(v9x_u32 base, struct v9x_nv50_3d_scratch *out)
 {
@@ -238,16 +239,16 @@ static void v9x_nv50_3d_vertex(struct v9x_nv50_push *push, v9x_u32 sx,
     v9x_nv50_3d_one(push, V9X_8597_VTX_ATTR_2I0, v9x_nv50_3d_xy(dx, dy));
 }
 
-void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
-                                 v9x_u32 pitch, v9x_u32 height,
-                                 v9x_u32 format, v9x_u32 x, v9x_u32 y,
-                                 v9x_u32 w, v9x_u32 h)
+/* A pitch-linear render target, as Mesa programs one with no Z: tile
+ * mode and layer stride 0, RT_HORIZ the linear bit with the pitch,
+ * RT_ARRAY_MODE 0 (EXA's own target is tiled, mode 1). Then no blending,
+ * EXA's op Src. */
+static void v9x_nv50_3d_target(struct v9x_nv50_push *push, v9x_u32 target,
+                               v9x_u32 pitch, v9x_u32 height,
+                               v9x_u32 format)
 {
     v9x_u32 rt[5];
 
-    /* A pitch-linear render target, as Mesa programs one with no Z:
-     * tile mode and layer stride 0, RT_HORIZ the linear bit with the
-     * pitch, RT_ARRAY_MODE 0. EXA's own target is tiled (mode 1). */
     rt[0] = 0ul;
     rt[1] = target;
     rt[2] = format;
@@ -258,9 +259,16 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
     v9x_nv50_3d_two(push, V9X_8597_RT_HORIZ0,
                     V9X_8597_RT_HORIZ_LINEAR | pitch, height);
     v9x_nv50_3d_one(push, V9X_8597_RT_ARRAY_MODE, 0ul);
-
-    /* Op Src: no blending. PFP_S, the texture just written. */
     v9x_nv50_3d_one(push, V9X_8597_BLEND_ENABLE0, 0ul);
+}
+
+void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
+                                 v9x_u32 pitch, v9x_u32 height,
+                                 v9x_u32 format, v9x_u32 x, v9x_u32 y,
+                                 v9x_u32 w, v9x_u32 h)
+{
+    /* PFP_S, the texture just written. */
+    v9x_nv50_3d_target(push, target, pitch, height, format);
     v9x_nv50_3d_one(push, V9X_8597_FP_START_ID, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_TIC_FLUSH, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_FIRST);
@@ -275,6 +283,96 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
     v9x_nv50_3d_vertex(push, 0ul, h * 2ul, x, y + h * 2ul);
     v9x_nv50_3d_vertex(push, 0ul, 0ul, x, y);
     v9x_nv50_3d_vertex(push, w * 2ul, 0ul, x + w * 2ul, y);
+    v9x_nv50_3d_one(push, V9X_8597_VERTEX_END_GL, 0ul);
+}
+
+v9x_u32 v9x_nv50_3d_gouraud_vp(v9x_u32 *words, v9x_u32 max)
+{
+    struct v9x_nv50_sh sh;
+    v9x_u32 slot;
+
+    /* o[0..14] = a[0..14]: position x, y, then the colour's r, g, b, a. */
+    v9x_nv50_sh_init(&sh, words, max);
+    for (slot = 0ul; slot < 6ul; ++slot) {
+        v9x_nv50_sh_mov(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_O(slot * 4ul),
+                        V9X_NV50_SH_A(slot * 4ul));
+    }
+    v9x_nv50_sh_exit(&sh);
+    if (sh.overflow != 0ul || sh.invalid != 0ul) {
+        return 0ul;
+    }
+    return sh.count;
+}
+
+v9x_u32 v9x_nv50_3d_gouraud_fp(v9x_u32 *words, v9x_u32 max)
+{
+    struct v9x_nv50_sh sh;
+    v9x_u32 channel;
+
+    /* v[0] is w, as in EXA's programs: 1/w into $r4, then the four
+     * colour varyings, perspective-correct, into $r0..$r3. A long move
+     * ends it, since only a long instruction can carry the exit. */
+    v9x_nv50_sh_init(&sh, words, max);
+    v9x_nv50_sh_interp(&sh, V9X_NV50_SH_R(0), V9X_NV50_SH_V(0x0),
+                       V9X_NV50_SH_NONE);
+    v9x_nv50_sh_rcp(&sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(4),
+                    V9X_NV50_SH_R(0));
+    for (channel = 0ul; channel < 4ul; ++channel) {
+        v9x_nv50_sh_interp(&sh, V9X_NV50_SH_R(channel),
+                           V9X_NV50_SH_V(0x4ul + channel * 4ul),
+                           V9X_NV50_SH_R(4));
+    }
+    v9x_nv50_sh_mov(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_R(3),
+                    V9X_NV50_SH_R(3));
+    v9x_nv50_sh_exit(&sh);
+    if (sh.overflow != 0ul || sh.invalid != 0ul) {
+        return 0ul;
+    }
+    return sh.count;
+}
+
+/* IEEE single-precision constants the Gouraud colours use. */
+#define V9X_NV50_FLOAT_HALF          0x3f000000ul
+#define V9X_NV50_FLOAT_TWO           0x40000000ul
+
+/* A Gouraud vertex: attribute 1's four floats, then the position. */
+static void v9x_nv50_3d_colour_vertex(struct v9x_nv50_push *push,
+                                      v9x_u32 red, v9x_u32 green,
+                                      v9x_u32 x, v9x_u32 y)
+{
+    v9x_u32 colour[4];
+
+    colour[0] = red;
+    colour[1] = green;
+    colour[2] = V9X_NV50_FLOAT_HALF;
+    colour[3] = V9X_NV50_FLOAT_ONE;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VTX_ATTR_4F_X1,
+                         4ul, colour);
+    v9x_nv50_3d_one(push, V9X_8597_VTX_ATTR_2I0, v9x_nv50_3d_xy(x, y));
+}
+
+void v9x_nv50_push_3d_gouraud_rect(struct v9x_nv50_push *push,
+                                   v9x_u32 target, v9x_u32 pitch,
+                                   v9x_u32 height, v9x_u32 format,
+                                   v9x_u32 x, v9x_u32 y, v9x_u32 w,
+                                   v9x_u32 h)
+{
+    v9x_nv50_3d_target(push, target, pitch, height, format);
+    v9x_nv50_3d_one(push, V9X_8597_FP_START_ID,
+                    V9X_NV50_3D_GOURAUD_FP_START);
+    v9x_nv50_3d_one(push, V9X_8597_VP_START_ID,
+                    V9X_NV50_3D_GOURAUD_VP_START);
+    v9x_nv50_3d_two(push, V9X_8597_VP_ATTR_EN0,
+                    V9X_NV50_3D_GOURAUD_ATTR_EN0, 0ul);
+    v9x_nv50_3d_two(push, V9X_8597_SCISSOR_HORIZ0, ((x + w) << 16) | x,
+                    ((y + h) << 16) | y);
+    v9x_nv50_3d_one(push, V9X_8597_VERTEX_BEGIN_GL,
+                    V9X_8597_PRIMITIVE_TRIANGLES);
+    v9x_nv50_3d_colour_vertex(push, 0ul, V9X_NV50_FLOAT_TWO, x,
+                              y + h * 2ul);
+    v9x_nv50_3d_colour_vertex(push, 0ul, 0ul, x, y);
+    v9x_nv50_3d_colour_vertex(push, V9X_NV50_FLOAT_TWO, 0ul, x + w * 2ul,
+                              y);
     v9x_nv50_3d_one(push, V9X_8597_VERTEX_END_GL, 0ul);
 }
 

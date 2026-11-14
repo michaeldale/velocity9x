@@ -34,6 +34,7 @@
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/nv50_3d.h"
+#include "velocity9x/nv50_shader.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -2600,6 +2601,177 @@ static int v9x_stage_3d_draw(const char *section, DWORD number, DWORD bytes,
     return 0;
 }
 
+/*
+ * /3d:gouraud: phase 3's first programs of our own, built by the encoder.
+ * A 40x24 rectangle at (16, 8) whose red ramps from 0 to 1 left to right
+ * and green from 0 to 1 top to bottom, blue 0.5: pixel (i, j) of it
+ * should be red (i + 0.5) / 40, green (j + 0.5) / 24. Every pixel is
+ * compared with that model within 2 steps a channel at 8 bits and 1 step
+ * at 5 or 6, since the exact float-to-integer rule is not measured; the
+ * border must still be the pattern.
+ */
+static int v9x_channel_near(DWORD got, double model, DWORD steps, DWORD slack)
+{
+    double want = model * (double)(steps);
+    double diff = (double)got - want;
+
+    if (diff < 0.0) {
+        diff = -diff;
+    }
+    return diff <= (double)slack + 0.5;
+}
+
+static int v9x_stage_3d_gouraud(const char *section, DWORD number,
+                                DWORD bytes, DWORD format)
+{
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_push push;
+    DWORD vp[V9X_NV50_3D_GOURAUD_VP_MAX];
+    DWORD fp[V9X_NV50_3D_GOURAUD_FP_MAX];
+    DWORD vp_count;
+    DWORD fp_count;
+    DWORD offset = V9X_3D_DRAW_FIRST + (2ul + number) * V9X_3D_DRAW_STEP;
+    DWORD pitch = V9X_FILL_WIDTH * bytes;
+    DWORD words = V9X_DEPTH_PIXELS * bytes / 4ul;
+    DWORD pattern = bytes == 4ul ? (V9X_FILL_PATTERN & V9X_COLOUR_MASK)
+                                 : (V9X_FILL_PATTERN & 0xfffful);
+    DWORD first_word = v9x_push_next;
+    DWORD block;
+    DWORD index;
+    DWORD pixel;
+    DWORD x;
+    DWORD y;
+    DWORD inside_ok = 0ul;
+    DWORD inside_bad = 0ul;
+    DWORD outside_ok = 0ul;
+    DWORD outside_bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_pixel = 0ul;
+    DWORD corner_first = 0xfffffffful;
+    DWORD corner_last = 0xfffffffful;
+    int inside;
+    int good;
+
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    vp_count = v9x_nv50_3d_gouraud_vp(vp, V9X_NV50_3D_GOURAUD_VP_MAX);
+    fp_count = v9x_nv50_3d_gouraud_fp(fp, V9X_NV50_3D_GOURAUD_FP_MAX);
+    if (vp_count == 0ul || fp_count == 0ul) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, offset, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_NV50_3D_GOURAUD_VP_START,
+                  vp, vp_count);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+                      V9X_NV50_3D_GOURAUD_FP_START,
+                  fp, fp_count);
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_3d_gouraud_rect(&push, V9X_WINDOW_VRAM + offset, pitch,
+                                  V9X_FILL_HEIGHT, format, V9X_3D_DRAW_X,
+                                  V9X_3D_DRAW_Y, V9X_3D_DRAW_W,
+                                  V9X_3D_DRAW_H);
+    if (push.overflow != 0ul) {
+        v9x_text(section, "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    if (!v9x_kick(section, &push, first_word)) {
+        v9x_text(section, "Result", "NOT-CLEAN");
+        return 0;
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, offset + block * 4ul, count, 0ul);
+        if (!v9x_run("3d-readback")) {
+            v9x_finish("3D-READBACK-REFUSED", 8u);
+        }
+        for (index = block * 4ul / bytes;
+             index < (block + count) * 4ul / bytes; ++index) {
+            pixel = v9x_depth_pixel(v9x_result.block,
+                                    index - block * 4ul / bytes, bytes);
+            x = index % V9X_FILL_WIDTH;
+            y = index / V9X_FILL_WIDTH;
+            inside = x >= V9X_3D_DRAW_X &&
+                     x < V9X_3D_DRAW_X + V9X_3D_DRAW_W &&
+                     y >= V9X_3D_DRAW_Y &&
+                     y < V9X_3D_DRAW_Y + V9X_3D_DRAW_H;
+            if (!inside) {
+                if (pixel == pattern) {
+                    ++outside_ok;
+                    continue;
+                }
+                ++outside_bad;
+            } else {
+                double red = ((double)(x - V9X_3D_DRAW_X) + 0.5) /
+                             (double)V9X_3D_DRAW_W;
+                double green = ((double)(y - V9X_3D_DRAW_Y) + 0.5) /
+                               (double)V9X_3D_DRAW_H;
+
+                if (x == V9X_3D_DRAW_X && y == V9X_3D_DRAW_Y) {
+                    corner_first = pixel;
+                }
+                if (x == V9X_3D_DRAW_X + V9X_3D_DRAW_W - 1ul &&
+                    y == V9X_3D_DRAW_Y + V9X_3D_DRAW_H - 1ul) {
+                    corner_last = pixel;
+                }
+                if (bytes == 4ul) {
+                    good = v9x_channel_near((pixel >> 16) & 0xfful, red,
+                                            255ul, 2ul) &&
+                           v9x_channel_near((pixel >> 8) & 0xfful, green,
+                                            255ul, 2ul) &&
+                           v9x_channel_near(pixel & 0xfful, 0.5, 255ul,
+                                            2ul);
+                } else {
+                    good = v9x_channel_near((pixel >> 11) & 0x1ful, red,
+                                            31ul, 1ul) &&
+                           v9x_channel_near((pixel >> 5) & 0x3ful, green,
+                                            63ul, 1ul) &&
+                           v9x_channel_near(pixel & 0x1ful, 0.5, 31ul,
+                                            1ul);
+                }
+                if (good) {
+                    ++inside_ok;
+                    continue;
+                }
+                ++inside_bad;
+            }
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+                first_bad_pixel = pixel;
+            }
+        }
+    }
+    v9x_number(section, "InsideOk", inside_ok);
+    v9x_number(section, "InsideBad", inside_bad);
+    v9x_number(section, "OutsideOk", outside_ok);
+    v9x_number(section, "OutsideBad", outside_bad);
+    v9x_key(section, "TopLeftPixel", corner_first);
+    v9x_key(section, "BottomRightPixel", corner_last);
+    if (first_bad != 0xfffffffful) {
+        v9x_number(section, "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number(section, "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key(section, "FirstBadPixel", first_bad_pixel);
+    }
+    v9x_flush();
+    if (inside_bad == 0ul && outside_bad == 0ul) {
+        v9x_text(section, "Result", "PASS");
+        return 1;
+    }
+    v9x_text(section, "Result", "PIXELS-DIFFER");
+    return 0;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -2724,6 +2896,20 @@ void __stdcall V9xNv50ChannelEntry(void)
         }
         if (!ok16) {
             v9x_finish("DRAW16-FAILED", 9u);
+        }
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/3d:gouraud")) {
+        int ok32 = v9x_stage_3d_gouraud("Gouraud32", 0ul, 4ul,
+                                        V9X_NV50_3D_RT_BGRX8);
+        int ok16 = v9x_stage_3d_gouraud("Gouraud16", 1ul, 2ul,
+                                        V9X_NV50_3D_RT_B5G6R5);
+
+        v9x_pusher_state();
+        if (!ok32) {
+            v9x_finish("GOURAUD32-FAILED", 10u);
+        }
+        if (!ok16) {
+            v9x_finish("GOURAUD16-FAILED", 10u);
         }
     }
     v9x_finish("COMPLETE", 0u);

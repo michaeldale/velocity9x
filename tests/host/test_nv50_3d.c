@@ -232,6 +232,69 @@ static void test_solid_rect(void)
     CHECK(rect[at] == 0ul && at + 1ul == push.count);
 }
 
+/* The Gouraud programs, built with the encoder: the vertex program copies
+ * position and colour (a[0..4], a[8..14]) to o[0..14]; the fragment
+ * program interpolates the colour into $r0..$r3. */
+static void test_gouraud_programs(void)
+{
+    v9x_u32 vp[V9X_NV50_3D_GOURAUD_VP_MAX];
+    v9x_u32 fp[V9X_NV50_3D_GOURAUD_FP_MAX];
+    v9x_u32 vp_count;
+    v9x_u32 fp_count;
+
+    vp_count = v9x_nv50_3d_gouraud_vp(vp, V9X_NV50_3D_GOURAUD_VP_MAX);
+    fp_count = v9x_nv50_3d_gouraud_fp(fp, V9X_NV50_3D_GOURAUD_FP_MAX);
+    /* Six long moves; the first is EXA's own, the third reads a[0x8]. */
+    CHECK(vp_count == 12ul);
+    CHECK(vp[0] == 0x10000001ul && vp[1] == 0x0423c788ul);
+    CHECK(vp[4] == 0x10000409ul && vp[5] == 0x0423c788ul);
+    CHECK(vp[11] == 0x0423c789ul);
+    /* interp $r0 v[0x0]; rcp $r4 $r0; interp $r0 v[0x4] $r4 (perspective);
+     * three more; a long move to end. */
+    CHECK(fp_count == 8ul);
+    CHECK(fp[0] == 0x80000000ul);
+    CHECK(fp[1] == 0x90000010ul);
+    CHECK(fp[2] == 0x82010800ul);
+    CHECK(fp[5] == 0x8204080cul);
+    CHECK(fp[6] == 0x1000060dul && fp[7] == 0x0403c781ul);
+}
+
+/* A Gouraud rectangle: its programs selected, attribute 1 enabled as four
+ * components, colour then position for each of EXA's three vertices. */
+static void test_gouraud_rect(void)
+{
+    static v9x_u32 rect[V9X_NV50_3D_RECT_WORDS_MAX];
+    struct v9x_nv50_push push;
+    v9x_u32 header;
+    v9x_u32 at = 0ul;
+
+    v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_gouraud_rect(&push, 0x08280000ul, 512ul, 72ul,
+                                  V9X_NV50_3D_RT_BGRX8, 16ul, 8ul, 40ul,
+                                  24ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header(&push, 0x1414ul, &at);
+    CHECK(rect[at] == V9X_NV50_3D_GOURAUD_FP_START);
+    header = find_header(&push, 0x140cul, &at);
+    CHECK(rect[at] == V9X_NV50_3D_GOURAUD_VP_START);
+    header = find_header(&push, 0x1650ul, &at);
+    CHECK(rect[at] == 0xf3ul && rect[at + 1ul] == 0ul);
+    header = find_header(&push, 0x15dcul, &at);
+    CHECK(rect[at] == 4ul);
+    /* First vertex at (x, y + 2h): red 0, green 2.0, blue 0.5, alpha 1. */
+    CHECK(rect[at + 1ul] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D,
+                                                0x0510ul, 4ul));
+    CHECK(rect[at + 2ul] == 0ul && rect[at + 3ul] == 0x40000000ul &&
+          rect[at + 4ul] == 0x3f000000ul && rect[at + 5ul] == 0x3f800000ul);
+    CHECK(rect[at + 7ul] == ((56ul << 16) | 16ul));
+    /* Third vertex at (x + 2w, y): red 2.0, green 0. Each vertex is
+     * seven words: a header and four floats, a header and a position. */
+    CHECK(rect[at + 16ul] == 0x40000000ul && rect[at + 17ul] == 0ul);
+    CHECK(rect[at + 21ul] == ((8ul << 16) | 96ul));
+    header = find_header(&push, 0x15e0ul, &at);
+    CHECK(at + 1ul == push.count);
+}
+
 unsigned int v9x_run_nv50_3d_tests(void)
 {
     failures = 0u;
@@ -239,5 +302,7 @@ unsigned int v9x_run_nv50_3d_tests(void)
     test_programs();
     test_solid_tables();
     test_solid_rect();
+    test_gouraud_programs();
+    test_gouraud_rect();
     return failures;
 }

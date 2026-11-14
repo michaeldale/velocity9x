@@ -147,6 +147,39 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
                                  v9x_u32 w, v9x_u32 h);
 #define V9X_NV50_3D_RECT_WORDS_MAX   48ul
 
+/*
+ * Gouraud shading, the first programs of our own, built with the encoder
+ * (velocity9x\nv50_shader.h). The vertex program copies position (a[0],
+ * a[4]) and a four-component colour (attribute 1, a[8] to a[14]) to the
+ * outputs EXA's result map already routes, o[0] to o[14]; the fragment
+ * program interpolates the colour, perspective-correct, into $r0..$r3.
+ * They go at entry offsets in the same code areas as EXA's: the vertex
+ * program at scratch.vp + 200h, the fragment program at scratch.fp +
+ * 100h. Each returns its word count, 0 if max is too small.
+ */
+#define V9X_NV50_3D_GOURAUD_VP_START 0x200ul
+#define V9X_NV50_3D_GOURAUD_FP_START 0x100ul
+#define V9X_NV50_3D_GOURAUD_VP_MAX   16ul
+#define V9X_NV50_3D_GOURAUD_FP_MAX   16ul
+v9x_u32 v9x_nv50_3d_gouraud_vp(v9x_u32 *words, v9x_u32 max);
+v9x_u32 v9x_nv50_3d_gouraud_fp(v9x_u32 *words, v9x_u32 max);
+
+/* VP_ATTR_EN(0) for attribute 0's x and y and attribute 1's four
+ * components, a nibble each. */
+#define V9X_8597_VTX_ATTR_4F_X1      0x0510ul
+#define V9X_NV50_3D_GOURAUD_ATTR_EN0 0x000000f3ul
+
+/* One Gouraud rectangle (x, y, w, h), its programs already written:
+ * red ramps from 0 at the left edge to 1 at the right, green from 0 at
+ * the top to 1 at the bottom, blue is 0.5 and alpha 1. EXA's one triangle
+ * twice the rectangle carries the colours: at (x, y + 2h) green 2.0, at
+ * (x + 2w, y) red 2.0, at (x, y) neither. */
+void v9x_nv50_push_3d_gouraud_rect(struct v9x_nv50_push *push,
+                                   v9x_u32 target, v9x_u32 pitch,
+                                   v9x_u32 height, v9x_u32 format,
+                                   v9x_u32 x, v9x_u32 y, v9x_u32 w,
+                                   v9x_u32 h);
+
 /* EXA's vertex program and its PFP_S fragment program, word for word
  * (nv50_accel.c), to be written at scratch.vp and scratch.fp. */
 #define V9X_NV50_3D_EXA_VP_WORDS     60ul
