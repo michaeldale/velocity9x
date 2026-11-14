@@ -34,6 +34,7 @@
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/nv50_3d.h"
+#include "velocity9x/nv50_d3d.h"
 #include "velocity9x/nv50_shader.h"
 
 #ifndef V9X_BUILD_ID
@@ -2978,6 +2979,484 @@ static int v9x_stage_3d_texture(const char *section, DWORD number,
 }
 
 /*
+ * /3d:d3d: step 5a's builders (nv50_d3d.c) on the card before the HAL
+ * depends on them, after /3d's setup. Into a 128x72 X8R8G8B8 linear
+ * surface prefilled with the pattern, four rectangles of two triangles
+ * each, one kick apiece, in Direct3D's vertex terms (half-pixel centre
+ * added by the builder):
+ *
+ *  A. (16, 8)-(56, 32), the untextured variant, solid red, rhw 0.5 at
+ *     every vertex: w must not move the rectangle (the first run showed
+ *     the engine does not divide by it) or change the colour.
+ *  B. (64, 8)-(104, 32), REPLACE, /3d:texture's 4x4 texture, nearest,
+ *     rhw 1, coordinates offset half a pixel so no sample lies on a
+ *     texel edge: each pixel its texel exactly.
+ *  C. (16, 40)-(56, 64), MODULATE with specular and fog (variant 11),
+ *     the same texture, rhw 1 on the left and 0.5 on the right, specular
+ *     alpha 0, so all fog: every pixel the fog colour.
+ *  D. (64, 40)-(104, 64), REPLACE with rhw 1 on the left and 0.25 on
+ *     the right: each pixel the texel the perspective-correct u names.
+ *     Pixels whose u lies within 5% of a texel edge are counted apart;
+ *     the rest are also counted against the affine u, which differs
+ *     across most of the rectangle, so the run says which the engine
+ *     interpolates.
+ *
+ * Colours within one step a channel where the value is interpolated;
+ * texels exactly; outside the rectangles the pattern exactly.
+ */
+#define V9X_D3D_SURFACE      0x00310000ul
+#define V9X_D3D_TEXTURE      0x00320000ul
+#define V9X_D3D_PUSH_WORDS   320ul
+#define V9X_D3D_FOG          0x002050a0ul
+#define V9X_D3D_DRAWS        4ul
+#define V9X_D3D_RHW_FAR      0.25f
+#define V9X_D3D_EDGE         0.05
+
+struct v9x_d3d_rect {
+    float left;
+    float top;
+    float right;
+    float bottom;
+};
+
+static const struct v9x_d3d_rect v9x_d3d_rects[V9X_D3D_DRAWS] = {
+    { 16.0f, 8.0f, 56.0f, 32.0f },
+    { 64.0f, 8.0f, 104.0f, 32.0f },
+    { 16.0f, 40.0f, 56.0f, 64.0f },
+    { 64.0f, 40.0f, 104.0f, 64.0f }
+};
+
+/* The coordinates at the rectangles' left and top edges: half a pixel of
+ * a 40x24 rectangle in. */
+#define V9X_D3D_U0           (0.5 / 40.0)
+#define V9X_D3D_V0           (0.5 / 24.0)
+
+/* Two triangles over r: corners 0 1 2, then 2 1 3 (top-left, top-right,
+ * bottom-left, bottom-right). */
+static void v9x_d3d_quad(struct v9x_nv50_push *push,
+                         const struct v9x_d3d_rect *r, DWORD diffuse,
+                         DWORD specular, float rhw_left, float rhw_right,
+                         DWORD with_specular, DWORD with_texture)
+{
+    static const DWORD order[6] = { 0ul, 1ul, 2ul, 2ul, 1ul, 3ul };
+    float u0 = (float)V9X_D3D_U0;
+    float v0 = (float)V9X_D3D_V0;
+    DWORD index;
+
+    v9x_nv50_push_d3d_begin(push);
+    for (index = 0ul; index < 6ul; ++index) {
+        DWORD corner = order[index];
+        int right = (corner & 1ul) != 0ul;
+        int bottom = (corner & 2ul) != 0ul;
+
+        v9x_nv50_push_d3d_vertex(push, right ? r->right : r->left,
+                                 bottom ? r->bottom : r->top, 0.5f,
+                                 right ? rhw_right : rhw_left, diffuse,
+                                 specular, right ? 1.0f + u0 : u0,
+                                 bottom ? 1.0f + v0 : v0, 0.5f,
+                                 with_specular, with_texture);
+    }
+    v9x_nv50_push_d3d_end(push);
+}
+
+static void v9x_d3d_base(struct v9x_nv50_d3d_state *state)
+{
+    unsigned char *bytes = (unsigned char *)state;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(*state); ++index) {
+        bytes[index] = 0u;
+    }
+    state->target.address = V9X_WINDOW_VRAM + V9X_D3D_SURFACE;
+    state->target.pitch = V9X_FILL_WIDTH * 4ul;
+    state->target.width = V9X_FILL_WIDTH;
+    state->target.height = V9X_FILL_HEIGHT;
+    state->target_format = V9X_NV50_3D_RT_BGRX8;
+    state->scissor_right = V9X_FILL_WIDTH;
+    state->scissor_bottom = V9X_FILL_HEIGHT;
+    state->color_mask = V9X_NV50_D3D_MASK_RGB;
+}
+
+static int v9x_d3d_channels_near(DWORD got, DWORD want)
+{
+    unsigned shift;
+
+    for (shift = 0u; shift < 24u; shift += 8u) {
+        long a = (long)((got >> shift) & 0xfful);
+        long b = (long)((want >> shift) & 0xfful);
+
+        if (a - b > 1l || b - a > 1l) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* The texel column u names, clamped as the sampler clamps; *edge set when
+ * u is within V9X_D3D_EDGE of a texel boundary. */
+static DWORD v9x_d3d_column(double u, int *edge)
+{
+    double scaled = u * (double)V9X_3D_TEX_SIZE;
+    double fraction;
+    DWORD column = 0ul;
+
+    /* By comparison, not a cast: the publisher links without the
+     * float-to-integer helper. u is never negative here. */
+    while (column < V9X_3D_TEX_SIZE + 1ul &&
+           (double)(long)(column + 1ul) <= scaled) {
+        ++column;
+    }
+    fraction = scaled - (double)(long)column;
+    *edge = fraction < V9X_D3D_EDGE || fraction > 1.0 - V9X_D3D_EDGE;
+    if (column >= V9X_3D_TEX_SIZE) {
+        return V9X_3D_TEX_SIZE - 1ul;
+    }
+    return column;
+}
+
+/* The MP trap words after a draw that trapped with 400108h bit 7: TP0's
+ * status, then each MP's 10h, status, 20h, pc and opcode (nouveau
+ * nv50_gr_mp_trap). Read, not cleared: the run's bring-up starts over. */
+static void v9x_mp_trap(const char *section)
+{
+    static const DWORD offsets[6] = { 0x10ul, 0x14ul, 0x20ul, 0x24ul, 0x70ul,
+                                      0x74ul };
+    static const char *const names[6] = { "M10", "Status", "M20", "Pc",
+                                          "OpLow", "OpHigh" };
+    DWORD reads[2][6];
+    DWORD tp_status;
+    DWORD mp;
+    DWORD word;
+    char key[32];
+
+    v9x_ops_begin();
+    tp_status = v9x_read(0x40831cul);
+    for (mp = 0ul; mp < 2ul; ++mp) {
+        for (word = 0ul; word < 6ul; ++word) {
+            reads[mp][word] = v9x_read(0x408100ul + (mp << 7) + offsets[word]);
+        }
+    }
+    if (!v9x_run("mp-trap")) {
+        return;
+    }
+    v9x_put(section, "MpTp0Status", tp_status);
+    for (mp = 0ul; mp < 2ul; ++mp) {
+        for (word = 0ul; word < 6ul; ++word) {
+            lstrcpyA(key, mp == 0ul ? "Mp0" : "Mp1");
+            lstrcatA(key, names[word]);
+            v9x_put(section, key, reads[mp][word]);
+        }
+    }
+    v9x_flush();
+}
+
+/* Draw `draw`'s state and quad into push. */
+static void v9x_d3d_build(struct v9x_nv50_push *push, DWORD draw,
+                          const DWORD *fp_registers)
+{
+    struct v9x_nv50_d3d_state state;
+    DWORD variant;
+
+    v9x_d3d_base(&state);
+    if (draw == 0ul) {
+        variant = v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_NONE, 0ul, 0ul);
+    } else if (draw == 2ul) {
+        variant = v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 1ul, 1ul);
+        state.textured = 1ul;
+        state.fog_color = V9X_D3D_FOG;
+    } else {
+        variant = v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_REPLACE, 0ul, 0ul);
+        state.textured = 1ul;
+    }
+    state.fp_variant = variant;
+    state.fp_registers = fp_registers[variant];
+    v9x_nv50_push_d3d_state(push, &state);
+    if (draw == 0ul) {
+        v9x_d3d_quad(push, &v9x_d3d_rects[0], 0xffff0000ul, 0ul, 0.5f, 0.5f,
+                     0ul, 0ul);
+    } else if (draw == 1ul) {
+        v9x_d3d_quad(push, &v9x_d3d_rects[1], 0xfffffffful, 0ul, 1.0f, 1.0f,
+                     0ul, 1ul);
+    } else if (draw == 2ul) {
+        v9x_d3d_quad(push, &v9x_d3d_rects[2], 0xff808080ul, 0ul, 1.0f, 0.5f,
+                     1ul, 1ul);
+    } else {
+        v9x_d3d_quad(push, &v9x_d3d_rects[3], 0xfffffffful, 0ul, 1.0f,
+                     V9X_D3D_RHW_FAR, 0ul, 1ul);
+    }
+}
+
+static int v9x_stage_3d_d3d(void)
+{
+    static DWORD texture[V9X_3D_TEX_SIZE * V9X_3D_TEX_PITCH / 4ul];
+    static const char letters[V9X_D3D_DRAWS + 1ul] = {
+        'A', 'B', 'C', 'D', 'P'
+    };
+    DWORD vp[V9X_NV50_D3D_VP_WORDS_MAX];
+    DWORD fp[V9X_NV50_D3D_FP_WORDS_MAX];
+    DWORD fp_registers[V9X_NV50_D3D_FP_VARIANTS];
+    DWORD tic[V9X_NV50_3D_TIC_WORDS];
+    DWORD tsc[V9X_NV50_3D_TSC_WORDS];
+    struct v9x_nv50_push push;
+    const char *section = "D3D";
+    DWORD words = V9X_DEPTH_PIXELS;
+    DWORD pattern = V9X_FILL_PATTERN & V9X_COLOUR_MASK;
+    DWORD first_word = v9x_push_next;
+    DWORD vp_count;
+    DWORD count;
+    DWORD variant;
+    DWORD draw;
+    DWORD block;
+    DWORD index;
+    DWORD pixel;
+    DWORD expected;
+    DWORD x;
+    DWORD y;
+    DWORD ok[V9X_D3D_DRAWS + 1ul];
+    DWORD bad[V9X_D3D_DRAWS + 1ul];
+    DWORD d_edge = 0ul;
+    DWORD d_affine = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_pixel = 0ul;
+    DWORD first_bad_expected = 0ul;
+    DWORD a_centre = 0ul;
+    DWORD b_centre = 0ul;
+    char key[16];
+
+    v9x_push_next += V9X_D3D_PUSH_WORDS;
+    for (index = 0ul; index <= V9X_D3D_DRAWS; ++index) {
+        ok[index] = 0ul;
+        bad[index] = 0ul;
+    }
+    for (index = 0ul; index < sizeof(texture) / sizeof(texture[0]);
+         ++index) {
+        texture[index] = 0ul;
+    }
+    for (y = 0ul; y < V9X_3D_TEX_SIZE; ++y) {
+        for (x = 0ul; x < V9X_3D_TEX_SIZE; ++x) {
+            texture[y * (V9X_3D_TEX_PITCH / 4ul) + x] = v9x_3d_texel(x, y);
+        }
+    }
+    vp_count = v9x_nv50_d3d_vp(vp, V9X_NV50_D3D_VP_WORDS_MAX);
+    if (vp_count == 0ul ||
+        !v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B8G8R8A8,
+                              V9X_WINDOW_VRAM + V9X_D3D_TEXTURE,
+                              V9X_3D_TEX_PITCH, V9X_3D_TEX_SIZE,
+                              V9X_3D_TEX_SIZE, V9X_NV50_D3D_WRAP_CLAMP, 0ul,
+                              0ul, tic, tsc)) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+
+    /* The pattern, the programs, the texture and its tables. */
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, V9X_D3D_SURFACE, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_NV50_D3D_VP_START,
+                  vp, vp_count);
+    for (variant = 0ul; variant < V9X_NV50_D3D_FP_VARIANTS; ++variant) {
+        count = v9x_nv50_d3d_fp(variant, fp, V9X_NV50_D3D_FP_WORDS_MAX,
+                                &fp_registers[variant]);
+        if (count == 0ul) {
+            v9x_text(section, "Result", "ENCODE-FAILED");
+            return 0;
+        }
+        v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+                          v9x_nv50_d3d_fp_start(variant),
+                      fp, count);
+    }
+    v9x_vram_data(V9X_D3D_TEXTURE, texture,
+                  sizeof(texture) / sizeof(texture[0]));
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TIC, tic,
+                  V9X_NV50_3D_TIC_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TSC, tsc,
+                  V9X_NV50_3D_TSC_WORDS);
+    if (!v9x_run("d3d-data")) {
+        v9x_finish("D3D-DATA-REFUSED", 8u);
+    }
+
+    for (draw = 0ul; draw < V9X_D3D_DRAWS; ++draw) {
+        v9x_ops_begin();
+        v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                      first_word,
+                           V9X_D3D_PUSH_WORDS);
+        v9x_d3d_build(&push, draw, fp_registers);
+        if (push.overflow != 0ul) {
+            v9x_text(section, "Result", "PUSH-OVERFLOW");
+            return 0;
+        }
+        if (draw == 0ul) {
+            v9x_number(section, "PushWordsA", push.count);
+        }
+        if (!v9x_kick(section, &push, first_word)) {
+            v9x_number(section, "FailedDraw", draw);
+            v9x_mp_trap(section);
+            v9x_text(section, "Result", "NOT-CLEAN");
+            return 0;
+        }
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD run = words - block;
+
+        if (run > V9X_N5CH_BLOCK) {
+            run = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_D3D_SURFACE + block * 4ul, run, 0ul);
+        if (!v9x_run("d3d-readback")) {
+            v9x_finish("D3D-READBACK-REFUSED", 8u);
+        }
+        for (index = block; index < block + run; ++index) {
+            DWORD which = V9X_D3D_DRAWS;
+            int matches;
+
+            pixel = v9x_result.block[index - block] & V9X_COLOUR_MASK;
+            x = index % V9X_FILL_WIDTH;
+            y = index / V9X_FILL_WIDTH;
+            for (draw = 0ul; draw < V9X_D3D_DRAWS; ++draw) {
+                if ((float)(long)x >= v9x_d3d_rects[draw].left &&
+                    (float)(long)x < v9x_d3d_rects[draw].right &&
+                    (float)(long)y >= v9x_d3d_rects[draw].top &&
+                    (float)(long)y < v9x_d3d_rects[draw].bottom) {
+                    which = draw;
+                }
+            }
+            if (which == 0ul) {
+                expected = 0x00ff0000ul;
+                if (x == 36ul && y == 20ul) {
+                    a_centre = pixel;
+                }
+                matches = v9x_d3d_channels_near(pixel, expected);
+            } else if (which == 1ul) {
+                expected = v9x_3d_texel((x - 64ul) / 10ul, (y - 8ul) / 6ul) &
+                           V9X_COLOUR_MASK;
+                if (x == 84ul && y == 20ul) {
+                    b_centre = pixel;
+                }
+                matches = pixel == expected;
+            } else if (which == 2ul) {
+                expected = V9X_D3D_FOG;
+                matches = v9x_d3d_channels_near(pixel, expected);
+            } else if (which == 3ul) {
+                /* Perspective-correct within the triangle the pixel is
+                 * in, weights rhw: 1 on the left, V9X_D3D_RHW_FAR on the
+                 * right. The quad is not a projected rectangle (v/w is
+                 * not planar across it), so v depends on the triangle
+                 * as well as on y; the first model took v as linear in y
+                 * and blamed the card for its own error. Triangle one is
+                 * top-left, top-right, bottom-left (t + s < 1), two is
+                 * bottom-left, top-right, bottom-right. The affine
+                 * count uses the same barycentrics without weights. */
+                double t = ((double)x - 64.0) / 40.0;
+                double s = ((double)y - 40.0) / 24.0;
+                double q1 = (double)V9X_D3D_RHW_FAR;
+                double u0 = V9X_D3D_U0;
+                double u1 = 1.0 + V9X_D3D_U0;
+                double v0 = V9X_D3D_V0;
+                double v1 = 1.0 + V9X_D3D_V0;
+                double b_left_top;
+                double b_right_top;
+                double b_left_bottom;
+                double b_right_bottom;
+                double weight;
+                double u;
+                double v;
+                double affine_u;
+                double affine_v;
+                int edge_u;
+                int edge_v;
+                int affine_edge_u;
+                int affine_edge_v;
+                DWORD column;
+                DWORD row;
+                DWORD affine_column;
+                DWORD affine_row;
+                int diagonal = (t + s - 1.0) * 40.0 < 0.5 &&
+                               (t + s - 1.0) * 40.0 > -0.5;
+
+                if (t + s < 1.0) {
+                    b_left_top = 1.0 - t - s;
+                    b_right_top = t;
+                    b_left_bottom = s;
+                    b_right_bottom = 0.0;
+                } else {
+                    b_left_top = 0.0;
+                    b_right_top = 1.0 - s;
+                    b_left_bottom = 1.0 - t;
+                    b_right_bottom = t + s - 1.0;
+                }
+                weight = b_left_top + b_left_bottom +
+                         q1 * (b_right_top + b_right_bottom);
+                u = (u0 * (b_left_top + b_left_bottom) +
+                     q1 * u1 * (b_right_top + b_right_bottom)) / weight;
+                v = (v0 * b_left_top + q1 * v0 * b_right_top +
+                     v1 * b_left_bottom + q1 * v1 * b_right_bottom) / weight;
+                affine_u = u0 * (b_left_top + b_left_bottom) +
+                           u1 * (b_right_top + b_right_bottom);
+                affine_v = v0 * (b_left_top + b_right_top) +
+                           v1 * (b_left_bottom + b_right_bottom);
+                column = v9x_d3d_column(u, &edge_u);
+                row = v9x_d3d_column(v, &edge_v);
+                affine_column = v9x_d3d_column(affine_u, &affine_edge_u);
+                affine_row = v9x_d3d_column(affine_v, &affine_edge_v);
+
+                expected = v9x_3d_texel(column, row) & V9X_COLOUR_MASK;
+                if (!affine_edge_u && !affine_edge_v &&
+                    pixel == (v9x_3d_texel(affine_column, affine_row) &
+                              V9X_COLOUR_MASK)) {
+                    ++d_affine;
+                }
+                if (edge_u || edge_v || diagonal) {
+                    ++d_edge;
+                    continue;
+                }
+                matches = pixel == expected;
+            } else {
+                expected = pattern;
+                matches = pixel == expected;
+            }
+            if (matches) {
+                ++ok[which];
+                continue;
+            }
+            ++bad[which];
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+                first_bad_pixel = pixel;
+                first_bad_expected = expected;
+            }
+        }
+    }
+    for (draw = 0ul; draw <= V9X_D3D_DRAWS; ++draw) {
+        key[0] = letters[draw];
+        lstrcpyA(key + 1, "Ok");
+        v9x_number(section, key, ok[draw]);
+        lstrcpyA(key + 1, "Bad");
+        v9x_number(section, key, bad[draw]);
+    }
+    v9x_number(section, "DEdge", d_edge);
+    v9x_number(section, "DFitsAffine", d_affine);
+    v9x_key(section, "ACentrePixel", a_centre);
+    v9x_key(section, "BCentrePixel", b_centre);
+    if (first_bad != 0xfffffffful) {
+        v9x_number(section, "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number(section, "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key(section, "FirstBadPixel", first_bad_pixel);
+        v9x_key(section, "FirstBadExpected", first_bad_expected);
+    }
+    v9x_flush();
+    for (draw = 0ul; draw <= V9X_D3D_DRAWS; ++draw) {
+        if (bad[draw] != 0ul) {
+            v9x_text(section, "Result", "PIXELS-DIFFER");
+            return 0;
+        }
+    }
+    v9x_text(section, "Result", "PASS");
+    return 1;
+}
+
+/*
  * /z:tiled2d: step 2 of docs\plans\nvidia-gt218-3d-z.md, the first use of
  * an alias window, no 3D. A 128x72 X8R8G8B8 gradient in linear surface A
  * is copied by 502D into T, a block-linear surface (tile mode 10h, eight
@@ -3704,6 +4183,14 @@ void __stdcall V9xNv50ChannelEntry(void)
         }
         if (!ok16) {
             v9x_finish("TEXTURE16-FAILED", 11u);
+        }
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/3d:d3d")) {
+        int ok = v9x_stage_3d_d3d();
+
+        v9x_pusher_state();
+        if (!ok) {
+            v9x_finish("D3D-FAILED", 15u);
         }
     }
     v9x_finish("COMPLETE", 0u);

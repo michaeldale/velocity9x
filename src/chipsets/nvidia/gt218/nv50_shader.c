@@ -76,11 +76,28 @@ static v9x_u32 v9x_nv50_sh_id(v9x_u32 operand)
     return value >> 2;
 }
 
+/* A short `mov $r0, $r0`: the pad that keeps a long instruction on a
+ * 64-bit word. */
+#define V9X_NV50_SH_PAD              (V9X_NV50_SH_OP_MOV | \
+                                      V9X_NV50_SH_MOV32_SHORT)
+
 static void v9x_nv50_sh_emit(struct v9x_nv50_sh *sh, v9x_u32 word0,
                              v9x_u32 word1, v9x_u32 size)
 {
     if (sh->invalid != 0ul) {
         return;
+    }
+    /* Short instructions come in pairs, as Mesa's emitter arranges them
+     * and EXA's programs are written: a long instruction after an odd
+     * count of short ones gets a pad first. Without it the first Direct3D
+     * fog program's long fadd sat at byte 54h and the MP trapped it as
+     * INVALID_OPCODE (M-BXMFA8). */
+    if (size == V9X_NV50_SH_LONG && (sh->count & 1ul) != 0ul) {
+        if (sh->count + 1ul + size / 4ul > sh->max) {
+            sh->overflow = 1ul;
+            return;
+        }
+        sh->words[sh->count++] = V9X_NV50_SH_PAD;
     }
     if (sh->count + size / 4ul > sh->max) {
         sh->overflow = 1ul;

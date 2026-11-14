@@ -348,6 +348,10 @@ unsigned int v9x_run_nv50_3d_tests(void);
  * EXA's programs word for word. */
 unsigned int v9x_run_nv50_shader_tests(void);
 
+/* tests\host\test_nv50_d3d.c: the GT218 Direct3D programs, state and
+ * vertices. */
+unsigned int v9x_run_nv50_d3d_tests(void);
+
 /* tests\host\test_tdfx_hwc.c: Glide's EXT_HWC requests and the replies the
  * 3dfx driver builds for them. */
 unsigned int v9x_run_tdfx_hwc_tests(void);
@@ -1589,6 +1593,7 @@ int main(int argc, char **argv)
     failures += v9x_run_nv50_init_tests();
     failures += v9x_run_nv50_3d_tests();
     failures += v9x_run_nv50_shader_tests();
+    failures += v9x_run_nv50_d3d_tests();
     failures += v9x_run_r128_2d_tests();
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_rs690_2d_tests();

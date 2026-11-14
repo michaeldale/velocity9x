@@ -95,6 +95,7 @@ $sources = @(
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_init.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_3d.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_shader.c'),
+    (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_d3d.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_grctx.c')
 )
 $objects = @()

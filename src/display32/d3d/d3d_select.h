@@ -46,6 +46,8 @@
 #define V9X_D3D_SELECT_RS690     17ul
 /* The HD 2600 XT's R6xx shader core, through the CP (d3d_r6.c). */
 #define V9X_D3D_SELECT_R600      18ul
+/* The GT218's Tesla 3D engine, on the 2D engine's channel (d3d_nv50.c). */
+#define V9X_D3D_SELECT_NV50      19ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

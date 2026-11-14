@@ -152,12 +152,14 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_NV3, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* The GT218: a 2D engine with no D3D behind it, whatever the caps
-         * say; software still wins. */
+        /* The GT218: the 2D engine alone selects nothing; CAP_D3D selects
+         * the Tesla 3D engine (d3d_nv50.c); software still wins. */
         { 1, V9X_DD_ENGINE_TYPE_NV50,
           V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_NV50, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_NV50 },
+        { 0, V9X_DD_ENGINE_TYPE_NV50, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_NV50, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
@@ -184,7 +186,8 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_R600, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        { 1, 16ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
+        /* A type past every engine (16 became the GT218's). */
+        { 1, 17ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },
 
         /* The publish-time case the old default got wrong: an unstamped

@@ -151,6 +151,41 @@ static void test_exa_fp_s_a8(void)
     check_words(&sh, expect, sizeof(expect) / sizeof(expect[0]), "fp_s_a8");
 }
 
+/*
+ * Short instructions come in pairs: a long one starts on a 64-bit word.
+ * EXA's programs keep the pairs by hand (PFP_C's two short multiplies
+ * before its long ones). A long instruction after an odd count of short
+ * ones gets a short `mov $r0, $r0` before it, which changes nothing. The
+ * first Direct3D fog program on M-BXMFA8 put its long fadd at byte 54h
+ * and the MP trapped it as INVALID_OPCODE.
+ */
+static void test_pairing(void)
+{
+    static const v9x_u32 expect[] = {
+        0x80000000ul,                   /* interp $r0 v[0x0] */
+        0x10008000ul,                   /* mov $r0 $r0, the pad */
+        0xc0020001ul, 0x00000780ul,     /* fmul $r0 $r0 $r2, long */
+        0x80000000ul, 0x90000004ul,     /* a pair: no pad */
+        0xc0020001ul, 0x00000781ul      /* the same long, ending */
+    };
+    struct v9x_nv50_sh sh;
+
+    v9x_nv50_sh_init(&sh, code, 96ul);
+    v9x_nv50_sh_interp(&sh, R(0), V(0x0), V9X_NV50_SH_NONE);
+    v9x_nv50_sh_fmul(&sh, L, R(0), R(0), R(2));
+    v9x_nv50_sh_interp(&sh, R(0), V(0x0), V9X_NV50_SH_NONE);
+    v9x_nv50_sh_rcp(&sh, S, R(1), R(0));
+    v9x_nv50_sh_fmul(&sh, L, R(0), R(0), R(2));
+    v9x_nv50_sh_exit(&sh);
+    check_words(&sh, expect, sizeof(expect) / sizeof(expect[0]), "pairing");
+
+    /* A pad that does not fit is an overflow, not a misaligned long. */
+    v9x_nv50_sh_init(&sh, code, 3ul);
+    v9x_nv50_sh_interp(&sh, R(0), V(0x0), V9X_NV50_SH_NONE);
+    v9x_nv50_sh_fmul(&sh, L, R(0), R(0), R(2));
+    CHECK(sh.overflow != 0ul);
+}
+
 /* What cannot be encoded is refused, not emitted wrong. */
 static void test_refusals(void)
 {
@@ -185,6 +220,7 @@ unsigned int v9x_run_nv50_shader_tests(void)
     test_exa_fp_s();
     test_exa_fp_c();
     test_exa_fp_s_a8();
+    test_pairing();
     test_refusals();
     return failures;
 }

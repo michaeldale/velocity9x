@@ -159,6 +159,10 @@ Options:
   Z-buffered draws are refused (the core skips them). This is a step
   towards either A or B, not an end.
 
+**Michael chose A, shadow targets (2026-11-14).** Order: 5a the HAL
+on linear targets without Z (below); 5b the shadow targets and tiled Z
+buffers; 5c 3DMark 2000 and the copy cost measured.
+
 Common to all three, and the first piece: `d3d_nv50.c` and its map
 (`d3d_nv50_map.c`, host-tested). That means the neutral draw into
 `nv50_3d.c` streams, the caps, texture placement and `ready`, all
