@@ -2472,8 +2472,10 @@ static int v9x_stage_3d(void)
  * EXA's PFP_S sampling a 1x1 texture of the colour, into a pitch-linear
  * 128x72 surface the CPU first filled with a pattern. Every pixel is read
  * back: the rectangle must be the colour, everything else the pattern.
- * FFA5C3E1h gives A61Bh at 5:6:5 whether the hardware rounds or
- * truncates (A5h, C3h, E1h scale to 20.06, 48.18, 27.35).
+ * At 5:6:5 FFA5C3E1h is A61Ch: the card keeps each channel's top bits
+ * (A5h >> 3, C3h >> 2, E1h >> 3). The first run expected A61Bh, a x31
+ * scaling, and every rectangle pixel read A61Ch
+ * (docs\decisions\2026-11-14-gt218-3d-first-triangle.md).
  */
 #define V9X_3D_DRAW_FIRST    0x00280000ul
 #define V9X_3D_DRAW_STEP     0x00020000ul
@@ -2714,7 +2716,7 @@ void __stdcall V9xNv50ChannelEntry(void)
                                      V9X_NV50_3D_RT_BGRX8,
                                      V9X_3D_DRAW_ARGB & V9X_COLOUR_MASK);
         int ok16 = v9x_stage_3d_draw("Draw16", 1ul, 2ul,
-                                     V9X_NV50_3D_RT_B5G6R5, 0xa61bul);
+                                     V9X_NV50_3D_RT_B5G6R5, 0xa61cul);
 
         v9x_pusher_state();
         if (!ok32) {

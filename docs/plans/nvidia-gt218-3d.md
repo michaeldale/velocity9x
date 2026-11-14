@@ -9,7 +9,11 @@ It found that EXA's pipeline needs no stack, TLS or new shader encoding,
 and that a pitch-linear colour buffer cannot have a depth buffer, which
 shapes phase 4. Phase 1 passed on M-BXMFA8 boot 117: the 3D object
 binds and takes EXA's setup without a fault
-([record](../decisions/2026-11-14-gt218-3d-bind-and-setup.md)). Phase 6 of
+([record](../decisions/2026-11-14-gt218-3d-bind-and-setup.md)). Phase 2
+passed the same boot: a solid rectangle through the 3D engine is exact
+at 32 and 16 bpp, into a pitch-linear target, with no pixel outside it
+touched; 5:6:5 keeps each channel's top bits
+([record](../decisions/2026-11-14-gt218-3d-first-triangle.md)). Phase 6 of
 [nvidia-gt218.md](nvidia-gt218.md). Michael asked for it on 2026-11-14,
 after GDI and DirectDraw fill and copy ran on the 2D engine
 ([2026-11-14-gt218-gdi-engine-first-run.md](../decisions/2026-11-14-gt218-gdi-engine-first-run.md)).
