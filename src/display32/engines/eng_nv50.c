@@ -71,6 +71,9 @@ static struct v9x_nv50_chan_layout v9x_nv50_layout;
 /* The last kick, for the fault record (v9x_nv50_write_fault). */
 static DWORD v9x_nv50_last_kick_kind;   /* 1 2D, 2 3D batch */
 static DWORD v9x_nv50_last_kick_words;
+/* The last 2D push itself: a 3DMark 2000 start trapped in PROP on a
+ * blit, and its words are what say which. */
+static DWORD v9x_nv50_last_2d[V9X_NV50_PUSH_WORDS];
 static struct v9x_nv50_init_op v9x_nv50_ops[V9X_NV50_INIT_OPS_MAX];
 /* There is no ring index here. The 16-bit driver kicks the same ring for
  * GDI (gdi_accel.c), so the index lives in the hardware: after a kick
@@ -171,6 +174,9 @@ static int v9x_nv50_submit_at(const struct v9x_nv50_push *push, DWORD at)
     v9x_nv50_last_kick_words = push->count;
     for (index = 0ul; index < push->count; ++index) {
         target[index] = push->words[index];
+        if (index < V9X_NV50_PUSH_WORDS) {
+            v9x_nv50_last_2d[index] = push->words[index];
+        }
     }
     v9x_nv50_ib_entry(v9x_nv50_live_push(v9x_hal->engine.reserve_offset),
                       push->count, entry);
@@ -385,6 +391,9 @@ static void v9x_nv50_write_fault(DWORD code, DWORD address)
     for (index = 0ul; index < sizeof(regs) / sizeof(regs[0]); ++index) {
         v9x_nv50_fault_hex(file, regs[index].key,
                            v9x_nv50_read32(regs[index].reg));
+    }
+    for (index = 0ul; index < V9X_NV50_PUSH_WORDS; ++index) {
+        v9x_nv50_fault_hex(file, "Last2d=", v9x_nv50_last_2d[index]);
     }
     CloseHandle(file);
 }
