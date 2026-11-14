@@ -357,57 +357,6 @@ static DWORD v9x_gdi_nv50_reserve;
  * (M-BXMFA8, step 5.4). */
 static DWORD (*v9x_gdi_nv50_reserve_hook)(void);
 static WORD v9x_gdi_nv50_live(void);
-
-/*
- * What the NV50 arm saw when it poisoned, for V9XHW.INI. On M-BXMFA8 one
- * GDI operation timed out at the same point on two boots, after 355 that
- * the card finished (docs\decisions\2026-11-14-gt218-gdi-engine-first-
- * run.md), and nothing said which wait expired. Captured at the poison,
- * which may be at interrupt time (MMIO and DGROUP only), and written by
- * v9x_gdi_accel_flush_report.
- *
- * Site: 1 the idle wait before a draw, 2 the wait for PFIFO's PUT after
- * a kick, 3 an idle wait from anywhere else (the BeginAccess drain, sync),
- * 4 IB get out of the ring. 0 when nothing was captured.
- */
-#define V9X_GDI_NV50_SITE_DRAW_IDLE  1u
-#define V9X_GDI_NV50_SITE_PUT        2u
-#define V9X_GDI_NV50_SITE_OTHER_IDLE 3u
-#define V9X_GDI_NV50_SITE_RING       4u
-#define V9X_GDI_NV50_DIAG_REGS       8u
-#define V9X_GDI_NV50_DIAG_OP         8u
-static WORD v9x_gdi_nv50_site;
-static WORD v9x_gdi_nv50_in_draw;
-/* ddi.c's Enable count at the capture: boot 113 showed an Enable follows
- * the poison, and this says whether the poison came before it. */
-extern WORD v9x_dd_enable_count(void);
-static WORD v9x_gdi_nv50_enables;
-static DWORD v9x_gdi_nv50_kicks;
-static DWORD v9x_gdi_nv50_regs[V9X_GDI_NV50_DIAG_REGS];
-/* rop256, base, source x, source y, destination x, y, width, height of
- * the operation being drawn, then the same for the one before it: if the
- * idle wait before a draw is what expires, the slow one is the earlier. */
-static DWORD v9x_gdi_nv50_op[2u * V9X_GDI_NV50_DIAG_OP];
-static const DWORD v9x_gdi_nv50_diag_reg[V9X_GDI_NV50_DIAG_REGS] = {
-    V9X_NV50_PFIFO_IB_GET, V9X_NV50_PFIFO_IB_PUT,
-    V9X_NV50_PFIFO_DMA_GET, V9X_NV50_PFIFO_DMA_PUT,
-    V9X_NV50_PGRAPH_STATUS, V9X_NV50_PFIFO_INTR,
-    V9X_NV50_PGRAPH_INTR, V9X_NV50_PFIFO_DMA_STATE
-};
-
-static void v9x_gdi_nv50_capture(WORD site)
-{
-    WORD index;
-
-    if (v9x_gdi_nv50_site != 0u) {
-        return;
-    }
-    v9x_gdi_nv50_site = site;
-    v9x_gdi_nv50_enables = v9x_dd_enable_count();
-    for (index = 0u; index < V9X_GDI_NV50_DIAG_REGS; ++index) {
-        v9x_gdi_nv50_regs[index] = V9xNv3Read(v9x_gdi_nv50_diag_reg[index]);
-    }
-}
 #endif
 
 /*
@@ -513,42 +462,6 @@ void v9x_gdi_accel_flush_report(void)
     }
     WritePrivateProfileString("Velocity9xHardware", "GdiAcceleration",
                               "gdi-poisoned", V9X_DIAG_HW_INI);
-#ifdef V9X_NVIDIA_FAMILY
-    if (v9x_gdi_nv50_site != 0u) {
-        /* Nv50Poison: site, kicks, the eight registers in diag_reg order,
-         * the sixteen op words (this op, the one before), then the Enable
-         * count, each as eight hex digits. One key, so the code is one
-         * write and not twenty-seven. */
-        static const char digits[] = "0123456789ABCDEF";
-        static char text[27u * 9u];
-        DWORD words[27];
-        WORD index;
-        WORD digit;
-        WORD at = 0u;
-
-        words[0] = (DWORD)v9x_gdi_nv50_site;
-        words[1] = v9x_gdi_nv50_kicks;
-        for (index = 0u; index < 8u; ++index) {
-            words[2u + index] = v9x_gdi_nv50_regs[index];
-        }
-        for (index = 0u; index < 16u; ++index) {
-            words[10u + index] = v9x_gdi_nv50_op[index];
-        }
-        words[26] = (DWORD)v9x_gdi_nv50_enables;
-        for (index = 0u; index < 27u; ++index) {
-            for (digit = 0u; digit < 8u; ++digit) {
-                text[at++] = digits[(WORD)((words[index] >>
-                                            ((7u - digit) * 4u)) & 0xful)];
-            }
-            text[at++] = index + 1u < 27u ? ' ' : '\0';
-        }
-        /* A section of its own: every Enable deletes [Velocity9xHardware]
-         * before republishing it (ddi.c), which wiped this key on boot
-         * 113, where an Enable followed the poison. */
-        WritePrivateProfileString("Velocity9xGdiPoison", "Nv50Poison", text,
-                                  V9X_DIAG_HW_INI);
-    }
-#endif
 }
 
 /* ViRGE SUBSYS_STAT carries a FIFO free-slot count and an idle bit. */
@@ -673,9 +586,6 @@ static WORD v9x_gdi_wait_idle(void)
                     return 1u;
                 }
             } while (spins-- != 0ul);
-            v9x_gdi_nv50_capture(v9x_gdi_nv50_in_draw != 0u
-                                     ? V9X_GDI_NV50_SITE_DRAW_IDLE
-                                     : V9X_GDI_NV50_SITE_OTHER_IDLE);
 #endif
         } else {
             do {
@@ -1169,15 +1079,11 @@ static WORD v9x_gdi_nv50_draw(const V9X_GDI_OP *op)
     DWORD index;
     DWORD spins;
 
-    v9x_gdi_nv50_in_draw = 1u;
-    index = (DWORD)v9x_gdi_wait_idle();
-    v9x_gdi_nv50_in_draw = 0u;
-    if (index == 0ul) {
+    if (v9x_gdi_wait_idle() == 0u) {
         return 0u;
     }
     at = V9xNv3Read(V9X_NV50_PFIFO_IB_GET);
     if (at >= V9X_NV50_IB_ENTRIES) {
-        v9x_gdi_nv50_capture(V9X_GDI_NV50_SITE_RING);
         v9x_gdi_poison();
         return 0u;
     }
@@ -1191,10 +1097,8 @@ static WORD v9x_gdi_nv50_draw(const V9X_GDI_OP *op)
     next = v9x_nv50_ib_next(at);
     V9xNv3Write(V9X_NV50_USERD(1ul) + V9X_NV50_USERD_IB_PUT, next);
     spins = V9X_GDI_NV50_PUT_SPINS;
-    ++v9x_gdi_nv50_kicks;
     while (V9xNv3Read(V9X_NV50_PFIFO_IB_PUT) != next) {
         if (spins-- == 0ul) {
-            v9x_gdi_nv50_capture(V9X_GDI_NV50_SITE_PUT);
             ++v9x_gdi.idle_timeouts;
             v9x_gdi_poison();
             return 0u;
@@ -1870,7 +1774,6 @@ void v9x_gdi_accel_configure(void)
      * boot. */
     v9x_gdi_nv50_reserve = 0ul;
     v9x_gdi_nv50_reserve_hook = 0;
-    v9x_gdi_nv50_in_draw = 0u;
     if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50 &&
         (v9x_driver_pdevice == 0 ||
          v9x_nv50_2d_format(
@@ -2084,9 +1987,6 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     WORD screen_to_screen;
     WORD upload = 0u;
     WORD issued;
-#ifdef V9X_NVIDIA_FAMILY
-    WORD nv50_word;
-#endif
 
     ++v9x_gdi.calls;
     /* Deferred from a bounded wait that expired at interrupt time, where
@@ -2740,18 +2640,6 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
                                   (DWORD)destination_device->deWidth,
                                   (DWORD)destination_device->deHeight);
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
-        for (nv50_word = 0u; nv50_word < V9X_GDI_NV50_DIAG_OP; ++nv50_word) {
-            v9x_gdi_nv50_op[V9X_GDI_NV50_DIAG_OP + nv50_word] =
-                v9x_gdi_nv50_op[nv50_word];
-        }
-        v9x_gdi_nv50_op[0] = (DWORD)rop256;
-        v9x_gdi_nv50_op[1] = op.base;
-        v9x_gdi_nv50_op[2] = (DWORD)op.source_x;
-        v9x_gdi_nv50_op[3] = (DWORD)op.source_y;
-        v9x_gdi_nv50_op[4] = (DWORD)op.destination_x;
-        v9x_gdi_nv50_op[5] = (DWORD)op.destination_y;
-        v9x_gdi_nv50_op[6] = (DWORD)op.width;
-        v9x_gdi_nv50_op[7] = (DWORD)op.height;
         issued = v9x_gdi_nv50_draw(&op);
 #endif
     } else {

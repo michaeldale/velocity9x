@@ -90,8 +90,10 @@ Boots 111 and 112 were read at first as a GDI operation timing out
 2e35b466 added a record of what the arm sees when it poisons
 (`[Velocity9xGdiPoison] Nv50Poison` in V9XHW.INI, out of the section
 every Enable deletes). It stayed empty on boots 113 and 114, because an
-injected fault skips the waits it would capture. It stays in the driver
-for a real timeout. The /auto and V9XMSW runs on boots 111 to 114 came
+injected fault skips the waits it would capture. It was taken out again
+before the merge with main: it cost about 540 bytes of the nvidia
+family's `_TEXT`, and with main's 16-bit changes the segment was 257
+bytes over its budget. The /auto and V9XMSW runs on boots 111 to 114 came
 after an /accel and so did not exercise the engine; boot 115's order
 does.
 
@@ -103,8 +105,8 @@ does.
 - The picture: nobody has looked at the monitor.
 - Timings: V9XGDI reports counts and comparisons, not speed.
 
-The nvidia family's `_TEXT` is 57105 bytes after 2e35b466, 239 under its
-budget.
+The nvidia family's `_TEXT` was 57105 bytes with the capture, 239 under
+its budget; it is a tight segment.
 
 The machine is left on 2e35b466, boot 115, with GDI poisoned for the
 session by V9XGDI's injection (the CPU draws everything until the next
