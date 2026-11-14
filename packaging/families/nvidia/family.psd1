@@ -13,7 +13,7 @@
     SchemaVersion = 1
     Id = 'nvidia'
     DisplayName = 'NVIDIA RIVA 128 and GeForce 210'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw fill and copy at 8, 16 and 32 bpp, CPU drawing otherwise.'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8, 16 and 32 bpp, Direct3D on the 3D engine at 16 and 32 bpp with Z16, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -83,12 +83,15 @@
             # (docs\decisions\2026-11-14-gt218-502d-engine-measurements.md).
             # The HAL engine ran on the card in step 4.4
             # (docs\decisions\2026-11-14-gt218-hal-engine-first-run.md).
-            # GDI fill and copy use the HAL's channel once it is built
-            # (docs\plans\nvidia-gt218-gdi-engine.md).
+            # GDI fill and copy share the HAL's channel
+            # (docs\decisions\2026-11-14-gt218-gdi-engine-first-run.md).
+            # Direct3D: the Tesla 3D engine on that channel, through tiled
+            # shadow targets with Z16
+            # (docs\decisions\2026-11-14-gt218-3d-d3d-builders.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-nv50'
             EngineType = 'NV50'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'D3D')
             # What the seen card's VBE reports through 4F00h (224 x 64 KiB),
             # not the card's memory
             # (docs\decisions\2026-11-11-m-bxmfa8-gt218-first-look.md).

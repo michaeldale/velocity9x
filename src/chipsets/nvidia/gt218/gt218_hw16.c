@@ -140,7 +140,7 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
     "nvidia-gt218-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    "not-advertised",
+    "hardware-nv50",
     0,
     v9x_gt218_fill_engine,
     V9X_GT218_FRAMEBUFFER_BAR,

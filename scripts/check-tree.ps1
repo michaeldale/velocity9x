@@ -2053,19 +2053,28 @@ foreach ($familyFile in Get-ChildItem -Path (
         if (-not $claimsHardware) {
             continue
         }
+        # One of the chip's objects holds its device record; the others (the
+        # GT218's reserve arithmetic) carry no words, so ask for the string
+        # in any of them, not in each.
+        $objectPaths = @()
+        $carriesWord = $false
         foreach ($objectName in @($chip.Objects)) {
             $objectPath = $sourceByName[$objectName]
             if (-not $objectPath) {
                 continue
             }
+            $objectPaths += $objectPath
             $objectText = Get-Content -Raw -LiteralPath (
                 Join-Path $repoRoot $objectPath)
-            if ($objectText -notmatch ('"' + [regex]::Escape($word) + '"')) {
-                throw ("$($familyData.Id)/$($chip.Id): $objectPath does not " +
-                       "carry the string `"$word`". The manifest is " +
-                       'documentation; that string is what the driver writes ' +
-                       'to V9XHW.INI and what the settings page reads.')
+            if ($objectText -match ('"' + [regex]::Escape($word) + '"')) {
+                $carriesWord = $true
             }
+        }
+        if ($objectPaths.Count -gt 0 -and -not $carriesWord) {
+            throw ("$($familyData.Id)/$($chip.Id): none of " +
+                   "$($objectPaths -join ', ') carries the string `"$word`". " +
+                   'The manifest is documentation; that string is what the ' +
+                   'driver writes to V9XHW.INI and what the settings page reads.')
         }
     }
 }

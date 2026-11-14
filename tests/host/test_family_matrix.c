@@ -237,7 +237,8 @@ static void test_engine_caps_match_engine_type(void)
                         chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_VI ||
                         chip->engine_type == V9X_DD_ENGINE_TYPE_NV3 ||
                         chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 ||
-                        chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_R600);
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_ATI_R600 ||
+                        chip->engine_type == V9X_DD_ENGINE_TYPE_NV50);
         }
     }
 }
