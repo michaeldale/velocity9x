@@ -152,6 +152,12 @@ NCReadWindows label dword
     dd 40008ch, 400090h ; context switch control
     dd 402ca8h, 402cach ; zcull
     dd 402cc0h, 402cc4h ; zcull
+    ; The PROP (render output) trap status and its seven detail words, TP0
+    ; and TP1, as nouveau's nv50_gr_prop_trap reads them for chipset A0h
+    ; and later (0x408708 + tp << 11): the first depth draw on M-BXMFA8
+    ; trapped with 400108h bit 8, PROP.
+    dd 408708h, 408728h ; PROP trap, TP0
+    dd 408f08h, 408f28h ; PROP trap, TP1
     dd 700000h, 800000h ; PRAMIN, the GPU's own view of video memory
     dd 070000h, 070004h ; G84 BAR flush (bar\g84.c g84_bar_flush)
     dd 088000h, 088400h ; PCI configuration mirror, with PCIe extended space
@@ -162,7 +168,7 @@ NCReadWindows label dword
     ; card reads there time out (FFFFFFFF, tens of ms) and the card leaves
     ; configuration space soon after (runs 3, 6 and 13 of
     ; docs\decisions\2026-11-11-gt218-channel-probe-run1-hang.md).
-NC_READ_WINDOW_COUNT    equ 38
+NC_READ_WINDOW_COUNT    equ 40
 
 ; Writes accepted: start, limit (exclusive).
 NCWriteWindows label dword

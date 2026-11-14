@@ -3304,6 +3304,41 @@ static int v9x_stage_z_tiledrt(void)
 #define V9X_FLOAT_QUARTER    0x3e800000ul
 #define V9X_FLOAT_THREE_QUARTERS 0x3f400000ul
 
+/* The PROP trap words for TP0 and TP1 (nv50_gr_prop_trap): status, then
+ * e0c, address low, address high, e18, e1c, e20, e24. Status bits
+ * (nv50_gr_trap_prop): 20h ZETA_FAULT, 40h RT_FAULT, 200h
+ * ZETA_STORAGE_TYPE_MISMATCH, 400h RT_STORAGE_TYPE_MISMATCH, 1000h
+ * RT_LINEAR_MISMATCH, 4h and 8h surface width and height overrun. */
+static void v9x_prop_trap(const char *section)
+{
+    static const char *const names[8] = {
+        "Status", "E0c", "AddressLow", "AddressHigh", "E18", "E1c", "E20",
+        "E24"
+    };
+    DWORD reads[2][8];
+    DWORD tp;
+    DWORD word;
+    char key[32];
+
+    v9x_ops_begin();
+    for (tp = 0ul; tp < 2ul; ++tp) {
+        for (word = 0ul; word < 8ul; ++word) {
+            reads[tp][word] = v9x_read(0x408708ul + (tp << 11) + word * 4ul);
+        }
+    }
+    if (!v9x_run("prop-trap")) {
+        return;
+    }
+    for (tp = 0ul; tp < 2ul; ++tp) {
+        for (word = 0ul; word < 8ul; ++word) {
+            lstrcpyA(key, tp == 0ul ? "PropTp0" : "PropTp1");
+            lstrcatA(key, names[word]);
+            v9x_put(section, key, reads[tp][word]);
+        }
+    }
+    v9x_flush();
+}
+
 static int v9x_z_in(DWORD x, DWORD y, DWORD left, DWORD top)
 {
     return x >= left && x < left + V9X_Z_RECT_W && y >= top &&
@@ -3409,6 +3444,7 @@ static int v9x_stage_z_depth(const char *section, DWORD window,
     lstrcatA(name, "Draw");
     v9x_number(section, "DrawPushWords", push.count);
     if (push.overflow != 0ul || !v9x_kick(name, &push, first)) {
+        v9x_prop_trap(section);
         v9x_text(section, "Result", "DRAW-NOT-CLEAN");
         return 0;
     }
@@ -3642,17 +3678,17 @@ void __stdcall V9xNv50ChannelEntry(void)
         !v9x_stage_z_tiledrt()) {
         v9x_finish("Z-TILEDRT-FAILED", 13u);
     }
-    if (v9x_switch_given("/3d") && v9x_switch_given("/z:depth")) {
-        int ok16 = v9x_stage_z_depth("ZDepth16", V9X_NV50_VM_Z16, 2ul,
-                                     V9X_NV50_3D_ZETA_Z16);
-        int ok24 = v9x_stage_z_depth("ZDepth24S8", V9X_NV50_VM_Z24S8, 4ul,
-                                     V9X_NV50_3D_ZETA_Z24S8);
-
-        v9x_pusher_state();
-        if (!ok16) {
+    /* One Z format per run: a PGRAPH trap stays latched and spoils
+     * whatever follows, and each run's bring-up clears it. */
+    if (v9x_switch_given("/3d") && v9x_switch_given("/z:depth16")) {
+        if (!v9x_stage_z_depth("ZDepth16", V9X_NV50_VM_Z16, 2ul,
+                               V9X_NV50_3D_ZETA_Z16)) {
             v9x_finish("ZDEPTH16-FAILED", 14u);
         }
-        if (!ok24) {
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/z:depth24")) {
+        if (!v9x_stage_z_depth("ZDepth24S8", V9X_NV50_VM_Z24S8, 4ul,
+                               V9X_NV50_3D_ZETA_Z24S8)) {
             v9x_finish("ZDEPTH24S8-FAILED", 14u);
         }
     }
