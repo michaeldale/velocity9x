@@ -43,6 +43,32 @@
 #define V9X_8597_VIEWPORT_TRANSFORM_EN 0x192cul
 #define V9X_8597_FP_INTERPOLANT_CTRL 0x1988ul
 
+/* The draw (nv50_exa.c NV50EXAPrepareComposite, NV50EXAComposite). */
+#define V9X_8597_RT_ADDRESS_HIGH0    0x0200ul
+#define V9X_8597_VTX_ATTR_2I0        0x0680ul
+#define V9X_8597_VTX_ATTR_2I8        0x06a0ul
+#define V9X_8597_RT_ARRAY_MODE       0x1224ul
+#define V9X_8597_RT_HORIZ0           0x1240ul
+#define V9X_8597_TIC_FLUSH           0x1334ul
+#define V9X_8597_BLEND_ENABLE0       0x1360ul
+#define V9X_8597_FP_START_ID         0x1414ul
+#define V9X_8597_BIND_TIC2           0x1458ul
+#define V9X_8597_VERTEX_BEGIN_GL     0x15dcul
+#define V9X_8597_VERTEX_END_GL       0x15e0ul
+/* RT_HORIZ: a pitch-linear target is this bit with the pitch, and its
+ * height follows (Mesa nv50_validate_fb); it can have no Z buffer. */
+#define V9X_8597_RT_HORIZ_LINEAR     0x80000000ul
+#define V9X_8597_PRIMITIVE_TRIANGLES 4ul
+/* BIND_TIC(2): EXA writes 1, then texture 0 with sampler 0, valid. */
+#define V9X_8597_BIND_TIC_FIRST      0x00000001ul
+#define V9X_8597_BIND_TIC_UNIT0      0x00000203ul
+
+/* Render target formats (nv50_defs.xml.h NV50_SURFACE_FORMAT_*), the
+ * same enum as the 2D engine's surfaces, where E6h and E8h were
+ * measured (docs\decisions\2026-11-14-gt218-502d-engine-measurements.md). */
+#define V9X_NV50_3D_RT_BGRX8         0xe6ul
+#define V9X_NV50_3D_RT_B5G6R5        0xe8ul
+
 /* COND_MODE: always draw. */
 #define V9X_8597_COND_MODE_ALWAYS    1ul
 /* The constant buffers EXA binds: 1 for the vertex program, 2 for the
@@ -66,6 +92,8 @@ struct v9x_nv50_3d_scratch {
     v9x_u32 tsc;
     v9x_u32 vp_constants;
     v9x_u32 fp_constants;
+    /* The 1x1 texture a solid colour is drawn from. */
+    v9x_u32 texel;
 };
 
 #define V9X_NV50_3D_SCRATCH_VP       0x0000ul
@@ -74,6 +102,7 @@ struct v9x_nv50_3d_scratch {
 #define V9X_NV50_3D_SCRATCH_TSC      0x3000ul
 #define V9X_NV50_3D_SCRATCH_VP_DATA  0x4000ul
 #define V9X_NV50_3D_SCRATCH_FP_DATA  0x4100ul
+#define V9X_NV50_3D_SCRATCH_TEXEL    0x4800ul
 #define V9X_NV50_3D_SCRATCH_BYTES    0x5000ul
 
 void v9x_nv50_3d_scratch_at(v9x_u32 base, struct v9x_nv50_3d_scratch *out);
@@ -88,6 +117,35 @@ void v9x_nv50_push_3d_setup(struct v9x_nv50_push *push,
 
 /* Room for the bind and the setup. */
 #define V9X_NV50_3D_SETUP_WORDS_MAX  96ul
+
+/*
+ * What a solid colour needs in memory before a draw (NV50EXAPictSolid):
+ * the texel, TIC entry 0 and TSC entry 0, written at scratch.texel,
+ * .tic and .tsc; and the vertex program's constants for units 0 and 1,
+ * eleven words each (a 3x3 transform, then 1/width, 1/height), written at
+ * scratch.vp_constants. The colour is A8R8G8B8.
+ */
+#define V9X_NV50_3D_TIC_WORDS        8ul
+#define V9X_NV50_3D_TSC_WORDS        8ul
+#define V9X_NV50_3D_VP_CONSTANT_WORDS 22ul
+struct v9x_nv50_3d_solid {
+    v9x_u32 texel;
+    v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 vp_constants[V9X_NV50_3D_VP_CONSTANT_WORDS];
+};
+
+void v9x_nv50_3d_solid_tables(const struct v9x_nv50_3d_scratch *scratch,
+                              v9x_u32 argb, struct v9x_nv50_3d_solid *out);
+
+/* One solid rectangle (x, y, w, h) into a pitch-linear render target at
+ * VM address target, after the setup and the solid tables: EXA's single
+ * triangle twice the rectangle's size, cut by the scissor. */
+void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
+                                 v9x_u32 pitch, v9x_u32 height,
+                                 v9x_u32 format, v9x_u32 x, v9x_u32 y,
+                                 v9x_u32 w, v9x_u32 h);
+#define V9X_NV50_3D_RECT_WORDS_MAX   48ul
 
 /* EXA's vertex program and its PFP_S fragment program, word for word
  * (nv50_accel.c), to be written at scratch.vp and scratch.fp. */

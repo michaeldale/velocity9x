@@ -2466,6 +2466,138 @@ static int v9x_stage_3d(void)
     return 1;
 }
 
+/*
+ * /3d:draw: phase 2 of docs\plans\nvidia-gt218-3d.md, after /3d's setup.
+ * One solid rectangle through the 3D engine at each of 32 and 16 bpp:
+ * EXA's PFP_S sampling a 1x1 texture of the colour, into a pitch-linear
+ * 128x72 surface the CPU first filled with a pattern. Every pixel is read
+ * back: the rectangle must be the colour, everything else the pattern.
+ * FFA5C3E1h gives A61Bh at 5:6:5 whether the hardware rounds or
+ * truncates (A5h, C3h, E1h scale to 20.06, 48.18, 27.35).
+ */
+#define V9X_3D_DRAW_FIRST    0x00280000ul
+#define V9X_3D_DRAW_STEP     0x00020000ul
+#define V9X_3D_DRAW_X        16ul
+#define V9X_3D_DRAW_Y        8ul
+#define V9X_3D_DRAW_W        40ul
+#define V9X_3D_DRAW_H        24ul
+#define V9X_3D_DRAW_ARGB     0xffa5c3e1ul
+
+static int v9x_stage_3d_draw(const char *section, DWORD number, DWORD bytes,
+                             DWORD format, DWORD expected)
+{
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_3d_solid solid;
+    struct v9x_nv50_push push;
+    DWORD offset = V9X_3D_DRAW_FIRST + number * V9X_3D_DRAW_STEP;
+    DWORD pitch = V9X_FILL_WIDTH * bytes;
+    DWORD words = V9X_DEPTH_PIXELS * bytes / 4ul;
+    DWORD pattern = bytes == 4ul ? (V9X_FILL_PATTERN & V9X_COLOUR_MASK)
+                                 : (V9X_FILL_PATTERN & 0xfffful);
+    DWORD first_word = v9x_push_next;
+    DWORD block = 0ul;
+    DWORD index;
+    DWORD pixel;
+    DWORD x;
+    DWORD y;
+    DWORD inside_ok = 0ul;
+    DWORD inside_bad = 0ul;
+    DWORD outside_ok = 0ul;
+    DWORD outside_bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_pixel = 0ul;
+    int inside;
+
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    v9x_nv50_3d_solid_tables(&scratch, V9X_3D_DRAW_ARGB, &solid);
+
+    /* The pattern, the solid tables and the constants, then the draw. */
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, offset, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TEXEL,
+                  &solid.texel, 1ul);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TIC, solid.tic,
+                  V9X_NV50_3D_TIC_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TSC, solid.tsc,
+                  V9X_NV50_3D_TSC_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP_DATA,
+                  solid.vp_constants, V9X_NV50_3D_VP_CONSTANT_WORDS);
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_3d_solid_rect(&push, V9X_WINDOW_VRAM + offset, pitch,
+                                V9X_FILL_HEIGHT, format, V9X_3D_DRAW_X,
+                                V9X_3D_DRAW_Y, V9X_3D_DRAW_W,
+                                V9X_3D_DRAW_H);
+    if (push.overflow != 0ul) {
+        v9x_text(section, "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    if (!v9x_kick(section, &push, first_word)) {
+        v9x_text(section, "Result", "NOT-CLEAN");
+        return 0;
+    }
+
+    /* Every pixel back, one block of the surface per run. */
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, offset + block * 4ul, count, 0ul);
+        if (!v9x_run("3d-readback")) {
+            v9x_finish("3D-READBACK-REFUSED", 8u);
+        }
+        for (index = block * 4ul / bytes;
+             index < (block + count) * 4ul / bytes; ++index) {
+            pixel = v9x_depth_pixel(v9x_result.block,
+                                    index - block * 4ul / bytes, bytes);
+            x = index % V9X_FILL_WIDTH;
+            y = index / V9X_FILL_WIDTH;
+            inside = x >= V9X_3D_DRAW_X &&
+                     x < V9X_3D_DRAW_X + V9X_3D_DRAW_W &&
+                     y >= V9X_3D_DRAW_Y &&
+                     y < V9X_3D_DRAW_Y + V9X_3D_DRAW_H;
+            if (inside && pixel == expected) {
+                ++inside_ok;
+                continue;
+            }
+            if (!inside && pixel == pattern) {
+                ++outside_ok;
+                continue;
+            }
+            if (inside) {
+                ++inside_bad;
+            } else {
+                ++outside_bad;
+            }
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+                first_bad_pixel = pixel;
+            }
+        }
+    }
+    v9x_number(section, "InsideOk", inside_ok);
+    v9x_number(section, "InsideBad", inside_bad);
+    v9x_number(section, "OutsideOk", outside_ok);
+    v9x_number(section, "OutsideBad", outside_bad);
+    if (first_bad != 0xfffffffful) {
+        v9x_number(section, "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number(section, "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key(section, "FirstBadPixel", first_bad_pixel);
+    }
+    v9x_flush();
+    if (inside_bad == 0ul && outside_bad == 0ul) {
+        v9x_text(section, "Result", "PASS");
+        return 1;
+    }
+    v9x_text(section, "Result", "PIXELS-DIFFER");
+    return 0;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -2574,6 +2706,23 @@ void __stdcall V9xNv50ChannelEntry(void)
     }
     if (v9x_switch_given("/3d") && !v9x_stage_3d()) {
         v9x_finish("3D-FAILED", 8u);
+    }
+    /* /3d:draw needs /3d's setup first; both depths run even if one
+     * fails, as the 2D depths do. */
+    if (v9x_switch_given("/3d") && v9x_switch_given("/3d:draw")) {
+        int ok32 = v9x_stage_3d_draw("Draw32", 0ul, 4ul,
+                                     V9X_NV50_3D_RT_BGRX8,
+                                     V9X_3D_DRAW_ARGB & V9X_COLOUR_MASK);
+        int ok16 = v9x_stage_3d_draw("Draw16", 1ul, 2ul,
+                                     V9X_NV50_3D_RT_B5G6R5, 0xa61bul);
+
+        v9x_pusher_state();
+        if (!ok32) {
+            v9x_finish("DRAW32-FAILED", 9u);
+        }
+        if (!ok16) {
+            v9x_finish("DRAW16-FAILED", 9u);
+        }
     }
     v9x_finish("COMPLETE", 0u);
 }

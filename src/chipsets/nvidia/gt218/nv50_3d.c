@@ -41,7 +41,71 @@ void v9x_nv50_3d_scratch_at(v9x_u32 base, struct v9x_nv50_3d_scratch *out)
     out->tsc = base + V9X_NV50_3D_SCRATCH_TSC;
     out->vp_constants = base + V9X_NV50_3D_SCRATCH_VP_DATA;
     out->fp_constants = base + V9X_NV50_3D_SCRATCH_FP_DATA;
+    out->texel = base + V9X_NV50_3D_SCRATCH_TEXEL;
 }
+
+/* TIC word 0 for an A8R8G8B8 texel (nv50_texture.h, EXA's _() macro):
+ * every channel UNORM, memory components B G R A mapped to C0..C3,
+ * format 8_8_8_8. */
+#define V9X_NV50_TIC0_TYPE_UNORM     0x00012480ul
+#define V9X_NV50_TIC0_MAP_BGRA       0x2a700000ul
+#define V9X_NV50_TIC0_FMT_8_8_8_8    0x00000008ul
+/* TIC words 2 to 7 for a 1x1 texture, as NV50EXAPictSolid writes them;
+ * word 2 also carries the texel address bits 39:32, 0 here. */
+#define V9X_NV50_TIC2_SOLID          0xd005d000ul
+#define V9X_NV50_TIC3_SOLID          0x00300000ul
+#define V9X_NV50_TIC4_SOLID          0x00000001ul
+#define V9X_NV50_TIC5_SOLID          0x00010001ul
+#define V9X_NV50_TIC6_SOLID          0x03000000ul
+/* TSC: wrap S, T and R repeat (all 0) | EXA's 24000h; magnify and
+ * minify nearest, no mip. */
+#define V9X_NV50_TSC0_REPEAT         0x00024000ul
+#define V9X_NV50_TSC1_NEAREST        0x00000051ul
+/* 1.0f, for the identity transform and a 1x1 source's 1/size. */
+#define V9X_NV50_FLOAT_ONE           0x3f800000ul
+#define V9X_NV50_3D_UNIT_CONSTANTS   11ul
+
+void v9x_nv50_3d_solid_tables(const struct v9x_nv50_3d_scratch *scratch,
+                              v9x_u32 argb, struct v9x_nv50_3d_solid *out)
+{
+    v9x_u32 index;
+    v9x_u32 unit;
+
+    out->texel = argb;
+
+    out->tic[0] = V9X_NV50_TIC0_TYPE_UNORM | V9X_NV50_TIC0_MAP_BGRA |
+                  V9X_NV50_TIC0_FMT_8_8_8_8;
+    out->tic[1] = scratch->texel;
+    out->tic[2] = V9X_NV50_TIC2_SOLID;
+    out->tic[3] = V9X_NV50_TIC3_SOLID;
+    out->tic[4] = V9X_NV50_TIC4_SOLID;
+    out->tic[5] = V9X_NV50_TIC5_SOLID;
+    out->tic[6] = V9X_NV50_TIC6_SOLID;
+    out->tic[7] = 0ul;
+
+    for (index = 0ul; index < V9X_NV50_3D_TSC_WORDS; ++index) {
+        out->tsc[index] = 0ul;
+    }
+    out->tsc[0] = V9X_NV50_TSC0_REPEAT;
+    out->tsc[1] = V9X_NV50_TSC1_NEAREST;
+
+    /* Both units, though PFP_S samples only unit 0: the vertex program
+     * computes unit 1's coordinates too, and zeros would divide by zero
+     * there. */
+    for (index = 0ul; index < V9X_NV50_3D_VP_CONSTANT_WORDS; ++index) {
+        out->vp_constants[index] = 0ul;
+    }
+    for (unit = 0ul; unit < 2ul; ++unit) {
+        v9x_u32 *c = out->vp_constants + unit * V9X_NV50_3D_UNIT_CONSTANTS;
+
+        c[0] = V9X_NV50_FLOAT_ONE;
+        c[4] = V9X_NV50_FLOAT_ONE;
+        c[8] = V9X_NV50_FLOAT_ONE;
+        c[9] = V9X_NV50_FLOAT_ONE;
+        c[10] = V9X_NV50_FLOAT_ONE;
+    }
+}
+
 
 static void v9x_nv50_3d_one(struct v9x_nv50_push *push, v9x_u32 method,
                             v9x_u32 value)
@@ -155,6 +219,63 @@ void v9x_nv50_push_3d_setup(struct v9x_nv50_push *push,
                     V9X_8597_BOUND);
     v9x_nv50_3d_two(push, V9X_8597_SCREEN_SCISSOR_HORIZ, V9X_8597_BOUND,
                     V9X_8597_BOUND);
+}
+
+/* Two 16-bit coordinates in one word, y high (nv50_accel.h PUSH_VTX2s). */
+static v9x_u32 v9x_nv50_3d_xy(v9x_u32 x, v9x_u32 y)
+{
+    return ((y & 0xfffful) << 16) | (x & 0xfffful);
+}
+
+/* One vertex: the same coordinates for source and mask (attribute 8,
+ * two words), then the destination position (attribute 0). */
+static void v9x_nv50_3d_vertex(struct v9x_nv50_push *push, v9x_u32 sx,
+                               v9x_u32 sy, v9x_u32 dx, v9x_u32 dy)
+{
+    v9x_u32 source = v9x_nv50_3d_xy(sx, sy);
+
+    v9x_nv50_3d_two(push, V9X_8597_VTX_ATTR_2I8, source, source);
+    v9x_nv50_3d_one(push, V9X_8597_VTX_ATTR_2I0, v9x_nv50_3d_xy(dx, dy));
+}
+
+void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
+                                 v9x_u32 pitch, v9x_u32 height,
+                                 v9x_u32 format, v9x_u32 x, v9x_u32 y,
+                                 v9x_u32 w, v9x_u32 h)
+{
+    v9x_u32 rt[5];
+
+    /* A pitch-linear render target, as Mesa programs one with no Z:
+     * tile mode and layer stride 0, RT_HORIZ the linear bit with the
+     * pitch, RT_ARRAY_MODE 0. EXA's own target is tiled (mode 1). */
+    rt[0] = 0ul;
+    rt[1] = target;
+    rt[2] = format;
+    rt[3] = 0ul;
+    rt[4] = 0ul;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_RT_ADDRESS_HIGH0,
+                         5ul, rt);
+    v9x_nv50_3d_two(push, V9X_8597_RT_HORIZ0,
+                    V9X_8597_RT_HORIZ_LINEAR | pitch, height);
+    v9x_nv50_3d_one(push, V9X_8597_RT_ARRAY_MODE, 0ul);
+
+    /* Op Src: no blending. PFP_S, the texture just written. */
+    v9x_nv50_3d_one(push, V9X_8597_BLEND_ENABLE0, 0ul);
+    v9x_nv50_3d_one(push, V9X_8597_FP_START_ID, 0ul);
+    v9x_nv50_3d_one(push, V9X_8597_TIC_FLUSH, 0ul);
+    v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_FIRST);
+    v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_UNIT0);
+
+    /* The scissor cuts EXA's one triangle, twice the rectangle in each
+     * direction, down to the rectangle. */
+    v9x_nv50_3d_two(push, V9X_8597_SCISSOR_HORIZ0, ((x + w) << 16) | x,
+                    ((y + h) << 16) | y);
+    v9x_nv50_3d_one(push, V9X_8597_VERTEX_BEGIN_GL,
+                    V9X_8597_PRIMITIVE_TRIANGLES);
+    v9x_nv50_3d_vertex(push, 0ul, h * 2ul, x, y + h * 2ul);
+    v9x_nv50_3d_vertex(push, 0ul, 0ul, x, y);
+    v9x_nv50_3d_vertex(push, w * 2ul, 0ul, x + w * 2ul, y);
+    v9x_nv50_3d_one(push, V9X_8597_VERTEX_END_GL, 0ul);
 }
 
 /* nv50_accel.c, NVAccelInitNV50TCL: the vertex program. */
