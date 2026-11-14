@@ -116,3 +116,14 @@ boot (the first), and never in the staged binary. What the first run had
 that the others did not, apart from being first: the unstaged binary,
 and 76 minutes since boot-time activity. Not known which, if either,
 matters. The blue screen's own text is the missing evidence.
+
+## 2026-11-14, 11:04: thirty full runs in a row pass
+
+`V9XG3PM.EXE 0 8192 4` thirty times back to back, 11:04:00 to 11:06:28:
+30 of 30 PASS, none timed out, write 196 to 198 ms and read back 1,247
+to 1,248 ms every time (`../probe/gm965-texture-pool-phase2-2026-11-14/
+soak/`). With the 20 before, 50 clean MAP calls of the staged binary on
+this boot against the one fault of the unstaged one. A fault at one run
+in twenty would have shown in thirty with about four chances in five; a
+rarer one is not excluded. Whatever it was belongs to that first run or
+to the unstaged binary, and is still not identified.
