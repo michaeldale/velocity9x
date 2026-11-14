@@ -194,6 +194,30 @@ v9x_u32 v9x_nv50_2d_format(v9x_u32 bytes_per_pixel)
     return 0ul;
 }
 
+/* A live channel as the registers show it: the same arithmetic as
+ * v9x_nv50_chan_build's layout, which the host test holds them to. */
+v9x_u32 v9x_nv50_live_chan_entry(v9x_u32 base)
+{
+    return ((base + V9X_NV50_INST + V9X_NV50_INST_RAMFC) >> 8) |
+           V9X_NV50_PFIFO_CHAN_ENABLE;
+}
+
+v9x_u32 v9x_nv50_live_context(v9x_u32 base)
+{
+    /* PGRAPH's current context: bit 31 | the instance block >> 12. */
+    return 0x80000000ul | ((base + V9X_NV50_INST) >> 12);
+}
+
+v9x_u32 v9x_nv50_live_push(v9x_u32 base)
+{
+    return base + V9X_NV50_PUSH;
+}
+
+v9x_u32 v9x_nv50_live_ib(v9x_u32 base)
+{
+    return base + V9X_NV50_IB;
+}
+
 void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry)
 {
     /* Address low; address high (0 here) | length in dwords << 10. */

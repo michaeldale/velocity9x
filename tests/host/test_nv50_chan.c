@@ -60,6 +60,15 @@ static void test_layout(void)
     CHECK((layout.ramfc_addr & 0xfful) == 0ul);
     /* RAMFC >> 8 with bit 31 (g84.c bind, nv50.c start). */
     CHECK(layout.chan_entry == ((BASE + 0x4200ul) >> 8 | 0x80000000ul));
+    /* The live-channel values the two sides test agree with the build,
+     * and with what M-BXMFA8 read at base 07F00000h (boot 108). */
+    CHECK(v9x_nv50_live_chan_entry(BASE) == layout.chan_entry);
+    CHECK(v9x_nv50_live_context(BASE) ==
+          (0x80000000ul | (layout.inst_addr >> 12)));
+    CHECK(v9x_nv50_live_push(BASE) == layout.push_addr);
+    CHECK(v9x_nv50_live_ib(BASE) == layout.ib_addr);
+    CHECK(v9x_nv50_live_chan_entry(0x07f00000ul) == 0x8007f042ul);
+    CHECK(v9x_nv50_live_context(0x07f00000ul) == 0x80007f00ul);
     CHECK(layout.runlist_reg == (BASE + V9X_NV50_RUNLIST) >> 12);
     CHECK(layout.runlist_count == 1ul);
     CHECK(word_at(V9X_NV50_RUNLIST) == CHID);

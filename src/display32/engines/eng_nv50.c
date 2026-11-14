@@ -67,9 +67,14 @@
  * engine's state is. */
 static struct v9x_nv50_chan_layout v9x_nv50_layout;
 static struct v9x_nv50_init_op v9x_nv50_ops[V9X_NV50_INIT_OPS_MAX];
-/* The ring index the next IB entry goes to, which is also what PFIFO's
- * IB get reads once everything issued has been fetched. */
-static DWORD v9x_nv50_ib_index;
+/* There is no ring index here. The 16-bit driver kicks the same ring for
+ * GDI (gdi_accel.c), so the index lives in the hardware: after a kick
+ * each side waits for PFIFO's copy of PUT to show it, and the next index
+ * is PFIFO's IB get once everything issued has been fetched. */
+
+/* A kick shows in PFIFO's copy of PUT at once in every run measured; this
+ * only has to end. */
+#define V9X_NV50_PUT_SPINS   0x00010000ul
 
 static int v9x_nv50_ready(void)
 {
@@ -117,13 +122,14 @@ static int v9x_nv50_faulted(void)
             V9X_NV50_PFIFO_DMA_ERROR_SHIFT) != 0ul;
 }
 
-/* Everything issued has been fetched and executed: PFIFO's IB get is
- * where the engine's own index stands, the pusher has consumed the
- * pushbuffer, and PGRAPH is idle. The index is compared with ours, not
- * with PFIFO's copy of PUT, which trails the kick. */
+/* Everything issued has been fetched and executed: PFIFO's IB get has
+ * reached its PUT, the pusher has consumed the pushbuffer, and PGRAPH is
+ * idle. PFIFO's PUT can be trusted here because whoever kicked last
+ * waited for it to show the kick (v9x_nv50_submit, and gdi_accel.c's). */
 static int v9x_nv50_idle_now(void)
 {
-    return v9x_nv50_read32(V9X_NV50_PFIFO_IB_GET) == v9x_nv50_ib_index &&
+    return v9x_nv50_read32(V9X_NV50_PFIFO_IB_GET) ==
+               v9x_nv50_read32(V9X_NV50_PFIFO_IB_PUT) &&
            v9x_nv50_read32(V9X_NV50_PFIFO_DMA_GET) ==
                v9x_nv50_read32(V9X_NV50_PFIFO_DMA_PUT) &&
            v9x_nv50_read32(V9X_NV50_PGRAPH_STATUS) == 0ul;
@@ -141,28 +147,52 @@ static int v9x_nv50_wait_drained(void)
     return 0;
 }
 
-/* One pushbuffer into the region, an IB entry naming it, and the kick.
- * The caller has waited for the engine to drain. */
-static void v9x_nv50_submit(const struct v9x_nv50_push *push)
+/* One pushbuffer into the region, an IB entry naming it at ring index
+ * at, and the kick. The caller has waited for the engine to drain.
+ * Returns 0 if PFIFO never showed the kick. */
+static int v9x_nv50_submit_at(const struct v9x_nv50_push *push, DWORD at)
 {
     volatile DWORD *target = v9x_nv50_region(V9X_NV50_PUSH);
     volatile DWORD *ring = v9x_nv50_region(V9X_NV50_IB);
     DWORD entry[2];
     DWORD index;
+    DWORD next;
+    DWORD spins;
 
+    if (at >= V9X_NV50_IB_ENTRIES) {
+        return 0;
+    }
     for (index = 0ul; index < push->count; ++index) {
         target[index] = push->words[index];
     }
-    v9x_nv50_ib_entry(v9x_nv50_layout.push_addr, push->count, entry);
-    ring[v9x_nv50_ib_index * 2ul] = entry[0];
-    ring[v9x_nv50_ib_index * 2ul + 1ul] = entry[1];
+    v9x_nv50_ib_entry(v9x_nv50_live_push(v9x_hal->engine.reserve_offset),
+                      push->count, entry);
+    ring[at * 2ul] = entry[0];
+    ring[at * 2ul + 1ul] = entry[1];
     /* The pushbuffer, the IB entry and any surface the CPU just wrote go
      * through a write-combined mapping; the chip must see them before
      * the kick. */
     v9x_wc_drain();
-    v9x_nv50_ib_index = v9x_nv50_ib_next(v9x_nv50_ib_index);
+    next = v9x_nv50_ib_next(at);
     v9x_nv50_write32(V9X_NV50_USERD(V9X_NV50_ENGINE_CHID) +
-                     V9X_NV50_USERD_IB_PUT, v9x_nv50_ib_index);
+                     V9X_NV50_USERD_IB_PUT, next);
+    /* Until PFIFO's own PUT shows the kick, an idle test that compares
+     * get with it would pass on the state before the kick. */
+    spins = V9X_NV50_PUT_SPINS;
+    while (v9x_nv50_read32(V9X_NV50_PFIFO_IB_PUT) != next) {
+        if (spins-- == 0ul) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* The same at the ring's current position: PFIFO's IB get, which is where
+ * the next entry goes once the engine has drained. */
+static int v9x_nv50_submit(const struct v9x_nv50_push *push)
+{
+    return v9x_nv50_submit_at(push,
+                              v9x_nv50_read32(V9X_NV50_PFIFO_IB_GET));
 }
 
 /* Replay nv50_init.c's list, waits bounded. */
@@ -233,25 +263,29 @@ static int v9x_nv50_bring_up(void)
         return 0;
     }
 
-    v9x_nv50_ib_index = 0ul;
+    /* A fresh RAMFC starts its ring at 0; nothing is resident to read an
+     * index from until this first kick. */
     v9x_nv50_push_init(&push, words, V9X_NV50_PUSH_WORDS);
     v9x_nv50_push_bind_2d(&push);
     if (push.overflow != 0ul) {
         return 0;
     }
-    v9x_nv50_submit(&push);
+    if (!v9x_nv50_submit_at(&push, 0ul)) {
+        return 0;
+    }
     return v9x_nv50_wait_drained();
 }
 
-/* What the bring-up left, still there: the channel's table entry, and
- * PGRAPH holding this channel's context. */
+/* A channel at the reserve is live: its table entry is there, and PGRAPH
+ * holds its context. The values come from the reserve's address alone
+ * (nv50_2d.c), so this also recognises a channel brought up before the
+ * last Enable, or by an earlier load of this DLL. */
 static int v9x_nv50_state_holds(void)
 {
     return v9x_nv50_read32(V9X_NV50_PFIFO_CHAN(V9X_NV50_ENGINE_CHID)) ==
-               v9x_nv50_layout.chan_entry &&
+               v9x_nv50_live_chan_entry(v9x_hal->engine.reserve_offset) &&
            v9x_nv50_read32(V9X_NV50_PGRAPH_CTX) ==
-               (V9X_NV50_PGRAPH_CTX_VALID |
-                (v9x_nv50_layout.inst_addr >> 12));
+               v9x_nv50_live_context(v9x_hal->engine.reserve_offset);
 }
 
 static void v9x_nv50_give_up(DWORD code, DWORD address)
@@ -282,6 +316,15 @@ static int v9x_nv50_validate(void)
         v9x_hal->engine.flags &= ~V9X_DD_ENGINE_STATUS_VALIDATED;
         v9x_nv50_give_up(V9X_NV50_FAULT_BRING_UP, V9X_NV50_PGRAPH_CTX);
         return 0;
+    }
+    /* An Enable clears the validated flag (dd16.c republishes the
+     * record), but a VBE mode set leaves the channel as it was (runs
+     * 37-39 on M-BXMFA8). A channel that is still live is kept, not
+     * rebuilt: GDI may be drawing on it, and the first-run session
+     * rebuilt it three times for nothing. reset_count counts builds. */
+    if (v9x_nv50_state_holds()) {
+        v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
+        return 1;
     }
     if (!v9x_nv50_bring_up()) {
         v9x_nv50_give_up(V9X_NV50_FAULT_BRING_UP, V9X_NV50_PFIFO_DMA_STATE);
@@ -373,7 +416,11 @@ static int v9x_nv50_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     if (!v9x_nv50_wait_idle(wait)) {
         return V9X_BLT_BUSY;
     }
-    v9x_nv50_submit(&push);
+    if (!v9x_nv50_submit(&push)) {
+        /* PFIFO never showed the kick: the ring's state is unknown. */
+        v9x_nv50_give_up(V9X_NV50_FAULT_IDLE, V9X_NV50_PFIFO_IB_PUT);
+        return V9X_BLT_DECLINED;
+    }
     v9x_present_note_submission();
     return V9X_BLT_DONE;
 }
@@ -420,7 +467,11 @@ static int v9x_nv50_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     if (!v9x_nv50_wait_idle(wait)) {
         return V9X_BLT_BUSY;
     }
-    v9x_nv50_submit(&push);
+    if (!v9x_nv50_submit(&push)) {
+        /* PFIFO never showed the kick: the ring's state is unknown. */
+        v9x_nv50_give_up(V9X_NV50_FAULT_IDLE, V9X_NV50_PFIFO_IB_PUT);
+        return V9X_BLT_DECLINED;
+    }
     v9x_present_note_submission();
     return V9X_BLT_DONE;
 }

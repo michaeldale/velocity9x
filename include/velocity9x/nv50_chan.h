@@ -256,6 +256,19 @@ void v9x_nv50_push_blit(struct v9x_nv50_push *push,
                         v9x_u32 format,
                         v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
                         v9x_u32 w, v9x_u32 h);
+/*
+ * What a live channel built at base looks like from the registers,
+ * without building it: the value of its channel table entry
+ * (2600h + chid * 4), PGRAPH's current-context register (40032Ch) while
+ * it holds this channel, and where its pushbuffer and IB ring are. The
+ * HAL and the 16-bit driver both test the first two before every
+ * operation, and neither needs the 704 KiB region to compute them. They
+ * are the values v9x_nv50_chan_build's layout reports (host-tested).
+ */
+v9x_u32 v9x_nv50_live_chan_entry(v9x_u32 base);
+v9x_u32 v9x_nv50_live_context(v9x_u32 base);
+v9x_u32 v9x_nv50_live_push(v9x_u32 base);
+v9x_u32 v9x_nv50_live_ib(v9x_u32 base);
 /* The 502D surface format for a desktop depth in bytes per pixel: 1, 2
  * (5:6:5) and 4, the three measured in run 34. 0 for any other, which the
  * engine must not draw at. */
