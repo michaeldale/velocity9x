@@ -18,6 +18,13 @@ build identifier so exact guest-tested binaries remain traceable.
   and the Radeon HD 3200/4200 IGPs, which Linux treats alike, are not
   claimed
   ([record](docs/decisions/2026-11-15-rv610-hd2400pro-bring-up.md)).
+- **Release checks and test scripts:** every script that drives a test
+  machine first updates its agent to the current build and refuses one
+  older than 0.17.0. Waits for the desktop, 3DMark's start and its score
+  now ask the agent instead of sleeping, and dismiss a logon box rather
+  than time out on it; the VM scripts no longer run DOS commands in the
+  guest. Six machines went to agent 0.18.0 on the first run; a full
+  release-checks run on the new scripts has not been done yet.
 
 ## 0.51.0 - 2026-11-14
 
