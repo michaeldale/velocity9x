@@ -164,10 +164,10 @@ void v9x_nv50_3d_texture_tables(v9x_u32 texture, v9x_u32 pitch,
 /*
  * Upload count vertex-program constants into constant buffer 1 from
  * entry 0 through the engine, as EXA's PUSH_DATAu does: CB_ADDR, then a
- * non-incrementing CB_DATA(0). Constants written to video memory by the
- * CPU after the buffer was bound were not seen by a draw on M-BXMFA8
- * (docs\decisions\2026-11-14-gt218-3d-texture.md); the engine keeps its
- * own copy.
+ * non-incrementing CB_DATA(0). Whether constants written to video memory
+ * by the CPU after the buffer is bound are seen was not separated on
+ * M-BXMFA8 (docs\decisions\2026-11-14-gt218-3d-texture.md), so they go
+ * this way.
  */
 #define V9X_8597_CB_ADDR             0x0f00ul
 #define V9X_8597_CB_DATA0            0x0f04ul
