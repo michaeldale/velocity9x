@@ -19,8 +19,11 @@ build identifier so exact guest-tested binaries remain traceable.
   ([issue](docs/issues/2026-11-14-haswell-3dmark2001se-dot3-renderer-fault.md)
   for a fault in the DOT3 test that turned out to be a test tool of
   ours). The GMA 900 and 950 class (Gen3), which also runs pixel
-  shaders, shares the code and has not run it. DirectX 7 programs are
-  unchanged
+  shaders, shares the code: on a GMA 950 netbook the Environment Bump
+  Mapping test now runs (10.1 fps), and the DOT3 test still reads "Not
+  supported by hardware", because the driver does not report specular
+  shading on that class and 3DMark does not try the test without it.
+  DirectX 7 programs are unchanged
   ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
 - **`intel-gma` package, GMA X3100 (GM965): 32 MiB of texture memory in
   system RAM**, as the GMA 950 got in 0.49.0. The BIOS gives this chip at

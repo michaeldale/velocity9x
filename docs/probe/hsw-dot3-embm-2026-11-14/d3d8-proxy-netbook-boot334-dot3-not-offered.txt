@@ -1,0 +1,18 @@
+== netbook boot 334, no patch: caps 3DMark is given, and no DOTPRODUCT3 stage ever validated
+D3D.GetDeviceCaps type 1 -> 0 PS ffff0101 (max 3f800000) VS fffe0000/0 streams 1 stages 4 simtex 4
+  maxtex 2048x2048 vol 0 aspect 0 texcaps 00034807 filter 0303033f cube 0303033f addr 00000007
+  caps2 00080000 dev 0008a650 pmisc 00000070 raster 00000190 blend 0000033f/0000033f stencil 00000000 fvf 00000004 texop 00a0104f vp 00000000 prim 65535 idx 65535
+  caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000070
+  caps[09] 00000190 000000ff 0000033f 0000033f 00000000 00084008 00034807 0303033f 0303033f
+  caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+  caps[27] 00000001 501502f9 c57ff000 c57ff000 457ff000 457ff000 00000000 00000000 00000004
+  caps[36] 00a0104f 00000004 00000004 00000000 00000000 00000000 00000000 00000000 3f800000
+  caps[45] 0000ffff 0000ffff 00000001 000000ff fffe0000 00000000 ffff0101 3f800000
+cop=18 lines: 0
+== netbook boot 334, ShadeCaps patched with 200h (SPECULARGOURAUDRGB)
+Caps patch: [14] and ffffffff or 00000200
+  stage 0 cop=18 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=4 ca1=1 ca2=2 aop=4 aa1=1 aa2=2 ca0=0 aa0=0 res=1 tci=2
+--
+  stage 0 cop=18 ca1=2 ca2=4 aop=4 aa1=2 aa2=4 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=4 ca1=1 ca2=2 aop=4 aa1=1 aa2=2 ca0=0 aa0=0 res=1 tci=2

@@ -39,7 +39,7 @@ whole intel-gma set by `run-release-checks.ps1` each time, built from
   on stage 0) and `FfBem3` (base, bump, environment).
 
 The route is the shared core's, so every engine with `draw_shader` takes
-it (Haswell's and Gen3's). Only the HD 4600 has run it.
+it (Haswell's and Gen3's). The HD 4600 and the GMA 950 have run it.
 
 ## Measured
 
@@ -95,6 +95,46 @@ against 29 to 33 fps in the bump test).
 Nobody has looked at a DOT3 frame: the run was judged by its completing
 and its counters. The grabbed bump-test frame is from boot 248.
 
+## Gen3: the netbook (GMA 950), boot 334
+
+The committed code (`d7c1962d`, built as `9c7445ec-dirty` before the
+commit), the whole intel-gma set by `run-release-checks.ps1`, 8 of 8
+installed.
+
+- The release probe set passes with no verdict changed from the 0.50.0
+  checks: V9XD32 at DDI 6 and 5, V9XGLP, V9XGLIDP, V9XR3DP, V9XWPRS,
+  V9XFBCMP.
+- V9XD32 at its default, DDI 8: PASS, and all four new rows pass
+  through Gen3's shader path (`V9XD32-netbook-boot334.TXT`): `FfDot3`
+  worst channel error 4, `FfDot3F` 0, `FfBem` 0, `FfBem3` 8, tolerance 9
+  (R5G6B5). `T19TextureOpCaps` 00A0104F. The two DXT rows skip: Gen3
+  publishes no DXT.
+- 3DMark 2001 SE, Bump Mapping tests only, 640x480 16-bit colour, no
+  d3d8 proxy: **Environment Bump Mapping 10.1 fps**, where it read "Not
+  supported by hardware"; **DOT3 Bump Mapping still "Not supported by
+  hardware"**.
+
+Why DOT3 is not offered there: 3DMark never asks. No `DOTPRODUCT3`
+stage reaches `ValidateDevice` (proxy log, one run). Gen3's ShadeCaps
+are 00084008 against Haswell's 00084208: no
+`D3DPSHADECAPS_SPECULARGOURAUDRGB`, and the DOT3 test's second pass
+takes SPECULAR as its argument. With that one bit added to what 3DMark
+is told (proxy patch, one run), it validates both DOT3 passes and starts
+the test (`d3d8-proxy-netbook-boot334-dot3-not-offered.txt`); that run
+then ended in the proxy's own fault, as on the 4570, so it says nothing
+of the picture. Gen3's AlphaCmpCaps are 0 as well, which the same run
+shows is not what holds the test back. Whether Gen3 can claim specular
+Gouraud shading is its own question and was not opened here.
+
+Not done on the netbook: a full 3DMark 2001 SE run without the proxy
+(one ran through the proxy by accident, all 17 selected tests to the
+score dialog, and 3DMark faulted on closing with the proxy loaded; no
+figure of it is kept), UT2004, and a look at a frame.
+
+The netbook's older d3d8 proxies (in both 3DMark folders since at least
+2026-11-12) are replaced by copies of the real runtime, its own
+`D3DR.DLL`; its agent has no `shell` verb to rename them.
+
 ## The DOT3 fault was our own proxy
 
 Through boots 247 to 256, 3DMark's DOT3 test ended in an access
@@ -126,9 +166,8 @@ buffers to work around a tool of ours.
 - `BUMPENVMAPLUMINANCE`, and the L6V5U5 and X8L8V8U8 formats it needs.
 - DirectX 7 programs: only DDI 8 draws take the shader path, and the
   DDI 7 caps are unchanged. 3DMark 2000's bump tests were not run.
-- Gen3 (`d3d_i9xx.c`) has a `draw_shader` and so the same route, and no
-  run; nor has Ivy Bridge, which shares `d3d_hsw.c`. Gen4 and Gen5 have
-  no shader path and are unchanged.
+- Ivy Bridge, which shares `d3d_hsw.c`, has no run. Gen4 and Gen5 have
+  no shader path and are unchanged. Gen3 is above.
 - The three-stage host test was written with its code, not seen to fail
   first; the two-stage tests failed against stubs first (ten checks).
 - UT2004 was not rerun. Its 814 draws a botmatch with a cube on stage 1
