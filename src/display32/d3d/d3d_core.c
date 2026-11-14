@@ -3892,6 +3892,14 @@ static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
                                   const float *uv1, v9x_u32 triangles)
 {
     unsigned long mode = v9x_d3d_cull_mode(context);
+    /* Onto the engine's pixel centres, as the list builder moves a
+     * one-stage batch in its staging (v9x_d3d_centre_offset). This path
+     * moved nothing until 2026-11-14, and a two-stage draw on Gen3 landed
+     * half a pixel up and left of every other: V9XD32's FfTwo drew 37
+     * pixels outside its triangle (the netbook, boot 342), the number a
+     * shader draw had unmoved (boot 303), and none with the move (boot
+     * 344). */
+    float offset = v9x_d3d_centre_offset(ops);
     DWORD kept = 0ul;
     DWORD index;
     DWORD word;
@@ -3900,17 +3908,20 @@ static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
     if (triangles > (v9x_u32)V9X_D3D_INDEXED_BATCH) {
         return 0;
     }
-    if (mode != V9X_R3D_CULL_NONE) {
+    if (mode != V9X_R3D_CULL_NONE || offset != 0.0f) {
         for (index = 0ul; index < triangles; ++index) {
             const V9X_R3D_VERTEX *triangle = &vertices[index * 3ul];
 
-            if (v9x_r3d_cull_triangle(mode, triangle[0].sx, triangle[0].sy,
+            if (mode != V9X_R3D_CULL_NONE &&
+                v9x_r3d_cull_triangle(mode, triangle[0].sx, triangle[0].sy,
                                       triangle[1].sx, triangle[1].sy,
                                       triangle[2].sx, triangle[2].sy)) {
                 continue;
             }
             for (word = 0ul; word < 3ul; ++word) {
                 v9x_d3d_list_staging[kept * 3ul + word] = triangle[word];
+                v9x_d3d_list_staging[kept * 3ul + word].sx += offset;
+                v9x_d3d_list_staging[kept * 3ul + word].sy += offset;
             }
             for (word = 0ul; word < 6ul; ++word) {
                 v9x_d3d_two_units_uv1[kept * 6ul + word] =

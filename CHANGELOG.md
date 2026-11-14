@@ -31,6 +31,13 @@ build identifier so exact guest-tested binaries remain traceable.
   GMA 950 netbook by a probe and by 3DMark 2001 SE; nobody has compared
   a lit scene's picture with another card's
   ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
+- **`intel-gma` package, GMA 900 and 950 class (Gen3): surfaces drawn
+  with two textures at once were half a pixel up and to the left** of
+  everything else in Direct3D, since two-texture drawing came to these
+  chips in 0.49.0. They now line up. Found and checked with a
+  probe; 3DMark 2000, 3DMark 2001 SE and Half-Life ran on the fix on a
+  GMA 950 netbook
+  ([record](docs/decisions/2026-11-14-gen3-specular-and-bump-luminance.md)).
 - **`intel-gma` package, HD 4600 and Gen3: bump mapping with luminance**
   (`BUMPENVMAPLUMINANCE`) in Direct3D 8 and 9 programs, with one texture
   format for it on each: L6V5U5 on the HD 4600, X8L8V8U8 on the GMA 900

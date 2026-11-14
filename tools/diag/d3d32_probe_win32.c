@@ -3632,7 +3632,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 17ul
+#define D32_T19_PROGRAMS 21ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -3816,6 +3816,11 @@ typedef struct d32_t19_program {
  *            Skipped where ShadeCaps (DWORD 14) lacks
  *            D3DPSHADECAPS_SPECULARGOURAUDRGB (200h).
  *
+ *   FfSpecFog  FfSpec under vertex fog; FfSpecU with no texture in stage
+ *   FfSpecU    0, which selects the vertex colour; FfSpec2 with two
+ *   FfSpec2    textures, each modulating what came before. The forms
+ *              Gen3's specular add takes beside FfSpec's (fog on, the
+ *              untextured program, the two-unit one).
  *   FfBemL8  FfBem's stages with BUMPENVMAPLUMINANCE (23, cap 00400000h)
  *   FfBemL6  over an X8L8V8U8 (62) and an L6V5U5 (61) map in stage 0:
  *            texbeml, stage 1's colour times the map's luminance scaled
@@ -3861,9 +3866,10 @@ typedef struct d32_t19_fixed {
     DWORD lum;          /* 1 or 2: stage 0 holds the X8L8V8U8 or the
                            L6V5U5 luminance bump map, and its
                            BUMPENVLSCALE and BUMPENVLOFFSET are set    */
+    DWORD untextured;   /* stage 0 has no texture while the row draws  */
 } D32_T19_FIXED;
 
-#define D32_T19_FIXED_ROWS 7ul
+#define D32_T19_FIXED_ROWS 11ul
 /* BUMPENVMAPLUMINANCE's terms for the luminance rows. */
 #define D32_T19_LSCALE 0.75f
 #define D32_T19_LOFFSET 0.125f
@@ -3931,7 +3937,45 @@ static const D32_T19_FIXED d32_t19_fixed[D32_T19_FIXED_ROWS] = {
       { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
       1ul,
       { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
-      0ul, 2ul }
+      0ul, 2ul },
+    /* FfSpecFog: FfSpec's stages, drawn under vertex fog. */
+    { 0ul,
+      { D32_TOP_MODULATE, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      1ul, 0ul, 0ul },
+    /* FfSpecU: no texture in stage 0, which selects the vertex colour. */
+    { 0ul,
+      { D32_TOP_SELECTARG2, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG2, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      1ul, 0ul, 1ul },
+    /* FfSpec2: two textures, each modulating what came before; stage 0's
+     * alpha kept. */
+    { 0ul,
+      { D32_TOP_MODULATE, D32_TOP_MODULATE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_SELECTARG2 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      1ul, 0ul, 0ul },
+    /* FfTwo: FfSpec2's two textures with no specular colour, so a
+     * failure of that row can be laid to the two stages or to the add. */
+    { 0ul,
+      { D32_TOP_MODULATE, D32_TOP_MODULATE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_SELECTARG2 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul,
+      { 0ul, 0ul, 0ul, 0ul, 0ul, 0ul },
+      0ul, 0ul, 0ul }
 };
 
 /* The HAL device's TextureOpCaps and ShadeCaps, while T19 runs. */
@@ -4126,7 +4170,36 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_TEX, D32_PT_TO_T(0),
         D32_PT_TEXBEML, D32_PT_TO_T(1), D32_PT_T(0),
         D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
-        D32_PT_END }, 0ul, 7ul }
+        D32_PT_END }, 0ul, 7ul },
+    /* The other forms an engine's specular add takes: under fog, with no
+     * texture, and after two textures. */
+    { "FfSpecFog", 0ul, D32_T19_FOG_VERTEX, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0), D32_PT_V(0),
+        D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_T(0),
+        D32_PT_ADD, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_V(1),
+        D32_PT_END }, 0ul, 8ul },
+    { "FfSpecU", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_V(0),
+        D32_PT_ADD, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_V(1),
+        D32_PT_END }, 0ul, 9ul },
+    { "FfSpec2", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEX, D32_PT_TO_T(1),
+        D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0), D32_PT_V(0),
+        D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_T(0),
+        D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_T(1),
+        D32_PT_ADD, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_V(1),
+        D32_PT_END }, 0ul, 10ul },
+    { "FfTwo", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEX, D32_PT_TO_T(1),
+        D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0), D32_PT_V(0),
+        D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_T(0),
+        D32_PT_MUL, D32_PT_TO_R_RGB_SAT(0), D32_PT_R(0), D32_PT_T(1),
+        D32_PT_END }, 0ul, 11ul }
 };
 
 /* The Cube program's set 1 per vertex: directions whose plane passes near
@@ -5168,7 +5241,8 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
             d32_line(key, "skip-no-specular");
             return 1ul;
         }
-    } else if (fixed != 0 && (d32_t19_texop_caps & fixed->needs) == 0ul) {
+    } else if (fixed != 0 && fixed->needs != 0ul &&
+               (d32_t19_texop_caps & fixed->needs) == 0ul) {
         d32_line(key, "skip-no-texop");
         return 1ul;
     }
@@ -5251,6 +5325,12 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
 
         d32_t19_fixed_states(device, fixed, env);
         rs(device, D32_RS_TEXTUREFACTOR, D32_T19_FACTOR);
+        if (fixed->untextured != 0ul) {
+            d32_t19_key(p->name, "SetNoTextureHr",
+                        (DWORD)((d32_set_texture_fn)
+                                device->vtbl[D3DDEV8_SET_TEXTURE])(
+                            device, 0ul, 0));
+        }
         /* A luminance row: its map in stage 0, and the terms texbeml
          * scales by on that stage, where Direct3D keeps them. */
         if (fixed->lum != 0ul) {
@@ -5345,6 +5425,10 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     }
     if (fixed != 0) {
         d32_t19_fixed_states(device, 0, env);
+        if (fixed->untextured != 0ul) {
+            ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
+                device, 0ul, d32_t19_stage0);
+        }
         if (fixed->lum != 0ul) {
             d32_stage_state_fn tss = (d32_stage_state_fn)
                 device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE];
