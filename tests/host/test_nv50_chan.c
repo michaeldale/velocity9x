@@ -116,7 +116,16 @@ static void test_vm(void)
     /* PDE 0: the page table's address | 64 KiB pages in video memory. */
     CHECK(word_at(V9X_NV50_INST_PD) == ((BASE + V9X_NV50_PT) | 1ul));
     CHECK(word_at(V9X_NV50_INST_PD + 4ul) == 0ul);
-    CHECK(word_at(V9X_NV50_INST_PD + 8ul) == 0ul);
+    /* PDEs 1 to 3: the alias windows' page tables, the same encoding. */
+    CHECK(word_at(V9X_NV50_INST_PD + 8ul) ==
+          ((BASE + V9X_NV50_PT_TILED) | 1ul));
+    CHECK(word_at(V9X_NV50_INST_PD + 16ul) ==
+          ((BASE + V9X_NV50_PT_Z16) | 1ul));
+    CHECK(word_at(V9X_NV50_INST_PD + 24ul) ==
+          ((BASE + V9X_NV50_PT_Z24S8) | 1ul));
+    CHECK(word_at(V9X_NV50_INST_PD + 12ul) == 0ul);
+    /* Nothing past 2 GiB. */
+    CHECK(word_at(V9X_NV50_INST_PD + 32ul) == 0ul);
     /* The identity, valid, log2blk 7, high word (kind) 0. Every entry of
      * a 128-page block carries the block's first address, not its own
      * (vmmnv50.c nv50_vmm_pgt_pte writes one value to the whole block).
@@ -137,11 +146,47 @@ static void test_vm(void)
     CHECK(word_at(V9X_NV50_PT + 0x0802ul * 8ul) == 0x08000381ul);
 }
 
+/* The windows' VM addresses: PDEs 1, 2 and 3, 512 MiB each. */
+typedef char test_nv50_vm_tiled[(V9X_NV50_VM_TILED == 0x20000000ul) ? 1 : -1];
+typedef char test_nv50_vm_z16[(V9X_NV50_VM_Z16 == 0x40000000ul) ? 1 : -1];
+typedef char test_nv50_vm_z24s8[(V9X_NV50_VM_Z24S8 == 0x60000000ul) ? 1 : -1];
+
+/* The alias windows (docs\plans\nvidia-gt218-3d-z.md): each maps the same
+ * 512 MiB of video memory again, its PTEs the identity's low words with
+ * the window's kind in bits 14:8 of the high word (vmmnv50.c: kind << 40),
+ * no compression. */
+static void test_alias_windows(void)
+{
+    static const v9x_u32 tables[3] = {
+        V9X_NV50_PT_TILED, V9X_NV50_PT_Z16, V9X_NV50_PT_Z24S8
+    };
+    static const v9x_u32 kinds[3] = { 0x70ul, 0x6cul, 0x28ul };
+    v9x_u32 window;
+    v9x_u32 page;
+    v9x_u32 bad = 0ul;
+
+    CHECK(build() == V9X_STATUS_OK);
+    for (window = 0ul; window < 3ul; ++window) {
+        for (page = 0ul; page < V9X_NV50_VM_BYTES / V9X_NV50_PAGE_BYTES;
+             ++page) {
+            if (word_at(tables[window] + page * 8ul) !=
+                    (((page & ~0x7ful) << 16) | 0x381ul) ||
+                word_at(tables[window] + page * 8ul + 4ul) !=
+                    (kinds[window] << 8)) {
+                ++bad;
+            }
+        }
+    }
+    CHECK(bad == 0ul);
+}
+
 static void test_objects(void)
 {
     CHECK(build() == V9X_STATUS_OK);
     CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x00ul) == 0x7fc0003dul);
-    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x04ul) == 0x1ffffffful);
+    /* The limit covers the whole 2 GiB VM, alias windows included: the
+     * engines address every surface through this object. */
+    CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x04ul) == 0x7ffffffful);
     CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x08ul) == 0ul);
     CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x0cul) == 0ul);
     CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x14ul) == 0ul);
@@ -369,6 +414,7 @@ unsigned int v9x_run_nv50_chan_tests(void)
     failures = 0u;
     test_layout();
     test_vm();
+    test_alias_windows();
     test_objects();
     test_hash();
     test_engine_and_ramfc();

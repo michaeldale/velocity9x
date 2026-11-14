@@ -2,7 +2,9 @@
 
 Date: 2026-11-14
 
-Status: planned, nothing built. Part of phase 3 of
+Status: decisions taken (Michael, 2026-11-14): present by copy, a 2 MiB
+reserve, Z16 and Z24S8. Step 1 built: the alias windows and the 2 MiB
+reserve, host-tested; not yet run on a card. Part of phase 3 of
 [nvidia-gt218-3d.md](nvidia-gt218-3d.md), after solid, Gouraud and
 textured draws ran exact on M-BXMFA8 into pitch-linear targets
 ([texture record](../decisions/2026-11-14-gt218-3d-texture.md)).

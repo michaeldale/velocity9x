@@ -100,7 +100,28 @@
 #define V9X_NV50_GRCTX               0x30000ul
 #define V9X_NV50_GRCTX_MAX_BYTES     0x80000ul
 
-#define V9X_NV50_REGION_BYTES        (V9X_NV50_GRCTX + V9X_NV50_GRCTX_MAX_BYTES)
+/*
+ * The alias windows' page tables (docs\plans\nvidia-gt218-3d-z.md): PDEs
+ * 1 to 3 map the same 512 MiB of video memory as PDE 0, each with one
+ * storage type ("kind", PTE bits 46:40, vmmnv50.c nv50_vmm_valid), so a
+ * surface's layout is chosen by the VM address the engine is given. The
+ * kinds are Mesa's, compression off (nv50_mt_choose_storage_type): 70h
+ * tiled colour, 6Ch Z16, 28h Z24S8. Fixed when the channel is built, so
+ * no PTE changes and no TLB flush at run time.
+ */
+#define V9X_NV50_PT_TILED            0xb0000ul
+#define V9X_NV50_PT_Z16              0xc0000ul
+#define V9X_NV50_PT_Z24S8            0xd0000ul
+#define V9X_NV50_VM_TILED            0x20000000ul
+#define V9X_NV50_VM_Z16              0x40000000ul
+#define V9X_NV50_VM_Z24S8            0x60000000ul
+#define V9X_NV50_KIND_TILED          0x70ul
+#define V9X_NV50_KIND_Z16            0x6cul
+#define V9X_NV50_KIND_Z24S8          0x28ul
+/* The VM space the engines address, all four windows. */
+#define V9X_NV50_VM_SPACE_BYTES      0x80000000ul
+
+#define V9X_NV50_REGION_BYTES        (V9X_NV50_PT_Z24S8 + V9X_NV50_PT_BYTES)
 #define V9X_NV50_REGION_WORDS        (V9X_NV50_REGION_BYTES / 4ul)
 
 /* ---- Handles, subchannel, engine ids. ---- */

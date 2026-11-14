@@ -7,12 +7,14 @@
 #define VELOCITY9X_GT218_RESERVE_H
 
 /*
- * The reserve's size: nv50_chan.h's region (B0000h bytes: instance block,
- * page table, runlist, IB ring, pushbuffer, context image) rounded up to
- * a megabyte. It starts on a megabyte boundary, so it is 64 KiB aligned
- * as the channel's page table needs.
+ * The reserve's size: nv50_chan.h's region (E0000h bytes: instance block,
+ * page tables, runlist, IB ring, pushbuffer, context image, the three
+ * alias windows' page tables) with room for the 3D engine's programs and
+ * tables: 2 MiB, Michael's choice on 2026-11-14
+ * (docs\plans\nvidia-gt218-3d-z.md). It starts on a 2 MiB boundary, so it
+ * is 64 KiB aligned as the page tables need.
  */
-#define V9X_GT218_RESERVE_BYTES 0x00100000ul
+#define V9X_GT218_RESERVE_BYTES 0x00200000ul
 /* The channel's VM maps the first 512 MiB of video memory, and the
  * reserve must lie inside it (nv50_chan.h, V9X_NV50_VM_BYTES). */
 #define V9X_GT218_RESERVE_VM_BYTES 0x20000000ul

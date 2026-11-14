@@ -175,8 +175,13 @@ struct v9x_n5ch_result {
 typedef char v9x_n5ch_header_matches[
     offsetof(struct v9x_n5ch_result, results) ==
     sizeof(DWORD) * V9X_N5CH_HEADER ? 1 : -1];
+/* The region goes in two runs, the alias page tables apart (stage
+ * region); each part must fit one request. */
 typedef char v9x_n5ch_region_fits[
-    V9X_NV50_REGION_WORDS <= V9X_N5CH_DATA ? 1 : -1];
+    V9X_NV50_PT_TILED / 4ul <= V9X_N5CH_DATA ? 1 : -1];
+typedef char v9x_n5ch_alias_fits[
+    (V9X_NV50_REGION_BYTES - V9X_NV50_PT_TILED) / 4ul <= V9X_N5CH_DATA ?
+    1 : -1];
 
 static struct v9x_n5ch_request v9x_request;
 static struct v9x_n5ch_result v9x_result;
@@ -942,8 +947,18 @@ static void v9x_stage_region(void)
     }
     v9x_number("Region", "FifoPushWords", push.count);
 
+    /* The alias windows' page tables first, in a run of their own: with
+     * them the region (E0000h bytes) is larger than one request's data
+     * area (30000h dwords), and they sit at its end. */
     v9x_ops_begin();
-    v9x_vram_data(0ul, v9x_region, V9X_NV50_REGION_WORDS);
+    v9x_vram_data(V9X_NV50_PT_TILED, v9x_region + V9X_NV50_PT_TILED / 4ul,
+                  (V9X_NV50_REGION_BYTES - V9X_NV50_PT_TILED) / 4ul);
+    if (!v9x_run("region-alias")) {
+        v9x_finish("REGION-REFUSED", 4u);
+    }
+
+    v9x_ops_begin();
+    v9x_vram_data(0ul, v9x_region, V9X_NV50_PT_TILED / 4ul);
     v9x_ib_write(0ul, V9X_PUSH_FIFO, push.count);
     v9x_op(V9X_OP_VRAM_FILL, V9X_SEMA_OFFSET, 1ul, 0ul);
     /* The fill target: the pattern over the whole surface. */

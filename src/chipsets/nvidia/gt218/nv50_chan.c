@@ -93,14 +93,45 @@ static v9x_status v9x_nv50_ramht_insert(v9x_u32 *region, v9x_u32 handle,
     return V9X_STATUS_INSUFFICIENT_MEMORY;
 }
 
+/* PTE bits 46:40, the storage type, as bits 14:8 of the high word. */
+#define V9X_NV50_PTE_KIND_SHIFT      8u
+
+/* One 512 MiB window: its PDE, and a page table mapping video memory
+ * 0-512 MiB with kind in every entry, written as the identity's are. */
+static void v9x_nv50_build_window(v9x_u32 *region, v9x_u32 base,
+                                  v9x_u32 pde, v9x_u32 table, v9x_u32 kind)
+{
+    v9x_u32 page;
+    v9x_u32 pages = V9X_NV50_VM_BYTES / V9X_NV50_PAGE_BYTES;
+
+    v9x_nv50_put(region, V9X_NV50_INST + V9X_NV50_INST_PD + pde * 8ul,
+                 (base + table) | V9X_NV50_PDE_64K_VRAM);
+    for (page = 0ul; page < pages; ++page) {
+        v9x_nv50_put(region, table + page * 8ul,
+                     (page & ~(V9X_NV50_PTE_BLOCK_PAGES - 1ul)) *
+                     V9X_NV50_PAGE_BYTES |
+                     (V9X_NV50_PTE_LOG2BLK_MAX << V9X_NV50_PTE_LOG2BLK_SHIFT) |
+                     V9X_NV50_PTE_VALID);
+        v9x_nv50_put(region, table + page * 8ul + 4ul,
+                     kind << V9X_NV50_PTE_KIND_SHIFT);
+    }
+}
+
 static void v9x_nv50_build_vm(v9x_u32 *region, v9x_u32 base)
 {
     v9x_u32 page;
     v9x_u32 pages = V9X_NV50_VM_BYTES / V9X_NV50_PAGE_BYTES;
 
-    /* PDE 0 covers 0-512 MiB; the rest stay 0, invalid. */
+    /* PDE 0 covers 0-512 MiB; PDEs 1 to 3 are the alias windows; the rest
+     * stay 0, invalid. */
     v9x_nv50_put(region, V9X_NV50_INST + V9X_NV50_INST_PD,
                  (base + V9X_NV50_PT) | V9X_NV50_PDE_64K_VRAM);
+    v9x_nv50_build_window(region, base, 1ul, V9X_NV50_PT_TILED,
+                          V9X_NV50_KIND_TILED);
+    v9x_nv50_build_window(region, base, 2ul, V9X_NV50_PT_Z16,
+                          V9X_NV50_KIND_Z16);
+    v9x_nv50_build_window(region, base, 3ul, V9X_NV50_PT_Z24S8,
+                          V9X_NV50_KIND_Z24S8);
 
     /* The identity: VM address = video memory address. Every 128-page
      * block is aligned, so every entry carries the largest hint, and with
@@ -123,10 +154,12 @@ static void v9x_nv50_build_objects(v9x_u32 *region)
     v9x_u32 dma = V9X_NV50_INST + V9X_NV50_INST_DMA_VM;
     v9x_u32 obj = V9X_NV50_INST + V9X_NV50_INST_OBJ_2D;
 
-    /* The VM DMA object over the mapped 512 MiB: flags, limit low, start
-     * low, limit high << 24 | start high, 0, part << 16 (part VM 0). */
+    /* The VM DMA object over the whole 2 GiB VM, the alias windows
+     * included, since the engines address every surface through it:
+     * flags, limit low, start low, limit high << 24 | start high, 0,
+     * part << 16 (part VM 0). */
     v9x_nv50_put(region, dma + 0x00ul, V9X_NV50_DMA_VM_FLAGS0);
-    v9x_nv50_put(region, dma + 0x04ul, V9X_NV50_VM_BYTES - 1ul);
+    v9x_nv50_put(region, dma + 0x04ul, V9X_NV50_VM_SPACE_BYTES - 1ul);
     v9x_nv50_put(region, dma + 0x08ul, 0ul);
     v9x_nv50_put(region, dma + 0x0cul, 0ul);
     v9x_nv50_put(region, dma + 0x10ul, 0ul);

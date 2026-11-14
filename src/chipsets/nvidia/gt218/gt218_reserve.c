@@ -12,8 +12,8 @@ unsigned long v9x_gt218_reserve_start(unsigned long usable_bytes,
     if (usable_bytes < V9X_GT218_RESERVE_BYTES) {
         return 0ul;
     }
-    /* The last whole megabyte that fits, so the start is aligned even if
-     * the host granted an odd-sized mapping. */
+    /* The last whole reserve-sized block that fits, so the start is
+     * aligned even if the host granted an odd-sized mapping. */
     start = (usable_bytes - V9X_GT218_RESERVE_BYTES) &
             ~(V9X_GT218_RESERVE_BYTES - 1ul);
     if (start == 0ul || start < visible_bytes) {

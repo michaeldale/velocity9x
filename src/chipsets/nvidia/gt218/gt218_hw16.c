@@ -18,7 +18,7 @@
  * DirectDraw fill and copy as NV50; the HAL engine (engines\eng_nv50.c)
  * builds one PFIFO channel and brings PFIFO and PGRAPH up itself
  * (docs\plans\nvidia-gt218-nv50-engine.md). The channel's structures
- * live in the top megabyte of the mapping, which the reserve hook keeps
+ * live in the top 2 MiB of the mapping, which the reserve hook keeps
  * off the heap. No register is read or written from here. Nothing NV3
  * applies: this chip has no NV3 engine, RAMIN or PRAMDAC, and the
  * family's NV3 paths stay off. GDI fills and copies on the same channel

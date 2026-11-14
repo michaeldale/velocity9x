@@ -148,7 +148,7 @@ static void v9x_nvidia_publish_diagnostics(const V9X_HW16_DEVICE *device,
  * every depth, engine claimed or not, so a surface never sits where the
  * engine's tables go. RAMIN at the top of video memory is an NV3 fact. The
  * GT218 keeps its channel's structures where the driver puts them, the top
- * megabyte of its mapping, and cuts its own heap (gt218_hw16.c).
+ * 2 MiB of its mapping, and cuts its own heap (gt218_hw16.c).
  */
 #define V9X_NVIDIA_RAMIN_BYTES 0x00008000ul
 

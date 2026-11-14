@@ -198,24 +198,26 @@ typedef char test_nv50_reserve_page_aligned[
     ((V9X_GT218_RESERVE_BYTES & (V9X_NV50_PAGE_BYTES - 1ul)) == 0ul) ?
     1 : -1];
 
-/* gt218_reserve.c: the engine's megabyte at the top of the mapping. */
+/* gt218_reserve.c: the engine's 2 MiB at the top of the mapping (2 MiB
+ * since the 3D alias windows' page tables, Michael's choice 2026-11-14,
+ * docs\plans\nvidia-gt218-3d-z.md). */
 static void test_reserve(void)
 {
-    /* The 128 MiB mapping measured on M-BXMFA8: the last megabyte. */
+    /* The 128 MiB mapping measured on M-BXMFA8: the last 2 MiB. */
     CHECK(v9x_gt218_reserve_start(0x08000000ul, 0x00180000ul) ==
-          0x07f00000ul);
-    /* An odd-sized mapping: the last whole megabyte that fits. */
+          0x07e00000ul);
+    /* An odd-sized mapping: the last whole 2 MiB that fits. */
     CHECK(v9x_gt218_reserve_start(0x040c0000ul, 0x00180000ul) ==
-          0x03f00000ul);
+          0x03e00000ul);
     /* No room: smaller than the reserve, or it would cover the screen. */
     CHECK(v9x_gt218_reserve_start(0x000c0000ul, 0ul) == 0ul);
-    CHECK(v9x_gt218_reserve_start(0x00100000ul, 0ul) == 0ul);
-    CHECK(v9x_gt218_reserve_start(0x00400000ul, 0x00380000ul) == 0ul);
-    CHECK(v9x_gt218_reserve_start(0x00400000ul, 0x00300000ul) ==
-          0x00300000ul);
-    /* Outside the 512 MiB the channel's VM maps. */
-    CHECK(v9x_gt218_reserve_start(0x20000000ul, 0ul) == 0x1ff00000ul);
-    CHECK(v9x_gt218_reserve_start(0x20100000ul, 0ul) == 0ul);
+    CHECK(v9x_gt218_reserve_start(0x00200000ul, 0ul) == 0ul);
+    CHECK(v9x_gt218_reserve_start(0x00400000ul, 0x00300000ul) == 0ul);
+    CHECK(v9x_gt218_reserve_start(0x00400000ul, 0x00200000ul) ==
+          0x00200000ul);
+    /* Outside the 512 MiB the channel's identity VM maps. */
+    CHECK(v9x_gt218_reserve_start(0x20000000ul, 0ul) == 0x1fe00000ul);
+    CHECK(v9x_gt218_reserve_start(0x20200000ul, 0ul) == 0ul);
 }
 
 unsigned int v9x_run_nv50_init_tests(void)
