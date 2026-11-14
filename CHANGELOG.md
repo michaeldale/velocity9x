@@ -18,6 +18,23 @@ build identifier so exact guest-tested binaries remain traceable.
   and the Radeon HD 3200/4200 IGPs, which Linux treats alike, are not
   claimed
   ([record](docs/decisions/2026-11-15-rv610-hd2400pro-bring-up.md)).
+- **`nvidia` package: the NVIDIA GeForce 210 (GT218, `10DE:0A65`).**
+  The first Tesla-generation card. Modes are set through the VESA BIOS;
+  DirectDraw and GDI fills and copies run on the 2D engine (GDI's
+  pixels compared on the 16 bpp desktop only), and Direct3D on the 3D engine at 16 and 32 bpp with Z16 depth
+  buffers. The 3D engine draws into tiled copies of the render targets,
+  which the driver copies back to the linear surfaces Windows sees, and
+  the screen cannot be flipped, so DirectDraw presents each frame by a
+  copy; what those copies cost is not measured. On one card through
+  remote help V9XD32's depth checks pass and 3DMark 2000 completes
+  (2762, 3052, 2765). Two runs of five ended in a crash traced to
+  3DMark 2000 reading past one of its own arrays, not to the driver.
+  Not yet working: a Lock of a depth buffer (it reads tiled bytes),
+  Z24S8 depth buffers, X8R8G8B8 textures, parts of V9XD32's T20 and
+  T21, and other Tesla chips
+  ([Direct3D record](docs/decisions/2026-11-14-gt218-3d-d3d-builders.md),
+  [GDI record](docs/decisions/2026-11-14-gt218-gdi-engine-first-run.md),
+  [plan](docs/plans/nvidia-gt218-3d-z.md)).
 - **Release checks and test scripts:** every script that drives a test
   machine first updates its agent to the current build and refuses one
   older than 0.17.0. Waits for the desktop, 3DMark's start and its score
