@@ -336,6 +336,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-12 Intel Gen3 texture pool, Phase 2: 32 MiB of RAM mapped through the GTT, a pattern through the aperture lands in the right pages, and a VBIOS mode set leaves the PTEs alone](2026-11-12-intel-gen3-texture-pool-phase2.md)
 - [2026-11-12 Intel Gen3 texture pool, Phase 3: the driver maps 32 MiB of system RAM at boot, publishes it as a texture-only heap, and the GMA 950 samples textures from it exactly; every netbook probe passes and 3DMark 2001 SE completes](2026-11-12-intel-gen3-texture-pool-phase3.md)
 - [2026-11-12 Intel Gen3 texture pool: Half-Life, Quake 2 and Serious Sam run on the netbook; Serious Sam holds 488 hardware textures with no failed creates or evictions](2026-11-12-intel-gen3-texture-pool-games.md)
+- [2026-11-14 The HD 4600 renders at 400 MHz under load: the BIOS's request stands because nothing programs RPS, and RP0 is 1150](2026-11-14-haswell-render-clock-400mhz.md)
 
 ## SiS
 

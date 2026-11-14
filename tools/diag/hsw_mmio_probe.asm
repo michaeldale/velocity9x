@@ -32,7 +32,8 @@
 ; power well the PRM says may be off (Vol 11a): the render and blitter
 ; command streamers, GT power management, the always-on display blocks
 ; (VGA control, DE interrupts, power well control, pipe A, plane A), the
-; PCH transcoder A and DAC, and the forcewake acknowledge at 130044h.
+; PCH transcoder A and DAC, the forcewake acknowledge at 130044h, and for
+; /rps the RC6 residency counters and two MCHBAR-mirror registers.
 ; Pipes B and C, DDI and panel fitter registers are refused. The Gen3 lesson
 ; is the reason for the allowlist: reading a disabled pipe's registers
 ; hard-locked the 945GSE (docs\decisions\2026-10-15-a-disabled-pipes-
@@ -116,7 +117,11 @@ HswWindows label dword
     dd 070008h, 071000h   ; pipe A configuration, plane A
     dd 0e0000h, 0e2000h   ; PCH transcoder A, DAC_CTL
     dd 130000h, 131000h   ; LCPLL_CTL, forcewake acknowledge
-HSW_WINDOW_COUNT        equ 11
+    ; /rps (i915 addresses): GEN6_GT_GFX_RC6 residency, and the MCHBAR
+    ; mirror's GEN6_GT_PERF_STATUS and GEN6_RP_STATE_CAP. Narrow on purpose.
+    dd 138100h, 138110h   ; RC6 residency counters
+    dd 145940h, 1459a0h   ; GT_PERF_STATUS .. RP_STATE_CAP
+HSW_WINDOW_COUNT        equ 13
 
 HswResult label dword
     dd HSW_MAGIC                ; 00 magic

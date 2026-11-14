@@ -3705,6 +3705,257 @@ static void v9x_stolen_run(void)
                                V9X_HSWMM_PATH);
 }
 
+/*
+ * /rps: the render clock, requested and actual, sampled over time. Read
+ * only: DIOC 1 without the forcewake flag, so nothing on the device is
+ * written. The driver holds forcewake while it is open, so the GT answers;
+ * with the driver closed these read zero (the Phase A finding), and the
+ * summary says so rather than decode zeros as a clock.
+ *
+ * The question (2026-11-14): no Velocity9x module writes RPNSWREQ or
+ * programs RPS, so the GT runs at whatever request the BIOS left. Whether
+ * that is RPn or something near RP0 under load was never measured.
+ *
+ * Every address and field here is i915's (i915_reg.h: GEN6_RPNSWREQ with
+ * HSW_FREQUENCY at 31:24, GEN6_RPSTAT1 with HSW_CAGF at 13:7, GEN6_RP_*,
+ * GEN6_GT_GFX_RC6, the MCHBAR mirror at 140000h for GEN6_RP_STATE_CAP and
+ * GEN6_GT_PERF_STATUS, GEN6_PMIIR); the public HSW PRM names few of them.
+ * The 50 MHz unit is i915's GT_FREQUENCY_MULTIPLIER for Haswell.
+ */
+#define V9X_RPS_SAMPLES       120ul
+#define V9X_RPS_INTERVAL_MS   250ul
+#define V9X_RPS_MHZ_UNIT      50ul
+#define V9X_RPS_RPNSWREQ      0x0a008ul
+#define V9X_RPS_INT_LIMITS    0x0a014ul
+#define V9X_RPS_RPSTAT1       0x0a01cul
+#define V9X_RPS_RP_CONTROL    0x0a024ul
+#define V9X_RPS_UP_THRESHOLD  0x0a02cul
+#define V9X_RPS_DOWN_THRESHOLD 0x0a030ul
+#define V9X_RPS_CUR_UP_EI     0x0a050ul
+#define V9X_RPS_CUR_UP        0x0a054ul
+#define V9X_RPS_CUR_DOWN_EI   0x0a05cul
+#define V9X_RPS_CUR_DOWN      0x0a060ul
+#define V9X_RPS_UP_EI         0x0a068ul
+#define V9X_RPS_DOWN_EI       0x0a06cul
+#define V9X_RPS_RC_CONTROL    0x0a090ul
+#define V9X_RPS_RC_STATE      0x0a094ul
+#define V9X_RPS_PMIMR         0x44024ul
+#define V9X_RPS_PMIIR         0x44028ul
+#define V9X_RPS_PMIER         0x4402cul
+#define V9X_RPS_RC6_RESIDENCY 0x138108ul
+#define V9X_RPS_PERF_STATUS   0x145948ul
+#define V9X_RPS_STATE_CAP     0x145998ul
+#define V9X_RPS_REQ_SHIFT     24
+#define V9X_RPS_REQ_MASK      0xfful
+#define V9X_RPS_CAGF_SHIFT    7
+#define V9X_RPS_CAGF_MASK     0x7ful
+
+static const DWORD v9x_rps_offsets[] = {
+    V9X_RPS_RPNSWREQ, V9X_RPS_INT_LIMITS, V9X_RPS_RPSTAT1,
+    V9X_RPS_RP_CONTROL, V9X_RPS_UP_THRESHOLD, V9X_RPS_DOWN_THRESHOLD,
+    V9X_RPS_CUR_UP_EI, V9X_RPS_CUR_UP, V9X_RPS_CUR_DOWN_EI,
+    V9X_RPS_CUR_DOWN, V9X_RPS_UP_EI, V9X_RPS_DOWN_EI, V9X_RPS_RC_CONTROL,
+    V9X_RPS_RC_STATE, V9X_RPS_PMIMR, V9X_RPS_PMIIR, V9X_RPS_PMIER,
+    V9X_RPS_RC6_RESIDENCY, V9X_RPS_PERF_STATUS, V9X_RPS_STATE_CAP
+};
+
+#define V9X_RPS_OFFSET_COUNT \
+    (sizeof(v9x_rps_offsets) / sizeof(v9x_rps_offsets[0]))
+
+/* Raw per sample: RPNSWREQ, RPSTAT1, RC6 residency, the current up and down
+ * evaluation intervals and busy counts, and the pending PM interrupts that
+ * a turbo driver would service and nothing here does. */
+static const DWORD v9x_rps_sample_raw[] = {
+    V9X_RPS_RPNSWREQ, V9X_RPS_RPSTAT1, V9X_RPS_RC6_RESIDENCY,
+    V9X_RPS_CUR_UP_EI, V9X_RPS_CUR_UP, V9X_RPS_CUR_DOWN_EI,
+    V9X_RPS_CUR_DOWN, V9X_RPS_PMIIR
+};
+
+#define V9X_RPS_SAMPLE_RAW_COUNT \
+    (sizeof(v9x_rps_sample_raw) / sizeof(v9x_rps_sample_raw[0]))
+
+/* The value read for `offset` in the last capture (its first read). */
+static DWORD v9x_rps_value(DWORD offset)
+{
+    DWORD index;
+
+    for (index = 0ul; index < v9x_result.accepted; ++index) {
+        if (v9x_result.offsets[index] == offset) {
+            return v9x_result.first[index];
+        }
+    }
+    return 0ul;
+}
+
+/* Decimal, for the MHz figures a reader compares with a datasheet. */
+static void v9x_dec(char *text, DWORD value)
+{
+    char reversed[12];
+    int length;
+    int index;
+
+    length = 0;
+    do {
+        reversed[length++] = (char)('0' + (int)(value % 10ul));
+        value /= 10ul;
+    } while (value != 0ul);
+    for (index = 0; index < length; ++index) {
+        text[index] = reversed[length - 1 - index];
+    }
+    text[length] = '\0';
+}
+
+static void v9x_rps_dec_key(const char *key, DWORD value)
+{
+    char text[12];
+
+    v9x_dec(text, value);
+    WritePrivateProfileStringA("Rps", key, text, V9X_HSWMM_PATH);
+}
+
+static int v9x_rps_capture(HANDLE device)
+{
+    DWORD returned;
+    BOOL ok;
+
+    ok = DeviceIoControl(device, V9X_HSWMM_CAPTURE, &v9x_request,
+                         sizeof(v9x_request), &v9x_result,
+                         sizeof(v9x_result), &returned, 0);
+    return ok && returned == sizeof(v9x_result) &&
+           v9x_result.magic == V9X_HSWMM_MAGIC &&
+           (v9x_result.status & V9X_HSWMM_ST_SNAPSHOT_TAKEN) != 0ul;
+}
+
+static void v9x_rps_run(void)
+{
+    HANDLE device;
+    DWORD index;
+    DWORD sample;
+    DWORD start;
+    DWORD requested;
+    DWORD actual;
+    DWORD cap;
+    DWORD actual_min;
+    DWORD actual_max;
+    DWORD requested_min;
+    DWORD requested_max;
+    DWORD actual_sum;
+    DWORD awake;
+    char key[8];
+    char text[120];
+    char *at;
+
+    WritePrivateProfileStringA("Rps", 0, 0, V9X_HSWMM_PATH);
+    v9x_request.base = v9x_config_read(0x10ul) & V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_request.flags = 0ul;
+    v9x_request.count = 0ul;
+    for (index = 0ul; index < V9X_RPS_OFFSET_COUNT; ++index) {
+        v9x_add(v9x_rps_offsets[index]);
+    }
+
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA("Rps", "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+
+    /* The fixed registers once, from the first capture. */
+    if (!v9x_rps_capture(device)) {
+        CloseHandle(device);
+        v9x_key("Rps", "Status", v9x_result.status);
+        v9x_key("Rps", "RefusedOffset", v9x_result.refused_offset);
+        WritePrivateProfileStringA("Rps", "Result", "NO-SNAPSHOT",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    for (index = 0ul; index < v9x_result.accepted; ++index) {
+        v9x_offset_key(key, "R", v9x_result.offsets[index]);
+        v9x_key("Rps", key, v9x_result.first[index]);
+    }
+    cap = v9x_rps_value(V9X_RPS_STATE_CAP);
+    v9x_rps_dec_key("Rp0Mhz", (cap & 0xfful) * V9X_RPS_MHZ_UNIT);
+    v9x_rps_dec_key("Rp1Mhz", ((cap >> 8) & 0xfful) * V9X_RPS_MHZ_UNIT);
+    v9x_rps_dec_key("RpnMhz", ((cap >> 16) & 0xfful) * V9X_RPS_MHZ_UNIT);
+    v9x_rps_dec_key("IntervalMs", V9X_RPS_INTERVAL_MS);
+
+    /*
+     * Each sample: ms since the first, requested MHz, actual MHz, then the
+     * raw registers of v9x_rps_sample_raw. A sample whose RPSTAT1 reads zero
+     * is a GT out of forcewake, not a 0 MHz clock, and is left out of the
+     * summary.
+     */
+    actual_min = 0xfffffffful;
+    actual_max = 0ul;
+    requested_min = 0xfffffffful;
+    requested_max = 0ul;
+    actual_sum = 0ul;
+    awake = 0ul;
+    start = GetTickCount();
+    for (sample = 0ul; sample < V9X_RPS_SAMPLES; ++sample) {
+        if (sample != 0ul) {
+            Sleep(V9X_RPS_INTERVAL_MS);
+            if (!v9x_rps_capture(device)) {
+                break;
+            }
+        }
+        requested = ((v9x_rps_value(V9X_RPS_RPNSWREQ) >> V9X_RPS_REQ_SHIFT) &
+                     V9X_RPS_REQ_MASK) * V9X_RPS_MHZ_UNIT;
+        actual = ((v9x_rps_value(V9X_RPS_RPSTAT1) >> V9X_RPS_CAGF_SHIFT) &
+                  V9X_RPS_CAGF_MASK) * V9X_RPS_MHZ_UNIT;
+        if (v9x_rps_value(V9X_RPS_RPSTAT1) != 0ul) {
+            ++awake;
+            actual_sum += actual;
+            if (actual < actual_min) {
+                actual_min = actual;
+            }
+            if (actual > actual_max) {
+                actual_max = actual;
+            }
+            if (requested < requested_min) {
+                requested_min = requested;
+            }
+            if (requested > requested_max) {
+                requested_max = requested;
+            }
+        }
+
+        at = text;
+        v9x_dec(at, GetTickCount() - start);
+        at += lstrlenA(at);
+        *at++ = ',';
+        v9x_dec(at, requested);
+        at += lstrlenA(at);
+        *at++ = ',';
+        v9x_dec(at, actual);
+        at += lstrlenA(at);
+        for (index = 0ul; index < V9X_RPS_SAMPLE_RAW_COUNT; ++index) {
+            *at++ = ',';
+            v9x_hex(at, v9x_rps_value(v9x_rps_sample_raw[index]), 8);
+            at += 8;
+        }
+        lstrcpyA(key, "S");
+        v9x_dec(key + 1, sample);
+        WritePrivateProfileStringA("Rps", key, text, V9X_HSWMM_PATH);
+    }
+    CloseHandle(device);
+
+    v9x_rps_dec_key("Samples", sample);
+    v9x_rps_dec_key("SamplesAwake", awake);
+    if (awake == 0ul) {
+        WritePrivateProfileStringA("Rps", "Result", "GT-ASLEEP",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_rps_dec_key("RequestedMhzMin", requested_min);
+    v9x_rps_dec_key("RequestedMhzMax", requested_max);
+    v9x_rps_dec_key("ActualMhzMin", actual_min);
+    v9x_rps_dec_key("ActualMhzMax", actual_max);
+    v9x_rps_dec_key("ActualMhzMean", actual_sum / awake);
+    WritePrivateProfileStringA("Rps", "Result", "COMPLETE", V9X_HSWMM_PATH);
+}
+
 void __stdcall V9xHswMmioEntry(void)
 {
     HANDLE device;
@@ -3738,6 +3989,17 @@ void __stdcall V9xHswMmioEntry(void)
         WritePrivateProfileStringA("Report", "Access", "bcs-ring-phase-b1",
                                    V9X_HSWMM_PATH);
         v9x_bcs_run();
+        WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                   V9X_HSWMM_PATH);
+        WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+        ExitProcess(0u);
+    }
+
+    /* /rps samples the render clock alone, read only. */
+    if (v9x_has_switch("/rps")) {
+        WritePrivateProfileStringA("Report", "Access", "mmio-read-only-rps",
+                                   V9X_HSWMM_PATH);
+        v9x_rps_run();
         WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
