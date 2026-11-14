@@ -203,6 +203,13 @@ static void test_solid_rect(void)
     CHECK(rect[at] == 0ul);
     header = find_header(&push, 0x1414ul, &at);
     CHECK(rect[at] == 0ul);
+    /* EXA's own vertex program and attributes 0, 8 and 9, set by every
+     * draw: a Gouraud draw before it leaves its own (M-BXMFA8, the first
+     * /3d:texture runs). */
+    header = find_header(&push, 0x140cul, &at);
+    CHECK(rect[at] == 0ul);
+    header = find_header(&push, 0x1650ul, &at);
+    CHECK(rect[at] == 3ul && rect[at + 1ul] == 0x33ul);
     header = find_header(&push, 0x1334ul, &at);
     CHECK(rect[at] == 0ul);
     /* BIND_TIC(2) twice: 1, then 203h. */

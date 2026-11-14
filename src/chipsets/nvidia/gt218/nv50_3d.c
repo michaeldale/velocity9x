@@ -346,9 +346,14 @@ void v9x_nv50_push_3d_textured_rect(struct v9x_nv50_push *push,
                                     v9x_u32 x, v9x_u32 y, v9x_u32 w,
                                     v9x_u32 h, v9x_u32 src_w, v9x_u32 src_h)
 {
-    /* PFP_S, the texture just written. */
+    /* PFP_S, the texture just written, and EXA's vertex program with its
+     * attributes 0, 8 and 9: set by every draw, because a Gouraud draw
+     * leaves its own program and attribute enables behind, and the first
+     * /3d:texture runs after one sampled texel (0, 0) everywhere. */
     v9x_nv50_3d_target(push, target, pitch, height, format);
     v9x_nv50_3d_one(push, V9X_8597_FP_START_ID, 0ul);
+    v9x_nv50_3d_one(push, V9X_8597_VP_START_ID, 0ul);
+    v9x_nv50_3d_two(push, V9X_8597_VP_ATTR_EN0, 0x00000003ul, 0x00000033ul);
     v9x_nv50_3d_one(push, V9X_8597_TIC_FLUSH, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_FIRST);
     v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_UNIT0);
