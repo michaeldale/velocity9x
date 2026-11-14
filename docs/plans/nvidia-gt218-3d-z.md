@@ -163,6 +163,11 @@ Options:
 on linear targets without Z (below); 5b the shadow targets and tiled Z
 buffers; 5c 3DMark 2000 and the copy cost measured.
 
+5b status: shadow targets and tiled Z16 (1da0a043) pass V9XD32's
+depth checks at 32 and 16 bpp on boot 122. Open: a Lock of a Z buffer
+reads tiled bytes; Z24S8; the X8R8G8B8 texture; T20 and T21's partial
+parts; 5c (3DMark 2000 and what the copies cost).
+
 5a status: the builders passed the probe (2c20c60f); the HAL
 (46da5ad4) ran V9XD32 on boot 120. Every non-depth draw passed except
 T4Copy (since fixed by 935d3c50, boot 121: 502D needs 256-byte surface
