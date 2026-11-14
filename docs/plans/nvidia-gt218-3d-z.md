@@ -3,8 +3,12 @@
 Date: 2026-11-14
 
 Status: decisions taken (Michael, 2026-11-14): present by copy, a 2 MiB
-reserve, Z16 and Z24S8. Step 1 built: the alias windows and the 2 MiB
-reserve, host-tested; not yet run on a card. Part of phase 3 of
+reserve, Z16 and Z24S8. Step 1 built (b013f697): the alias windows and
+the 2 MiB reserve, host-tested. On M-BXMFA8 boot 117 the channel probe
+built with them passed every stage it has, 2D and 3D
+(`build/driver-results/m-bxmfa8-gt218-3d/z1-V9XN5CH.INI`), so the extra
+PDEs and the 2 GiB DMA limit break nothing; nothing has addressed a
+window yet. Next: step 2. Part of phase 3 of
 [nvidia-gt218-3d.md](nvidia-gt218-3d.md), after solid, Gouraud and
 textured draws ran exact on M-BXMFA8 into pitch-linear targets
 ([texture record](../decisions/2026-11-14-gt218-3d-texture.md)).
