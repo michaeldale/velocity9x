@@ -163,6 +163,12 @@ Options:
 on linear targets without Z (below); 5b the shadow targets and tiled Z
 buffers; 5c 3DMark 2000 and the copy cost measured.
 
+5c status (afc43ce4, boot 125): 3DMark 2000's default run completes,
+score 2762, 0 engine timeouts, 0 refusals, frames drawn right. Open:
+one 3DMark crash (C0000005 in its own code) on a run with frame grabs;
+flips are presented by DirectDraw's copy (FlipDeclined); the copies'
+cost needs counters.
+
 5b status: shadow targets and tiled Z16 (1da0a043) pass V9XD32's
 depth checks at 32 and 16 bpp on boot 122. Open: a Lock of a Z buffer
 reads tiled bytes; Z24S8; the X8R8G8B8 texture; T20 and T21's partial
