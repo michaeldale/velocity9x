@@ -111,7 +111,60 @@ source format and layout and leaves 238h alone).
    remain. Then Z24S8 the same way.
 5. **The HAL**: tiled back buffers and Z buffers in the heap, flips and
    blits by step 2's copy, `Lock` on a tiled surface through a linear
-   staging copy.
+   staging copy. Superseded by "Step 5 revisited" below.
+
+## Step 5 revisited (2026-11-14, read from the tree)
+
+**Tiled back buffers do not fit how this driver flips.**
+`v9x_flip_body` (`ddhal_core.c`) moves the scanout's display start to
+the flip target's own memory, and DirectDraw then swaps the chain's
+`fpVidMem`, as it does for every DDHAL flip. So each buffer of a flip
+chain is scanned out in turn and must be linear. A flip chain's back
+buffers are also placed by DirectDraw with the primary (`d3d_eg.c`'s
+`create_surface` leaves them alone for that reason). Decision 1's
+"render tiled, present by copy" would need the chain's memory to stop
+being what the scanout shows: a hidden linear scanout buffer, the
+primary no longer GDI's surface, and flips that copy instead of moving
+the start. That is a core change, larger than this card.
+
+What the tree already offers:
+
+- `lock_surface` / `unlock_surface` (`d3d_internal.h`): an engine
+  converts its own layout around a CPU Lock. Carrizo's tiled Z16 uses
+  it (`d3d_vi.c`).
+- `surface_written`: called at Unlock and as a Blt starts on its
+  destination. The RIVA 128 uses it to rebuild its swizzled textures.
+- `v9x_render_drain` runs before Flip, Lock and Blt, and lands in the
+  engine's `wait_idle`.
+- `depth_fill` handed over by the 2D engine (Evergreen draws its Z
+  fills on the 3D engine, `v9x_d3d_eg_depth_fill`).
+
+Options:
+
+- **A. Shadow targets** (recommended). DirectDraw's surfaces stay
+  linear, so flips, Blt, Lock and GDI are unchanged. When a draw has a
+  Z buffer, the engine renders into a tiled colour shadow of the target,
+  which it allocates itself. A 502D copy brings the shadow back to the
+  linear surface before anything reads it (at the drain, so before Flip,
+  Lock and Blt). A copy the other way runs before the next draw when
+  the linear surface changed (`surface_written`). Z buffers are placed
+  tiled by `create_surface`, filled on the 3D engine, and converted at
+  Lock. Draws without Z go straight to the linear surface, as phase 2
+  drew. Cost: up to two full-surface copies a frame (about 1.2 MiB each
+  at 640x480x32). That is unmeasured.
+- **B. A tiled flip chain** behind a hidden linear scanout buffer, as
+  decision 1 meant it. This needs the core's flip and primary handling
+  changed for this engine alone.
+- **C. No Z first.** The HAL draws into linear targets only, and
+  Z-buffered draws are refused (the core skips them). This is a step
+  towards either A or B, not an end.
+
+Common to all three, and the first piece: `d3d_nv50.c` and its map
+(`d3d_nv50_map.c`, host-tested). That means the neutral draw into
+`nv50_3d.c` streams, the caps, texture placement and `ready`, all
+drawing into linear targets, with CAP_D3D on the NV50 row and
+`d3d_select.c` choosing it. The checks are V9XD32 and V9XDDP's 3D
+checks without Z.
 
 ## Decisions owed (Michael's)
 
