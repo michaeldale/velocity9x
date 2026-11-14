@@ -40,6 +40,7 @@
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/gt218_reserve.h"
+#include "velocity9x/diagpaths.h"
 
 /* Bounded busy-wait. The probe's waits ended on the first or second
  * read for 64x64 operations; a full-screen copy is far longer, and this
@@ -67,6 +68,9 @@
 /* V9XHAL's statics are shared by every process, which is what an
  * engine's state is. */
 static struct v9x_nv50_chan_layout v9x_nv50_layout;
+/* The last kick, for the fault record (v9x_nv50_write_fault). */
+static DWORD v9x_nv50_last_kick_kind;   /* 1 2D, 2 3D batch */
+static DWORD v9x_nv50_last_kick_words;
 static struct v9x_nv50_init_op v9x_nv50_ops[V9X_NV50_INIT_OPS_MAX];
 /* There is no ring index here. The 16-bit driver kicks the same ring for
  * GDI (gdi_accel.c), so the index lives in the hardware: after a kick
@@ -163,6 +167,8 @@ static int v9x_nv50_submit_at(const struct v9x_nv50_push *push, DWORD at)
     if (at >= V9X_NV50_IB_ENTRIES) {
         return 0;
     }
+    v9x_nv50_last_kick_kind = 1ul;
+    v9x_nv50_last_kick_words = push->count;
     for (index = 0ul; index < push->count; ++index) {
         target[index] = push->words[index];
     }
@@ -289,9 +295,104 @@ static int v9x_nv50_state_holds(void)
                v9x_nv50_live_context(v9x_hal->engine.reserve_offset);
 }
 
+/*
+ * The engine's state at the first give-up, in C:\V9XDIAG\V9XN50F.TXT: the
+ * interrupt and status words, PGRAPH's trap words and the PROP and MP
+ * trap words of TP0 (nouveau nv50_gr_trap_handler, as the channel probe
+ * reads them), and the last kick. 3DMark 2000's first start on step 5b
+ * gave the engine up inside a Lock with nothing but N5ID at 400700h to
+ * go on (M-BXMFA8, boot 122).
+ */
+#define V9X_NV50_FAULT_PATH V9X_DIAG_PATH("V9XN50F.TXT")
+
+static void v9x_nv50_fault_text(HANDLE file, const char *text)
+{
+    DWORD written;
+    DWORD length = 0ul;
+
+    while (text[length] != '\0') {
+        ++length;
+    }
+    (void)WriteFile(file, text, length, &written, 0);
+}
+
+static void v9x_nv50_fault_hex(HANDLE file, const char *key, DWORD value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[12];
+    DWORD index;
+
+    v9x_nv50_fault_text(file, key);
+    for (index = 0ul; index < 8ul; ++index) {
+        text[index] = digits[(value >> ((7ul - index) * 4ul)) & 0xful];
+    }
+    text[8] = '\r';
+    text[9] = '\n';
+    text[10] = '\0';
+    v9x_nv50_fault_text(file, text);
+}
+
+static void v9x_nv50_write_fault(DWORD code, DWORD address)
+{
+    static const struct {
+        const char *key;
+        DWORD reg;
+    } regs[] = {
+        { "PfifoIntr=", V9X_NV50_PFIFO_INTR },
+        { "PfifoDmaState=", V9X_NV50_PFIFO_DMA_STATE },
+        { "PfifoIbGet=", V9X_NV50_PFIFO_IB_GET },
+        { "PfifoIbPut=", V9X_NV50_PFIFO_IB_PUT },
+        { "PfifoDmaGet=", V9X_NV50_PFIFO_DMA_GET },
+        { "PfifoDmaPut=", V9X_NV50_PFIFO_DMA_PUT },
+        { "PgraphIntr=", V9X_NV50_PGRAPH_INTR },
+        { "PgraphTrap=", 0x400108ul },
+        { "PgraphStatus=", V9X_NV50_PGRAPH_STATUS },
+        { "PgraphTrapStatus=", 0x400804ul },
+        { "PgraphTrapAddr=", 0x400808ul },
+        { "PgraphTrapData=", 0x40080cul },
+        { "PgraphTrapDataHigh=", 0x400810ul },
+        { "PgraphTrapClass=", 0x400814ul },
+        { "PropTp0Status=", 0x408708ul },
+        { "PropTp0E0c=", 0x40870cul },
+        { "PropTp0AddressLow=", 0x408710ul },
+        { "PropTp0AddressHigh=", 0x408714ul },
+        { "PropTp0E18=", 0x408718ul },
+        { "PropTp0E1c=", 0x40871cul },
+        { "PropTp0E20=", 0x408720ul },
+        { "PropTp0E24=", 0x408724ul },
+        { "MpTp0Status=", 0x40831cul },
+        { "Mp0Status=", 0x408114ul },
+        { "Mp0Pc=", 0x408124ul },
+        { "Mp1Status=", 0x408194ul },
+        { "Mp1Pc=", 0x4081a4ul },
+        { "VmTrap=", 0x100c90ul }
+    };
+    HANDLE file;
+    DWORD index;
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    file = CreateFileA(V9X_NV50_FAULT_PATH, GENERIC_WRITE, FILE_SHARE_READ,
+                       0, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    v9x_nv50_fault_text(file, "[Nv50Fault]\r\n");
+    v9x_nv50_fault_hex(file, "Code=", code);
+    v9x_nv50_fault_hex(file, "Address=", address);
+    v9x_nv50_fault_hex(file, "LastKickKind=", v9x_nv50_last_kick_kind);
+    v9x_nv50_fault_hex(file, "LastKickWords=", v9x_nv50_last_kick_words);
+    for (index = 0ul; index < sizeof(regs) / sizeof(regs[0]); ++index) {
+        v9x_nv50_fault_hex(file, regs[index].key,
+                           v9x_nv50_read32(regs[index].reg));
+    }
+    CloseHandle(file);
+}
+
 static void v9x_nv50_give_up(DWORD code, DWORD address)
 {
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
+        v9x_nv50_write_fault(code, address);
         v9x_trace_flush_fault(code, address);
     }
     v9x_hal->engine.flags &= ~V9X_DD_ENGINE_VALID;
@@ -538,6 +639,8 @@ int v9x_nv50_3d_submit(DWORD count)
     if (at >= V9X_NV50_IB_ENTRIES) {
         return 0;
     }
+    v9x_nv50_last_kick_kind = 2ul;
+    v9x_nv50_last_kick_words = count;
     v9x_nv50_ib_entry(v9x_hal->engine.reserve_offset +
                           V9X_GT218_RESERVE_3D_PUSH,
                       count, entry);
