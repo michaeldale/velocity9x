@@ -94,7 +94,41 @@ by FlipHandled, V9XTRACE snapshots before and after, ten frames grabbed
 The seven probe runs after it pass (V9XD32 default and `/z24`, V9XGLP,
 V9XGLIDP, V9XR3DP, V9XWPRS, V9XFBCMP).
 
+## Boot 58: the 78 refusals were a drain that gave up after 20 ms
+
+Reason 13 has two sources in `v9x_d3d_g4_write_state`: a state block
+that will not encode, and `v9x_d3d_g4_write_sf`/`write_wm` returning 0.
+The latter happens only when a WM kernel slot must be overwritten and
+`v9x_d3d_g4_drain_all` fails. That called the shared
+`v9x_d3d_i9xx_render_drain(1)` once: it polls the status page
+`V9X_I9XX_BREADCRUMB_POLLS` (20,000) times and returns BUSY if the
+engine is still running. Flip and Lock pass BUSY back to DirectDraw,
+which retries; a draw had nobody to retry, so it was refused. With the
+pool, 3DMark keeps its trees and submits faster, so the engine is more
+often still busy when a new kernel combination arrives.
+
+The change (`d3d_g4.c`): `drain_all` loops while the result is BUSY.
+The shared drain still abandons the engine after
+`V9X_I9XX_DRAIN_ABANDON_POLLS` without progress, which ends the loop. A
+refusal that does follow an abandoned drain is now counted as reason 14
+(`V9X_D3D_G4_REFUSE_DRAIN`) instead of 13. The HD 4600's HAL is
+separate and not touched; the change reaches every Gen4/Gen5 chip.
+
+Boot 58, the same 3DMark 2000 default run:
+
+| | Boot 57 | Boot 58, the change |
+|---|---|---|
+| Score | 1706 | 1705 |
+| Batches refused (reason 13 / 14) | 78 (78 / 0) | **0** (0 / 0) |
+| Drains abandoned | 0 | 0 |
+| Batches submitted | 1,860,541 | 1,861,289 |
+| Engine stalls, draws into the presented page | 0, 0 | 0, 0 |
+
+The seven probe runs after it pass. Not established: whether the 78
+were visible on screen at boot 57; that this was the only route to
+reason 13 (the other, an encode failure, would show as 13 again).
+
 ## State left behind
 
-TOMMOHP runs this build at boot 57 with the pool mapped, 3DMark 2000 open
-at its score window. `V9XHEAP.EXE` is in `C:\V9XREL`.
+TOMMOHP runs the drain change at boot 58 with the pool mapped, 3DMark
+2000 open at its score window. `V9XHEAP.EXE` is in `C:\V9XREL`.
