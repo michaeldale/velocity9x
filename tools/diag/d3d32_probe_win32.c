@@ -7490,6 +7490,20 @@ void WINAPI V9xD3d32ProbeEntry(void)
         hr = ((d32_create_surface_fn)ddraw->vtbl[DD_CREATE_SURFACE])(
             ddraw, &desc, &source, 0);
         d32_hx("T4CopySourceHr", (DWORD)hr);
+        if (hr == 0 && source != 0) {
+            /* Where the source lives, to set against T4ClearedSurface:
+             * the GT218's copies into its engine-placed target read zeros
+             * at 16 bpp and other data at 32 bpp. */
+            d32_zero(&desc, sizeof(desc));
+            desc.dwSize = sizeof(desc);
+            if (((d32_lock_fn)source->vtbl[DDS_LOCK])(source, 0, &desc,
+                                                      DDLOCK_WAIT, 0) == 0) {
+                d32_hx("T4CopySourceSurface", (DWORD)desc.lpSurface);
+                d32_hx("T4CopySourcePitch", (DWORD)desc.lPitch);
+                ((d32_unlock_fn)source->vtbl[DDS_UNLOCK])(source,
+                                                          desc.lpSurface);
+            }
+        }
         if (hr == 0 && source != 0 && d32_copy_paint(source)) {
             d32_hx("T4CopyClearHr",
                    (DWORD)d32_fill(offscreen, DDBLT_COLORFILL, 0ul));

@@ -401,6 +401,46 @@ static void test_push(void)
     CHECK(words[40] == 0ul);
     CHECK(words[42] == 0ul);
 
+    /*
+     * Surface addresses on 256 bytes, the rest moved into x: V9XD32's
+     * T4Copy source on M-BXMFA8 sat at C0h past a 256-byte boundary
+     * (T4CopySourceSurface 83F59AC0h) and every copied pixel read zero at
+     * 16 bpp, other data at 32 bpp. A 64x64 RGB565 source at ...9AC0h is
+     * addressed from ...9A00h with x and the width 96 pixels more; an
+     * aligned destination is untouched.
+     */
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_blit(&push, 0x03f59ac0ul, 128ul, 64ul, 64ul,
+                       0x03f57a00ul, 128ul, 64ul, 64ul,
+                       V9X_502D_FORMAT_R5G6B5,
+                       0ul, 2ul, 4ul, 6ul, 64ul, 62ul);
+    CHECK(push.overflow == 0ul);
+    CHECK(words[9] == 64ul);
+    CHECK(words[12] == 0x03f57a00ul);
+    CHECK(words[18] == 64ul + 96ul);
+    CHECK(words[21] == 0x03f59a00ul);
+    CHECK(words[31] == 4ul);
+    CHECK(words[40] == 96ul);
+    CHECK(words[42] == 2ul);
+    /* An unaligned destination: the same move on its side, for the
+     * destination x and width. */
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_blit(&push, 0x00400000ul, 256ul, 64ul, 64ul,
+                       0x00400140ul, 256ul, 64ul, 64ul,
+                       V9X_502D_FORMAT_X8R8G8B8,
+                       1ul, 0ul, 2ul, 0ul, 8ul, 8ul);
+    CHECK(words[9] == 64ul + 16ul);
+    CHECK(words[12] == 0x00400100ul);
+    CHECK(words[31] == 2ul + 16ul);
+    CHECK(words[40] == 1ul);
+    /* The fill likewise. */
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_fill(&push, 0x0c200040ul, 256ul, 64ul, 64ul,
+                       V9X_502D_FORMAT_X8R8G8B8, 0ul, 3ul, 0ul, 8ul, 8ul);
+    CHECK(words[7] == 64ul + 16ul);
+    CHECK(words[10] == 0x0c200000ul);
+    CHECK(words[22] == 3ul + 16ul && words[24] == 3ul + 16ul + 8ul);
+
     /* The three depths measured, and nothing else. */
     CHECK(v9x_nv50_2d_format(1ul) == 0xf3ul);
     CHECK(v9x_nv50_2d_format(2ul) == 0xe8ul);

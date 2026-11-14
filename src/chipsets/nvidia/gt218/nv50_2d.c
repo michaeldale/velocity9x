@@ -47,6 +47,33 @@ static void v9x_nv50_push_one(struct v9x_nv50_push *push, v9x_u32 method,
     v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, method, 1ul, &value);
 }
 
+/*
+ * A pitch surface's address on 256 bytes, the remainder moved into its x
+ * and width. V9XD32's T4Copy source on M-BXMFA8 sat C0h past a 256-byte
+ * boundary and the engine copied from somewhere else: zeros at 16 bpp,
+ * other data at 32. xf86-video-nouveau's EXA keeps every pixmap on 256
+ * bytes. DirectDraw places surfaces on 8. A remainder that is not a
+ * whole number of pixels is left as it was.
+ */
+#define V9X_502D_ADDRESS_ALIGN       0x100ul
+
+static void v9x_nv50_2d_align(v9x_u32 format, v9x_u32 *address,
+                              v9x_u32 *x, v9x_u32 *width)
+{
+    /* Shifts, not 32-bit division: in the 16-bit driver that would call
+     * a runtime helper outside this segment. */
+    unsigned shift = format == V9X_502D_FORMAT_X8R8G8B8 ? 2u :
+                     format == V9X_502D_FORMAT_R5G6B5 ? 1u : 0u;
+    v9x_u32 extra = *address & (V9X_502D_ADDRESS_ALIGN - 1ul);
+
+    if (extra == 0ul || (extra & ((1ul << shift) - 1ul)) != 0ul) {
+        return;
+    }
+    *address -= extra;
+    *x += extra >> shift;
+    *width += extra >> shift;
+}
+
 void V9X_NV50_FAR v9x_nv50_push_bind_2d(struct v9x_nv50_push *push)
 {
     v9x_nv50_push_one(push, V9X_NV50_MTHD_SET_OBJECT, V9X_NV50_HANDLE_2D);
@@ -61,6 +88,8 @@ void V9X_NV50_FAR v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
 {
     v9x_u32 surface[10];
     v9x_u32 points[4];
+
+    v9x_nv50_2d_align(format, &dst, &x, &width);
 
     /* DST_FORMAT through DST_OFFSET_LOWER, 200h-224h, in one run: a
      * pitch-linear surface, one layer deep, block dimensions unused. */
@@ -119,6 +148,9 @@ void V9X_NV50_FAR v9x_nv50_push_blit(struct v9x_nv50_push *push,
     v9x_u32 src_format[2];
     v9x_u32 src[5];
     v9x_u32 blit[12];
+
+    v9x_nv50_2d_align(format, &src_surface, &sx, &src_width);
+    v9x_nv50_2d_align(format, &dst_surface, &dx, &dst_width);
 
     v9x_nv50_push_one(push, V9X_502D_SET_SRC_CONTEXT_DMA,
                       V9X_NV50_HANDLE_DMA_VM);
