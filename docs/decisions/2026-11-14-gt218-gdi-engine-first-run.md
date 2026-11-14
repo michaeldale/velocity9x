@@ -77,6 +77,12 @@ Boot 115 (2e35b466), with V9XGDI /accel moved to the end (`order/`):
 `GdiAcceleration` read `gdi-fill-copy-overlap` after every step until the
 last.
 
+Boot 116 ran the same order on 2c0f02e8, the branch merged with main,
+where the engine type is 16 (`merged/`): V9XDDP `COMPLETE` twice with
+the seven pixel checks 1, V9XMSW cycle and depth 4 of 4 PASS, /auto PASS,
+and /accel `Result=PASS` with `EngineType=16`, 160 fills and 131 copies
+on the engine and no timeout.
+
 ## A misreading, corrected
 
 V9XGDI /accel ends by arming the driver's fault injector and drawing
@@ -108,6 +114,6 @@ does.
 The nvidia family's `_TEXT` was 57105 bytes with the capture, 239 under
 its budget; it is a tight segment.
 
-The machine is left on 2e35b466, boot 115, with GDI poisoned for the
+The machine is left on 2c0f02e8, boot 116, with GDI poisoned for the
 session by V9XGDI's injection (the CPU draws everything until the next
 boot).
