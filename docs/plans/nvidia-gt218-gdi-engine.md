@@ -103,10 +103,13 @@ mode set then costs nothing, as step 4.0 measured it need not.
 
 In `gdi_accel.c`, under the nvidia family: live when the row is the
 GT218, BAR0's selector is up and the reserve is inside the mapping. At
-gate 8, as the NV3 arm does: the guard, the idle wait (3334h against
-3330h is not enough after a kick; the engine's own next index is read
-from 3334h once idle), the push and IB entry, a write-combining drain,
-the kick. A timeout or a latched interrupt poisons GDI acceleration for
+gate 8, as the NV3 arm does: the guard, the idle wait, the push and IB entry, a write-combining
+drain, the kick. Two sides now kick one ring, so neither can keep the
+index in a variable of its own. After a kick, each side waits (bounded)
+until PFIFO's copy of PUT (3330h) shows the new index; idle is then
+3334h = 3330h with the pusher drained and PGRAPH idle, and the next
+index is what 3334h reads. `eng_nv50.c` changes to the same rule in
+5.2. A timeout or a latched interrupt poisons GDI acceleration for
 the session, as on every other arm. Fill and copy only; text and upload
 stay on the CPU.
 
