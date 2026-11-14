@@ -1,0 +1,17 @@
+{
+    "Name":  "gm45",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  17,
+    "BootAfter":  18,
+    "Installed":  8,
+    "Error":  "Could not push C:\\Users\\michael\\AppData\\Local\\Temp\\v9xrc-gm45-5eaca1ab\\probes to C:\\V9XREL.",
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  17,
+    "Desktop":  true,
+    "AnswerSeconds":  5,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

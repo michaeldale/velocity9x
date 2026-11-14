@@ -1,0 +1,17 @@
+{
+    "Name":  "carrizo",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  64,
+    "BootAfter":  65,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.16.0",
+    "Boot":  64,
+    "Desktop":  true,
+    "AnswerSeconds":  3,
+    "ThreeDMark":  "stopped at the 3-minute limit, last FlipHandled 7006",
+    "Counters":  "draws +549424, into presented +0, refused batches +0, engine stalls +0, FilterMagSeen 0x6",
+    "CounterFlags":  ""
+}

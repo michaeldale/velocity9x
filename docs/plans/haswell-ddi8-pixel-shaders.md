@@ -512,7 +512,13 @@ Pure C in `src/display32/d3d/` (the parser, IR and interpreter) and
 - **DOT3 and environment bump mapping** as texture-stage ops. 3DMark
   reports both unsupported (boot 50). They are fixed-function, not
   shaders, and the PS 1.1 translator's `dp3` and `texbem` code would serve
-  them; a follow-up once this lands.
+  them; a follow-up once this lands. **Done 2026-11-14** through the
+  stages' own ps.1.1 program
+  ([record](../decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)):
+  3DMark 2001 SE runs both bump tests (48.0 and 29.0 fps in a full run
+  of 2524, boot 259). A fault in its DOT3 test on the way was our own
+  d3d8 logging proxy
+  ([issue](../issues/2026-11-14-haswell-3dmark2001se-dot3-renderer-fault.md)).
 - **PS 1.2-1.4** and the Advanced Pixel Shader test, if it needs them.
 - **Other chips with programmable pixel stages**: Ivy Bridge (same
   kernel, `ivy-bridge-gen7-parked`), the HD 5450 and Carrizo (their own

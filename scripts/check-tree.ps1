@@ -131,6 +131,24 @@ $required = @(
     "tests\host\test_rs690_3d.c",
     "src\chipsets\ati\rs690\rs690_hw16.c",
     "src\display32\engines\eng_rs690.c",
+    "include\velocity9x\r6_dma.h",
+    "src\chipsets\ati\r600\r6_dma.c",
+    "src\display32\engines\eng_r6.c",
+    "tests\host\test_r6_dma.c",
+    "include\velocity9x\r6_shader.h",
+    "src\chipsets\ati\r600\r6_shader.c",
+    "include\velocity9x\r6_3d.h",
+    "src\chipsets\ati\r600\r6_3d.c",
+    "tests\host\test_r6_3d.c",
+    "include\velocity9x\r6_cp_microcode.h",
+    "src\chipsets\ati\r600\r6_cp_microcode.c",
+    "scripts\gen-r600-microcode.ps1",
+    "src\display32\engines\r6_cp.c",
+    "src\display32\d3d\d3d_r6_map.h",
+    "src\display32\d3d\d3d_r6_map.c",
+    "src\display32\d3d\d3d_r6.c",
+    "tests\host\test_d3d_r6_map.c",
+    "tools\diag\rv630_3d_win32.c",
     "src\display32\engines\rs690_scanout.c",
     "tests\host\test_rs690_2d.c",
     "src\chipsets\nvidia\nv3_3d.c",
@@ -246,6 +264,9 @@ $required = @(
     "tests\host\test_vbe_cache.c",
     "src\chipsets\intel\i9xx_gtt.c",
     "tests\host\test_i9xx_gtt.c",
+    "src\common\i9xx_pool.c",
+    "tests\host\test_i9xx_pool.c",
+    "include\velocity9x\i9xx_pool.h",
     "src\chipsets\intel\i9xx_ring.c",
     "tests\host\test_i9xx_ring.c",
     "src\chipsets\intel\i9xx_blt.c",
@@ -327,6 +348,13 @@ $allowedOsBoundaries = @(
     # Phase 5's sequencer writes INTEL3D0.TXT with the same Win16 profile API.
     # Every builder it calls stays OS-free in src\chipsets\intel.
     (Join-Path $repoRoot "src\display16\intel_3d16.c"),
+    # The panel-mode plan writes V9XHW.INI and its SYSTEM.INI record with the
+    # same Win16 profile API; the plan itself is OS-free in
+    # src\common\vbios_panel.c.
+    (Join-Path $repoRoot "src\display16\intel_panel16.c"),
+    # The texture pool's setup writes INTELGTT.TXT with the same Win16
+    # profile API; its policy is OS-free in src\common\i9xx_pool.c.
+    (Join-Path $repoRoot "src\display16\intel_pool16.c"),
     (Join-Path $repoRoot "src\display16\win9x_display_abi.h"),
     # The 32-bit HAL now has exactly one OS boundary: its private header. Every
     # translation unit of V9XHAL.DLL reaches <windows.h> through that and only

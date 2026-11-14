@@ -330,6 +330,12 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-05 The GM45 (GL40, HP t5740) runs 0.35.0: Direct3D in hardware and 3DMark 99, issue 22's field report (V9X-EXR8BE)](2026-11-05-gm45-gl40-field-report.md)
 - [2026-11-11 The GMA 950 samples ARGB8888 and XRGB8888 texels exactly (V9XD32 T22), and 3DMark 2001 SE runs on them at 16 and 32 bpp with nothing refused](2026-11-11-gen3-32bit-textures-netbook.md)
 - [2026-11-11 Gen3 pixel shaders on the GMA 950: T19 passes once DDI 8 is offered and vertices move half a pixel; 3DMark 2001 SE stops in Advanced Pixel Shader on a texture the runtime refuses](2026-11-11-gen3-ps11-netbook-first-runs.md)
+- [2026-11-11 Gen3 textures to 2048: the refused call was a 2048x2048 map against a 1024 cap; with 2048 claimed (a 2048 edge sampled exactly) 3DMark 2001 SE completes with pixel shaders, 528](2026-11-11-gen3-texture-size-2048.md)
+- [2026-11-12 Intel Gen3 texture pool: the plan's decisions taken (32 MiB, netbook only, V9X3D OFF recovers) and its errata gate](2026-11-12-intel-gen3-texture-pool-decisions.md)
+- [2026-11-12 Intel Gen3 texture pool, Phase 0: 32 MiB of fixed pages allocates in 34 ms, 64 MiB of GMADR maps write-combined, and the 98 SE runtime keeps a texture-only heap to textures](2026-11-12-intel-gen3-texture-pool-phase0.md)
+- [2026-11-12 Intel Gen3 texture pool, Phase 2: 32 MiB of RAM mapped through the GTT, a pattern through the aperture lands in the right pages, and a VBIOS mode set leaves the PTEs alone](2026-11-12-intel-gen3-texture-pool-phase2.md)
+- [2026-11-12 Intel Gen3 texture pool, Phase 3: the driver maps 32 MiB of system RAM at boot, publishes it as a texture-only heap, and the GMA 950 samples textures from it exactly; every netbook probe passes and 3DMark 2001 SE completes](2026-11-12-intel-gen3-texture-pool-phase3.md)
+- [2026-11-12 Intel Gen3 texture pool: Half-Life, Quake 2 and Serious Sam run on the netbook; Serious Sam holds 488 hardware textures with no failed creates or evictions](2026-11-12-intel-gen3-texture-pool-games.md)
 
 ## SiS
 
@@ -394,6 +400,9 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-29 3DMark 2000 on Carrizo: it runs; lines along triangle edges were the sampler outside whole-quad mode](2026-10-29-carrizo-3dmark2000.md)
 - [2026-10-29 V9XDDP's zero rows on Carrizo: perspective was inverted, two features were missing, and a CPU Lock of the tiled Z buffer misaddressed it until Lock detiled it](2026-10-29-carrizo-ddp-zero-rows.md)
 - [2026-10-29 Carrizo runs Quake 3 through the OpenGL ICD in hardware, once its Z16 rows were whole 64 bytes](2026-10-29-carrizo-opengl-quake3.md)
+- [2026-11-11 Carrizo from 0.34.0 to main: the updater's twelve-release jump works, Glide passes on its first run, and write-combining takes FbWrite from 204 to 4,779 MB/s](2026-11-11-carrizo-catch-up-and-write-combining.md)
+- [2026-11-12 The screen shadow on the ati family's Evergreen, VI and CIK chips: GDI reads on Carrizo 8 to 630 MB/s, windowed GL unchanged once read-backs are deferred and cursor exclusions told apart; a direction-flag fault found and fixed](2026-11-12-ati-screen-shadow.md)
+- [2026-11-12 The software Direct3D engine samples ARGB8888 and XRGB8888: V9XD32 T22 on vbe from white to exact](2026-11-12-vbe-soft-32bit-textures.md)
 - [2026-10-29 Cedar's Z16 rows on 32 bytes: a 360-pixel GL window lost every clear and draw](2026-10-29-cedar-z16-row-align.md)
 - [2026-10-29 DirectDraw's mode list keeps 640x480, 800x600 and 1024x768 at every depth](2026-10-29-cedar-dd-mode-subset.md)
 - [2026-10-29 0.33.0 release checks: the HD 4600, the GMA 950, the HD 5450 and the Carrizo](2026-10-29-0.33.0-release-checks.md)

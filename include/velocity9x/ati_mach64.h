@@ -60,6 +60,9 @@
 /* The Radeon X1200 IGP (RS690): the Radeon 2D engine behind DirectDraw;
  * see rs690_hw16.c. */
 #define V9X_PCI_DEVICE_RS690_791F       ((v9x_u16)0x791Fu)
+/* The Radeon HD 2600 XT (RV630, R6xx): the DMA engine behind DirectDraw;
+ * see cedar_hw16.c's R6xx row. */
+#define V9X_PCI_DEVICE_RV630_9588       ((v9x_u16)0x9588u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

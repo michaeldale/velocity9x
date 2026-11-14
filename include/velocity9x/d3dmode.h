@@ -34,6 +34,7 @@
 #define VELOCITY9X_D3DMODE_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/leaf16.h"
 
 /* The SYSTEM.INI key. The section and the file are the display driver's, in
  * src\display16\dd16.c, beside the identical pair in gdi_accel.c. */
@@ -107,10 +108,11 @@
  * word so that this file need not include the DirectDraw ABI header, which
  * would put a 16:16 far-pointer contract into the host build.
  */
-v9x_u16 v9x_d3d_mode_resolve(v9x_u16 requested, v9x_u16 chip_has_d3d);
+v9x_u16 V9X_LEAF_FAR v9x_d3d_mode_resolve(v9x_u16 requested,
+                                          v9x_u16 chip_has_d3d);
 
 /* Whether that state advertises Direct3D to DDRAW. Exactly one state does. */
-v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state);
+v9x_u16 V9X_LEAF_FAR v9x_d3d_mode_advertises(v9x_u16 state);
 
 /*
  * Whether DirectDraw may be offered a 32-bit depth buffer (DDBD_32 in
@@ -119,14 +121,15 @@ v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state);
  * engine, which interpolates 16 bits of depth.
  * docs\plans\32bpp-acceleration-and-3d.md, decision 1.
  */
-v9x_u16 v9x_d3d_mode_deep_z(v9x_u16 state, v9x_u16 chip_has_deep_z);
+v9x_u16 V9X_LEAF_FAR v9x_d3d_mode_deep_z(v9x_u16 state,
+                                         v9x_u16 chip_has_deep_z);
 
 /*
  * The state as the string written to C:\V9XDIAG\V9XHW.INI and read back by
  * the Display Properties page. Stable text, not prose: settings_status.c
  * compares against these spellings.
  */
-const char *v9x_d3d_mode_text(v9x_u16 state);
+const char * V9X_LEAF_FAR v9x_d3d_mode_text(v9x_u16 state);
 
 /*
  * A request number as the decimal text written to V9XHW.INI's
@@ -134,6 +137,6 @@ const char *v9x_d3d_mode_text(v9x_u16 state);
  * resolved state and this one names what was asked for; the page needs the
  * request to preselect its own control, and cannot recover it from the state.
  */
-const char *v9x_d3d_request_text(v9x_u16 request);
+const char * V9X_LEAF_FAR v9x_d3d_request_text(v9x_u16 request);
 
 #endif /* VELOCITY9X_D3DMODE_H */

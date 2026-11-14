@@ -416,6 +416,12 @@ int v9x_render_drain(int wait);
 /* Byte offset of a surface within the framebuffer, or 0xffffffff. */
 DWORD v9x_surface_offset(const V9X_DD_SURFACE_LCL *surface);
 
+/* The same for a surface an engine only samples: also accepts the texture
+ * pool, past stolen memory (engine.pool_offset, pool_bytes). For texture
+ * binds and placement records only; blits, flips and targets keep
+ * v9x_surface_offset, which ends at fb.vram_bytes. */
+DWORD v9x_surface_sample_offset(const V9X_DD_SURFACE_LCL *surface);
+
 /* Outcome of an attempt to express a blit on a particular engine. */
 #define V9X_BLT_DONE      0   /* the engine has been programmed          */
 #define V9X_BLT_BUSY      1   /* engine busy and the caller asked not to wait */
@@ -476,6 +482,7 @@ extern const V9X_ENGINE32_OPS v9x_engine32_eg;
 extern const V9X_ENGINE32_OPS v9x_engine32_vi;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv3;
 extern const V9X_ENGINE32_OPS v9x_engine32_rs690;
+extern const V9X_ENGINE32_OPS v9x_engine32_r6;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv50;
 /* Haswell's Y-tiled Z buffers are filled by the render engine, not the
  * blitter: eng_hsw.c's fill hands a depth destination to d3d\d3d_hsw.c.
@@ -647,6 +654,30 @@ DWORD v9x_eg_cp_shader_gpu(DWORD which);
  * 31:0, zero until the engine is validated. */
 int v9x_eg_dma_settle(void);
 int v9x_eg_heap_address(DWORD *high, DWORD *low);
+/* The R6xx CP (HD 2600 XT), in engines/r6_cp.c, Evergreen's contract
+ * above: ready, submit, drain and vertex_space as v9x_eg_cp_*. addresses
+ * gives the heap's GPU address (R6xx's are 32 bits) and
+ * CC_GC_SHADER_PIPE_CONFIG, which the default state takes, read without
+ * starting the CP; shader_gpu a slot's address (r6_shader.h,
+ * V9X_R6_SLOT_*) once addresses has answered. */
+int v9x_r6_cp_ready(void);
+int v9x_r6_cp_submit(const v9x_u32 *dwords, DWORD count);
+int v9x_r6_cp_drain(int wait);
+int v9x_r6_cp_vertex_space(DWORD bytes, volatile DWORD **linear, DWORD *gpu);
+int v9x_r6_cp_addresses(DWORD *heap_gpu, DWORD *pipe_config);
+DWORD v9x_r6_cp_shader_gpu(DWORD which);
+/* engines/eng_r6.c: waits for DMA work queued since the engine was last
+ * idle, so a 3D batch never reads what a fill or copy has yet to write.
+ * Non-zero when idle, or when the DMA engine is not running. */
+int v9x_r6_dma_settle(void);
+/* engines/eng_r6.c, for rs690_scanout.c's flips on the RV630: the GPU
+ * address D1GRPH takes for a surface byte_offset into the heap; zero
+ * until the engine is validated or for an offset outside the heap. */
+int v9x_r6_flip_address(DWORD byte_offset, DWORD *address);
+/* d3d/d3d_r6.c: a rectangle of a 1D-tiled Z16 drawn on the CP, for
+ * eng_r6.c's fills short of the whole surface (as v9x_d3d_eg_depth_fill). */
+int v9x_d3d_r6_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value, int wait);
 /* engines/eng_vi.c, for eg_scanout.c on Carrizo: dma_settle waits for the
  * SDMA work queued since the engine was last idle (non-zero when idle, or
  * when it is not running); heap_address gives the heap's GPU address as

@@ -75,6 +75,8 @@
 #define V9X_D3D_G4_REFUSE_NOT_READY 11ul
 #define V9X_D3D_G4_REFUSE_IDLE      12ul
 #define V9X_D3D_G4_REFUSE_STATE     13ul
+/* A kernel could not be replaced because the engine never drained. */
+#define V9X_D3D_G4_REFUSE_DRAIN     14ul
 #define V9X_D3D_G4_REFUSE_BATCH     15ul
 #define V9X_D3D_G4_REFUSE_SUBMIT    16ul
 
@@ -145,8 +147,8 @@ typedef struct v9x_d3d_g4_state {
     v9x_u8 depth_format;
     v9x_u32 scissor[4];
     int scissor_empty;
-    /* A keyed draw that writes depth, drawn as two passes
-     * (v9x_d3d_g4_draw_keyed_depth). */
+    /* An alpha-tested draw that writes depth, drawn as two passes
+     * (v9x_d3d_g4_draw_alpha_depth). */
     int depth_prepass;
 } V9X_D3D_G4_STATE;
 
@@ -454,7 +456,11 @@ static DWORD v9x_d3d_g4_texture_unit(const V9X_R3D_TEXTURE *texture,
                                       0)) {
         return V9X_D3D_G4_REFUSE_TEXTURE;
     }
-    offset = v9x_surface_offset(surface);
+    /* A sampled surface may lie in the texture pool, past stolen memory
+     * (the GM965; docs\decisions\2026-11-14-intel-gm965-texture-pool-
+     * decisions.md). Targets and depth keep
+     * v9x_surface_offset: the pool holds textures only. */
+    offset = v9x_surface_sample_offset(surface);
     if (offset == 0xfffffffful) {
         return V9X_D3D_G4_REFUSE_TEXTURE;
     }
@@ -826,15 +832,13 @@ static DWORD v9x_d3d_g4_map(const V9X_R3D_DRAW *draw, V9X_D3D_G4_STATE *state)
      * Direct3D has no fallback engine for Gen4 (v9x_r3d_fallback), so a
      * refusal here drops the draw. Forsaken keys every texture of its
      * depth-writing world geometry and rendered almost nothing (GM45,
-     * M-6B21TJ, 2026-11-08). A keyed draw is therefore drawn in two passes
-     * that each avoid the hanging combination; see
-     * v9x_d3d_g4_draw_keyed_depth. An application's own alpha test with
-     * depth writes stays refused.
+     * M-6B21TJ, 2026-11-08), and an application's own alpha test with depth
+     * writes dropped Half-Life's grates and doors and some of Incoming's
+     * geometry (same machine, 2026-11-11). Both are therefore drawn in two
+     * passes that each avoid the hanging combination; see
+     * v9x_d3d_g4_draw_alpha_depth.
      */
     if (state->cc.alpha_test != 0u && state->cc.depth_write != 0u) {
-        if (!keyed) {
-            return V9X_D3D_G4_REFUSE_ALPHA;
-        }
         state->depth_prepass = 1;
     }
     return V9X_D3D_G4_REFUSE_NONE;
@@ -900,9 +904,31 @@ static void v9x_d3d_g4_copy_kernel(DWORD offset, v9x_u32 count)
  * running is overwritten. The ring is in order, so the newest breadcrumb
  * covers them all.
  */
+/* Set when the last drain gave the engine up, so the refusal that follows
+ * names the drain and not the kernel or state it was for. */
+static int v9x_d3d_g4_drain_abandoned = 0;
+
+/*
+ * One call of the shared drain reads the status page
+ * V9X_I9XX_BREADCRUMB_POLLS times, some 20 ms, and answers BUSY if the
+ * engine is still working. Flip and Lock hand that to DirectDraw, which
+ * asks again; a draw has nobody to ask again, and the kernel writes below
+ * used to refuse it there. 3DMark 2000 on the GM965 lost 78 draws that way
+ * once the texture pool let it submit faster (docs\decisions\2026-11-14-
+ * intel-gm965-texture-pool-driver-first-boot.md). So wait while it is
+ * BUSY: the shared drain still abandons the engine after
+ * V9X_I9XX_DRAIN_ABANDON_POLLS without progress, which ends the loop.
+ */
 static int v9x_d3d_g4_drain_all(void)
 {
-    return v9x_d3d_i9xx_render_drain(1) == V9X_RENDER_DRAIN_DONE;
+    int result;
+
+    do {
+        result = v9x_d3d_i9xx_render_drain(1);
+    } while (result == V9X_RENDER_DRAIN_BUSY);
+
+    v9x_d3d_g4_drain_abandoned = result != V9X_RENDER_DRAIN_DONE;
+    return result == V9X_RENDER_DRAIN_DONE;
 }
 
 /* The SF kernel, once per kernel revision: its mark is in the signature
@@ -980,9 +1006,11 @@ static DWORD v9x_d3d_g4_write_state(const V9X_R3D_DRAW *draw,
     v9x_u8 sf_grf = 0u;
     v9x_u8 wm_grf = 0u;
 
+    v9x_d3d_g4_drain_abandoned = 0;
     if (!v9x_d3d_g4_write_sf(&sf_grf) ||
         !v9x_d3d_g4_write_wm(&state->desc, &wm_kernel, &wm_grf)) {
-        return V9X_D3D_G4_REFUSE_STATE;
+        return v9x_d3d_g4_drain_abandoned ? V9X_D3D_G4_REFUSE_DRAIN
+                                          : V9X_D3D_G4_REFUSE_STATE;
     }
     v9x_g4_sf_viewport(image + V9X_G4_ST_SF_VP / 4ul);
     /* The scissor in SF_VIEWPORT's rectangle (dwords 6 and 7). */
@@ -1250,25 +1278,26 @@ static int v9x_d3d_g4_submit(const V9X_R3D_DRAW *draw,
 }
 
 /*
- * A colour-keyed draw that writes depth, as two passes. The key's alpha
- * test together with depth writes hangs the 3D pipe (v9x_d3d_g4_map), but
- * each half alone does not: depth writes without the alpha test, and the
- * alpha test without depth writes, both ran on the GM965.
+ * An alpha-tested draw that writes depth, as two passes. The alpha test,
+ * the application's own or a colour key's, together with depth writes
+ * hangs the 3D pipe (v9x_d3d_g4_map), but each half alone does not: depth
+ * writes without the alpha test, and the alpha test without depth writes,
+ * both ran on the GM965.
  *
  * 1. Depth only: no texture, no alpha test, every colour channel's write
  *    disabled, the draw's own depth test with writes. This leaves the
- *    depth the draw would leave, except over keyed texels.
- * 2. Colour: the keyed texture and its alpha test, depth writes off, the
+ *    depth the draw would leave, except over texels the test discards.
+ * 2. Colour: the texture and the alpha test, depth writes off, the
  *    depth test EQUAL. A pixel takes its colour from the triangle whose
  *    depth won pass 1, so triangles that overlap inside one batch still
  *    occlude each other as the application asked. ALWAYS stays ALWAYS
  *    (the last triangle wins, as it would have) and NEVER stays NEVER.
  *
- * The cost: depth is also written where a texel is keyed out, so geometry
- * drawn later behind a keyed hole is hidden. Colour drawn before shows
- * through the hole as it should.
+ * The cost: depth is also written where the test discards a texel, so
+ * geometry drawn later behind such a hole is hidden. Colour drawn before
+ * shows through the hole as it should.
  */
-static int v9x_d3d_g4_draw_keyed_depth(const V9X_R3D_DRAW *draw,
+static int v9x_d3d_g4_draw_alpha_depth(const V9X_R3D_DRAW *draw,
                                        const V9X_D3D_G4_STATE *state,
                                        const V9X_R3D_VERTEX *vertices,
                                        DWORD triangle_count)
@@ -1325,7 +1354,7 @@ static int v9x_d3d_g4_draw_batch(const V9X_R3D_DRAW *draw,
         return 1;
     }
     if (state.depth_prepass) {
-        return v9x_d3d_g4_draw_keyed_depth(draw, &state, vertices,
+        return v9x_d3d_g4_draw_alpha_depth(draw, &state, vertices,
                                            triangle_count);
     }
     return v9x_d3d_g4_submit(draw, &state, vertices, triangle_count);

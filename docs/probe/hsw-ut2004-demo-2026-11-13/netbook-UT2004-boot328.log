@@ -1,0 +1,72 @@
+Log: Log file open, 11/13/26 22:55:52
+Init: Name subsystem initialized
+Init: Detected: Microsoft Windows 98 4.10 (Build: 67766446)
+Init: Version: 3334 (128.29)
+Init: Compiled: Sep 21 2004 19:59:46
+Init: Command line: dm-rankin?spectatoronly=1?numbots=12?quickstart=1?attractcam=1 -benchmark -seconds=77 -exec=..\Benchmark\Stuff\botmatchexec.txt -nosound
+Init: Character set: Unicode
+Init: Base directory: C:\UT2004DEMO\SYSTEM\
+Init: Ini:UT2004.ini   UserIni:User.ini
+Init: Build label: UT2004 Build UT2004_Build_[2004-09-21_19.13]
+Init: Object subsystem initialized
+Log: 	V9XHAL.DLL/Velocity9x Intel GMA 950 (945GSE)
+Log: Game class is 'GameInfo'
+Log: Bringing Level Entry.myLevel up for play (0) appSeconds: 5.909000...
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+Log: Browse: dm-rankin?Name=Player?Class=Engine.Pawn?Character=Jakob?team=255?spectatoronly=1?numbots=12?quickstart=1?attractcam=1
+Log: Collecting garbage
+Log: Purging garbage
+Log: Garbage: objects: 33054->33052; refs: 432709
+Log: Game class is 'xDeathMatch'
+Log: Bringing Level dm-rankin.myLevel up for play (0) appSeconds: 14.758000...
+Log: (Karma): Autodetecting CPU for SSE
+Log: (Karma): Using SSE Optimizations
+ScriptLog: GameInfo::InitGame : bEnableStatLogging False
+ScriptLog: New Player Player id=32af618f3ba1ef8264f8deefed08553c
+Log: Opened viewport
+Log: Enter SetRes: 640x480 Fullscreen 1
+Log: Using back-buffer format 22(32-bit)
+Log: Using depth-buffer format 77(32-bit)
+Log: Creating device
+Log: xD3DHelper::Init (QuadEmulation)
+Log: OS doesn't support IME.
+Log: Startup time: 17.137000 seconds
+Log: FactoryCreateText: TextBuffer with TextBufferFactory (0 1 ..\Benchmark\Stuff\botmatchexec.txt)
+Log: Execing ..\Benchmark\Stuff\botmatchexec.txt
+ScriptLog: START MATCH
+Log: Precaching: dm-rankin.LevelInfo0
+Log: Static mesh batches: 11352456 vertex bytes, 914784 index bytes
+Log: Allocating 16384 byte dynamic index buffer.
+Log: Finished precaching geometry in 7.356 seconds
+Log: Finished precaching textures in 3.955 seconds
+Log: Preprocessing:  Vertex stream total vertices: 86 Orig wedges: 86
+Log: Preprocessing:  Vertex stream total vertices: 62 Orig wedges: 62
+Log: appRequestExit(0)
+Exit: Preparing to exit.
+Log: Purging garbage
+Log: Unbound to Window.dll
+Log: Unbound to Core.dll
+Log: Unbound to Engine.dll
+Exit: Game engine shut down
+Log: Unbound to WinDrv.dll
+Exit: Windows client shut down
+Log: Unbound to D3DDrv.dll
+Log: Unbound to XGame.dll
+Log: Unbound to IpDrv.dll
+Log: Unbound to Fire.dll
+Log: Unbound to XInterface.dll
+Log: Unbound to UWeb.dll
+Log: Unbound to Onslaught.dll
+Log: (Karma): Level Karma Terminated.
+Log: (Karma): MePoolMallocDestroy(): 19052384 structs still allocated
+Log: Garbage: objects: 36010->0; refs: 432709
+Exit: Object subsystem successfully closed.
+Exit: Exiting.
+Log: FileManager: Reading 0 GByte 89 MByte 669 KByte 243 Bytes from HD took 10.422949 seconds (8.929935 reading, 1.493014 seeking).
+Log: FileManager: 0.271000 seconds spent with misc. duties
+Uninitialized: Name subsystem shut down
+Uninitialized: Memory Allocation Status
+Uninitialized: Curr Memory  0.347M /  3.184M
+Uninitialized: Peak Memory  108.280M /  110.629M
+Uninitialized: Allocs         670 Current /  1394205 Total
+Uninitialized: Log file closed, 11/13/26 23:05:26

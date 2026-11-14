@@ -2208,6 +2208,38 @@ static void test_cubetree(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* A BC1-3 cube (intel_hsw_3d.h): each face a block tree, QPitch the
+ * uncompressed rule with j 4, counted in rows of blocks. */
+static void test_cubetree_bc(void)
+{
+    struct v9x_hsw_cubetree tree;
+
+    /* UT2004's cube, 128 with eight levels in DXT5: a face is 32 blocks of
+     * 16 bytes wide (pitch 512) and 49 rows of blocks deep (levels 3 to 7
+     * run down from pixel row 160 to 196); QPitch (128 + 64 + 48) / 4;
+     * five of those and a face. Level 1 starts 32 rows of blocks down,
+     * level 2 sixteen blocks to its right. */
+    CHECK(v9x_intel_hsw_cubetree_bc(128u, 8u, 16u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 512ul && tree.qpitch == 60ul && tree.rows == 349ul);
+    CHECK(tree.level_offset[0] == 0ul && tree.level_offset[1] == 16384ul &&
+          tree.level_offset[2] == 16640ul);
+
+    /* One level of 8 in DXT1: LOD0 spacing, QPitch the side in blocks. */
+    CHECK(v9x_intel_hsw_cubetree_bc(8u, 1u, 8u, &tree) == V9X_STATUS_OK);
+    CHECK(tree.pitch == 64ul && tree.qpitch == 2ul && tree.rows == 12ul);
+
+    /* Refused: a side that is not whole blocks, a block size that is not
+     * BC1-3's, no levels, more levels than the side has. */
+    CHECK(v9x_intel_hsw_cubetree_bc(2u, 1u, 8u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_cubetree_bc(8u, 1u, 4u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_cubetree_bc(8u, 0u, 8u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_hsw_cubetree_bc(8u, 5u, 8u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_3d_tests(void)
 {
     failures = 0u;
@@ -2230,6 +2262,7 @@ unsigned int v9x_run_intel_hsw_3d_tests(void)
     test_miptree();
     test_miptree_bc();
     test_cubetree();
+    test_cubetree_bc();
     test_batch_and_check();
     test_qword_rule();
     test_phase_b1_stream();

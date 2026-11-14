@@ -2212,6 +2212,102 @@ static void test_texture_format_decode_565(void)
 }
 
 /*
+ * ARGB8888 and XRGB8888: four bytes a texel, eight bits a channel.
+ *
+ * Until 2026-11-12 the sampler read every texel as a 16-bit word and the
+ * software engine refused both formats, so V9XD32 T22's 32-bit textures drew
+ * as untextured vertex colour - white - on the vbe package. 0x80FF4020 is
+ * alpha 128, red 255, green 64, blue 32: on the 5:6:5 target red 31, green
+ * 16, blue 4. Read as two 16-bit texels, as the old fetch would, it is
+ * nothing like that.
+ */
+static v9x_u32 raster_texture_wide[RASTER_TEX_SIZE * RASTER_TEX_SIZE];
+
+static void raster_texture_wide_reset(V9X_D3D_RASTER_TEXTURE *texture,
+                                      v9x_u32 format, v9x_u32 word,
+                                      v9x_u32 blend)
+{
+    unsigned int index;
+
+    raster_texture_reset(texture, format, V9X_D3D_RASTER_FILTER_POINT,
+                         blend);
+    for (index = 0u; index < RASTER_TEX_SIZE * RASTER_TEX_SIZE; ++index) {
+        raster_texture_wide[index] = word;
+    }
+    texture->pixels = raster_texture_wide;
+    texture->pitch = RASTER_TEX_SIZE * 4ul;
+}
+
+static void test_texture_format_decode_8888(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    v9x_u16 value;
+
+    raster_reset(&target);
+    raster_texture_wide_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB8888,
+                              0x80ff4020ul, V9X_D3D_RASTER_BLEND_DECAL);
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    value = raster_pixel(16u, 12u);
+    RCHECK((value >> 11) == 31u);
+    RCHECK(((value >> 5) & 0x3fu) >= 15u && ((value >> 5) & 0x3fu) <= 17u);
+    RCHECK((value & 0x1fu) >= 3u && (value & 0x1fu) <= 5u);
+
+    /* XRGB8888 reads the same colour; the top byte is not alpha. */
+    raster_reset(&target);
+    raster_texture_wide_reset(&texture, V9X_D3D_RASTER_TEXFMT_XRGB8888,
+                              0x80ff4020ul, V9X_D3D_RASTER_BLEND_DECAL);
+    RCHECK(raster_textured_quad(&target, &texture, 255l, 255l, 255l) != 0);
+    value = raster_pixel(16u, 12u);
+    RCHECK((value >> 11) == 31u);
+    RCHECK(((value >> 5) & 0x3fu) >= 15u && ((value >> 5) & 0x3fu) <= 17u);
+}
+
+/*
+ * ARGB8888's alpha is eight bits; XRGB8888's is opaque. DECALALPHA over a
+ * black vertex shows it: alpha 128 puts about half the red on the target,
+ * XRGB8888 all of it.
+ */
+static void test_texture_alpha_8888(void)
+{
+    V9X_D3D_RASTER_TARGET target;
+    V9X_D3D_RASTER_TEXTURE texture;
+    v9x_u16 value;
+
+    raster_reset(&target);
+    raster_texture_wide_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB8888,
+                              0x80ff0000ul,
+                              V9X_D3D_RASTER_BLEND_DECALALPHA);
+    RCHECK(raster_textured_quad(&target, &texture, 0l, 0l, 0l) != 0);
+    value = raster_pixel(16u, 12u);
+    RCHECK((value >> 11) >= 15u && (value >> 11) <= 16u);
+
+    raster_reset(&target);
+    raster_texture_wide_reset(&texture, V9X_D3D_RASTER_TEXFMT_XRGB8888,
+                              0x80ff0000ul,
+                              V9X_D3D_RASTER_BLEND_DECALALPHA);
+    RCHECK(raster_textured_quad(&target, &texture, 0l, 0l, 0l) != 0);
+    value = raster_pixel(16u, 12u);
+    RCHECK((value >> 11) == 31u);
+}
+
+/* A 32-bit texture's row is four bytes a texel: a pitch of two is refused. */
+static void test_texture_pitch_8888(void)
+{
+    V9X_D3D_RASTER_TEXTURE texture;
+
+    raster_texture_wide_reset(&texture, V9X_D3D_RASTER_TEXFMT_ARGB8888,
+                              0ul, V9X_D3D_RASTER_BLEND_DECAL);
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+    texture.pitch = RASTER_TEX_SIZE * 2ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.format = V9X_D3D_RASTER_TEXFMT_XRGB8888;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) == 0);
+    texture.pitch = RASTER_TEX_SIZE * 4ul;
+    RCHECK(v9x_d3d_raster_texture_valid(&texture) != 0);
+}
+
+/*
  * Bilinear filtering produces texels that are not in the texture.
  *
  * A two-colour texture point-sampled can only ever put white or black on the
@@ -3938,6 +4034,9 @@ unsigned int v9x_run_d3d_raster_tests(void)
     test_texture_non_square_point_sampling();
     test_texture_format_decode();
     test_texture_format_decode_565();
+    test_texture_format_decode_8888();
+    test_texture_alpha_8888();
+    test_texture_pitch_8888();
     test_alpha_one_zero_replaces();
     test_alpha_full_is_exact();
     test_alpha_zero_keeps_destination();

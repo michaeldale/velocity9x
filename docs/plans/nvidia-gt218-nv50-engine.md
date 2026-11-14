@@ -43,7 +43,8 @@ It follows the RIVA 128's engine, the family's existing pattern
 
 - **16-bit side** (`gt218_hw16.c`): an engine descriptor that has the
   mini-VDD map BAR0 (16 MiB) and reports a new engine type,
-  `V9X_DD_ENGINE_TYPE_NV50` (15), with SOLID_FILL and SCREEN_COPY; a
+  `V9X_DD_ENGINE_TYPE_NV50` (15 on the branch; 16 since the merge with
+  main, where 15 went to the ATI R600 DMA engine), with SOLID_FILL and SCREEN_COPY; a
   reserve hook that takes the engine's region from the top of the
   128 MiB BAR1 mapping. The region is B0000h bytes today (instance
   block, page table, runlist, IB ring, pushbuffer, context image),

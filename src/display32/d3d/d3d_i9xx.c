@@ -93,7 +93,17 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
     4ul,                        /* target_pitch_align     */
     2048ul,                     /* target_dimension_max   */
     /*
-     * 8 to 1024, a power of two.
+     * 8 to 2048, a power of two.
+     *
+     * 2048 since 2026-11-11, for 3DMark 2001 SE's Advanced Pixel Shader,
+     * whose 2048x2048 map the Direct3D 8 runtime refused outright while
+     * this said 1024, stopping the whole benchmark. MEASURED on the netbook
+     * (V9XTSHP): a 256x2048 single level reads back exactly, so a 2048
+     * edge is sampled. A 2048-wide level was not read back - DirectDraw's
+     * heap, which places the probe's textures, refuses a 4096-byte row -
+     * but 3DMark's 2048x1024 and 2048x256 maps, placed by this driver, ran
+     * with no refusal. Width and height are the same 11-bit MS3 field
+     * shape. decisions/2026-11-11-gen3-texture-size-2048.md.
      *
      * MEASURED to 1024 (2026-10-02, V9XTSHP on the netbook): 256x256,
      * 512x512, 512x256, 256x512, 1024x1024 and 1024x256 single levels, and
@@ -109,13 +119,15 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * picture, not a write outside the surface. A claim that cost safety
      * rather than accuracy would not be worth making.
      *
-     * The ceiling is 1024 rather than 2048 because a 2048-square map is 8
-     * MiB and this part's stolen memory is 8, and 2048 was not sampled. The
-     * floor is 8 because below it the pitch of a square map stops being a
-     * multiple of four.
+     * A 2048-square chain is 21 MiB at 32 bits, more than the netbook's
+     * 7.7 MiB of stolen memory. With 2048 claimed, Advanced Pixel Shader
+     * created both of its 2048 chains and then reported itself unsupported
+     * instead of stopping the run; why it gave up was not measured.
+     * The floor is 8 because below it the pitch of a square map stops being
+     * a multiple of four.
      */
     8ul,                        /* texture_size_min       */
-    1024ul,                     /* texture_size_max       */
+    2048ul,                     /* texture_size_max       */
     4096.0f,                    /* coordinate_limit       */
     16ul,                       /* depth_bits_per_pixel   */
     /*
@@ -162,7 +174,18 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * and an unused byte (v9x_i9xx_retarget_state). */
     24ul,                       /* depth32_bits           */
     0ul,                        /* centre_in_engine       */
-    0ul,                        /* texture_stages         */
+    /*
+     * Two Direct3D stages in one pass, on the two-unit program OpenGL has
+     * drawn since 2026-10-05 (texture_units above). It was 0 while the
+     * caps already told DX8 programs four stages for pixel shaders, so
+     * 3DMark 2001 SE bound a second texture the fixed-function path then
+     * dropped: Dragothic's dragon drew its pale stage-0 texture alone,
+     * smooth white, and its terrain lost its second map (d3d8 proxy census,
+     * netbook boot 319, docs\issues\2026-11-07-gma950-3dmark2001se-
+     * dragothic-sky-white.md). Two stages also give every program DDI 6,
+     * as on the Rage 128 (d3d_core.c, v9x_d3d_dp2_for_process).
+     */
+    2ul,                        /* texture_stages         */
     /*
      * DDI 6 programs keep the band (coordinate_limit less a pixel) they
      * were told while the core clipped for this engine; without this,
@@ -170,7 +193,16 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_i9xx_limits = {
      * on the CPU again. What they send is what they sent; v9x_d3d_i9xx_draw
      * cuts past 1,024 pixels as the core cut past the target.
      */
-    1ul                         /* guard_band_ddi6        */
+    1ul,                        /* guard_band_ddi6        */
+    0ul,                        /* dxt_textures           */
+    /*
+     * MODULATE2X in the two-unit program (V9X_I9XX_COMBINE_MODULATE2X).
+     * Not on one stage yet: the one-unit programs need doubled forms, which
+     * would have to be built only where the model is flat, as the two-unit
+     * program is, since I9XXCODE is full. Until then a doubled single
+     * stage is drawn as MODULATE, as in 0.49.0.
+     */
+    V9X_D3D_MODULATE2X_TWO      /* modulate2x             */
 };
 
 /*
@@ -1677,7 +1709,7 @@ static void v9x_d3d_i9xx_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     const V9X_DD_SURFACE_LCL *surface =
         (const V9X_DD_SURFACE_LCL *)data->lpDDSurface;
     DWORD offset = surface != 0 && surface->lpGbl != 0
-                       ? v9x_surface_offset(surface) : 0xfffffffful;
+                       ? v9x_surface_sample_offset(surface) : 0xfffffffful;
     DWORD n;
 
     if (v9x_d3d_place_release(data, V9X_I9XX_SANDBOX_PAGE_BYTES)) {
@@ -1805,6 +1837,21 @@ static DWORD v9x_d3d_i9xx_mip_levels(const V9X_DD_SURFACE_LCL *top,
     return verified;
 }
 
+/*
+ * Where a sampled surface at `offset` must end: the texture pool's end for
+ * one in the pool, stolen memory's otherwise. A footprint may not run from
+ * one into the other, nor into the scratch-mapped addresses between them
+ * (docs\plans\intel-gen3-system-memory-textures.md).
+ */
+static DWORD v9x_d3d_i9xx_sample_limit(DWORD offset)
+{
+    if (v9x_hal->engine.pool_bytes != 0ul &&
+        offset >= v9x_hal->engine.pool_offset) {
+        return v9x_hal->engine.pool_offset + v9x_hal->engine.pool_bytes;
+    }
+    return v9x_hal->fb.vram_bytes;
+}
+
 static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
                                      struct v9x_i9xx_texture *map,
                                      DWORD *bytes_out)
@@ -1861,7 +1908,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
             ((DWORD)surface->lpGbl->lPitch & 0xfffful);
         return 0;
     }
-    offset = v9x_surface_offset(surface);
+    offset = v9x_surface_sample_offset(surface);
     if (offset == 0xfffffffful) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
         ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
@@ -1891,7 +1938,7 @@ static int v9x_d3d_i9xx_bind_texture(const V9X_R3D_TEXTURE *texture,
      */
     if (v9x_d3d_i9xx_bind_map_at(offset, (DWORD)surface->lpGbl->lPitch,
                                  footprint_width, map_rows, bytes,
-                                 v9x_hal->fb.vram_bytes,
+                                 v9x_d3d_i9xx_sample_limit(offset),
                                  &address) == V9X_FALSE) {
         ++v9x_hal->d3d_diagnostics.texture_refused_other;
         ++v9x_hal->d3d_diagnostics.texture_refused_bounds;
@@ -2707,6 +2754,13 @@ static void v9x_d3d_i9xx_note_batch(const V9X_D3DTLVERTEX *vertices,
 static V9X_R3D_VERTEX v9x_d3d_i9xx_clipped[V9X_R3D_CLIP_MAX_VERTICES];
 static V9X_R3D_VERTEX v9x_d3d_i9xx_fan[V9X_R3D_MAX_FAN_TRIANGLES * 3u];
 static V9X_R3D_DRAW v9x_d3d_i9xx_window;
+/* A two-unit cut (v9x_r3d_clip_triangle_uv1): its scratch, each clipped
+ * vertex's second pair, the fan's pairs, and the draw that carries them. */
+static V9X_R3D_VERTEX
+    v9x_d3d_i9xx_uv1_scratch[V9X_R3D_CLIP_MAX_VERTICES + 3u];
+static float v9x_d3d_i9xx_clipped_uv1[2u * V9X_R3D_CLIP_MAX_VERTICES];
+static float v9x_d3d_i9xx_fan_uv1[V9X_R3D_MAX_FAN_TRIANGLES * 3u * 2u];
+static V9X_R3D_DRAW v9x_d3d_i9xx_fan_window;
 
 /* Triangles first .. first + count - 1 of the draw, with a two-unit draw's
  * pairs moved along with them. */
@@ -2772,15 +2826,23 @@ static int v9x_d3d_i9xx_draw_classified(const V9X_R3D_DRAW *draw,
             ok = 0;
         }
         run_start = index + 1ul;
+        /* A two-unit triangle is cut with its second pair: it was dropped
+         * here until Direct3D sent two-unit draws (MODULATE2X), and
+         * UT2004's lightmapped floors then lost 149,488 triangles a
+         * botmatch on the netbook (boots 329-330). */
         if (draw->texcoords1 != 0) {
-            ++v9x_hal->d3d_diagnostics.i9xx_guard_dropped;
-            ok = 0;
-            continue;
+            corners = v9x_r3d_clip_triangle_uv1(
+                triangle, draw->texcoords1 + index * 3ul * 2ul,
+                v9x_d3d_i9xx_limits.coordinate_limit,
+                (float)draw->target.width, (float)draw->target.height,
+                v9x_d3d_i9xx_uv1_scratch, v9x_d3d_i9xx_clipped,
+                v9x_d3d_i9xx_clipped_uv1);
+        } else {
+            corners = v9x_r3d_clip_triangle(
+                triangle, v9x_d3d_i9xx_limits.coordinate_limit,
+                (float)draw->target.width, (float)draw->target.height,
+                v9x_d3d_i9xx_clipped);
         }
-        corners = v9x_r3d_clip_triangle(
-            triangle, v9x_d3d_i9xx_limits.coordinate_limit,
-            (float)draw->target.width, (float)draw->target.height,
-            v9x_d3d_i9xx_clipped);
         if (corners < 0) {
             ++v9x_hal->d3d_diagnostics.i9xx_guard_dropped;
             ok = 0;
@@ -2788,15 +2850,36 @@ static int v9x_d3d_i9xx_draw_classified(const V9X_R3D_DRAW *draw,
         }
         ++v9x_hal->d3d_diagnostics.i9xx_guard_cut;
         for (fan = 1; fan + 1 < corners; ++fan) {
+            DWORD pick;
+
             v9x_d3d_i9xx_fan[fans * 3ul] = v9x_d3d_i9xx_clipped[0];
             v9x_d3d_i9xx_fan[fans * 3ul + 1ul] = v9x_d3d_i9xx_clipped[fan];
             v9x_d3d_i9xx_fan[fans * 3ul + 2ul] =
                 v9x_d3d_i9xx_clipped[fan + 1];
+            if (draw->texcoords1 != 0) {
+                for (pick = 0ul; pick < 3ul; ++pick) {
+                    DWORD from = pick == 0ul ? 0ul : (DWORD)fan + pick - 1ul;
+
+                    v9x_d3d_i9xx_fan_uv1[(fans * 3ul + pick) * 2ul] =
+                        v9x_d3d_i9xx_clipped_uv1[from * 2ul];
+                    v9x_d3d_i9xx_fan_uv1[(fans * 3ul + pick) * 2ul + 1ul] =
+                        v9x_d3d_i9xx_clipped_uv1[from * 2ul + 1ul];
+                }
+            }
             ++fans;
         }
-        if (fans != 0ul &&
-            !v9x_d3d_i9xx_draw_triangles_body(
-                draw, (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan, fans)) {
+        if (fans != 0ul && draw->texcoords1 != 0) {
+            v9x_d3d_i9xx_fan_window = *draw;
+            v9x_d3d_i9xx_fan_window.texcoords1 = v9x_d3d_i9xx_fan_uv1;
+            if (!v9x_d3d_i9xx_draw_triangles_body(
+                    &v9x_d3d_i9xx_fan_window,
+                    (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan, fans)) {
+                ok = 0;
+            }
+        } else if (fans != 0ul &&
+                   !v9x_d3d_i9xx_draw_triangles_body(
+                       draw, (const V9X_D3DTLVERTEX *)v9x_d3d_i9xx_fan,
+                       fans)) {
             ok = 0;
         }
     }
@@ -2995,17 +3078,26 @@ static int v9x_d3d_i9xx_draw_triangles_body(const V9X_R3D_DRAW *draw,
      */
     textured = v9x_d3d_i9xx_bind_texture(&draw->texture, &map, &map_bytes);
     /*
-     * A second unit, for the render interface only. Its accepts() took
-     * both surfaces as bindable; a bind that still fails - the footprint
-     * against the aperture - refuses the draw, since drawing it with one
-     * unit would be a different picture.
+     * A second unit. Its accepts() took both surfaces as bindable; a bind
+     * that still fails - the footprint against the aperture - refuses an
+     * explicit draw, since drawing it with one unit would be a different
+     * picture. A Direct3D draw is drawn with stage 0 alone instead, as the
+     * core draws a pair the engine declines (v9x_d3d_dispatch_engine):
+     * untextured when its own texture is the one that will not bind. Since
+     * MODULATE2X made UT2004's lightmaps two-unit, refusing these left 22
+     * draws a botmatch undrawn on the netbook (boot 331) that 0.49.0 drew.
      */
     if (two_units) {
         if (textured == 0 ||
             !v9x_d3d_i9xx_bind_texture(&draw->texture1, &maps[1],
                                        &map1_bytes)) {
-            return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+            if (draw->explicit_state != 0ul) {
+                return v9x_d3d_i9xx_refuse(V9X_I9XX_REFUSE_STATE);
+            }
+            two_units = 0;
         }
+    }
+    if (two_units) {
         maps[0] = map;
         combine[0].colour_op = draw->texture.color_op;
         combine[0].alpha_op = draw->texture.alpha_op;
@@ -3560,6 +3652,8 @@ typedef char v9x_assert_i9xx_combine_numbers[
      V9X_R3D_ABI_COLOROP_MODULATE == V9X_I9XX_COMBINE_MODULATE &&
      V9X_R3D_ABI_COLOROP_DECALALPHA == V9X_I9XX_COMBINE_DECAL &&
      V9X_R3D_ABI_COLOROP_BLEND == V9X_I9XX_COMBINE_BLEND &&
+     V9X_R3D_COLOROP_ADD == V9X_I9XX_COMBINE_ADD &&
+     V9X_R3D_COLOROP_MODULATE2X == V9X_I9XX_COMBINE_MODULATE2X &&
      V9X_R3D_ABI_ALPHAOP_FRAGMENT == V9X_I9XX_ALPHA_KEEP &&
      V9X_R3D_ABI_ALPHAOP_REPLACE == V9X_I9XX_ALPHA_REPLACE &&
      V9X_R3D_ABI_ALPHAOP_MODULATE == V9X_I9XX_ALPHA_MODULATE) ? 1 : -1];
@@ -3576,7 +3670,8 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
      * builder here emits none of them yet (the ring could carry a scissor
      * and a write mask; neither is built). */
     /* A second unit: both surfaces bindable, every combine the two-unit
-     * program has (all of table 3.18), addressing the sampler has. Its
+     * program has (all of table 3.18, and Direct3D's ADD), addressing the
+     * sampler has. Its
      * colour and alpha ops are the render interface's numbers, which are
      * V9X_I9XX_COMBINE_* / _ALPHA_* by the assertion above this engine's
      * draw. The single-unit `op` is not set on such a draw. */
@@ -3591,7 +3686,7 @@ static int v9x_d3d_i9xx_accepts(const V9X_R3D_DRAW *draw)
                 !v9x_d3d_i9xx_texture_bindable(
                     (const V9X_DD_SURFACE_LCL *)unit[k]->object) ||
                 unit[k]->color_op < V9X_I9XX_COMBINE_REPLACE ||
-                unit[k]->color_op > V9X_I9XX_COMBINE_BLEND ||
+                unit[k]->color_op > V9X_I9XX_COMBINE_MODULATE2X ||
                 unit[k]->alpha_op > V9X_I9XX_ALPHA_MODULATE ||
                 (unit[k]->address != V9X_R3D_ADDRESS_WRAP &&
                  unit[k]->address != V9X_R3D_ADDRESS_MIRROR &&
@@ -3742,7 +3837,7 @@ static int v9x_d3d_i9xx_shader_unit(const V9X_R3D_TEXTURE *texture,
     if (surface == 0 || surface->lpGbl == 0) {
         return 0;
     }
-    offset = v9x_surface_offset(surface);
+    offset = v9x_surface_sample_offset(surface);
     cube = offset != 0xfffffffful ? v9x_d3d_i9xx_cube_at(offset) : 0;
     if (cube == 0) {
         if (!v9x_d3d_i9xx_bind_texture(texture, map, &bytes)) {
@@ -3753,7 +3848,8 @@ static int v9x_d3d_i9xx_shader_unit(const V9X_R3D_TEXTURE *texture,
                                      &tree) == V9X_FALSE ||
             v9x_d3d_i9xx_bind_map_at(offset, tree.pitch,
                                      tree.pitch / cube->bytes, tree.rows,
-                                     cube->bytes, v9x_hal->fb.vram_bytes,
+                                     cube->bytes,
+                                     v9x_d3d_i9xx_sample_limit(offset),
                                      &address) == V9X_FALSE) {
             return 0;
         }

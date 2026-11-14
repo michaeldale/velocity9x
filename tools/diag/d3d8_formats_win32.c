@@ -24,7 +24,7 @@ static const struct { UINT f; const char *n; } formats[] = {
     { 20, "R8G8B8" }, { 21, "A8R8G8B8" }, { 22, "X8R8G8B8" },
     { 23, "R5G6B5" }, { 24, "X1R5G5B5" }, { 25, "A1R5G5B5" },
     { 26, "A4R4G4B4" }, { 28, "A8" }, { 30, "X4R4G4B4" }, { 41, "P8" },
-    { 50, "L8" }, { 51, "A8L8" },
+    { 50, "L8" }, { 51, "A8L8" }, { 60, "V8U8" }, { 63, "Q8W8V8U8" },
     { 0x31545844, "DXT1" }, { 0x33545844, "DXT3" }, { 0x35545844, "DXT5" },
 };
 static const struct { UINT f; const char *n; } depths[] = {
@@ -35,7 +35,9 @@ static const struct { UINT f; const char *n; } depths[] = {
 #define USAGE_RENDERTARGET 1ul
 #define USAGE_DEPTHSTENCIL 2ul
 #define RTYPE_SURFACE 1ul
+#define RTYPE_VOLUMETEXTURE 4ul
 #define RTYPE_TEXTURE 3ul
+#define RTYPE_CUBETEXTURE 5ul
 
 static unsigned long check_format(void *d3d, UINT adapter_format,
                                   DWORD usage, DWORD rtype, UINT format)
@@ -94,11 +96,31 @@ int WINAPI WinMain(HINSTANCE i, HINSTANCE p, LPSTR c, int s)
             check_type(d3d, display, display, TRUE));
 
     for (k = 0; k < sizeof(formats) / sizeof(formats[0]); ++k) {
-        fprintf(out, "Texture %-9s on 565 %08lx  RenderTarget %08lx\n",
+        fprintf(out, "Texture %-9s on 565 %08lx  RenderTarget %08lx"
+                "  RT texture %08lx  Cube %08lx  Volume %08lx\n",
                 formats[k].n,
                 check_format(d3d, 23, 0ul, RTYPE_TEXTURE, formats[k].f),
                 check_format(d3d, 23, USAGE_RENDERTARGET, RTYPE_SURFACE,
+                             formats[k].f),
+                check_format(d3d, 23, USAGE_RENDERTARGET, RTYPE_TEXTURE,
+                             formats[k].f),
+                check_format(d3d, 23, 0ul, RTYPE_CUBETEXTURE, formats[k].f),
+                check_format(d3d, 23, 0ul, RTYPE_VOLUMETEXTURE,
                              formats[k].f));
+    }
+    /* The HAL device's D3DCAPS8 (IDirect3D8 GetDeviceCaps, slot 13), all
+     * 53 dwords: TextureCaps is 15, MaxTextureWidth 22, Height 23,
+     * MaxTextureAspectRatio 26. */
+    {
+        unsigned long caps[64];
+
+        for (k = 0; k < 64; ++k) caps[k] = 0;
+        hr = ((unsigned long (__stdcall *)(void *, UINT, UINT, void *))
+                  SLOT(d3d, 13))(d3d, 0, 1, caps);
+        fprintf(out, "GetDeviceCaps HAL hr=%08lx\n", hr);
+        for (k = 0; k < 53; ++k) {
+            fprintf(out, "Caps%02u %08lx\n", k, caps[k]);
+        }
     }
     for (k = 0; k < sizeof(depths) / sizeof(depths[0]); ++k) {
         fprintf(out, "Depth %-12s on 565 %08lx\n", depths[k].n,

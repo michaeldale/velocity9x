@@ -220,7 +220,12 @@ V9xRs690MmioLinear dd 0
 ; ring, then the CP's ring, shaders and vertex arena (eg_3d.h,
 ; V9X_EG_WINDOW_*). It ends at 244 MiB, inside the 256 MiB minimum below.
 ; CONFIG_MEMSIZE is in MiB on Evergreen (Linux evergreen_mc_init); 1024 on
-; M-BXMFA8 (docs\decisions\2026-10-26-cedar-register-probe.md).
+; M-BXMFA8 (docs\decisions\2026-10-26-cedar-register-probe.md). The R6xx
+; HD 2600 XT keeps the register at the same offset in bytes (r600_mc_init):
+; 10000000h on M-NZHWBR (docs\decisions\2026-11-13-rv630-register-probe.md).
+; EG_MAP takes either; the two ranges cannot meet, as a MiB count stays at
+; or below 4096 and a byte count at or above 256 MiB. Its register BAR is
+; 64 KiB; the 128 KiB mapped here past it is never read.
 V9X_EG_MMIO_BYTES       equ 00020000h
 V9X_EG_RING_OFFSET      equ 0f000000h
 V9X_EG_RING_BYTES       equ 00400000h
@@ -228,6 +233,8 @@ V9X_EG_BAR0_ALIGN       equ 0fffffffh
 V9X_EG_CONFIG_MEMSIZE   equ 00005428h
 V9X_EG_MEMSIZE_MIN_MIB  equ 256
 V9X_EG_MEMSIZE_MAX_MIB  equ 4096
+V9X_R6_MEMSIZE_MIN      equ 10000000h
+V9X_R6_MEMSIZE_MAX      equ 40000000h
 V9xEgMmioBase   dd 0
 V9xEgMmioLinear dd 0
 V9xEgBar0       dd 0
@@ -632,6 +639,49 @@ IFDEF V9X_ADVFUNC_SHIELD
 ; V86 writes to ADVFUNC_CNTL swallowed since boot. Not read out by anything
 ; yet; the -IoTrace build's log is the instrument that counts them.
 V9xAdvFuncShieldCount dd 0
+ENDIF
+
+; The Intel panel-mode patch (V9xMini_Vbios_Patch): the SYSTEM.INI record the
+; 16-bit driver planned (include\velocity9x\vbios_panel.h), as parsed, and the
+; serial line for each outcome.
+V9xVbiosSection  db 'Velocity9x', 0
+V9xVbiosKey      db 'VbiosPanelPatch', 0
+V9xVbiosOffset   dd 0
+V9xVbiosPam      dd 0
+V9xVbiosRw       dd 0
+V9xVbiosSavedPam dd 0
+V9xVbiosOld      db 18 dup (0)
+V9xVbiosNew      db 18 dup (0)
+V9xVbiosAppliedLine db 'V9X-MINI vbios panel patch applied', 13, 10
+V9xVbiosAppliedLineLength equ $ - V9xVbiosAppliedLine
+V9xVbiosAlreadyLine db 'V9X-MINI vbios panel patch already present', 13, 10
+V9xVbiosAlreadyLineLength equ $ - V9xVbiosAlreadyLine
+V9xVbiosMismatchLine db 'V9X-MINI vbios panel patch refused: bytes differ', 13, 10
+V9xVbiosMismatchLineLength equ $ - V9xVbiosMismatchLine
+V9xVbiosBadLine db 'V9X-MINI vbios panel patch refused: record', 13, 10
+V9xVbiosBadLineLength equ $ - V9xVbiosBadLine
+V9xVbiosReadbackLine db 'V9X-MINI vbios panel patch failed: read back', 13, 10
+V9xVbiosReadbackLineLength equ $ - V9xVbiosReadbackLine
+
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; The Gen3 texture pool (V9XMINI_FN_I9XX_POOL_* in V9XMAPI.INC). The page
+; table copy is the pool's frames in the order their PTEs are written, so
+; aperture page i is allocation page i (measured, Phase 2 record).
+V9X_I9XX_POOL_DEVICE   equ 27ae8086h     ; the gate: MICHAEL-NETBOOK's 945GSE
+V9X_I9XX_POOL_DEVICE_GM965 equ 2a028086h ; and every GM965
+V9X_I9XX_POOL_FRAME    equ 0fffff000h
+V9X_I9XX_POOL_CFG_ADDR equ 0cf8h         ; PCI configuration mechanism 1
+V9X_I9XX_POOL_CFG_DATA equ 0cfch
+V9X_I9XX_POOL_CFG_IGD  equ 80001000h     ; 00:02.0, register 0
+V9xI9xxPoolPages   dd V9X_I9XX_POOL_PAGE_MAX dup (0)
+V9xI9xxPoolDemand  dd 32 dup (0)         ; DemandInfoStruc and its reserve
+V9xI9xxPoolState   dd 0                  ; 0 none, 1 allocated, 2 mapped
+V9xI9xxPoolHandle  dd 0
+V9xI9xxPoolLinear  dd 0
+V9xI9xxPoolFirst   dd 0
+V9xI9xxPoolCount   dd 0
+V9xI9xxPoolSaved   dd 0
+V9xI9xxPoolBad     dd 0
 ENDIF
 VxD_LOCKED_DATA_ENDS
 
@@ -2925,6 +2975,14 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_Nv3MmioMap
     cmp     ax, V9XMINI_FN_RS690_MMIO_MAP
     je      V9xMini_Api_Rs690MmioMap
+    cmp     ax, V9XMINI_FN_I9XX_POOL_INFO
+    je      V9xMini_Api_I9xxPoolInfo
+    cmp     ax, V9XMINI_FN_I9XX_POOL_ALLOC
+    je      V9xMini_Api_I9xxPoolAlloc
+    cmp     ax, V9XMINI_FN_I9XX_POOL_CHUNK
+    je      V9xMini_Api_I9xxPoolChunk
+    cmp     ax, V9XMINI_FN_I9XX_POOL_MAP
+    je      V9xMini_Api_I9xxPoolMap
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -4027,6 +4085,77 @@ ENDIF
     mov     [ebp.Client_AX], 0
     ret
 
+; The Gen3 texture pool. See V9XMINI_FN_I9XX_POOL_* in V9XMAPI.INC; the
+; work is in V9xMini_I9xx_Pool_* below the API.
+V9xMini_Api_I9xxPoolInfo:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    call    V9xMini_I9xx_Pool_Info
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_AX], 1
+    ret
+ELSE
+    mov     [ebp.Client_AX], 0
+    ret
+ENDIF
+
+V9xMini_Api_I9xxPoolAlloc:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    call    V9xMini_I9xx_Pool_Alloc
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_AX], ax
+    ret
+ELSE
+    mov     [ebp.Client_AX], 0
+    ret
+ENDIF
+
+V9xMini_Api_I9xxPoolChunk:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xI9xxPoolState, 0
+    je      short V9xMini_Api_I9xxPoolChunk_Missing
+    movzx   eax, [ebp.Client_CX]
+    shl     eax, 2
+    add     eax, 4
+    cmp     eax, V9xI9xxPoolCount
+    ja      short V9xMini_Api_I9xxPoolChunk_Missing
+    movzx   eax, [ebp.Client_CX]
+    shl     eax, 4
+    add     eax, OFFSET32 V9xI9xxPoolPages
+    mov     ebx, [eax]
+    mov     [ebp.Client_EBX], ebx
+    mov     ebx, [eax+4]
+    mov     [ebp.Client_ECX], ebx
+    mov     ebx, [eax+8]
+    mov     [ebp.Client_EDX], ebx
+    mov     ebx, [eax+12]
+    mov     [ebp.Client_ESI], ebx
+    mov     [ebp.Client_AX], 1
+    ret
+V9xMini_Api_I9xxPoolChunk_Missing:
+ENDIF
+    mov     [ebp.Client_AX], 0
+    ret
+
+V9xMini_Api_I9xxPoolMap:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    mov     ebx, [ebp.Client_EBX]
+    mov     ecx, [ebp.Client_ECX]
+    mov     edx, [ebp.Client_EDX]
+    call    V9xMini_I9xx_Pool_Map
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_ESI], esi
+    mov     [ebp.Client_AX], ax
+    ret
+ELSE
+    mov     [ebp.Client_AX], 0
+    ret
+ENDIF
+
 ; No input. See V9XMINI_FN_R128_AGP_RING in V9XMAPI.INC.
 V9xMini_Api_R128AgpRing:
 IFDEF V9X_R128_MMIO
@@ -4112,7 +4241,13 @@ V9xMini_Api_EgMap_Map:
     cmp     ecx, V9X_EG_MEMSIZE_MIN_MIB
     jb      V9xMini_Api_EgMap_Failed
     cmp     ecx, V9X_EG_MEMSIZE_MAX_MIB
+    jbe     short V9xMini_Api_EgMap_Size_Ok
+    ; Not a MiB count: an R6xx byte count, or refused.
+    cmp     ecx, V9X_R6_MEMSIZE_MIN
+    jb      V9xMini_Api_EgMap_Failed
+    cmp     ecx, V9X_R6_MEMSIZE_MAX
     ja      V9xMini_Api_EgMap_Failed
+V9xMini_Api_EgMap_Size_Ok:
     push    eax
     mov     edx, V9xEgBar0
     add     edx, V9X_EG_RING_OFFSET
@@ -4872,6 +5007,301 @@ V9xMini_Api_NoData:
     mov     [ebp.Client_AX], 0
     ret
 EndProc MiniVDD_PM_API
+
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+; The Gen3 texture pool's mechanics. The policy - how big, where, whether
+; these pages may be mapped - is the display driver's, from
+; src\common\i9xx_pool.c; this allocates, reports and writes, and keeps the
+; checks it cannot be talked out of: the device, the GTT bounds, entries
+; that all hold one value before, present pages outside stolen memory, and
+; every PTE read back after. Proved as G3PM.VXD on the netbook first
+; (docs\decisions\2026-11-12-intel-gen3-texture-pool-phase2.md).
+
+; Out: EBX = physical pages, ECX = state, EDX = saved PTE, ESI = mismatches.
+BeginProc V9xMini_I9xx_Pool_Info
+    VMMcall _GetDemandPageInfo,<<OFFSET32 V9xI9xxPoolDemand>,0>
+    mov     ebx, V9xI9xxPoolDemand[4]   ; DIPhys_Count, VMM.INC DemandInfoStruc
+    mov     ecx, V9xI9xxPoolState
+    mov     edx, V9xI9xxPoolSaved
+    mov     esi, V9xI9xxPoolBad
+    ret
+EndProc V9xMini_I9xx_Pool_Info
+
+; Out: EAX = 00:02.0's vendor and device. CF8h saved and restored with
+; interrupts off: this runs after boot, while other code may be mid-cycle.
+BeginProc V9xMini_I9xx_Pool_Igd_Id
+    mov     eax, V9X_I9XX_POOL_CFG_IGD
+    call    V9xMini_I9xx_Pool_Igd_Config
+    ret
+EndProc V9xMini_I9xx_Pool_Igd_Id
+
+; In: EAX = a mechanism-1 address in 00:02.0's configuration space. Out:
+; EAX = that dword. CF8h saved and restored with interrupts off.
+BeginProc V9xMini_I9xx_Pool_Igd_Config
+    push    ecx
+    push    edx
+    push    ebx
+    mov     ebx, eax
+    pushfd
+    cli
+    mov     dx, V9X_I9XX_POOL_CFG_ADDR
+    in      eax, dx
+    mov     ecx, eax
+    mov     eax, ebx
+    out     dx, eax
+    mov     dx, V9X_I9XX_POOL_CFG_DATA
+    in      eax, dx
+    xchg    eax, ecx
+    mov     dx, V9X_I9XX_POOL_CFG_ADDR
+    out     dx, eax
+    mov     eax, ecx
+    popfd
+    pop     ebx
+    pop     edx
+    pop     ecx
+    ret
+EndProc V9xMini_I9xx_Pool_Igd_Config
+
+; Out: ESI = linear address of the pool's first PTE.
+BeginProc V9xMini_I9xx_Pool_Pte_Base
+    mov     esi, V9xI9xxPoolFirst
+    shl     esi, 2
+    add     esi, V9xI9xxGttLinear
+    ret
+EndProc V9xMini_I9xx_Pool_Pte_Base
+
+; EBX = first entry, ECX = page count. Out: AX = 1, or AX = 0 and EDX =
+; reason (V9XMAPI.INC, POOL_ALLOC).
+BeginProc V9xMini_I9xx_Pool_Alloc
+    push    ebx
+    push    ecx
+    push    esi
+    push    edi
+    mov     edx, 1
+    cmp     V9xI9xxPoolState, 0
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     edx, 2
+    cmp     V9xI9xxGttValid, 0
+    je      V9xMini_I9xx_Pool_Alloc_Refused
+    ; The gate. The netbook's 945GSE, whose GTT is BAR3's; or any GM965,
+    ; whose GTT is in BAR0 (docs\decisions\2026-11-14-intel-gm965-texture-
+    ; pool-decisions.md; measured on TOMMOHP, opened to the design by
+    ; Michael's decision). The same PTE serves both: every frame Windows
+    ; 98 hands out is below 4 GiB, so Gen4's address bits 35:32 are zero.
+    call    V9xMini_I9xx_Pool_Igd_Id
+    cmp     eax, V9X_I9XX_POOL_DEVICE
+    jne     short V9xMini_I9xx_Pool_Alloc_Gm965
+    mov     edx, 2
+    cmp     V9xI9xxGttInBar0, 0
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    jmp     short V9xMini_I9xx_Pool_Alloc_Gated
+V9xMini_I9xx_Pool_Alloc_Gm965:
+    mov     edx, 3
+    cmp     eax, V9X_I9XX_POOL_DEVICE_GM965
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     edx, 2
+    cmp     V9xI9xxGttInBar0, 1
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+V9xMini_I9xx_Pool_Alloc_Gated:
+    mov     edx, 4
+    test    ecx, ecx
+    jz      V9xMini_I9xx_Pool_Alloc_Refused
+    cmp     ecx, V9X_I9XX_POOL_PAGE_MAX
+    ja      V9xMini_I9xx_Pool_Alloc_Refused
+    cmp     ebx, V9X_I9XX_GTT_ENTRY_COUNT
+    jae     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     eax, V9X_I9XX_GTT_ENTRY_COUNT
+    sub     eax, ebx
+    cmp     ecx, eax
+    ja      V9xMini_I9xx_Pool_Alloc_Refused
+    mov     V9xI9xxPoolFirst, ebx
+    mov     V9xI9xxPoolCount, ecx
+
+    ; Every entry the pool will take must hold the first one's value -
+    ; the VBIOS's scratch PTE - which is what a failed map restores.
+    mov     edx, 5
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     eax, [esi]
+    mov     V9xI9xxPoolSaved, eax
+V9xMini_I9xx_Pool_Alloc_Uniform:
+    cmp     [esi], eax
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    add     esi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Pool_Alloc_Uniform
+
+    mov     ecx, V9xI9xxPoolCount
+    VMMcall _PageAllocate,<ecx,PG_SYS,0,0,0,0,0,PAGEFIXED+PAGEZEROINIT>
+    test    eax, eax
+    jz      short V9xMini_I9xx_Pool_Alloc_No_Pages
+    mov     V9xI9xxPoolHandle, eax
+    mov     V9xI9xxPoolLinear, edx
+    mov     eax, edx
+    shr     eax, PAGESHIFT
+    VMMcall _CopyPageTable,<eax,V9xI9xxPoolCount,<OFFSET32 V9xI9xxPoolPages>,0>
+    test    eax, eax
+    jnz     short V9xMini_I9xx_Pool_Alloc_Done
+    VMMcall _PageFree,<V9xI9xxPoolHandle,0>
+    mov     V9xI9xxPoolHandle, 0
+    mov     V9xI9xxPoolLinear, 0
+    mov     edx, 7
+    jmp     short V9xMini_I9xx_Pool_Alloc_Failed
+    ; _PageAllocate returns the linear address in EDX, so the reason is set
+    ; after it, not before.
+V9xMini_I9xx_Pool_Alloc_No_Pages:
+    mov     edx, 6
+    jmp     short V9xMini_I9xx_Pool_Alloc_Failed
+
+V9xMini_I9xx_Pool_Alloc_Done:
+    mov     V9xI9xxPoolState, 1
+    mov     V9xI9xxPoolBad, 0
+    xor     edx, edx
+    mov     ax, 1
+    jmp     short V9xMini_I9xx_Pool_Alloc_Out
+V9xMini_I9xx_Pool_Alloc_Failed:
+V9xMini_I9xx_Pool_Alloc_Refused:
+    xor     ax, ax
+V9xMini_I9xx_Pool_Alloc_Out:
+    pop     edi
+    pop     esi
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_I9xx_Pool_Alloc
+
+; Free the pages and forget them. State back to 0.
+BeginProc V9xMini_I9xx_Pool_Release
+    push    eax
+    mov     eax, V9xI9xxPoolHandle
+    test    eax, eax
+    jz      short V9xMini_I9xx_Pool_Release_Done
+    VMMcall _PageFree,<eax,0>
+    mov     V9xI9xxPoolHandle, 0
+    mov     V9xI9xxPoolLinear, 0
+V9xMini_I9xx_Pool_Release_Done:
+    mov     V9xI9xxPoolState, 0
+    pop     eax
+    ret
+EndProc V9xMini_I9xx_Pool_Release
+
+; EBX = V9X_I9XX_POOL_ACCEPT to map, else release; ECX = BSM, EDX = stolen
+; bytes. Out: AX = 1 mapped or released, or AX = 0 and EDX = reason, ESI =
+; page index (reason 2) or mismatches (reason 3).
+BeginProc V9xMini_I9xx_Pool_Map
+    push    ebx
+    push    ecx
+    push    edi
+    push    ebp
+    cmp     V9xI9xxPoolState, 1
+    jne     V9xMini_I9xx_Pool_Map_State
+    cmp     ebx, V9X_I9XX_POOL_ACCEPT
+    je      short V9xMini_I9xx_Pool_Map_Check
+    call    V9xMini_I9xx_Pool_Release
+    xor     edx, edx
+    xor     esi, esi
+    mov     ax, 1
+    jmp     V9xMini_I9xx_Pool_Map_Out
+
+    ; Present, non-zero, outside [BSM, BSM + stolen), whatever the caller
+    ; decided. EBX = BSM, EBP = stolen bytes.
+V9xMini_I9xx_Pool_Map_Check:
+    mov     ebx, ecx
+    mov     ebp, edx
+    mov     edi, OFFSET32 V9xI9xxPoolPages
+    xor     esi, esi
+V9xMini_I9xx_Pool_Map_Page:
+    mov     eax, [edi+esi*4]
+    test    eax, P_PRES
+    jz      short V9xMini_I9xx_Pool_Map_Page_Refused
+    and     eax, V9X_I9XX_POOL_FRAME
+    jz      short V9xMini_I9xx_Pool_Map_Page_Refused
+    sub     eax, ebx
+    jb      short V9xMini_I9xx_Pool_Map_Page_Ok
+    cmp     eax, ebp
+    jb      short V9xMini_I9xx_Pool_Map_Page_Refused
+V9xMini_I9xx_Pool_Map_Page_Ok:
+    inc     esi
+    cmp     esi, V9xI9xxPoolCount
+    jb      short V9xMini_I9xx_Pool_Map_Page
+    jmp     short V9xMini_I9xx_Pool_Map_Write
+V9xMini_I9xx_Pool_Map_Page_Refused:
+    call    V9xMini_I9xx_Pool_Release
+    mov     edx, 2
+    xor     ax, ax
+    jmp     V9xMini_I9xx_Pool_Map_Out
+
+    ; The zero fill out of the cache before the GPU or the aperture can
+    ; read the pages, then the PTEs (frame | valid, cache type 0, as the
+    ; VBIOS writes its own) and the read that posts them.
+V9xMini_I9xx_Pool_Map_Write:
+    wbinvd
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, OFFSET32 V9xI9xxPoolPages
+    mov     ecx, V9xI9xxPoolCount
+V9xMini_I9xx_Pool_Map_Pte:
+    mov     eax, [edi]
+    and     eax, V9X_I9XX_POOL_FRAME
+    or      eax, 1
+    mov     [esi], eax
+    add     esi, 4
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Pool_Map_Pte
+    mov     eax, [esi-4]
+
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, OFFSET32 V9xI9xxPoolPages
+    mov     ecx, V9xI9xxPoolCount
+    xor     edx, edx
+V9xMini_I9xx_Pool_Map_Verify:
+    mov     eax, [edi]
+    and     eax, V9X_I9XX_POOL_FRAME
+    or      eax, 1
+    cmp     eax, [esi]
+    je      short V9xMini_I9xx_Pool_Map_Same
+    inc     edx
+V9xMini_I9xx_Pool_Map_Same:
+    add     esi, 4
+    add     edi, 4
+    dec     ecx
+    jnz     short V9xMini_I9xx_Pool_Map_Verify
+    mov     V9xI9xxPoolBad, edx
+    test    edx, edx
+    jnz     short V9xMini_I9xx_Pool_Map_Restore
+    mov     V9xI9xxPoolState, 2
+    xor     esi, esi
+    mov     ax, 1
+    jmp     short V9xMini_I9xx_Pool_Map_Out
+
+    ; A PTE that did not read back: the scratch PTE back in every entry
+    ; before the pages are freed, so no entry is left naming a freed page.
+V9xMini_I9xx_Pool_Map_Restore:
+    mov     ebp, edx
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, esi
+    mov     ecx, V9xI9xxPoolCount
+    mov     eax, V9xI9xxPoolSaved
+    cld
+    rep     stosd
+    mov     eax, [edi-4]
+    call    V9xMini_I9xx_Pool_Release
+    mov     esi, ebp
+    mov     edx, 3
+    xor     ax, ax
+    jmp     short V9xMini_I9xx_Pool_Map_Out
+
+V9xMini_I9xx_Pool_Map_State:
+    mov     edx, 1
+    xor     esi, esi
+    xor     ax, ax
+V9xMini_I9xx_Pool_Map_Out:
+    pop     ebp
+    pop     edi
+    pop     ecx
+    pop     ebx
+    ret
+EndProc V9xMini_I9xx_Pool_Map
+ENDIF
 
 ; The mask's bits above 4 GiB for this CPU's physical address width:
 ; CPUID 80000008h where it exists, else 36 bits with PAE or PSE-36, else 32.
@@ -6335,6 +6765,280 @@ ENDIF
 EndProc MiniVDD_TracePostVGAToHiRes
 ENDIF
 
+; ---------------------------------------------------------------------------
+; The Intel panel-mode patch: write the panel's timing into the video BIOS's
+; panel slot in shadow RAM, before V9xMini_Vbe_Collect reads the mode list.
+;
+; Mechanism only. Which bytes go where is the 16-bit driver's decision,
+; planned in host-tested C (src\common\vbios_panel.c) from the ROM and the
+; EDID at an earlier Enable and stored in SYSTEM.INI [Velocity9x]
+; VbiosPanelPatch as "OOOO PP MM " + 18 old bytes + " " + 18 new bytes, in
+; hex. This applies it only while the ROM still holds the old bytes, so a
+; different BIOS, a different panel or a record from another machine changes
+; nothing. Shadow RAM is unlocked through the one PAM half the record names
+; (0:0.0 config 91h or 92h, bits 03h or 30h), written, flushed, read back,
+; and the PAM register is restored to the value it had.
+;
+; Device_Init only, ring 0, before any VM can run the BIOS. Never fails the
+; init.
+V9X_VBIOS_ROM_PHYS     equ 0C0000h
+V9X_VBIOS_ROM_BYTES    equ 10000h
+V9X_VBIOS_DTD_BYTES    equ 18
+V9X_VBIOS_RECORD_BYTES equ 84
+V9X_VBIOS_PAM_LOW      equ 91h
+V9X_VBIOS_PAM_HIGH     equ 92h
+V9X_VBIOS_RW_LOW       equ 03h
+V9X_VBIOS_RW_HIGH      equ 30h
+V9X_PCI_HOST_BRIDGE    equ 80000000h    ; bus 0, device 0, function 0
+V9X_VBIOS_VENDOR_INTEL equ 8086h
+V9X_VBIOS_CONFIG_ADDRESS equ 0cf8h      ; PCI configuration mechanism 1
+V9X_VBIOS_CONFIG_DATA    equ 0cfch
+
+; Configuration cycles for the patch. V9xMini_Pci_Read and _Write are in the
+; I/O-trace build only; these are the same two cycles, in every build.
+; EAX = config address. Returns EAX = the dword there.
+BeginProc V9xMini_Vbios_Cfg_Read
+    push    edx
+    mov     dx, V9X_VBIOS_CONFIG_ADDRESS
+    out     dx, eax
+    mov     dx, V9X_VBIOS_CONFIG_DATA
+    in      eax, dx
+    pop     edx
+    ret
+EndProc V9xMini_Vbios_Cfg_Read
+
+; EAX = config address, ECX = the dword to write.
+BeginProc V9xMini_Vbios_Cfg_Write
+    push    edx
+    mov     dx, V9X_VBIOS_CONFIG_ADDRESS
+    out     dx, eax
+    mov     eax, ecx
+    mov     dx, V9X_VBIOS_CONFIG_DATA
+    out     dx, eax
+    pop     edx
+    ret
+EndProc V9xMini_Vbios_Cfg_Write
+
+; ESI = two hex digits. Returns AL = their value and ESI past them, or CF.
+BeginProc V9xMini_Hex_Byte
+    push    ecx
+    xor     eax, eax
+    mov     ecx, 2
+V9xMini_Hex_Next:
+    shl     al, 4
+    mov     ah, byte ptr [esi]
+    inc     esi
+    cmp     ah, '0'
+    jb      short V9xMini_Hex_Bad
+    cmp     ah, '9'
+    jbe     short V9xMini_Hex_Digit
+    and     ah, 0DFh                    ; upper case
+    cmp     ah, 'A'
+    jb      short V9xMini_Hex_Bad
+    cmp     ah, 'F'
+    ja      short V9xMini_Hex_Bad
+    sub     ah, 'A' - 10 - '0'
+V9xMini_Hex_Digit:
+    sub     ah, '0'
+    or      al, ah
+    dec     ecx
+    jnz     short V9xMini_Hex_Next
+    xor     ah, ah
+    pop     ecx
+    clc
+    ret
+V9xMini_Hex_Bad:
+    pop     ecx
+    stc
+    ret
+EndProc V9xMini_Hex_Byte
+
+; ESI = a space. Steps past it, or CF.
+BeginProc V9xMini_Hex_Space
+    cmp     byte ptr [esi], ' '
+    jne     short V9xMini_Hex_Space_Bad
+    inc     esi
+    clc
+    ret
+V9xMini_Hex_Space_Bad:
+    stc
+    ret
+EndProc V9xMini_Hex_Space
+
+; ESI = 36 hex digits, EDI = 18 bytes to fill. CF on a bad digit.
+BeginProc V9xMini_Hex_Dtd
+    push    ecx
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+V9xMini_Hex_Dtd_Next:
+    call    V9xMini_Hex_Byte
+    jc      short V9xMini_Hex_Dtd_Done
+    mov     byte ptr [edi], al
+    inc     edi
+    dec     ecx
+    jnz     short V9xMini_Hex_Dtd_Next
+    clc
+V9xMini_Hex_Dtd_Done:
+    pop     ecx
+    ret
+EndProc V9xMini_Hex_Dtd
+
+BeginProc V9xMini_Vbios_Patch
+    pushad
+
+    xor     edx, edx
+    mov     esi, OFFSET32 V9xVbiosSection
+    mov     edi, OFFSET32 V9xVbiosKey
+    VMMcall Get_Profile_String
+    jc      V9xMini_Vbios_Done          ; nothing planned
+    mov     esi, edx
+
+    ; The record is fixed width; anything else is not one of ours.
+    xor     ecx, ecx
+V9xMini_Vbios_Length:
+    cmp     byte ptr [esi+ecx], 0
+    je      short V9xMini_Vbios_Measured
+    inc     ecx
+    cmp     ecx, V9X_VBIOS_RECORD_BYTES
+    jbe     short V9xMini_Vbios_Length
+V9xMini_Vbios_Measured:
+    cmp     ecx, V9X_VBIOS_RECORD_BYTES
+    jne     V9xMini_Vbios_Bad
+
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    movzx   ebx, al
+    shl     ebx, 8
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    mov     bl, al
+    mov     V9xVbiosOffset, ebx
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    cmp     al, V9X_VBIOS_PAM_LOW
+    je      short V9xMini_Vbios_Pam_Ok
+    cmp     al, V9X_VBIOS_PAM_HIGH
+    jne     V9xMini_Vbios_Bad
+V9xMini_Vbios_Pam_Ok:
+    movzx   eax, al
+    mov     V9xVbiosPam, eax
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    call    V9xMini_Hex_Byte
+    jc      V9xMini_Vbios_Bad
+    cmp     al, V9X_VBIOS_RW_LOW
+    je      short V9xMini_Vbios_Rw_Ok
+    cmp     al, V9X_VBIOS_RW_HIGH
+    jne     V9xMini_Vbios_Bad
+V9xMini_Vbios_Rw_Ok:
+    movzx   eax, al
+    mov     V9xVbiosRw, eax
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    mov     edi, OFFSET32 V9xVbiosOld
+    call    V9xMini_Hex_Dtd
+    jc      V9xMini_Vbios_Bad
+    call    V9xMini_Hex_Space
+    jc      V9xMini_Vbios_Bad
+    mov     edi, OFFSET32 V9xVbiosNew
+    call    V9xMini_Hex_Dtd
+    jc      V9xMini_Vbios_Bad
+
+    ; Inside the 64 KiB window.
+    mov     eax, V9xVbiosOffset
+    add     eax, V9X_VBIOS_DTD_BYTES
+    cmp     eax, V9X_VBIOS_ROM_BYTES
+    ja      V9xMini_Vbios_Bad
+
+    ; The PAM layout is Intel's: an Intel host bridge or nothing.
+    mov     eax, V9X_PCI_HOST_BRIDGE
+    call    V9xMini_Vbios_Cfg_Read
+    cmp     ax, V9X_VBIOS_VENDOR_INTEL
+    jne     V9xMini_Vbios_Bad
+
+    VMMcall _MapPhysToLinear,<V9X_VBIOS_ROM_PHYS,V9X_VBIOS_ROM_BYTES,0>
+    cmp     eax, 0FFFFFFFFh
+    je      V9xMini_Vbios_Bad
+    add     eax, V9xVbiosOffset
+    mov     ebp, eax                    ; the descriptor in the ROM
+
+    ; The old bytes, or the new ones already, or neither.
+    mov     esi, ebp
+    mov     edi, OFFSET32 V9xVbiosOld
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    cld
+    repe    cmpsb
+    je      short V9xMini_Vbios_Write
+    mov     esi, ebp
+    mov     edi, OFFSET32 V9xVbiosNew
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    repe    cmpsb
+    jne     V9xMini_Vbios_Mismatch
+    mov     esi, OFFSET32 V9xVbiosAlreadyLine
+    mov     ecx, V9xVbiosAlreadyLineLength
+    jmp     V9xMini_Vbios_Report
+
+V9xMini_Vbios_Write:
+    ; Open the one half read-write: OR its two bits into the PAM byte, in the
+    ; dword config cycle that holds it.
+    mov     eax, V9xVbiosPam
+    and     eax, 0FCh
+    or      eax, V9X_PCI_HOST_BRIDGE
+    mov     ebx, eax                    ; the config address
+    call    V9xMini_Vbios_Cfg_Read
+    mov     V9xVbiosSavedPam, eax
+    mov     ecx, V9xVbiosPam
+    and     ecx, 3
+    shl     ecx, 3                      ; the byte's bit position
+    mov     edx, V9xVbiosRw
+    shl     edx, cl
+    or      eax, edx
+    mov     ecx, eax
+    mov     eax, ebx
+    call    V9xMini_Vbios_Cfg_Write
+
+    mov     esi, OFFSET32 V9xVbiosNew
+    mov     edi, ebp
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    rep     movsb
+    ; Out of the caches before the half is locked again: a line written back
+    ; after the lock would go nowhere.
+    wbinvd
+
+    mov     esi, ebp
+    mov     edi, OFFSET32 V9xVbiosNew
+    mov     ecx, V9X_VBIOS_DTD_BYTES
+    repe    cmpsb
+    pushfd
+    mov     eax, ebx
+    mov     ecx, V9xVbiosSavedPam
+    call    V9xMini_Vbios_Cfg_Write
+    popfd
+    jne     short V9xMini_Vbios_Readback
+
+    mov     esi, OFFSET32 V9xVbiosAppliedLine
+    mov     ecx, V9xVbiosAppliedLineLength
+    jmp     short V9xMini_Vbios_Report
+
+V9xMini_Vbios_Readback:
+    mov     esi, OFFSET32 V9xVbiosReadbackLine
+    mov     ecx, V9xVbiosReadbackLineLength
+    jmp     short V9xMini_Vbios_Report
+V9xMini_Vbios_Mismatch:
+    mov     esi, OFFSET32 V9xVbiosMismatchLine
+    mov     ecx, V9xVbiosMismatchLineLength
+    jmp     short V9xMini_Vbios_Report
+V9xMini_Vbios_Bad:
+    mov     esi, OFFSET32 V9xVbiosBadLine
+    mov     ecx, V9xVbiosBadLineLength
+V9xMini_Vbios_Report:
+    call    V9xMini_Serial_Write
+V9xMini_Vbios_Done:
+    popad
+    ret
+EndProc V9xMini_Vbios_Patch
+
 BeginProc MiniVDD_Dynamic_Init
     mov     esi, OFFSET32 V9xMiniInitLine
     mov     ecx, V9xMiniInitLineLength
@@ -6516,6 +7220,10 @@ IFNDEF V9X_NO_VBE_COLLECT
     ; What cannot be engineered away: Exec_Int runs the real video BIOS and
     ; has no timeout, so a BIOS that never IRETs hangs the boot. The vbe-call
     ; markers exist so a serial capture names the exact call.
+    ;
+    ; The panel-mode patch first, so the list collected below is the one the
+    ; patched BIOS describes. A no-op without a SYSTEM.INI record.
+    call    V9xMini_Vbios_Patch
     call    V9xMini_Vbe_Collect
 ELSE
     ; Assembled without the collection. Families whose drivers read the

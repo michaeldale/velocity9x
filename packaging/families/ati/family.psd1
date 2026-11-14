@@ -689,6 +689,57 @@
             }
             MapSymbols = @('v9x_rs690_device')
         }
+        @{
+            Id = 'rv630'
+            Name = 'ATI Radeon HD 2600 XT (RV630)'
+            VendorId = '1002'
+            DeviceId = '9588'
+            # No SubsystemId: M-NZHWBR's reads 216C:1458, and the bare id
+            # binds every board built on the chip.
+            DeviceDesc = 'Velocity9x ATI Radeon HD 2600 XT (RV630)'
+            Adapter = 'ATI Radeon HD 2600 XT (RV630)'
+            ClockDetector = 'ati-r600-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # R6xx has no 2D engine. DirectDraw fill and copy on the async
+            # DMA engine: a seed row the CPU writes, then a COPY a row, by
+            # the rules the write probe measured on this card
+            # (docs\decisions\2026-11-13-rv630-dma-write-probe.md); the rest
+            # is drawn by the CPU (docs\plans\ati-rv630-hd2600xt.md).
+            Acceleration = 'directdraw-fill-copy'
+            # The R6xx shader core through the CP on AMD's RV630 microcode
+            # (d3d_r6.c): its Gouraud, textured and Z16 streams drawn exactly
+            # by V9XR63D on this card
+            # (docs\decisions\2026-11-13-rv630-gouraud-texture-depth.md).
+            Direct3D = 'hardware-r600-cp'
+            EngineType = 'ATI_R600'
+            # FLIP: D1GRPH, the RS690's sequence (rs690_scanout.c).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            # What M-NZHWBR's VBE 4F00h reports; CONFIG_MEMSIZE says 256 MiB
+            # (docs\decisions\2026-11-13-rv630-register-probe.md).
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c); M-NZHWBR's BIOS lists all seven
+            # (V9XBOOT.INI, 2026-11-13 audit).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            # Evergreen's module: its hook with the R6xx engine type, there
+            # because _TEXT has no room for a module of its own.
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_r600_rv630_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -728,13 +779,24 @@
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
-            @{ Name = 'edid'; Path = 'src\common\edid.c' }
-            @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            # LEAFCODE (velocity9x\leaf16.h): _TEXT passed its budget when
+            # the screen shadow went in, so four leaf modules, called from a
+            # few places through far entries, have a segment of their own.
+            @{ Name = 'edid'; Path = 'src\common\edid.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'mtrr'; Path = 'src\common\mtrr.c'; CodeSegment = 'LEAFCODE' }
+            # The screen shadow, as the vbe family has it, for the chips whose
+            # GDI has no engine: the Evergreen, VI and CIK rows set
+            # V9X_HW16_DEVICE.screen_shadow; Mach64 and the Rages keep GDI
+            # on the frame buffer and their engines
+            # (docs\decisions\2026-11-12-ati-screen-shadow.md).
+            @{ Name = 'shadow'; Path = 'src\common\shadow.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'shadow16'; Path = 'src\display16\shadow16.c'; CodeSegment = 'LEAFCODE' }
             # The Direct3D back-end decision behind [Velocity9x] Direct3D.
             # Pure policy, host-tested; dd16.c resolves it at Enable and every
             # family publishes the result as Direct3DMode= whether or not it
-            # has a DirectDraw HAL to apply it to.
-            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
+            # has a DirectDraw HAL to apply it to. In LEAFCODE here since the
+            # R6xx row took _TEXT 49 bytes past its budget (leaf16.h).
+            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
@@ -762,9 +824,13 @@
         # Temporary, branch ati-rs690 only: every boot stage committed to
         # C:\V9XDIAG\V9XTRAIL.TXT while the RS690 black screen is open
         # (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
-        Defines = @('V9X_DURABLE_TRAIL')
+        # V9X_SCREEN_SHADOW: the screen shadow in ddi.c, dd16.c, runtime.asm
+        # and the cursor and Output thunks, used only by a chip that sets
+        # screen_shadow (above).
+        Defines = @('V9X_DURABLE_TRAIL', 'V9X_SCREEN_SHADOW')
         # runtime.asm's BAR2 read and mini-VDD map for the Mobility engine.
-        RuntimeDefines = @('V9X_ATI_FAMILY', 'V9X_DURABLE_TRAIL')
+        RuntimeDefines = @('V9X_ATI_FAMILY', 'V9X_DURABLE_TRAIL',
+                           'V9X_SCREEN_SHADOW')
         SkeletonOutput = 'build\win16-ddi-ati'
         PackageOutput = 'build\win98se-ati'
         VmStageDirectory = 'build\vm-probe\ATI'
@@ -888,6 +954,10 @@
             }
             @{
                 ChipId = 'rs690'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rv630'
                 Emulator = 'none'
             }
         )

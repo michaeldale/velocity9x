@@ -1,0 +1,17 @@
+{
+    "Name":  "jjn1zz",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  41,
+    "BootAfter":  42,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  41,
+    "Desktop":  true,
+    "AnswerSeconds":  7,
+    "ThreeDMark":  "finished in 6.4 min, last FlipHandled 7419",
+    "Counters":  "draws +378649, into presented +0, refused batches +0, engine stalls +0, FilterMagSeen 0x6",
+    "CounterFlags":  ""
+}

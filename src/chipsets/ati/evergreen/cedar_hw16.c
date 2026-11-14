@@ -65,6 +65,21 @@
  * DMA_MODE alone as Linux's cayman_dma_resume does, and the HAL takes
  * Cayman's CP bring-up, streams and shader control flow (eg_cp.c,
  * d3d_eg.c).
+ *
+ * The Radeon HD 2600 XT, PCI 1002:9588 (RV630, R6xx: the generation before
+ * Evergreen), is the sixth row, here and not in a module of its own
+ * because the family's _TEXT has no room for one (audit-family-binary.ps1's
+ * budget; a module of its own was 1,127 bytes and 789 over). Its hook is
+ * the Evergreen hook with another engine type: the same BAR read, the same
+ * EG_MAP (which takes R6xx's CONFIG_MEMSIZE in bytes) and the same
+ * diagnostics keys. Its engine is eng_r6.c, fill and copy only. Target:
+ * the remote-help machine M-NZHWBR, a Gigabyte board, subsystem 1458:216C,
+ * 256 MiB at GPU E0000000, BAR0 E0000000, BAR2 F7E20000, a 64 KiB register
+ * BAR (docs\decisions\2026-11-13-rv630-register-probe.md); its DMA engine's
+ * rules were measured there (docs\decisions\2026-11-13-rv630-dma-write-
+ * probe.md). A board whose BAR2 is 64 KiB but not 128 KiB aligned is
+ * refused by the BAR read and stays tier-0. Not write-combined: that was
+ * not measured on this card. The heap is the Evergreen rows' 128 MiB.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
@@ -117,8 +132,16 @@ static unsigned long v9x_cedar_map_value;
                                   V9X_DD_ENGINE_CAP_FLIP | \
                                   V9X_DD_ENGINE_CAP_D3D | \
                                   V9X_DD_ENGINE_CAP_EG_TRINITY)
+/* Flips through D1GRPH (rs690_scanout.c, the RS690's AVIVO sequence).
+ * Direct3D through the CP (r6_cp.c, d3d_r6.c) once the 3D window is
+ * mapped, as on the Evergreen rows. */
+#define V9X_RV630_CLAIMED_CAPS (V9X_DD_ENGINE_CAP_SOLID_FILL | \
+                                V9X_DD_ENGINE_CAP_SCREEN_COPY | \
+                                V9X_DD_ENGINE_CAP_FLIP | \
+                                V9X_DD_ENGINE_CAP_D3D)
 
-static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
+static void v9x_evergreen_fill_engine(unsigned long claimed_type,
+                                      unsigned long claimed_caps,
                                       unsigned long *control_linear_base,
                                       unsigned long *mapped_aperture_bytes,
                                       unsigned long *engine_type,
@@ -159,7 +182,7 @@ static void v9x_evergreen_fill_engine(unsigned long claimed_caps,
     v9x_cedar_engine_state = "claimed";
     *control_linear_base = mmio;
     *mapped_aperture_bytes = V9X_CEDAR_MMIO_BYTES;
-    *engine_type = V9X_DD_ENGINE_TYPE_ATI_EVERGREEN;
+    *engine_type = claimed_type;
     /* Flips through display controller D1's surface address, taken at
      * the vertical blank (eg_scanout.c, which also checks D1 is the
      * controller scanning). */
@@ -181,7 +204,8 @@ static void v9x_cedar_fill_engine(unsigned long framebuffer_linear_base,
                                   unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
-    v9x_evergreen_fill_engine(V9X_CEDAR_CLAIMED_CAPS, control_linear_base,
+    v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_EVERGREEN,
+                              V9X_CEDAR_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -197,7 +221,8 @@ static void v9x_juniper_fill_engine(unsigned long framebuffer_linear_base,
                                     unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
-    v9x_evergreen_fill_engine(V9X_JUNIPER_CLAIMED_CAPS, control_linear_base,
+    v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_EVERGREEN,
+                              V9X_JUNIPER_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -213,7 +238,8 @@ static void v9x_redwood_fill_engine(unsigned long framebuffer_linear_base,
                                     unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
-    v9x_evergreen_fill_engine(V9X_REDWOOD_CLAIMED_CAPS, control_linear_base,
+    v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_EVERGREEN,
+                              V9X_REDWOOD_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -229,7 +255,8 @@ static void v9x_caicos_fill_engine(unsigned long framebuffer_linear_base,
                                    unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
-    v9x_evergreen_fill_engine(V9X_CAICOS_CLAIMED_CAPS, control_linear_base,
+    v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_EVERGREEN,
+                              V9X_CAICOS_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -245,7 +272,27 @@ static void v9x_trinity_fill_engine(unsigned long framebuffer_linear_base,
                                     unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
-    v9x_evergreen_fill_engine(V9X_TRINITY_CLAIMED_CAPS, control_linear_base,
+    v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_EVERGREEN,
+                              V9X_TRINITY_CLAIMED_CAPS, control_linear_base,
+                              mapped_aperture_bytes, engine_type,
+                              engine_caps, gtt_linear_base,
+                              ring_linear_base, ring_bytes);
+}
+
+/* The R6xx row: Evergreen's BAR read, map and diagnostics, R6xx's engine
+ * (eng_r6.c), fill and copy only. */
+static void v9x_rv630_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    v9x_evergreen_fill_engine(V9X_DD_ENGINE_TYPE_ATI_R600,
+                              V9X_RV630_CLAIMED_CAPS, control_linear_base,
                               mapped_aperture_bytes, engine_type,
                               engine_caps, gtt_linear_base,
                               ring_linear_base, ring_bytes);
@@ -329,7 +376,12 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     /* Write-combined as Trinity's row is: the same engine code and its
      * drains, and the 128 MiB mapping inside BAR0. Measured on Trinity
      * only (docs\decisions\2026-11-08-trinity-write-combining.md). */
-    V9X_HW16_WC_MAPPING
+    V9X_HW16_WC_MAPPING,
+    0,                      /* write_combine_fallback */
+    /* GDI has no engine on any Evergreen chip and reads the screen at 8
+     * MB/s on Trinity, so it draws into the shadow, as Carrizo's does
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md). */
+    V9X_HW16_SCREEN_SHADOW
 };
 
 /* Not static, for the same audit. */
@@ -347,7 +399,9 @@ const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    V9X_HW16_WC_MAPPING     /* as Cedar's */
+    V9X_HW16_WC_MAPPING,    /* as Cedar's */
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
 
 /* Not static, for the same audit. */
@@ -365,7 +419,9 @@ const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    V9X_HW16_WC_MAPPING     /* as Cedar's */
+    V9X_HW16_WC_MAPPING,    /* as Cedar's */
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
 
 /* Not static, for the same audit. */
@@ -383,7 +439,9 @@ const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    V9X_HW16_WC_MAPPING     /* as Cedar's */
+    V9X_HW16_WC_MAPPING,    /* as Cedar's */
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
 
 /* Not static, for the same audit. The 128 MiB heap map and the engine
@@ -407,5 +465,32 @@ const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
      * already drain the CPU's write-combining buffers before each kick
      * (eng_eg.c, eg_cp.c), as the Rage 128's does. FbWrite 312 to 2,720
      * MB/s (docs\decisions\2026-11-08-trinity-write-combining.md). */
-    V9X_HW16_WC_MAPPING
+    V9X_HW16_WC_MAPPING,
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
+};
+
+/* Not static, for the same audit. The 128 MiB heap map, Stage A write
+ * combining; the shadow on, as the vbe driver it replaces ran this card
+ * (V9XHW.INI ScreenShadow=on, 2026-11-13 audit). */
+const V9X_HW16_DEVICE v9x_r600_rv630_device = {
+    0x1002u, 0x9588u,
+    "ATI Radeon HD 2600 XT (RV630)",
+    "1002", "9588",
+    "ati-r600-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-r600-cp",
+    0,
+    v9x_rv630_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    /* The Evergreen rows' 128 MiB heap: in the VBE's 16 MiB, 3DMark 2000
+     * had 6,837 mip chains find no block (M-NZHWBR boot 16) and drew
+     * them from level 0. The card's CONFIG_MEMSIZE is 256 MiB. */
+    V9X_CEDAR_MAP_BYTES,
+    0,                      /* engine_reserve_offset */
+    0u,                     /* write_combine: Stage A */
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW
 };

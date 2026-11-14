@@ -466,10 +466,73 @@ static void draw_tests(void)
     CHECK(line_count == 0ul && r.undrawn == 1ul && r.lines == 0ul);
 }
 
+/* A negative base vertex offset in bytes (DRAWINDEXEDPRIMITIVE2),
+ * whole vertices or not: the vertices start r bytes in, the base is -k. */
+static void negative_base_tests(void)
+{
+    V9X_DP2_SINK k;
+    V9X_DP2_DRAW d;
+    V9X_DP2_RESULT r;
+    v9x_u16 words[3];
+
+    sink_of(&k, 1);
+
+    /* -32 at a stride of 20: k 2, r 8, so 15 whole vertices from pool + 8. */
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    CHECK(v9x_dp2_negative_base(&d, pool, POOL * STRIDE, -32l));
+    CHECK(d.vertices == pool + 8ul && d.base == -2l && d.vertex_count == 15ul);
+
+    /* Whole vertices: r 0, as the aligned rule gave before. */
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    CHECK(v9x_dp2_negative_base(&d, pool, POOL * STRIDE, -40l));
+    CHECK(d.vertices == pool && d.base == -2l && d.vertex_count == POOL);
+
+    /* UT2004's on the 4570 (boot 235): FFFF236C at 28 bytes is -56,468,
+     * 2,016 vertices and 20 bytes; k 2,017, r 8. */
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    d.vertex_stride = 28ul;
+    CHECK(v9x_dp2_negative_base(&d, pool, POOL * STRIDE,
+                                (v9x_s32)0xFFFF236Cul));
+    CHECK(d.vertices == pool + 8ul && d.base == -2017l &&
+          d.vertex_count == (POOL * STRIDE - 8ul) / 28ul);
+
+    /* The most negative offset has no overflow. */
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    CHECK(v9x_dp2_negative_base(&d, pool, POOL * STRIDE,
+                                (v9x_s32)0x80000000ul));
+    CHECK(d.vertices == pool + 12ul && d.base == -107374183l);
+
+    /* Not this helper's: no stride, an offset that is not negative, a
+     * stream shorter than r. */
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    d.vertex_stride = 0ul;
+    CHECK(!v9x_dp2_negative_base(&d, pool, POOL * STRIDE, -32l));
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    CHECK(!v9x_dp2_negative_base(&d, pool, POOL * STRIDE, 0l));
+    CHECK(!v9x_dp2_negative_base(&d, pool, POOL * STRIDE, 40l));
+    CHECK(!v9x_dp2_negative_base(&d, pool, 4ul, -32l));
+
+    /* Drawn: indices 2, 3, 4 at base -2 name the vertices at pool + 8,
+     * + 28 and + 48, which number() reads as 0, 1 and 2. */
+    words[0] = 2u; words[1] = 3u; words[2] = 4u;
+    reset(); clear_result(&r);
+    plain(&d, V9X_D3DPT_TRIANGLELIST, 0ul, 1ul);
+    d.indices = (const v9x_u8 *)words;
+    d.index_count = 3ul;
+    CHECK(v9x_dp2_negative_base(&d, pool, POOL * STRIDE, -32l));
+    CHECK(v9x_dp2_draw(&d, &k, &r) == V9X_DP2_OK);
+    CHECK(tri_count == 1ul && tri_is(0ul, 0ul, 1ul, 2ul));
+    /* Index 1 is vertex -1, before the stream. */
+    words[0] = 1u;
+    reset(); clear_result(&r);
+    CHECK(v9x_dp2_draw(&d, &k, &r) == V9X_DP2_MALFORMED && tri_count == 0ul);
+}
+
 unsigned int v9x_run_d3d_dp2_dx8_tests(void)
 {
     failures = 0u;
     walker_tests();
     draw_tests();
+    negative_base_tests();
     return failures;
 }

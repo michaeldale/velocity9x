@@ -23,6 +23,19 @@
 #define V9X_D3D_HSW_REFUSE_COMBINE     10ul  /* a two-unit combine with no
                                                 exact kernel stage       */
 
+/* d3d_internal.h's V9X_D3D_PLACE_ALLOC, "the heap had no room", which that
+ * DDHAL header keeps from the host build; d3d_hsw.c asserts the two equal. */
+#define V9X_D3D_HSW_PLACE_ALLOC 4ul
+
+/*
+ * 1 when a texture tree the engine could not place is answered
+ * DDERR_OUTOFVIDEOMEMORY rather than left to DirectDraw: the heap had no
+ * room (place_reason V9X_D3D_HSW_PLACE_ALLOC) and the format is not RGB -
+ * DXT or signed, with no bit count DirectDraw could size a surface by.
+ * The runtime then evicts managed textures and tries again. 0 otherwise.
+ */
+int v9x_d3d_hsw_unplaced_out_of_memory(v9x_u32 place_reason, int rgb);
+
 /* The RGB write mask, V9X_R3D_ABI_WRITE_RED | GREEN | BLUE. */
 #define V9X_D3D_HSW_WRITE_RGB 7ul
 
@@ -137,5 +150,15 @@ v9x_u32 v9x_d3d_hsw_two_unit_stages(v9x_u32 color0, v9x_u32 alpha0,
                                     int has_alpha0, v9x_u32 color1,
                                     v9x_u32 alpha1, int has_alpha1,
                                     v9x_u8 *stage0, v9x_u8 *stage1);
+
+/*
+ * One stage of MODULATE2X (V9X_R3D_COLOROP_MODULATE2X in texture.color_op)
+ * as a stage 0 code, by the DX5 blend in texture.op that the core expressed
+ * the stage's alpha with: MODULATE the texture's alpha when it has one,
+ * else the vertex's; MODULATEALPHA their product. 0, nothing written, for
+ * any other blend.
+ */
+int v9x_d3d_hsw_modulate2x_stage(v9x_u32 texop, int has_alpha,
+                                 v9x_u8 *stage0);
 
 #endif

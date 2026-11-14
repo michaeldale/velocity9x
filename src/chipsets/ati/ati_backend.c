@@ -65,7 +65,7 @@ static v9x_status v9x_ati_recover(struct v9x_backend_state *state)
     return V9X_STATUS_UNSUPPORTED;
 }
 
-/* Every PCI device id the manifest binds: the twelve chips, then the
+/* Every PCI device id the manifest binds: the thirteen chips, then the
  * aliases of each - the VT2's, the Rage IIC's (the Rage II class) and the
  * Mobility-M's (the Rage Pro class). */
 static const v9x_u16 v9x_ati_device_ids[] = {
@@ -75,7 +75,7 @@ static const v9x_u16 v9x_ati_device_ids[] = {
     V9X_PCI_DEVICE_JUNIPER_68B8, V9X_PCI_DEVICE_REDWOOD_68D9,
     V9X_PCI_DEVICE_TRINITY_9901,
     V9X_PCI_DEVICE_CARRIZO_9874, V9X_PCI_DEVICE_MULLINS_9854,
-    V9X_PCI_DEVICE_RS690_791F,
+    V9X_PCI_DEVICE_RS690_791F, V9X_PCI_DEVICE_RV630_9588,
     0x5655u, 0x5656u,
     0x4754u, 0x4755u, 0x4756u, 0x4759u, 0x475au, 0x4c54u, 0x4c47u,
     0x4742u, 0x4744u, 0x4747u, 0x4749u, 0x4750u, 0x4751u, 0x474cu, 0x474du,

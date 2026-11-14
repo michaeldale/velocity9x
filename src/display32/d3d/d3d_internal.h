@@ -236,6 +236,21 @@ typedef struct v9x_d3d_context {
     DWORD stage1_address_v;
     DWORD stage1_texcoord;
     DWORD stage_two;
+    /* D3DTSS_TEXTURETRANSFORMFLAGS of stages 0 and 1: a PROJECTED stage's
+     * pair is divided by its last coordinate as each vertex is converted
+     * (v9x_dp2_fvf_project). ContextCreate sets DISABLE, Direct3D's
+     * default. */
+    DWORD stage_ttff;
+    DWORD stage1_ttff;
+    /* Stage 2's combine, raw, on a two-stage engine: no unit draws it, but
+     * v9x_d3d_state_stage2_fold moves a final multiply by the vertex colour
+     * into stage 0 (v9x_d3d_stage_pair). ContextCreate sets DISABLE. */
+    DWORD stage2_color_op;
+    DWORD stage2_color_arg1;
+    DWORD stage2_color_arg2;
+    DWORD stage2_alpha_op;
+    DWORD stage2_alpha_arg1;
+    DWORD stage2_alpha_arg2;
     /* DDI 7 (docs\plans\hardware-tnl.md step 5): set when the context was
      * made for a DDI 7 driver object, which names its surfaces by
      * CreateSurfaceEx handle within dd_local, the DirectDraw local object
@@ -273,6 +288,10 @@ typedef struct v9x_d3d_context {
     float ddi8_ps_const[8][4];
     V9X_D3D_PS_STAGE ddi8_ps_stage[4];
     DWORD ddi8_ps_triangles;
+    /* D3DRENDERSTATE_TEXTUREFACTOR as set (D3DCOLOR; ContextCreate sets
+     * Direct3D's opaque white): D3DTA_TFACTOR in a stage drawn through
+     * v9x_d3d_ps_fixed. No fixed-function kernel reads it. */
+    DWORD texture_factor;
 } V9X_D3D_CONTEXT;
 
 /*
@@ -341,6 +360,10 @@ typedef struct v9x_d3d_texture {
  * these numbers and nothing else, which is why they are a struct and not four
  * more function pointers.
  */
+/* V9X_D3D_ENGINE_LIMITS modulate2x bits. */
+#define V9X_D3D_MODULATE2X_ONE 1ul
+#define V9X_D3D_MODULATE2X_TWO 2ul
+
 typedef struct v9x_d3d_engine_limits {
     /* The 16 bpp framebuffer depth every engine renders to; a 32 bpp one
      * as well when target_pitch_max_xrgb8888 below is nonzero. */
@@ -506,6 +529,18 @@ typedef struct v9x_d3d_engine_limits {
      * 2026-10-30; an initialiser that stops short leaves it zero.
      */
     DWORD dxt_textures;
+    /*
+     * Where the engine draws D3DTOP_MODULATE2X of the texel and the input
+     * exactly (V9X_R3D_COLOROP_MODULATE2X): V9X_D3D_MODULATE2X_ONE on a
+     * one-stage draw, V9X_D3D_MODULATE2X_TWO on either unit of a two-unit
+     * draw. Without TWO a doubled stage 1 is refused and stage 0 drawn
+     * alone; without ONE a doubled stage 0 is drawn as MODULATE. Sending
+     * that stage to the shader path instead cost UT2004 37 % of its frame
+     * rate on the GMA 950 (the netbook, boots 329-330) and was removed.
+     * UT2004 lights most of its world so (the 4570, boot 236). Appended
+     * 2026-11-13; an initialiser that stops short leaves it zero.
+     */
+    DWORD modulate2x;
     /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
@@ -800,6 +835,8 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv3;
 
 /* ATI Radeon X1200 IGP (RS690), by register writes, in d3d_rs690.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rs690;
+/* d3d/d3d_r6.c: the HD 2600 XT's (RV630) shader core through the CP. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r6;
 
 
 /*

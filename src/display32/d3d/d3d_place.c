@@ -59,6 +59,111 @@ static int v9x_d3d_place_vidmem_resolve(void)
 }
 
 /*
+ * The heaps. Heap 0 is stolen memory, [0, fb.vram_bytes) of the aperture.
+ * Heap 1, when the engine has a texture pool (engine.pool_bytes, Gen3 on
+ * the gated device), is the pool: system RAM the mini-VDD mapped into the
+ * aperture past stolen memory, published by dd16.c for textures only
+ * (docs\plans\intel-gen3-system-memory-textures.md). Every placement below
+ * is bounded by the heap it came from, not by fb.vram_bytes alone.
+ */
+#define V9X_D3D_PLACE_HEAP_STOLEN 0
+#define V9X_D3D_PLACE_HEAP_POOL   1
+
+/* The aperture range one heap covers, as offsets from fb.linear_base. */
+static void v9x_d3d_place_region(int heap, DWORD *start, DWORD *end)
+{
+    if (heap == V9X_D3D_PLACE_HEAP_POOL) {
+        *start = v9x_hal->engine.pool_offset;
+        *end = v9x_hal->engine.pool_offset + v9x_hal->engine.pool_bytes;
+        return;
+    }
+    *start = 0ul;
+    *end = v9x_hal->fb.vram_bytes;
+}
+
+/* Which heap a block DirectDraw handed out came from, by its address. */
+static int v9x_d3d_place_heap_of(DWORD block)
+{
+    DWORD offset;
+
+    if (v9x_hal->engine.pool_bytes != 0ul &&
+        block >= v9x_hal->fb.linear_base) {
+        offset = block - v9x_hal->fb.linear_base;
+        if (offset >= v9x_hal->engine.pool_offset &&
+            offset - v9x_hal->engine.pool_offset <
+                v9x_hal->engine.pool_bytes) {
+            return V9X_D3D_PLACE_HEAP_POOL;
+        }
+    }
+    return V9X_D3D_PLACE_HEAP_STOLEN;
+}
+
+/*
+ * Whether a list may go in the pool: a texture that is neither a render
+ * target nor a Z buffer, on an engine with a pool. The pool's restriction
+ * in dd16.c says the same to DirectDraw; this says it to the placement,
+ * which asks DirectDraw for heaps by number.
+ */
+static int v9x_d3d_place_pool_wanted(const V9X_DDHAL_CREATESURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    DWORD caps;
+
+    if (v9x_hal->engine.pool_bytes == 0ul || data->dwSCnt == 0ul ||
+        list == 0 || list[0] == 0) {
+        return 0;
+    }
+    caps = list[0]->ddsCaps;
+    return (caps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+           (caps & (V9X_DDSCAPS_3DDEVICE | V9X_DDSCAPS_ZBUFFER)) == 0ul;
+}
+
+/*
+ * One block of width x height from a heap DirectDraw manages, rounded up
+ * to `align`, holding `footprint` bytes from the rounded start. The pool
+ * first when the list may go there, then stolen memory. Returns zero, the
+ * block and its offset from fb.linear_base; or a V9X_D3D_PLACE_* reason,
+ * having kept nothing.
+ */
+static DWORD v9x_d3d_place_take(V9X_DDHAL_CREATESURFACEDATA *data,
+                                DWORD align, DWORD width, DWORD height,
+                                DWORD footprint, int pool_wanted,
+                                DWORD *block_out, DWORD *base_out)
+{
+    int heap = pool_wanted ? V9X_D3D_PLACE_HEAP_POOL
+                           : V9X_D3D_PLACE_HEAP_STOLEN;
+    DWORD reason = V9X_D3D_PLACE_ALLOC;
+
+    for (;;) {
+        DWORD block = v9x_d3d_place_vidmem_alloc(data->lpDD, heap, width,
+                                                 height);
+        DWORD start;
+        DWORD end;
+        DWORD base;
+
+        if (block != 0ul) {
+            v9x_d3d_place_region(heap, &start, &end);
+            reason = V9X_D3D_PLACE_BOUNDS;
+            if (block >= v9x_hal->fb.linear_base) {
+                base = (block - v9x_hal->fb.linear_base + align - 1ul) &
+                       ~(align - 1ul);
+                if (base >= start && base <= end &&
+                    footprint <= end - base) {
+                    *block_out = block;
+                    *base_out = base;
+                    return 0ul;
+                }
+            }
+            v9x_d3d_place_vidmem_free(data->lpDD, heap, block);
+        }
+        if (heap == V9X_D3D_PLACE_HEAP_STOLEN) {
+            return reason;
+        }
+        heap = V9X_D3D_PLACE_HEAP_STOLEN;
+    }
+}
+
+/*
  * One block of pitch * rows from DirectDraw's heap, aligned to `align` (a
  * power of two), with surface n of the list pointed at base + offsets[n] at
  * that pitch.
@@ -77,7 +182,7 @@ DWORD v9x_d3d_place_block(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
     DWORD block;
     DWORD base;
     DWORD footprint;
-    DWORD vram;
+    DWORD reason;
 
     *base_out = 0ul;
     if (align == 0ul || (align & (align - 1ul)) != 0ul || pitch == 0ul) {
@@ -93,26 +198,16 @@ DWORD v9x_d3d_place_block(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 
     /*
      * The block plus an alignment's worth of rows, so it can be rounded up
-     * and still hold everything. Heap 0 is the one heap this driver
-     * publishes (vmiData.dwNumHeaps); width is bytes, as the DDK sample
-     * passes lPitch.
+     * and still hold everything; width is bytes, as the DDK sample passes
+     * lPitch.
      */
-    block = v9x_d3d_place_vidmem_alloc(
-        data->lpDD, 0, pitch, rows + (align + pitch - 1ul) / pitch);
-    if (block == 0ul) {
-        return V9X_D3D_PLACE_ALLOC;
-    }
-    vram = v9x_hal->fb.vram_bytes;
     footprint = pitch * rows;
-    base = 0xfffffffful;
-    if (block >= v9x_hal->fb.linear_base &&
-        block - v9x_hal->fb.linear_base < vram) {
-        base = (block - v9x_hal->fb.linear_base + align - 1ul) &
-               ~(align - 1ul);
-    }
-    if (base == 0xfffffffful || base > vram || footprint > vram - base) {
-        v9x_d3d_place_vidmem_free(data->lpDD, 0, block);
-        return V9X_D3D_PLACE_BOUNDS;
+    reason = v9x_d3d_place_take(data, align, pitch,
+                                rows + (align + pitch - 1ul) / pitch,
+                                footprint, v9x_d3d_place_pool_wanted(data),
+                                &block, &base);
+    if (reason != 0ul) {
+        return reason;
     }
 
     for (index = 0ul; index < data->dwSCnt; ++index) {
@@ -146,7 +241,7 @@ DWORD v9x_d3d_place_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
     DWORD index;
     DWORD block;
     DWORD base;
-    DWORD vram;
+    DWORD reason;
 
     *base_out = 0ul;
     if (align == 0ul || (align & (align - 1ul)) != 0ul || bytes == 0ul) {
@@ -160,21 +255,12 @@ DWORD v9x_d3d_place_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
         return V9X_D3D_PLACE_BOUNDS;
     }
 
-    block = v9x_d3d_place_vidmem_alloc(data->lpDD, 0, align,
-                                       (bytes + align - 1ul) / align + 1ul);
-    if (block == 0ul) {
-        return V9X_D3D_PLACE_ALLOC;
-    }
-    vram = v9x_hal->fb.vram_bytes;
-    base = 0xfffffffful;
-    if (block >= v9x_hal->fb.linear_base &&
-        block - v9x_hal->fb.linear_base < vram) {
-        base = (block - v9x_hal->fb.linear_base + align - 1ul) &
-               ~(align - 1ul);
-    }
-    if (base == 0xfffffffful || base > vram || bytes > vram - base) {
-        v9x_d3d_place_vidmem_free(data->lpDD, 0, block);
-        return V9X_D3D_PLACE_BOUNDS;
+    reason = v9x_d3d_place_take(data, align, align,
+                                (bytes + align - 1ul) / align + 1ul, bytes,
+                                v9x_d3d_place_pool_wanted(data), &block,
+                                &base);
+    if (reason != 0ul) {
+        return reason;
     }
 
     for (index = 0ul; index < data->dwSCnt; ++index) {
@@ -209,7 +295,7 @@ DWORD v9x_d3d_place_each(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     DWORD index;
-    DWORD vram;
+    int pool_wanted;
 
     if (align == 0ul || (align & (align - 1ul)) != 0ul) {
         return V9X_D3D_PLACE_BOUNDS;
@@ -221,38 +307,29 @@ DWORD v9x_d3d_place_each(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
         (v9x_hal->fb.linear_base & (align - 1ul)) != 0ul) {
         return V9X_D3D_PLACE_BOUNDS;
     }
-    vram = v9x_hal->fb.vram_bytes;
+    pool_wanted = v9x_d3d_place_pool_wanted(data);
     for (index = 0ul; index < data->dwSCnt; ++index) {
         V9X_DD_SURFACE_GBL *surface = list[index]->lpGbl;
         DWORD pitch = pitches[index];
         DWORD block = 0ul;
-        DWORD base = 0xfffffffful;
+        DWORD base = 0ul;
         DWORD reason = V9X_D3D_PLACE_BOUNDS;
 
         if (pitch != 0ul) {
-            block = v9x_d3d_place_vidmem_alloc(
-                data->lpDD, 0, pitch,
-                rows[index] + (align + pitch - 1ul) / pitch);
-            reason = V9X_D3D_PLACE_ALLOC;
+            reason = v9x_d3d_place_take(
+                data, align, pitch,
+                rows[index] + (align + pitch - 1ul) / pitch,
+                pitch * rows[index], pool_wanted, &block, &base);
         }
-        if (block != 0ul && block >= v9x_hal->fb.linear_base &&
-            block - v9x_hal->fb.linear_base < vram) {
-            base = (block - v9x_hal->fb.linear_base + align - 1ul) &
-                   ~(align - 1ul);
-            reason = V9X_D3D_PLACE_BOUNDS;
-        }
-        if (base == 0xfffffffful || base > vram ||
-            pitch * rows[index] > vram - base) {
+        if (reason != 0ul) {
             DWORD undo;
 
-            if (block != 0ul) {
-                v9x_d3d_place_vidmem_free(data->lpDD, 0, block);
-            }
             for (undo = 0ul; undo < index; ++undo) {
                 V9X_DD_SURFACE_GBL *placed = list[undo]->lpGbl;
 
-                v9x_d3d_place_vidmem_free(data->lpDD, 0,
-                                          placed->dwReserved1);
+                v9x_d3d_place_vidmem_free(
+                    data->lpDD, v9x_d3d_place_heap_of(placed->dwReserved1),
+                    placed->dwReserved1);
                 placed->dwReserved1 = 0ul;
                 placed->fpVidMem = 0ul;
             }
@@ -304,7 +381,8 @@ int v9x_d3d_place_release(V9X_DDHAL_DESTROYSURFACEDATA *data, DWORD align)
     if (!v9x_d3d_place_vidmem_resolve()) {
         return 0;
     }
-    v9x_d3d_place_vidmem_free(data->lpDD, 0, block);
+    v9x_d3d_place_vidmem_free(data->lpDD, v9x_d3d_place_heap_of(block),
+                              block);
     global->dwReserved1 = 0ul;
     return 1;
 }

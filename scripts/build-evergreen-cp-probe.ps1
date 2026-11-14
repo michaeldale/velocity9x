@@ -7,7 +7,7 @@ param(
 # EGCP.VXD + V9XEGCP.EXE + V9XEG3D.EXE: the AMD Evergreen (Radeon HD 5450,
 # Cedar) command processor bring-up probe (Phase 1 of
 # docs\plans\ati-evergreen-cedar-3d.md) and the first 3D draw (Phase 2),
-# which share the VxD. Built as build-evergreen-dma-probe.ps1 builds the DMA
+# which share the VxD, as do V9XCM3D (Trinity) and V9XR63D (RV630). Built as build-evergreen-dma-probe.ps1 builds the DMA
 # probe; each publisher is self-contained and reads AMD's microcode from
 # PFP.BIN and ME.BIN beside it at run time.
 
@@ -106,6 +106,13 @@ $publishers = @(
                  'src\chipsets\ati\cayman\cm_3d.c',
                  'src\chipsets\ati\evergreen\eg_shader.c',
                  'src\chipsets\ati\evergreen\eg_3d.c') }
+    # V9XR63D, the HD 2600 XT's (RV630) first draw: the R6xx streams and
+    # shaders, and Evergreen's unorm-to-float encoder for the colour.
+    @{ Source = 'rv630_3d_win32.c'; Name = 'v9xr63d'; Entry = '_V9xRv630DrawEntry@0'
+       Description = 'Velocity9x RV630 first 3D draw probe'
+       Extra = @('src\chipsets\ati\r600\r6_shader.c',
+                 'src\chipsets\ati\r600\r6_3d.c',
+                 'src\chipsets\ati\evergreen\eg_shader.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

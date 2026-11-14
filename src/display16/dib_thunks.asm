@@ -156,6 +156,12 @@ ELSE
 EXTRN V9XSHADOWSETCURSOR:FAR
 EXTRN V9XSHADOWMOVECURSOR:FAR
 EXTRN V9XSHADOWCHECKCURSOR:FAR
+; And before the DIB Engine, the read-back of what an engine copy left stale
+; under the cursor (shadow16.c, V9xShadowBefore*); ES is reloaded after,
+; since a C call need not keep it.
+EXTRN V9XSHADOWBEFORESETCURSOR:FAR
+EXTRN V9XSHADOWBEFOREMOVECURSOR:FAR
+EXTRN V9XSHADOWBEFORECHECKCURSOR:FAR
 
 ; SetCursor(LPVOID lpCursorShape): the pointer at [bp+6].
 PUBLIC SetCursor
@@ -167,6 +173,10 @@ SetCursor PROC FAR
     je short V9xSetCursorDone
     push bp
     mov bp,sp
+    push dword ptr [bp+6]
+    call V9XSHADOWBEFORESETCURSOR
+    mov ax,DGROUP
+    mov es,ax
     push dword ptr [bp+6]
     push dword ptr es:_v9x_driver_pdevice
     call DIB_SetCursorExt
@@ -189,6 +199,11 @@ MoveCursor PROC FAR
     mov bp,sp
     push word ptr [bp+8]
     push word ptr [bp+6]
+    call V9XSHADOWBEFOREMOVECURSOR
+    mov ax,DGROUP
+    mov es,ax
+    push word ptr [bp+8]
+    push word ptr [bp+6]
     push dword ptr es:_v9x_driver_pdevice
     call DIB_MoveCursorExt
     push word ptr [bp+8]
@@ -206,6 +221,9 @@ CheckCursor PROC FAR
     mov es,ax
     cmp dword ptr es:_v9x_driver_pdevice,0
     je short V9xCheckCursorDone
+    call V9XSHADOWBEFORECHECKCURSOR
+    mov ax,DGROUP
+    mov es,ax
     push dword ptr es:_v9x_driver_pdevice
     call DIB_CheckCursorExt
     call V9XSHADOWCHECKCURSOR

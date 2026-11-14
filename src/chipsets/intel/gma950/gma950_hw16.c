@@ -63,6 +63,21 @@ extern unsigned short v9x_intel_async_submit_allowed;
  */
 static const char *v9x_gma950_engine_status = "not-called";
 
+/*
+ * The texture pool, for dd16.c (V9X_HW16_DEVICE.engine_pool). A near
+ * function in this segment reading what intel_pool16.c, in LEAFCODE, left
+ * in data: a hook slot must not hold a function in another code segment
+ * (velocity9x\intel16.h).
+ */
+extern unsigned long v9x_intel_pool_offset;
+extern unsigned long v9x_intel_pool_bytes;
+
+static unsigned long v9x_gma950_engine_pool(unsigned long *bytes)
+{
+    *bytes = v9x_intel_pool_bytes;
+    return v9x_intel_pool_offset;
+}
+
 const char *v9x_gma950_engine_status_text(void)
 {
     return v9x_gma950_engine_status;
@@ -497,7 +512,14 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
     /* VBE reports the framebuffer in GMADR BAR2. */
     2u,
     0u,
-    0ul,
+    /*
+     * 64 MiB of GMADR, not the family's 16: the texture pool's 32 MiB sits
+     * above the 8 MiB stolen run, and the CPU writes it only through the
+     * aperture (docs\decisions\2026-11-12-intel-gen3-texture-pool-
+     * decisions.md). A power of two so one MTRR still covers the mapping.
+     * The heap does not grow with it: VBE's 7.4 MiB bounds it.
+     */
+    0x04000000ul,
     0,
     /*
      * Write-combined: the 16 MiB mapping of the 256 MiB GMADR, through
@@ -507,7 +529,11 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
      * the HAL (docs\decisions\2026-10-25-intel-gen3-write-combining.md).
      * The GMA 900 and GMA 3150 below are the same design and take it too.
      */
-    1u
+    1u,
+    0,
+    0u,
+    /* The texture pool intel_pool16.c mapped at Enable, if any. */
+    v9x_gma950_engine_pool
 };
 
 /*
@@ -600,7 +626,29 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
     "hardware-gen4",
     0,
     v9x_gm965_fill_engine,
-    2u
+    2u,
+    0u,
+    /*
+     * 64 MiB of GMADR, as the GMA 950's row and for its reason: the
+     * texture pool's 32 MiB sits above the 8 MiB stolen run and the CPU
+     * writes it through the aperture. TOMMOHP's DPMI host maps it
+     * (docs\decisions\2026-11-13-intel-gm965-texture-pool-phase0.md).
+     * Every GM965 gets the mapping and the pool.
+     */
+    0x04000000ul,
+    0,
+    /*
+     * Write-combined, as Ironlake below, which runs the same Gen4 engine:
+     * the whole mapping, drained before each RING_TAIL and display flip
+     * in the HAL. TOMMOHP's BIOS leaves the GMADR under the UC default
+     * with five pairs free; uncached it wrote the aperture at 130 MB/s
+     * (docs\decisions\2026-11-13-gm965-write-combining.md).
+     */
+    1u,
+    0,
+    0u,
+    /* The texture pool intel_pool16.c mapped at Enable, if any. */
+    v9x_gma950_engine_pool
 };
 
 /*
@@ -647,7 +695,13 @@ const V9X_HW16_DEVICE v9x_g45_x4500_device = {
     "hardware-gen4",
     0,
     v9x_g4x_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965: the same engine and submit path
+     * (docs\decisions\2026-11-13-gm965-write-combining.md). Not run. */
+    1u
 };
 
 const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
@@ -660,7 +714,12 @@ const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
     "hardware-gen4",
     0,
     v9x_g4x_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965 (see the G45 above). Not run. */
+    1u
 };
 
 /*
@@ -679,5 +738,10 @@ const V9X_HW16_DEVICE v9x_gm45_gma4500mhd_device = {
     "hardware-gen4",
     0,
     v9x_g4x_fill_engine,
-    2u
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965 (see the G45 above). */
+    1u
 };

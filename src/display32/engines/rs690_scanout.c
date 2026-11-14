@@ -59,9 +59,16 @@ static volatile DWORD *v9x_rs690_scanout_reg(DWORD offset)
 
 int v9x_rs690_scanout_active(void)
 {
+    /* The HD 2600 XT (RV630) too: the same AVIVO D1 block and the same
+     * Linux routine (radeon_asic.c rv6xx_asic: rs600_page_flip,
+     * rs600_page_flip_pending, avivo_wait_for_vblank), with its own
+     * address (eng_r6.c, v9x_r6_flip_address). Its register probe read the
+     * VBE mode on D1GRPH
+     * (docs\decisions\2026-11-13-rv630-register-probe.md). */
     if (v9x_hal == 0 ||
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
-        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_RS690 ||
+        (v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_RS690 &&
+         v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_R600) ||
         v9x_hal->engine.control_linear_base == 0ul ||
         v9x_hal->engine.mapped_aperture_bytes <
             V9X_RS690_SCANOUT_WINDOW_BYTES) {
@@ -96,8 +103,14 @@ int v9x_rs690_set_display_start(DWORD byte_offset)
     DWORD update;
     DWORD spins;
 
-    if (!v9x_rs690_scanout_live() ||
-        !v9x_rs690_flip_address(byte_offset, &address)) {
+    if (!v9x_rs690_scanout_live()) {
+        return 0;
+    }
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_R600) {
+        if (!v9x_r6_flip_address(byte_offset, &address)) {
+            return 0;
+        }
+    } else if (!v9x_rs690_flip_address(byte_offset, &address)) {
         return 0;
     }
     update = *v9x_rs690_scanout_reg(V9X_RS690_D1GRPH_UPDATE);

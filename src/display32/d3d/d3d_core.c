@@ -117,7 +117,10 @@ static const BYTE v9x_guid_more_surface_caps[16] = {
     0x88u, 0x0bu, 0x00u, 0xc0u, 0x4fu, 0xd9u, 0x30u, 0xc5u
 };
 
-#define V9X_DD_MORE_SURFACE_CAPS_HEAPS 1ul      /* vmiData.dwNumHeaps */
+/* At most two heaps: stolen memory, and the Gen3 texture pool when the
+ * engine has one (dd16.c, vmiData.dwNumHeaps). The answer carries one
+ * 24-byte record per published heap. */
+#define V9X_DD_MORE_SURFACE_CAPS_HEAPS 2ul
 #define V9X_DD_MORE_SURFACE_CAPS_BYTES \
     (16ul + 24ul * V9X_DD_MORE_SURFACE_CAPS_HEAPS)
 
@@ -550,6 +553,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_nv3;
     case V9X_D3D_SELECT_RS690:
         return &v9x_d3d_engine_rs690;
+    case V9X_D3D_SELECT_R600:
+        return &v9x_d3d_engine_r6;
     default:
         return 0;
     }
@@ -732,6 +737,44 @@ static V9X_D3D_CONTEXT *v9x_d3d_context_from_handle(DWORD handle)
  * goes with it: a trace that cannot name the context cannot tell a second
  * context's target from the same context rebound.
  */
+static const V9X_D3D_ENGINE_OPS *v9x_d3d_publish_engine(void);
+
+/* Whether the published engine draws MODULATE2X on either unit of a
+ * two-unit draw (limits->modulate2x). */
+static int v9x_d3d_engine_modulate2x(void)
+{
+    const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_publish_engine();
+
+    return ops != 0 && ops->limits != 0 &&
+           (ops->limits->modulate2x & V9X_D3D_MODULATE2X_TWO) != 0ul;
+}
+
+/* Whether stage 0 is a doubled texture times vertex colour
+ * (v9x_d3d_state_stage0_modulate2x). */
+static int v9x_d3d_stage0_is_modulate2x(const V9X_D3D_CONTEXT *context)
+{
+    V9X_D3D_STATE_STAGE stage0;
+
+    stage0.color_op = context->stage_color_op;
+    stage0.color_arg1 = context->stage_color_arg1;
+    stage0.color_arg2 = context->stage_color_arg2;
+    stage0.alpha_op = context->stage_alpha_op;
+    stage0.alpha_arg1 = context->stage_alpha_arg1;
+    stage0.alpha_arg2 = context->stage_alpha_arg2;
+    return v9x_d3d_state_stage0_modulate2x(&stage0);
+}
+
+/* Whether this engine draws a doubled stage 0 on one stage itself. */
+static int v9x_d3d_context_stage0_modulate2x(const V9X_D3D_ENGINE_OPS *ops,
+                                             const V9X_D3D_CONTEXT *context)
+{
+    if (ops == 0 || ops->limits == 0 ||
+        (ops->limits->modulate2x & V9X_D3D_MODULATE2X_ONE) == 0ul) {
+        return 0;
+    }
+    return v9x_d3d_stage0_is_modulate2x(context);
+}
+
 /*
  * The batch as the neutral core describes it, from the context: the three
  * surfaces resolved here, because they are DirectDraw's, and the render
@@ -799,6 +842,15 @@ static void v9x_d3d_describe_draw(const V9X_D3D_ENGINE_OPS *ops,
     raw.alpha_force = context->alpha_force;
     raw.color_key_enable = context->color_key_enable;
     v9x_d3d_state_fill(&raw, draw);
+
+    /* A doubled stage 0 stated beside its DX5 blend, for an engine that
+     * draws it (limits->modulate2x); zero otherwise, since `draw` is the
+     * caller's uninitialised local. A two-unit draw's describe_unit1
+     * writes both units' combines over this. */
+    draw->texture.color_op = 0ul;
+    if (v9x_d3d_context_stage0_modulate2x(ops, context)) {
+        draw->texture.color_op = V9X_R3D_COLOROP_MODULATE2X;
+    }
 }
 
 /* A byte of the census's packed state; a value past 255 reads as 255. */
@@ -867,14 +919,16 @@ static DWORD v9x_d3d_min_filter_fold(DWORD min, DWORD mip)
                   : V9X_D3DFILTER_LINEARMIPNEAREST;
 }
 
-/* Stages 0 and 1 as v9x_d3d_state_stages reads them; unit0 and unit1
- * receive the combines on TWO. */
+/* Stages 0 and 1 as v9x_d3d_state_stages reads them, stage 2 folded into
+ * stage 0 where it is a final multiply by the vertex colour; unit0 and
+ * unit1 receive the combines on TWO. */
 static DWORD v9x_d3d_stage_pair(const V9X_D3D_CONTEXT *context,
                                 V9X_R3D_TEXTURE *unit0,
                                 V9X_R3D_TEXTURE *unit1)
 {
     V9X_D3D_STATE_STAGE stage0;
     V9X_D3D_STATE_STAGE stage1;
+    V9X_D3D_STATE_STAGE stage2;
 
     stage0.color_op = context->stage_color_op;
     stage0.color_arg1 = context->stage_color_arg1;
@@ -888,7 +942,15 @@ static DWORD v9x_d3d_stage_pair(const V9X_D3D_CONTEXT *context,
     stage1.alpha_op = context->stage1_alpha_op;
     stage1.alpha_arg1 = context->stage1_alpha_arg1;
     stage1.alpha_arg2 = context->stage1_alpha_arg2;
-    return v9x_d3d_state_stages(&stage0, &stage1, unit0, unit1);
+    stage2.color_op = context->stage2_color_op;
+    stage2.color_arg1 = context->stage2_color_arg1;
+    stage2.color_arg2 = context->stage2_color_arg2;
+    stage2.alpha_op = context->stage2_alpha_op;
+    stage2.alpha_arg1 = context->stage2_alpha_arg1;
+    stage2.alpha_arg2 = context->stage2_alpha_arg2;
+    (void)v9x_d3d_state_stage2_fold(&stage0, &stage1, &stage2);
+    return v9x_d3d_state_stages(&stage0, &stage1, unit0, unit1,
+                                v9x_d3d_engine_modulate2x());
 }
 
 /*
@@ -2502,6 +2564,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
                 v9x_hal->d3d_diagnostics.uptime_first_d3d = GetTickCount();
             }
             context->specular_enable = 0ul;
+            context->texture_factor = 0xfffffffful;
             context->fog_enable = 0ul;
             context->fog_color = 0ul;
             v9x_d3d_fog_table_init(&context->fog_table);
@@ -2561,6 +2624,16 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
             context->stage1_address_v = V9X_D3DTADDRESS_WRAP;
             context->stage1_texcoord = 1ul;
             context->stage_two = V9X_D3D_STAGES_ONE;
+            /* D3DTTFF_DISABLE on both: coordinates as sent. */
+            context->stage_ttff = 0ul;
+            context->stage1_ttff = 0ul;
+            /* Stage 2 disabled, as Direct3D starts every stage past 0. */
+            context->stage2_color_op = V9X_D3DTOP_DISABLE;
+            context->stage2_color_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage2_color_arg2 = V9X_D3DTA_CURRENT;
+            context->stage2_alpha_op = V9X_D3DTOP_DISABLE;
+            context->stage2_alpha_arg1 = V9X_D3DTA_TEXTURE;
+            context->stage2_alpha_arg2 = V9X_D3DTA_CURRENT;
             context->active = 1ul;
             data->dwhContext = (DWORD)context;
             data->ddrval = V9X_DD_OK;
@@ -3049,6 +3122,9 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
         break;
     case V9X_D3DRENDERSTATE_SPECULARENABLE:
         context->specular_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREFACTOR:
+        context->texture_factor = argument;
         break;
     case V9X_D3DRENDERSTATE_FOGCOLOR:
         context->fog_color = argument;
@@ -4863,7 +4939,15 @@ static void v9x_d3d_dp2_express_stage(V9X_D3D_CONTEXT *context)
         blend = V9X_D3DTBLEND_DECALALPHA;
     } else {
         textured = 1ul;
-        if (v9x_hal != 0) {
+        /* MODULATE2X on an engine that draws it is exact: the blend
+         * carries its alpha as MODULATE's would, and describe_draw states
+         * the doubling. Elsewhere it is drawn as MODULATE and counted. */
+        if (v9x_d3d_context_stage0_modulate2x(v9x_d3d_publish_engine(),
+                                              context)) {
+            blend = context->stage_alpha_op == V9X_D3DTOP_MODULATE
+                        ? V9X_D3DTBLEND_MODULATEALPHA
+                        : V9X_D3DTBLEND_MODULATE;
+        } else if (v9x_hal != 0) {
             ++v9x_hal->d3d_diagnostics.dp2_stage0_approximated;
         }
     }
@@ -4940,9 +5024,54 @@ static void v9x_d3d_dp2_stage1_state(V9X_D3D_CONTEXT *context,
     case V9X_D3DTSS_TEXCOORDINDEX:
         context->stage1_texcoord = (DWORD)value & 0xfffful;
         break;
+    case V9X_D3DTSS_TEXTURETRANSFORMFLAGS:
+        context->stage1_ttff = (DWORD)value;
+        break;
     default:
         break;
     }
+}
+
+/*
+ * Stage 2's combine on a two-stage engine, for v9x_d3d_state_stage2_fold.
+ * Only the six combine states are kept; stage 2 samples nothing a unit
+ * could draw. Ignored until 2026-11-12: 3DMark 2001 SE's Dragothic
+ * multiplies its vertex-shader lighting in at stage 2, and the dragon,
+ * horns brightest, drew unlit (d3d8 proxy, netbook).
+ */
+static void v9x_d3d_dp2_stage2_state(V9X_D3D_DP2_USER *user, v9x_u32 state,
+                                     v9x_u32 value)
+{
+    V9X_D3D_CONTEXT *context = user->context;
+    V9X_R3D_TEXTURE unit0;
+    V9X_R3D_TEXTURE unit1;
+    DWORD *field;
+
+    switch (state) {
+    case V9X_D3DTSS_COLOROP:
+        field = &context->stage2_color_op;
+        break;
+    case V9X_D3DTSS_COLORARG1:
+        field = &context->stage2_color_arg1;
+        break;
+    case V9X_D3DTSS_COLORARG2:
+        field = &context->stage2_color_arg2;
+        break;
+    case V9X_D3DTSS_ALPHAOP:
+        field = &context->stage2_alpha_op;
+        break;
+    case V9X_D3DTSS_ALPHAARG1:
+        field = &context->stage2_alpha_arg1;
+        break;
+    case V9X_D3DTSS_ALPHAARG2:
+        field = &context->stage2_alpha_arg2;
+        break;
+    default:
+        return;
+    }
+    v9x_d3d_dp2_note_state(user, 2ul, (DWORD)state);
+    *field = (DWORD)value;
+    context->stage_two = v9x_d3d_stage_pair(context, &unit0, &unit1);
 }
 
 static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
@@ -4969,7 +5098,11 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
         (void)v9x_d3d_ps_stage_state(&context->ddi8_ps_stage[stage], state,
                                      value);
     }
-    if (stage > 1ul || (stage == 1ul && !user->two_stages)) {
+    if (stage > 2ul || (stage != 0ul && !user->two_stages)) {
+        return;
+    }
+    if (stage == 2ul) {
+        v9x_d3d_dp2_stage2_state(user, state, value);
         return;
     }
     v9x_d3d_dp2_note_state(user, (DWORD)stage, (DWORD)state);
@@ -5042,6 +5175,13 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
          * vertices have already had. */
         context->stage_texcoord = (DWORD)value & 0xfffful;
         break;
+    case V9X_D3DTSS_TEXTURETRANSFORMFLAGS:
+        /* PROJECTED divides the pair by its last coordinate, which the
+         * vertex conversion does (v9x_d3d_dp2_vertex). Dropped until
+         * 2026-11-12, when Dragothic was found drawing a reflection map
+         * through a COUNT3|PROJECTED transform (d3d8 proxy, netbook). */
+        context->stage_ttff = (DWORD)value;
+        break;
     case V9X_D3DTSS_ALPHAARG1:
         /* Kept for every engine since 2026-11-07: whether stage 0's alpha
          * is the vertex's (texture.alpha_diffuse) reads them, as the
@@ -5079,9 +5219,12 @@ static void v9x_d3d_dp2_pair(const V9X_D3D_DP2_USER *user,
 {
     v9x_dp2_fvf_texcoords(user->layout, user->context->stage1_texcoord,
                           source, (v9x_u8 *)pair);
+    v9x_dp2_fvf_project(user->layout, user->context->stage1_texcoord,
+                        user->context->stage1_ttff, source, pair);
 }
 
-/* One vertex of the call's format as the engines' vertex. */
+/* One vertex of the call's format as the engines' vertex, its stage-0 pair
+ * divided by its last coordinate when stage 0 is projected. */
 static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
                                const v9x_u8 *source, V9X_R3D_VERTEX *vertex)
 {
@@ -5090,6 +5233,9 @@ static void v9x_d3d_dp2_vertex(const V9X_D3D_DP2_USER *user,
     } else {
         v9x_dp2_fvf_convert_set(user->fvf, user->context->stage_texcoord,
                                 source, (v9x_u8 *)vertex);
+        v9x_dp2_fvf_project(user->fvf, user->context->stage_texcoord,
+                            user->context->stage_ttff, source,
+                            &vertex->tu);
     }
 }
 
@@ -6154,6 +6300,9 @@ static DWORD __stdcall V9xDdCreateSurfaceEx(
                                                    handle, lcl);
                 if (entry == 0) {
                     v9x_d3d_ddi7_log("csex-full", handle, 0ul, 0ul, 0ul);
+                } else {
+                    /* Readable now and never again (d3d_handles.h). */
+                    entry->caps2 = caps2;
                 }
             }
             /* A DDI 8 vertex or index buffer: its memory and size now,
@@ -7036,6 +7185,9 @@ static void v9x_d3d_ps_fan(void *opaque, const v9x_u8 *first,
 #define V9X_D3D_CUBE_DRAW_LOGS 32ul
 
 static DWORD v9x_d3d_cube_draws_logged;
+/* The owner of the stages' own programs (v9x_d3d_ps_fixed_table, below):
+ * its address, which no context can be. */
+static v9x_u32 v9x_d3d_ps_fixed_owner;
 
 static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
                              V9X_D3D_CONTEXT *context,
@@ -7059,6 +7211,13 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
      * placed it, and samples that stage as one (step 5c). */
     v9x_d3d_ps_env(context->ddi8_ps_const, context->ddi8_ps_stage, 0ul,
                    &batch->shader.env);
+    /* The stages' own program reads the texture factor where an
+     * application's reads its constants, and a bump matrix from the bump
+     * map's stage. */
+    if (shader->owner == (const void *)&v9x_d3d_ps_fixed_owner) {
+        v9x_d3d_ps_fixed_env(&shader->program, context->ddi8_ps_stage,
+                             context->texture_factor, &batch->shader.env);
+    }
     for (s = 0ul; s < V9X_R3D_SHADER_STAGES; ++s) {
         v9x_d3d_ps_texture(context, &context->ddi8_ps_stage[s],
                            &batch->shader.texture[s]);
@@ -7086,6 +7245,147 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
     sink->line = 0;
     sink->record = 0;
     sink->indexed_list = 0;
+}
+
+/*
+ * Fixed-function stages that sample a cube map, drawn as a pixel shader.
+ * Engines that run shaders sample a cube there (step 5c) but not in their
+ * fixed-function kernels, which refuse the draw: UT2004's environment maps,
+ * 11,577 batches a botmatch on the 4570, every one a single DXT5 cube stage
+ * (boot 237, a measurement HAL). So a DDI 8 draw with no shader bound whose
+ * stage 0, or stage 1 on a two-stage engine, binds a cube is drawn under
+ * the program v9x_d3d_ps_fixed writes for its stages; one that does not
+ * translate goes on to the fixed-function path as before. The programs
+ * are kept by their tokens in a table of their own, so an application's
+ * handles never meet them; a full table reuses the oldest slot.
+ */
+#define V9X_D3D_PS_FIXED_SLOTS 8u
+
+static V9X_D3D_PS_SHADER v9x_d3d_ps_fixed_table[V9X_D3D_PS_FIXED_SLOTS];
+static v9x_u32 v9x_d3d_ps_fixed_words[V9X_D3D_PS_FIXED_SLOTS]
+                                     [V9X_D3D_PS_FIXED_DWORDS];
+static v9x_u32 v9x_d3d_ps_fixed_count[V9X_D3D_PS_FIXED_SLOTS];
+static v9x_u32 v9x_d3d_ps_fixed_next;
+
+/* Whether a stage's texture handle names a cube map, by the DDSCAPS2 its
+ * CreateSurfaceEx recorded: a held copy's own reads zero, which every one
+ * of UT2004's 178 stage textures did at a draw, cubes included (the 4570,
+ * boot 240, a measurement HAL). */
+static int v9x_d3d_stage_is_cube(V9X_D3D_CONTEXT *context, DWORD handle)
+{
+    const V9X_D3D_SURFACE_HANDLE *entry;
+
+    if (handle == 0ul) {
+        return 0;
+    }
+    entry = v9x_d3d_ddi7_surface(context, handle);
+    return entry != 0 && (entry->caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul;
+}
+
+/*
+ * The program for a DDI 8 context's stages as they stand, where the engine
+ * runs shaders and the stages want one: a cube bound, or an op only the
+ * program draws - DOTPRODUCT3, BUMPENVMAP (v9x_d3d_ps_fixed_needs). The
+ * token count, 0 for stages the fixed-function path keeps. A draw and
+ * ValidateTextureStageState both ask, the latter with `whole`: only a
+ * program that is every stage the application set is one pass.
+ */
+static v9x_u32 v9x_d3d_ps_fixed_tokens(
+    const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context, int whole,
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS])
+{
+    V9X_D3D_STATE_STAGE stages[V9X_D3D_PS_FIXED_STAGES];
+    int specular = context->specular_enable != 0ul;
+    int two;
+
+    if (ops == 0 || ops->draw_shader == 0 || ops->limits == 0 ||
+        context->ddi8 == 0ul) {
+        return 0ul;
+    }
+    /* Stages 1 and 2 are kept only on an engine that draws two stages
+     * (v9x_d3d_dp2_stage_state); elsewhere stage 0 is all there is. */
+    two = ops->limits->texture_stages >= 2ul;
+    stages[0].color_op = context->stage_color_op;
+    stages[0].color_arg1 = context->stage_color_arg1;
+    stages[0].color_arg2 = context->stage_color_arg2;
+    stages[0].alpha_op = context->stage_alpha_op;
+    stages[0].alpha_arg1 = context->stage_alpha_arg1;
+    stages[0].alpha_arg2 = context->stage_alpha_arg2;
+    stages[1].color_op = context->stage1_color_op;
+    stages[1].color_arg1 = context->stage1_color_arg1;
+    stages[1].color_arg2 = context->stage1_color_arg2;
+    stages[1].alpha_op = context->stage1_alpha_op;
+    stages[1].alpha_arg1 = context->stage1_alpha_arg1;
+    stages[1].alpha_arg2 = context->stage1_alpha_arg2;
+    stages[2].color_op = context->stage2_color_op;
+    stages[2].color_arg1 = context->stage2_color_arg1;
+    stages[2].color_arg2 = context->stage2_color_arg2;
+    stages[2].alpha_op = context->stage2_alpha_op;
+    stages[2].alpha_arg1 = context->stage2_alpha_arg1;
+    stages[2].alpha_arg2 = context->stage2_alpha_arg2;
+
+    /* DOTPRODUCT3 or a bump stage: all three stages, or nothing. */
+    if (v9x_d3d_ps_fixed_needs(stages, two ? 3ul : 1ul)) {
+        return v9x_d3d_ps_fixed(stages, two ? 3ul : 1ul, specular, tokens);
+    }
+    if (!v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[0].texture) &&
+        !(two &&
+          v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[1].texture))) {
+        return 0ul;
+    }
+    /* A cube: stages 0 and 1 as UT2004's were measured, stage 2 not
+     * drawn; so not the whole setup when stage 2 does anything. */
+    if (whole && two && stages[1].color_op != V9X_D3DTOP_DISABLE &&
+        stages[2].color_op != V9X_D3DTOP_DISABLE) {
+        return 0ul;
+    }
+    return v9x_d3d_ps_fixed(stages, two ? 2ul : 1ul, specular, tokens);
+}
+
+static const V9X_D3D_PS_SHADER *v9x_d3d_ps_fixed_shader(
+    const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context)
+{
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+    v9x_u32 dwords;
+    v9x_u32 slot;
+    v9x_u32 i;
+
+    dwords = v9x_d3d_ps_fixed_tokens(ops, context, 0, tokens);
+    if (dwords == 0ul) {
+        return 0;
+    }
+
+    for (slot = 0ul; slot < V9X_D3D_PS_FIXED_SLOTS; ++slot) {
+        if (v9x_d3d_ps_fixed_count[slot] != dwords) {
+            continue;
+        }
+        for (i = 0ul; i < dwords; ++i) {
+            if (v9x_d3d_ps_fixed_words[slot][i] != tokens[i]) {
+                break;
+            }
+        }
+        if (i == dwords) {
+            return v9x_d3d_ps_find(v9x_d3d_ps_fixed_table,
+                                   V9X_D3D_PS_FIXED_SLOTS,
+                                   &v9x_d3d_ps_fixed_owner, slot + 1ul);
+        }
+    }
+
+    /* A new program, in the next slot round; the slot's number is its
+     * handle, so re-creating it replaces whatever was there. */
+    slot = v9x_d3d_ps_fixed_next++ % V9X_D3D_PS_FIXED_SLOTS;
+    v9x_d3d_ps_fixed_count[slot] = 0ul;
+    if (v9x_d3d_ps_create(v9x_d3d_ps_fixed_table, V9X_D3D_PS_FIXED_SLOTS,
+                          &v9x_d3d_ps_serial, &v9x_d3d_ps_fixed_owner,
+                          slot + 1ul, tokens, dwords) != V9X_PS11_OK) {
+        return 0;
+    }
+    for (i = 0ul; i < dwords; ++i) {
+        v9x_d3d_ps_fixed_words[slot][i] = tokens[i];
+    }
+    v9x_d3d_ps_fixed_count[slot] = dwords;
+    return v9x_d3d_ps_find(v9x_d3d_ps_fixed_table, V9X_D3D_PS_FIXED_SLOTS,
+                           &v9x_d3d_ps_fixed_owner, slot + 1ul);
 }
 
 /*
@@ -7130,6 +7430,11 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
             v9x_d3d_ddi8_shader_draw(context, op, words);
             return;
         }
+    } else {
+        /* A fixed-function stage on a cube: the stages' own program,
+         * where the engine runs shaders and they translate. */
+        ops = v9x_d3d_engine();
+        shader = v9x_d3d_ps_fixed_shader(ops, context);
     }
     if (context->ddi8_fvf == 0ul ||
         !v9x_dp2_fvf_layout(context->ddi8_fvf, &layout)) {
@@ -7217,7 +7522,9 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
             break;
         }
         /* DRAWINDEXEDPRIMITIVE2: both offsets in bytes. A negative base
-         * that is not whole vertices has no vertex number. */
+         * need not be whole vertices: UT2004 sends ones that are not (935
+         * draws in one botmatch on the 4570, boot 235), and they still
+         * name exact addresses (v9x_dp2_negative_base). */
         if ((words[4] % size) != 0ul) {
             v9x_d3d_ddi7_log("dx8-index-offset", words[4], size, 0ul, 0ul);
             return;
@@ -7225,9 +7532,8 @@ static void v9x_d3d_ddi8_draw(V9X_D3D_DP2_USER *user, v9x_u32 op,
         draw.first = words[4] / size;
         if ((v9x_s32)words[1] >= 0l) {
             offset = words[1];
-        } else if (((DWORD)(-(v9x_s32)words[1]) % stride) == 0ul) {
-            draw.base = (v9x_s32)words[1] / (v9x_s32)stride;
-        } else {
+        } else if (!v9x_dp2_negative_base(&draw, stream, stream_bytes,
+                                          (v9x_s32)words[1])) {
             v9x_d3d_ddi7_log("dx8-base-offset", words[1], stride, 0ul, 0ul);
             return;
         }
@@ -7803,6 +8109,20 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         return V9X_DDHAL_DRIVER_HANDLED;
     }
 #endif
+    /* Stages a DDI 8 draw takes through their own pixel shader - a cube,
+     * DOTPRODUCT3, BUMPENVMAP - are one pass when that program exists,
+     * whatever the two units would have said of them; only when the
+     * program is the whole setup (v9x_d3d_ps_fixed_tokens). */
+    {
+        v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+
+        if (v9x_d3d_ps_fixed_tokens(v9x_d3d_engine(), context, 1, tokens) !=
+            0ul) {
+            data->dwNumPasses = 1ul;
+            data->ddrval = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
+        }
+    }
     /* With two stages the pair is answered whole: one pass when the
      * engine's two units draw it exactly, refused otherwise; and when
      * stage 1 changes nothing, stage 0 is answered as before. stage_two
@@ -7823,7 +8143,9 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
     op = context->stage_color_op;
     if (op == V9X_D3DTOP_DISABLE || op == V9X_D3DTOP_SELECTARG1 ||
         op == V9X_D3DTOP_SELECTARG2 || op == V9X_D3DTOP_MODULATE ||
-        op == V9X_D3DTOP_BLENDTEXTUREALPHA) {
+        op == V9X_D3DTOP_BLENDTEXTUREALPHA ||
+        v9x_d3d_context_stage0_modulate2x(v9x_d3d_publish_engine(),
+                                          context)) {
         data->dwNumPasses = 1ul;
         data->ddrval = V9X_DD_OK;
     } else {
@@ -8117,6 +8439,17 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
             caps->MaxSimultaneousTextures = 4ul;
             caps->FVFCaps = (caps->FVFCaps & ~V9X_D3DFVFCAPS_TEXCOORDCOUNTMASK) |
                             V9X_D3D_PS_TEXCOORD_SETS;
+            /* BUMPENVMAP and DOTPRODUCT3 as fixed-function stage ops, drawn
+             * through the stages' own ps.1.1 program (v9x_d3d_ps_fixed),
+             * so only where shaders run and only told to DDI 8. Not
+             * BUMPENVMAPLUMINANCE: no luminance bump format is published.
+             * 3DMark 2001 SE runs both of its bump tests on them (the
+             * 4570, boot 258). Its DOT3 test faulted through boots 247 to
+             * 256 only while a d3d8 logging proxy of ours sat in its
+             * folder: docs\issues\2026-11-14-haswell-3dmark2001se-dot3-
+             * renderer-fault.md. */
+            caps->TextureOpCaps |= V9X_D3DTEXOPCAPS_BUMPENVMAP |
+                                   V9X_D3DTEXOPCAPS_DOTPRODUCT3;
         }
     }
     /* Cube maps, with mips, of power-of-two sides: 3DMark 2001 SE calls
@@ -8288,13 +8621,13 @@ static DWORD v9x_d3d_get_driver_info2(V9X_DDHAL_GETDRIVERINFODATA *data)
         format->dwRGBBitCount = 0ul;
         format->dwRBitMask = formats[answer->dwFormatIndex].operations;
         /* Every texture format a cube as well where cubes are claimed:
-         * the engine places any format it samples as a cube - except DXT,
-         * whose cube layout nothing here has measured. */
+         * the engine places any format it samples as a cube. DXT too:
+         * without it the runtime answers a DXT cube's creation
+         * D3DERR_INVALIDCALL, and UT2004 stops at its first frame there
+         * (docs\issues\2026-11-13-haswell-ut2004-demo-dxt5-cube-create-
+         * refused.md). */
         if (v9x_d3d_cubes_claimed() &&
-            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul &&
-            format->dwFourCC != V9X_D3DFMT_DXT1 &&
-            format->dwFourCC != V9X_D3DFMT_DXT3 &&
-            format->dwFourCC != V9X_D3DFMT_DXT5) {
+            (format->dwRBitMask & V9X_D3DFORMAT_OP_TEXTURE) != 0ul) {
             format->dwRBitMask |= V9X_D3DFORMAT_OP_CUBETEXTURE;
         }
         format->dwGBitMask = 0ul;
@@ -8443,18 +8776,20 @@ DWORD __stdcall V9xHalGetDriverInfo(V9X_DDHAL_GETDRIVERINFODATA *data)
         v9x_d3d_cubes_claimed()) {
         {
             DWORD answer[V9X_DD_MORE_SURFACE_CAPS_BYTES / 4ul];
-            DWORD copy = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            DWORD size = 16ul + 24ul * (v9x_hal->engine.pool_bytes != 0ul
+                                            ? 2ul : 1ul);
+            DWORD copy = size;
             DWORD at;
 
             for (at = 0ul; at < V9X_DD_MORE_SURFACE_CAPS_BYTES / 4ul; ++at) {
                 answer[at] = 0ul;
             }
-            answer[0] = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            answer[0] = size;
             answer[1] = V9X_DDSCAPS2_CUBEMAP;
             if (data->dwExpectedSize < copy) {
                 copy = data->dwExpectedSize;
             }
-            data->dwActualSize = V9X_DD_MORE_SURFACE_CAPS_BYTES;
+            data->dwActualSize = size;
             if (data->lpvData != 0 && copy != 0ul) {
                 for (at = 0ul; at < copy; ++at) {
                     ((BYTE *)data->lpvData)[at] = ((const BYTE *)answer)[at];
@@ -9908,6 +10243,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_nv3) {
         out->engine = V9X_R3D_ABI_ENGINE_NV3;
         name = "Velocity9x RIVA 128";
+    } else if (ops == &v9x_d3d_engine_r6) {
+        out->engine = V9X_R3D_ABI_ENGINE_R600;
+        name = "Velocity9x Radeon HD 2600 XT";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -10054,6 +10392,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          * there is no fallback, so without this branch the ICD and Glide
          * would keep every texture on the CPU and no textured draw would
          * be drawn, as on the RS690 before 99c78398. */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_r6) {
+        /* The HD 2600 XT's, on Cedar's terms: video-memory textures, 1 to
+         * 2048, placed by v9x_d3d_r6_create_surface at the linear-aligned
+         * pitch (V9XD32's texture checks, M-NZHWBR boots 8-17). CPU levels
+         * are refused (d3d_r6_map.c) and there is no fallback. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

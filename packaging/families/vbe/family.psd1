@@ -166,8 +166,9 @@
         # V9X_DURABLE_TRAIL: temporary, branch ati-rs690 only, as in the ati
         # manifest (docs\issues\2026-11-04-rs690-ati-build-black-screen-at-boot.md).
         # V9X_SCREEN_SHADOW: the screen shadow above, in ddi.c, dd16.c,
-        # runtime.asm and the cursor thunks. This family only: the others
-        # read the screen through an engine or have not been measured.
+        # runtime.asm and the cursor thunks. The ati family has it too, for
+        # its chips whose GDI has no engine; the others read the screen
+        # through an engine or have not been measured.
         Defines = @('V9X_D3D_DEFAULT_REQUEST=2', 'V9X_DURABLE_TRAIL',
                     'V9X_SCREEN_SHADOW')
         # V9X_PAT_ROUTE: runtime.asm's PAT verbs, for vbe_hw16.c's

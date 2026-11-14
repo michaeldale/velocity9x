@@ -403,6 +403,50 @@ static void test_phase_f2_generator(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* MODULATE2X, general colour op 4: each colour component a mul, then that
+ * added to itself with saturation (2 C Ct, clamped as D3D clamps); the
+ * alpha as its own op says. */
+static void test_modulate2x_generator(void)
+{
+    struct v9x_hsw_ps_desc desc;
+    struct v9x_hsw_eu_inst back;
+    v9x_u32 out[256];
+    v9x_u32 used;
+
+    desc.stage0 = V9X_HSW_PS_STAGE0_OPS(V9X_HSW_PS_OP_MODULATE2X,
+                                        V9X_HSW_PS_AOP_MODULATE);
+    desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
+    desc.fog = 0u;
+    desc.fog_rgb[0] = desc.fog_rgb[1] = desc.fog_rgb[2] = 0ul;
+    desc.specular = 0u;
+    CHECK(desc.stage0 == V9X_HSW_PS_STAGE0_LAST);
+    /* 4 pln, 2 pln, sample, 3 x (mul, add), mul, write: 15. */
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 60ul);
+    /* Red: g112 = Ct (g32) x C (g20), unsaturated, then g112 + g112,
+     * saturated. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 28, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_MUL && back.saturate == 0u &&
+          back.dst.nr == 112u && back.src0.nr == 32u &&
+          back.src1.nr == 20u);
+    CHECK(v9x_intel_hsw_eu_decode(out + 32, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_ADD && back.saturate == 1u &&
+          back.dst.nr == 112u && back.src0.nr == 112u &&
+          back.src1.nr == 112u);
+    /* Alpha: one saturated mul. */
+    CHECK(v9x_intel_hsw_eu_decode(out + 52, &back) == V9X_STATUS_OK &&
+          back.opcode == V9X_HSW_EU_OP_MUL && back.saturate == 1u &&
+          back.dst.nr == 115u);
+
+    /* Stage 1 doubling stage 0's result in place: g112 = Ct1 x g112. */
+    desc.stage0 = V9X_HSW_PS_TEXTURE;
+    desc.stage1 = V9X_HSW_PS_STAGE1_OPS(V9X_HSW_PS_OP_MODULATE2X,
+                                        V9X_HSW_PS_AOP_INPUT);
+    CHECK(desc.stage1 <= V9X_HSW_PS_STAGE1_LAST);
+    CHECK(v9x_intel_hsw_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK);
+}
+
 /*
  * The URB write's function control (Vol 7 p316-323): WRITE_HWORD 0 in 2:0,
  * offset 13:3, interleaved 14, complete 15.
@@ -540,6 +584,7 @@ unsigned int v9x_run_intel_hsw_eu_tests(void)
     test_dph();
     test_vs_kernel_position();
     test_phase_f2_generator();
+    test_modulate2x_generator();
     test_phase_e_generator();
     test_phase_d_kernels();
     test_mov();

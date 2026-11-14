@@ -52,6 +52,32 @@ struct v9x_shadow_span {
     v9x_u16 rows;
 };
 
+/*
+ * One entry of the shadow's event log (V9X_DD_SHARED.shadow_log): what
+ * happened, a detail word (a bracket's flags, with the nesting depth
+ * after it in the high byte for an end; an Output style) and a rectangle
+ * (a cursor event's x, y in left, top).
+ */
+struct v9x_shadow_event {
+    v9x_u16 kind;
+    v9x_u16 detail;
+    struct v9x_shadow_rect rect;
+};
+
+/* A power of two. 128 fits the shared block's 12 KiB with 236 bytes to
+ * spare (2026-11-12: 10,516 bytes before the log). */
+#define V9X_SHADOW_LOG_EVENTS       128u
+
+#define V9X_SHADOW_EVENT_BEGIN      1u  /* deBeginAccess, as passed   */
+#define V9X_SHADOW_EVENT_END        2u  /* deEndAccess, pending rect  */
+#define V9X_SHADOW_EVENT_TAKE       3u  /* stale read back, all       */
+#define V9X_SHADOW_EVENT_OVERLAP    4u  /* stale read back, cursor's  */
+#define V9X_SHADOW_EVENT_COPY       5u  /* copied out to the screen   */
+#define V9X_SHADOW_EVENT_OUTPUT     6u  /* Output, its bound          */
+#define V9X_SHADOW_EVENT_CURSOR     7u  /* cursor set (0) or moved (1) */
+#define V9X_SHADOW_EVENT_FLUSH_ALL  8u  /* mode restore               */
+#define V9X_SHADOW_EVENT_STALE      9u  /* HAL marked stale           */
+
 void v9x_shadow_dirty_clear(struct v9x_shadow_dirty *dirty);
 
 /*
@@ -141,5 +167,40 @@ void v9x_shadow_cursor_rect(v9x_s16 x, v9x_s16 y,
 v9x_u16 v9x_shadow_span(const struct v9x_shadow_rect *rect,
                         v9x_u16 bits_per_pixel, v9x_u32 pitch,
                         struct v9x_shadow_span *span);
+
+/*
+ * The deferred read-back (docs\decisions\2026-11-12-ati-screen-shadow.md).
+ * On a chip with an engine, the HAL's engine copies to the visible screen
+ * from video memory - windowed presents - write the frame buffer and not the
+ * shadow. Reading each one back cost 340 ms a frame on Carrizo, so the HAL
+ * adds its rectangle to `stale` instead, and the frame buffer stays the
+ * truth there: GDI's own drawing is copied out before its call returns.
+ *
+ * Before GDI touches the screen, this says what to read back. When `access`
+ * (exclusive, clipped) touches `stale` at all, fetch is the whole of
+ * `stale`, `stale` is cleared, and the answer is V9X_TRUE. All of it, not
+ * the overlap: GDI's accesses nest, and a later access in the same call
+ * must not read back over pixels an earlier one drew and has not copied
+ * out yet. With the whole rectangle read back at the first touch, nothing
+ * is stale for the rest of the call. The same call before the copy out of
+ * a pending union: what of the union is still stale, GDI did not draw.
+ *
+ * The rectangle is read once, before the clear, so a HAL adding to it
+ * meanwhile at worst marks again what is about to be read back.
+ */
+v9x_u16 v9x_shadow_stale_take(struct v9x_shadow_dirty *stale,
+                              const struct v9x_shadow_rect *access,
+                              struct v9x_shadow_rect *fetch);
+
+/*
+ * The cursor's form, from the mouse interrupt, where a whole window's
+ * read-back would be too long: fetch is the overlap of `stale` and `access`
+ * only, and `stale` is left as it was. V9X_TRUE when they overlap. The DIB
+ * Engine does not draw the cursor inside an access bracket, so this never
+ * reads back over drawing still to be copied out.
+ */
+v9x_u16 v9x_shadow_stale_overlap(const struct v9x_shadow_dirty *stale,
+                                 const struct v9x_shadow_rect *access,
+                                 struct v9x_shadow_rect *fetch);
 
 #endif

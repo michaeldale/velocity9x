@@ -204,10 +204,36 @@ typedef struct v9x_hw16_device {
                                                  const char *value));
 
     /*
+     * V9X_HW16_SCREEN_SHADOW: GDI draws this chip's desktop into a copy in
+     * system memory, in a family built with V9X_SCREEN_SHADOW
+     * (src\display16\shadow16.c). For a chip whose GDI has no engine and
+     * whose frame buffer reads slowly: the vbe row, and the ati family's
+     * Evergreen, VI and CIK rows, where screen reads ran at 8 MB/s
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md). Zero leaves GDI on
+     * the frame buffer. Appended 2026-11-12, so every initialiser that
+     * stops before it reads zero.
+     */
+    unsigned short screen_shadow;
+
+    /*
+     * The texture pool this chip's family set up at Enable: system RAM the
+     * mini-VDD mapped into the aperture, as a graphics offset (returned)
+     * and a size (*bytes). dd16.c publishes it as engine.pool_offset and
+     * pool_bytes and as DirectDraw's heap 1, textures only. NULL, or a
+     * size of zero, for no pool. Appended 2026-11-12 for the GMA 950
+     * (docs\plans\intel-gen3-system-memory-textures.md), so every
+     * initialiser that stops before it reads zero.
+     */
+    unsigned long (*engine_pool)(unsigned long *bytes);
+
+    /*
      * Non-zero: in a family with no read_aperture hook, map the chip's
      * framebuffer_bar, read from PCI, instead of the VBE's PhysBasePtr. Zero
      * keeps the VBE's, which is every chip but the ones that opt in. A BAR
-     * read that is refused keeps the VBE's too. Appended 2026-11-11.
+     * read that is refused keeps the VBE's too. Appended 2026-11-11 on the
+     * nvidia-gt218 branch, and placed after main's screen_shadow and
+     * engine_pool when the two were merged, so every initialiser that stops
+     * before it reads zero.
      *
      * For a card whose VBE hands out a small window of a larger aperture:
      * the GT218's VBE puts its framebuffer in a 16 MiB window of BAR3 and
@@ -224,6 +250,9 @@ typedef struct v9x_hw16_device {
 /* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */
 #define V9X_HW16_WC_MAPPING     1u
 #define V9X_HW16_WC_VRAM        2u
+
+/* V9X_HW16_DEVICE.screen_shadow: this chip's GDI draws into the shadow. */
+#define V9X_HW16_SCREEN_SHADOW  1u
 
 /* VBE 4F02h mode-set flags. The S3 BIOS wants the S3/VBE no-clear bit; the
  * generic linear-framebuffer bit is what a tier-0 card needs. */

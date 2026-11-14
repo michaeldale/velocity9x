@@ -81,10 +81,17 @@ A machine that has not answered within `-ReachSeconds` (65: a remote-help
 machine checks in once a minute when idle) is skipped and the run goes on.
 It prints one line per machine as each finishes.
 
-It rebuilds the four probes with the packages' build id, then on every
+It rebuilds the probes with the packages' build id, then on every
 machine at once installs the machine's family package by WININIT renames
 and `reset`, checks each installed file's hash, and runs V9XD32 (once per
-switch the list gives), V9XGLP, V9XGLIDP and V9XR3DP. The evidence goes to
+switch the list gives), V9XGLP, V9XGLIDP, V9XR3DP, V9XWPRS and V9XFBCMP.
+V9XWPRS presents into a window through DirectDraw and OpenGL, times it and
+reads the window back through GDI; the record sets its times beside the
+previous release's. V9XFBCMP, last, compares the frame buffer with what
+GDI reads, which matters wherever GDI draws into a copy of the desktop
+(the `vbe` package, the `ati` package's Radeons from 0.47.0). Both came
+out of 0.47.0, where only a windowed Quake 3 run found a slow present and a
+fault in that copy. The evidence goes to
 `docs/probe/<version>-release-checks-<date>/`, one folder per machine, and
 the record to `docs/decisions/<date>-<version>-release-checks.md` (never
 over an existing one): status, builds, results, every verdict that changed
@@ -93,8 +100,12 @@ since the previous release's checks folder, and what was not covered.
 record).
 
 3DMark 2000 is slow and does not run unless asked for: `-ThreeDMark` adds a
-grabbed default run (V9XTRACE frame grabs, score screenshot) on the
-machines whose list entry gives its `ThreeDMark` input sequence. Run it on
+grabbed default run (V9XTRACE frame grabs) on the machines whose list
+entry gives its `ThreeDMark` input sequence. From 0.48.0 it stops three
+minutes after it starts drawing (`-ThreeDMarkMinutes`, 0 for the whole run
+and its score screenshot): the grabs and every counter below come from the
+first game test, and a whole run took 6 to 16 minutes in the 0.47.0
+checks. Run it on
 one or two machines with `-Machine`, when a release changes what 3DMark
 draws, not on every check. It runs before the probes, and the record
 reports its V9XTRACE counters for that run alone. Three findings are

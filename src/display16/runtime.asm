@@ -108,6 +108,8 @@ EXTRN _v9x_i9xx_ring_exec_elapsed:DWORD
 EXTRN _v9x_i9xx_ring_exec_polls:DWORD
 EXTRN _v9x_i9xx_ring_exec_failure:DWORD
 EXTRN _v9x_i9xx_ring_diag_value:DWORD
+; intel_pool16.c: EBX, ECX, EDX and ESI as the last pool call left them.
+EXTRN _v9x_i9xx_pool_regs:DWORD
 ENDIF
 V9xScreenSelector dw 0
 V9xLinearAddress  dd 0
@@ -137,6 +139,10 @@ V9xDdSharedLin   dd 0
 ; descriptor handed back to the LDT and re-acquired later is a descriptor that
 ; could belong to anything in between.
 V9xEngineSel dw 0
+; One read-only LDT descriptor over the shadowed video BIOS at C0000h, for
+; the Intel panel-mode plan (include\velocity9x\vbios_panel.h). Allocated
+; once by V9XROMSELECTOR and kept, as V9xEngineSel is.
+V9xRomSel dw 0
 ; V9xEnsureDiagDir's once-latch and the directory it creates. The diagnostic
 ; INI writers all target C:\V9XDIAG (include\velocity9x\diagpaths.h), and
 ; WritePrivateProfileString fails silently into a missing directory, so the
@@ -431,6 +437,60 @@ V9xDdSharedDone:
     pop     bx
     retf
 V9XDDSHAREDALLOC ENDP
+
+; WORD FAR PASCAL V9xRomSelector(void): a selector over linear C0000h-CFFFFh,
+; the video BIOS as the system VM sees it, or 0. Linear, not physical: the
+; first megabyte of the system VM is mapped where it lies, so no DPMI 0800h
+; mapping is needed, and reading through it reads the shadow the BIOS runs
+; from. Data only: the caller reads the ROM; it never writes through this.
+V9X_ROM_LINEAR_HIGH equ 000Ch
+V9X_ROM_LIMIT       equ 0FFFFh
+PUBLIC V9XROMSELECTOR
+V9XROMSELECTOR PROC FAR
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     V9xRomSel, 0
+    jne     short V9xRomSelectorReady
+
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xRomSelectorFailed
+    mov     V9xRomSel, ax
+
+    mov     bx, ax
+    xor     dx, dx
+    mov     cx, V9X_ROM_LINEAR_HIGH
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xRomSelectorFree
+
+    mov     bx, V9xRomSel
+    xor     cx, cx
+    mov     dx, V9X_ROM_LIMIT
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xRomSelectorFree
+
+V9xRomSelectorReady:
+    mov     ax, V9xRomSel
+    jmp     short V9xRomSelectorDone
+
+V9xRomSelectorFree:
+    mov     bx, V9xRomSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xRomSel, 0
+V9xRomSelectorFailed:
+    xor     ax, ax
+V9xRomSelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    retf
+V9XROMSELECTOR ENDP
 
 ; ---------------------------------------------------------------------------
 ; ViRGE new-MMIO access for GDI acceleration.
@@ -987,6 +1047,74 @@ V9xShadowFlushDone:
     pop     bp
     retf    12
 V9XSHADOWFLUSH ENDP
+
+; void FAR PASCAL V9xShadowFetch(DWORD offset, WORD row_bytes, WORD rows,
+;                                DWORD pitch)
+;
+; V9xShadowFlush the other way: from the frame buffer into the shadow. The
+; deferred read-back (shadow16.c, v9x_shadow_stale_take): an engine copy
+; wrote these pixels to the frame buffer only, and GDI or the cursor is about
+; to read or draw over them. Same frame, same registers saved, and also run
+; from the mouse interrupt.
+PUBLIC V9XSHADOWFETCH
+V9XSHADOWFETCH PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ds
+    push    es
+    push    eax
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+
+    mov     ax, DGROUP
+    mov     ds, ax
+    mov     bx, V9xShadowSel
+    mov     dx, V9xScreenSelector
+    or      bx, bx
+    jz      short V9xShadowFetchDone
+    or      dx, dx
+    jz      short V9xShadowFetchDone
+    cmp     dword ptr V9xShadowHandle, 0
+    je      short V9xShadowFetchDone
+    mov     es, bx
+    mov     ds, dx
+
+    mov     ebx, dword ptr [bp+14]
+    movzx   edx, word ptr [bp+12]
+    mov     ax, word ptr [bp+10]
+    cld
+V9xShadowFetchRow:
+    or      ax, ax
+    jz      short V9xShadowFetchDone
+    mov     esi, ebx
+    mov     edi, ebx
+    mov     ecx, edx
+    shr     ecx, 2
+    db      67h
+    rep     movsd
+    mov     ecx, edx
+    and     ecx, 3
+    db      67h
+    rep     movsb
+    add     ebx, dword ptr [bp+6]
+    dec     ax
+    jmp     short V9xShadowFetchRow
+
+V9xShadowFetchDone:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     eax
+    pop     es
+    pop     ds
+    pop     bp
+    retf    12
+V9XSHADOWFETCH ENDP
 
 ; void FAR PASCAL V9xShadowZero(void): clear the whole block, so the shadow
 ; and a frame buffer cleared by the mode set start out agreeing.
@@ -1561,6 +1689,51 @@ V9xMiniI9xxGttChunkDone:
     pop     bp
     retf    2
 V9XMINII9XXGTTCHUNK ENDP
+
+; WORD FAR PASCAL V9xMiniI9xxPoolCall(WORD function, DWORD ebx_in,
+;                                     DWORD ecx_in, DWORD edx_in)
+; One of the four texture-pool functions (V9XMINI_FN_I9XX_POOL_* in
+; V9XMAPI.INC) with EBX, ECX and EDX as given; anything else is refused
+; here. EBX, ECX, EDX and ESI come back in v9x_i9xx_pool_regs whatever AX.
+PUBLIC V9XMINII9XXPOOLCALL
+V9XMINII9XXPOOLCALL PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    si
+    push    edi
+    push    es
+    movzx   eax, word ptr [bp+18]
+    cmp     eax, V9XMINI_FN_I9XX_POOL_INFO
+    jb      short V9xMiniI9xxPoolCallRefused
+    cmp     eax, V9XMINI_FN_I9XX_POOL_MAP
+    ja      short V9xMiniI9xxPoolCallRefused
+    cmp     dword ptr V9xMiniApiEntry, 0
+    je      short V9xMiniI9xxPoolCallRefused
+    mov     ebx, dword ptr [bp+14]
+    mov     ecx, dword ptr [bp+10]
+    mov     edx, dword ptr [bp+6]
+    xor     esi, esi
+    call    dword ptr V9xMiniApiEntry
+    mov     _v9x_i9xx_pool_regs, ebx
+    mov     _v9x_i9xx_pool_regs[4], ecx
+    mov     _v9x_i9xx_pool_regs[8], edx
+    mov     _v9x_i9xx_pool_regs[12], esi
+    jmp     short V9xMiniI9xxPoolCallDone
+V9xMiniI9xxPoolCallRefused:
+    xor     ax, ax
+V9xMiniI9xxPoolCallDone:
+    pop     es
+    pop     edi
+    pop     si
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    14
+V9XMINII9XXPOOLCALL ENDP
 
 ; WORD FAR PASCAL V9xMiniI9xxEventCapture(WORD kind, WORD context)
 ; Captures the caller's lifecycle point, then returns the complete retained

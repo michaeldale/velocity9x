@@ -122,6 +122,16 @@
  */
 #define V9X_DD_ENGINE_TYPE_ATI_RS690    14ul
 /*
+ * ATI R6xx async DMA engine (engines\eng_r6.c): solid fill and screen copy
+ * as linear VRAM runs, one COPY a row, through a ring in VRAM behind the
+ * 64 KiB register BAR. Evergreen's engine by descent, with other packets,
+ * no constant fill, and ordering rules of its own, measured on an HD 2600
+ * XT (docs\decisions\2026-11-13-rv630-dma-write-probe.md); the plans are
+ * src\chipsets\ati\r600\r6_dma.c's. No Direct3D engine, so d3d_select.c
+ * gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_R600     15ul
+/*
  * NVIDIA GT218 (NV50 family, nouveau's NVA8) 2D engine
  * (engines\eng_nv50.c): solid fill and screen copy through class 502D
  * on one PFIFO channel in IB mode, its structures in a reserve at the
@@ -131,7 +141,7 @@
  * (docs\decisions\2026-11-14-gt218-502d-engine-measurements.md). No
  * Direct3D engine, so d3d_select.c gives this type none.
  */
-#define V9X_DD_ENGINE_TYPE_NV50         15ul
+#define V9X_DD_ENGINE_TYPE_NV50         16ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

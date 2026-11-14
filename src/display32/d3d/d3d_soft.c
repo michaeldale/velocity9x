@@ -245,8 +245,25 @@ static int v9x_d3d_soft_texture_format(const V9X_DD_SURFACE_LCL *surface,
     if (pixel == 0 || format_out == 0) {
         return 0;
     }
-    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul ||
-        pixel->dwRGBBitCount != 16ul) {
+    if ((pixel->dwFlags & V9X_DDPF_RGB) == 0ul) {
+        return 0;
+    }
+    /*
+     * 32-bit, eight bits a channel: ARGB8888 when the surface says it has
+     * alpha, XRGB8888 when it does not. Refused until 2026-11-12, when V9XD32
+     * T22's textures drew as white vertex colour on the vbe package.
+     */
+    if (pixel->dwRGBBitCount == 32ul &&
+        pixel->dwRBitMask == 0x00ff0000ul &&
+        pixel->dwGBitMask == 0x0000ff00ul &&
+        pixel->dwBBitMask == 0x000000fful) {
+        *format_out = (pixel->dwFlags & V9X_DDPF_ALPHAPIXELS) != 0ul &&
+                      pixel->dwRGBAlphaBitMask == 0xff000000ul
+            ? V9X_D3D_RASTER_TEXFMT_ARGB8888
+            : V9X_D3D_RASTER_TEXFMT_XRGB8888;
+        return 1;
+    }
+    if (pixel->dwRGBBitCount != 16ul) {
         return 0;
     }
     if (pixel->dwRBitMask == 0x00007c00ul &&
@@ -757,7 +774,37 @@ static void v9x_d3d_soft_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[2].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->texture_formats[2].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
 
-    shared->d3d_global.dwNumTextureFormats = 3ul;
+    /* ARGB8888 and XRGB8888, which the sampler reads since 2026-11-12. They
+     * fill the shared block's five slots. */
+    shared->texture_formats[3].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[3].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[3].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[3].ddpfPixelFormat.dwFlags =
+        V9X_DDPF_RGB | V9X_DDPF_ALPHAPIXELS;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
+        0xff000000ul;
+    shared->texture_formats[3].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
+    shared->texture_formats[4].dwSize = sizeof(V9X_DDSURFACEDESC);
+    shared->texture_formats[4].dwFlags =
+        V9X_DDSD_CAPS | V9X_DDSD_PIXELFORMAT;
+    shared->texture_formats[4].ddpfPixelFormat.dwSize =
+        sizeof(V9X_DDPIXELFORMAT);
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
+    shared->texture_formats[4].ddsCaps.dwCaps = V9X_DDSCAPS_TEXTURE;
+
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
 }
 

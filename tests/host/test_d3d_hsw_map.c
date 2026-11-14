@@ -221,6 +221,48 @@ static void test_two_unit_stages(void)
               0ul, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
               V9X_R3D_ABI_COLOROP_MODULATE, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
               &s0, &s1) == V9X_D3D_HSW_REFUSE_COMBINE);
+
+    /* Direct3D's MODULATE2X, colour op 4 of the general combines: UT2004's
+     * lightmap (base replaced, lightmap doubled, its alpha kept: stage 1
+     * code 2 + 12 + 0, or + 2 where the lightmap has no alpha) and its
+     * doubled base under it (stage 0 code 6 + 12 + 2). */
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_COLOROP_MODULATE2X, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == V9X_HSW_PS_TEXTURE && s1 == 14u);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_ABI_COLOROP_REPLACE, V9X_R3D_ABI_ALPHAOP_REPLACE, 1,
+              V9X_R3D_COLOROP_MODULATE2X, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 0,
+              &s0, &s1) == 0ul);
+    CHECK(s1 == 16u);
+    CHECK(v9x_d3d_hsw_two_unit_stages(
+              V9X_R3D_COLOROP_MODULATE2X, V9X_R3D_ABI_ALPHAOP_MODULATE, 1,
+              V9X_R3D_COLOROP_MODULATE2X, V9X_R3D_ABI_ALPHAOP_FRAGMENT, 1,
+              &s0, &s1) == 0ul);
+    CHECK(s0 == 20u && s1 == 14u);
+}
+
+/*
+ * One stage of MODULATE2X as a stage 0 code, by the DX5 blend the core
+ * expressed it as (d3d_core.c v9x_d3d_dp2_express_stage): MODULATE takes
+ * the texture's alpha when it has one, else the vertex's; MODULATEALPHA
+ * multiplies them. 0 for any other blend.
+ */
+static void test_modulate2x_stage(void)
+{
+    v9x_u8 s0 = 0xffu;
+
+    CHECK(v9x_d3d_hsw_modulate2x_stage(V9X_R3D_TEXOP_MODULATE, 1, &s0) &&
+          s0 == 19u);
+    CHECK(v9x_d3d_hsw_modulate2x_stage(V9X_R3D_TEXOP_MODULATE, 0, &s0) &&
+          s0 == 18u);
+    CHECK(v9x_d3d_hsw_modulate2x_stage(V9X_R3D_TEXOP_MODULATEALPHA, 1,
+                                       &s0) &&
+          s0 == 20u);
+    s0 = 0xffu;
+    CHECK(!v9x_d3d_hsw_modulate2x_stage(V9X_R3D_TEXOP_DECAL, 1, &s0) &&
+          s0 == 0xffu);
 }
 
 /* The target's SURFACE_STATE format, and the write disables it needs: an
@@ -355,6 +397,25 @@ static void test_bc_format(void)
     CHECK(format == 0x1234u && alpha == -1 && block == 7ul);
 }
 
+/*
+ * A texture tree the heap had no room for. An RGB one is left to
+ * DirectDraw, which can size it. A DXT or signed one has no bit count, so
+ * DirectDraw's own surface does not hold it: it is answered out of video
+ * memory, and the runtime evicts managed textures and tries again, as
+ * Gen3 does. Left to DirectDraw, a DXT1 chain declined for room hung the
+ * HD 4600's render engine in 3DMark 2001 SE's Car Chase (the 4570,
+ * 2026-11-13). Any other reason is left to DirectDraw as before.
+ */
+static void test_unplaced(void)
+{
+    CHECK(v9x_d3d_hsw_unplaced_out_of_memory(V9X_D3D_HSW_PLACE_ALLOC, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(V9X_D3D_HSW_PLACE_ALLOC, 1));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(1ul, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(2ul, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(5ul, 0));
+    CHECK(!v9x_d3d_hsw_unplaced_out_of_memory(0ul, 0));
+}
+
 /* A texture's layout as the sampler's format, its alpha and its texel
  * size: the three 16-bit layouts as before, and the two 32-bit ones. */
 static void test_texel_format(void)
@@ -416,6 +477,7 @@ unsigned int v9x_run_d3d_hsw_map_tests(void)
     test_texel_format();
     test_signed_format();
     test_bc_format();
+    test_unplaced();
     test_target();
     test_depth();
     test_accepted();
@@ -423,5 +485,6 @@ unsigned int v9x_run_d3d_hsw_map_tests(void)
     test_write_disable();
     test_scissor();
     test_two_unit_stages();
+    test_modulate2x_stage();
     return failures;
 }

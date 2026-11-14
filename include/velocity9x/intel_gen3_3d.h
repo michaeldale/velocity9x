@@ -1752,11 +1752,22 @@ v9x_status v9x_i9xx_build_fogged_runtime_run(
  * Cp Ct; DECAL Cp (1 - At) + Ct At; BLEND Cp (1 - Ct) + Cc Ct. The alpha
  * ops: KEEP Ap; REPLACE At; MODULATE Ap At. Numbered as the render
  * interface numbers its colour and alpha ops, which d3d_i9xx.c asserts.
+ *
+ * ADD is Direct3D's D3DTOP_ADD, Cp + Ct clamped to [0, 1], which the
+ * render interface carries as COLOROP 5 (r3d.h) and the core offers once
+ * an engine draws two stages: without it here, Gen3 refused an ADD pass
+ * and the core drew stage 0 alone (V9XD32 T12, netbook boot 320).
  */
 #define V9X_I9XX_COMBINE_REPLACE   1ul
 #define V9X_I9XX_COMBINE_MODULATE  2ul
 #define V9X_I9XX_COMBINE_DECAL     3ul
 #define V9X_I9XX_COMBINE_BLEND     4ul
+#define V9X_I9XX_COMBINE_ADD       5ul
+/* Direct3D's D3DTOP_MODULATE2X, 2 Cp Ct clamped to [0, 1]: COLOROP 6.
+ * UT2004 draws its lightmaps so (the 4570, boot 236); without it the
+ * core drew the base alone (the netbook, boot 328). A MUL and an ADD of
+ * the product to itself, saturated. */
+#define V9X_I9XX_COMBINE_MODULATE2X 6ul
 #define V9X_I9XX_ALPHA_KEEP        0ul
 #define V9X_I9XX_ALPHA_REPLACE     1ul
 #define V9X_I9XX_ALPHA_MODULATE    2ul

@@ -1,0 +1,21 @@
+ConfigId=t5740-gm45-b33-uncached
+Environment=metal
+Endpoint=relay:M-6B21TJ
+Guest=W9QI3DAB
+GuestUptimeMs=5193395
+GuestBootCounter=33
+Agent=0.15.0 v0.15.0
+Build=95c470c
+Version=v0.12.0+13
+Mode=
+ToolOrder=DBCAPS,DBTIME,DBGDI,DBDD,DB3D
+Arguments=/env:metal /config:t5740-gm45-b33-uncached
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=per-program
+Tool.DBCAPS ok 16.5s 20261113-194451\DBCAPS.INI
+Tool.DBTIME ok 22.5s 20261113-194451\DBTIME.INI
+Tool.DBGDI ok 67.7s 20261113-194451\DBGDI.INI
+Tool.DBDD ok 64.9s 20261113-194451\DBDD.INI
+Tool.DB3D ok 89.2s 20261113-194451\DB3D.INI

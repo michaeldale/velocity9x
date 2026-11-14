@@ -4,6 +4,7 @@
  * rectangle is read as inclusive.
  */
 #include "velocity9x/shadow.h"
+#include "velocity9x/leaf16.h"
 
 void v9x_shadow_dirty_clear(struct v9x_shadow_dirty *dirty)
 {
@@ -305,10 +306,16 @@ v9x_u16 v9x_shadow_span(const struct v9x_shadow_rect *rect,
         rect->right <= rect->left || rect->bottom <= rect->top) {
         return V9X_FALSE;
     }
+    /* The multiplies below are 16 x 16 bits (leaf16.h: this file can sit in
+     * LEAFCODE, away from the runtime's 32-bit multiply). Coordinates are
+     * 16-bit already; a pitch is far below this limit on every mode. */
+    if (pitch > 0xfffful) {
+        return V9X_FALSE;
+    }
 
     bytes_per_pixel = (v9x_u32)bits_per_pixel / 8ul;
-    start = (v9x_u32)rect->left * bytes_per_pixel;
-    end = (v9x_u32)rect->right * bytes_per_pixel;
+    start = V9X_LEAF_MUL16(rect->left, bytes_per_pixel);
+    end = V9X_LEAF_MUL16(rect->right, bytes_per_pixel);
     start &= ~(v9x_u32)(V9X_SHADOW_ALIGN_BYTES - 1u);
     end = (end + (V9X_SHADOW_ALIGN_BYTES - 1u)) &
           ~(v9x_u32)(V9X_SHADOW_ALIGN_BYTES - 1u);
@@ -319,8 +326,55 @@ v9x_u16 v9x_shadow_span(const struct v9x_shadow_rect *rect,
         return V9X_FALSE;
     }
 
-    span->offset = (v9x_u32)rect->top * pitch + start;
+    span->offset = V9X_LEAF_MUL16(rect->top, pitch) + start;
     span->row_bytes = (v9x_u16)(end - start);
     span->rows = (v9x_u16)(rect->bottom - rect->top);
     return V9X_TRUE;
+}
+
+/* The overlap of a held stale rectangle and an access, in out; V9X_TRUE
+ * when it is not empty. */
+static v9x_u16 v9x_shadow_overlap(const struct v9x_shadow_rect *held,
+                                  const struct v9x_shadow_rect *access,
+                                  struct v9x_shadow_rect *out)
+{
+    out->left = held->left > access->left ? held->left : access->left;
+    out->top = held->top > access->top ? held->top : access->top;
+    out->right = held->right < access->right ? held->right : access->right;
+    out->bottom = held->bottom < access->bottom ? held->bottom :
+                                                  access->bottom;
+    return out->right > out->left && out->bottom > out->top;
+}
+
+v9x_u16 v9x_shadow_stale_take(struct v9x_shadow_dirty *stale,
+                              const struct v9x_shadow_rect *access,
+                              struct v9x_shadow_rect *fetch)
+{
+    struct v9x_shadow_rect held;
+    struct v9x_shadow_rect overlap;
+
+    if (stale->pending == V9X_FALSE) {
+        return V9X_FALSE;
+    }
+    /* Read once: the HAL may widen it from another thread meanwhile. */
+    held = stale->rect;
+    if (v9x_shadow_overlap(&held, access, &overlap) == V9X_FALSE) {
+        return V9X_FALSE;
+    }
+    stale->pending = V9X_FALSE;
+    *fetch = held;
+    return V9X_TRUE;
+}
+
+v9x_u16 v9x_shadow_stale_overlap(const struct v9x_shadow_dirty *stale,
+                                 const struct v9x_shadow_rect *access,
+                                 struct v9x_shadow_rect *fetch)
+{
+    struct v9x_shadow_rect held;
+
+    if (stale->pending == V9X_FALSE) {
+        return V9X_FALSE;
+    }
+    held = stale->rect;
+    return v9x_shadow_overlap(&held, access, fetch);
 }

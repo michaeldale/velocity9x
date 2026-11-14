@@ -151,6 +151,8 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
      */
     V9X_HW16_WC_VRAM,
     0,
+    0u,                     /* screen_shadow: GDI has the engine */
+    0,                      /* engine_pool */
     /* aperture_from_bar: map BAR1, not the VBE's BAR3 window. */
     1u
 };

@@ -22,6 +22,8 @@ function Get-V9xHostSourceNames {
         'src\common\vbe_modes.c',
         'src\common\vbe_cache.c',
         'src\common\edid.c',
+        # The panel-mode slot patch for Intel video BIOSes.
+        'src\common\vbios_panel.c',
         'src\common\mtrr.c',
         # The PAT route to write-combining, where every MTRR pair is taken.
         'src\common\pat.c',
@@ -52,6 +54,7 @@ function Get-V9xHostSourceNames {
         'src\common\i9xx_cover.c',
         'src\common\i9xx_depth.c',
         'src\common\i9xx_wm.c',
+        'src\common\i9xx_pool.c',
         # The flip-path frame grab: read plan, pixel decode, BMP, schedule.
         'src\common\frame_grab.c',
         # Haswell config-space decode: stolen, GTT, BARs, aperture, PTE.
@@ -136,6 +139,12 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rs690\rs690_3d.c',
         # Evergreen async DMA: fill and copy packets, no I/O.
         'src\chipsets\ati\evergreen\eg_dma.c',
+        # R6xx async DMA: fill and copy plans, no I/O.
+        'src\chipsets\ati\r600\r6_dma.c',
+        # R6xx shader words: the solid VS and PS, no I/O.
+        'src\chipsets\ati\r600\r6_shader.c',
+        # R6xx PM4 streams: RV630 gpu_init, default state, a solid draw.
+        'src\chipsets\ati\r600\r6_3d.c',
         # Evergreen CP microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\evergreen\eg_cp_microcode.c',
         # Evergreen shader words and the bring-up shaders, no I/O.
@@ -288,6 +297,9 @@ function Get-V9xHostSourceNames {
         'tests\host\test_d3d_r128_map.c',
         'tests\host\test_d3d_eg_map.c',
         'tests\host\test_d3d_vi_map.c',
+        # The neutral draw to R6xx (HD 2600 XT) 3D builder state.
+        'src\display32\d3d\d3d_r6_map.c',
+        'tests\host\test_d3d_r6_map.c',
         # The neutral draw to RS690 3D builder state.
         'src\display32\d3d\d3d_rs690_map.c',
         'tests\host\test_d3d_rs690_map.c',
@@ -305,6 +317,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vbe_modes.c',
         'tests\host\test_vbe_cache.c',
         'tests\host\test_edid.c',
+        'tests\host\test_vbios_panel.c',
         'tests\host\test_mtrr.c',
         'tests\host\test_pat.c',
         'tests\host\test_shadow.c',
@@ -349,6 +362,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_i9xx_cover.c',
         'tests\host\test_i9xx_depth.c',
         'tests\host\test_i9xx_wm.c',
+        'tests\host\test_i9xx_pool.c',
         'tests\host\test_frame_grab.c',
         'tests\host\test_i9xx_mmio.c',
         'tests\host\test_i9xx_gtt.c',
@@ -399,6 +413,8 @@ function Get-V9xHostSourceNames {
         'tests\host\test_rs690_2d.c',
         'tests\host\test_rs690_3d.c',
         'tests\host\test_eg_dma.c',
+        'tests\host\test_r6_dma.c',
+        'tests\host\test_r6_3d.c',
         'tests\host\test_eg_shader.c',
         'tests\host\test_eg_3d.c',
         'tests\host\test_cm_shader.c',

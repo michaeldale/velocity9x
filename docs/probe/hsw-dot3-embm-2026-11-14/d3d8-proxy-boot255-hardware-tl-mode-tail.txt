@@ -1,0 +1,120 @@
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+Dev.GetDeviceCaps -> 0 PS ffff0101 (max 3f800000) VS fffe0101/96 streams 16 stages 4 simtex 4
+  (repeated 1 more)
+TSS stage 0 state 1 = 00000018
+TSS stage 0 state 11 = 00000001
+TSS stage 1 state 1 = 00000004
+TSS stage 1 state 11 = 00000002
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=18 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=4 ca1=1 ca2=2 aop=4 aa1=1 aa2=2 ca0=0 aa0=0 res=1 tci=2
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=18 ca1=2 ca2=4 aop=4 aa1=2 aa2=4 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=4 ca1=1 ca2=2 aop=4 aa1=1 aa2=2 ca0=0 aa0=0 res=1 tci=2
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 11 = 00000000
+TSS stage 1 state 11 = 00000001
+TSS stage 1 state 1 = 00000001
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+Untextured draw key 7: stages 0 vs 00000044 ps 00000000 cop0 3 carg0 2 lighting 0
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+TSS stage 0 state 1 = 00000004
+TSS stage 0 state 1 = 00000002
+TSS stage 0 state 1 = 00000003
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0

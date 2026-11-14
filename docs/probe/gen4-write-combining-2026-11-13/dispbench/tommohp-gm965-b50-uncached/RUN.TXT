@@ -1,0 +1,21 @@
+ConfigId=tommohp-gm965-b50-uncached
+Environment=metal
+Endpoint=relay:M-KYHT4Q
+Guest=TOMMOHP
+GuestUptimeMs=407842
+GuestBootCounter=50
+Agent=0.16.0 dev-fault-3
+Build=95c470c
+Version=v0.12.0+13
+Mode=
+ToolOrder=DBCAPS,DBTIME,DBGDI,DBDD,DB3D
+Arguments=/env:metal /config:tommohp-gm965-b50-uncached
+V9xTrace=False
+Db3dInterface=dx7
+Db3d8Interface=dx9
+Velocity9xDirect3DDdi=per-program
+Tool.DBCAPS ok 7.5s 20261113-193224\DBCAPS.INI
+Tool.DBTIME ok 13.7s 20261113-193224\DBTIME.INI
+Tool.DBGDI ok 53.8s 20261113-193224\DBGDI.INI
+Tool.DBDD ok 42.2s 20261113-193224\DBDD.INI
+Tool.DB3D ok 55.3s 20261113-193224\DB3D.INI

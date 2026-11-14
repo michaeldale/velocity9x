@@ -1,0 +1,9 @@
+UT2004 Build UT2004_Build_[2004-09-21_19.13]
+Windows 98 4.10 (Build: 67766446)
+GenuineIntel PentiumPro-class processor @ 3193 MHz with 2047MB RAM
+Velocity9x Intel HD Graphics 4600 (Haswell) (0)
+
+dm-rankin?spectatoronly=1?numbots=12?quickstart=1?attractcam=1 -benchmark -seconds=77 -exec=..\Benchmark\Stuff\botmatchexec.txt -nosound
+
+6.163121 / 33.453346 / 84.887512 fps         rand[11503]
+Score = 33.465759

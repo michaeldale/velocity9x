@@ -1,0 +1,5 @@
+2026-11-14 02:33:35 b55 relay-session-open 670a98803574023ed0cb12f266f9ee7f
+2026-11-14 02:33:36 b55 exec-start rid=2044321623 mode=0 cmd=C:\V9XREMOTE\JOBS\G3PL\V9XG3PM.EXE
+2026-11-14 09:02:45 b55 exec-complete rid=2044321623 result=2 exit=4294967293 ms=23352614 out=0 err=0 flags=52
+2026-11-14 09:02:45 b55 remote-poll-gap 23353s expected 2s
+2026-11-14 09:02:47 b55 client-disconnected

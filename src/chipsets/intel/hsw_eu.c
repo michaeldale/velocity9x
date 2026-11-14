@@ -756,6 +756,15 @@ static void v9x_hsw_psg_combine(struct v9x_hsw_psg *g, v9x_u8 c,
         v9x_hsw_psg_op(g, V9X_HSW_EU_OP_ADD, out_reg, texel, input, 0, 0ul,
                        1u);
         break;
+    case V9X_HSW_PS_OP_MODULATE2X:
+        /* 2 C Ct: the product unsaturated, then doubled by adding it to
+         * itself with saturation, so a product above one half clamps at
+         * one as D3D's does, rather than the product clamping first. */
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MUL, out_reg, texel, input, 0, 0ul,
+                       0u);
+        v9x_hsw_psg_op(g, V9X_HSW_EU_OP_ADD, out_reg, out_reg, out_reg, 0,
+                       0ul, 1u);
+        break;
     default:
         /* DECALALPHA: (Ct - C) At + C. */
         v9x_hsw_psg_op(g, V9X_HSW_EU_OP_MUL, V9X_HSW_PSG_SCRATCH, input, 0u,

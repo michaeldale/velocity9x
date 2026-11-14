@@ -2046,16 +2046,24 @@ void __loadds FAR PASCAL ResetHiResMode(void)
 #ifdef V9X_SCREEN_SHADOW
 /*
  * The screen PDEVICE's bits selector on a family with the screen shadow: the
- * shadow's, or the frame buffer's when C:\V9XDIAG\NOSHADOW.TXT exists or the
- * memory cannot be had. Sized from the mode's pitch, which is the stride the
- * PDEVICE is given below, so a shadow offset and a frame buffer offset name
- * the same pixel.
+ * shadow's, or the frame buffer's when the chip does not use it
+ * (V9X_HW16_DEVICE.screen_shadow: the ati family's Mach64 and Rage chips
+ * draw GDI on their engines, which would bypass the shadow), when
+ * C:\V9XDIAG\NOSHADOW.TXT exists, or when the memory cannot be had. Sized
+ * from the mode's pitch, which is the stride the PDEVICE is given below, so
+ * a shadow offset and a frame buffer offset name the same pixel.
  */
 static WORD v9x_shadow_bits_selector(void)
 {
     OFSTRUCT marker;
     WORD selector;
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
 
+    if (device == 0 || device->screen_shadow == 0u) {
+        v9x_shadow16_disable();
+        v9x_shadow_state = "off-chip";
+        return v9x_screen_selector;
+    }
     if (OpenFile(V9X_DIAG_NOSHADOW_TXT, &marker, OF_EXIST) != HFILE_ERROR) {
         v9x_shadow16_disable();
         v9x_shadow_state = "off-marker";

@@ -28,7 +28,8 @@
 ;   VRAM data      - a run of the data area into the scratch window: the
 ;                    ring, shaders and vertices V9XEG3D lays out.
 ;   (V9XEG3D adds Linux evergreen_gpu_init's configuration registers for
-;   Cedar to both allow-lists; see the lists below.)
+;   Cedar to both allow-lists; V9XR63D adds r600_gpu_init's for the RV630
+;   to the read list only; see the lists below.)
 ;   delay          - a count of SRBM_STATUS reads, at most EC_DELAY_MAX.
 ;   VRAM ops       - write, read, fill, pattern, read block, all at aligned
 ;                    offsets inside the scratch window.
@@ -71,6 +72,11 @@ EC_DEVICE_CEDAR         equ 68f9h
 EC_DEVICE_CAICOS        equ 6778h
 EC_DEVICE_JUNIPER       equ 68b8h
 EC_DEVICE_TRINITY       equ 9901h
+; The HD 2600 XT (RV630, R6xx): its CP sits at Evergreen's offsets
+; (r600d.h). Its register BAR is 64 KiB, but M-NZHWBR's is 128 KiB aligned,
+; and the 64 KiB mapped past it is never read
+; (docs\decisions\2026-11-13-rv630-register-probe.md).
+EC_DEVICE_RV630         equ 9588h
 EC_OP_MAX               equ 512
 EC_BLOCK_DWORDS         equ 4096
 EC_DATA_DWORDS          equ 8192
@@ -92,6 +98,9 @@ EC_SCRATCH_BYTES        equ 00010000h
 EC_CONFIG_MEMSIZE       equ 5428h
 EC_MEMSIZE_MIN_MIB      equ 256
 EC_MEMSIZE_MAX_MIB      equ 4096
+; R6xx keeps CONFIG_MEMSIZE in bytes (r600_mc_init), as EG_MAP accepts.
+EC_R6_MEMSIZE_MIN       equ 10000000h
+EC_R6_MEMSIZE_MAX       equ 40000000h
 
 ; Op codes; the layout is four dwords: op, a, b, c.
 EC_OP_MMIO_READ         equ 1   ; a offset
@@ -108,6 +117,16 @@ EC_OP_VRAM_PATTERN      equ 11  ; a offset, b dwords, c seed
 EC_OP_DELAY             equ 12  ; a SRBM_STATUS reads
 EC_OP_STREAM            equ 13  ; a port, b first data dword, c dwords
 EC_OP_VRAM_DATA         equ 14  ; a window offset, b first data dword, c dwords
+EC_OP_MMIO_INDEXED      equ 15  ; a register offset, b dwords -> block area
+; EC_OP_MMIO_INDEXED's registers: R6xx's context registers (r600d.h,
+; 28000h-28FFFh), past the RV630's direct register map, read as Linux's
+; r100_mm_rreg_slow reads a register past rmmio_size: MM_INDEX (0h) the
+; offset, MM_DATA (4h) the value (radeon_reg.h). Reads only (V9XR63D
+; /ctxdump).
+EC_INDEXED_FIRST        equ 28000h
+EC_INDEXED_LIMIT        equ 29000h
+EC_MM_INDEX             equ 0h
+EC_MM_DATA              equ 4h
 EC_DELAY_MAX            equ 100000
 EC_SRBM_STATUS          equ 0e50h
 EC_GRBM_SOFT_RESET      equ 8020h
@@ -149,6 +168,7 @@ ECReadWindows label dword
     dd 0e60h, 0e64h     ; SRBM_SOFT_RESET
     dd 0ec4h, 0ec8h     ; SRBM_STATUS2
     dd 2024h, 2028h     ; MC_VM_FB_LOCATION
+    dd 2180h, 2184h     ; MC_VM_FB_LOCATION on R6xx (r600d.h)
     dd 5428h, 542ch     ; CONFIG_MEMSIZE
     dd 8010h, 8018h     ; GRBM_STATUS, GRBM_STATUS_SE0
     dd 8020h, 8024h     ; GRBM_SOFT_RESET
@@ -207,7 +227,31 @@ ECReadWindows label dword
     dd 8e10h, 8e14h     ; SQ_LSTMP_RING_BASE
     dd 8e18h, 8e1ch     ; SQ_HSTMP_RING_BASE
     dd 9150h, 9154h     ; CGTS_SM_CTRL_REG
-EC_READ_WINDOW_COUNT    equ 59
+    ; r600_gpu_init's registers for the RV630 that the lists above lack
+    ; (V9XR63D, 9588 only; r600d.h), read so they can be put back through
+    ; the ring, and RAMCFG, which GB_TILING_CONFIG is composed from. No
+    ; write offset is added: V9XR63D writes these through the CP.
+    dd 2408h, 240ch     ; RAMCFG
+    dd 88c8h, 88d0h     ; VGT_GS_PER_ES, VGT_ES_PER_GS
+    dd 88e8h, 88ech     ; VGT_GS_PER_VS
+    dd 8b20h, 8b24h     ; PA_SC_MULTI_CHIP_CNTL
+    dd 8b40h, 8b50h     ; PA_SC_AA_SAMPLE_LOCS_2S, _4S, _8S_WD0, _8S_WD1
+    dd 8bf0h, 8bf4h     ; PA_SC_ENHANCE
+    dd 8c10h, 8c18h     ; SQ_STACK_RESOURCE_MGMT_1, _2 (R6xx's offsets)
+    dd 9054h, 9058h     ; SX_DEBUG_1 (R6xx's offset)
+    dd 9608h, 960ch     ; TC_CNTL
+    dd 9714h, 9718h     ; VC_ENHANCE
+    dd 9830h, 9834h     ; DB_DEBUG
+    dd 9838h, 983ch     ; DB_WATERMARKS
+    dd 98f0h, 98f4h     ; GB_TILING_CONFIG
+    ; V9XR63D /cfgdump (RV630, reads only): the PA, SC, SX, SPI and DB
+    ; config blocks around the registers r600_gpu_init and xf86 write,
+    ; read once after a draw to look for the constant Z the DB writes.
+    dd 8a00h, 8c00h     ; PA_CL_* .. PA_SC_* config
+    dd 9000h, 9060h     ; SX config, SX_DEBUG_1
+    dd 9100h, 9140h     ; SPI_CONFIG_CNTL .. SPI_CONFIG_CNTL_1
+    dd 9800h, 9900h     ; DB config, DB_DEBUG, DB_WATERMARKS, GB_*
+EC_READ_WINDOW_COUNT    equ 77
 
 ; Writes accepted: exact offsets. GRBM_SOFT_RESET's value is checked in
 ; EC_Execute.
@@ -388,6 +432,8 @@ EC_Find_Next:
     je      short EC_Find_Found
     cmp     eax, (EC_DEVICE_TRINITY shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
+    cmp     eax, (EC_DEVICE_RV630 shl 16) or EC_VENDOR_ATI
+    je      short EC_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h
     jb      short EC_Find_Next
@@ -484,7 +530,13 @@ EC_Map_Bar0_Low:
     cmp     edx, EC_MEMSIZE_MIN_MIB
     jb      EC_Map_Fail
     cmp     edx, EC_MEMSIZE_MAX_MIB
+    jbe     short EC_Map_Size_Ok
+    ; Not a MiB count: an R6xx byte count, or refused.
+    cmp     edx, EC_R6_MEMSIZE_MIN
+    jb      EC_Map_Fail
+    cmp     edx, EC_R6_MEMSIZE_MAX
     ja      EC_Map_Fail
+EC_Map_Size_Ok:
     or      ECResult[4], EC_ST_IDENTITY
 
     add     edi, EC_SCRATCH_OFFSET
@@ -813,6 +865,53 @@ EC_Exec_Not_Stream:
     xor     eax, eax
     jmp     EC_Exec_Done
 EC_Exec_Not_Vram_Data:
+
+    ; Registers through MM_INDEX / MM_DATA into the block area: a = the
+    ; first offset, b = the count, all inside EC_INDEXED_FIRST..LIMIT.
+    ; Interrupts are off while MM_INDEX is borrowed (Linux holds
+    ; mmio_idx_lock with interrupts off), and its value is put back.
+    ; Returns the block index of the first value, as EC_OP_VRAM_BLOCK.
+    cmp     eax, EC_OP_MMIO_INDEXED
+    jne     EC_Exec_Not_Indexed
+    test    edx, 3
+    jnz     EC_Exec_Refused
+    mov     ecx, [esi+8]
+    test    ecx, ecx
+    jz      EC_Exec_Refused
+    cmp     ecx, EC_BLOCK_DWORDS
+    ja      EC_Exec_Refused
+    cmp     edx, EC_INDEXED_FIRST
+    jb      EC_Exec_Refused
+    mov     ebx, ecx
+    shl     ebx, 2
+    add     ebx, edx
+    cmp     ebx, EC_INDEXED_LIMIT
+    ja      EC_Exec_Refused
+    mov     eax, ECResult[40]
+    mov     ebx, eax
+    add     ebx, ecx
+    cmp     ebx, EC_BLOCK_DWORDS
+    ja      EC_Exec_Refused
+    mov     ECResult[40], ebx
+    push    eax
+    lea     edi, ECBlock[eax*4]
+    mov     ebx, ECMmio
+    pushfd
+    cli
+    push    dword ptr [ebx+EC_MM_INDEX]
+EC_Exec_Indexed_Next:
+    mov     [ebx+EC_MM_INDEX], edx
+    mov     eax, [ebx+EC_MM_DATA]
+    mov     [edi], eax
+    add     edi, 4
+    add     edx, 4
+    dec     ecx
+    jnz     short EC_Exec_Indexed_Next
+    pop     dword ptr [ebx+EC_MM_INDEX]
+    popfd
+    pop     eax
+    jmp     EC_Exec_Done
+EC_Exec_Not_Indexed:
 
     cmp     eax, EC_OP_SAVE
     jne     short EC_Exec_Not_Save

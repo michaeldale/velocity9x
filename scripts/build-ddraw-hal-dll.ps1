@@ -83,6 +83,9 @@ $sources = @(
     # The [Velocity9x] VSync rule the flip path asks per flip: pure, and
     # host-tested in tests\host\test_vsync.c.
     "src\common\vsync.c",
+    # The screen shadow's rectangle arithmetic: the HAL marks what an engine
+    # copy left stale (tests\host\test_shadow.c).
+    "src\common\shadow.c",
     "src\display32\ddhal_core.c",
     # The Win16 mutex measurement: resolves _ConfirmWin16Lock through the
     # walk above and counts its answer at six callback entry points.
@@ -150,6 +153,19 @@ $sources = @(
     # host-tested builder, in a ring in VRAM.
     "src\display32\engines\eng_eg.c",
     "src\chipsets\ati\evergreen\eg_dma.c",
+    # The R6xx async DMA engine: fill and copy plans through the
+    # host-tested builder, in the same ring window.
+    "src\display32\engines\eng_r6.c",
+    "src\chipsets\ati\r600\r6_dma.c",
+    # The R6xx 3D engine: the CP and its microcode (licence in
+    # NOTICES.TXT), the PM4 streams and shaders, the neutral draw to them,
+    # and the engine that submits them.
+    "src\display32\engines\r6_cp.c",
+    "src\chipsets\ati\r600\r6_cp_microcode.c",
+    "src\chipsets\ati\r600\r6_3d.c",
+    "src\chipsets\ati\r600\r6_shader.c",
+    "src\display32\d3d\d3d_r6_map.c",
+    "src\display32\d3d\d3d_r6.c",
     # The Evergreen 3D engine: the CP and its microcode (licence in
     # NOTICES.TXT), the PM4 streams and shaders, the neutral draw to them,
     # and the engine that submits them.

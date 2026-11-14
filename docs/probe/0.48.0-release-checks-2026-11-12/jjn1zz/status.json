@@ -1,0 +1,17 @@
+{
+    "Name":  "jjn1zz",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  42,
+    "BootAfter":  43,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  42,
+    "Desktop":  true,
+    "AnswerSeconds":  7,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

@@ -4,7 +4,8 @@
  */
 #include "velocity9x/d3dmode.h"
 
-v9x_u16 v9x_d3d_mode_resolve(v9x_u16 requested, v9x_u16 chip_has_d3d)
+v9x_u16 V9X_LEAF_FAR v9x_d3d_mode_resolve(v9x_u16 requested,
+                                          v9x_u16 chip_has_d3d)
 {
     /*
      * The mode-supplied engines are tested first, and the order is the
@@ -49,7 +50,7 @@ v9x_u16 v9x_d3d_mode_resolve(v9x_u16 requested, v9x_u16 chip_has_d3d)
     return V9X_D3D_STATE_HARDWARE;
 }
 
-v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state)
+v9x_u16 V9X_LEAF_FAR v9x_d3d_mode_advertises(v9x_u16 state)
 {
     /* Two states advertise, and they advertise different engines: HARDWARE
      * the chip's, SOFTWARE the rasterizer's. Which one the 32-bit HAL
@@ -59,7 +60,8 @@ v9x_u16 v9x_d3d_mode_advertises(v9x_u16 state)
             state == V9X_D3D_STATE_SOFTWARE) ? V9X_TRUE : V9X_FALSE;
 }
 
-v9x_u16 v9x_d3d_mode_deep_z(v9x_u16 state, v9x_u16 chip_has_deep_z)
+v9x_u16 V9X_LEAF_FAR v9x_d3d_mode_deep_z(v9x_u16 state,
+                                         v9x_u16 chip_has_deep_z)
 {
     /* The chip's engine is the one that would hold it, so only the state
      * that runs that engine offers it. */
@@ -67,7 +69,7 @@ v9x_u16 v9x_d3d_mode_deep_z(v9x_u16 state, v9x_u16 chip_has_deep_z)
                ? V9X_TRUE : V9X_FALSE;
 }
 
-const char *v9x_d3d_mode_text(v9x_u16 state)
+const char * V9X_LEAF_FAR v9x_d3d_mode_text(v9x_u16 state)
 {
     if (state == V9X_D3D_STATE_HARDWARE) {
         return "hardware";
@@ -87,7 +89,7 @@ const char *v9x_d3d_mode_text(v9x_u16 state)
     return "unknown";
 }
 
-const char *v9x_d3d_request_text(v9x_u16 request)
+const char * V9X_LEAF_FAR v9x_d3d_request_text(v9x_u16 request)
 {
     /*
      * Spelled out rather than computed, because the caller is a 16-bit

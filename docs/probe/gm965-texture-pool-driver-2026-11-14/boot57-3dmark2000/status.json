@@ -1,0 +1,17 @@
+{
+    "Name":  "gm965",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  56,
+    "BootAfter":  57,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.16.0",
+    "Boot":  56,
+    "Desktop":  true,
+    "AnswerSeconds":  2,
+    "ThreeDMark":  "finished in 5.7 min, last FlipHandled 7328",
+    "Counters":  "draws +437698, into presented +0, refused batches +78, engine stalls +0, FilterMagSeen 0x6",
+    "CounterFlags":  ""
+}

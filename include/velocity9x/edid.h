@@ -11,6 +11,7 @@
 #define VELOCITY9X_EDID_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/leaf16.h"
 
 #define V9X_EDID_BLOCK_BYTES ((v9x_u16)128u)
 
@@ -36,7 +37,8 @@ struct v9x_edid_summary {
  *     row can describe an interlaced mode, so a preferred timing this driver
  *     cannot match is reported as no preference rather than half a one.
  */
-v9x_u16 v9x_edid_parse(const v9x_u8 *block, struct v9x_edid_summary *out);
+v9x_u16 V9X_LEAF_FAR v9x_edid_parse(const v9x_u8 *block,
+                                    struct v9x_edid_summary *out);
 
 /*
  * The first detailed timing, in full.

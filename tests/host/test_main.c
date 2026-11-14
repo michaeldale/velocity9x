@@ -46,6 +46,10 @@ unsigned int v9x_run_vbe_cache_tests(void);
  * same convention. */
 unsigned int v9x_run_edid_tests(void);
 
+/* tests\host\test_vbios_panel.c: the panel-mode slot patch for Intel video
+ * BIOSes, same convention. */
+unsigned int v9x_run_vbios_panel_tests(void);
+
 /* tests\host\test_mtrr.c: the write-combining decision, over the MSR states
  * ring 0 reports, same convention. */
 unsigned int v9x_run_mtrr_tests(void);
@@ -224,6 +228,9 @@ unsigned int v9x_run_diag_identity_tests(void);
 unsigned int v9x_run_i9xx_cover_tests(void);
 unsigned int v9x_run_i9xx_depth_tests(void);
 unsigned int v9x_run_i9xx_wm_tests(void);
+/* tests\host\test_i9xx_pool.c: the Gen3 texture pool's size, place and
+ * page-list checks (docs\plans\intel-gen3-system-memory-textures.md). */
+unsigned int v9x_run_i9xx_pool_tests(void);
 /* tests\host\test_frame_grab.c: the flip-path frame grab's read plan, pixel
  * decode, BMP layout and schedule. */
 unsigned int v9x_run_frame_grab_tests(void);
@@ -358,6 +365,18 @@ unsigned int v9x_run_rs690_3d_tests(void);
  * with a CPU rectangle operation. */
 unsigned int v9x_run_eg_dma_tests(void);
 
+/* tests\host\test_r6_dma.c: R6xx DMA fill and copy plans, run through two
+ * models of the engine M-NZHWBR's probe measured (in order, and with every
+ * read stale inside a submission) and compared with a CPU rectangle
+ * operation. */
+unsigned int v9x_run_r6_dma_tests(void);
+
+/* tests\host\test_r6_3d.c: R6xx PM4 streams for the RV630's first draw:
+ * packets and register offsets against xf86-video-ati and Linux r600d.h,
+ * r600_gpu_init's RV630 numbers, xf86's default state, and the solid VS and
+ * PS against xf86's own shader macros. */
+unsigned int v9x_run_r6_3d_tests(void);
+
 /* tests\host\test_vi_sdma.c: Carrizo SDMA packets from Evergreen's DMA
  * plans, run through a model of the engine the write probe measured, and
  * the generated microcode's edges. */
@@ -396,6 +415,10 @@ unsigned int v9x_run_eg_3d_tests(void);
 /* tests\host\test_d3d_eg_map.c: the neutral draw to Evergreen batch
  * state, its refusals, and the builder taking what it maps. */
 unsigned int v9x_run_d3d_eg_map_tests(void);
+
+/* tests\host\test_d3d_r6_map.c: the neutral draw to R6xx (HD 2600 XT)
+ * batch state in Direct3D's order, and its refusals. */
+unsigned int v9x_run_d3d_r6_map_tests(void);
 
 /* tests\host\test_d3d_vi_map.c: the neutral draw to Carrizo TL-draw
  * state and its refusals. */
@@ -1446,6 +1469,7 @@ int main(int argc, char **argv)
     failures += v9x_run_vbe_modes_tests();
     failures += v9x_run_vbe_cache_tests();
     failures += v9x_run_edid_tests();
+    failures += v9x_run_vbios_panel_tests();
     failures += v9x_run_mtrr_tests();
     failures += v9x_run_pat_tests();
     failures += v9x_run_update_proto_tests();
@@ -1512,6 +1536,7 @@ int main(int argc, char **argv)
     failures += v9x_run_i9xx_cover_tests();
     failures += v9x_run_i9xx_depth_tests();
     failures += v9x_run_i9xx_wm_tests();
+    failures += v9x_run_i9xx_pool_tests();
     failures += v9x_run_frame_grab_tests();
     failures += v9x_run_i9xx_mmio_tests();
     failures += v9x_run_i9xx_gtt_tests();
@@ -1559,6 +1584,8 @@ int main(int argc, char **argv)
     failures += v9x_run_rs690_2d_tests();
     failures += v9x_run_rs690_3d_tests();
     failures += v9x_run_eg_dma_tests();
+    failures += v9x_run_r6_dma_tests();
+    failures += v9x_run_r6_3d_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();
@@ -1568,6 +1595,7 @@ int main(int argc, char **argv)
     failures += v9x_run_cm_3d_tests();
     failures += v9x_run_eg_3d_tests();
     failures += v9x_run_d3d_eg_map_tests();
+    failures += v9x_run_d3d_r6_map_tests();
     failures += v9x_run_d3d_vi_map_tests();
     failures += v9x_run_d3d_r128_map_tests();
     failures += v9x_run_d3d_rs690_map_tests();

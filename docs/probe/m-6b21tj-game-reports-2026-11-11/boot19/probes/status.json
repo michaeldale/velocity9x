@@ -1,0 +1,17 @@
+{
+    "Name":  "gm45",
+    "Family":  "intel-gma",
+    "Baseline":  true,
+    "BootBefore":  null,
+    "BootAfter":  null,
+    "Installed":  null,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.15.0",
+    "Boot":  19,
+    "Desktop":  true,
+    "AnswerSeconds":  4,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

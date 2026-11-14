@@ -176,6 +176,13 @@
 #define D3DCULL_CW 2ul
 #define D3DCULL_CCW 3ul
 #define D3DCMP_LESS 2ul
+#define D3DCMP_LESSEQUAL 4ul
+#define D3DCMP_GREATER 5ul
+#define D3DRENDERSTATE_ALPHATESTENABLE 15ul
+#define D3DRENDERSTATE_ALPHAREF 24ul
+#define D3DRENDERSTATE_ALPHAFUNC 25ul
+#define D3DBLEND_ZERO 1ul
+#define D3DBLEND_SRCCOLOR 3ul
 
 typedef struct d32_surface_desc {
     DWORD dwSize;
@@ -275,6 +282,11 @@ typedef struct d32_object { void **vtbl; } D32_OBJECT;
 #define D3DDESC_TRI_TEXTURE_CAPS 33
 #define D3DDESC_TRI_FILTER_CAPS 34
 #define D3DDESC_TRI_BLEND_CAPS 35
+/* dwDestBlendCaps and dwAlphaCmpCaps, 4 and 5 DWORDs after dwMiscCaps. */
+#define D3DDESC_TRI_DEST_BLEND_CAPS 30
+#define D3DDESC_TRI_ALPHA_CMP_CAPS 31
+#define D3DPBLENDCAPS_SRCCOLOR 0x00000004ul
+#define D3DPCMPCAPS_GREATER 0x00000010ul
 #define D3DPRASTERCAPS_FOGVERTEX 0x00000080ul
 #define D3DPTEXTURECAPS_TRANSPARENCY 0x00000008ul
 #define D3DPTFILTERCAPS_MIPNEAREST 0x00000004ul
@@ -356,6 +368,8 @@ static DWORD d32_tri_raster_caps;
 static DWORD d32_tri_texture_caps;
 static DWORD d32_tri_filter_caps;
 static DWORD d32_tri_blend_caps;
+static DWORD d32_tri_dest_blend_caps;
+static DWORD d32_tri_alpha_cmp_caps;
 
 static void d32_hex(char *text, DWORD value)
 {
@@ -555,6 +569,8 @@ typedef struct d32_enum_result {
     DWORD tri_texture_caps;
     DWORD tri_filter_caps;
     DWORD tri_blend_caps;
+    DWORD tri_dest_blend_caps;
+    DWORD tri_alpha_cmp_caps;
 } D32_ENUM_RESULT;
 
 static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
@@ -576,6 +592,8 @@ static HRESULT WINAPI d32_enum_device(GUID *guid, char *description,
         result->tri_texture_caps = hardware[D3DDESC_TRI_TEXTURE_CAPS];
         result->tri_filter_caps = hardware[D3DDESC_TRI_FILTER_CAPS];
         result->tri_blend_caps = hardware[D3DDESC_TRI_BLEND_CAPS];
+        result->tri_dest_blend_caps = hardware[D3DDESC_TRI_DEST_BLEND_CAPS];
+        result->tri_alpha_cmp_caps = hardware[D3DDESC_TRI_ALPHA_CMP_CAPS];
     }
     return 1;   /* D3DENUMRET_OK */
 }
@@ -1568,12 +1586,21 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
  *   ColorKey x 232: an RGB565 quadrant texture keyed on its green, DECAL,
  *                   over a grey quad drawn first - grey where green was,
  *                   the other three texels.
+ *   AlphaTest x 288: Half-Life's alpha-tested brushes - grey 808080h behind
+ *                   at z 0.75, then DecalAlpha's texture DECAL with the
+ *                   alpha test (GREATER 80h) and depth writes at 0.5, then
+ *                   a grey ZERO/SRCCOLOR lightmap pass at 0.5, LESSEQUAL,
+ *                   no depth write - the left (alpha 0) quadrants grey
+ *                   halved (404040h), the right ones red and green halved.
+ *                   The combination hung the GM965 and was refused on
+ *                   Gen4 until 0.48.0, which draws it in two passes.
  *
  * A device that refuses one of these draws leaves the band's clear colour
  * there, which fails.
  */
 #define D32_T20_TOP 96.0f
 #define D32_T20_SIZE 48.0f
+#define D32_T20_ALPHA_X 288.0f
 
 typedef HRESULT (WINAPI *d32_set_color_key_fn)(D32_OBJECT *, DWORD,
                                                DWORD *);
@@ -1613,6 +1640,8 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
 {
     D32_TLVERTEX v[6];
     DWORD handle;
+    DWORD decal_handle;
+    DWORD index;
     DWORD key[2];
 
     d32_line("Stage", "8e-t20-dx5-states");
@@ -1641,6 +1670,7 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
     surfaces[0] = d32_texture_surface(ddraw, d32_t20_decal_alpha,
                                       "T20DecalAlpha");
     handle = d32_handle_of(surfaces[0], device, "T20DecalAlpha");
+    decal_handle = handle;
     if (handle != 0ul) {
         d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, handle);
         d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND,
@@ -1671,6 +1701,40 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
         d32_t20_quad(v, 232.0f, 0xfffffffful, 0ul);
         d32_hx("T20ColorKeyHr", (DWORD)d32_draw(device, v, 6ul));
         d32_state(device, D3DRENDERSTATE_COLORKEYENABLE, 0ul);
+    }
+
+    /* The alpha test with depth writes, then a lightmap pass: grey behind
+     * at 0.75, the DECALALPHA texture DECAL with GREATER 80h at 0.5 writing
+     * depth, then an untextured grey ZERO/SRCCOLOR pass at 0.5, LESSEQUAL,
+     * no depth write. */
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    d32_t20_quad(v, D32_T20_ALPHA_X, 0xff808080ul, 0ul);
+    for (index = 0ul; index < 6ul; ++index) {
+        v[index].sz = 0.75f;
+    }
+    d32_hx("T20AlphaBackHr", (DWORD)d32_draw(device, v, 6ul));
+    if (decal_handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, decal_handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
+        d32_state(device, D3DRENDERSTATE_ALPHATESTENABLE, 1ul);
+        d32_state(device, D3DRENDERSTATE_ALPHAREF, 0x80ul);
+        d32_state(device, D3DRENDERSTATE_ALPHAFUNC, D3DCMP_GREATER);
+        d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 1ul);
+        d32_t20_quad(v, D32_T20_ALPHA_X, 0xfffffffful, 0ul);
+        d32_hx("T20AlphaTestHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_ALPHATESTENABLE, 0ul);
+
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+        d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 0ul);
+        d32_state(device, D3DRENDERSTATE_ZFUNC, D3DCMP_LESSEQUAL);
+        d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 1ul);
+        d32_state(device, D3DRENDERSTATE_SRCBLEND, D3DBLEND_ZERO);
+        d32_state(device, D3DRENDERSTATE_DESTBLEND, D3DBLEND_SRCCOLOR);
+        d32_t20_quad(v, D32_T20_ALPHA_X, 0xff808080ul, 0ul);
+        d32_hx("T20AlphaLitHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_ALPHABLENDENABLE, 0ul);
+        d32_state(device, D3DRENDERSTATE_ZFUNC, D3DCMP_LESS);
+        d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 1ul);
     }
     d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
     d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
@@ -1708,10 +1772,15 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
     ok |= d32_t20_point(desc, "KeyGone", 268ul, 108ul, 0x00808080ul) << 9;
     ok |= d32_t20_point(desc, "KeyBlue", 244ul, 132ul, 0x000000fful) << 10;
     ok |= d32_t20_point(desc, "KeyWhite", 268ul, 132ul, 0x00fffffful) << 11;
+    ok |= d32_t20_point(desc, "AlphaHole", 300ul, 108ul, 0x00404040ul) << 12;
+    ok |= d32_t20_point(desc, "AlphaRed", 324ul, 108ul, 0x00800000ul) << 13;
+    ok |= d32_t20_point(desc, "AlphaHoleG", 300ul, 132ul, 0x00404040ul) << 14;
+    ok |= d32_t20_point(desc, "AlphaGreen", 324ul, 132ul, 0x00008000ul) << 15;
     d32_hx("T20Ok", ok);
 
     /* Only the parts the device advertises count: fog bits 0-1, ADD 2-3,
-     * DECALALPHA 4-7, the colour key 8-11. T20Ok still shows them all. */
+     * DECALALPHA 4-7, the colour key 8-11, the alpha test with its
+     * ZERO/SRCCOLOR lightmap pass 12-15. T20Ok still shows them all. */
     if ((d32_tri_raster_caps & D3DPRASTERCAPS_FOGVERTEX) != 0ul) {
         expected |= 0x003ul;
     }
@@ -1723,6 +1792,10 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
     }
     if ((d32_tri_texture_caps & D3DPTEXTURECAPS_TRANSPARENCY) != 0ul) {
         expected |= 0xf00ul;
+    }
+    if ((d32_tri_alpha_cmp_caps & D3DPCMPCAPS_GREATER) != 0ul &&
+        (d32_tri_dest_blend_caps & D3DPBLENDCAPS_SRCCOLOR) != 0ul) {
+        expected |= 0xf000ul;
     }
     d32_hx("T20Expected", expected);
     return (ok & expected) != expected ? 1ul : 0ul;
@@ -3559,7 +3632,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 10ul
+#define D32_T19_PROGRAMS 14ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -3671,6 +3744,18 @@ typedef HRESULT (WINAPI *d32_d3d8_surf_unlock_fn)(D32_OBJECT *);
      (DWORD)(n))
 #define D32_PT_TO_R(n)           D32_PT_DST(V9X_PS11_FILE_TEMP, n)
 #define D32_PT_TO_T(n)           D32_PT_DST(V9X_PS11_FILE_TEXTURE, n)
+/* For the fixed-function rows: r(n).rgb saturated and r(n).a as
+ * destinations, a source read signed (_bx2, modifier 4 at 27:24), dp3,
+ * and the co-issue bit that pairs an alpha write with the colour one. */
+#define D32_PT_TO_R_RGB_SAT(n) \
+    (0x80000000ul | ((DWORD)V9X_PS11_FILE_TEMP << 28) | (0x1ul << 20) | \
+     (0x7ul << 16) | (DWORD)(n))
+#define D32_PT_TO_R_A(n) \
+    (0x80000000ul | ((DWORD)V9X_PS11_FILE_TEMP << 28) | (0x8ul << 16) | \
+     (DWORD)(n))
+#define D32_PT_SIGNED            ((DWORD)V9X_PS11_SRC_SIGN << 24)
+#define D32_PT_COISSUE           0x40000000ul
+#define D32_PT_DP3               8ul
 #define D32_PT_MOV               1ul
 #define D32_PT_MAD               4ul
 #define D32_PT_MUL               5ul
@@ -3701,7 +3786,94 @@ typedef struct d32_t19_program {
     DWORD normal;       /* bit N: stage N samples the normal map       */
     DWORD tokens[24];
     DWORD dxt;          /* 1 or 3: stage 0 samples that DXT texture    */
+    DWORD fixed;        /* 1 + a d32_t19_fixed row: drawn by those stage
+                           states with no shader bound, tokens what they
+                           mean                                        */
 } D32_T19_PROGRAM;
+
+/*
+ * DOT3 and environment bump mapping as fixed-function stage ops, which
+ * the HAL draws through a ps.1.1 program of its own making
+ * (v9x_d3d_ps_fixed). Each row is drawn with no pixel shader bound and
+ * judged against the program written here by hand, not the HAL's:
+ *
+ *   FfDot3   stage 0 DOTPRODUCT3 of the texel and the vertex colour, the
+ *            alpha the vertex's: dp3_sat r0.rgb, t0_bx2, v0_bx2.
+ *   FfDot3F  the same against D3DRS_TEXTUREFACTOR, which is c0's colour.
+ *   FfBem    stage 0 BUMPENVMAP, stage 1 its texel: Bem's program, with
+ *            the bump matrix set on stage 0, where Direct3D keeps a
+ *            fixed-function one, and stage 1's zeroed.
+ *   FfBem3   the base map, BUMPENVMAP on stage 1 and the environment on
+ *            stage 2, as 3DMark 2001 SE's bump test has them.
+ *
+ * Skipped, not counted, where D3DCAPS8 TextureOpCaps (DWORD 36) lacks the
+ * op. ValidateDevice (IDirect3DDevice8 slot 64) is recorded beside each,
+ * not judged. D3DRS_TEXTUREFACTOR is 60; D3DTOP_BUMPENVMAP 22 and
+ * DOTPRODUCT3 24, their caps 00200000h and 00800000h.
+ */
+#define D3DDEV8_VALIDATE_DEVICE 64
+#define D32_D3DCAPS8_TEXTURE_OP_CAPS 36
+#define D32_RS_TEXTUREFACTOR 60ul
+#define D32_TOP_BUMPENVMAP 22ul
+#define D32_TOP_DOTPRODUCT3 24ul
+#define D32_TA_DIFFUSE 0ul
+#define D32_TA_TFACTOR 3ul
+#define D32_TEXOPCAPS_BUMPENVMAP 0x00200000ul
+#define D32_TEXOPCAPS_DOTPRODUCT3 0x00800000ul
+/* c0 of d32_t19_env as a D3DCOLOR: 0.8, 0.6, 0.4 are 204, 153, 102. */
+#define D32_T19_FACTOR 0xe6cc9966ul
+
+typedef HRESULT (WINAPI *d32_d3d8_validate_fn)(D32_OBJECT *, DWORD *);
+
+typedef struct d32_t19_fixed {
+    DWORD needs;        /* the TextureOpCaps bit                       */
+    DWORD op[2];        /* COLOROP of stages 0 and 1                   */
+    DWORD arg1[2];
+    DWORD arg2[2];
+    DWORD alpha_op[2];
+    DWORD alpha_arg1[2];
+    DWORD alpha_arg2[2];
+    DWORD bump_stage0;  /* the bump matrix on stage 0, stage 1's zero  */
+    DWORD stage2[6];    /* stage 2's op, args, alpha op, args; op 0 is
+                           DISABLE                                     */
+} D32_T19_FIXED;
+
+#define D32_T19_FIXED_ROWS 4ul
+
+static const D32_T19_FIXED d32_t19_fixed[D32_T19_FIXED_ROWS] = {
+    { D32_TEXOPCAPS_DOTPRODUCT3,
+      { D32_TOP_DOTPRODUCT3, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG2, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul },
+    { D32_TEXOPCAPS_DOTPRODUCT3,
+      { D32_TOP_DOTPRODUCT3, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_TFACTOR, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG2, D32_TOP_DISABLE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul },
+    { D32_TEXOPCAPS_BUMPENVMAP,
+      { D32_TOP_BUMPENVMAP, D32_TOP_SELECTARG1 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+      { D32_TOP_SELECTARG1, D32_TOP_SELECTARG1 },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+      1ul },
+    /* FfBem3, 3DMark 2001 SE's arrangement: the base map times the
+     * vertex colour, the bump map with the matrix on its own stage 1,
+     * and the environment on stage 2 times what came before. */
+    { D32_TEXOPCAPS_BUMPENVMAP,
+      { D32_TOP_MODULATE, D32_TOP_BUMPENVMAP },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      { D32_TOP_MODULATE, D32_TOP_MODULATE },
+      { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_DIFFUSE, D32_TA_CURRENT },
+      0ul,
+      { D32_TOP_MODULATE, D32_TA_TEXTURE, D32_TA_CURRENT,
+        D32_TOP_MODULATE, D32_TA_TEXTURE, D32_TA_CURRENT } }
+};
+
+/* The HAL device's TextureOpCaps, while T19 runs. */
+static DWORD d32_t19_texop_caps;
 
 /*
  * Step 5d's normal map: 8x8 D3DFMT_Q8W8V8U8 (63), managed, its texels
@@ -3839,7 +4011,36 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_VER11,
         D32_PT_TEX, D32_PT_TO_T(0),
         D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_T_A(0),
-        D32_PT_END }, 3ul }
+        D32_PT_END }, 3ul },
+    /* The fixed-function rows (d32_t19_fixed), each program what its
+     * stage states mean. */
+    { "FfDot3", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_DP3, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0) | D32_PT_SIGNED,
+        D32_PT_V(0) | D32_PT_SIGNED,
+        D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_V(0),
+        D32_PT_END }, 0ul, 1ul },
+    { "FfDot3F", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_DP3, D32_PT_TO_R_RGB_SAT(0), D32_PT_T(0) | D32_PT_SIGNED,
+        D32_PT_C(0) | D32_PT_SIGNED,
+        D32_PT_MOV | D32_PT_COISSUE, D32_PT_TO_R_A(0), D32_PT_V(0),
+        D32_PT_END }, 0ul, 2ul },
+    { "FfBem", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_TEXBEM, D32_PT_TO_T(1), D32_PT_T(0),
+        D32_PT_MOV, D32_PT_TO_R(0), D32_PT_T(1),
+        D32_PT_END }, 0ul, 3ul },
+    { "FfBem3", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0), D32_PT_TEX, D32_PT_TO_T(1),
+        D32_PT_TEXBEM, D32_PT_TO_T(2), D32_PT_T(1),
+        D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_V(0),
+        D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(2), D32_PT_R(0),
+        D32_PT_END }, 0ul, 4ul }
 };
 
 /* The Cube program's set 1 per vertex: directions whose plane passes near
@@ -4697,11 +4898,57 @@ static HRESULT d32_t19_cube_texture(D32_OBJECT *device, D32_OBJECT **cube)
     return 0;
 }
 
+/* Stages 0 and 1 as a fixed-function row has them, or with no row as
+ * Direct3D starts them, which the shader programs draw under; and the
+ * bump matrix (env's stage 1 one) on the stage that holds it. */
+static void d32_t19_fixed_states(D32_OBJECT *device,
+                                 const D32_T19_FIXED *fixed,
+                                 const V9X_PS11_ENV *env)
+{
+    static const D32_T19_FIXED defaults = {
+        0ul,
+        { D32_TOP_MODULATE, D32_TOP_DISABLE },
+        { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+        { D32_TOP_SELECTARG1, D32_TOP_DISABLE },
+        { D32_TA_TEXTURE, D32_TA_TEXTURE }, { D32_TA_CURRENT, D32_TA_CURRENT },
+        0ul
+    };
+    d32_stage_state_fn tss =
+        (d32_stage_state_fn)device->vtbl[D3DDEV8_SET_TEXTURE_STAGE_STATE];
+    const D32_T19_FIXED *row = fixed != 0 ? fixed : &defaults;
+    DWORD holder = row->bump_stage0 != 0ul ? 0ul : 1ul;
+    DWORD stage;
+    DWORD k;
+
+    for (stage = 0ul; stage < 2ul; ++stage) {
+        tss(device, stage, D32_TSS_COLOROP, row->op[stage]);
+        tss(device, stage, D32_TSS_COLORARG1, row->arg1[stage]);
+        tss(device, stage, D32_TSS_COLORARG2, row->arg2[stage]);
+        tss(device, stage, D32_TSS_ALPHAOP, row->alpha_op[stage]);
+        tss(device, stage, D32_TSS_ALPHAARG1, row->alpha_arg1[stage]);
+        tss(device, stage, D32_TSS_ALPHAARG2, row->alpha_arg2[stage]);
+        for (k = 0ul; k < 4ul; ++k) {
+            tss(device, stage, D32_D3DTSS_BUMPENVMAT00 + k,
+                d32_float_bits(stage == holder ? env->bump[1][k] : 0.0f));
+        }
+    }
+    tss(device, 2ul, D32_TSS_COLOROP,
+        row->stage2[0] != 0ul ? row->stage2[0] : D32_TOP_DISABLE);
+    tss(device, 2ul, D32_TSS_COLORARG1, row->stage2[1]);
+    tss(device, 2ul, D32_TSS_COLORARG2, row->stage2[2]);
+    tss(device, 2ul, D32_TSS_ALPHAOP,
+        row->stage2[3] != 0ul ? row->stage2[3] : D32_TOP_DISABLE);
+    tss(device, 2ul, D32_TSS_ALPHAARG1, row->stage2[4]);
+    tss(device, 2ul, D32_TSS_ALPHAARG2, row->stage2[5]);
+}
+
 /* One program drawn and judged; 1 when it passes. */
 static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                              const V9X_PS11_ENV *env, DWORD format)
 {
     const D32_T19_PROGRAM *p = &d32_t19_programs[program];
+    const D32_T19_FIXED *fixed =
+        p->fixed != 0ul ? &d32_t19_fixed[p->fixed - 1ul] : 0;
     V9X_PS11_PROGRAM parsed;
     D32_T19_VERTEX vertex[3];
     D32_D3DLOCKED_RECT locked;
@@ -4738,6 +4985,10 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     if ((p->dxt == 1ul && d32_t19_dxt1 == 0) ||
         (p->dxt == 3ul && d32_t19_dxt3 == 0)) {
         d32_line(key, "skip-no-dxt");
+        return 1ul;
+    }
+    if (fixed != 0 && (d32_t19_texop_caps & fixed->needs) == 0ul) {
+        d32_line(key, "skip-no-texop");
         return 1ul;
     }
     d32_t19_cube_stages = p->cube;
@@ -4802,12 +5053,29 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
                         device, 0ul,
                         p->dxt == 1ul ? d32_t19_dxt1 : d32_t19_dxt3));
     }
-    create_hr = ((d32_d3d8_create_ps_fn)
-                 device->vtbl[D3DDEV8_CREATE_PIXEL_SHADER])(
-        device, p->tokens, &handle);
-    if (create_hr == 0) {
-        set_hr = ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_SET_PIXEL_SHADER])(
-            device, handle);
+    if (fixed != 0) {
+        /* No shader: the row's stage states, the factor, and the bump
+         * matrix moved to stage 0 where the row says. CreateHr and SetHr
+         * then stand for nothing made and nothing bound. */
+        DWORD passes = 0ul;
+
+        d32_t19_fixed_states(device, fixed, env);
+        rs(device, D32_RS_TEXTUREFACTOR, D32_T19_FACTOR);
+        d32_t19_key(p->name, "ValidateHr",
+                    (DWORD)((d32_d3d8_validate_fn)
+                            device->vtbl[D3DDEV8_VALIDATE_DEVICE])(
+                        device, &passes));
+        d32_t19_key(p->name, "ValidatePasses", passes);
+        create_hr = 0;
+        set_hr = 0;
+    } else {
+        create_hr = ((d32_d3d8_create_ps_fn)
+                     device->vtbl[D3DDEV8_CREATE_PIXEL_SHADER])(
+            device, p->tokens, &handle);
+        if (create_hr == 0) {
+            set_hr = ((d32_d3d8_dword_fn)
+                      device->vtbl[D3DDEV8_SET_PIXEL_SHADER])(device, handle);
+        }
     }
     if (create_hr == 0 && set_hr == 0) {
         draw_hr = ((d32_d3d8_draw_up_fn)
@@ -4840,6 +5108,15 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         V9X_PS11_ENV judged = *env;
 
         judged.cube = p->cube;
+        /* A three-stage bump row: the program's texbem samples stage 2,
+         * so the matrix it reads is there. */
+        if (fixed != 0 && fixed->stage2[0] != 0ul) {
+            DWORD m;
+
+            for (m = 0ul; m < 4ul; ++m) {
+                judged.bump[2][m] = env->bump[1][m];
+            }
+        }
         verdict = d32_t19_judge(program, &parsed, &judged, vertex,
                                 (const BYTE *)locked.pBits,
                                 (DWORD)locked.Pitch, format);
@@ -4850,11 +5127,14 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     if (back != 0) {
         ((d32_release_fn)back->vtbl[COM_RELEASE])(back);
     }
-    if (create_hr == 0) {
+    if (create_hr == 0 && fixed == 0) {
         ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_SET_PIXEL_SHADER])(device,
                                                                    0ul);
         ((d32_d3d8_dword_fn)device->vtbl[D3DDEV8_DELETE_PIXEL_SHADER])(
             device, handle);
+    }
+    if (fixed != 0) {
+        d32_t19_fixed_states(device, 0, env);
     }
     if ((p->cube & 0x2ul) != 0ul) {
         ((d32_set_texture_fn)device->vtbl[D3DDEV8_SET_TEXTURE])(
@@ -5033,6 +5313,8 @@ static DWORD d32_ps11(void)
             goto release;
         }
     }
+    d32_t19_texop_caps = caps[D32_D3DCAPS8_TEXTURE_OP_CAPS];
+    d32_hx("T19TextureOpCaps", d32_t19_texop_caps);
     d32_hx("T19TextureCaps", caps[D32_D3DCAPS8_TEXTURE_CAPS]);
     if ((caps[D32_D3DCAPS8_TEXTURE_CAPS] & D32_D3DPTEXTURECAPS_CUBEMAP) !=
         0ul) {
@@ -6448,6 +6730,10 @@ void WINAPI V9xD3d32ProbeEntry(void)
     d32_tri_texture_caps = enumerated.tri_texture_caps;
     d32_tri_filter_caps = enumerated.tri_filter_caps;
     d32_tri_blend_caps = enumerated.tri_blend_caps;
+    d32_hx("HalTriDestBlendCaps", enumerated.tri_dest_blend_caps);
+    d32_hx("HalTriAlphaCmpCaps", enumerated.tri_alpha_cmp_caps);
+    d32_tri_dest_blend_caps = enumerated.tri_dest_blend_caps;
+    d32_tri_alpha_cmp_caps = enumerated.tri_alpha_cmp_caps;
     if (enumerated.hal_found == 0ul ||
         (enumerated.render_depth & (bpp == 32ul ? DDBD_32 : DDBD_16)) ==
             0ul) {

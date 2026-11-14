@@ -340,6 +340,12 @@ CreatePixelShader, as any other untranslatable program is.
        Before 5e it completed (489), skipping those tests, so this is a
        regression that blocks 0.47.0 until it is found or `draw_shader`
        is withheld.
+     - **Found and fixed** (boots 306-308,
+       [record](../decisions/2026-11-11-gen3-texture-size-2048.md)): a
+       2048x2048 map against Gen3's 1024 cap. With 2048 claimed (a 2048
+       edge sampled exactly by V9XTSHP) the run completes, 528, and
+       Advanced Pixel Shader reports itself unsupported instead of
+       stopping. It never draws on the netbook.
 
      The run as first planned: V9XD32 T19 at 16 and 32 bpp on the
      netbook (W9QI2BE2, GMA 950).

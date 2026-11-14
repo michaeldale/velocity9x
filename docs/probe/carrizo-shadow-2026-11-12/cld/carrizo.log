@@ -1,0 +1,10 @@
+[+0:03] agent 0.16.0, boot 58, desktop True
+[+1:02] staged 8 files; resetting
+[+1:43] reset: boot 58 -> 59
+[+2:10] installed: 8 of 8
+[+2:46] probes in place: sent 5 of 5
+[+3:16] V9XD32 default exit=0
+[+3:37] V9XD32 bpp16 exit=0
+[+3:58] V9XGLP.EXE exit=0
+[+4:07] V9XGLIDP.EXE exit=0
+[+4:13] V9XR3DP.EXE exit=0

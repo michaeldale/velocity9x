@@ -4,7 +4,265 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.47.0 - not yet released
+## 0.51.0 - not yet released
+
+- **`intel-gma` package, HD 4600 (Haswell): environment bump mapping and
+  DOT3 bump mapping in Direct3D 8 and 9 programs.** A program that sets
+  a bump-map texture stage (`BUMPENVMAP`, up to three stages) or a DOT3
+  stage (`DOTPRODUCT3`) is now drawn, and the driver advertises both.
+  3DMark 2001 SE's two bump tests, which read "Not supported by
+  hardware", run: Environment Bump Mapping at 48.0 fps and DOT3 Bump
+  Mapping at 29.0 fps, in a full run of all 21 tests that scored 2524.
+  The texture factor is honoured in these stages and in cube-mapped
+  ones. Measured on one HD 4600 at a 16-bit desktop; nobody has compared
+  either test's picture with another card's
+  ([issue](docs/issues/2026-11-14-haswell-3dmark2001se-dot3-renderer-fault.md)
+  for a fault in the DOT3 test that turned out to be a test tool of
+  ours). The GMA 900 and 950 class (Gen3), which also runs pixel
+  shaders, shares the code: on a GMA 950 netbook the Environment Bump
+  Mapping test now runs (10.1 fps), and the DOT3 test still reads "Not
+  supported by hardware", because the driver does not report specular
+  shading on that class and 3DMark does not try the test without it.
+  DirectX 7 programs are unchanged
+  ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
+- **`intel-gma` package, GMA X3100 (GM965): 32 MiB of texture memory in
+  system RAM**, as the GMA 950 got in 0.49.0. The BIOS gives this chip at
+  most 8 MiB, of which Direct3D could use about 4.5. The driver now maps
+  32 MiB of ordinary RAM into the chip's address space at boot, on
+  machines with at least 512 MiB, and textures go there first: on a GMA
+  X3100 laptop textures see 36.5 MiB, and 3DMark 2000 stopped recreating
+  its textures (1,629 creates in a run against 317,019) and scored 1706
+  against 1224. The screen mapping grows from 16 to 64 MiB, write-combined.
+  `V9X3D OFF` from DOS turns the pool off with the rest of the 3D. Measured
+  on one machine; the first run of the test tool that maps the pool ended
+  in a blue screen nobody could read, and fifty runs since have not
+  repeated it
+  ([decisions](docs/decisions/2026-11-14-intel-gm965-texture-pool-decisions.md),
+  [driver](docs/decisions/2026-11-14-intel-gm965-texture-pool-driver-first-boot.md),
+  [issue](docs/issues/2026-11-14-gm965-pool-map-probe-machine-stops.md)).
+  Not run with the pool: a full-screen DOS box, a mode change from
+  Display Properties, a game.
+- **`intel-gma` package, GMA X3100 to Ironlake (Gen4 and Gen5): Direct3D
+  no longer drops a draw while the chip is busy.** Before replacing a
+  shader, the driver waited about 20 ms for the chip to finish earlier
+  work and dropped the draw if it had not. 3DMark 2000 on a GMA X3100
+  lost 78 draws that way; it now waits, and loses none. Run on the GMA
+  X3100 only.
+
+## 0.50.0 - 2026-11-14
+
+- **`intel-gma` package, HD 4600: the Unreal Tournament 2004 demo runs,
+  lit and with its floors whole.** It stopped at its first frame with
+  "Critical Error". Five fixes, each measured on the i5-4570 with the
+  botmatch DM-Rankin, 12 bots:
+  - DXT1, DXT3 and DXT5 cube textures are offered and laid out; the
+    runtime refused UT2004's compressed cube map. The layout rule is
+    from Mesa, not the PRM, and no frame has shown a cube face.
+  - Indexed draws whose base offset is not whole vertices are drawn;
+    935 a run were skipped.
+  - The doubled texture blend (MODULATE2X) is drawn on the chip. 73 %
+    of UT2004's draws use it; they drew at half the light, and its
+    lightmaps were dropped.
+  - Cube textures in fixed-function stages draw through the pixel
+    shader path; 11,577 batches a run were refused.
+  - Two-texture triangles that reach past the 8K span are cut, not
+    dropped; these were the see-through floor patches.
+
+  The botmatch runs at 32.9 fps at the install settings, nothing
+  refused, no engine timeouts. Whether the reflections look right is not
+  judged
+  ([issue](docs/issues/2026-11-13-haswell-ut2004-demo-dxt5-cube-create-refused.md)).
+  The HD 4000 shares this code but keeps MODULATE2X off until one has
+  run it; no Ivy Bridge ran this release.
+- **`intel-gma` package, GMA 900, 950, 3100 and 3150: lightmaps drawn
+  with the doubled blend.** A two-texture draw whose second stage is
+  MODULATE2X now runs on the chip, and such triangles past the chip's
+  guard band are cut instead of dropped. On the GMA 950 netbook UT2004's
+  botmatch draws its lightmaps at 4.23 fps (0.49.0: 4.26 without them),
+  nothing refused. A single doubled stage is still drawn at half the
+  light; the shader route that would draw it cost 37 % of the frame
+  rate and was left out.
+- **`intel-gma` package, GMA X3100 (GM965) and the GMA 4500 family (G45,
+  Q45, GM45): the screen and textures are written write-combined.** These
+  four chips were left uncached when the GMA 950 and the Ironlake got
+  write-combining in 0.30.1. On a GMA X3100 laptop writes to video memory
+  went from 130 to 3,310 MB/s, a full-screen fill costs a 25th of what it
+  did, texture uploads a 12th, and 3DMark 2000 ran to 1224 (774 on the
+  0.48.0 code, a different build). On a GMA 4500MHD: 101 to 2,550 MB/s.
+  The release probes pass on both. The G45 and Q45 take the same change
+  and have not run it
+  ([record](docs/decisions/2026-11-13-gm965-write-combining.md)).
+
+## 0.49.0 - 2026-11-13
+
+- **`ati` package: the Radeon HD 2600 XT (RV630, `1002:9588`) gets
+  hardware acceleration.** It ran on the `vbe` package's software
+  renderer before. DirectDraw fills and copies run on the DMA engine,
+  flips go through the display controller at the blank, and Direct3D
+  and OpenGL draw through the command processor on AMD's RV630
+  microcode, with a 128 MiB heap. On the one card measured (a tester's
+  machine through remote help, modes from the VBE): V9XD32 passes at 16
+  and 32 bpp, fog and colour keys included; V9XGLP passes; 3DMark 2000
+  and 3DMark 2001 SE run to a score; the Quake 3 demo's `demo001` ran at
+  65.9 fps at 640x480x16
+  ([plan](docs/plans/ati-rv630-hd2600xt.md),
+  [Direct3D](docs/decisions/2026-11-13-rv630-direct3d-hal-first-light.md),
+  [DMA copies](docs/decisions/2026-11-13-rv630-dma-copy-alignment.md)).
+  Not run on it: Glide, 3DCIF, GDI and mode changes, full-screen DOS.
+  Specular is built but no check judges it. The screen is not
+  write-combined. Once, before a reset, its depth buffer held one
+  constant value; not seen since
+  ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
+- **`intel-gma` package, GMA 950 (945GSE, `8086:27AE`): 32 MiB of
+  texture memory in system RAM.** The driver maps 32 MiB of ordinary RAM
+  into the chip's address space at boot, on machines with at least
+  512 MiB, and textures go there first. On the HP
+  Mini netbook, 3,201 small textures fit where 390 did; Serious Sam's
+  demo kept all 488 of its textures on the chip with no failed creates
+  or evictions, where an October run failed 1,494; Half-Life and Quake 2
+  run as before; 3DMark 2001 SE completes. `V9X3D OFF` turns the pool
+  off with the rest of the 3D. Other Gen3 chips (GMA 900, 3100, 3150,
+  other GMA 950 parts) get no pool until each is measured
+  ([decisions](docs/decisions/2026-11-12-intel-gen3-texture-pool-decisions.md),
+  [driver](docs/decisions/2026-11-12-intel-gen3-texture-pool-phase3.md),
+  [games](docs/decisions/2026-11-12-intel-gen3-texture-pool-games.md)).
+  Not run: a full-screen DOS box with the pool mapped.
+- **`intel-gma` package, GMA 900, 950, 3100 and 3150: two texture
+  stages in Direct3D, offered to every program.** Direct3D drew only the
+  first stage of a multi-stage texture blend, so 3DMark 2001 SE's
+  Dragothic dragon had flat white horns and neck. Stage 1 now runs on the
+  chip's second texture unit; a third stage that multiplies by the
+  vertex colour is folded into the first two, and any other third stage
+  is still dropped. DirectX 6 and 7 programs are now offered the DirectX
+  8 driver interface (DDI 6) too. With the texture pool above, Dragothic's
+  sky also draws; the frames grabbed show no white left, though a full
+  run has not been watched on the panel since
+  ([issue](docs/issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)).
+  On the GMA 950 the release probes pass and Half-Life's Direct3D timedemo
+  runs textured; the other chips are not run.
+- **`intel-gma` package, HD 4600: 3DMark 2001 SE's Car Chase with
+  compressed textures no longer hangs the chip.** A DXT texture with no
+  room in video memory was handed to DirectDraw, which cannot place one;
+  the render engine timed out, every later draw was refused and DDRAW.DLL
+  faulted at every start until Windows restarted. The driver now reports
+  such a texture out of video memory, so Direct3D 8 evicts and retries,
+  as on Gen3. On the i5-4570 the full run with compressed textures
+  completes (2519) with no timeout
+  ([issue](docs/issues/2026-11-13-haswell-3dmark2001se-car-chase-dxt-gpu-hang.md)).
+  How DirectDraw's placement hung the engine is not established. The HD
+  4000 shares this code and is not run.
+
+## 0.48.0 - 2026-11-12
+
+- **Every package: DirectDraw and Direct3D surfaces may be wider than
+  the screen.** The driver never told DirectDraw it allows them, so a
+  program asking for one was refused: Direct3D 8 reported it as an
+  internal driver error. 3DMark 2001 SE's Advanced Pixel Shader asks for
+  a 1024x512 render target and failed at 640x480 on the GMA 950 and the
+  HD 4600 alike. With the fix it runs on the HD 4600 at 640x480x32. On
+  the GMA 950 it now stops on a genuine lack of video memory: its 7.7 MB
+  is too small for this test at 32-bit colour
+  ([record](docs/decisions/2026-11-12-gen3-aps-call-log.md)).
+- **`intel-gma` package, GMA X3000/X3100/4500 and HD Graphics (Gen4 and
+  Gen5): see-through textures that also write depth now draw.** The
+  driver refused them and Direct3D dropped them, so Half-Life's grates,
+  fences, ladders and some doors were invisible, as were parts of
+  Incoming. They now draw in two passes, as colour-keyed ones have since
+  0.44.0; the same limit applies: something drawn later behind the
+  see-through part of such a texture can be hidden there. Half-Life
+  confirmed by its reporter on a GMA 4500MHD
+  ([record](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+  On the GMA X3100, where this combination hung the chip before it was
+  refused, V9XGLP and V9XD32 draw it in the two passes without a hang.
+- **`intel-gma` package, GMA X3100 (GM965) laptops: the panel's own
+  resolution.** The video BIOS on the one machine measured carries a
+  1280x800 slot for its panel filled with 1024x768 timing, so VESA
+  offered 1024x768 and the BIOS stretched it to the panel. At boot the
+  driver now writes the panel's EDID timing into that slot in shadow RAM,
+  only where the slot holds the bytes it planned against, and the BIOS
+  sets 1280x800 with the panel fitter off; the owner confirmed the screen.
+  Enabled on the GM965 only; the GMA 950 netbook and the GMA 4500MHD need
+  their own BIOS read first
+  ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)).
+- **Release checks:** V9XFBCMP now also checks offscreen surfaces wider
+  than the screen, and V9XD32's T20 an alpha test with depth writes, so
+  every release run covers both changes above.
+
+## 0.47.0 - 2026-11-12
+
+- **`ati` package, AMD Radeon R7E (Carrizo): the screen is
+  write-combined.** Every earlier release wrote it uncached. On
+  M-XP7053 at 1024x768x16, frame-buffer writes went from 204 to 4,779
+  MB/s, a full-screen fill from 203 to 2,165 MB/s, bitmap-to-screen
+  copies from 182 to 1,235 MB/s, and text costs 0.4 to 0.6 of what it
+  did. Reading the screen is unchanged at 8 MB/s
+  ([record](docs/decisions/2026-11-11-carrizo-catch-up-and-write-combining.md)).
+  The same machine also ran Glide for the first time: every check of the
+  Glide probe passes.
+- **`ati` package, Radeon HD 5000-7000 (Evergreen, Trinity), R7E
+  (Carrizo) and R3E (Mullins): moving windows, scrolling and anything
+  else that reads the screen is many times faster.** These chips have no
+  engine for desktop drawing, so Windows now draws the desktop into a
+  copy in system memory, as the `vbe` package has since 0.46.0. On
+  Carrizo, scrolling went from 8 to 630 MB/s and a 256x256 window move
+  from 8 to 240 MB/s. Drawing that only writes runs at 0.35 to 0.5 of its
+  old speed, text costs 1.7 times as much and lines 2.2 times. Windowed
+  OpenGL is unaffected: Quake 3 in a window runs at 18.7 fps with the
+  copy and without it. A file `C:\V9XDIAG\NOSHADOW.TXT` turns it off.
+  Measured on Carrizo and on one R3E; the Evergreen cards and Trinity
+  have it on by the same design, unmeasured
+  ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
+- **`ati` package, AMD Radeon R3E (Mullins): the screen is
+  write-combined.** Every earlier release wrote it uncached, at 32 MB/s
+  on the one measured: desktop drawing went from about 30 MB/s to 1,170
+  (scrolling) and 1,235 (a full-screen fill), level with the `vbe`
+  package on the same card, while DirectDraw keeps its engine
+  ([record](docs/decisions/2026-11-12-ati-screen-shadow.md)).
+- **`vbe` package: the screen copy no longer reads the screen after a
+  windowed program draws on it.** A windowed program that locks the
+  screen, or presents into a window from video memory, used to have
+  each rectangle read back into the desktop's copy at the card's read
+  speed (5 MB/s on the AMD cards). It is now read back only when the
+  desktop next draws there. Shared with the `ati` change above, where it
+  took windowed Quake 3 from 2.5 to 18.7 fps; on `vbe` itself measured
+  on one R3E only, where the desktop and the screen still agree after
+  every test.
+- **`intel-gma` package, Gen3 (GMA 900, 950, 3100, 3150): DirectX 8
+  pixel shaders.** Pixel shader 1.1 programs run on the engine through
+  the i915 fragment program, with four texture stages, cube maps and the
+  signed bump-map formats. DirectX 8 programs now get the DirectX 8
+  driver interface on Gen3, where they used to get the DirectX 6 one.
+  Every Direct3D title can now use 32-bit textures (A8R8G8B8, X8R8G8B8),
+  and textures up to 2048 pixels on a side, where 1024 was the limit.
+  On the netbook's GMA 950, every pixel shader check passes at 16 and
+  32 bpp, and 3DMark 2001 SE runs to the end (528), including the pixel
+  shader tests. Advanced Pixel Shader reports itself unsupported; why
+  was not measured
+  ([first runs](docs/decisions/2026-11-11-gen3-ps11-netbook-first-runs.md),
+  [32-bit textures](docs/decisions/2026-11-11-gen3-32bit-textures-netbook.md),
+  [2048 textures](docs/decisions/2026-11-11-gen3-texture-size-2048.md)).
+- **OpenGL, every package: non-square mipmapped textures draw on
+  DirectX 6.1a.** The ICD now asks for a mip chain that ends when the
+  shorter side reaches 1. On one Radeon HD 5570 (GitHub issue 16),
+  the full chain was refused, so Quake 2 dropped 42 % of its triangles.
+  With the fix it drops none
+  ([issue](docs/issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md)).
+- **Known issue, `intel-gma` Gen4 (GM965, GM45, G4x): a program's own
+  alpha test with depth writes is not drawn.** Half-Life's grates and
+  doors are missing, and Incoming's textures are transparent or missing
+  (GitHub issue 22). The driver refuses that combination because it hung
+  the GM965, and Gen4 has no fallback. Not fixed in this release
+  ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)).
+- **`vbe` package: Direct3D on the software renderer draws 32-bit
+  textures.** It used to refuse A8R8G8B8 and X8R8G8B8 textures and draw
+  their triangles in plain vertex colour, white in the test that found
+  it. It now samples both, alpha included, and offers them to programs
+  that ask which formats it takes. Measured on one R3E
+  ([record](docs/decisions/2026-11-12-vbe-soft-32bit-textures.md)).
+- **Known issue, `s3` package, Trio64: a second or two of cyan garbage
+  at Windows shutdown**, before the safe-to-turn-off screen (GitHub
+  PR 24). Cosmetic, cause unknown, parked
+  ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
 
 ## 0.46.0 - 2026-11-11
 
