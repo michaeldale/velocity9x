@@ -147,10 +147,15 @@ static void test_objects(void)
     CHECK(word_at(V9X_NV50_INST_DMA_VM + 0x14ul) == 0ul);
     CHECK(word_at(V9X_NV50_INST_OBJ_2D + 0x00ul) == 0x502dul);
     CHECK(word_at(V9X_NV50_INST_OBJ_2D + 0x04ul) == 0ul);
+    /* The Tesla 3D object, GT214_TESLA on the GT21x chips, laid out as
+     * 502D is (gr/nv50.c nv50_gr_object_bind writes the class alone). */
+    CHECK(word_at(V9X_NV50_INST_OBJ_3D + 0x00ul) == 0x8597ul);
+    CHECK(word_at(V9X_NV50_INST_OBJ_3D + 0x04ul) == 0ul);
 
     /* RAMHT: engine << 20 | offset >> 4. */
     CHECK(ramht_find(V9X_NV50_HANDLE_DMA_VM) == (0ul << 20 | 0xe000ul >> 4));
     CHECK(ramht_find(V9X_NV50_HANDLE_2D) == (1ul << 20 | 0xe020ul >> 4));
+    CHECK(ramht_find(V9X_NV50_HANDLE_3D) == (1ul << 20 | 0xe040ul >> 4));
     /* The DMA object lands at its own hash slot. */
     CHECK(word_at(V9X_NV50_INST_RAMHT +
                   v9x_nv50_ramht_hash(V9X_NV50_HANDLE_DMA_VM) * 8ul) ==

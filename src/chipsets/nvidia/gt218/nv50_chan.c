@@ -134,6 +134,10 @@ static void v9x_nv50_build_objects(v9x_u32 *region)
 
     /* The 502D object: its class, then three zeros. */
     v9x_nv50_put(region, obj + 0x00ul, V9X_NV50_CLASS_2D);
+    /* The 3D object the same way. Nothing binds it until a 3D push does,
+     * so a channel that draws 2D only is unchanged in what it runs. */
+    v9x_nv50_put(region, V9X_NV50_INST + V9X_NV50_INST_OBJ_3D,
+                 V9X_NV50_CLASS_3D);
 }
 
 static void v9x_nv50_build_engine(v9x_u32 *region, v9x_u32 grctx_addr,
@@ -244,6 +248,11 @@ v9x_status v9x_nv50_chan_build(v9x_u32 base, v9x_u32 chid,
     if (status != V9X_STATUS_OK) {
         return status;
     }
-    return v9x_nv50_ramht_insert(region, V9X_NV50_HANDLE_2D,
-                                 V9X_NV50_ENGINE_GR, V9X_NV50_INST_OBJ_2D);
+    status = v9x_nv50_ramht_insert(region, V9X_NV50_HANDLE_2D,
+                                   V9X_NV50_ENGINE_GR, V9X_NV50_INST_OBJ_2D);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    return v9x_nv50_ramht_insert(region, V9X_NV50_HANDLE_3D,
+                                 V9X_NV50_ENGINE_GR, V9X_NV50_INST_OBJ_3D);
 }

@@ -76,6 +76,9 @@
 #define V9X_NV50_INST_DMA_VM         0x0e000ul
 /* The 502D object, 16 aligned (gr/nv50.c nv50_gr_object_bind). */
 #define V9X_NV50_INST_OBJ_2D         0x0e020ul
+/* The Tesla 3D object, laid out as 502D's
+ * (docs\plans\nvidia-gt218-3d.md). */
+#define V9X_NV50_INST_OBJ_3D         0x0e040ul
 
 /* The page table for the first PDE: 64 KiB pages, 8192 eight-byte entries,
  * 512 MiB (vmmnv50.c nv50_vmm_desc_16). */
@@ -107,11 +110,18 @@
 #define V9X_NV50_HANDLE_2D           0xbeef502dul
 /* nouveau binds 2D on subchannel 3 (its NvSub2D). */
 #define V9X_NV50_SUBC_2D             3u
+/* The Tesla 3D object, GT214_TESLA (8597h): the class nouveau's gt215_gr
+ * lists for every GT21x chip, the GT218 included, and the one
+ * xf86-video-nouveau picks for chipset A8h (NVA3_3D_CLASS). Subchannel 1
+ * is free here; nouveau's own choice was not checked. */
+#define V9X_NV50_HANDLE_3D           0xbeef8597ul
+#define V9X_NV50_SUBC_3D             1u
 /* RAMHT engine ids on the GT218's runlist (fifo/g98.c): DMA objects 0,
  * PGRAPH 1. */
 #define V9X_NV50_ENGINE_DMA          0ul
 #define V9X_NV50_ENGINE_GR           1ul
 #define V9X_NV50_CLASS_2D            0x502dul
+#define V9X_NV50_CLASS_3D            0x8597ul
 
 /* ---- Registers (BAR0) the caller writes or polls. ---- */
 

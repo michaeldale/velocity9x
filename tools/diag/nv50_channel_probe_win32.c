@@ -33,6 +33,7 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
+#include "velocity9x/nv50_3d.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -2380,6 +2381,91 @@ static void v9x_stage_check(void)
     v9x_finish("CHECK-HELD-AND-DRAWS", 0u);
 }
 
+/*
+ * /3d: phase 1 of docs\plans\nvidia-gt218-3d.md. The Tesla 3D object
+ * (8597h) bound on its own subchannel and xf86-video-nouveau's setup sent
+ * after it, as docs\specifications\gt218-tesla-3d-first-triangle.md lists
+ * it, with nothing drawn. EXA's vertex program and PFP_S are written
+ * first to the addresses the setup names, 3 MiB into the window, clear of
+ * the fill and depth targets, and two of their words read back. Pass when
+ * the push is consumed with PGRAPH idle, no PGRAPH interrupt, no pusher
+ * error and no VM trap.
+ */
+#define V9X_3D_SCRATCH       0x00300000ul
+#define V9X_3D_PUSH_WORDS    128ul
+
+static int v9x_stage_3d(void)
+{
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_push push;
+    DWORD first_word = v9x_push_next;
+    DWORD vp_read;
+    DWORD fp_read;
+    DWORD vm_trap;
+    int clean;
+
+    v9x_push_next += V9X_3D_PUSH_WORDS;
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+
+    /* The programs, and one word of each read back through BAR1. */
+    v9x_ops_begin();
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP,
+                  v9x_nv50_3d_exa_vp, V9X_NV50_3D_EXA_VP_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP,
+                  v9x_nv50_3d_exa_fp_s, V9X_NV50_3D_EXA_FP_S_WORDS);
+    vp_read = v9x_op(V9X_OP_VRAM_READ,
+                     V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP + 59ul * 4ul,
+                     0ul, 0ul);
+    fp_read = v9x_op(V9X_OP_VRAM_READ,
+                     V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP + 5ul * 4ul,
+                     0ul, 0ul);
+    if (!v9x_run("3d-programs")) {
+        v9x_finish("3D-PROGRAMS-REFUSED", 8u);
+    }
+    v9x_put("3D", "VpLastWord", vp_read);
+    v9x_put("3D", "FpLastWord", fp_read);
+    v9x_flush();
+    if (v9x_value(vp_read) != v9x_nv50_3d_exa_vp[59] ||
+        v9x_value(fp_read) != v9x_nv50_3d_exa_fp_s[5]) {
+        v9x_text("3D", "Result", "PROGRAMS-DIFFER");
+        return 0;
+    }
+
+    /* The bind and the setup as one push. */
+    v9x_ops_begin();
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_3D_PUSH_WORDS);
+    v9x_nv50_push_bind_3d(&push);
+    v9x_nv50_push_3d_setup(&push, &scratch);
+    if (push.overflow != 0ul) {
+        v9x_text("3D", "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    v9x_number("3D", "PushWords", push.count);
+    clean = v9x_kick("3D", &push, first_word);
+
+    /* The VM trap word, which v9x_kick does not read: an address in the
+     * setup outside the VM would latch here. */
+    v9x_ops_begin();
+    vm_trap = v9x_op(V9X_OP_MMIO_READ, V9X_NV50_VM_TRAP, 0ul, 0ul);
+    if (!v9x_run("3d-vm")) {
+        v9x_finish("3D-VM-REFUSED", 8u);
+    }
+    v9x_put("3D", "VmTrap", vm_trap);
+    v9x_pusher_state();
+    if ((v9x_value(vm_trap) & V9X_NV50_VM_TRAP_PENDING) != 0ul) {
+        v9x_text("3D", "Result", "VM-TRAP");
+        return 0;
+    }
+    if (!clean) {
+        v9x_text("3D", "Result", "NOT-CLEAN");
+        return 0;
+    }
+    v9x_text("3D", "Result", "PASS");
+    return 1;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -2485,6 +2571,9 @@ void __stdcall V9xNv50ChannelEntry(void)
         if (!ok8) {
             v9x_finish("DEPTH8-FAILED", 7u);
         }
+    }
+    if (v9x_switch_given("/3d") && !v9x_stage_3d()) {
+        v9x_finish("3D-FAILED", 8u);
     }
     v9x_finish("COMPLETE", 0u);
 }
