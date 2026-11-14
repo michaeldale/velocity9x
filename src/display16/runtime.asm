@@ -2516,6 +2516,58 @@ V9xMiniHswEngineCloseDone:
     pop     ebx
     retf
 V9XMINIHSWENGINECLOSE ENDP
+
+; WORD FAR PASCAL V9xMiniHswRps(DWORD request, DWORD FAR *cap,
+;                               DWORD FAR *rpnswreq, DWORD FAR *rpstat1)
+;
+; HSW_RPS (V9XMAPI.INC): request in EBX (0 reads only); the three registers
+; copied out of EBX/ECX/EDX before any `les bx`. Returns the verb's AX, or 0
+; with no mini-VDD API, the outputs then 0.
+PUBLIC V9XMINIHSWRPS
+V9XMINIHSWRPS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    push    es
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniHswRpsNoApi
+    mov     ebx, dword ptr [bp+18]
+    mov     eax, V9XMINI_FN_HSW_RPS
+    call    dword ptr V9xMiniApiEntry
+    mov     esi, ebx
+    mov     edi, ecx
+    push    ax
+    les     bx, dword ptr [bp+14]
+    mov     es:[bx], esi
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edi
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], edx
+    pop     ax
+    jmp     short V9xMiniHswRpsDone
+V9xMiniHswRpsNoApi:
+    les     bx, dword ptr [bp+14]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+10]
+    mov     dword ptr es:[bx], 0
+    les     bx, dword ptr [bp+6]
+    mov     dword ptr es:[bx], 0
+    xor     ax, ax
+V9xMiniHswRpsDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     bp
+    retf    16
+V9XMINIHSWRPS ENDP
 ENDIF
 
 IFDEF V9X_PAT_ROUTE

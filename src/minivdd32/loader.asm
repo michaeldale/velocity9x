@@ -2939,6 +2939,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_HswEngineClose
     cmp     ax, V9XMINI_FN_HSW_STOLEN_RESERVED
     je      V9xMini_Api_HswStolenReserved
+    cmp     ax, V9XMINI_FN_HSW_RPS
+    je      V9xMini_Api_HswRps
     cmp     ax, V9XMINI_FN_ATI_MMIO_MAP
     je      V9xMini_Api_AtiMmioMap
     cmp     ax, V9XMINI_FN_SIS_MMIO_MAP
@@ -3701,6 +3703,60 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ENDIF
 V9xMini_Api_HswStolenReserved_Refused:
     mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_AX], 0
+    ret
+
+; See V9XMINI_FN_HSW_RPS in V9XMAPI.INC. Haswell only: Ivy Bridge's request
+; field is not at 31:24 (i915's GEN6_FREQUENCY), and nothing was measured
+; there.
+V9X_HSW_RPNSWREQ        equ 0000a008h
+V9X_HSW_RPSTAT1         equ 0000a01ch
+V9X_HSW_RP_STATE_CAP    equ 00145998h
+V9X_HSW_RPS_REQ_LOW     equ 00ffffffh
+V9X_HSW_RPS_CAGF_SHIFT  equ 7
+V9X_HSW_RPS_CAGF_MASK   equ 7fh
+V9xMini_Api_HswRps:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xHswOpen, 0
+    je      short V9xMini_Api_HswRps_Refused
+    cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
+    jne     short V9xMini_Api_HswRps_Refused
+    mov     eax, [ebp.Client_EBX]
+    test    eax, V9X_HSW_RPS_REQ_LOW
+    jnz     short V9xMini_Api_HswRps_Refused
+    mov     edi, V9xHswMmioLinear
+    mov     [ebp.Client_AX], 1
+    test    eax, eax
+    jz      short V9xMini_Api_HswRps_Read
+    mov     [edi+V9X_HSW_RPNSWREQ], eax
+    ; The PCU's answer took 106 reads on the i5-4570; the bound is the
+    ; forcewake one, about a thousand times that.
+    mov     edx, eax
+    shr     edx, 24
+    xor     ecx, ecx
+V9xMini_Api_HswRps_Poll:
+    mov     eax, [edi+V9X_HSW_RPSTAT1]
+    shr     eax, V9X_HSW_RPS_CAGF_SHIFT
+    and     eax, V9X_HSW_RPS_CAGF_MASK
+    cmp     eax, edx
+    je      short V9xMini_Api_HswRps_Read
+    inc     ecx
+    cmp     ecx, V9X_HSW_FW_POLLS
+    jb      short V9xMini_Api_HswRps_Poll
+    mov     [ebp.Client_AX], 2
+V9xMini_Api_HswRps_Read:
+    mov     eax, [edi+V9X_HSW_RP_STATE_CAP]
+    mov     [ebp.Client_EBX], eax
+    mov     eax, [edi+V9X_HSW_RPNSWREQ]
+    mov     [ebp.Client_ECX], eax
+    mov     eax, [edi+V9X_HSW_RPSTAT1]
+    mov     [ebp.Client_EDX], eax
+    ret
+ENDIF
+V9xMini_Api_HswRps_Refused:
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 0
     mov     [ebp.Client_AX], 0
     ret
 

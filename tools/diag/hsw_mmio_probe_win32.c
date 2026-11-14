@@ -3956,6 +3956,136 @@ static void v9x_rps_run(void)
     WritePrivateProfileStringA("Rps", "Result", "COMPLETE", V9X_HSWMM_PATH);
 }
 
+/*
+ * /rpsreq:XX: one render clock request, XX in hex 50 MHz units, through
+ * DIOC 6 (hsw_mmio_probe.asm's HSW_DIOC_RPS has what it refuses). A write
+ * to the GPU: the request stands until the next write or reset, and the
+ * driver does not put it back.
+ */
+#define V9X_RPS_SET_DIOC      6u
+#define V9X_RPS_SET_MAGIC     0x52505348ul
+#define V9X_RPS_SET_OPTION    "/rpsreq:"
+#define V9X_RPS_ST_GRANTED    0x00000020ul
+
+static struct v9x_rps_set_request {
+    DWORD base;
+    DWORD request;
+} v9x_rps_set_in;
+
+static struct v9x_rps_set_result {
+    DWORD magic;
+    DWORD status;
+    DWORD igd_id;
+    DWORD ack;
+    DWORD cap;
+    DWORD request_before;
+    DWORD stat_before;
+    DWORD request_after;
+    DWORD stat_after;
+    DWORD polls;
+    DWORD spare[6];
+} v9x_rps_set_out;
+
+typedef char v9x_rps_set_layout_matches[
+    sizeof(struct v9x_rps_set_result) == 64u &&
+    sizeof(struct v9x_rps_set_request) == 8u ? 1 : -1];
+
+/* The two hex digits after /rpsreq:, or 0 if absent or malformed. */
+static DWORD v9x_rps_set_units(void)
+{
+    const char *line;
+    DWORD units;
+    int at;
+    int index;
+    int length;
+    char digit;
+
+    line = GetCommandLineA();
+    length = lstrlenA(V9X_RPS_SET_OPTION);
+    for (at = 0; line[at] != '\0'; ++at) {
+        for (index = 0; index < length; ++index) {
+            digit = line[at + index];
+            if (digit >= 'A' && digit <= 'Z') {
+                digit = (char)(digit - 'A' + 'a');
+            }
+            if (digit != V9X_RPS_SET_OPTION[index]) {
+                break;
+            }
+        }
+        if (index != length) {
+            continue;
+        }
+        units = 0ul;
+        for (index = 0; index < 2; ++index) {
+            digit = line[at + length + index];
+            units <<= 4;
+            if (digit >= '0' && digit <= '9') {
+                units |= (DWORD)(digit - '0');
+            } else if (digit >= 'a' && digit <= 'f') {
+                units |= (DWORD)(digit - 'a' + 10);
+            } else if (digit >= 'A' && digit <= 'F') {
+                units |= (DWORD)(digit - 'A' + 10);
+            } else {
+                return 0ul;
+            }
+        }
+        return units;
+    }
+    return 0ul;
+}
+
+static void v9x_rps_set_run(DWORD units)
+{
+    HANDLE device;
+    DWORD returned;
+    BOOL ok;
+
+    WritePrivateProfileStringA("RpsSet", 0, 0, V9X_HSWMM_PATH);
+    v9x_rps_set_in.base = v9x_config_read(0x10ul) &
+                          V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_rps_set_in.request = units << V9X_RPS_REQ_SHIFT;
+    v9x_key("RpsSet", "Request", v9x_rps_set_in.request);
+    v9x_rps_dec_key("RequestMhz", units * V9X_RPS_MHZ_UNIT);
+    if (units == 0ul) {
+        WritePrivateProfileStringA("RpsSet", "Result", "BAD-OPTION",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA("RpsSet", "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    ok = DeviceIoControl(device, V9X_RPS_SET_DIOC, &v9x_rps_set_in,
+                         sizeof(v9x_rps_set_in), &v9x_rps_set_out,
+                         sizeof(v9x_rps_set_out), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_rps_set_out) ||
+        v9x_rps_set_out.magic != V9X_RPS_SET_MAGIC) {
+        WritePrivateProfileStringA("RpsSet", "Result", "DIOC-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_key("RpsSet", "Status", v9x_rps_set_out.status);
+    v9x_key("RpsSet", "IgdId", v9x_rps_set_out.igd_id);
+    v9x_key("RpsSet", "ForcewakeAck", v9x_rps_set_out.ack);
+    v9x_key("RpsSet", "RpStateCap", v9x_rps_set_out.cap);
+    v9x_key("RpsSet", "RpnswreqBefore", v9x_rps_set_out.request_before);
+    v9x_key("RpsSet", "Rpstat1Before", v9x_rps_set_out.stat_before);
+    v9x_key("RpsSet", "RpnswreqAfter", v9x_rps_set_out.request_after);
+    v9x_key("RpsSet", "Rpstat1After", v9x_rps_set_out.stat_after);
+    v9x_key("RpsSet", "Polls", v9x_rps_set_out.polls);
+    v9x_rps_dec_key("ActualMhzAfter",
+                    ((v9x_rps_set_out.stat_after >> V9X_RPS_CAGF_SHIFT) &
+                     V9X_RPS_CAGF_MASK) * V9X_RPS_MHZ_UNIT);
+    WritePrivateProfileStringA("RpsSet", "Result",
+        (v9x_rps_set_out.status & V9X_RPS_ST_GRANTED) != 0ul ? "GRANTED" :
+        "NOT-GRANTED", V9X_HSWMM_PATH);
+}
+
 void __stdcall V9xHswMmioEntry(void)
 {
     HANDLE device;
@@ -3989,6 +4119,18 @@ void __stdcall V9xHswMmioEntry(void)
         WritePrivateProfileStringA("Report", "Access", "bcs-ring-phase-b1",
                                    V9X_HSWMM_PATH);
         v9x_bcs_run();
+        WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                   V9X_HSWMM_PATH);
+        WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+        ExitProcess(0u);
+    }
+
+    /* /rpsreq:XX writes one clock request; tested before /rps, which it
+     * contains. */
+    if (v9x_has_switch(V9X_RPS_SET_OPTION)) {
+        WritePrivateProfileStringA("Report", "Access", "rps-request-write",
+                                   V9X_HSWMM_PATH);
+        v9x_rps_set_run(v9x_rps_set_units());
         WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);

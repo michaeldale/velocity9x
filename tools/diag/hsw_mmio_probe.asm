@@ -496,6 +496,52 @@ HSW_SO_TEST_BASE        equ (HSW_SL_HEADER_DWORDS * 4)
 HswStolenOut  dd HSW_STOLEN_MAGIC
               dd (HSW_SL_OUT_DWORDS - 1) dup (0)
 HswStolenIn   dd (HSW_SL_IN_BYTES / 4) dup (0)
+
+; The render clock request (2026-11-14, docs\decisions\2026-11-14-haswell-
+; render-clock-400mhz.md). DIOC code 6. One write: the request to
+; RPNSWREQ (A008h), then RPSTAT1 (A01Ch) polled until its actual clock
+; equals the request, bounded. Refused, with nothing written, unless:
+;   - GTTMMADR is 4 MB aligned and the IGD is Intel;
+;   - the forcewake acknowledge (130044h bit 0) is already set - the
+;     driver's hold; a GT register written while the GT sleeps is lost;
+;   - the request has nothing but bits 31:24, and that field lies within
+;     RP_STATE_CAP's RPn..RP0 (145998h: RP0 7:0, RPn 23:16).
+; Addresses, fields and the 31:24 request field are i915's (GEN6_RPNSWREQ,
+; HSW_FREQUENCY, GEN6_RPSTAT1, HSW_CAGF 13:7, GEN6_RP_STATE_CAP).
+HSW_DIOC_RPS            equ 6
+HSW_RPS_MAGIC           equ 52505348h ; "HSPR"
+HSW_RPS_IN_BASE         equ 0
+HSW_RPS_IN_REQUEST      equ 4
+HSW_RPS_IN_BYTES        equ 8
+HSW_RPS_OUT_DWORDS      equ 16
+HSW_RPS_RPNSWREQ        equ 0a008h
+HSW_RPS_RPSTAT1         equ 0a01ch
+HSW_RPS_STATE_CAP       equ 145998h
+HSW_RPS_REQ_LOW         equ 00ffffffh
+HSW_RPS_CAGF_SHIFT      equ 7
+HSW_RPS_CAGF_MASK       equ 7fh
+HSW_RPS_POLLS           equ 1000000
+HSW_RPS_ST_IGD_INTEL    equ 00000001h
+HSW_RPS_ST_MAPPED       equ 00000002h
+HSW_RPS_ST_AWAKE        equ 00000004h
+HSW_RPS_ST_IN_RANGE     equ 00000008h
+HSW_RPS_ST_WRITTEN      equ 00000010h
+HSW_RPS_ST_GRANTED      equ 00000020h
+HSW_RPS_ST_BAD_INPUT    equ 00000040h
+; Output byte offsets, matching struct v9x_rps_set_result.
+HSW_RQ_STATUS           equ 4
+HSW_RQ_IGD_ID           equ 8
+HSW_RQ_ACK              equ 12
+HSW_RQ_CAP              equ 16
+HSW_RQ_REQ_BEFORE       equ 20
+HSW_RQ_STAT_BEFORE      equ 24
+HSW_RQ_REQ_AFTER        equ 28
+HSW_RQ_STAT_AFTER       equ 32
+HSW_RQ_POLLS            equ 36
+
+HswRpsOut     dd HSW_RPS_MAGIC
+              dd (HSW_RPS_OUT_DWORDS - 1) dup (0)
+HswRpsIn      dd (HSW_RPS_IN_BYTES / 4) dup (0)
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -1957,6 +2003,144 @@ Hsw_Stolen_Dioc_Fail:
     ret
 EndProc Hsw_Stolen_Dioc
 
+; See HSW_DIOC_RPS for what it does and what it refuses.
+BeginProc Hsw_Rps
+    pushad
+    mov     eax, HswRpsIn[HSW_RPS_IN_BASE]
+    test    eax, eax
+    jz      Hsw_Rps_Bad_Input
+    test    eax, HSW_BASE_ALIGN
+    jnz     Hsw_Rps_Bad_Input
+    mov     eax, HswRpsIn[HSW_RPS_IN_REQUEST]
+    test    eax, HSW_RPS_REQ_LOW
+    jnz     Hsw_Rps_Bad_Input
+
+    mov     eax, HSW_IGD_ADDRESS
+    call    Hsw_Pci_Read
+    mov     HswRpsOut[HSW_RQ_IGD_ID], eax
+    cmp     ax, HSW_VENDOR_INTEL
+    jne     Hsw_Rps_Bad_Input
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_IGD_INTEL
+
+    mov     eax, HswRpsIn[HSW_RPS_IN_BASE]
+    VMMcall _MapPhysToLinear,<eax,HSW_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Rps_Exit
+    mov     ebp, eax
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_MAPPED
+
+    pushfd
+    cli
+    mov     eax, [ebp+HSW_FW_ACK]
+    mov     HswRpsOut[HSW_RQ_ACK], eax
+    mov     eax, [ebp+HSW_RPS_STATE_CAP]
+    mov     HswRpsOut[HSW_RQ_CAP], eax
+    mov     eax, [ebp+HSW_RPS_RPNSWREQ]
+    mov     HswRpsOut[HSW_RQ_REQ_BEFORE], eax
+    mov     eax, [ebp+HSW_RPS_RPSTAT1]
+    mov     HswRpsOut[HSW_RQ_STAT_BEFORE], eax
+
+    test    HswRpsOut[HSW_RQ_ACK], HSW_FW_ACK_BIT
+    jz      Hsw_Rps_Done_Popf
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_AWAKE
+
+    ; EDX = the requested unit; ECX = RP0, then RPn.
+    mov     edx, HswRpsIn[HSW_RPS_IN_REQUEST]
+    shr     edx, 24
+    mov     ecx, HswRpsOut[HSW_RQ_CAP]
+    and     ecx, 0ffh
+    cmp     edx, ecx
+    ja      Hsw_Rps_Done_Popf
+    mov     ecx, HswRpsOut[HSW_RQ_CAP]
+    shr     ecx, 16
+    and     ecx, 0ffh
+    test    ecx, ecx
+    jz      Hsw_Rps_Done_Popf
+    cmp     edx, ecx
+    jb      Hsw_Rps_Done_Popf
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_IN_RANGE
+
+    mov     eax, HswRpsIn[HSW_RPS_IN_REQUEST]
+    mov     [ebp+HSW_RPS_RPNSWREQ], eax
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_WRITTEN
+    popfd
+
+    ; Interrupts back on for the wait: the PCU's answer is not immediate.
+    xor     ecx, ecx
+Hsw_Rps_Poll:
+    mov     eax, [ebp+HSW_RPS_RPSTAT1]
+    shr     eax, HSW_RPS_CAGF_SHIFT
+    and     eax, HSW_RPS_CAGF_MASK
+    cmp     eax, edx
+    je      short Hsw_Rps_Granted
+    inc     ecx
+    cmp     ecx, HSW_RPS_POLLS
+    jb      short Hsw_Rps_Poll
+    jmp     short Hsw_Rps_Read_After
+Hsw_Rps_Granted:
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_GRANTED
+Hsw_Rps_Read_After:
+    mov     HswRpsOut[HSW_RQ_POLLS], ecx
+    mov     eax, [ebp+HSW_RPS_RPNSWREQ]
+    mov     HswRpsOut[HSW_RQ_REQ_AFTER], eax
+    mov     eax, [ebp+HSW_RPS_RPSTAT1]
+    mov     HswRpsOut[HSW_RQ_STAT_AFTER], eax
+    jmp     short Hsw_Rps_Exit
+
+Hsw_Rps_Done_Popf:
+    popfd
+    jmp     short Hsw_Rps_Exit
+Hsw_Rps_Bad_Input:
+    or      HswRpsOut[HSW_RQ_STATUS], HSW_RPS_ST_BAD_INPUT
+Hsw_Rps_Exit:
+    popad
+    ret
+EndProc Hsw_Rps
+
+; ESI = DIOCParams. Copies the input, runs Hsw_Rps, copies the result.
+BeginProc Hsw_Rps_Dioc
+    pushad
+    mov     ebx, esi
+    mov     esi, [ebx.lpvInBuffer]
+    test    esi, esi
+    jz      short Hsw_Rps_Dioc_Fail
+    cmp     [ebx.cbInBuffer], HSW_RPS_IN_BYTES
+    jb      short Hsw_Rps_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short Hsw_Rps_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], HSW_RPS_OUT_DWORDS * 4
+    jb      short Hsw_Rps_Dioc_Fail
+
+    cld
+    mov     edi, OFFSET32 HswRpsIn
+    mov     ecx, HSW_RPS_IN_BYTES / 4
+    rep     movsd
+    mov     edi, OFFSET32 HswRpsOut + 4
+    mov     ecx, HSW_RPS_OUT_DWORDS - 1
+    xor     eax, eax
+    rep     stosd
+
+    call    Hsw_Rps
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 HswRpsOut
+    mov     ecx, HSW_RPS_OUT_DWORDS
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short Hsw_Rps_Dioc_Done
+    mov     dword ptr [eax], HSW_RPS_OUT_DWORDS * 4
+Hsw_Rps_Dioc_Done:
+    popad
+    xor     eax, eax
+    ret
+Hsw_Rps_Dioc_Fail:
+    popad
+    mov     eax, 1
+    ret
+EndProc Hsw_Rps_Dioc
+
 BeginProc Hsw_Reset_Result
     pushad
     mov     edi, OFFSET32 HswResult + 4
@@ -1995,6 +2179,11 @@ Hsw_Dioc_Not_Flip:
     call    Hsw_Stolen_Dioc
     ret
 Hsw_Dioc_Not_Stolen:
+    cmp     ecx, HSW_DIOC_RPS
+    jne     short Hsw_Dioc_Not_Rps
+    call    Hsw_Rps_Dioc
+    ret
+Hsw_Dioc_Not_Rps:
     cmp     ecx, HSW_DIOC_CAPTURE
     jne     Hsw_Dioc_Fail
 

@@ -31,6 +31,9 @@ extern unsigned short __far __pascal V9xMiniHswEngineOpen(
 #define V9X_HSW_OPEN_CHIP_HASWELL 0ul
 #define V9X_HSW_OPEN_CHIP_IVYBRIDGE 1ul
 extern unsigned short __far __pascal V9xMiniHswEngineClose(void);
+extern unsigned short __far __pascal V9xMiniHswRps(
+    unsigned long request, unsigned long __far *cap,
+    unsigned long __far *rpnswreq, unsigned long __far *rpstat1);
 extern unsigned short __far __pascal V9xMiniPatInfo(
     unsigned long __far *low, unsigned long __far *high,
     unsigned short __far *flags);
@@ -145,6 +148,45 @@ static void v9x_hsw_format_hex(char *text, unsigned long value)
     text[8] = '\0';
 }
 
+/*
+ * The render clock request at engine open (intel_hsw.h has why and what).
+ * The last open's outcome and the three registers as read after it, for
+ * V9XHW.INI. Haswell only: the mini-VDD refuses Ivy Bridge, whose request
+ * field differs and was not measured.
+ */
+static const char *v9x_hsw_rps_status = "not-requested";
+static unsigned long v9x_hsw_rps_cap;
+static unsigned long v9x_hsw_rps_rpnswreq;
+static unsigned long v9x_hsw_rps_rpstat1;
+
+static void v9x_hsw_request_render_clock(void)
+{
+    unsigned long request = 0ul;
+    unsigned short answer;
+
+    if (V9xMiniHswRps(0ul, &v9x_hsw_rps_cap, &v9x_hsw_rps_rpnswreq,
+                      &v9x_hsw_rps_rpstat1) != 1u) {
+        v9x_hsw_rps_status = "unread";
+        return;
+    }
+    if (v9x_intel_hsw_rps_request(v9x_hsw_rps_cap, &request) !=
+        V9X_STATUS_OK) {
+        v9x_hsw_rps_status = "cap-not-understood";
+        return;
+    }
+    /* Written on every open, reused ones too: the same request again is
+     * harmless, and a check first would cost _TEXT bytes it does not have. */
+    answer = V9xMiniHswRps(request, &v9x_hsw_rps_cap, &v9x_hsw_rps_rpnswreq,
+                           &v9x_hsw_rps_rpstat1);
+    if (answer == 1u) {
+        v9x_hsw_rps_status = "rp0-granted";
+    } else if (answer == 2u) {
+        v9x_hsw_rps_status = "rp0-not-granted";
+    } else {
+        v9x_hsw_rps_status = "write-refused";
+    }
+}
+
 /* The layout's keys for V9XHW.INI, so a field report says which heap a
  * machine got and why. */
 void v9x_hsw_publish_layout(v9x_hw16_write_fn write)
@@ -163,6 +205,13 @@ void v9x_hsw_publish_layout(v9x_hw16_write_fn write)
     write("ReserveOffset", number);
     v9x_hsw_format_hex(number, v9x_hsw_heap_at);
     write("HeapEnd", number);
+    write("RenderClock", v9x_hsw_rps_status);
+    v9x_hsw_format_hex(number, v9x_hsw_rps_cap);
+    write("RpStateCap", number);
+    v9x_hsw_format_hex(number, v9x_hsw_rps_rpnswreq);
+    write("Rpnswreq", number);
+    v9x_hsw_format_hex(number, v9x_hsw_rps_rpstat1);
+    write("Rpstat1", number);
 }
 
 /*
@@ -390,6 +439,8 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
                         V9X_DD_ENGINE_CAP_GEN7_IVB;
         return;
     }
+    v9x_hsw_request_render_clock();
+
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
      * both together, so an open engine has both (Phase F2). FLIP: plane A's
      * base, which the HAL writes only while pipe A and plane A are live
