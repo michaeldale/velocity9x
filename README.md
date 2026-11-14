@@ -88,8 +88,10 @@ New in 0.52.0:
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
 - **GeForce 210:** the screen cannot be flipped, so each Direct3D frame
   is presented by a copy, whose cost is not measured. Not yet working: a
-  Lock of a depth buffer, 24-bit depth with stencil, X8R8G8B8 textures.
-  OpenGL, Glide and 3DCIF have not been run. 3DMark 2000 ended in a crash
+  Lock of a depth buffer, 24-bit depth with stencil, X8R8G8B8 textures,
+  and textured Glide draws (the Glide 2 probe's five texture checks draw
+  nothing). The OpenGL probe passes; no OpenGL or Glide game and no 3DCIF
+  program has been run. 3DMark 2000 ended in a crash
   in two runs of five, traced to 3DMark reading past one of its own
   arrays.
 - **S3 Trio64:** a second or two of cyan garbage at Windows shutdown,
@@ -257,7 +259,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
-| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only); no page flips, frames presented by a copy. 3DMark 2000. One tester's card through remote help; modes from the VBE. OpenGL, Glide and 3DCIF not run |
+| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only); no page flips, frames presented by a copy. 3DMark 2000. One tester's card through remote help; modes from the VBE. The OpenGL probe passes; the Glide 2 probe's texture checks fail; 3DCIF not run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
 
@@ -336,7 +338,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Glide 2 probe only | Not run |
-| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI | Yes | Not run | Not run | No | Not run | Not run |
+| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI | Yes | Not run | Probe | No | Glide 2 probe fails textured draws | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
