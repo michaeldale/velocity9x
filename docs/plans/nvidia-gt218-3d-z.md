@@ -11,8 +11,10 @@ PDEs and the 2 GiB DMA limit break nothing. Step 2 passed (bd4cddce):
 a gradient copied by 502D into a block-linear surface through the
 kind-70h window and back is exact, and the tiled surface's raw words are
 in a different order, so the double mapping works
-([record](../decisions/2026-11-14-gt218-tiled-alias-window.md)). Next:
-step 3, rendering into a tiled target. Part of phase 3 of
+([record](../decisions/2026-11-14-gt218-tiled-alias-window.md)). Step 3
+passed (f5097622): the 3D engine draws a solid rectangle into a tiled
+target through the window, exact after the copy out. Next: step 4, Z.
+Part of phase 3 of
 [nvidia-gt218-3d.md](nvidia-gt218-3d.md), after solid, Gouraud and
 textured draws ran exact on M-BXMFA8 into pitch-linear targets
 ([texture record](../decisions/2026-11-14-gt218-3d-texture.md)).

@@ -51,9 +51,31 @@ different kinds that nouveau never does, and was the plan's main risk.
 The copy out is the present path: a tiled back buffer to the linear
 primary.
 
+## Step 3: the 3D engine draws into a tiled target
+
+`V9XN5CH /lean /3d /z:tiled2d /z:tiledrt` (`z3b`, f5097622). Three
+kicks, each waited for: a 502D copy fills the tiled surface T with the
+pattern from a linear surface; the 3D engine draws phase 2's solid
+rectangle into T as a block-linear render target (tile mode 10h in
+`RT_ADDRESS`, `RT_HORIZ` width and height, `RT_ARRAY_MODE` 1, as EXA
+programs its own target), addressed through the kind-70h window; a 502D
+copy brings T out to a linear surface.
+
+**960 of 960 rectangle pixels are the colour, 8256 of 8256 others the
+pattern**, every kick clean, no VM trap. So the 3D engine renders into a
+tiled target through the alias window, and the present copy shows the
+result.
+
+The first run of the stage (`z3`, c65b1e59) stopped the pusher on the
+copy-out (3228h `A00035E4`, error 5; `PFIFO_INTR` 1000h), after a clean
+fill and draw. It was the probe's bug, not the card's: the stage began
+an op list only once, so the third kick's run replayed the earlier
+kicks' ops, their PUT writes included, and moved PUT backwards. Each kick
+now begins its own list.
+
 ## Not covered
 
 - The Z windows (6Ch, 28h): nothing has addressed them yet.
 - 16 bpp and 8 bpp surfaces through the window, other tile modes, and
   surfaces whose height is not a multiple of the block height.
-- Rendering into the tiled surface: step 3.
+- Gouraud or textured draws into a tiled target (only the solid one).
