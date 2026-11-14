@@ -190,9 +190,21 @@ Haswell's fixed-function kernel adding the specular colour.
 The netbook did not come back from the restart that was to put the
 committed driver code on again (from boot 338, the cap-only build): the
 eight files were staged by WININIT rename and `reset` sent, and the
-agent has not answered since, nor the address. What it stopped on is
-not known; nobody has looked at it. If it boots, the staged files are
-`1f044d33`'s driver code.
+agent did not answer again, nor the address. Michael found it on a blue
+screen: "A fatal exception 0E has occurred at 018F:BFF86EBD. The
+current application will be terminated." The agent's log for boot 338
+ends `reset-notified 33 1072ms`, `reset-flush C`, as a reset's does,
+so the log does not say whether the fault came in what was left of boot
+338 or in a start of Windows after it that never reached the agent.
+Which program faulted is not known, nor whether the cap-only build of
+boot 338 had a part in it; `C:\WINDOWS\FAULTLOG.TXT` does not exist.
+One occurrence in five resets this session.
+
+Boot 339, after Michael power-cycled it from the blue screen (no key
+was tried, so whether Windows would have gone on is not known): all eight installed files
+match `1f044d33`'s package by SHA-256, WININIT.INI consumed, the probe
+set passes with no verdict changed, V9XD32 at DDI 8 PASS with ShadeCaps
+00084008 and `FfSpec` `skip-no-specular`. The netbook is left on it.
 
 ## The DOT3 fault was our own proxy
 
