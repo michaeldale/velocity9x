@@ -378,6 +378,10 @@ static WORD v9x_gdi_nv50_live(void);
 #define V9X_GDI_NV50_DIAG_OP         8u
 static WORD v9x_gdi_nv50_site;
 static WORD v9x_gdi_nv50_in_draw;
+/* ddi.c's Enable count at the capture: boot 113 showed an Enable follows
+ * the poison, and this says whether the poison came before it. */
+extern WORD v9x_dd_enable_count(void);
+static WORD v9x_gdi_nv50_enables;
 static DWORD v9x_gdi_nv50_kicks;
 static DWORD v9x_gdi_nv50_regs[V9X_GDI_NV50_DIAG_REGS];
 /* rop256, base, source x, source y, destination x, y, width, height of
@@ -399,6 +403,7 @@ static void v9x_gdi_nv50_capture(WORD site)
         return;
     }
     v9x_gdi_nv50_site = site;
+    v9x_gdi_nv50_enables = v9x_dd_enable_count();
     for (index = 0u; index < V9X_GDI_NV50_DIAG_REGS; ++index) {
         v9x_gdi_nv50_regs[index] = V9xNv3Read(v9x_gdi_nv50_diag_reg[index]);
     }
@@ -511,12 +516,12 @@ void v9x_gdi_accel_flush_report(void)
 #ifdef V9X_NVIDIA_FAMILY
     if (v9x_gdi_nv50_site != 0u) {
         /* Nv50Poison: site, kicks, the eight registers in diag_reg order,
-         * then the sixteen op words (this op, the one before), each as
-         * eight hex digits. One key, so the code is one write and not
-         * twenty-six. */
+         * the sixteen op words (this op, the one before), then the Enable
+         * count, each as eight hex digits. One key, so the code is one
+         * write and not twenty-seven. */
         static const char digits[] = "0123456789ABCDEF";
-        static char text[26u * 9u];
-        DWORD words[26];
+        static char text[27u * 9u];
+        DWORD words[27];
         WORD index;
         WORD digit;
         WORD at = 0u;
@@ -529,14 +534,18 @@ void v9x_gdi_accel_flush_report(void)
         for (index = 0u; index < 16u; ++index) {
             words[10u + index] = v9x_gdi_nv50_op[index];
         }
-        for (index = 0u; index < 26u; ++index) {
+        words[26] = (DWORD)v9x_gdi_nv50_enables;
+        for (index = 0u; index < 27u; ++index) {
             for (digit = 0u; digit < 8u; ++digit) {
                 text[at++] = digits[(WORD)((words[index] >>
                                             ((7u - digit) * 4u)) & 0xful)];
             }
-            text[at++] = index + 1u < 26u ? ' ' : '\0';
+            text[at++] = index + 1u < 27u ? ' ' : '\0';
         }
-        WritePrivateProfileString("Velocity9xHardware", "Nv50Poison", text,
+        /* A section of its own: every Enable deletes [Velocity9xHardware]
+         * before republishing it (ddi.c), which wiped this key on boot
+         * 113, where an Enable followed the poison. */
+        WritePrivateProfileString("Velocity9xGdiPoison", "Nv50Poison", text,
                                   V9X_DIAG_HW_INI);
     }
 #endif

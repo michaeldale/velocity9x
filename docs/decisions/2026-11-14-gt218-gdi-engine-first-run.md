@@ -26,16 +26,20 @@ Reset at 02:17 UTC. The agent did not answer for the next three and a
 half hours. When it next answered (about 05:50 UTC) it was running
 d96e5bb8, with `Stage=enable-ok` and
 `GdiAcceleration=gdi-fill-copy-overlap`
-(`d96e5bb8-V9XHW.INI`). Whether the owner power-cycled it in between is
-not known: the owner was asked and has not answered.
+(`d96e5bb8-V9XHW.INI`). The owner reported by chat (05:49 UTC) that it
+**froze on the Windows boot screen** and came back after a power-cycle.
+So the boot after the agent's warm reset froze, and the boot after a
+cold start did not.
 
 At the time the likeliest cause looked like d96e5bb8's Enable-time read
 of PFIFO's IB get (3334h), with PFIFO as the BIOS leaves it, since
 a0048fed never reached that read and booted. ffa2a368 removed it. The
 evidence since does not support it: d96e5bb8 itself completed Enable,
-with the arm enabled, on the boot that came back. **The freeze is
-unexplained.** A slow boot, a hang in the warm reset, or a hang the
-owner cleared are all still possible.
+with the arm enabled, on the boot that came back, though that was a
+cold start, where PFIFO may be left differently from after a warm
+reset. ffa2a368 has since come through two warm resets (boots 111 and
+112). **The freeze is not explained**: the read after a warm reset is
+the remaining suspect, and nothing has tested it in that state.
 
 ## ffa2a368, boot 111: GDI draws on the engine
 
