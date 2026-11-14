@@ -13,7 +13,12 @@ binds and takes EXA's setup without a fault
 passed the same boot: a solid rectangle through the 3D engine is exact
 at 32 and 16 bpp, into a pitch-linear target, with no pixel outside it
 touched; 5:6:5 keeps each channel's top bits
-([record](../decisions/2026-11-14-gt218-3d-first-triangle.md)). Phase 6 of
+([record](../decisions/2026-11-14-gt218-3d-first-triangle.md)). Phase 3
+under way: the encoder (8165fb01, EXA's four programs rebuilt word for
+word) and Gouraud shading from our own programs, pixel-checked at 32 and
+16 bpp
+([record](../decisions/2026-11-14-gt218-3d-gouraud-from-the-encoder.md));
+textures and Z next. Phase 6 of
 [nvidia-gt218.md](nvidia-gt218.md). Michael asked for it on 2026-11-14,
 after GDI and DirectDraw fill and copy ran on the 2D engine
 ([2026-11-14-gt218-gdi-engine-first-run.md](../decisions/2026-11-14-gt218-gdi-engine-first-run.md)).
