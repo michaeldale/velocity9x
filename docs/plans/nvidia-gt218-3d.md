@@ -21,7 +21,9 @@ word) and Gouraud shading from our own programs, pixel-checked at 32 and
 then a pitch-linear texture sampling exactly at both depths, with 5:6:5
 keeping each channel's top bits, after a state leak between draws was
 found and fixed
-([record](../decisions/2026-11-14-gt218-3d-texture.md)). Z next. Phase 6 of
+([record](../decisions/2026-11-14-gt218-3d-texture.md)). Z is planned in
+[nvidia-gt218-3d-z.md](nvidia-gt218-3d-z.md): tiled surfaces through VM
+alias windows with fixed kinds, presented by a 2D copy. Phase 6 of
 [nvidia-gt218.md](nvidia-gt218.md). Michael asked for it on 2026-11-14,
 after GDI and DirectDraw fill and copy ran on the 2D engine
 ([2026-11-14-gt218-gdi-engine-first-run.md](../decisions/2026-11-14-gt218-gdi-engine-first-run.md)).
