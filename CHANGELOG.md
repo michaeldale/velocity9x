@@ -4,8 +4,23 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.51.0 - not yet released
+## 0.51.0 - 2026-11-14
 
+- **`intel-gma` package, Haswell (HD 4600 class): the graphics core now
+  runs at its full clock.** Nothing set the core's clock, so it stayed at
+  the 400 MHz the BIOS leaves, idle or busy, though the HD 4600 in our
+  test machine can run at 1150 MHz. The driver now asks for the chip's
+  maximum when it starts the engine, and the chip grants it at once and
+  holds it under load. On that machine 3DMark 2001 SE scored 3159 at
+  1150 MHz against 2357 at 400, on the same boot. UT2004's botmatch at
+  16-bit with low textures ran 46.8 and 46.9 fps at the two clocks: the
+  core's speed does not limit that game at those settings. The idle
+  desktop now runs at 1150 MHz too (the driver keeps the core awake
+  anyway), so expect more idle power and heat, which nobody measured.
+  Measured on one desktop HD 4600 only; Ivy Bridge (HD 4000) is not
+  included
+  ([measurement](docs/decisions/2026-11-14-haswell-render-clock-400mhz.md),
+  [driver](docs/decisions/2026-11-14-haswell-render-clock-rp0.md)).
 - **`intel-gma` package, HD 4600 (Haswell): environment bump mapping and
   DOT3 bump mapping in Direct3D 8 and 9 programs.** A program that sets
   a bump-map texture stage (`BUMPENVMAP`, up to three stages) or a DOT3

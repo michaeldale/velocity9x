@@ -35,23 +35,28 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.50.0
+## Current version: 0.51.0
 
-[Download](releases/0.50.0/README.md) ·
+[Download](releases/0.51.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.50.0:
-- **Intel HD 4600: the Unreal Tournament 2004 demo runs**, lit, with
-  compressed cube maps and whole floors: 32.9 fps in a 12-bot botmatch
-  ([issue](docs/issues/2026-11-13-haswell-ut2004-demo-dxt5-cube-create-refused.md)).
-- **Intel GMA 900 to 3150: lightmaps drawn with the doubled blend
-  (MODULATE2X).** UT2004 on the GMA 950 netbook shows its lightmaps,
-  at 4.2 fps.
-- **Intel GMA X3100 and GMA 4500 family: write-combined video memory.**
-  Writes to the screen went from 130 to 3,310 MB/s on a GMA X3100
-  ([record](docs/decisions/2026-11-13-gm965-write-combining.md)).
+New in 0.51.0:
+- **Intel HD 4600: the graphics core runs at its full clock**, 1150 MHz
+  where it sat at the BIOS's 400. 3DMark 2001 SE went from 2357 to 3159
+  on the same boot
+  ([record](docs/decisions/2026-11-14-haswell-render-clock-rp0.md)).
+- **Intel HD 4600 and GMA 900 to 3150: environment and DOT3 bump mapping**
+  in Direct3D 8 and 9: 3DMark 2001 SE's two bump tests run instead of
+  reading "Not supported by hardware". The GMA 900 to 3150 also draw
+  specular highlights, and their two-texture surfaces moved half a pixel
+  onto everything else
+  ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
+- **Intel GMA X3100: 32 MiB of texture memory in system RAM**, as the GMA
+  950 has: 3DMark 2000 went from 1224 to 1706 on one laptop; and Direct3D
+  on the GMA X3100 to Ironlake no longer drops draws while the chip is busy
+  ([record](docs/decisions/2026-11-14-intel-gm965-texture-pool-driver-first-boot.md)).
 
 ### Known issues
 
@@ -104,6 +109,10 @@ New in 0.50.0:
 
 ### Recent releases
 
+- **0.50.0:** the Unreal Tournament 2004 demo runs on the HD 4600 (32.9
+  fps in a 12-bot botmatch); lightmaps with the doubled blend on the GMA
+  900 to 3150; write-combined video memory on the GMA X3100 and GMA 4500
+  family.
 - **0.49.0:** hardware acceleration on the Radeon HD 2600 XT; 32 MiB of
   texture memory in system RAM on the GMA 950; two texture stages in
   Direct3D on the GMA 900 to 3150; the HD 4600's Car Chase hang with
@@ -192,16 +201,16 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo |
-| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. From 0.49.0, 32 MiB of texture memory in system RAM (this chip only), and two Direct3D texture stages (the GMA 900, 3100 and 3150 too, not run): Dragothic's sky and dragon draw. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
+| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. From 0.49.0, 32 MiB of texture memory in system RAM (this chip only), and two Direct3D texture stages (the GMA 900, 3100 and 3150 too, not run): Dragothic's sky and dragon draw. From 0.51.0, specular highlights and environment and DOT3 bump mapping: both 3DMark 2001 SE bump tests run. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
-| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes once hung this chip; from 0.48.0 it is drawn in two passes, as colour keys with depth writes have been since 0.44.0, and runs without a hang. From 0.48.0 the panel's own 1280x800, set unscaled by writing its timing into the BIOS's mode table ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)) |
+| Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes once hung this chip; from 0.48.0 it is drawn in two passes, as colour keys with depth writes have been since 0.44.0, and runs without a hang. From 0.48.0 the panel's own 1280x800, set unscaled by writing its timing into the BIOS's mode table ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)). From 0.51.0, 32 MiB of texture memory in system RAM on machines with at least 512 MiB |
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
 | Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)). From 0.44.0 the same machine is reached through remote help: Direct3D, OpenGL and Glide 2 probes pass, two-unit REPLACE and DECAL fail as on the GMA X3100 and Ironlake, and Forsaken's menu draws ([audit](docs/decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md), [issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)). From 0.48.0 Half-Life's grates and doors draw, in every renderer by its reporter's account ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)) |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
-| Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
+| Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. From 0.51.0, environment and DOT3 bump mapping in Direct3D 8 and 9, and the core at its full 1150 MHz instead of the BIOS's 400. One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 
 #### AMD and ATI
 
