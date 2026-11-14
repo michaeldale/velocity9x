@@ -242,9 +242,14 @@ typedef struct v9x_hw16_device {
      * The chip's maintainer has measured that the BAR shows the desktop at
      * the same offset the VBE's window does; nothing here checks it.
      * Honoured only in a family whose manifest defines
-     * V9X_HW16_APERTURE_FROM_BAR (enable16.c says why).
+     * V9X_HW16_APERTURE_FROM_BAR (enable16.c says why), and present only
+     * there: the device records are const data in the driver's _TEXT, and
+     * two bytes in each of the ati family's rows took its image 27 bytes
+     * past the audit's budget when main was merged on 2026-11-15.
      */
+#ifdef V9X_HW16_APERTURE_FROM_BAR
     unsigned short aperture_from_bar;
+#endif
 } V9X_HW16_DEVICE;
 
 /* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */
