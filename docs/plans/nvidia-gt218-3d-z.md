@@ -7,8 +7,12 @@ reserve, Z16 and Z24S8. Step 1 built (b013f697): the alias windows and
 the 2 MiB reserve, host-tested. On M-BXMFA8 boot 117 the channel probe
 built with them passed every stage it has, 2D and 3D
 (`build/driver-results/m-bxmfa8-gt218-3d/z1-V9XN5CH.INI`), so the extra
-PDEs and the 2 GiB DMA limit break nothing; nothing has addressed a
-window yet. Next: step 2. Part of phase 3 of
+PDEs and the 2 GiB DMA limit break nothing. Step 2 passed (bd4cddce):
+a gradient copied by 502D into a block-linear surface through the
+kind-70h window and back is exact, and the tiled surface's raw words are
+in a different order, so the double mapping works
+([record](../decisions/2026-11-14-gt218-tiled-alias-window.md)). Next:
+step 3, rendering into a tiled target. Part of phase 3 of
 [nvidia-gt218-3d.md](nvidia-gt218-3d.md), after solid, Gouraud and
 textured draws ran exact on M-BXMFA8 into pitch-linear targets
 ([texture record](../decisions/2026-11-14-gt218-3d-texture.md)).
