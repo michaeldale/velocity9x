@@ -2,7 +2,10 @@
 
 Date: 2026-11-14
 
-Status: 5.0 to 5.3 done, 5.4 (on the card) next. Step 5 of
+Status: 5.0 to 5.3 done; 5.4 ran and GDI draws on the engine, but one
+operation times out deterministically
+([2026-11-14-gt218-gdi-engine-first-run.md](../decisions/2026-11-14-gt218-gdi-engine-first-run.md)).
+Step 5 of
 [nvidia-gt218-pgraph-2d.md](nvidia-gt218-pgraph-2d.md), after step 4's
 HAL engine ran on M-BXMFA8
 ([2026-11-14-gt218-hal-engine-first-run.md](../decisions/2026-11-14-gt218-hal-engine-first-run.md)).
