@@ -6,6 +6,19 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.52.0 - not yet released
 
+- **`ati` package: the ATI Radeon HD 2400 Pro (RV610, `1002:94C3`).**
+  The HD 2600 XT's driver, with the RV610's own command-processor
+  microcode, one pipe, four hardware contexts and no vertex cache: Direct3D
+  and OpenGL through its shader core, DirectDraw fills, copies and page
+  flips on its DMA engine. On one Sapphire card through remote help every
+  release probe passes and 3DMark 2000 completes (2989). Depth testing is
+  wrong after the driver first starts the command processor on a boot,
+  until the next restart, as on the HD 2600 XT
+  ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)). The RV620
+  and the Radeon HD 3200/4200 IGPs, which Linux treats alike, are not
+  claimed
+  ([record](docs/decisions/2026-11-15-rv610-hd2400pro-bring-up.md)).
+
 ## 0.51.0 - 2026-11-14
 
 - **`intel-gma` package, Haswell (HD 4600 class): the graphics core now

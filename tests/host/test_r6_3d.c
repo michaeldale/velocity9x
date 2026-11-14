@@ -208,7 +208,7 @@ static void test_packets(void)
     /* r600_cp_start: PACKET3(ME_INITIALIZE, 5), 1, 3, max_hw_contexts - 1
      * (8 on the RV630, r600_gpu_init), DEVICE_ID(1) = 1 << 16, 0, 0. */
     v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
-    v9x_r6_3d_me_initialize(&stream);
+    v9x_r6_3d_me_initialize(&stream, V9X_R6_CHIP_RV630);
     CHECK(stream.count == V9X_R6_ME_INITIALIZE_DWORDS);
     CHECK(buffer[0] == 0xc0054400ul && buffer[1] == 1ul && buffer[2] == 3ul &&
           buffer[3] == 7ul && buffer[4] == 0x00010000ul && buffer[5] == 0ul &&
@@ -404,7 +404,7 @@ static void test_gpu_init(void)
         reads[index] = 0x5a5a5a5aul + index;
     }
     v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
-    v9x_r6_3d_gpu_init(&stream, reads, 0x00008a12ul);
+    v9x_r6_3d_gpu_init(&stream, V9X_R6_CHIP_RV630, reads, 0x00008a12ul);
     CHECK(stream.overflow == 0ul);
     CHECK(stream.count == (V9X_R6_RV630_GPU_INIT_COUNT - 2ul) * 3ul);
     CHECK(walks(buffer, stream.count));
@@ -434,6 +434,134 @@ static void test_gpu_init(void)
           (((0x5a5a5a5aul + 13ul) & 0x00fffffful) | 0xe4000005ul));
 }
 
+/* The RV610's (HD 2400 Pro) differences from the RV630, each against
+ * r600.c r600_gpu_init's CHIP_RV610 branches (lines 2037-2054, 2185-2192,
+ * 2229-2248, 2287-2291, 2313-2320, 2357-2363) and xf86 6.14.6
+ * r6xx_accel.c's (r600_sq_setup line 178, r600_set_default_state's
+ * CHIP_FAMILY_RV610 numbers). */
+static const struct v9x_r6_reg_update *rv610_entry_of(v9x_u32 offset)
+{
+    const struct v9x_r6_reg_update *table;
+    v9x_u32 index;
+
+    table = v9x_r6_3d_gpu_init_table(V9X_R6_CHIP_RV610);
+    for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
+        if (table[index].offset == offset) {
+            return &table[index];
+        }
+    }
+    return 0;
+}
+
+static void test_rv610(void)
+{
+    struct v9x_r6_pm4 stream;
+    const struct v9x_r6_reg_update *rv630;
+    const struct v9x_r6_reg_update *rv610;
+    const struct v9x_r6_reg_update *e;
+    v9x_u32 reads[V9X_R6_RV630_GPU_INIT_COUNT];
+    v9x_u32 index;
+    v9x_u32 at;
+
+    rv630 = v9x_r6_3d_gpu_init_table(V9X_R6_CHIP_RV630);
+    rv610 = v9x_r6_3d_gpu_init_table(V9X_R6_CHIP_RV610);
+    CHECK(rv630 == v9x_r6_rv630_gpu_init);
+    CHECK(rv610 != 0 && rv610 != rv630);
+
+    /* The same registers in the same order: the caller reads one list. */
+    for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
+        CHECK(rv610[index].offset == rv630[index].offset);
+    }
+
+    /* SQ_MS_FIFO_SIZES replaced: CACHE_FIFO_SIZE(0xa) |
+     * FETCH_FIFO_HIWATER(0xa) | DONE_FIFO_HIWATER(0xe0) |
+     * ALU_UPDATE_FIFO_HIWATER(0x8). */
+    e = rv610_entry_of(V9X_R6_SQ_MS_FIFO_SIZES);
+    CHECK(e != 0 && e->keep == 0ul &&
+          e->set == (0xaul | (0xaul << 8) | (0xe0ul << 16) | (0x8ul << 24)));
+    /* SQ_CONFIG: no vertex cache, VC_ENABLE (bit 0) cleared too. */
+    e = rv610_entry_of(V9X_R6_SQ_CONFIG);
+    CHECK(e != 0 && e->keep == (~((3ul << 24) | (3ul << 26) | (3ul << 28) |
+                                  (3ul << 30)) & ~1ul));
+    CHECK(e != 0 && e->set == ((1ul << 2) | (1ul << 26) | (2ul << 28) |
+                               (3ul << 30)));
+    /* 17/17 GS and ES GPRs; the rest as the RV630's. */
+    e = rv610_entry_of(V9X_R6_SQ_GPR_RESOURCE_MGMT_2);
+    CHECK(e != 0 && e->set == (17ul | (17ul << 16)));
+    e = rv610_entry_of(V9X_R6_SQ_GPR_RESOURCE_MGMT_1);
+    CHECK(e != 0 && e->set == (44ul | (44ul << 16) | (2ul << 28)));
+    e = rv610_entry_of(V9X_R6_SQ_THREAD_RESOURCE_MGMT);
+    CHECK(e != 0 && e->set == (79ul | (78ul << 8) | (4ul << 16) |
+                               (31ul << 24)));
+    /* CACHE_INVALIDATION(TC_ONLY). */
+    e = rv610_entry_of(V9X_R6_VGT_CACHE_INVALIDATION);
+    CHECK(e != 0 && e->set == 1ul);
+    /* VGT_GS_PER_ES = max_pipes (1) * 16 + 32. */
+    e = rv610_entry_of(V9X_R6_VGT_GS_PER_ES);
+    CHECK(e != 0 && e->set == 48ul);
+    /* TC_L2_SIZE(8). */
+    e = rv610_entry_of(V9X_R6_TC_CNTL);
+    CHECK(e != 0 && e->set == (8ul << 5));
+    /* Everything else as the RV630's. */
+    for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
+        e = &rv610[index];
+        if (e->offset == V9X_R6_SQ_MS_FIFO_SIZES ||
+            e->offset == V9X_R6_SQ_CONFIG ||
+            e->offset == V9X_R6_SQ_GPR_RESOURCE_MGMT_2 ||
+            e->offset == V9X_R6_VGT_CACHE_INVALIDATION ||
+            e->offset == V9X_R6_VGT_GS_PER_ES ||
+            e->offset == V9X_R6_TC_CNTL) {
+            continue;
+        }
+        CHECK(e->keep == rv630[index].keep && e->set == rv630[index].set);
+    }
+
+    /* One tile pipe: PIPE_TILING(0). From RAMCFG A9h the RV630's 8A12h
+     * less its PIPE_TILING(1). */
+    CHECK(v9x_r6_3d_tiling_config(V9X_R6_CHIP_RV610, 0x000000a9ul) ==
+          0x00008a10ul);
+    CHECK(v9x_r6_3d_tiling_config(V9X_R6_CHIP_RV630, 0x000000a9ul) ==
+          v9x_r6_rv630_tiling_config(0x000000a9ul));
+
+    /* ME_INITIALIZE: max_hw_contexts 4, less one. */
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_r6_3d_me_initialize(&stream, V9X_R6_CHIP_RV610);
+    CHECK(stream.count == V9X_R6_ME_INITIALIZE_DWORDS && buffer[3] == 3ul);
+
+    /* The stream takes the RV610's table. */
+    for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
+        reads[index] = 0x5a5a5a5aul + index;
+    }
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_r6_3d_gpu_init(&stream, V9X_R6_CHIP_RV610, reads, 0x00008a10ul);
+    CHECK(stream.overflow == 0ul && walks(buffer, stream.count));
+    at = find_reg(buffer, stream.count, V9X_R6_TC_CNTL);
+    CHECK(at < stream.count && buffer[at] == (8ul << 5));
+    at = find_reg(buffer, stream.count, V9X_R6_SQ_MS_FIFO_SIZES);
+    CHECK(at < stream.count && buffer[at] == 0x08e00a0aul);
+
+    /* xf86's RV610 sq_setup: no VC_ENABLE; threads 136/48/4/4; GPRs and
+     * stacks as the RV630's. */
+    v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_r6_3d_default_state(&stream, V9X_R6_CHIP_RV610, 0x00fcfe00ul,
+                            0xef105000ul);
+    CHECK(stream.overflow == 0ul && walks(buffer, stream.count));
+    at = find_reg(buffer, stream.count, V9X_R6_SQ_CONFIG);
+    CHECK(at < stream.count &&
+          buffer[at] == (4ul | 8ul | (1ul << 26) | (2ul << 28) |
+                         (3ul << 30)));
+    CHECK(at < stream.count &&
+          buffer[at + 1ul] == (84ul | (36ul << 16) | (4ul << 28)));
+    CHECK(at < stream.count &&
+          buffer[at + 3ul] == (136ul | (48ul << 8) | (4ul << 16) |
+                               (4ul << 24)));
+    /* One active pipe of eight (inactive FEh): DEALLOC 4, REUSE 2. */
+    at = find_reg(buffer, stream.count, 0x28c5cul);
+    CHECK(at < stream.count && buffer[at] == 4ul);
+    at = find_reg(buffer, stream.count, 0x28c58ul);
+    CHECK(at < stream.count && buffer[at] == 2ul);
+}
+
 static void test_default_state(void)
 {
     struct v9x_r6_pm4 stream;
@@ -442,7 +570,8 @@ static void test_default_state(void)
 
     v9x_r6_pm4_begin(&stream, buffer, BUFFER_DWORDS);
     /* M-NZHWBR's CC_GC_SHADER_PIPE_CONFIG 00F8FC00h. */
-    v9x_r6_3d_default_state(&stream, 0x00f8fc00ul, 0xef105000ul);
+    v9x_r6_3d_default_state(&stream, V9X_R6_CHIP_RV630, 0x00f8fc00ul,
+                            0xef105000ul);
     CHECK(stream.overflow == 0ul);
     CHECK(walks(buffer, stream.count));
 
@@ -571,6 +700,7 @@ static void base_solid(struct v9x_r6_3d_solid *solid)
     solid->ps_gpu = WINDOW_GPU + 0x5200ul;
     solid->vertex_gpu = WINDOW_GPU + 0x5400ul;
     solid->colour = 0xff3366ccul;
+    solid->no_vertex_cache = 0ul;
 }
 
 static void test_solid(void)
@@ -671,6 +801,24 @@ static void test_solid(void)
           buffer[at + 5ul] == 0ul && buffer[at + 6ul] == 0xc0000000ul);
     CHECK(at >= 7ul && buffer[at - 7ul] == XF86_PACK3(0x43, 4) &&
           buffer[at - 6ul] == (1ul << 24) && buffer[at - 5ul] == 1ul);
+
+    /* The RV610, with no vertex cache: the same sync on TC_ACTION_ENA (bit
+     * 23), as xf86's r600_set_vtx_resource does for CHIP_FAMILY_RV610. */
+    {
+        struct v9x_r6_3d_solid rv610;
+        v9x_u32 tc_buffer[BUFFER_DWORDS];
+        struct v9x_r6_pm4 tc_stream;
+        v9x_u32 tc_at;
+
+        base_solid(&rv610);
+        rv610.no_vertex_cache = 1ul;
+        v9x_r6_pm4_begin(&tc_stream, tc_buffer, BUFFER_DWORDS);
+        CHECK(v9x_r6_3d_solid(&rv610, &tc_stream) == V9X_STATUS_OK);
+        tc_at = find_reg(tc_buffer, tc_stream.count, 0x39180ul);
+        CHECK(tc_at >= 7ul && tc_at < tc_stream.count &&
+              tc_buffer[tc_at - 7ul] == XF86_PACK3(0x43, 4) &&
+              tc_buffer[tc_at - 6ul] == (1ul << 23));
+    }
 
     /* r600_draw_auto: VGT_PRIMITIVE_TYPE DI_PT_RECTLIST, INDEX_TYPE 16-bit,
      * NUM_INSTANCES 1, DRAW_INDEX_AUTO 3 indices, DI_SRC_SEL_AUTO_INDEX. */
@@ -1952,6 +2100,7 @@ unsigned int v9x_run_r6_3d_tests(void)
     failures = 0u;
     test_packets();
     test_gpu_init();
+    test_rv610();
     test_default_state();
     test_solid();
     test_vertices();

@@ -209,6 +209,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-23 Rage 128: the CCE's ring is a bus-master address, not video memory](2026-10-23-rage128-cce-ring-not-in-vram.md)
 - [2026-10-23 Rage 128: a CCE ring in the AGP aperture fetches and idles, but not our packets](2026-10-23-rage128-cce-ring-agp-fetches-but-wrong-data.md)
 - [2026-10-23 0.28.0 release checks: Rage 128 games, and the GMA 950 against 0.24.0's set](2026-10-23-0.28.0-release-checks-a8u4i5-netbook.md)
+- [2026-11-15 The Radeon HD 2400 Pro (RV610) joins the ati family: DirectDraw on its DMA engine, Direct3D and OpenGL through its CP, every probe passing](2026-11-15-rv610-hd2400pro-bring-up.md)
 
 ## Matrox
 

@@ -77,6 +77,7 @@ EC_DEVICE_TRINITY       equ 9901h
 ; and the 64 KiB mapped past it is never read
 ; (docs\decisions\2026-11-13-rv630-register-probe.md).
 EC_DEVICE_RV630         equ 9588h
+EC_DEVICE_RV610         equ 94c3h   ; HD 2400 Pro: the RV630's register file
 EC_OP_MAX               equ 512
 EC_BLOCK_DWORDS         equ 4096
 EC_DATA_DWORDS          equ 8192
@@ -433,6 +434,8 @@ EC_Find_Next:
     cmp     eax, (EC_DEVICE_TRINITY shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
     cmp     eax, (EC_DEVICE_RV630 shl 16) or EC_VENDOR_ATI
+    je      short EC_Find_Found
+    cmp     eax, (EC_DEVICE_RV610 shl 16) or EC_VENDOR_ATI
     je      short EC_Find_Found
     add     ebx, 800h
     cmp     ebx, 80100000h

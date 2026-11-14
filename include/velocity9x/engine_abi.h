@@ -395,5 +395,14 @@
  * mullins_hw16.c only (docs\decisions\2026-11-08-mullins-sdma-write-probe.md).
  */
 #define V9X_DD_ENGINE_CAP_VI_MULLINS    0x10000000ul
+/*
+ * ATI R6xx engine (V9X_DD_ENGINE_TYPE_ATI_R600) on the RV610 (HD 2400
+ * Pro), not the RV630. Its CP takes the RV630's PFP microcode (identical)
+ * with RV610_me, four hardware contexts, one tile pipe, and has no vertex
+ * cache: r600_gpu_init clears VC_ENABLE and vertex buffers are synced
+ * through the texture cache (r6_3d.c). A chip identity bit, stamped by
+ * cedar_hw16.c's RV610 row only.
+ */
+#define V9X_DD_ENGINE_CAP_R6_RV610      0x20000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */

@@ -10272,7 +10272,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         name = "Velocity9x RIVA 128";
     } else if (ops == &v9x_d3d_engine_r6) {
         out->engine = V9X_R3D_ABI_ENGINE_R600;
-        name = "Velocity9x Radeon HD 2600 XT";
+        /* The same engine on the RV610, named by its identity bit; it read
+         * "HD 2600 XT" there on its first boot (V9XGLP on M-NZHWBR,
+         * 2026-11-15). */
+        if ((v9x_hal->engine.engine_caps &
+             V9X_DD_ENGINE_CAP_R6_RV610) != 0ul) {
+            name = "Velocity9x Radeon HD 2400 Pro";
+        } else {
+            name = "Velocity9x Radeon HD 2600 XT";
+        }
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers

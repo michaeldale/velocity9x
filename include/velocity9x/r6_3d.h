@@ -180,10 +180,23 @@ void v9x_r6_pm4_surface_sync(struct v9x_r6_pm4 *stream, v9x_u32 actions,
 /* Type-2 padding to the next V9X_R6_CP_ALIGN_DWORDS boundary. */
 void v9x_r6_pm4_pad(struct v9x_r6_pm4 *stream);
 
-/* r600_cp_start's ME_INITIALIZE: word 2 3 (R6xx), the RV630's 8 hardware
- * contexts less one, DEVICE_ID(1). 7 dwords. */
+/*
+ * The two R6xx chips driven: the RV630 (HD 2600 XT) and the RV610 (HD 2400
+ * Pro). The RV610 is r600_gpu_init's CHIP_RV610: one pipe and one tile
+ * pipe, 2 SIMDs, 4 hardware contexts, no vertex cache (VC_ENABLE cleared,
+ * CACHE_INVALIDATION(TC_ONLY), vertex buffers synced through the texture
+ * cache), its own SQ_MS_FIFO_SIZES, 17/17 GS and ES GPRs, VGT_GS_PER_ES 48
+ * and TC_L2_SIZE(8); xf86 gives its PS 136 threads and its VS 48. Any
+ * other value is taken as the RV630.
+ */
+#define V9X_R6_CHIP_RV630               0ul
+#define V9X_R6_CHIP_RV610               1ul
+
+/* r600_cp_start's ME_INITIALIZE: word 2 3 (R6xx), the chip's hardware
+ * contexts less one (8 on the RV630, 4 on the RV610), DEVICE_ID(1). 7
+ * dwords. */
 #define V9X_R6_ME_INITIALIZE_DWORDS     7ul
-void v9x_r6_3d_me_initialize(struct v9x_r6_pm4 *stream);
+void v9x_r6_3d_me_initialize(struct v9x_r6_pm4 *stream, v9x_u32 chip);
 
 /*
  * r600_gpu_init's register writes for the RV630 that fall in the
@@ -210,6 +223,10 @@ struct v9x_r6_reg_update {
 #define V9X_R6_RV630_GPU_INIT_COUNT 33u
 extern const struct v9x_r6_reg_update
     v9x_r6_rv630_gpu_init[V9X_R6_RV630_GPU_INIT_COUNT];
+/* The chip's table: the RV610's has the RV630's registers in the RV630's
+ * order, V9X_R6_RV630_GPU_INIT_COUNT of them, so one list of reads serves
+ * both. */
+const struct v9x_r6_reg_update *v9x_r6_3d_gpu_init_table(v9x_u32 chip);
 
 /* GB_TILING_CONFIG as r600_gpu_init composes it for 2 tile pipes from
  * RAMCFG: PIPE_TILING(1), BANK_TILING and GROUP_SIZE from its bank count
@@ -218,11 +235,14 @@ extern const struct v9x_r6_reg_update
  * the RV630's one render backend gives 0 whatever CC_RB_BACKEND_DISABLE
  * says. M-NZHWBR's RAMCFG A9h gives 8A12h, the value its BIOS left. */
 v9x_u32 v9x_r6_rv630_tiling_config(v9x_u32 ramcfg);
+/* The chip's: the RV630's above, or for the RV610's one tile pipe the same
+ * with PIPE_TILING(0). BACKEND_MAP stays 0: one render backend on each. */
+v9x_u32 v9x_r6_3d_tiling_config(v9x_u32 chip, v9x_u32 ramcfg);
 
-/* The table written through the ring as SET_CONFIG_REG, one packet per
- * register. read_values holds the value read of each table entry, in table
- * order; tiling_config replaces GB_TILING_CONFIG's. */
-void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream,
+/* The chip's table written through the ring as SET_CONFIG_REG, one packet
+ * per register. read_values holds the value read of each table entry, in
+ * table order; tiling_config replaces GB_TILING_CONFIG's. */
+void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream, v9x_u32 chip,
                         const v9x_u32 *read_values, v9x_u32 tiling_config);
 
 /*
@@ -235,7 +255,7 @@ void v9x_r6_3d_gpu_init(struct v9x_r6_pm4 *stream,
  * cleared, pointed at fs_gpu (256-byte aligned) as a KMS relocation of 0
  * into xf86's shader buffer points it at the solid VS.
  */
-void v9x_r6_3d_default_state(struct v9x_r6_pm4 *stream,
+void v9x_r6_3d_default_state(struct v9x_r6_pm4 *stream, v9x_u32 chip,
                              v9x_u32 cc_gc_shader_pipe_config,
                              v9x_u32 fs_gpu);
 
@@ -263,6 +283,10 @@ struct v9x_r6_3d_solid {
     v9x_u32 ps_gpu;
     v9x_u32 vertex_gpu;
     v9x_u32 colour;              /* ARGB8888 */
+    /* Nonzero on a chip with no vertex cache (the RV610): the vertices are
+     * synced through the texture cache, as xf86's r600_set_vtx_resource
+     * does for it. Zero is the RV630's VC_ACTION. */
+    v9x_u32 no_vertex_cache;
 };
 /* INVALID_ARGUMENT, with nothing written, for a state the hardware cannot
  * take as given; INSUFFICIENT_MEMORY when the stream overflowed. */

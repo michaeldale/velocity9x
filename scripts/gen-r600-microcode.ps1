@@ -1,6 +1,10 @@
 [CmdletBinding()]
 param(
-    [string]$FirmwareDirectory
+    [string]$FirmwareDirectory,
+    # The RV610's (HD 2400 Pro) files, fetched 2026-11-15 from the same
+    # linux-firmware tree: its PFP is byte-identical to the RV630's (the
+    # same SHA-256), its ME is its own.
+    [string]$Rv610FirmwareDirectory
 )
 
 # Generates src\chipsets\ati\r600\r6_cp_microcode.c, the R6xx command
@@ -36,6 +40,25 @@ foreach ($name in $expected.Keys) {
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($hash -ne $expected[$name]) {
         throw "$name has SHA-256 $hash, expected $($expected[$name])."
+    }
+}
+
+if (-not $Rv610FirmwareDirectory) {
+    $Rv610FirmwareDirectory = Join-Path $repoRoot 'build\external\rv610\firmware'
+}
+$expectedRv610 = @{
+    # The RV630's PFP hash: the same image.
+    'RV610_pfp.bin' = 'c0f58b75401acef29861a399430ce51681a39771ca30d020de24358dc1909246'
+    'RV610_me.bin'  = '566508c94ab890868242298a338e9362e893115a349f8548d26b9280ef9f4b4f'
+}
+foreach ($name in $expectedRv610.Keys) {
+    $path = Join-Path $Rv610FirmwareDirectory $name
+    if (-not (Test-Path -LiteralPath $path)) {
+        throw "Missing $path."
+    }
+    $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $expectedRv610[$name]) {
+        throw "$name has SHA-256 $hash, expected $($expectedRv610[$name])."
     }
 }
 
@@ -76,6 +99,10 @@ $output = @(
     " * $($expected['RV630_me.bin'])),",
     ' * measured loading and running on M-NZHWBR''s HD 2600 XT',
     ' * (docs\decisions\2026-11-13-rv630-cp-ring-test.md).',
+    ' *',
+    ' * The HD 2400 Pro (RV610) takes the same PFP (radeon/RV610_pfp.bin has',
+    ' * the RV630''s SHA-256) and its own ME, radeon/RV610_me.bin (SHA-256',
+    " * $($expectedRv610['RV610_me.bin'])).",
     ' * Do not edit: regenerate from the .bin files.',
     ' *',
     ' * linux-firmware WHENCE: "Licence: Redistributable. See LICENSE.radeon',
@@ -94,6 +121,8 @@ $output += @(
 $output += Format-V9xMicrocode -Path (Join-Path $FirmwareDirectory 'RV630_pfp.bin') -Dwords 576 -Symbol 'v9x_r6_rv630_pfp_microcode'
 $output += ''
 $output += Format-V9xMicrocode -Path (Join-Path $FirmwareDirectory 'RV630_me.bin') -Dwords 5376 -Symbol 'v9x_r6_rv630_me_microcode'
+$output += ''
+$output += Format-V9xMicrocode -Path (Join-Path $Rv610FirmwareDirectory 'RV610_me.bin') -Dwords 5376 -Symbol 'v9x_r6_rv610_me_microcode'
 
 $target = Join-Path $repoRoot 'src\chipsets\ati\r600\r6_cp_microcode.c'
 [IO.File]::WriteAllText($target, (($output -join "`r`n") + "`r`n"), [Text.Encoding]::ASCII)

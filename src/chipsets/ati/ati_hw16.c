@@ -35,6 +35,7 @@ unsigned long v9x_cedar_measure_video_memory(unsigned long mapped_bytes,
 extern const V9X_HW16_DEVICE v9x_vi_carrizo_device;
 extern const V9X_HW16_DEVICE v9x_rs690_device;
 extern const V9X_HW16_DEVICE v9x_r600_rv630_device;
+extern const V9X_HW16_DEVICE v9x_r600_rv610_device;
 /* carrizo_hw16.c: the SDMA engine hook's outcome. */
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_cik_mullins_device;
@@ -145,6 +146,7 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     /* R6xx: the DMA engine behind DirectDraw, Evergreen's hook
      * (cedar_hw16.c). */
     &v9x_r600_rv630_device,
+    &v9x_r600_rv610_device,
     /* The aliases, each declared in its chip's module: the VT2's, the
      * Rage IIC's (the Rage II class) and the Mobility-M's (the Rage Pro
      * class). A machine has one card, so order among them carries no
@@ -277,7 +279,8 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
         device == &v9x_evergreen_juniper_device ||
         device == &v9x_evergreen_redwood_device ||
         device == &v9x_evergreen_trinity_device ||
-        device == &v9x_r600_rv630_device) {
+        device == &v9x_r600_rv630_device ||
+        device == &v9x_r600_rv610_device) {
         v9x_cedar_publish_diagnostics(write);
     }
     if (device == &v9x_vi_carrizo_device) {
@@ -288,7 +291,7 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
 }
 
-/* Only the Evergreen chips and the RV630 answer: every other chip of the
+/* Only the Evergreen chips and the R6xx ones answer: every other chip of the
  * family keeps the VBE's figure, which a zero leaves in place
  * (enable16.c). */
 static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
@@ -301,7 +304,8 @@ static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
         device == &v9x_evergreen_juniper_device ||
         device == &v9x_evergreen_redwood_device ||
         device == &v9x_evergreen_trinity_device ||
-        device == &v9x_r600_rv630_device) {
+        device == &v9x_r600_rv630_device ||
+        device == &v9x_r600_rv610_device) {
         return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
     }
     return 0ul;

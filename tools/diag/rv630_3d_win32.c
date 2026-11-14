@@ -100,6 +100,7 @@
 /* The RV630's id, microcode sizes (radeon_ucode.h R600_PFP_UCODE_SIZE,
  * R600_PM4_UCODE_SIZE * 3) and VRAM start (r600d.h). */
 #define V9X_R6_DEVICE_RV630         0x9588ul
+#define V9X_R6_DEVICE_RV610         0x94c3ul /* HD 2400 Pro, 2026-11-15 */
 #define V9X_R6_PFP_DWORDS           576ul
 #define V9X_R6_ME_DWORDS            5376ul
 #define V9X_R6_MC_VM_FB_LOCATION    0x2180ul
@@ -637,6 +638,10 @@ static DWORD v9x_wptr_test;
 static DWORD v9x_wptr_draw;
 static DWORD v9x_wptr_put_back;
 static DWORD v9x_tiling_config;
+/* V9X_R6_CHIP_RV630, or V9X_R6_CHIP_RV610 when call 0 reads 1002:94C3:
+ * its gpu_init table, contexts, tiling and vertex-cache-less syncs (r6_3d.h).
+ * ME.BIN must then be RV610_me.bin; PFP.BIN is the same file on both. */
+static v9x_u32 v9x_chip = V9X_R6_CHIP_RV630;
 
 static void v9x_hex(char *text, DWORD value, int digits)
 {
@@ -990,7 +995,7 @@ static int v9x_ring_interp_draw(DWORD g)
     state.vertex_stride = v9x_mode == V9X_MODE_MODULATE ?
                           V9X_R6_MODULATE_STRIDE : V9X_R6_GOURAUD_STRIDE;
     state.vertex_bytes = v9x_vertex_dwords * 4ul;
-    state.vertex_cache = 1ul;
+    state.vertex_cache = v9x_chip != V9X_R6_CHIP_RV610;
     state.ranged_syncs = v9x_vcrange ? 1ul : 0ul;
     if (v9x_mode == V9X_MODE_DEPTH && v9x_zexport != V9X_UNSET) {
         state.ps_gprs = V9X_R6_ZEXPORT_PS_GPRS;
@@ -1110,7 +1115,7 @@ static int v9x_build_ring(DWORD g)
     v9x_r6_pm4_begin(&v9x_stream, v9x_ring, V9X_RING_MAX);
 
     /* r600_cp_start. */
-    v9x_r6_3d_me_initialize(&v9x_stream);
+    v9x_r6_3d_me_initialize(&v9x_stream, v9x_chip);
     v9x_wptr_init = v9x_ring_close();
 
     /* r600_ring_test. */
@@ -1121,11 +1126,12 @@ static int v9x_build_ring(DWORD g)
     for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
         reads[index] = v9x_config_saved[index];
     }
-    v9x_r6_3d_gpu_init(&v9x_stream, reads, v9x_tiling_config);
+    v9x_r6_3d_gpu_init(&v9x_stream, v9x_chip, reads, v9x_tiling_config);
     /* Stage markers: a stalled ME's last SCRATCH_REG0 says which part of
      * the draw it got past (the read pointer only says what it fetched). */
     v9x_r6_3d_fence(&v9x_stream, V9X_SCRATCH_STAGE_GPU_INIT);
-    v9x_r6_3d_default_state(&v9x_stream, v9x_info[V9X_INFO_PIPE_CONFIG],
+    v9x_r6_3d_default_state(&v9x_stream, v9x_chip,
+                            v9x_info[V9X_INFO_PIPE_CONFIG],
                             g + V9X_VS_OFFSET);
     v9x_r6_3d_fence(&v9x_stream, V9X_SCRATCH_STAGE_DEFAULT);
     if (v9x_mode != V9X_MODE_SOLID) {
@@ -1140,6 +1146,7 @@ static int v9x_build_ring(DWORD g)
         solid.ps_gpu = g + V9X_PS_OFFSET;
         solid.vertex_gpu = g + v9x_vb_offset;
         solid.colour = V9X_COLOUR;
+        solid.no_vertex_cache = v9x_chip == V9X_R6_CHIP_RV610;
         if (v9x_r6_3d_solid(&solid, &v9x_stream) != V9X_STATUS_OK) {
             return 0;
         }
@@ -2044,7 +2051,9 @@ void __stdcall V9xRv630DrawEntry(void)
     v9x_key("Report", "Id", v9x_result.id);
     v9x_key("Report", "Bar0", v9x_result.bar0);
     v9x_key("Report", "Bar2", v9x_result.bar2);
-    if ((v9x_result.id >> 16) != V9X_R6_DEVICE_RV630) {
+    if ((v9x_result.id >> 16) == V9X_R6_DEVICE_RV610) {
+        v9x_chip = V9X_R6_CHIP_RV610;
+    } else if ((v9x_result.id >> 16) != V9X_R6_DEVICE_RV630) {
         CloseHandle(device);
         v9x_finish("NOT-RV630", 6u);
     }
@@ -2056,6 +2065,7 @@ void __stdcall V9xRv630DrawEntry(void)
     }
     v9x_key("Report", "PfpFirst", v9x_request.data[0]);
     v9x_key("Report", "MeFirst", v9x_request.data[V9X_R6_PFP_DWORDS]);
+    v9x_key("Report", "Chip", v9x_chip);
 
     /* Call 1: read-only. The config list is the gpu_init table, then the
      * extra registers. */
@@ -2116,7 +2126,8 @@ void __stdcall V9xRv630DrawEntry(void)
     }
     g = ((fb & V9X_FB_LOW_MASK) << V9X_ADDR_SHIFT_HIGH) +
         V9X_SCRATCH_GPU_OFFSET;
-    v9x_tiling_config = v9x_r6_rv630_tiling_config(v9x_info[V9X_INFO_RAMCFG]);
+    v9x_tiling_config = v9x_r6_3d_tiling_config(v9x_chip,
+                                                v9x_info[V9X_INFO_RAMCFG]);
     v9x_key("Run", "WindowGpu", g);
     v9x_key("Run", "TilingConfig", v9x_tiling_config);
     if (v9x_switch_given("/gouraud")) {

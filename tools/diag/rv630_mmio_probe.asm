@@ -45,6 +45,9 @@ RV_MAGIC                equ 4d4d5652h ; "RVMM"
 RV_DIOC_CAPTURE         equ 1
 RV_VENDOR_ATI           equ 1002h
 RV_DEVICE_RV630         equ 9588h
+; The Radeon HD 2400 Pro (RV610), 2026-11-15: the same R6xx register file
+; and AVIVO display block, read for its own survey.
+RV_DEVICE_RV610         equ 94c3h
 RV_CFG_BAR2             equ 18h
 RV_CFG_BAR2_HIGH        equ 1ch
 RV_MMIO_BYTES           equ 00010000h
@@ -279,6 +282,8 @@ BeginProc RV_Capture
     or      RVResult[4], RV_ST_ATI
     shr     eax, 16
     cmp     ax, RV_DEVICE_RV630
+    je      short RV_Capture_Check_Base
+    cmp     ax, RV_DEVICE_RV610
     je      short RV_Capture_Check_Base
     or      RVResult[4], RV_ST_NOT_ACCEPTED
     jmp     RV_Capture_Done

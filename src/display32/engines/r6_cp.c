@@ -361,14 +361,28 @@ static int v9x_r6_cp_run(struct v9x_r6_pm4 *stream)
     return v9x_r6_cp_poll_idle(R6CP_SPINS);
 }
 
+/* Which R6xx chip: the 16-bit side stamps the RV610's engine with its
+ * identity bit; the RV630's carries none (engine_abi.h). */
+v9x_u32 v9x_r6_cp_chip(void)
+{
+    if (v9x_hal != 0 &&
+        (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_R6_RV610) != 0ul) {
+        return V9X_R6_CHIP_RV610;
+    }
+    return V9X_R6_CHIP_RV630;
+}
+
 /* r600_cp_stop, r600_cp_load_microcode and r600_cp_resume, in V9XR63D's
- * order. */
+ * order. The PFP image is the same on both chips; the ME is the chip's. */
 static void v9x_r6_cp_load(void)
 {
     DWORD ring_gpu = v9x_r6_cp_window_gpu + R6CP_WINDOW_RING;
     DWORD writeback = v9x_r6_cp_window_gpu + R6CP_WINDOW_WRITEBACK;
+    const v9x_u32 *me;
     DWORD index;
 
+    me = v9x_r6_cp_chip() == V9X_R6_CHIP_RV610 ? v9x_r6_rv610_me_microcode :
+                                                 v9x_r6_rv630_me_microcode;
     v9x_r6_cp_halt();
     v9x_r6_cp_write32(R6CP_SCRATCH_UMSK, 0ul);
 
@@ -376,7 +390,7 @@ static void v9x_r6_cp_load(void)
     v9x_r6_cp_reset(R6CP_GRBM_RESET_CP);
     v9x_r6_cp_write32(R6CP_ME_RAM_WADDR, 0ul);
     for (index = 0ul; index < V9X_R6_ME_MICROCODE_DWORDS; ++index) {
-        v9x_r6_cp_write32(R6CP_ME_RAM_DATA, v9x_r6_rv630_me_microcode[index]);
+        v9x_r6_cp_write32(R6CP_ME_RAM_DATA, me[index]);
     }
     v9x_r6_cp_write32(R6CP_PFP_UCODE_ADDR, 0ul);
     for (index = 0ul; index < V9X_R6_PFP_MICROCODE_DWORDS; ++index) {
@@ -476,15 +490,19 @@ static int v9x_r6_cp_gpu_init(v9x_u32 *buffer, DWORD capacity)
 {
     v9x_u32 reads[V9X_R6_RV630_GPU_INIT_COUNT];
     struct v9x_r6_pm4 stream;
+    const struct v9x_r6_reg_update *table;
+    v9x_u32 chip;
     DWORD index;
 
+    chip = v9x_r6_cp_chip();
+    table = v9x_r6_3d_gpu_init_table(chip);
     for (index = 0ul; index < V9X_R6_RV630_GPU_INIT_COUNT; ++index) {
-        reads[index] = v9x_r6_cp_read32(v9x_r6_rv630_gpu_init[index].offset);
+        reads[index] = v9x_r6_cp_read32(table[index].offset);
     }
     v9x_r6_pm4_begin(&stream, buffer, capacity);
-    v9x_r6_3d_gpu_init(&stream, reads,
-                       v9x_r6_rv630_tiling_config(
-                           v9x_r6_cp_read32(V9X_R6_RAMCFG)));
+    v9x_r6_3d_gpu_init(&stream, chip, reads,
+                       v9x_r6_3d_tiling_config(
+                           chip, v9x_r6_cp_read32(V9X_R6_RAMCFG)));
     return v9x_r6_cp_run(&stream);
 }
 
@@ -508,7 +526,7 @@ static int v9x_r6_cp_start(void)
 
     /* r600_cp_start: ME_INITIALIZE queued, then the CP run, and waited for. */
     v9x_r6_pm4_begin(&stream, buffer, R6CP_START_DWORDS);
-    v9x_r6_3d_me_initialize(&stream);
+    v9x_r6_3d_me_initialize(&stream, v9x_r6_cp_chip());
     v9x_r6_pm4_pad(&stream);
     if (!v9x_r6_cp_put(stream.dwords, stream.count)) {
         v9x_r6_cp_quarantine(R6CP_FAULT_START);
