@@ -628,16 +628,28 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
     v9x_gm965_fill_engine,
     2u,
     0u,
-    0ul,
+    /*
+     * 64 MiB of GMADR, as the GMA 950's row and for its reason: the
+     * texture pool's 32 MiB sits above the 8 MiB stolen run and the CPU
+     * writes it through the aperture. TOMMOHP's DPMI host maps it
+     * (docs\decisions\2026-11-13-intel-gm965-texture-pool-phase0.md).
+     * Every GM965 gets the mapping; only TOMMOHP gets a pool (the
+     * mini-VDD's gate).
+     */
+    0x04000000ul,
     0,
     /*
      * Write-combined, as Ironlake below, which runs the same Gen4 engine:
-     * the family's 16 MiB mapping, drained before each RING_TAIL and
-     * display flip in the HAL. TOMMOHP's BIOS leaves the GMADR under the
-     * UC default with five pairs free; uncached it wrote the aperture at
-     * 130 MB/s (docs\decisions\2026-11-13-gm965-write-combining.md).
+     * the whole mapping, drained before each RING_TAIL and display flip
+     * in the HAL. TOMMOHP's BIOS leaves the GMADR under the UC default
+     * with five pairs free; uncached it wrote the aperture at 130 MB/s
+     * (docs\decisions\2026-11-13-gm965-write-combining.md).
      */
-    1u
+    1u,
+    0,
+    0u,
+    /* The texture pool intel_pool16.c mapped at Enable, if any. */
+    v9x_gma950_engine_pool
 };
 
 /*

@@ -31,8 +31,12 @@
 #define V9X_POOL_ACCEPT     0x4C4F4F50ul
 #define V9X_POOL_STATE_MAPPED 2ul
 
-/* The gate: MICHAEL-NETBOOK's 945GSE only, until the pool has run there. */
-#define V9X_POOL_DEVICE     0x27AEu
+/* The gate: MICHAEL-NETBOOK's 945GSE, and the GM965, where the mini-VDD
+ * narrows it to TOMMOHP by subsystem id and answers any other machine
+ * refused-alloc, reason 3 (docs\decisions\2026-11-14-intel-gm965-texture-
+ * pool-decisions.md). */
+#define V9X_POOL_DEVICE       0x27AEu
+#define V9X_POOL_DEVICE_GM965 0x2A02u
 
 /* The 945's GMADR is 256 MiB (MSAC; 2026-09-12-intel-phase2-gtt-
  * inventory.md, 65,536 entries). */
@@ -143,7 +147,7 @@ void V9X_LEAF_FAR v9x_intel_pool_setup(unsigned short device_id)
     V9xEnsureDiagDir();
     WritePrivateProfileString(V9X_POOL_SECTION, 0, 0, V9X_DIAG_INTELGTT_TXT);
 
-    if (device_id != V9X_POOL_DEVICE) {
+    if (device_id != V9X_POOL_DEVICE && device_id != V9X_POOL_DEVICE_GM965) {
         v9x_pool_result("not-gated-device", 0ul);
         return;
     }
