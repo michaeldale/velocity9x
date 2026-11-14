@@ -81,8 +81,7 @@ v9x_status v9x_nv50_init_build(const struct v9x_nv50_init_input *input,
 #define V9X_NV50_PGRAPH_CTX          0x40032cul
 #define V9X_NV50_PGRAPH_CTX_VALID    0x80000000ul
 
-/* The IB ring index after index: the ring holds V9X_NV50_IB_ENTRIES and
- * wraps (run 35 carried it past the end). */
-v9x_u32 v9x_nv50_ib_next(v9x_u32 index);
+/* v9x_nv50_ib_next, the ring step, is in nv50_chan.h with the pushes, so
+ * the 16-bit driver can link it without this module. */
 
 #endif

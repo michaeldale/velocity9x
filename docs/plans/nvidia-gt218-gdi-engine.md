@@ -2,7 +2,7 @@
 
 Date: 2026-11-14
 
-Status: planned, nothing built. Step 5 of
+Status: 5.0 to 5.3 done, 5.4 (on the card) next. Step 5 of
 [nvidia-gt218-pgraph-2d.md](nvidia-gt218-pgraph-2d.md), after step 4's
 HAL engine ran on M-BXMFA8
 ([2026-11-14-gt218-hal-engine-first-run.md](../decisions/2026-11-14-gt218-hal-engine-first-run.md)).
@@ -136,6 +136,17 @@ boot 108 (build d2aee239, 1024x768x16): `V9XGDI /accel` reports
 tool reports counters and comparisons, not timings, so there is no
 speed baseline; the before for 5.4 is "every call declined, picture
 right". **5.1** is done: the push builders are in `nv50_2d.c`.
+**5.2** is done (912e247e): the HAL keeps a live channel and takes the
+ring index from 3334h. **5.3** is built, untested on a card: the
+GDI arm in `gdi_accel.c` fills and copies at gate 8 when the HAL's
+channel is live, and declines otherwise. The open point is settled
+with `V9xWcDrain` in `runtime.asm`, a `lock or` on the stack, the
+16-bit twin of the HAL's drain. The arm pushed the nvidia family's
+`_TEXT` 591 bytes over its 57344-byte budget, so `nv50_2d.c` moved to a
+code segment of its own, `NV50CODE`, with every call in declared
+`V9X_NV50_FAR` (`nv50_chan.h`); `_TEXT` is 56521 bytes after the move.
+`wdis -a` shows the calls into it far and its in-segment calls as
+`push cs` + near call, which return correctly through its `retf`.
 
 ## Decisions owed
 

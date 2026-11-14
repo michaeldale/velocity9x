@@ -242,8 +242,3 @@ v9x_status v9x_nv50_init_build(const struct v9x_nv50_init_input *input,
     }
     return V9X_STATUS_OK;
 }
-
-v9x_u32 v9x_nv50_ib_next(v9x_u32 index)
-{
-    return (index + 1ul) % V9X_NV50_IB_ENTRIES;
-}

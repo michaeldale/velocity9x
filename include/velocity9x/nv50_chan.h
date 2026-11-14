@@ -24,6 +24,24 @@
 #include "velocity9x/status.h"
 #include "velocity9x/nv50_grctx.h"
 
+/*
+ * The 16-bit driver compiles nv50_2d.c into a code segment of its own,
+ * NV50CODE, because the nvidia family's _TEXT reached its budget when
+ * gdi_accel.c gained the GT218 arm. Open Watcom's compact model calls near
+ * by default and a near call cannot cross a segment, so every function
+ * nv50_2d.c exports is declared and defined with this qualifier. Nothing in
+ * nv50_2d.c calls out of its segment: no clibc helper either (wdis -a,
+ * 2026-11-14), which is why nv3_2d.c, which calls __U4M and __U4D, stays in
+ * _TEXT. The HAL, the probe's 32-bit hosts and the host tests have no
+ * segments, so the qualifier is nothing there; intel16.h has the same
+ * arrangement for the Intel family.
+ */
+#if defined(__WATCOMC__) && defined(_M_I86)
+#define V9X_NV50_FAR __far
+#else
+#define V9X_NV50_FAR
+#endif
+
 /* ---- The region: offsets from its base, in bytes. ---- */
 
 /* The 64 KiB instance block, 4 KiB aligned (fifo/nv50.c nv50_chan_inst). */
@@ -221,41 +239,41 @@ struct v9x_nv50_push {
     v9x_u32 overflow;
 };
 
-void v9x_nv50_push_init(struct v9x_nv50_push *push, v9x_u32 *words,
-                        v9x_u32 max);
+void V9X_NV50_FAR v9x_nv50_push_init(struct v9x_nv50_push *push, v9x_u32 *words,
+                                     v9x_u32 max);
 /* A header and count data words, incrementing from method. */
-void v9x_nv50_push_method(struct v9x_nv50_push *push, v9x_u32 subc,
-                          v9x_u32 method, v9x_u32 count,
-                          const v9x_u32 *data);
+void V9X_NV50_FAR v9x_nv50_push_method(struct v9x_nv50_push *push, v9x_u32 subc,
+                                       v9x_u32 method, v9x_u32 count,
+                                       const v9x_u32 *data);
 /* Bind the 502D object to its subchannel and point it at the VM DMA
  * object. */
-void v9x_nv50_push_bind_2d(struct v9x_nv50_push *push);
+void V9X_NV50_FAR v9x_nv50_push_bind_2d(struct v9x_nv50_push *push);
 /* A solid rectangle into a pitch-linear surface at VM address dst (the
  * VM is the identity, so a video memory address). */
-void v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
-                        v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
-                        v9x_u32 format, v9x_u32 colour,
-                        v9x_u32 x, v9x_u32 y, v9x_u32 w, v9x_u32 h);
+void V9X_NV50_FAR v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
+                                     v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 format, v9x_u32 colour,
+                                     v9x_u32 x, v9x_u32 y, v9x_u32 w, v9x_u32 h);
 /* A 1:1 copy of w x h pixels from (sx, sy) to (dx, dy) inside one
  * pitch-linear surface at VM address surface. Safe overlap is asked for,
  * so the rectangles may overlap. */
-void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
-                        v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
-                        v9x_u32 format,
-                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
-                        v9x_u32 w, v9x_u32 h);
+void V9X_NV50_FAR v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
+                                     v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 format,
+                                     v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                                     v9x_u32 w, v9x_u32 h);
 /* The same copy between two surfaces of one format, each with its own
  * address, pitch and size. Measured on a card only as the one-surface
  * case above (run 33 on M-BXMFA8); two surfaces put different values in
  * the same words. */
-void v9x_nv50_push_blit(struct v9x_nv50_push *push,
-                        v9x_u32 src_surface, v9x_u32 src_pitch,
-                        v9x_u32 src_width, v9x_u32 src_height,
-                        v9x_u32 dst_surface, v9x_u32 dst_pitch,
-                        v9x_u32 dst_width, v9x_u32 dst_height,
-                        v9x_u32 format,
-                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
-                        v9x_u32 w, v9x_u32 h);
+void V9X_NV50_FAR v9x_nv50_push_blit(struct v9x_nv50_push *push,
+                                     v9x_u32 src_surface, v9x_u32 src_pitch,
+                                     v9x_u32 src_width, v9x_u32 src_height,
+                                     v9x_u32 dst_surface, v9x_u32 dst_pitch,
+                                     v9x_u32 dst_width, v9x_u32 dst_height,
+                                     v9x_u32 format,
+                                     v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                                     v9x_u32 w, v9x_u32 h);
 /*
  * What a live channel built at base looks like from the registers,
  * without building it: the value of its channel table entry
@@ -265,16 +283,19 @@ void v9x_nv50_push_blit(struct v9x_nv50_push *push,
  * operation, and neither needs the 704 KiB region to compute them. They
  * are the values v9x_nv50_chan_build's layout reports (host-tested).
  */
-v9x_u32 v9x_nv50_live_chan_entry(v9x_u32 base);
-v9x_u32 v9x_nv50_live_context(v9x_u32 base);
-v9x_u32 v9x_nv50_live_push(v9x_u32 base);
-v9x_u32 v9x_nv50_live_ib(v9x_u32 base);
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_chan_entry(v9x_u32 base);
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_context(v9x_u32 base);
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_push(v9x_u32 base);
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_ib(v9x_u32 base);
+/* The IB ring index after index: the ring holds V9X_NV50_IB_ENTRIES and
+ * wraps (run 35 carried it past the end). */
+v9x_u32 V9X_NV50_FAR v9x_nv50_ib_next(v9x_u32 index);
 /* The 502D surface format for a desktop depth in bytes per pixel: 1, 2
  * (5:6:5) and 4, the three measured in run 34. 0 for any other, which the
  * engine must not draw at. */
-v9x_u32 v9x_nv50_2d_format(v9x_u32 bytes_per_pixel);
+v9x_u32 V9X_NV50_FAR v9x_nv50_2d_format(v9x_u32 bytes_per_pixel);
 /* The two words of an IB entry for words dwords at VM address addr, a
  * main (not subroutine) entry (chan506f.c gpfifo_push). */
-void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry);
+void V9X_NV50_FAR v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry);
 
 #endif

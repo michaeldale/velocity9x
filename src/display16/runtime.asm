@@ -4017,6 +4017,21 @@ V9xNv3FbWriteDone:
     pop     bp
     retf    8
 V9XNV3FBWRITE ENDP
+
+; void FAR PASCAL V9xWcDrain(void)
+; Empty the CPU's write-combining buffers: a locked operation on the stack
+; serialises them, which is what the HAL's v9x_wc_drain does
+; (ddhal_internal.h). The GT218's GDI arm writes its pushbuffer and IB entry
+; through the write-combined framebuffer selector, and the chip must be
+; able to read them before the kick (gdi_accel.c).
+PUBLIC V9XWCDRAIN
+V9XWCDRAIN PROC FAR
+    push    bp
+    mov     bp, sp
+    lock or word ptr [bp], 0
+    pop     bp
+    retf
+V9XWCDRAIN ENDP
 ENDIF
 
 IFDEF V9X_TDFX_FAMILY

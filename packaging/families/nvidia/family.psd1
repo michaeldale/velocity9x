@@ -156,6 +156,10 @@
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
             # The HAL's 2D builder, for gdi_accel.c's NV3 arm.
             @{ Name = 'nv3_2d'; Path = 'src\chipsets\nvidia\nv3_2d.c' }
+            # The HAL's NV50 push builders, for gdi_accel.c's GT218 arm, in a
+            # segment of their own to keep _TEXT under its budget; every
+            # call in is far (velocity9x\nv50_chan.h, V9X_NV50_FAR).
+            @{ Name = 'nv50_2d'; Path = 'src\chipsets\nvidia\gt218\nv50_2d.c'; CodeSegment = 'NV50CODE' }
             # Ordinal 1, last so it links after the runtime symbols it calls.
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
         )

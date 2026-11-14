@@ -66,14 +66,22 @@ extern unsigned long v9x_tdfx_desktop_offset(void);
  * nvidia family's DRV only. */
 #ifdef V9X_NVIDIA_FAMILY
 #include "velocity9x/nv3_2d.h"
+/* The NV50 arm (the GT218) uses nv50_2d.c's pushes, the ones eng_nv50.c
+ * issues, and nv50_init.h's names for the registers both sides poll. */
+#include "velocity9x/nv50_chan.h"
+#include "velocity9x/nv50_init.h"
 
 /* runtime.asm, nvidia family only: BAR0 through a 16 MiB selector, and
- * video memory through the framebuffer selector, by 32-bit offset. */
+ * video memory through the framebuffer selector, by 32-bit offset. The
+ * helpers are named for the NV3, which they were written for; the GT218's
+ * BAR0 is the same 16 MiB and its framebuffer selector the same kind. */
 extern WORD FAR PASCAL V9xNv3Selector(DWORD linear);
 extern DWORD FAR PASCAL V9xNv3Read(DWORD offset);
 extern void FAR PASCAL V9xNv3Write(DWORD offset, DWORD value);
 extern DWORD FAR PASCAL V9xNv3FbRead(DWORD offset);
 extern void FAR PASCAL V9xNv3FbWrite(DWORD offset, DWORD value);
+/* The CPU's write-combining buffers emptied, before a kick. */
+extern void FAR PASCAL V9xWcDrain(void);
 
 /* ddi.c: the framebuffer selector's limit, the map's bytes less one. */
 extern WORD v9x_map_pages_hi;
@@ -329,6 +337,19 @@ static DWORD v9x_gdi_nv3_ramin_top;
 static DWORD v9x_gdi_nv3_empty;
 /* The PFB_CONFIG_0 that bring-up wrote. */
 static DWORD v9x_gdi_nv3_pfb;
+
+/*
+ * The GT218's (NV50) engine on this side. Michael's choice A
+ * (docs\plans\nvidia-gt218-gdi-engine.md): only the HAL builds the
+ * channel (engines\eng_nv50.c). This side draws on it when it is live,
+ * which it tests before every operation, and on the CPU otherwise, so GDI
+ * is accelerated from the first DirectDraw use in a boot on, and the
+ * channel outlives mode sets. Nothing is initialised here.
+ *
+ * The reserve's video memory offset, from the chip's reserve hook; 0 when
+ * the arm is not live.
+ */
+static DWORD v9x_gdi_nv50_reserve;
 #endif
 
 /*
@@ -538,6 +559,26 @@ static WORD v9x_gdi_wait_idle(void)
                     return 1u;
                 }
             } while (spins-- != 0ul);
+        } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
+            /* eng_nv50.c's idle test: IB get at PFIFO's PUT (whoever kicked
+             * last waited for PUT to show it), the pusher drained, PGRAPH
+             * idle. A latched PFIFO or PGRAPH error, or a pusher error, is
+             * no idle. MMIO reads only, so safe at interrupt time. */
+            do {
+                if (V9xNv3Read(V9X_NV50_PFIFO_IB_GET) ==
+                        V9xNv3Read(V9X_NV50_PFIFO_IB_PUT) &&
+                    V9xNv3Read(V9X_NV50_PFIFO_DMA_GET) ==
+                        V9xNv3Read(V9X_NV50_PFIFO_DMA_PUT) &&
+                    V9xNv3Read(V9X_NV50_PGRAPH_STATUS) == 0ul) {
+                    if (V9xNv3Read(V9X_NV50_PFIFO_INTR) != 0ul ||
+                        V9xNv3Read(V9X_NV50_PGRAPH_INTR) != 0ul ||
+                        (V9xNv3Read(V9X_NV50_PFIFO_DMA_STATE) >>
+                         V9X_NV50_PFIFO_DMA_ERROR_SHIFT) != 0ul) {
+                        break;
+                    }
+                    return 1u;
+                }
+            } while (spins-- != 0ul);
 #endif
         } else {
             do {
@@ -621,6 +662,9 @@ typedef struct v9x_gdi_op {
 #ifdef V9X_NVIDIA_FAMILY
     /* The NV3 fill or copy, likewise. */
     struct v9x_nv3_op nv3;
+    /* The NV50 push, likewise: at most 43 words (the copy). */
+    v9x_u32 nv50_words[48];
+    v9x_u32 nv50_count;
 #endif
 } V9X_GDI_OP;
 
@@ -970,6 +1014,68 @@ static WORD v9x_gdi_nv3_draw(const V9X_GDI_OP *op, DWORD width, DWORD height)
     }
     v9x_gdi_nv3_put(op->nv3.surface, op->nv3.surface_count);
     v9x_gdi_nv3_put(op->nv3.methods, op->nv3.method_count);
+    return 1u;
+}
+
+/* The HAL's channel is live at the reserve: its table entry is there and
+ * PGRAPH holds its context (the values eng_nv50.c tests, from nv50_2d.c).
+ * Reads only. */
+static WORD v9x_gdi_nv50_live(void)
+{
+    return v9x_gdi_nv50_reserve != 0ul &&
+           V9xNv3Read(V9X_NV50_PFIFO_CHAN(1ul)) ==
+               v9x_nv50_live_chan_entry(v9x_gdi_nv50_reserve) &&
+           V9xNv3Read(V9X_NV50_PGRAPH_CTX) ==
+               v9x_nv50_live_context(v9x_gdi_nv50_reserve);
+}
+
+/* A kick shows in PFIFO's copy of PUT at once in every run measured; this
+ * only has to end. */
+#define V9X_GDI_NV50_PUT_SPINS 0x00010000ul
+
+/*
+ * One NV50 fill or copy, built at gate 8 by nv50_2d.c, the builder
+ * eng_nv50.c uses, on the channel the HAL built. Waits for idle first, as
+ * eng_nv50.c does; the next IB entry goes where PFIFO's IB get then
+ * stands, the push and the entry through the framebuffer selector, the
+ * write-combining buffers emptied, then the kick, and a wait for PFIFO's
+ * PUT to show it so the next idle test means what it says.
+ */
+static WORD v9x_gdi_nv50_draw(const V9X_GDI_OP *op)
+{
+    DWORD push = v9x_nv50_live_push(v9x_gdi_nv50_reserve);
+    DWORD ring = v9x_nv50_live_ib(v9x_gdi_nv50_reserve);
+    v9x_u32 entry[2];
+    DWORD at;
+    DWORD next;
+    DWORD index;
+    DWORD spins;
+
+    if (v9x_gdi_wait_idle() == 0u) {
+        return 0u;
+    }
+    at = V9xNv3Read(V9X_NV50_PFIFO_IB_GET);
+    if (at >= V9X_NV50_IB_ENTRIES) {
+        v9x_gdi_poison();
+        return 0u;
+    }
+    for (index = 0ul; index < op->nv50_count; ++index) {
+        V9xNv3FbWrite(push + index * 4ul, op->nv50_words[index]);
+    }
+    v9x_nv50_ib_entry(push, op->nv50_count, entry);
+    V9xNv3FbWrite(ring + at * 8ul, entry[0]);
+    V9xNv3FbWrite(ring + at * 8ul + 4ul, entry[1]);
+    V9xWcDrain();
+    next = v9x_nv50_ib_next(at);
+    V9xNv3Write(V9X_NV50_USERD(1ul) + V9X_NV50_USERD_IB_PUT, next);
+    spins = V9X_GDI_NV50_PUT_SPINS;
+    while (V9xNv3Read(V9X_NV50_PFIFO_IB_PUT) != next) {
+        if (spins-- == 0ul) {
+            ++v9x_gdi.idle_timeouts;
+            v9x_gdi_poison();
+            return 0u;
+        }
+    }
     return 1u;
 }
 #endif
@@ -1633,11 +1739,16 @@ void v9x_gdi_accel_configure(void)
              (v9x_u32)v9x_driver_pdevice->deBitsPixel / 8ul) != V9X_TRUE)) {
         enabled = 0ul;
     }
-    /* The GT218's engine serves DirectDraw only, from the HAL
-     * (engines\eng_nv50.c); nothing here drives it, so no primitive is
-     * reported as enabled (docs\plans\nvidia-gt218-nv50-engine.md, GDI is
-     * step 5). */
-    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
+    /* The GT218 draws fill and copy at 8 and 16 bpp (5:6:5) on the HAL's
+     * channel; the family has no other depth. Text stays on the CPU (the
+     * text gate above). Whether the channel is live is asked per
+     * operation at gate 8, not here: the HAL may build it later in the
+     * boot. */
+    v9x_gdi_nv50_reserve = 0ul;
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50 &&
+        (v9x_driver_pdevice == 0 ||
+         v9x_nv50_2d_format(
+             (v9x_u32)v9x_driver_pdevice->deBitsPixel / 8ul) == 0ul)) {
         enabled = 0ul;
     }
 #endif
@@ -1702,6 +1813,26 @@ void v9x_gdi_accel_configure(void)
             V9xNv3Selector(control_base) != 0u &&
             V9xNv3Read(V9X_NV3_PMC_BOOT_0) != 0xfffffffful) {
             v9x_gdi_nv3_ramin_top = reserve + V9X_NV3_RAMIN_BYTES;
+            v9x_gdi_engine_live = 1u;
+        }
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50 &&
+               control_base != 0ul &&
+               aperture_bytes >= V9X_NV50_PGRAPH_STATUS + 4ul &&
+               device->engine_reserve_offset != 0) {
+        /* All of BAR0, which the mini-VDD mapped after checking PMC_BOOT_0
+         * names chipset A8h. The pushbuffer and IB ring, inside the
+         * reserve, have to lie inside the framebuffer selector, which
+         * reaches them by offset. Live here means the arm can draw when
+         * the HAL's channel exists; v9x_gdi_nv50_live asks that. */
+        DWORD reserve = device->engine_reserve_offset();
+        DWORD map_limit = ((DWORD)v9x_map_pages_hi << 16) |
+                          (DWORD)v9x_map_pages_lo;
+
+        if (reserve != 0ul &&
+            reserve + V9X_NV50_REGION_BYTES - 1ul <= map_limit &&
+            V9xNv3Selector(control_base) != 0u &&
+            V9xNv3Read(V9X_NV50_PFIFO_IB_GET) != 0xfffffffful) {
+            v9x_gdi_nv50_reserve = reserve;
             v9x_gdi_engine_live = 1u;
         }
 #endif
@@ -2381,6 +2512,48 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
             ++v9x_gdi.decline_engine;
             goto decline;
         }
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
+        /*
+         * The HAL's channel must be live (choice A: nothing is built
+         * here), the depth one 502D was measured at, and the push one the
+         * builder writes without overflow. The surface is the screen: the
+         * channel's VM is the identity and BAR1 linear, so its VM address
+         * is its offset in video memory, as for DirectDraw.
+         */
+        struct v9x_nv50_push push;
+        v9x_u32 format = v9x_nv50_2d_format((v9x_u32)op.bytes_per_pixel);
+
+        if (upload != 0u || format == 0ul || v9x_gdi_nv50_live() == 0u) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+        v9x_nv50_push_init(&push, op.nv50_words,
+                           sizeof(op.nv50_words) / sizeof(op.nv50_words[0]));
+        if (rop256 == V9X_ROP256_SRCCOPY) {
+            v9x_nv50_push_copy(&push, op.base, op.pitch,
+                               (v9x_u32)destination_device->deWidth,
+                               (v9x_u32)destination_device->deHeight,
+                               format,
+                               (v9x_u32)op.source_x, (v9x_u32)op.source_y,
+                               (v9x_u32)op.destination_x,
+                               (v9x_u32)op.destination_y,
+                               (v9x_u32)op.width, (v9x_u32)op.height);
+        } else {
+            /* A solid brush carries the pixel replicated across the dword;
+             * the 502D colour is the pixel alone. */
+            v9x_nv50_push_fill(&push, op.base, op.pitch,
+                               (v9x_u32)destination_device->deWidth,
+                               (v9x_u32)destination_device->deHeight,
+                               format, op.color & all_ones,
+                               (v9x_u32)op.destination_x,
+                               (v9x_u32)op.destination_y,
+                               (v9x_u32)op.width, (v9x_u32)op.height);
+        }
+        if (push.overflow != 0ul) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+        op.nv50_count = push.count;
 #endif
     } else {
         ++v9x_gdi.decline_engine;
@@ -2439,6 +2612,8 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
         issued = v9x_gdi_nv3_draw(&op,
                                   (DWORD)destination_device->deWidth,
                                   (DWORD)destination_device->deHeight);
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
+        issued = v9x_gdi_nv50_draw(&op);
 #endif
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)

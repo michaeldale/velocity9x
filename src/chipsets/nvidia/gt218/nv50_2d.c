@@ -11,8 +11,8 @@
  */
 #include "velocity9x/nv50_chan.h"
 
-void v9x_nv50_push_init(struct v9x_nv50_push *push, v9x_u32 *words,
-                        v9x_u32 max)
+void V9X_NV50_FAR v9x_nv50_push_init(struct v9x_nv50_push *push, v9x_u32 *words,
+                                     v9x_u32 max)
 {
     push->words = words;
     push->max = max;
@@ -29,9 +29,9 @@ static void v9x_nv50_push_word(struct v9x_nv50_push *push, v9x_u32 word)
     push->words[push->count++] = word;
 }
 
-void v9x_nv50_push_method(struct v9x_nv50_push *push, v9x_u32 subc,
-                          v9x_u32 method, v9x_u32 count,
-                          const v9x_u32 *data)
+void V9X_NV50_FAR v9x_nv50_push_method(struct v9x_nv50_push *push, v9x_u32 subc,
+                                       v9x_u32 method, v9x_u32 count,
+                                       const v9x_u32 *data)
 {
     v9x_u32 index;
 
@@ -47,17 +47,17 @@ static void v9x_nv50_push_one(struct v9x_nv50_push *push, v9x_u32 method,
     v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, method, 1ul, &value);
 }
 
-void v9x_nv50_push_bind_2d(struct v9x_nv50_push *push)
+void V9X_NV50_FAR v9x_nv50_push_bind_2d(struct v9x_nv50_push *push)
 {
     v9x_nv50_push_one(push, V9X_NV50_MTHD_SET_OBJECT, V9X_NV50_HANDLE_2D);
     v9x_nv50_push_one(push, V9X_502D_SET_DST_CONTEXT_DMA,
                       V9X_NV50_HANDLE_DMA_VM);
 }
 
-void v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
-                        v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
-                        v9x_u32 format, v9x_u32 colour,
-                        v9x_u32 x, v9x_u32 y, v9x_u32 w, v9x_u32 h)
+void V9X_NV50_FAR v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
+                                     v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 format, v9x_u32 colour,
+                                     v9x_u32 x, v9x_u32 y, v9x_u32 w, v9x_u32 h)
 {
     v9x_u32 surface[10];
     v9x_u32 points[4];
@@ -95,25 +95,25 @@ void v9x_nv50_push_fill(struct v9x_nv50_push *push, v9x_u32 dst,
                          4ul, points);
 }
 
-void v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
-                        v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
-                        v9x_u32 format,
-                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
-                        v9x_u32 w, v9x_u32 h)
+void V9X_NV50_FAR v9x_nv50_push_copy(struct v9x_nv50_push *push, v9x_u32 surface,
+                                     v9x_u32 pitch, v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 format,
+                                     v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                                     v9x_u32 w, v9x_u32 h)
 {
     v9x_nv50_push_blit(push, surface, pitch, width, height,
                        surface, pitch, width, height, format,
                        sx, sy, dx, dy, w, h);
 }
 
-void v9x_nv50_push_blit(struct v9x_nv50_push *push,
-                        v9x_u32 src_surface, v9x_u32 src_pitch,
-                        v9x_u32 src_width, v9x_u32 src_height,
-                        v9x_u32 dst_surface, v9x_u32 dst_pitch,
-                        v9x_u32 dst_width, v9x_u32 dst_height,
-                        v9x_u32 format,
-                        v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
-                        v9x_u32 w, v9x_u32 h)
+void V9X_NV50_FAR v9x_nv50_push_blit(struct v9x_nv50_push *push,
+                                     v9x_u32 src_surface, v9x_u32 src_pitch,
+                                     v9x_u32 src_width, v9x_u32 src_height,
+                                     v9x_u32 dst_surface, v9x_u32 dst_pitch,
+                                     v9x_u32 dst_width, v9x_u32 dst_height,
+                                     v9x_u32 format,
+                                     v9x_u32 sx, v9x_u32 sy, v9x_u32 dx, v9x_u32 dy,
+                                     v9x_u32 w, v9x_u32 h)
 {
     v9x_u32 dst[10];
     v9x_u32 src_format[2];
@@ -180,7 +180,7 @@ void v9x_nv50_push_blit(struct v9x_nv50_push *push,
                          12ul, blit);
 }
 
-v9x_u32 v9x_nv50_2d_format(v9x_u32 bytes_per_pixel)
+v9x_u32 V9X_NV50_FAR v9x_nv50_2d_format(v9x_u32 bytes_per_pixel)
 {
     if (bytes_per_pixel == 1ul) {
         return V9X_502D_FORMAT_Y8;
@@ -194,31 +194,36 @@ v9x_u32 v9x_nv50_2d_format(v9x_u32 bytes_per_pixel)
     return 0ul;
 }
 
+v9x_u32 V9X_NV50_FAR v9x_nv50_ib_next(v9x_u32 index)
+{
+    return (index + 1ul) % V9X_NV50_IB_ENTRIES;
+}
+
 /* A live channel as the registers show it: the same arithmetic as
  * v9x_nv50_chan_build's layout, which the host test holds them to. */
-v9x_u32 v9x_nv50_live_chan_entry(v9x_u32 base)
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_chan_entry(v9x_u32 base)
 {
     return ((base + V9X_NV50_INST + V9X_NV50_INST_RAMFC) >> 8) |
            V9X_NV50_PFIFO_CHAN_ENABLE;
 }
 
-v9x_u32 v9x_nv50_live_context(v9x_u32 base)
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_context(v9x_u32 base)
 {
     /* PGRAPH's current context: bit 31 | the instance block >> 12. */
     return 0x80000000ul | ((base + V9X_NV50_INST) >> 12);
 }
 
-v9x_u32 v9x_nv50_live_push(v9x_u32 base)
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_push(v9x_u32 base)
 {
     return base + V9X_NV50_PUSH;
 }
 
-v9x_u32 v9x_nv50_live_ib(v9x_u32 base)
+v9x_u32 V9X_NV50_FAR v9x_nv50_live_ib(v9x_u32 base)
 {
     return base + V9X_NV50_IB;
 }
 
-void v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry)
+void V9X_NV50_FAR v9x_nv50_ib_entry(v9x_u32 addr, v9x_u32 words, v9x_u32 *entry)
 {
     /* Address low; address high (0 here) | length in dwords << 10. */
     entry[0] = addr;
