@@ -81,9 +81,10 @@
             # The 2D engine, class 502D on one PFIFO channel, measured exact
             # on the card at 8, 16 and 32 bpp by the probe
             # (docs\decisions\2026-11-14-gt218-502d-engine-measurements.md).
-            # The HAL engine itself has not yet run on a card
-            # (docs\plans\nvidia-gt218-nv50-engine.md, step 4.4). GDI
-            # draws on the CPU.
+            # The HAL engine ran on the card in step 4.4
+            # (docs\decisions\2026-11-14-gt218-hal-engine-first-run.md).
+            # GDI fill and copy use the HAL's channel once it is built
+            # (docs\plans\nvidia-gt218-gdi-engine.md).
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'NV50'

@@ -21,8 +21,9 @@
  * live in the top megabyte of the mapping, which the reserve hook keeps
  * off the heap. No register is read or written from here. Nothing NV3
  * applies: this chip has no NV3 engine, RAMIN or PRAMDAC, and the
- * family's NV3 paths stay off. GDI draws on the CPU (gdi_accel.c has no
- * NV50 path).
+ * family's NV3 paths stay off. GDI fills and copies on the same channel
+ * once the HAL has built it (gdi_accel.c, the NV50 arm), and on the CPU
+ * before that.
  */
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"

@@ -346,10 +346,16 @@ static DWORD v9x_gdi_nv3_pfb;
  * is accelerated from the first DirectDraw use in a boot on, and the
  * channel outlives mode sets. Nothing is initialised here.
  *
- * The reserve's video memory offset, from the chip's reserve hook; 0 when
- * the arm is not live.
+ * The reserve's video memory offset, from the chip's reserve hook, as
+ * v9x_gdi_nv50_live last read it; 0 when it found none.
  */
 static DWORD v9x_gdi_nv50_reserve;
+/* The chip's reserve hook, kept at Enable. The hook answers 0 until
+ * DirectDraw first sizes its heap (dd16.c, v9x_dd_refresh_framebuffer),
+ * which is after Enable, so it is asked per operation, not at Enable:
+ * asked at Enable it kept the arm off for the whole first boot
+ * (M-BXMFA8, step 5.4). */
+static DWORD (*v9x_gdi_nv50_reserve_hook)(void);
 #endif
 
 /*
@@ -1019,11 +1025,24 @@ static WORD v9x_gdi_nv3_draw(const V9X_GDI_OP *op, DWORD width, DWORD height)
 
 /* The HAL's channel is live at the reserve: its table entry is there and
  * PGRAPH holds its context (the values eng_nv50.c tests, from nv50_2d.c).
- * Reads only. */
+ * The pushbuffer and IB ring, inside the reserve, have to lie inside the
+ * framebuffer selector, which reaches them by offset. Reads only. */
 static WORD v9x_gdi_nv50_live(void)
 {
-    return v9x_gdi_nv50_reserve != 0ul &&
-           V9xNv3Read(V9X_NV50_PFIFO_CHAN(1ul)) ==
+    DWORD map_limit = ((DWORD)v9x_map_pages_hi << 16) |
+                      (DWORD)v9x_map_pages_lo;
+
+    v9x_gdi_nv50_reserve = 0ul;
+    if (v9x_gdi_nv50_reserve_hook == 0) {
+        return 0u;
+    }
+    v9x_gdi_nv50_reserve = v9x_gdi_nv50_reserve_hook();
+    if (v9x_gdi_nv50_reserve == 0ul ||
+        v9x_gdi_nv50_reserve + V9X_NV50_REGION_BYTES - 1ul > map_limit) {
+        v9x_gdi_nv50_reserve = 0ul;
+        return 0u;
+    }
+    return V9xNv3Read(V9X_NV50_PFIFO_CHAN(1ul)) ==
                v9x_nv50_live_chan_entry(v9x_gdi_nv50_reserve) &&
            V9xNv3Read(V9X_NV50_PGRAPH_CTX) ==
                v9x_nv50_live_context(v9x_gdi_nv50_reserve);
@@ -1745,6 +1764,7 @@ void v9x_gdi_accel_configure(void)
      * operation at gate 8, not here: the HAL may build it later in the
      * boot. */
     v9x_gdi_nv50_reserve = 0ul;
+    v9x_gdi_nv50_reserve_hook = 0;
     if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50 &&
         (v9x_driver_pdevice == 0 ||
          v9x_nv50_2d_format(
@@ -1820,19 +1840,12 @@ void v9x_gdi_accel_configure(void)
                aperture_bytes >= V9X_NV50_PGRAPH_STATUS + 4ul &&
                device->engine_reserve_offset != 0) {
         /* All of BAR0, which the mini-VDD mapped after checking PMC_BOOT_0
-         * names chipset A8h. The pushbuffer and IB ring, inside the
-         * reserve, have to lie inside the framebuffer selector, which
-         * reaches them by offset. Live here means the arm can draw when
-         * the HAL's channel exists; v9x_gdi_nv50_live asks that. */
-        DWORD reserve = device->engine_reserve_offset();
-        DWORD map_limit = ((DWORD)v9x_map_pages_hi << 16) |
-                          (DWORD)v9x_map_pages_lo;
-
-        if (reserve != 0ul &&
-            reserve + V9X_NV50_REGION_BYTES - 1ul <= map_limit &&
-            V9xNv3Selector(control_base) != 0u &&
+         * names chipset A8h. Live here means the arm can draw when the
+         * HAL's channel exists; v9x_gdi_nv50_live asks that, and reads
+         * the reserve then, because it is not known yet at Enable. */
+        if (V9xNv3Selector(control_base) != 0u &&
             V9xNv3Read(V9X_NV50_PFIFO_IB_GET) != 0xfffffffful) {
-            v9x_gdi_nv50_reserve = reserve;
+            v9x_gdi_nv50_reserve_hook = device->engine_reserve_offset;
             v9x_gdi_engine_live = 1u;
         }
 #endif
