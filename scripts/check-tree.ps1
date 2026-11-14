@@ -113,6 +113,7 @@ $required = @(
     "tests\host\test_nv50_grctx.c",
     "include\velocity9x\nv50_chan.h",
     "src\chipsets\nvidia\gt218\nv50_chan.c",
+    "src\chipsets\nvidia\gt218\nv50_2d.c",
     "tests\host\test_nv50_chan.c",
     "include\velocity9x\nv50_init.h",
     "src\chipsets\nvidia\gt218\nv50_init.c",

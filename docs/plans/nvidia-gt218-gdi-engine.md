@@ -126,7 +126,19 @@ counters (fills, copies, declines, timeouts) and the card's registers
 read back as in the first-run record. The owner is asked to look at the
 desktop: GDI is what he sees.
 
+## Status
+
+2026-11-14: **Michael chose A**, the HAL only. **5.0** ran on M-BXMFA8
+boot 108 (build d2aee239, 1024x768x16): `V9XGDI /accel` reports
+`Result=PASS`, `Enabled=0`, `Calls=22196`, `Declines=22196` all as
+`DeclineDisabled`, `Fills=0`, `Copies=0`, `Compared=PASS`
+(`build/driver-results/m-bxmfa8-gt218-boot108/V9XACCE-cpu-16.INI`). The
+tool reports counters and comparisons, not timings, so there is no
+speed baseline; the before for 5.4 is "every call declined, picture
+right". **5.1** is done: the push builders are in `nv50_2d.c`.
+
 ## Decisions owed
 
-- A, B or C above.
-- Whether 5.0's result justifies going past it.
+- Settled: A.
+- Whether to go past A is still open, and 5.0 gave no timing to judge
+  it by.

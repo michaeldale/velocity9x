@@ -133,6 +133,7 @@ $sources = @(
     # builders.
     "src\display32\engines\eng_nv50.c",
     "src\chipsets\nvidia\gt218\nv50_chan.c",
+    "src\chipsets\nvidia\gt218\nv50_2d.c",
     "src\chipsets\nvidia\gt218\nv50_grctx.c",
     "src\chipsets\nvidia\gt218\nv50_init.c",
     # The RS690 2D engine: fill and copy through the host-tested builder;

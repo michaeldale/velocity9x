@@ -119,6 +119,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\gt218\nv50_grctx.c',
         # GT218 channel, VM, objects and 2D pushbuffer words, no I/O.
         'src\chipsets\nvidia\gt218\nv50_chan.c',
+        # GT218 2D pushbuffer words, split from the channel builder.
+        'src\chipsets\nvidia\gt218\nv50_2d.c',
         # GT218 register bring-up as an ordered list, no I/O.
         'src\chipsets\nvidia\gt218\nv50_init.c',
         # GT218 engine reserve placement, no I/O.
