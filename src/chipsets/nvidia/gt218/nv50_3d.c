@@ -444,6 +444,28 @@ static void v9x_nv50_3d_target_on(struct v9x_nv50_push *push,
     v9x_nv50_3d_one(push, V9X_8597_BLEND_ENABLE0, 0ul);
 }
 
+/* The vertex result state and ZETA_ENABLE, which every draw sets because
+ * a depth draw changes them: the result count, the map (z the constant
+ * 0.0 or the depth draw's o[0x18]), and the Z buffer off for a draw with
+ * no depth. */
+static void v9x_nv50_3d_results(struct v9x_nv50_push *push, v9x_u32 count,
+                                v9x_u32 map0, v9x_u32 zeta)
+{
+    v9x_nv50_3d_one(push, V9X_8597_VP_REG_ALLOC_RESULT, count);
+    v9x_nv50_3d_two(push, V9X_8597_VP_RESULT_MAP0, map0,
+                    V9X_NV50_3D_RESULT_MAP_REST);
+    if (zeta == 0ul) {
+        v9x_nv50_3d_one(push, V9X_8597_ZETA_ENABLE, 0ul);
+    }
+}
+
+void v9x_nv50_push_3d_target(struct v9x_nv50_push *push,
+                             const struct v9x_nv50_surface *target,
+                             v9x_u32 format)
+{
+    v9x_nv50_3d_target_on(push, target, format);
+}
+
 /* A pitch-linear target as a surface. */
 static void v9x_nv50_3d_linear(struct v9x_nv50_surface *out, v9x_u32 target,
                                v9x_u32 pitch, v9x_u32 height)
@@ -504,6 +526,8 @@ void v9x_nv50_push_3d_rect_on(struct v9x_nv50_push *push,
     v9x_nv50_3d_one(push, V9X_8597_FP_START_ID, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_VP_START_ID, 0ul);
     v9x_nv50_3d_two(push, V9X_8597_VP_ATTR_EN0, 0x00000003ul, 0x00000033ul);
+    v9x_nv50_3d_results(push, V9X_NV50_3D_RESULTS_EXA,
+                        V9X_NV50_3D_RESULT_MAP_EXA, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_TIC_FLUSH, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_FIRST);
     v9x_nv50_3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_UNIT0);
@@ -598,6 +622,8 @@ void v9x_nv50_push_3d_gouraud_rect(struct v9x_nv50_push *push,
                     V9X_NV50_3D_GOURAUD_VP_START);
     v9x_nv50_3d_two(push, V9X_8597_VP_ATTR_EN0,
                     V9X_NV50_3D_GOURAUD_ATTR_EN0, 0ul);
+    v9x_nv50_3d_results(push, V9X_NV50_3D_RESULTS_EXA,
+                        V9X_NV50_3D_RESULT_MAP_EXA, 0ul);
     v9x_nv50_3d_two(push, V9X_8597_SCISSOR_HORIZ0, ((x + w) << 16) | x,
                     ((y + h) << 16) | y);
     v9x_nv50_3d_one(push, V9X_8597_VERTEX_BEGIN_GL,
@@ -607,6 +633,102 @@ void v9x_nv50_push_3d_gouraud_rect(struct v9x_nv50_push *push,
     v9x_nv50_3d_colour_vertex(push, 0ul, 0ul, x, y);
     v9x_nv50_3d_colour_vertex(push, V9X_NV50_FLOAT_TWO, 0ul, x + w * 2ul,
                               y);
+    v9x_nv50_3d_one(push, V9X_8597_VERTEX_END_GL, 0ul);
+}
+
+void v9x_nv50_push_3d_zeta(struct v9x_nv50_push *push,
+                           const struct v9x_nv50_surface *zeta,
+                           v9x_u32 zformat)
+{
+    v9x_u32 address[5];
+    v9x_u32 horiz[3];
+
+    /* nv50_validate_fb: address, format, tile mode, layer stride (0 for
+     * one layer), then enable and the size. */
+    address[0] = 0ul;
+    address[1] = zeta->address;
+    address[2] = zformat;
+    address[3] = zeta->tile_mode;
+    address[4] = 0ul;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_ZETA_ADDRESS_HIGH,
+                         5ul, address);
+    v9x_nv50_3d_one(push, V9X_8597_ZETA_ENABLE, 1ul);
+    horiz[0] = zeta->width;
+    horiz[1] = zeta->height;
+    horiz[2] = V9X_8597_ZETA_ONE_LAYER;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_ZETA_HORIZ, 3ul,
+                         horiz);
+    v9x_nv50_3d_one(push, V9X_8597_DEPTH_TEST_ENABLE, 1ul);
+    v9x_nv50_3d_one(push, V9X_8597_DEPTH_WRITE_ENABLE, 1ul);
+    v9x_nv50_3d_one(push, V9X_8597_DEPTH_TEST_FUNC, V9X_8597_DEPTH_FUNC_LESS);
+}
+
+void v9x_nv50_push_3d_clear_depth(struct v9x_nv50_push *push, v9x_u32 depth)
+{
+    /* nv50_clear: one layer here (Mesa writes 512 to RT_ARRAY_MODE to
+     * cover any layer count, then clears per layer). */
+    v9x_nv50_3d_one(push, V9X_8597_RT_ARRAY_MODE, V9X_8597_RT_ARRAY_ONE_LAYER);
+    v9x_nv50_3d_one(push, V9X_8597_CLEAR_DEPTH, depth);
+    v9x_nv50_3d_one(push, V9X_8597_CLEAR_BUFFERS, V9X_8597_CLEAR_BUFFERS_Z);
+}
+
+v9x_u32 v9x_nv50_3d_depth_vp(v9x_u32 *words, v9x_u32 max)
+{
+    struct v9x_nv50_sh sh;
+    v9x_u32 slot;
+
+    /* o[0..18] = a[0..18]: position, colour, then the depth. */
+    v9x_nv50_sh_init(&sh, words, max);
+    for (slot = 0ul; slot < 7ul; ++slot) {
+        v9x_nv50_sh_mov(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_O(slot * 4ul),
+                        V9X_NV50_SH_A(slot * 4ul));
+    }
+    v9x_nv50_sh_exit(&sh);
+    if (sh.overflow != 0ul || sh.invalid != 0ul) {
+        return 0ul;
+    }
+    return sh.count;
+}
+
+/* VP_ATTR_EN(0) for attribute 0's x and y, attribute 1's four
+ * components and attribute 2's x. */
+#define V9X_NV50_3D_DEPTH_ATTR_EN0   0x000001f3ul
+
+/* A depth vertex: colour (attribute 1), depth (attribute 2), position. */
+static void v9x_nv50_3d_depth_vertex(struct v9x_nv50_push *push,
+                                     const v9x_u32 *colour, v9x_u32 z,
+                                     v9x_u32 x, v9x_u32 y)
+{
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VTX_ATTR_4F_X1,
+                         4ul, colour);
+    v9x_nv50_3d_one(push, V9X_8597_VTX_ATTR_1F2, z);
+    v9x_nv50_3d_one(push, V9X_8597_VTX_ATTR_2I0, v9x_nv50_3d_xy(x, y));
+}
+
+void v9x_nv50_push_3d_depth_rect(struct v9x_nv50_push *push, v9x_u32 x,
+                                 v9x_u32 y, v9x_u32 w, v9x_u32 h, v9x_u32 z,
+                                 v9x_u32 red, v9x_u32 green, v9x_u32 blue)
+{
+    v9x_u32 colour[4];
+
+    colour[0] = red;
+    colour[1] = green;
+    colour[2] = blue;
+    colour[3] = V9X_NV50_FLOAT_ONE;
+    v9x_nv50_3d_one(push, V9X_8597_FP_START_ID,
+                    V9X_NV50_3D_GOURAUD_FP_START);
+    v9x_nv50_3d_one(push, V9X_8597_VP_START_ID, V9X_NV50_3D_DEPTH_VP_START);
+    v9x_nv50_3d_two(push, V9X_8597_VP_ATTR_EN0, V9X_NV50_3D_DEPTH_ATTR_EN0,
+                    0ul);
+    v9x_nv50_3d_results(push, V9X_NV50_3D_RESULTS_DEPTH,
+                        V9X_NV50_3D_RESULT_MAP_DEPTH, 1ul);
+    v9x_nv50_3d_two(push, V9X_8597_SCISSOR_HORIZ0, ((x + w) << 16) | x,
+                    ((y + h) << 16) | y);
+    v9x_nv50_3d_one(push, V9X_8597_VERTEX_BEGIN_GL,
+                    V9X_8597_PRIMITIVE_TRIANGLES);
+    v9x_nv50_3d_depth_vertex(push, colour, z, x, y + h * 2ul);
+    v9x_nv50_3d_depth_vertex(push, colour, z, x, y);
+    v9x_nv50_3d_depth_vertex(push, colour, z, x + w * 2ul, y);
     v9x_nv50_3d_one(push, V9X_8597_VERTEX_END_GL, 0ul);
 }
 

@@ -148,7 +148,7 @@ void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
                                  v9x_u32 pitch, v9x_u32 height,
                                  v9x_u32 format, v9x_u32 x, v9x_u32 y,
                                  v9x_u32 w, v9x_u32 h);
-#define V9X_NV50_3D_RECT_WORDS_MAX   48ul
+#define V9X_NV50_3D_RECT_WORDS_MAX   64ul
 
 /*
  * A pitch-linear A8R8G8B8 texture at VM address texture, width x height
@@ -219,6 +219,70 @@ void v9x_nv50_push_3d_rect_on(struct v9x_nv50_push *push,
                               v9x_u32 src_h);
 /* RT_ARRAY_MODE for a single-layer tiled target (EXA, Mesa: one layer). */
 #define V9X_8597_RT_ARRAY_ONE_LAYER  1ul
+
+/* Render target 0 alone, for a push that then sets up Z and draws depth
+ * rectangles (step 4 of docs\plans\nvidia-gt218-3d-z.md). */
+void v9x_nv50_push_3d_target(struct v9x_nv50_push *push,
+                             const struct v9x_nv50_surface *target,
+                             v9x_u32 format);
+
+/*
+ * Depth (step 4 of docs\plans\nvidia-gt218-3d-z.md). The Z buffer is
+ * tiled, addressed through its kind's alias window (V9X_NV50_VM_Z16 or
+ * V9X_NV50_VM_Z24S8), and must match the render target's size and be
+ * tiled as it is: a pitch target cannot have one.
+ */
+#define V9X_8597_CLEAR_DEPTH         0x0d90ul
+#define V9X_8597_ZETA_ADDRESS_HIGH   0x0fe0ul
+#define V9X_8597_ZETA_HORIZ          0x1228ul
+#define V9X_8597_DEPTH_TEST_ENABLE   0x12ccul
+#define V9X_8597_DEPTH_WRITE_ENABLE  0x12e8ul
+#define V9X_8597_DEPTH_TEST_FUNC     0x130cul
+#define V9X_8597_CLEAR_BUFFERS       0x19d0ul
+#define V9X_8597_VTX_ATTR_1F2        0x0308ul
+#define V9X_8597_DEPTH_FUNC_LESS     0x00000201ul
+#define V9X_8597_CLEAR_BUFFERS_Z     0x00000001ul
+/* ZETA_HORIZ's third word: depth 1, with the bit Mesa sets for a
+ * single-layer surface (nv50_validate_fb "unk"). */
+#define V9X_8597_ZETA_ONE_LAYER      0x00010001ul
+/* Zeta formats (g80_defs.xml.h): the pairs Mesa's nv50_formats.c uses
+ * with kinds 6Ch and 28h. */
+#define V9X_NV50_3D_ZETA_Z16         0x13ul
+#define V9X_NV50_3D_ZETA_Z24S8       0x16ul
+
+/* The Z buffer, depth test LESS, depth writes on. */
+void v9x_nv50_push_3d_zeta(struct v9x_nv50_push *push,
+                           const struct v9x_nv50_surface *zeta,
+                           v9x_u32 zformat);
+/* Clear the Z buffer to depth (an IEEE single), as nv50_clear does. */
+void v9x_nv50_push_3d_clear_depth(struct v9x_nv50_push *push, v9x_u32 depth);
+
+/*
+ * The depth vertex program: the Gouraud one with o[0x18] = a[0x18], the
+ * depth from attribute 2, which the result map then routes to z. At
+ * scratch.vp + 300h. Returns its word count, 0 if max is too small.
+ */
+#define V9X_NV50_3D_DEPTH_VP_START   0x300ul
+v9x_u32 v9x_nv50_3d_depth_vp(v9x_u32 *words, v9x_u32 max);
+
+/* One flat-coloured rectangle at depth z (an IEEE single, in window
+ * space with no viewport transform), colour red, green, blue as IEEE
+ * singles, alpha 1: the Gouraud fragment program and the depth vertex
+ * program, EXA's triangle twice the rectangle cut by the scissor. */
+void v9x_nv50_push_3d_depth_rect(struct v9x_nv50_push *push, v9x_u32 x,
+                                 v9x_u32 y, v9x_u32 w, v9x_u32 h, v9x_u32 z,
+                                 v9x_u32 red, v9x_u32 green, v9x_u32 blue);
+#define V9X_NV50_3D_DEPTH_WORDS_MAX  192ul
+
+/* The vertex result state every draw sets: the result count, and the
+ * map, HPOS x and y from o[0], o[1], then z the constant 0.0 (40h) or a
+ * depth draw's o[0x18] (06h), w the constant 1.0 (41h); interpolants from
+ * o[2..5]. */
+#define V9X_NV50_3D_RESULTS_EXA      6ul
+#define V9X_NV50_3D_RESULTS_DEPTH    7ul
+#define V9X_NV50_3D_RESULT_MAP_EXA   0x41400100ul
+#define V9X_NV50_3D_RESULT_MAP_DEPTH 0x41060100ul
+#define V9X_NV50_3D_RESULT_MAP_REST  0x05040302ul
 /* 502D: DST_FORMAT + 18h is DST_WIDTH; SRC_FORMAT + 18h is SRC_WIDTH. */
 #define V9X_502D_SET_SRC_WIDTH       0x0248ul
 #define V9X_502D_LAYOUT_BLOCKLINEAR  0ul

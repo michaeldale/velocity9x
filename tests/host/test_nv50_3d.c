@@ -557,6 +557,114 @@ static void test_rect_on_surface(void)
     }
 }
 
+/* Every draw sets the vertex result map, the result count and
+ * ZETA_ENABLE itself, since a depth draw changes all three. */
+static void test_draws_set_result_state(void)
+{
+    static v9x_u32 rect[V9X_NV50_3D_RECT_WORDS_MAX];
+    struct v9x_nv50_push push;
+    v9x_u32 header;
+    v9x_u32 at = 0ul;
+
+    v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_solid_rect(&push, 0x08280000ul, 512ul, 72ul,
+                                V9X_NV50_3D_RT_BGRX8, 16ul, 8ul, 40ul, 24ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header(&push, 0x16b8ul, &at);
+    CHECK(header != 0xfffffffful && rect[at] == 6ul);
+    header = find_header(&push, 0x16bcul, &at);
+    CHECK(header != 0xfffffffful && rect[at] == 0x41400100ul &&
+          rect[at + 1ul] == 0x05040302ul);
+    header = find_header(&push, 0x1538ul, &at);
+    CHECK(header != 0xfffffffful && rect[at] == 0ul);
+
+    v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_gouraud_rect(&push, 0x08280000ul, 512ul, 72ul,
+                                  V9X_NV50_3D_RT_BGRX8, 16ul, 8ul, 40ul,
+                                  24ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header(&push, 0x16b8ul, &at);
+    CHECK(header != 0xfffffffful && rect[at] == 6ul);
+    header = find_header(&push, 0x1538ul, &at);
+    CHECK(header != 0xfffffffful && rect[at] == 0ul);
+}
+
+/* Z: the depth vertex program (the Gouraud one plus o[0x18] = a[0x18]),
+ * the Z buffer as Mesa's nv50_validate_fb programs it, a depth clear as
+ * nv50_clear does, and a flat-coloured rectangle at one depth. */
+static void test_depth(void)
+{
+    static v9x_u32 words[V9X_NV50_3D_DEPTH_WORDS_MAX];
+    v9x_u32 vp[V9X_NV50_3D_GOURAUD_VP_MAX];
+    struct v9x_nv50_surface zeta;
+    struct v9x_nv50_push push;
+    v9x_u32 vp_count;
+    v9x_u32 header;
+    v9x_u32 at = 0ul;
+
+    vp_count = v9x_nv50_3d_depth_vp(vp, V9X_NV50_3D_GOURAUD_VP_MAX);
+    CHECK(vp_count == 14ul);
+    /* The seventh move: o[0x18] = a[0x18], with the exit. */
+    CHECK(vp[12] == 0x10000c19ul && vp[13] == 0x0423c789ul);
+
+    zeta.address = V9X_NV50_VM_Z16 + 0x083e0000ul;
+    zeta.pitch = 256ul;
+    zeta.width = 128ul;
+    zeta.height = 72ul;
+    zeta.tile_mode = 0x10ul;
+    zeta.tiled = 1ul;
+    v9x_nv50_push_init(&push, words, V9X_NV50_3D_DEPTH_WORDS_MAX);
+    v9x_nv50_push_3d_zeta(&push, &zeta, V9X_NV50_3D_ZETA_Z16);
+    v9x_nv50_push_3d_clear_depth(&push, 0x3f800000ul);
+    v9x_nv50_push_3d_depth_rect(&push, 16ul, 8ul, 40ul, 24ul, 0x3e800000ul,
+                                0x3f800000ul, 0ul, 0ul);
+    CHECK(push.overflow == 0ul);
+
+    header = find_header(&push, 0x0fe0ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 5ul);
+    CHECK(words[at] == 0ul && words[at + 1ul] == 0x483e0000ul &&
+          words[at + 2ul] == 0x13ul && words[at + 3ul] == 0x10ul &&
+          words[at + 4ul] == 0ul);
+    header = find_header(&push, 0x1538ul, &at);
+    CHECK(words[at] == 1ul);
+    header = find_header(&push, 0x1228ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 3ul);
+    CHECK(words[at] == 128ul && words[at + 1ul] == 72ul &&
+          words[at + 2ul] == 0x00010001ul);
+    header = find_header(&push, 0x12ccul, &at);
+    CHECK(words[at] == 1ul);
+    header = find_header(&push, 0x12e8ul, &at);
+    CHECK(words[at] == 1ul);
+    header = find_header(&push, 0x130cul, &at);
+    CHECK(words[at] == 0x201ul);
+    header = find_header(&push, 0x0d90ul, &at);
+    CHECK(words[at] == 0x3f800000ul);
+    header = find_header(&push, 0x19d0ul, &at);
+    CHECK(words[at] == 1ul);
+
+    /* The draw: its own programs, attributes 0, 1 (four) and 2 (one),
+     * seven results with z from o[0x18], result 6. */
+    header = find_header(&push, 0x140cul, &at);
+    CHECK(words[at] == V9X_NV50_3D_DEPTH_VP_START);
+    header = find_header(&push, 0x1650ul, &at);
+    CHECK(words[at] == 0x1f3ul && words[at + 1ul] == 0ul);
+    header = find_header(&push, 0x16b8ul, &at);
+    CHECK(words[at] == 7ul);
+    header = find_header(&push, 0x16bcul, &at);
+    CHECK(words[at] == 0x41060100ul && words[at + 1ul] == 0x05040302ul);
+    header = find_header(&push, 0x15dcul, &at);
+    /* Vertex: colour (4F at 510h), depth (1F at 308h), position. */
+    CHECK(words[at + 1ul] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D,
+                                                0x0510ul, 4ul));
+    CHECK(words[at + 2ul] == 0x3f800000ul && words[at + 3ul] == 0ul);
+    CHECK(words[at + 6ul] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D,
+                                                0x0308ul, 1ul));
+    CHECK(words[at + 7ul] == 0x3e800000ul);
+    CHECK(words[at + 9ul] == ((56ul << 16) | 16ul));
+    header = find_header(&push, 0x15e0ul, &at);
+    CHECK(at + 1ul == push.count);
+}
+
 unsigned int v9x_run_nv50_3d_tests(void)
 {
     failures = 0u;
@@ -571,5 +679,7 @@ unsigned int v9x_run_nv50_3d_tests(void)
     test_vp_constants_upload();
     test_surface_blit();
     test_rect_on_surface();
+    test_draws_set_result_state();
+    test_depth();
     return failures;
 }

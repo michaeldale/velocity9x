@@ -3284,6 +3284,217 @@ static int v9x_stage_z_tiledrt(void)
     return 0;
 }
 
+/*
+ * /z:depth (with /3d): step 4 of docs\plans\nvidia-gt218-3d-z.md. Into the
+ * tiled colour target T, with a tiled Z buffer through its kind's alias
+ * window: clear depth to 1.0, draw a red rectangle at z 0.25, then a green
+ * one at z 0.75 overlapping it, depth test LESS. Where they overlap the
+ * red one, drawn first, must remain; the rest of the green one is green;
+ * everything else keeps the pattern. Run for Z16 and Z24S8.
+ */
+#define V9X_Z_ZETA_OFFSET    0x003e0000ul
+#define V9X_Z_NEAR_X         16ul
+#define V9X_Z_NEAR_Y         8ul
+#define V9X_Z_FAR_X          36ul
+#define V9X_Z_FAR_Y          20ul
+#define V9X_Z_RECT_W         40ul
+#define V9X_Z_RECT_H         24ul
+#define V9X_Z_DEPTH_PUSH     192ul
+#define V9X_FLOAT_ONE        0x3f800000ul
+#define V9X_FLOAT_QUARTER    0x3e800000ul
+#define V9X_FLOAT_THREE_QUARTERS 0x3f400000ul
+
+static int v9x_z_in(DWORD x, DWORD y, DWORD left, DWORD top)
+{
+    return x >= left && x < left + V9X_Z_RECT_W && y >= top &&
+           y < top + V9X_Z_RECT_H;
+}
+
+static int v9x_stage_z_depth(const char *section, DWORD window,
+                             DWORD bytes_per_z, DWORD zformat)
+{
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_surface pattern;
+    struct v9x_nv50_surface t;
+    struct v9x_nv50_surface out;
+    struct v9x_nv50_surface zeta;
+    struct v9x_nv50_push push;
+    DWORD vp[V9X_NV50_3D_GOURAUD_VP_MAX];
+    DWORD fp[V9X_NV50_3D_GOURAUD_FP_MAX];
+    DWORD vp_count;
+    DWORD fp_count;
+    DWORD words = V9X_DEPTH_PIXELS;
+    DWORD first;
+    DWORD block;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD red_ok = 0ul;
+    DWORD green_ok = 0ul;
+    DWORD pattern_ok = 0ul;
+    DWORD bad = 0ul;
+    DWORD overlap_red = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_word = 0ul;
+    char name[32];
+
+    pattern.address = V9X_WINDOW_VRAM + V9X_Z_B_OFFSET;
+    pattern.pitch = V9X_FILL_WIDTH * 4ul;
+    pattern.width = V9X_FILL_WIDTH;
+    pattern.height = V9X_FILL_HEIGHT;
+    pattern.tile_mode = 0ul;
+    pattern.tiled = 0ul;
+    out = pattern;
+    out.address = V9X_WINDOW_VRAM + V9X_Z_A_OFFSET;
+    t = pattern;
+    t.address = V9X_NV50_VM_TILED + V9X_WINDOW_VRAM + V9X_Z_T_OFFSET;
+    t.tile_mode = V9X_Z_TILE_MODE;
+    t.tiled = 1ul;
+    zeta = t;
+    zeta.address = window + V9X_WINDOW_VRAM + V9X_Z_ZETA_OFFSET;
+    zeta.pitch = V9X_FILL_WIDTH * bytes_per_z;
+
+    vp_count = v9x_nv50_3d_depth_vp(vp, V9X_NV50_3D_GOURAUD_VP_MAX);
+    fp_count = v9x_nv50_3d_gouraud_fp(fp, V9X_NV50_3D_GOURAUD_FP_MAX);
+    if (vp_count == 0ul || fp_count == 0ul) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, V9X_Z_B_OFFSET, words, V9X_FILL_PATTERN);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_Z_A_OFFSET, words, 0ul);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_NV50_3D_DEPTH_VP_START,
+                  vp, vp_count);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+                      V9X_NV50_3D_GOURAUD_FP_START,
+                  fp, fp_count);
+    if (!v9x_run("z-depth-prepare")) {
+        v9x_finish("Z-DEPTH-REFUSED", 14u);
+    }
+
+    v9x_ops_begin();
+    first = v9x_push_next;
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_2d_surface_blit(&push, &pattern, &t,
+                                  V9X_502D_FORMAT_X8R8G8B8, 0ul, 0ul, 0ul,
+                                  0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT);
+    lstrcpyA(name, section);
+    lstrcatA(name, "Fill");
+    if (push.overflow != 0ul || !v9x_kick(name, &push, first)) {
+        v9x_text(section, "Result", "FILL-NOT-CLEAN");
+        return 0;
+    }
+
+    v9x_ops_begin();
+    first = v9x_push_next;
+    v9x_push_next += V9X_Z_DEPTH_PUSH;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_Z_DEPTH_PUSH);
+    v9x_nv50_push_3d_target(&push, &t, V9X_NV50_3D_RT_BGRX8);
+    v9x_nv50_push_3d_zeta(&push, &zeta, zformat);
+    v9x_nv50_push_3d_clear_depth(&push, V9X_FLOAT_ONE);
+    v9x_nv50_push_3d_depth_rect(&push, V9X_Z_NEAR_X, V9X_Z_NEAR_Y,
+                                V9X_Z_RECT_W, V9X_Z_RECT_H,
+                                V9X_FLOAT_QUARTER, V9X_FLOAT_ONE, 0ul, 0ul);
+    v9x_nv50_push_3d_depth_rect(&push, V9X_Z_FAR_X, V9X_Z_FAR_Y,
+                                V9X_Z_RECT_W, V9X_Z_RECT_H,
+                                V9X_FLOAT_THREE_QUARTERS, 0ul, V9X_FLOAT_ONE,
+                                0ul);
+    lstrcpyA(name, section);
+    lstrcatA(name, "Draw");
+    v9x_number(section, "DrawPushWords", push.count);
+    if (push.overflow != 0ul || !v9x_kick(name, &push, first)) {
+        v9x_text(section, "Result", "DRAW-NOT-CLEAN");
+        return 0;
+    }
+
+    v9x_ops_begin();
+    first = v9x_push_next;
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_2d_surface_blit(&push, &t, &out,
+                                  V9X_502D_FORMAT_X8R8G8B8, 0ul, 0ul, 0ul,
+                                  0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT);
+    lstrcpyA(name, section);
+    lstrcatA(name, "Copy");
+    if (push.overflow != 0ul || !v9x_kick(name, &push, first)) {
+        v9x_text(section, "Result", "COPY-NOT-CLEAN");
+        return 0;
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_Z_A_OFFSET + block * 4ul, count, 0ul);
+        if (!v9x_run("z-depth-readback")) {
+            v9x_finish("Z-DEPTH-READBACK-REFUSED", 14u);
+        }
+        for (index = 0ul; index < count; ++index) {
+            DWORD word = v9x_result.block[index] & V9X_COLOUR_MASK;
+            DWORD want;
+            int near_in;
+            int far_in;
+
+            x = (block + index) % V9X_FILL_WIDTH;
+            y = (block + index) / V9X_FILL_WIDTH;
+            near_in = v9x_z_in(x, y, V9X_Z_NEAR_X, V9X_Z_NEAR_Y);
+            far_in = v9x_z_in(x, y, V9X_Z_FAR_X, V9X_Z_FAR_Y);
+            if (near_in) {
+                want = 0x00ff0000ul;
+            } else if (far_in) {
+                want = 0x0000ff00ul;
+            } else {
+                want = V9X_FILL_PATTERN & V9X_COLOUR_MASK;
+            }
+            if (word == want) {
+                if (near_in) {
+                    ++red_ok;
+                    if (far_in) {
+                        ++overlap_red;
+                    }
+                } else if (far_in) {
+                    ++green_ok;
+                } else {
+                    ++pattern_ok;
+                }
+                continue;
+            }
+            ++bad;
+            if (first_bad == 0xfffffffful) {
+                first_bad = block + index;
+                first_bad_word = v9x_result.block[index];
+            }
+        }
+    }
+    v9x_number(section, "RedOk", red_ok);
+    v9x_number(section, "OverlapRedOk", overlap_red);
+    v9x_number(section, "GreenOk", green_ok);
+    v9x_number(section, "PatternOk", pattern_ok);
+    v9x_number(section, "Bad", bad);
+    if (first_bad != 0xfffffffful) {
+        v9x_number(section, "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number(section, "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key(section, "FirstBadWord", first_bad_word);
+    }
+    v9x_flush();
+    if (bad == 0ul) {
+        v9x_text(section, "Result", "PASS");
+        return 1;
+    }
+    v9x_text(section, "Result", "PIXELS-DIFFER");
+    return 0;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -3430,6 +3641,20 @@ void __stdcall V9xNv50ChannelEntry(void)
     if (v9x_switch_given("/3d") && v9x_switch_given("/z:tiledrt") &&
         !v9x_stage_z_tiledrt()) {
         v9x_finish("Z-TILEDRT-FAILED", 13u);
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/z:depth")) {
+        int ok16 = v9x_stage_z_depth("ZDepth16", V9X_NV50_VM_Z16, 2ul,
+                                     V9X_NV50_3D_ZETA_Z16);
+        int ok24 = v9x_stage_z_depth("ZDepth24S8", V9X_NV50_VM_Z24S8, 4ul,
+                                     V9X_NV50_3D_ZETA_Z24S8);
+
+        v9x_pusher_state();
+        if (!ok16) {
+            v9x_finish("ZDEPTH16-FAILED", 14u);
+        }
+        if (!ok24) {
+            v9x_finish("ZDEPTH24S8-FAILED", 14u);
+        }
     }
     if (v9x_switch_given("/3d") && v9x_switch_given("/3d:texture")) {
         int ok32 = v9x_stage_3d_texture("Texture32", 0ul, 4ul,
