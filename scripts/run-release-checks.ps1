@@ -60,6 +60,10 @@ param(
     # switched off or not, asked once in parallel, then a table. Nothing is
     # built, installed or run. Pick from it with -Machine.
     [switch]$List,
+    # Leave every agent as it is (by default one older than the agent
+    # repository's build\install package is hot-updated first). Agents
+    # below 0.17.0 are refused either way.
+    [switch]$NoAgentUpdate,
     # Internal: run one machine. The parent starts one process per machine.
     [string]$Worker
 )
@@ -69,6 +73,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 # powershell -File passes -Machine a,b as the single string "a,b".
 $Machine = @($Machine | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 . (Join-Path $PSScriptRoot "common.ps1")
+. (Join-Path $PSScriptRoot "lib\agent.ps1")
 
 # The installed set: what WININIT.INI renames into C:\WINDOWS\SYSTEM. The
 # staged names are 8.3 and distinct, so a half-finished install is visible
@@ -172,6 +177,9 @@ if ($Worker) {
         throw "No machine $Worker in $MachineList."
     }
     $controller = $machineSet.ControllerPath
+    # The agent install package (lib\agent.ps1): the agent repository's
+    # build\install, unless the list names another AgentInstall folder.
+    $agentPackage = Get-V9xAgentPackage -ControllerPath $controller -Install $machineSet.AgentInstall
     $package = Join-Path $repoRoot "build\win98se-$($entry.Family)"
     $machineDir = Join-Path $OutDir $(if ($Baseline) { "$Worker-before" } else { $Worker })
     New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
@@ -232,6 +240,41 @@ if ($Worker) {
     $localTemp = Join-Path ([IO.Path]::GetTempPath()) `
         ("v9xrc-{0}-{1}" -f $Worker, [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $localTemp | Out-Null
+    # The desktop, in 30-second agent-side rounds. Each round cancels a
+    # Windows 9x startup logon (the GM965's "Enter Network Password" after
+    # every reset). Between rounds any other dialog is looked for: one that
+    # is up will not go away by waiting, so the worker stops with its text
+    # instead of sitting out the whole budget (0.51.0's HD 2600 XT spent
+    # 7 min at a display-settings dialog).
+    function Wait-GuestDesktop {
+        param([int]$Seconds)
+        $began = Get-Date
+        $lastDialog = $null
+        while ($true) {
+            $desktop = Invoke-Ctl wait-desktop @{ WaitSeconds = 30; DismissLogon = $true } 60
+            if ($desktop -and $desktop.Success -and $desktop.DesktopReady) {
+                if ($desktop.LogonDismissed) {
+                    Note "logon dialog cancelled"
+                }
+                return
+            }
+            $listed = Invoke-Ctl windows
+            $dialog = @($listed.Windows | Where-Object { $_.Class -eq '#32770' -and $_.Title }) | Select-Object -First 1
+            # The same dialog over two rounds: one passing during startup
+            # is not a verdict.
+            $seenTwice = ($dialog -and $lastDialog -eq $dialog.Title)
+            $lastDialog = $(if ($dialog) { $dialog.Title })
+            if ($seenTwice) {
+                $detail = Invoke-Ctl windows @{ Title = $dialog.Title; Controls = $true }
+                $text = @($detail.Windows | Select-Object -First 1 | ForEach-Object { $_.Controls } |
+                    Where-Object { $_.Text } | ForEach-Object { $_.Text -replace '\s+', ' ' }) -join ' | '
+                throw "Desktop not ready: dialog '$($dialog.Title)' is up ($text); look at the machine."
+            }
+            if (((Get-Date) - $began).TotalSeconds -ge $Seconds) {
+                throw "Desktop not ready after $Seconds s and no dialog to say why; look at the machine."
+            }
+        }
+    }
     function Test-Installed {
         param([string]$Name)
         $hash = Invoke-Ctl hash @{ Path = "C:\WINDOWS\SYSTEM\$Name"; Source = (Join-Path $package $Name) }
@@ -255,6 +298,21 @@ if ($Worker) {
         $status.Desktop = $info.DesktopReady
         $status.AnswerSeconds = [int]((Get-Date) - $asked).TotalSeconds
         Note "agent $($info.AgentVersion), boot $($info.BootCounter), desktop $($info.DesktopReady)"
+
+        # The agent first, before anything waits on it: the steps below use
+        # reset -DismissLogon and wait-desktop -DismissLogon (0.17.0) and
+        # wait-fault (0.16.0), and every older agent cost minutes in waits
+        # the newer verbs end at once (0.51.0's GM965 sat 7 min at its
+        # network-password box). An agent older than the built install
+        # package is hot-updated (0.6.0+, no Windows restart); a machine
+        # whose entry says AgentUpdate = $false is only refused when it is
+        # below the minimum. -List updates too, so a listing leaves the
+        # fleet ready.
+        $info = Update-V9xAgent -Package $agentPackage -KnownInfo $info `
+            -NoUpdate:($NoAgentUpdate -or $entry.AgentUpdate -eq $false) `
+            -Call { param($Verb, $Arguments) Invoke-Ctl $Verb $Arguments 120 } `
+            -Log { param($Text) Note $Text }
+        $status.Agent = $info.AgentVersion
         if ($List) {
             exit 0
         }
@@ -279,12 +337,14 @@ if ($Worker) {
             & $controller put -Source $wininit -Destination 'C:\WINDOWS\WININIT.INI' `
                 @connection -ConnectTimeoutSeconds 60 | Out-Null
             Note "staged $($installFiles.Count) files; resetting"
+            # The i5-4570 takes over five minutes to come back, so the reset
+            # waits that long for the agent. The desktop is waited for
+            # separately, in short rounds, below.
             $reset = Invoke-Ctl reset @{ WaitSeconds = 420 } 60
             $status.BootBefore = $reset.PreviousBootCounter
             $status.BootAfter = $reset.BootCounter
             Note "reset: boot $($reset.PreviousBootCounter) -> $($reset.BootCounter)"
-            # The i5-4570 takes over five minutes to boot.
-            $null = Invoke-Ctl wait-desktop @{ WaitSeconds = 420 } 60
+            Wait-GuestDesktop 240
 
             # WININIT renamed every staged file away, or it did not: one list
             # of the staging folder says which, where eight stats did.
@@ -315,10 +375,7 @@ if ($Worker) {
             # reports ready at once; one that is not (RIVA 128ZX on
             # 2026-11-06: a dialog, a locked screen) did not become ready in
             # 120 s either, so fail fast and say so.
-            $desktop = Invoke-Ctl wait-desktop @{ WaitSeconds = 20 } 30
-            if (-not $desktop -or -not $desktop.Success) {
-                throw "Desktop not ready after 20 s; look at the machine."
-            }
+            Wait-GuestDesktop 30
         }
 
         $null = Invoke-Ctl mkdir @{ Path = $guestDir }
@@ -380,13 +437,11 @@ if ($Worker) {
             function Save-Snapshot {
                 param([string]$Destination)
                 $null = Invoke-Ctl exec $traceArgs 150
-                $latest = Join-Path $machineDir 'snapshot-latest.txt'
-                Get-GuestFile 'C:\V9XDIAG\V9XSNAL.TXT' $latest
-                if (-not (Test-Path -LiteralPath $latest)) {
+                $latest = Invoke-Ctl cat @{ RemotePath = 'C:\V9XDIAG\V9XSNAL.TXT' }
+                if (-not $latest -or -not $latest.Text) {
                     return
                 }
-                $guestPath = @([IO.File]::ReadAllLines($latest) | Where-Object { $_.Trim() })[0]
-                Remove-Item -LiteralPath $latest
+                $guestPath = @($latest.Text -split "`r?`n" | Where-Object { $_.Trim() })[0]
                 if ($guestPath) {
                     Get-GuestFile $guestPath.Trim() $Destination
                 }
@@ -416,18 +471,10 @@ if ($Worker) {
             # (a 12 s delay inside the input sequence dropped the agent's
             # connection), 3DMark sat on its menu, and the old loop waited up
             # to 24 minutes for a score that could never come.
-            $menu = Invoke-Ctl wait-window @{ Title = '3DMark2000'; TimeoutSeconds = 120 } 130
+            $menu = Invoke-Ctl wait-window @{ Title = '3DMark2000'; WaitSeconds = 120 } 130
             if (-not $menu -or -not $menu.Success) {
                 throw "3DMark 2000 did not open its window."
             }
-            # The menu takes this long to accept a click after it appears;
-            # waited here, not inside the input sequence.
-            Start-Sleep -Seconds 12
-            $click = Invoke-Ctl input @{ Sequence = $entry.ThreeDMark }
-            if (-not $click -or -not $click.Success) {
-                throw "The 3DMark start input failed."
-            }
-
             function Get-GuestWindows {
                 $listed = Invoke-Ctl windows
                 if (-not $listed) {
@@ -443,18 +490,29 @@ if ($Worker) {
                 throw "3DMark: $Why (screen in 3dmark-stuck.png)"
             }
 
-            # The click must take 3DMark off its welcome dialog.
+            # The menu ignores input for several seconds after it appears
+            # (a fixed 12 s wait was used until 0.52.0). Instead the start
+            # input is sent again until 3DMark leaves its welcome dialog: an
+            # early press is dropped, a taken one closes the dialog, so
+            # nothing is pressed twice. (Not input -Window: the welcome
+            # dialog and the main window both have 3DMark2000 in their
+            # titles, and an ambiguous target is refused.)
             $started3d = $false
-            for ($i = 0; $i -lt 6 -and -not $started3d; ++$i) {
-                Start-Sleep -Seconds 5
-                $windows = Get-GuestWindows
-                $started3d = ($windows -ne $null -and
-                    -not @($windows | Where-Object { $_.Class -eq '#32770' -and $_.Title -clike '3DMark2000*' }))
+            for ($try = 0; $try -lt 6 -and -not $started3d; ++$try) {
+                $null = Invoke-Ctl input @{ Sequence = $entry.ThreeDMark }
+                for ($look = 0; $look -lt 3 -and -not $started3d; ++$look) {
+                    # A 2-second agent-side wait for the benchmark's own
+                    # window, which also paces the welcome-dialog check.
+                    $null = Invoke-Ctl wait-window @{ Title = '3DMark - Display Window'; WaitSeconds = 2 } 30
+                    $windows = Get-GuestWindows
+                    $started3d = ($windows -ne $null -and
+                        -not @($windows | Where-Object { $_.Class -eq '#32770' -and $_.Title -clike '3DMark2000*' }))
+                }
             }
             if (-not $started3d) {
-                Save-Stuck 'the start click did not leave the welcome dialog'
+                Save-Stuck 'the start input did not leave the welcome dialog'
             }
-            Note "3DMark started"
+            Note "3DMark started after $try start input(s)"
 
             # Then watch it: a score, the main window gone (crashed), a
             # dialog that is not 3DMark's own (a fault, MPREXE in 0.37.0), or
@@ -473,16 +531,26 @@ if ($Worker) {
                 if (((Get-Date) - $began).TotalMinutes -gt 20) {
                     Save-Stuck 'no score after 20 minutes'
                 }
-                Start-Sleep -Seconds 20
+                # The pause between looks is an agent-side wait for the
+                # score window, so a finished run is seen at once rather than
+                # up to 20 s later.
+                $score = Invoke-Ctl wait-window @{ Title = 'Overall Score'; WaitSeconds = 20 } 40
+                if ($score -and $score.Success) {
+                    $finished = $true
+                    continue
+                }
 
                 $null = Invoke-Ctl exec @{
                     Application = "$guestDir\V9XTRACE.EXE"; Arguments = '-beat'
                     WorkingDirectory = $guestDir; TimeoutSeconds = 30
                 } 40
-                Get-GuestFile 'C:\V9XDIAG\V9XBEAT.INI' $beatFile
+                # Read inline (cat flushes Windows' INI cache first), not
+                # downloaded and parsed from a local copy.
+                $beatText = Invoke-Ctl cat @{ RemotePath = 'C:\V9XDIAG\V9XBEAT.INI' }
                 $beat = @{}
-                if (Test-Path -LiteralPath $beatFile) {
-                    foreach ($line in [IO.File]::ReadAllLines($beatFile)) {
+                if ($beatText -and $beatText.Text) {
+                    [IO.File]::WriteAllText($beatFile, $beatText.Text, [Text.Encoding]::ASCII)
+                    foreach ($line in ($beatText.Text -split "`r?`n")) {
                         if ($line -match '^([A-Za-z0-9]+)=(\d+)$') {
                             $beat[$Matches[1]] = [uint32]$Matches[2]
                         }
@@ -550,8 +618,15 @@ if ($Worker) {
             }
             $null = Invoke-Ctl kill @{ Name = '3DMARK2000.EXE' }
             Save-Snapshot (Join-Path $grabDir 'snapshot-after.ini')
-            for ($i = 0; $i -lt 10; ++$i) {
-                Get-GuestFile "C:\V9XDIAG\V9XGRAB$i.BMP" (Join-Path $grabDir "V9XGRAB$i.BMP")
+            # All ten grabs over one connection: as separate gets they took
+            # about 4 minutes over the relay, a session open each.
+            & $controller pull-tree -Source 'C:\V9XDIAG' -Destination $grabDir `
+                -Filter 'V9XGRAB?.BMP' @connection -ConnectTimeoutSeconds 120 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Note "pull-tree of the grabs failed, exit $LASTEXITCODE; fetching them one by one"
+                for ($i = 0; $i -lt 10; ++$i) {
+                    Get-GuestFile "C:\V9XDIAG\V9XGRAB$i.BMP" (Join-Path $grabDir "V9XGRAB$i.BMP")
+                }
             }
 
             # The counters that caught what eyes caught in 0.34.0, over this
@@ -598,7 +673,8 @@ if ($Worker) {
             }
         }
 
-        # The agent cannot delete and its stat has no time, so each report is
+        # Guest deletes are avoided (they have stopped Windows rebooting
+        # itself) and stat has no time, so each report is
         # overwritten with this before its probe runs: a probe that never
         # started leaves no Result instead of an earlier run's verdicts. It
         # holds no key, because V9XGLIDP updates its own INI section through
@@ -730,6 +806,7 @@ foreach ($entry in $machines) {
     if ($Baseline) { $arguments += '-Baseline' }
     if ($ThreeDMark) { $arguments += '-ThreeDMark'; $arguments += '-ThreeDMarkMinutes'; $arguments += "$ThreeDMarkMinutes" }
     if ($List) { $arguments += '-List' }
+    if ($NoAgentUpdate) { $arguments += '-NoAgentUpdate' }
     $process = Start-Process -FilePath $powershell -ArgumentList $arguments `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err" `
         -WindowStyle Hidden -PassThru

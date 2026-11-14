@@ -168,9 +168,14 @@ if ($covered.Count -eq 0) {
 # ---------------------------------------------------------------------------
 
 function Test-V9xAgent {
-    param([int]$Port)
+    # -WaitSeconds: v9xctl keeps trying until the agent answers or the time
+    # is up (ping -WaitSeconds), instead of one try per host-side sleep.
+    param([int]$Port, [int]$WaitSeconds = 0)
     $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                    $ControllerPath, "ping", "-Json", "-Port", [string]$Port)
+    if ($WaitSeconds -gt 0) {
+        $arguments += @("-WaitSeconds", [string]$WaitSeconds)
+    }
     try {
         $lines = @(& $powershell @arguments)
         if ($LASTEXITCODE -ne 0) { return $false }
@@ -254,30 +259,27 @@ $script:V9xForceRestarted = $false
 function Wait-V9xAgent {
     param([string]$Profile, [int]$Port, [int]$TimeoutSeconds)
 
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     # One force-restart, at the halfway mark. A guest that has not produced an
     # agent by then is wedged rather than slow, and a committed WININIT driver
     # install survives a force-kill, so the retry cannot lose a deployment.
-    $retryAt = (Get-Date).AddSeconds([int]($TimeoutSeconds / 2))
-    $restarted = $false
-    while ((Get-Date) -lt $deadline) {
-        if (Test-V9xAgent -Port $Port) {
-            return $true
-        }
-        if (-not $restarted -and -not $NoStart -and (Get-Date) -gt $retryAt) {
-            $restarted = $true
-            $processes = @(Get-V9xEmulatorProcess -Profile $Profile)
-            if ($processes.Count -ne 0) {
-                $script:V9xForceRestarted = $true
-                $processes | Stop-Process -Force
-                Start-Sleep -Seconds 3
-            }
-            $null = Start-V9xGuest -Profile $Profile -Port $Port `
-                                  -Emulator '86box'
-        }
-        Start-Sleep -Seconds 5
+    # Each half is one v9xctl wait that returns as soon as the agent answers.
+    $half = [int]($TimeoutSeconds / 2)
+    if (Test-V9xAgent -Port $Port -WaitSeconds $half) {
+        return $true
     }
-    return $false
+    if ($NoStart) {
+        return (Test-V9xAgent -Port $Port -WaitSeconds ($TimeoutSeconds - $half))
+    }
+    $processes = @(Get-V9xEmulatorProcess -Profile $Profile)
+    if ($processes.Count -ne 0) {
+        $script:V9xForceRestarted = $true
+        $processes | Stop-Process -Force
+        # Until the killed emulator has really gone, so the restart below
+        # does not see it as an instance already starting.
+        $processes | Wait-Process -Timeout 30 -ErrorAction SilentlyContinue
+    }
+    $null = Start-V9xGuest -Profile $Profile -Port $Port -Emulator '86box'
+    return (Test-V9xAgent -Port $Port -WaitSeconds ($TimeoutSeconds - $half))
 }
 
 # ---------------------------------------------------------------------------
@@ -341,10 +343,11 @@ foreach ($target in $covered) {
 
     # The one assertion this gate makes. Same key and same wording as
     # run-vm-mode-matrix.ps1:227, because it is the same claim.
+    # Read inline with cat (no COMMAND.COM TYPE).
     $traceArguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                        $ControllerPath, "shell", "-Json",
+                        $ControllerPath, "cat", "-Json",
                         "-Port", [string]$target.Port,
-                        "-ShellCommand", "TYPE C:\V9XDIAG\V9XBOOT.INI")
+                        "-Path", "C:\V9XDIAG\V9XBOOT.INI")
     $traceLines = @(& $powershell @traceArguments)
     $traceJson = $traceLines | Where-Object {
         $_ -is [string] -and $_.TrimStart().StartsWith("{")
@@ -355,11 +358,11 @@ foreach ($target in $covered) {
     }
     $trace = $traceJson | ConvertFrom-Json
     Set-Content -LiteralPath (Join-Path $deployResults "V9XBOOT.INI") `
-        -Value $trace.Stdout -Encoding Ascii
-    if ($trace.Stdout -notmatch '(?m)^Stage=enable-ok\s*$') {
+        -Value $trace.Text -Encoding Ascii
+    if ($trace.Text -notmatch '(?m)^Stage=enable-ok\s*$') {
         throw ("$($target.Family)/$($target.ChipId) did not reach the " +
                "enable-ok driver trace. C:\V9XDIAG\V9XBOOT.INI said:" +
-               [Environment]::NewLine + $trace.Stdout)
+               [Environment]::NewLine + $trace.Text)
     }
     Write-Output "  Stage=enable-ok"
     $outcomes += [pscustomobject]@{

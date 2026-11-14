@@ -112,48 +112,90 @@ foreach ($file in @("V9XDISP.DRV", "V9XMINI.VXD", "V9XGDI.EXE",
 
 $results = [IO.Path]::GetFullPath($ResultsDirectory)
 New-Item -ItemType Directory -Force -Path $results | Out-Null
-$powershellCommand = Get-Command "powershell.exe" -ErrorAction SilentlyContinue
-if (-not $powershellCommand) {
-    $powershellCommand = Get-Command "pwsh.exe" -ErrorAction SilentlyContinue
-}
-if (-not $powershellCommand) {
-    throw "Neither powershell.exe nor pwsh.exe is available for controller calls."
-}
-$powershell = $powershellCommand.Source
+. (Join-Path $PSScriptRoot "lib\agent.ps1")
 
+# One v9xctl call, in this process (a powershell.exe per call cost a process
+# start each). Transport failures are retried by v9xctl itself for up to
+# 15 s (-WaitForAgent); any other failure throws with v9xctl's own message.
+# A hashtable splat: an array splat binds positionally in a script call.
 function Invoke-V9xCtlJson {
-    param([string]$Operation, [string[]]$OperationArguments = @())
-    $arguments = @(
-        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-        $ControllerPath, $Operation, "-Json", "-Port", [string]$Port
-    ) + $OperationArguments
-    $lastFailure = ""
-    for ($attempt = 1; $attempt -le 3; ++$attempt) {
-        try {
-            $lines = @(& $powershell @arguments 2>&1)
-            $nativeExit = $LASTEXITCODE
-        } catch {
-            $lines = @($_.Exception.Message)
-            $nativeExit = 1
-        }
-        $jsonLine = $lines | Where-Object {
-            $_ -is [string] -and $_.TrimStart().StartsWith("{")
-        } | Select-Object -Last 1
-        if ($nativeExit -eq 0 -and $jsonLine) {
-            return $jsonLine | ConvertFrom-Json
-        }
-        $lastFailure = $lines -join [Environment]::NewLine
-        if ($attempt -lt 3) {
-            Start-Sleep -Seconds 1
-        }
+    param([string]$Operation, [hashtable]$Arguments = @{}, [switch]$AllowFailure)
+    $savedPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& $ControllerPath $Operation @Arguments -Port $Port -WaitForAgent 15 -Json 2>&1)
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedPreference
     }
-    throw "v9xctl $Operation failed after 3 attempts: $lastFailure"
+    $jsonLine = $lines | Where-Object {
+        $_ -is [string] -and $_.TrimStart().StartsWith("{")
+    } | Select-Object -Last 1
+    if ($exitCode -eq 0 -and $jsonLine) {
+        return $jsonLine | ConvertFrom-Json
+    }
+    if ($AllowFailure) {
+        return $null
+    }
+    throw "v9xctl $Operation failed (exit $exitCode): $($lines -join [Environment]::NewLine)"
 }
 
-function Invoke-GuestShell {
-    param([string]$Command)
-    Invoke-V9xCtlJson shell @("-ShellCommand", $Command.Replace('"', '\"'))
+# A guest text file's current contents (cat flushes Windows' INI cache first).
+function Read-GuestText {
+    param([string]$Path)
+    $read = Invoke-V9xCtlJson cat @{ RemotePath = $Path; MaxBytes = 65512 } -AllowFailure
+    if (-not $read) {
+        return ''
+    }
+    return [string]$read.Text
 }
+
+# Run a guest program to its end and return the report it wrote. exec
+# -WaitForExit returns when the program exits (or, on agent 0.16.0+, when a
+# fault dialog about it appears: exit 50), instead of START plus polling the
+# report every 500 ms, which could also read the file between its Result line
+# and the lines written after it.
+function Invoke-GuestReport {
+    param([string]$Application, [string]$Arguments, [string]$Report, [int]$Seconds)
+    $null = Invoke-V9xCtlJson exec @{
+        Application = $Application; Arguments = $Arguments
+        WorkingDirectory = $GuestJob; WaitForExit = $true; WaitSeconds = $Seconds
+    } -AllowFailure
+    return Read-GuestText $Report
+}
+
+# The guest's screen size once the agent's cached metrics agree with Width x
+# Height, which can lag a live switch: an agent-side info poll, at most 10 s.
+function Wait-GuestScreen {
+    param([int]$Width, [int]$Height)
+    $info = $null
+    for ($settle = 0; $settle -lt 20; ++$settle) {
+        $info = Invoke-V9xCtlJson info
+        if ($info.ScreenWidth -eq $Width -and $info.ScreenHeight -eq $Height) {
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return $info
+}
+
+# The reports a mode's checks read are replaced with a keyless placeholder
+# before the mode is applied, so a check cannot pass on an earlier mode's
+# file. One push of all four; no guest deletes (shell DEL has stopped
+# Windows rebooting itself).
+$placeholders = Join-Path $results 'placeholders'
+New-Item -ItemType Directory -Force -Path $placeholders | Out-Null
+foreach ($report in @('V9XBOOT.INI', 'V9XGDI.INI', 'V9XACCE.INI', 'V9XPAL.INI')) {
+    [IO.File]::WriteAllText((Join-Path $placeholders $report),
+        "; placeholder from run-vm-mode-matrix.ps1`r`n", [Text.Encoding]::ASCII)
+}
+function Reset-GuestReports {
+    $null = Invoke-V9xCtlJson push-tree @{ Source = $placeholders; Destination = 'C:\V9XDIAG' }
+}
+
+$agentInfo = Update-V9xAgent -Package (Get-V9xAgentPackage -ControllerPath $ControllerPath) `
+    -Call { param($Verb, $Arguments) Invoke-V9xCtlJson $Verb $Arguments -AllowFailure } `
+    -Log { param($Text) Write-Verbose $Text -Verbose }
 
 # Which Services\Class\Display\NNNN key this driver is installed under.
 #
@@ -165,21 +207,20 @@ function Invoke-GuestShell {
 # actually takes effect. That is a pass by accident, so the key is resolved
 # from the registry instead.
 function Get-V9xDisplayKeyIndex {
-    $guestExport = "$GuestJob\DISPLAY.REG"
-    $null = Invoke-GuestShell (
-        "REGEDIT /E $guestExport " +
-        "HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Class\Display")
-    $local = Join-Path $results "display-class.reg"
-    $null = Invoke-V9xCtlJson get @("-Source", $guestExport, "-Destination", $local)
-    $text = Get-Content -LiteralPath $local -Raw
-
-    $pattern = '(?ms)^\[HKEY_LOCAL_MACHINE\\System\\CurrentControlSet\\Services' +
-               '\\Class\\Display\\(\d{4})\\DEFAULT\](.*?)(?=^\[|\z)'
-    foreach ($match in [regex]::Matches($text, $pattern)) {
-        if ($match.Groups[2].Value -match '(?im)^"drv"\s*=\s*"v9xdisp\.drv"\s*$') {
-            return $match.Groups[1].Value
+    # Read with the agent's registry query (one key per call), not REGEDIT /E
+    # through COMMAND.COM and a download of the export.
+    $classKey = 'HKLM\System\CurrentControlSet\Services\Class\Display'
+    $class = Invoke-V9xCtlJson reg @{ Key = $classKey }
+    $seen = @()
+    foreach ($index in @($class.Subkeys | Where-Object { $_ -match '^\d{4}$' } | Sort-Object)) {
+        $defaults = Invoke-V9xCtlJson reg @{ Key = "$classKey\$index\DEFAULT" } -AllowFailure
+        $drv = @($defaults.Values | Where-Object { $_.Name -eq 'drv' }) | Select-Object -First 1
+        $seen += "$index=$($drv.Data)"
+        if ($drv -and [string]$drv.Data -ieq 'v9xdisp.drv') {
+            return $index
         }
     }
+    $seen -join "`r`n" | Set-Content -LiteralPath (Join-Path $results "display-class.txt") -Encoding Ascii
     throw ("No Services\Class\Display key on the guest names v9xdisp.drv, so " +
            "the Velocity9x driver is not the installed display driver.")
 }
@@ -202,14 +243,16 @@ function New-ModeRegistryFile {
     $path
 }
 
-$upload = Invoke-V9xCtlJson push-tree @(
-    "-Source", [IO.Path]::GetFullPath($PackagePath),
-    "-Destination", $GuestJob
-)
+$upload = Invoke-V9xCtlJson push-tree @{
+    Source = [IO.Path]::GetFullPath($PackagePath); Destination = $GuestJob
+}
+# The installed driver against the package, hashed in the guest (was FC /B
+# through COMMAND.COM).
 foreach ($driverFile in @("V9XDISP.DRV", "V9XMINI.VXD")) {
-    $compare = Invoke-GuestShell (
-        "FC /B C:\WINDOWS\SYSTEM\$driverFile $GuestJob\$driverFile")
-    if ($compare.Stdout -notmatch "no differences encountered") {
+    $compare = Invoke-V9xCtlJson hash @{
+        RemotePath = "C:\WINDOWS\SYSTEM\$driverFile"; Source = (Join-Path $PackagePath $driverFile)
+    } -AllowFailure
+    if (-not $compare -or -not $compare.Matches) {
         throw "Installed $driverFile does not match the package; activate it before running the matrix."
     }
 }
@@ -341,60 +384,54 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         if ($current.ScreenWidth -eq $width -and $current.ScreenHeight -eq $height) {
             $stepAside = @($Mode | Where-Object { $_ -ne $name })[0]
             if ($stepAside) {
-                $null = Invoke-V9xCtlJson exec @(
-                    "-Application", "$GuestJob\V9XMSW.EXE",
-                    "-Arguments", "/set:$stepAside",
-                    "-WorkingDirectory", $GuestJob,
-                    "-TimeoutSeconds", "180")
-                Start-Sleep -Seconds 2
+                $null = Invoke-V9xCtlJson exec @{
+                    Application = "$GuestJob\V9XMSW.EXE"; Arguments = "/set:$stepAside"
+                    WorkingDirectory = $GuestJob; TimeoutSeconds = 180
+                }
+                # Until the agent sees the step-aside mode (was a fixed 2 s).
+                $stepParts = $stepAside -split 'x'
+                $null = Wait-GuestScreen ([int]$stepParts[0]) ([int]$stepParts[1])
             }
         }
-        # The driver rewrites V9XBOOT.INI on every Enable, so deleting it first
-        # keeps the enable-ok check below about *this* mode rather than the one
-        # the guest happened to boot in. Deleted after the step-aside above, so
-        # that switch's trace does not satisfy the check either.
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XBOOT.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XGDI.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XPAL.INI"
-        $switch = Invoke-V9xCtlJson exec @(
-            "-Application", "$GuestJob\V9XMSW.EXE",
-            "-Arguments", "/set:$name",
-            "-WorkingDirectory", $GuestJob,
-            "-TimeoutSeconds", "180")
+        # The driver rewrites V9XBOOT.INI on every Enable, so replacing it
+        # first keeps the enable-ok check below about *this* mode rather than
+        # the one the guest happened to boot in. Replaced after the step-aside
+        # above, so that switch's trace does not satisfy the check either.
+        Reset-GuestReports
+        $switch = Invoke-V9xCtlJson exec @{
+            Application = "$GuestJob\V9XMSW.EXE"; Arguments = "/set:$name"
+            WorkingDirectory = $GuestJob; TimeoutSeconds = 180
+        }
         if ($switch.ExitCode -ne 0) {
             throw ("Mode {0} live switch exited {1}." -f $name, $switch.ExitCode)
         }
         # V9XMSW writes its own verdict; a non-zero exit is not the only way for
         # a switch to fail.
-        $mswReport = Invoke-GuestShell "TYPE C:\V9XDIAG\V9XMSW.INI"
-        if ($mswReport.Stdout -notmatch '(?m)^Result=PASS\s*$') {
+        if ((Read-GuestText 'C:\V9XDIAG\V9XMSW.INI') -notmatch '(?m)^Result=PASS\s*$') {
             throw ("Mode {0} live switch did not report Result=PASS." -f $name)
         }
         # The agent's cached screen metrics can lag a live switch, so poll rather
         # than trust the first read.
-        $info = $null
-        for ($settle = 0; $settle -lt 20; ++$settle) {
-            Start-Sleep -Milliseconds 500
-            $info = Invoke-V9xCtlJson info
-            if ($info.ScreenWidth -eq $width -and $info.ScreenHeight -eq $height) {
-                break
-            }
-        }
+        $info = Wait-GuestScreen $width $height
         $appliedBy = "live-switch"
     } else {
         $regFile = New-ModeRegistryFile $name $width $height $bits $displayKey
-        $null = Invoke-V9xCtlJson put @(
-            "-Source", $regFile, "-Destination", "$GuestJob\MODE.REG")
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XBOOT.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XGDI.INI"
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XPAL.INI"
-        $null = Invoke-GuestShell "REGEDIT /S $GuestJob\MODE.REG"
+        $null = Invoke-V9xCtlJson put @{ Source = $regFile; Destination = "$GuestJob\MODE.REG" }
+        Reset-GuestReports
+        # REGEDIT is a Windows program: run it directly, not through
+        # COMMAND.COM. (reg -Set cannot do this: the agent refuses writes
+        # under HKLM\System, where the Display class key lives.)
+        $null = Invoke-V9xCtlJson exec @{
+            Application = 'C:\WINDOWS\REGEDIT.EXE'; Arguments = "/S $GuestJob\MODE.REG"
+            WorkingDirectory = $GuestJob; TimeoutSeconds = 60
+        }
 
-        $reboot = Invoke-V9xCtlJson reboot @(
-            "-JobId", "matrix-$pass-$name",
-            "-WaitSeconds", [string]$BootTimeoutSeconds)
-        $desktop = Invoke-V9xCtlJson wait-desktop @(
-            "-WaitSeconds", [string]$BootTimeoutSeconds)
+        # -DismissLogon: a startup logon dialog is cancelled and the reboot
+        # waits for Explorer on the same connection, so no separate
+        # wait-desktop follows.
+        $reboot = Invoke-V9xCtlJson reboot @{
+            JobId = "matrix-$pass-$name"; WaitSeconds = $BootTimeoutSeconds; DismissLogon = $true
+        }
         $info = Invoke-V9xCtlJson info
         $appliedBy = "reboot"
     }
@@ -411,28 +448,17 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
         throw ("Mode {0} fell back to {1}x{2}x{3}." -f $name,
                $info.ScreenWidth, $info.ScreenHeight, $info.BitsPerPixel)
     }
-    $trace = Invoke-GuestShell "TYPE C:\V9XDIAG\V9XBOOT.INI"
-    if ($trace.Stdout -notmatch '(?m)^Stage=enable-ok\s*$') {
+    if ((Read-GuestText 'C:\V9XDIAG\V9XBOOT.INI') -notmatch '(?m)^Stage=enable-ok\s*$') {
         throw "Mode $name did not reach the enable-ok driver trace."
     }
 
-    $null = Invoke-GuestShell "START $GuestJob\V9XGDI.EXE /auto"
-    $gdi = $null
-    for ($attempt = 0; $attempt -lt 20; ++$attempt) {
-        Start-Sleep -Milliseconds 500
-        $candidate = Invoke-GuestShell (
-            "IF EXIST C:\V9XDIAG\V9XGDI.INI TYPE C:\V9XDIAG\V9XGDI.INI")
-        if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL)\s*$') {
-            $gdi = $candidate
-            break
-        }
-    }
-    if (-not $gdi -or $gdi.Stdout -notmatch '(?m)^Result=PASS\s*$') {
+    $gdi = Invoke-GuestReport "$GuestJob\V9XGDI.EXE" '/auto' 'C:\V9XDIAG\V9XGDI.INI' 60
+    if ($gdi -notmatch '(?m)^Result=PASS\s*$') {
         throw "Mode $name failed or timed out in the GDI framebuffer test."
     }
     foreach ($expected in @(
         "Width=$width", "Height=$height", "BitsPerPixel=$bits")) {
-        if ($gdi.Stdout -notmatch "(?m)^$([regex]::Escape($expected))\s*$") {
+        if ($gdi -notmatch "(?m)^$([regex]::Escape($expected))\s*$") {
             throw "Mode $name GDI result is missing $expected."
         }
     }
@@ -444,63 +470,42 @@ $script:V9xEmulator = if ($vmTarget.Emulator) { $vmTarget.Emulator }
     # without which the comparison could pass while every operation quietly
     # took the decline path.
     #
-    # Given a much longer poll budget than the phases above deliberately: five
+    # Given a much longer budget than the phases above deliberately: five
     # hundred drawing operations and twenty full-region readbacks on an
     # emulated Pentium are seconds, not milliseconds.
     $accelResult = "SKIP"
     if (-not $SkipAccel) {
-        $null = Invoke-GuestShell "DEL C:\V9XDIAG\V9XACCE.INI"
-        $null = Invoke-GuestShell "START $GuestJob\V9XGDI.EXE /accel"
-        $accel = $null
-        for ($attempt = 0; $attempt -lt 240; ++$attempt) {
-            Start-Sleep -Milliseconds 500
-            $candidate = Invoke-GuestShell (
-                "IF EXIST C:\V9XDIAG\V9XACCE.INI TYPE C:\V9XDIAG\V9XACCE.INI")
-            if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL)\s*$') {
-                $accel = $candidate
-                break
-            }
-        }
-        if (-not $accel) {
+        $accel = Invoke-GuestReport "$GuestJob\V9XGDI.EXE" '/accel' 'C:\V9XDIAG\V9XACCE.INI' 180
+        if ($accel -notmatch '(?m)^Result=(PASS|FAIL)\s*$') {
             throw "Mode $name timed out in the GDI acceleration phase."
         }
         Set-Content -LiteralPath (Join-Path $modeResults "V9XACCE.INI") `
-            -Value $accel.Stdout -Encoding Ascii
-        if ($accel.Stdout -notmatch '(?m)^Result=PASS\s*$') {
+            -Value $accel -Encoding Ascii
+        if ($accel -notmatch '(?m)^Result=PASS\s*$') {
             throw ("Mode $name failed the GDI acceleration phase. " +
                    "C:\V9XDIAG\V9XACCE.INI said:" + [Environment]::NewLine +
-                   $accel.Stdout)
+                   $accel)
         }
         $accelResult = "PASS"
     }
     $paletteResult = "N/A"
     if ($bits -eq 8) {
-        $null = Invoke-GuestShell "START $GuestJob\V9XPAL.EXE /auto"
-        $palette = $null
-        for ($attempt = 0; $attempt -lt 20; ++$attempt) {
-            Start-Sleep -Milliseconds 500
-            $candidate = Invoke-GuestShell (
-                "IF EXIST C:\V9XDIAG\V9XPAL.INI TYPE C:\V9XDIAG\V9XPAL.INI")
-            if ($candidate.Stdout -match '(?m)^Result=(PASS|FAIL|SKIP)\s*$') {
-                $palette = $candidate
-                break
-            }
-        }
-        if (-not $palette -or
-            $palette.Stdout -notmatch '(?m)^Result=PASS\s*$') {
+        $palette = Invoke-GuestReport "$GuestJob\V9XPAL.EXE" '/auto' 'C:\V9XDIAG\V9XPAL.INI' 60
+        if ($palette -notmatch '(?m)^Result=PASS\s*$') {
             throw "Mode $name failed or timed out in the palette test."
         }
         foreach ($expected in @(
             "Width=$width", "Height=$height", "BitsPerPixel=8")) {
-            if ($palette.Stdout -notmatch
+            if ($palette -notmatch
                 "(?m)^$([regex]::Escape($expected))\s*$") {
                 throw "Mode $name palette result is missing $expected."
             }
         }
         $paletteResult = "PASS"
     }
-    $screenshot = Invoke-V9xCtlJson screenshot @(
-        "-Destination", (Join-Path $modeResults "desktop.bmp"))
+    $screenshot = Invoke-V9xCtlJson screenshot @{
+        Destination = (Join-Path $modeResults "desktop.bmp")
+    }
 
     # Scanout check - see the block above the mode loop.
     $scanout = "SKIPPED-not-qemu"
