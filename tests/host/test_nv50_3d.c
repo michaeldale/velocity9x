@@ -18,6 +18,26 @@ static unsigned int failures = 0u;
 
 static v9x_u32 words[V9X_NV50_3D_SETUP_WORDS_MAX];
 
+/* The first header for method on the 2D subchannel, or 0xffffffff. */
+static v9x_u32 find_header_2d(const struct v9x_nv50_push *push,
+                              v9x_u32 method, v9x_u32 *data_at)
+{
+    v9x_u32 at = 0ul;
+
+    while (at < push->count) {
+        v9x_u32 header = push->words[at];
+        v9x_u32 count = (header >> 18) & 0x7fful;
+
+        if ((header & 0x1ffcul) == method &&
+            ((header >> 13) & 7ul) == V9X_NV50_SUBC_2D) {
+            *data_at = at + 1ul;
+            return header;
+        }
+        at += 1ul + count;
+    }
+    return 0xfffffffful;
+}
+
 /* The value of the first method header for method, or 0xffffffff. Each
  * header is followed by its count's data words. */
 static v9x_u32 find_header(const struct v9x_nv50_push *push, v9x_u32 method,
@@ -414,6 +434,79 @@ static void test_vp_constants_upload(void)
     CHECK(push.overflow != 0ul);
 }
 
+/* A 2D copy between surfaces of either layout, as Mesa's
+ * nv50_2d_texture_set programs each: a pitch surface as the existing
+ * blit does (format, layout 1, then pitch, width, height, address); a
+ * block-linear one as format, layout 0, tile mode, depth 1, layer 0, then
+ * width, height, address at the format method + 18h. */
+static void test_surface_blit(void)
+{
+    static v9x_u32 blit[V9X_NV50_2D_SURFACE_BLIT_WORDS_MAX];
+    struct v9x_nv50_surface linear;
+    struct v9x_nv50_surface tiled;
+    struct v9x_nv50_push push;
+    v9x_u32 header;
+    v9x_u32 at = 0ul;
+
+    linear.address = 0x08380000ul;
+    linear.pitch = 512ul;
+    linear.width = 128ul;
+    linear.height = 72ul;
+    linear.tile_mode = 0ul;
+    linear.tiled = 0ul;
+    tiled.address = V9X_NV50_VM_TILED + 0x083a0000ul;
+    tiled.pitch = 512ul;
+    tiled.width = 128ul;
+    tiled.height = 72ul;
+    tiled.tile_mode = 0x10ul;
+    tiled.tiled = 1ul;
+
+    /* Linear source to tiled destination. */
+    v9x_nv50_push_init(&push, blit, V9X_NV50_2D_SURFACE_BLIT_WORDS_MAX);
+    v9x_nv50_push_2d_surface_blit(&push, &linear, &tiled,
+                                  V9X_502D_FORMAT_X8R8G8B8, 0ul, 0ul, 0ul,
+                                  0ul, 128ul, 72ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header_2d(&push, 0x0200ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 5ul);
+    CHECK(blit[at] == 0xe6ul && blit[at + 1ul] == 0ul &&
+          blit[at + 2ul] == 0x10ul && blit[at + 3ul] == 1ul &&
+          blit[at + 4ul] == 0ul);
+    header = find_header_2d(&push, 0x0218ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 4ul);
+    CHECK(blit[at] == 128ul && blit[at + 1ul] == 72ul &&
+          blit[at + 2ul] == 0ul && blit[at + 3ul] == 0x283a0000ul);
+    header = find_header_2d(&push, 0x0230ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 2ul);
+    CHECK(blit[at] == 0xe6ul && blit[at + 1ul] == 1ul);
+    header = find_header_2d(&push, 0x0244ul, &at);
+    CHECK(blit[at] == 512ul && blit[at + 1ul] == 128ul &&
+          blit[at + 2ul] == 72ul && blit[at + 3ul] == 0ul &&
+          blit[at + 4ul] == 0x08380000ul);
+    /* The blit run, 12 words from 8B0h, ends the push. */
+    header = find_header_2d(&push, 0x08b0ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 12ul);
+    CHECK(blit[at + 2ul] == 128ul && blit[at + 3ul] == 72ul);
+    CHECK(at + 12ul == push.count);
+
+    /* Tiled source to linear destination. */
+    v9x_nv50_push_init(&push, blit, V9X_NV50_2D_SURFACE_BLIT_WORDS_MAX);
+    v9x_nv50_push_2d_surface_blit(&push, &tiled, &linear,
+                                  V9X_502D_FORMAT_X8R8G8B8, 0ul, 0ul, 0ul,
+                                  0ul, 128ul, 72ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header_2d(&push, 0x0230ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 5ul);
+    CHECK(blit[at + 1ul] == 0ul && blit[at + 2ul] == 0x10ul);
+    header = find_header_2d(&push, 0x0248ul, &at);
+    CHECK(blit[at] == 128ul && blit[at + 1ul] == 72ul &&
+          blit[at + 3ul] == 0x283a0000ul);
+    header = find_header_2d(&push, 0x0200ul, &at);
+    CHECK(((header >> 18) & 0x7fful) == 10ul);
+    CHECK(blit[at + 1ul] == 1ul && blit[at + 5ul] == 512ul &&
+          blit[at + 9ul] == 0x08380000ul);
+}
+
 unsigned int v9x_run_nv50_3d_tests(void)
 {
     failures = 0u;
@@ -426,5 +519,6 @@ unsigned int v9x_run_nv50_3d_tests(void)
     test_texture_tables();
     test_textured_rect();
     test_vp_constants_upload();
+    test_surface_blit();
     return failures;
 }

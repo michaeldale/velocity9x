@@ -177,6 +177,39 @@ void v9x_nv50_3d_texture_tables(v9x_u32 texture, v9x_u32 pitch,
 void v9x_nv50_push_3d_vp_constants(struct v9x_nv50_push *push,
                                    const v9x_u32 *words, v9x_u32 count);
 
+/*
+ * A surface for the 2D engine, pitch-linear or block-linear. address is
+ * a VM address: a block-linear surface is addressed through the tiled
+ * window (V9X_NV50_VM_TILED + its video memory offset) so its pages carry
+ * kind 70h (docs\plans\nvidia-gt218-3d-z.md). tile_mode is the level's
+ * block height as Mesa's miptree code chooses it (0, 10h .. 40h for 1 to
+ * 16 GOBs of 4 rows); pitch, a multiple of 64 bytes, is used only for a
+ * pitch surface.
+ */
+struct v9x_nv50_surface {
+    v9x_u32 address;
+    v9x_u32 pitch;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 tile_mode;
+    v9x_u32 tiled;
+};
+
+/* A 1:1 copy of w x h pixels from (sx, sy) in src to (dx, dy) in dst, one
+ * format, each surface programmed as Mesa's nv50_2d_texture_set programs
+ * it: the present path's copy, a tiled back buffer to the linear
+ * primary. The 502D object must be bound. */
+void v9x_nv50_push_2d_surface_blit(struct v9x_nv50_push *push,
+                                   const struct v9x_nv50_surface *src,
+                                   const struct v9x_nv50_surface *dst,
+                                   v9x_u32 format, v9x_u32 sx, v9x_u32 sy,
+                                   v9x_u32 dx, v9x_u32 dy, v9x_u32 w,
+                                   v9x_u32 h);
+#define V9X_NV50_2D_SURFACE_BLIT_WORDS_MAX 48ul
+/* 502D: DST_FORMAT + 18h is DST_WIDTH; SRC_FORMAT + 18h is SRC_WIDTH. */
+#define V9X_502D_SET_SRC_WIDTH       0x0248ul
+#define V9X_502D_LAYOUT_BLOCKLINEAR  0ul
+
 /* One rectangle (x, y, w, h) textured by TIC entry 0 across its whole
  * area: the solid rectangle's draw, with source coordinates in texels of
  * a src_w x src_h texture. */

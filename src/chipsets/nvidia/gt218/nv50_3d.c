@@ -289,6 +289,112 @@ void v9x_nv50_push_3d_vp_constants(struct v9x_nv50_push *push,
     }
 }
 
+/*
+ * One surface's methods, from base (the format method, DST 200h or SRC
+ * 230h), as nv50_2d_texture_set writes them. Pitch: format and layout 1,
+ * then pitch, width, height and address from base + 14h (only the
+ * destination has a word there to spare; the source's run is 244h). Block-
+ * linear: format, layout 0, tile mode, depth 1, layer 0, then width,
+ * height and address from base + 18h.
+ */
+static void v9x_nv50_2d_surface(struct v9x_nv50_push *push, v9x_u32 base,
+                                const struct v9x_nv50_surface *surface,
+                                v9x_u32 format)
+{
+    v9x_u32 head[5];
+    v9x_u32 tail[5];
+
+    head[0] = format;
+    if (surface->tiled != 0ul) {
+        head[1] = V9X_502D_LAYOUT_BLOCKLINEAR;
+        head[2] = surface->tile_mode;
+        head[3] = 1ul;
+        head[4] = 0ul;
+        v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, base, 5ul, head);
+        tail[0] = surface->width;
+        tail[1] = surface->height;
+        tail[2] = 0ul;
+        tail[3] = surface->address;
+        v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, base + 0x18ul, 4ul,
+                             tail);
+        return;
+    }
+    if (base == V9X_502D_SET_DST_FORMAT) {
+        /* The destination's ten words in one run, as push_fill sends them:
+         * format, layout, block dimensions, depth 1, layer, then pitch,
+         * width, height, address. */
+        v9x_u32 dst[10];
+
+        dst[0] = format;
+        dst[1] = V9X_502D_LAYOUT_PITCH;
+        dst[2] = 0ul;
+        dst[3] = 1ul;
+        dst[4] = 0ul;
+        dst[5] = surface->pitch;
+        dst[6] = surface->width;
+        dst[7] = surface->height;
+        dst[8] = 0ul;
+        dst[9] = surface->address;
+        v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, base, 10ul, dst);
+        return;
+    }
+    head[1] = V9X_502D_LAYOUT_PITCH;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, base, 2ul, head);
+    tail[0] = surface->pitch;
+    tail[1] = surface->width;
+    tail[2] = surface->height;
+    tail[3] = 0ul;
+    tail[4] = surface->address;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SRC_PITCH, 5ul,
+                         tail);
+}
+
+void v9x_nv50_push_2d_surface_blit(struct v9x_nv50_push *push,
+                                   const struct v9x_nv50_surface *src,
+                                   const struct v9x_nv50_surface *dst,
+                                   v9x_u32 format, v9x_u32 sx, v9x_u32 sy,
+                                   v9x_u32 dx, v9x_u32 dy, v9x_u32 w,
+                                   v9x_u32 h)
+{
+    v9x_u32 value;
+    v9x_u32 blit[12];
+
+    value = V9X_NV50_HANDLE_DMA_VM;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SRC_CONTEXT_DMA,
+                         1ul, &value);
+    v9x_nv50_2d_surface(push, V9X_502D_SET_DST_FORMAT, dst, format);
+    v9x_nv50_2d_surface(push, V9X_502D_SET_SRC_FORMAT, src, format);
+
+    /* The rest as v9x_nv50_push_blit: no clip, SRCCOPY, safe overlap,
+     * point sampling, then the 12-word blit with a scale of exactly 1. */
+    value = 0ul;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_CLIP_ENABLE,
+                         1ul, &value);
+    value = V9X_502D_OPERATION_SRCCOPY;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_OPERATION,
+                         1ul, &value);
+    value = 1ul;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_SET_SAFE_OVERLAP,
+                         1ul, &value);
+    value = V9X_502D_BLIT_POINT_CENTER;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_BLIT_CONTROL, 1ul,
+                         &value);
+    blit[0] = dx;
+    blit[1] = dy;
+    blit[2] = w;
+    blit[3] = h;
+    blit[4] = 0ul;
+    blit[5] = 1ul;
+    blit[6] = 0ul;
+    blit[7] = 1ul;
+    blit[8] = 0ul;
+    blit[9] = sx;
+    blit[10] = 0ul;
+    blit[11] = sy;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_2D, V9X_502D_BLIT_DST_X0, 12ul,
+                         blit);
+}
+
 /* Two 16-bit coordinates in one word, y high (nv50_accel.h PUSH_VTX2s). */
 static v9x_u32 v9x_nv50_3d_xy(v9x_u32 x, v9x_u32 y)
 {

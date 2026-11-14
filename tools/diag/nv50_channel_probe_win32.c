@@ -2977,6 +2977,144 @@ static int v9x_stage_3d_texture(const char *section, DWORD number,
     return 0;
 }
 
+/*
+ * /z:tiled2d: step 2 of docs\plans\nvidia-gt218-3d-z.md, the first use of
+ * an alias window, no 3D. A 128x72 X8R8G8B8 gradient in linear surface A
+ * is copied by 502D into T, a block-linear surface (tile mode 10h, eight
+ * rows a block) addressed through the kind-70h window, and back out into
+ * linear surface B, prefilled with the pattern. B must equal A pixel for
+ * pixel (the top byte excepted). T's raw bytes, read through BAR1, are
+ * counted against A: none differing would mean the window's kind changed
+ * nothing. The copy out is the present path's copy.
+ */
+#define V9X_Z_A_OFFSET       0x00380000ul
+#define V9X_Z_T_OFFSET       0x003a0000ul
+#define V9X_Z_B_OFFSET       0x003c0000ul
+#define V9X_Z_TILE_MODE      0x10ul
+#define V9X_Z_PUSH_WORDS     128ul
+
+static DWORD v9x_z_gradient(DWORD x, DWORD y)
+{
+    return ((y << 16) | (x << 8) | ((x * 3ul) ^ (y * 7ul))) &
+           V9X_COLOUR_MASK;
+}
+
+static int v9x_stage_z_tiled2d(void)
+{
+    static DWORD gradient[V9X_DEPTH_PIXELS];
+    struct v9x_nv50_surface a;
+    struct v9x_nv50_surface t;
+    struct v9x_nv50_surface b;
+    struct v9x_nv50_push push;
+    DWORD first_word = v9x_push_next;
+    DWORD words = V9X_DEPTH_PIXELS;
+    DWORD block;
+    DWORD index;
+    DWORD ok = 0ul;
+    DWORD bad = 0ul;
+    DWORD raw_differs = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_word = 0ul;
+    DWORD pass;
+
+    v9x_push_next += V9X_Z_PUSH_WORDS;
+    for (index = 0ul; index < words; ++index) {
+        gradient[index] = v9x_z_gradient(index % V9X_FILL_WIDTH,
+                                         index / V9X_FILL_WIDTH);
+    }
+    a.address = V9X_WINDOW_VRAM + V9X_Z_A_OFFSET;
+    a.pitch = V9X_FILL_WIDTH * 4ul;
+    a.width = V9X_FILL_WIDTH;
+    a.height = V9X_FILL_HEIGHT;
+    a.tile_mode = 0ul;
+    a.tiled = 0ul;
+    b = a;
+    b.address = V9X_WINDOW_VRAM + V9X_Z_B_OFFSET;
+    t = a;
+    t.address = V9X_NV50_VM_TILED + V9X_WINDOW_VRAM + V9X_Z_T_OFFSET;
+    t.tile_mode = V9X_Z_TILE_MODE;
+    t.tiled = 1ul;
+
+    v9x_ops_begin();
+    v9x_vram_data(V9X_Z_A_OFFSET, gradient, words);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_Z_T_OFFSET, words, 0ul);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_Z_B_OFFSET, words, V9X_FILL_PATTERN);
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_Z_PUSH_WORDS);
+    v9x_nv50_push_2d_surface_blit(&push, &a, &t, V9X_502D_FORMAT_X8R8G8B8,
+                                  0ul, 0ul, 0ul, 0ul, V9X_FILL_WIDTH,
+                                  V9X_FILL_HEIGHT);
+    v9x_nv50_push_2d_surface_blit(&push, &t, &b, V9X_502D_FORMAT_X8R8G8B8,
+                                  0ul, 0ul, 0ul, 0ul, V9X_FILL_WIDTH,
+                                  V9X_FILL_HEIGHT);
+    if (push.overflow != 0ul) {
+        v9x_text("ZTiled2d", "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    v9x_number("ZTiled2d", "PushWords", push.count);
+    if (!v9x_kick("ZTiled2d", &push, first_word)) {
+        v9x_text("ZTiled2d", "Result", "NOT-CLEAN");
+        return 0;
+    }
+
+    /* B against A, then T's raw words against A. */
+    for (pass = 0ul; pass < 2ul; ++pass) {
+        DWORD offset = pass == 0ul ? V9X_Z_B_OFFSET : V9X_Z_T_OFFSET;
+
+        for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+            DWORD count = words - block;
+
+            if (count > V9X_N5CH_BLOCK) {
+                count = V9X_N5CH_BLOCK;
+            }
+            v9x_ops_begin();
+            v9x_op(V9X_OP_VRAM_BLOCK, offset + block * 4ul, count, 0ul);
+            if (!v9x_run("z-readback")) {
+                v9x_finish("Z-READBACK-REFUSED", 12u);
+            }
+            for (index = 0ul; index < count; ++index) {
+                DWORD word = v9x_result.block[index] & V9X_COLOUR_MASK;
+
+                if (pass == 1ul) {
+                    if (word != gradient[block + index]) {
+                        ++raw_differs;
+                    }
+                    continue;
+                }
+                if (word == gradient[block + index]) {
+                    ++ok;
+                    continue;
+                }
+                ++bad;
+                if (first_bad == 0xfffffffful) {
+                    first_bad = block + index;
+                    first_bad_word = v9x_result.block[index];
+                }
+            }
+        }
+    }
+    v9x_number("ZTiled2d", "RoundTripOk", ok);
+    v9x_number("ZTiled2d", "RoundTripBad", bad);
+    v9x_number("ZTiled2d", "TiledRawDiffers", raw_differs);
+    if (first_bad != 0xfffffffful) {
+        v9x_number("ZTiled2d", "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number("ZTiled2d", "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key("ZTiled2d", "FirstBadWord", first_bad_word);
+    }
+    v9x_flush();
+    if (bad != 0ul) {
+        v9x_text("ZTiled2d", "Result", "PIXELS-DIFFER");
+        return 0;
+    }
+    if (raw_differs == 0ul) {
+        v9x_text("ZTiled2d", "Result", "NOT-TILED");
+        return 0;
+    }
+    v9x_text("ZTiled2d", "Result", "PASS");
+    return 1;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -3116,6 +3254,9 @@ void __stdcall V9xNv50ChannelEntry(void)
         if (!ok16) {
             v9x_finish("GOURAUD16-FAILED", 10u);
         }
+    }
+    if (v9x_switch_given("/z:tiled2d") && !v9x_stage_z_tiled2d()) {
+        v9x_finish("Z-TILED2D-FAILED", 12u);
     }
     if (v9x_switch_given("/3d") && v9x_switch_given("/3d:texture")) {
         int ok32 = v9x_stage_3d_texture("Texture32", 0ul, 4ul,
