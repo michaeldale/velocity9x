@@ -128,6 +128,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\gt218\nv50_init.c',
         # GT218 Tesla 3D setup push and EXA's programs, no I/O.
         'src\chipsets\nvidia\gt218\nv50_3d.c',
+        # GT218 Tesla shader instruction encoder, no I/O.
+        'src\chipsets\nvidia\gt218\nv50_shader.c',
         # GT218 engine reserve placement, no I/O.
         'src\chipsets\nvidia\gt218\gt218_reserve.c',
         # Rage 128 2D engine: init, fill and copy register values, no I/O.
@@ -411,6 +413,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_nv50_chan.c',
         'tests\host\test_nv50_init.c',
         'tests\host\test_nv50_3d.c',
+        'tests\host\test_nv50_shader.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
         'tests\host\test_rs690_2d.c',
