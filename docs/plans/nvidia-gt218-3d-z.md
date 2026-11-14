@@ -163,6 +163,12 @@ Options:
 on linear targets without Z (below); 5b the shadow targets and tiled Z
 buffers; 5c 3DMark 2000 and the copy cost measured.
 
+5a status: the builders passed the probe (2c20c60f); the HAL
+(46da5ad4) ran V9XD32 on boot 120. Every non-depth draw passed except
+T4Copy, a 32 bpp blit into an engine-placed target (all pixels wrong,
+cause open), the X8R8G8B8 texture (not taken) and parts of T20 and T21
+([record](../decisions/2026-11-14-gt218-3d-d3d-builders.md)).
+
 Common to all three, and the first piece: `d3d_nv50.c` and its map
 (`d3d_nv50_map.c`, host-tested). That means the neutral draw into
 `nv50_3d.c` streams, the caps, texture placement and `ready`, all
