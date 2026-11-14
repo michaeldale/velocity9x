@@ -343,7 +343,7 @@ static int v9x_nv50_validated(void)
          (v9x_hal->engine.flags & V9X_DD_ENGINE_STATUS_VALIDATED) != 0ul);
 }
 
-static int v9x_nv50_wait_idle(int wait)
+static int v9x_nv50_drain(int wait)
 {
     DWORD spins;
 
@@ -382,6 +382,21 @@ static int v9x_nv50_wait_idle(int wait)
     return 0;
 }
 
+/*
+ * The wait every DirectDraw path takes - Flip, Lock and Blt through
+ * v9x_render_drain, and this file's fill and copy - with Direct3D's
+ * shadow targets copied back to their linear targets first
+ * (d3d_nv50.c), so nothing reads or writes a target the shadow has
+ * newer drawing for. Direct3D's own batches drain without it.
+ */
+static int v9x_nv50_wait_idle(int wait)
+{
+    if (v9x_nv50_validate() && v9x_nv50_format() != 0ul) {
+        (void)v9x_d3d_nv50_resolve();
+    }
+    return v9x_nv50_drain(wait);
+}
+
 static int v9x_nv50_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
                          DWORD bytes_per_pixel, int wait)
 {
@@ -397,6 +412,14 @@ static int v9x_nv50_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
         data->rDest[3] <= data->rDest[1] ||
         data->rDest[0] < 0l || data->rDest[1] < 0l) {
         return V9X_BLT_DECLINED;
+    }
+    /* A Z buffer the 3D engine placed is tiled: its fills are draws. */
+    if ((data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        if (!v9x_nv50_wait_idle(wait)) {
+            return V9X_BLT_BUSY;
+        }
+        return v9x_d3d_nv50_depth_fill(data->lpDDDestSurface, data->rDest,
+                                       data->bltFX.dwFillColor, wait);
     }
     format = v9x_nv50_2d_format(bytes_per_pixel);
     if (format == 0ul || v9x_nv50_format() != format) {
@@ -488,7 +511,7 @@ int v9x_nv50_3d_begin(volatile DWORD **push, DWORD *push_words,
                       DWORD *generation)
 {
     if (!v9x_nv50_validate() || v9x_nv50_format() == 0ul ||
-        !v9x_nv50_wait_idle(1)) {
+        !v9x_nv50_drain(1)) {
         return 0;
     }
     *push = v9x_nv50_region(V9X_GT218_RESERVE_3D_PUSH);

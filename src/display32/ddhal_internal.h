@@ -643,6 +643,14 @@ int v9x_nv50_3d_begin(volatile DWORD **push, DWORD *push_words,
                       volatile DWORD **scratch, DWORD *scratch_gpu,
                       DWORD *generation);
 int v9x_nv50_3d_submit(DWORD count);
+/* d3d/d3d_nv50.c, for eng_nv50.c. resolve copies every Direct3D shadow
+ * target with newer drawing back to its linear target (step 5b of
+ * docs\plans\nvidia-gt218-3d-z.md); zero if a copy failed. depth_fill
+ * fills a rectangle of a Z buffer the 3D engine placed, which is tiled,
+ * by a draw; V9X_BLT_* as a fill answers. */
+int v9x_d3d_nv50_resolve(void);
+int v9x_d3d_nv50_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                            DWORD value, int wait);
 /* The Evergreen CP, in engines/eg_cp.c. ready: the 3D window is mapped
  * and the CP has not failed. submit starts it if needed (once per HAL),
  * waits for queued DMA work, and puts a padded stream in the ring; drain

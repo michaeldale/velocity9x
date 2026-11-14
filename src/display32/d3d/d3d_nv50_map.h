@@ -69,16 +69,59 @@ typedef struct v9x_d3d_nv50_texture {
 #define V9X_D3D_NV50_TEXTURE_SIDE_MAX 2048ul
 
 /*
+ * Step 5b's shadow targets (docs\plans\nvidia-gt218-3d-z.md, option A):
+ * a pitch-linear target cannot have a Z buffer, so a Z-tested draw goes
+ * to a tiled colour shadow of its target, which d3d_nv50.c places beside
+ * each Z buffer and copies to and from the linear target. Both are tiled
+ * (V9X_D3D_NV50_TILE_MODE), the colour addressed through the kind-70h
+ * window and the Z through its format's, and both are the Z buffer's
+ * size, at least the target's.
+ */
+#define V9X_D3D_NV50_TILE_MODE       0x10ul  /* two GOBs, 8 rows a block */
+#define V9X_D3D_NV50_TILE_ROWS       8ul
+#define V9X_D3D_NV50_TILE_ROW_BYTES  64ul
+
+typedef struct v9x_d3d_nv50_shadow_view {
+    struct v9x_nv50_surface colour;
+    struct v9x_nv50_surface zeta;
+    v9x_u32 zeta_format;
+    /* Zero when the shadow holds the target but this draw has no Z
+     * buffer of its own: it draws into the shadow, untested. */
+    v9x_u32 with_zeta;
+} V9X_D3D_NV50_SHADOW_VIEW;
+
+/* A tiled surface's row bytes and rows, as placed: rows of 64 bytes and
+ * whole 8-row blocks, for tile mode V9X_D3D_NV50_TILE_MODE. */
+void v9x_d3d_nv50_tiled_layout(v9x_u32 width, v9x_u32 height, v9x_u32 bytes,
+                               v9x_u32 *pitch, v9x_u32 *rows);
+
+/*
  * One draw: the state (the fragment program's register count from
  * fp_registers, indexed by variant), the texture's TIC and TSC words when
- * it is textured, and whether the vertices carry specular. Returns a
+ * it is textured, and whether the vertices carry specular. shadow is null
+ * for a draw straight into the linear target. Returns a
  * V9X_D3D_NV50_REFUSE_* reason; nothing is meaningful on a refusal.
  */
 v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
                               const V9X_D3D_NV50_TEXTURE *texture,
+                              const V9X_D3D_NV50_SHADOW_VIEW *shadow,
                               const v9x_u32 *fp_registers,
                               struct v9x_nv50_d3d_state *state,
                               v9x_u32 *tic, v9x_u32 *tsc,
                               v9x_u32 *with_specular);
+
+/*
+ * A depth fill of [left, right) by [top, bottom) of the shadow view's Z
+ * buffer at value (the 16-bit full scale), as a draw: two triangles at
+ * the value, depth test ALWAYS with writes, every colour channel masked,
+ * the shadow's colour as the target it does not write. Fills state and
+ * six vertices; zero for a rectangle that is empty or past the buffer.
+ */
+int v9x_d3d_nv50_depth_fill_draw(const V9X_D3D_NV50_SHADOW_VIEW *shadow,
+                                 v9x_u32 left, v9x_u32 top, v9x_u32 right,
+                                 v9x_u32 bottom, v9x_u32 value,
+                                 const v9x_u32 *fp_registers,
+                                 struct v9x_nv50_d3d_state *state,
+                                 V9X_R3D_VERTEX *vertices);
 
 #endif

@@ -195,6 +195,7 @@ static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
 
 v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
                               const V9X_D3D_NV50_TEXTURE *texture,
+                              const V9X_D3D_NV50_SHADOW_VIEW *shadow,
                               const v9x_u32 *fp_registers,
                               struct v9x_nv50_d3d_state *state,
                               v9x_u32 *tic, v9x_u32 *tsc,
@@ -272,14 +273,33 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
         }
     }
 
+    /* A shadow holding the target takes the draw: the tiled colour, the
+     * Z buffer's size, which must cover the target; the scissor above
+     * stays the target's. */
+    if (shadow != 0) {
+        if (shadow->colour.width < draw->target.width ||
+            shadow->colour.height < draw->target.height) {
+            return V9X_D3D_NV50_REFUSE_TARGET;
+        }
+        state->target = shadow->colour;
+    }
+
     /* Depth: a pitch-linear target cannot have a Z buffer, so a Z-tested
-     * draw on a bound buffer waits for step 5b's shadow targets. With Z
-     * off the draw needs no buffer, Direct3D's ZENABLE FALSE. */
+     * draw on a bound buffer needs its shadow (step 5b). With Z off the
+     * draw needs no buffer, Direct3D's ZENABLE FALSE. */
     if (draw->depth_enable != 0ul && draw->depth.object != 0) {
         if (!v9x_d3d_nv50_compare(draw->depth_func, &code)) {
             return V9X_D3D_NV50_REFUSE_DEPTH_FUNC;
         }
-        return V9X_D3D_NV50_REFUSE_DEPTH_SURFACE;
+        if (shadow == 0 || shadow->with_zeta == 0ul) {
+            return V9X_D3D_NV50_REFUSE_DEPTH_SURFACE;
+        }
+        state->has_zeta = 1ul;
+        state->zeta = shadow->zeta;
+        state->zeta_format = shadow->zeta_format;
+        state->depth_test = 1ul;
+        state->depth_write = draw->depth_write != 0ul ? 1ul : 0ul;
+        state->depth_func = code;
     }
 
     if (draw->blend_enable != 0ul) {
@@ -320,4 +340,77 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
     state->fog_color = draw->fog_color;
     *with_specular = lit;
     return V9X_D3D_NV50_REFUSE_NONE;
+}
+
+void v9x_d3d_nv50_tiled_layout(v9x_u32 width, v9x_u32 height, v9x_u32 bytes,
+                               v9x_u32 *pitch, v9x_u32 *rows)
+{
+    *pitch = (width * bytes + V9X_D3D_NV50_TILE_ROW_BYTES - 1ul) &
+             ~(V9X_D3D_NV50_TILE_ROW_BYTES - 1ul);
+    *rows = (height + V9X_D3D_NV50_TILE_ROWS - 1ul) &
+            ~(V9X_D3D_NV50_TILE_ROWS - 1ul);
+}
+
+int v9x_d3d_nv50_depth_fill_draw(const V9X_D3D_NV50_SHADOW_VIEW *shadow,
+                                 v9x_u32 left, v9x_u32 top, v9x_u32 right,
+                                 v9x_u32 bottom, v9x_u32 value,
+                                 const v9x_u32 *fp_registers,
+                                 struct v9x_nv50_d3d_state *state,
+                                 V9X_R3D_VERTEX *vertices)
+{
+    unsigned char *bytes = (unsigned char *)state;
+    v9x_u32 index;
+    float z;
+
+    if (left >= right || top >= bottom || right > shadow->zeta.width ||
+        bottom > shadow->zeta.height) {
+        return 0;
+    }
+    for (index = 0ul; index < sizeof(*state); ++index) {
+        bytes[index] = 0u;
+    }
+    /* The shadow's colour names the target the draw needs and does not
+     * write: every channel masked. */
+    state->target = shadow->colour;
+    state->target_format = V9X_NV50_3D_RT_BGRX8;
+    state->scissor_left = left;
+    state->scissor_top = top;
+    state->scissor_right = right;
+    state->scissor_bottom = bottom;
+    state->color_mask = 0ul;
+    state->has_zeta = 1ul;
+    state->zeta = shadow->zeta;
+    state->zeta_format = shadow->zeta_format;
+    state->depth_test = 1ul;
+    state->depth_write = 1ul;
+    state->depth_func = V9X_NV50_D3D_CMP_ALWAYS;
+    state->fp_variant = 0ul;
+    state->fp_registers = fp_registers[0];
+
+    /* In double, as d3d_eg_map.c's fill: z passes through as the window
+     * z (/z:depth16 drew 0.25 and 0.75 so), and the far plane is exactly
+     * 1.0. The rectangle's edges are pixel edges, which the engine's
+     * centres at x + 0.5 already respect: no half-pixel move. */
+    z = (float)((double)(value & 0xfffful) / 65535.0);
+    for (index = 0ul; index < 6ul; ++index) {
+        vertices[index].sz = z;
+        vertices[index].rhw = 1.0f;
+        vertices[index].color = 0ul;
+        vertices[index].specular = 0ul;
+        vertices[index].tu = 0.0f;
+        vertices[index].tv = 0.0f;
+    }
+    vertices[0].sx = (float)(long)left;
+    vertices[0].sy = (float)(long)top;
+    vertices[1].sx = (float)(long)right;
+    vertices[1].sy = (float)(long)top;
+    vertices[2].sx = (float)(long)left;
+    vertices[2].sy = (float)(long)bottom;
+    vertices[3].sx = (float)(long)right;
+    vertices[3].sy = (float)(long)top;
+    vertices[4].sx = (float)(long)right;
+    vertices[4].sy = (float)(long)bottom;
+    vertices[5].sx = (float)(long)left;
+    vertices[5].sy = (float)(long)bottom;
+    return 1;
 }

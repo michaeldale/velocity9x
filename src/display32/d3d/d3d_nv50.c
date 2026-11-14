@@ -49,12 +49,48 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
     1ul,            /* pixel_centre_half */
-    0ul,            /* depth_tiled: no Z on the engine yet */
+    1ul,            /* depth_tiled: Z16 is block-linear, kind 6Ch */
     65472ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits */
     0ul,            /* centre_in_engine: the core moves, as it clips */
     1ul             /* texture_stages */
 };
+
+/*
+ * Step 5b's shadow targets (d3d_nv50_map.h). Each Z buffer this engine
+ * places carries a tiled colour shadow of its size, in the same block.
+ * A shadow holds one linear target at a time (owner, its offset): loaded
+ * from it by a 502D copy before the first draw that needs it, drawn into
+ * since (dirty), and copied back before anything reads or writes the
+ * linear target. That is eng_nv50.c's wait_idle, which Flip, Lock and
+ * every Blt pass through, and the surface_written hook for a Blt's
+ * destination and an Unlock. A target being destroyed drops its shadow
+ * without a copy.
+ */
+#define V9X_D3D_NV50_SHADOWS_MAX     8ul
+#define V9X_D3D_NV50_NONE            0xfffffffful
+/* Tiled blocks on 4 KiB: the probe's tiled surfaces sat on 64 KiB, and
+ * 4 KiB is what the heap's mapping alignment allows; unmeasured below
+ * 64 KiB. */
+#define V9X_D3D_NV50_TILED_ALIGN     0x1000ul
+
+typedef struct v9x_d3d_nv50_shadow {
+    DWORD used;
+    DWORD z_offset;
+    DWORD width;
+    DWORD height;
+    DWORD colour_offset;
+    DWORD owner;
+    DWORD owner_pitch;
+    DWORD owner_width;
+    DWORD owner_height;
+    DWORD owner_bytes;
+    DWORD dirty;
+} V9X_D3D_NV50_SHADOW;
+
+static V9X_D3D_NV50_SHADOW v9x_d3d_nv50_shadows[V9X_D3D_NV50_SHADOWS_MAX];
+/* Set while a resolve's own copies run, which pass through the engine. */
+static int v9x_d3d_nv50_resolving = 0;
 
 /* The programs' register counts, filled when the programs are built. */
 static v9x_u32 v9x_d3d_nv50_fp_registers[V9X_NV50_D3D_FP_VARIANTS];
@@ -347,7 +383,217 @@ static int v9x_d3d_nv50_count_registers(void)
     return 1;
 }
 
+/* The shadow placed with the Z buffer at z_offset, or the one holding the
+ * linear target at owner; null for none. */
+static V9X_D3D_NV50_SHADOW *v9x_d3d_nv50_shadow_of_z(DWORD z_offset)
+{
+    DWORD index;
+
+    for (index = 0ul; index < V9X_D3D_NV50_SHADOWS_MAX; ++index) {
+        if (v9x_d3d_nv50_shadows[index].used != 0ul &&
+            v9x_d3d_nv50_shadows[index].z_offset == z_offset) {
+            return &v9x_d3d_nv50_shadows[index];
+        }
+    }
+    return 0;
+}
+
+static V9X_D3D_NV50_SHADOW *v9x_d3d_nv50_shadow_owning(DWORD owner)
+{
+    DWORD index;
+
+    if (owner == V9X_D3D_NV50_NONE) {
+        return 0;
+    }
+    for (index = 0ul; index < V9X_D3D_NV50_SHADOWS_MAX; ++index) {
+        if (v9x_d3d_nv50_shadows[index].used != 0ul &&
+            v9x_d3d_nv50_shadows[index].owner == owner) {
+            return &v9x_d3d_nv50_shadows[index];
+        }
+    }
+    return 0;
+}
+
+/* The shadow as the map and the depth fill take it: the colour through
+ * the kind-70h window, the Z through the Z16 one, both tiled. */
+static void v9x_d3d_nv50_view_of(const V9X_D3D_NV50_SHADOW *shadow,
+                                 DWORD with_zeta,
+                                 V9X_D3D_NV50_SHADOW_VIEW *view)
+{
+    view->colour.address = V9X_NV50_VM_TILED + shadow->colour_offset;
+    view->colour.pitch = 0ul;
+    view->colour.width = shadow->width;
+    view->colour.height = shadow->height;
+    view->colour.tile_mode = V9X_D3D_NV50_TILE_MODE;
+    view->colour.tiled = 1ul;
+    view->zeta.address = V9X_NV50_VM_Z16 + shadow->z_offset;
+    view->zeta.pitch = 0ul;
+    view->zeta.width = shadow->width;
+    view->zeta.height = shadow->height;
+    view->zeta.tile_mode = V9X_D3D_NV50_TILE_MODE;
+    view->zeta.tiled = 1ul;
+    view->zeta_format = V9X_NV50_3D_ZETA_Z16;
+    view->with_zeta = with_zeta;
+}
+
+/*
+ * One 502D copy between a shadow and the linear target it holds, the
+ * owner's size: to the linear target (a resolve) or from it (a load).
+ * Its own kick, after everything before it (eng_nv50.c drains first).
+ */
+static int v9x_d3d_nv50_shadow_copy(const V9X_D3D_NV50_SHADOW *shadow,
+                                    int to_linear)
+{
+    struct v9x_nv50_surface linear;
+    struct v9x_nv50_surface tiled;
+    struct v9x_nv50_push push;
+    volatile DWORD *area;
+    volatile DWORD *scratch;
+    DWORD area_words;
+    DWORD scratch_base;
+    DWORD generation;
+    DWORD format = v9x_nv50_2d_format(shadow->owner_bytes);
+
+    if (format == 0ul ||
+        !v9x_nv50_3d_begin(&area, &area_words, &scratch, &scratch_base,
+                           &generation)) {
+        return 0;
+    }
+    linear.address = shadow->owner;
+    linear.pitch = shadow->owner_pitch;
+    linear.width = shadow->owner_width;
+    linear.height = shadow->owner_height;
+    linear.tile_mode = 0ul;
+    linear.tiled = 0ul;
+    tiled.address = V9X_NV50_VM_TILED + shadow->colour_offset;
+    tiled.pitch = 0ul;
+    tiled.width = shadow->width;
+    tiled.height = shadow->height;
+    tiled.tile_mode = V9X_D3D_NV50_TILE_MODE;
+    tiled.tiled = 1ul;
+    v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
+    if (to_linear) {
+        v9x_nv50_push_2d_surface_blit(&push, &tiled, &linear, format, 0ul,
+                                      0ul, 0ul, 0ul, shadow->owner_width,
+                                      shadow->owner_height);
+    } else {
+        v9x_nv50_push_2d_surface_blit(&push, &linear, &tiled, format, 0ul,
+                                      0ul, 0ul, 0ul, shadow->owner_width,
+                                      shadow->owner_height);
+    }
+    if (push.overflow != 0ul) {
+        return 0;
+    }
+    return v9x_nv50_3d_submit(push.count);
+}
+
+/* A dirty shadow back to its linear target; it then still holds it. */
+static int v9x_d3d_nv50_shadow_flush(V9X_D3D_NV50_SHADOW *shadow)
+{
+    int ok = 1;
+
+    if (shadow->dirty == 0ul || shadow->owner == V9X_D3D_NV50_NONE) {
+        return 1;
+    }
+    v9x_d3d_nv50_resolving = 1;
+    ok = v9x_d3d_nv50_shadow_copy(shadow, 1);
+    v9x_d3d_nv50_resolving = 0;
+    if (ok) {
+        shadow->dirty = 0ul;
+    }
+    return ok;
+}
+
+/* ddhal_internal.h: every dirty shadow back to its target. */
+int v9x_d3d_nv50_resolve(void)
+{
+    DWORD index;
+    int ok = 1;
+
+    if (v9x_d3d_nv50_resolving) {
+        return 1;
+    }
+    for (index = 0ul; index < V9X_D3D_NV50_SHADOWS_MAX; ++index) {
+        if (v9x_d3d_nv50_shadows[index].used != 0ul &&
+            !v9x_d3d_nv50_shadow_flush(&v9x_d3d_nv50_shadows[index])) {
+            ok = 0;
+        }
+    }
+    return ok;
+}
+
+/* The linear target at offset changes outside the engine: flushed first
+ * if a shadow has drawing for it, then no shadow holds it. */
+static void v9x_d3d_nv50_release_target(DWORD offset, int flush)
+{
+    V9X_D3D_NV50_SHADOW *shadow = v9x_d3d_nv50_shadow_owning(offset);
+
+    if (shadow == 0) {
+        return;
+    }
+    if (flush) {
+        (void)v9x_d3d_nv50_shadow_flush(shadow);
+    }
+    shadow->owner = V9X_D3D_NV50_NONE;
+    shadow->dirty = 0ul;
+}
+
+/*
+ * The shadow a draw goes to, if any: its Z buffer's when it tests Z
+ * against one this engine placed, else the one holding its target. view
+ * is filled for the map.
+ */
+static V9X_D3D_NV50_SHADOW *v9x_d3d_nv50_shadow_for(
+    const V9X_R3D_DRAW *draw, V9X_D3D_NV50_SHADOW_VIEW *view)
+{
+    V9X_D3D_NV50_SHADOW *shadow = 0;
+    DWORD with_zeta = 0ul;
+
+    if (draw->depth_enable != 0ul && draw->depth.object != 0) {
+        shadow = v9x_d3d_nv50_shadow_of_z(draw->depth.offset);
+        with_zeta = 1ul;
+    }
+    if (shadow == 0) {
+        shadow = v9x_d3d_nv50_shadow_owning(draw->target.offset);
+        with_zeta = 0ul;
+    }
+    if (shadow != 0) {
+        v9x_d3d_nv50_view_of(shadow, with_zeta, view);
+    }
+    return shadow;
+}
+
+/* Make shadow hold the draw's target: another shadow holding it is
+ * flushed and let go, this one's own drawing flushed, then the load. */
+static int v9x_d3d_nv50_shadow_take(V9X_D3D_NV50_SHADOW *shadow,
+                                    const V9X_R3D_DRAW *draw)
+{
+    if (shadow->owner == draw->target.offset) {
+        return 1;
+    }
+    v9x_d3d_nv50_release_target(draw->target.offset, 1);
+    if (!v9x_d3d_nv50_shadow_flush(shadow)) {
+        return 0;
+    }
+    shadow->owner = draw->target.offset;
+    shadow->owner_pitch = draw->target.pitch;
+    shadow->owner_width = draw->target.width;
+    shadow->owner_height = draw->target.height;
+    shadow->owner_bytes =
+        draw->target.format == V9X_R3D_FORMAT_XRGB8888 ? 4ul : 2ul;
+    shadow->dirty = 0ul;
+    v9x_d3d_nv50_resolving = 1;
+    if (!v9x_d3d_nv50_shadow_copy(shadow, 0)) {
+        v9x_d3d_nv50_resolving = 0;
+        shadow->owner = V9X_D3D_NV50_NONE;
+        return 0;
+    }
+    v9x_d3d_nv50_resolving = 0;
+    return 1;
+}
+
 static v9x_u32 v9x_d3d_nv50_map(const V9X_R3D_DRAW *draw,
+                                const V9X_D3D_NV50_SHADOW_VIEW *view,
                                 struct v9x_nv50_d3d_state *state,
                                 v9x_u32 *tic, v9x_u32 *tsc,
                                 v9x_u32 *with_specular)
@@ -361,13 +607,15 @@ static v9x_u32 v9x_d3d_nv50_map(const V9X_R3D_DRAW *draw,
     if (draw->texture.object != 0) {
         v9x_d3d_nv50_resolve_texture(&draw->texture, &texture);
     }
-    return v9x_d3d_nv50_map_draw(draw, &texture, v9x_d3d_nv50_fp_registers,
-                                 state, tic, tsc, with_specular);
+    return v9x_d3d_nv50_map_draw(draw, &texture, view,
+                                 v9x_d3d_nv50_fp_registers, state, tic, tsc,
+                                 with_specular);
 }
 
 static int v9x_d3d_nv50_accepts(const V9X_R3D_DRAW *draw)
 {
     struct v9x_nv50_d3d_state state;
+    V9X_D3D_NV50_SHADOW_VIEW view;
     v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
     v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
     v9x_u32 with_specular;
@@ -376,7 +624,10 @@ static int v9x_d3d_nv50_accepts(const V9X_R3D_DRAW *draw)
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
-    reason = v9x_d3d_nv50_map(draw, &state, tic, tsc, &with_specular);
+    reason = v9x_d3d_nv50_map(draw,
+                              v9x_d3d_nv50_shadow_for(draw, &view) != 0 ?
+                                  &view : 0,
+                              &state, tic, tsc, &with_specular);
     if (reason != V9X_D3D_NV50_REFUSE_NONE && reason < 20ul) {
         ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
     }
@@ -442,17 +693,31 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
     v9x_u32 with_specular = 0ul;
     v9x_u32 reason;
     int setup;
+    V9X_D3D_NV50_SHADOW *shadow;
+    V9X_D3D_NV50_SHADOW_VIEW view;
 
     if (draw == 0 || vertices == 0 || triangle_count == 0ul ||
         !v9x_d3d_nv50_ready()) {
         return 0;
     }
     started = V9X_TIME_BEGIN();
-    reason = v9x_d3d_nv50_map(draw, &state, tic, tsc, &with_specular);
+    shadow = v9x_d3d_nv50_shadow_for(draw, &view);
+    reason = v9x_d3d_nv50_map(draw, shadow != 0 ? &view : 0, &state, tic,
+                              tsc, &with_specular);
     if (reason != V9X_D3D_NV50_REFUSE_NONE) {
         v9x_d3d_nv50_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
+    }
+    /* The shadow loaded with the target before the first draw into it;
+     * a draw straight into the linear target flushes and lets go of any
+     * shadow holding it, so the two never both have drawing. */
+    if (shadow != 0) {
+        if (!v9x_d3d_nv50_shadow_take(shadow, draw)) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        shadow->dirty = 1ul;
     }
 
     while (triangle_count != 0ul) {
@@ -519,6 +784,145 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
 }
 
 /*
+ * ddhal_internal.h: a rectangle of a Z buffer this engine placed, filled
+ * at value (16-bit full scale) by a draw (d3d_nv50_map.h,
+ * v9x_d3d_nv50_depth_fill_draw). eng_nv50.c's fill hands every depth fill
+ * here: the buffer is tiled, so a linear fill would put the value in the
+ * wrong pixels. Declined for a Z buffer DirectDraw placed.
+ */
+int v9x_d3d_nv50_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                            DWORD value, int wait)
+{
+    struct v9x_nv50_d3d_state state;
+    struct v9x_nv50_3d_scratch scratch_gpu;
+    struct v9x_nv50_push push;
+    V9X_D3D_NV50_SHADOW *shadow;
+    V9X_D3D_NV50_SHADOW_VIEW view;
+    V9X_R3D_VERTEX vertices[6];
+    volatile DWORD *area;
+    volatile DWORD *scratch;
+    DWORD area_words;
+    DWORD scratch_base;
+    DWORD generation;
+    DWORD offset;
+    DWORD index;
+    int setup;
+
+    (void)wait;
+    if (surface == 0 || rect == 0 || surface->lpGbl == 0 ||
+        rect[0] < 0l || rect[1] < 0l || !v9x_d3d_nv50_ready() ||
+        !v9x_d3d_nv50_count_registers()) {
+        return V9X_BLT_DECLINED;
+    }
+    offset = v9x_surface_offset(surface);
+    shadow = offset != 0xfffffffful ? v9x_d3d_nv50_shadow_of_z(offset) : 0;
+    if (shadow == 0) {
+        return V9X_BLT_DECLINED;
+    }
+    v9x_d3d_nv50_view_of(shadow, 1ul, &view);
+    if (!v9x_d3d_nv50_depth_fill_draw(&view, (v9x_u32)rect[0],
+                                      (v9x_u32)rect[1], (v9x_u32)rect[2],
+                                      (v9x_u32)rect[3], value,
+                                      v9x_d3d_nv50_fp_registers, &state,
+                                      vertices)) {
+        return V9X_BLT_DECLINED;
+    }
+    if (!v9x_nv50_3d_begin(&area, &area_words, &scratch, &scratch_base,
+                           &generation)) {
+        return V9X_BLT_DECLINED;
+    }
+    setup = !v9x_d3d_nv50_setup_sent ||
+            generation != v9x_d3d_nv50_setup_generation;
+    if (setup && !v9x_d3d_nv50_write_programs(scratch)) {
+        return V9X_BLT_DECLINED;
+    }
+    v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
+    if (setup) {
+        v9x_nv50_3d_scratch_at(scratch_base, &scratch_gpu);
+        v9x_nv50_push_bind_3d(&push);
+        v9x_nv50_push_3d_setup(&push, &scratch_gpu);
+    }
+    v9x_nv50_push_d3d_state(&push, &state);
+    v9x_nv50_push_d3d_begin(&push);
+    for (index = 0ul; index < 6ul; ++index) {
+        v9x_nv50_push_d3d_vertex(&push, vertices[index].sx,
+                                 vertices[index].sy, vertices[index].sz,
+                                 vertices[index].rhw, 0ul, 0ul, 0.0f, 0.0f,
+                                 0.0f, 0ul, 0ul);
+    }
+    v9x_nv50_push_d3d_end(&push);
+    if (push.overflow != 0ul || !v9x_nv50_3d_submit(push.count)) {
+        return V9X_BLT_DECLINED;
+    }
+    if (setup) {
+        v9x_d3d_nv50_setup_generation = generation;
+        v9x_d3d_nv50_setup_sent = 1;
+    }
+    return V9X_BLT_DONE;
+}
+
+/*
+ * A Z16 buffer, tiled, and its colour shadow in one block on 4 KiB: the
+ * Z first, its rows on 64 bytes and 8-row blocks
+ * (v9x_d3d_nv50_tiled_layout), then the colour at 4 bytes a pixel, which
+ * also holds a 16 bpp target. Declined, touching nothing, when every
+ * shadow is in use; DirectDraw then places it linear and its Z-tested
+ * draws are refused.
+ */
+static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
+                                       V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_NV50_SHADOW *shadow = 0;
+    v9x_u32 offsets[1];
+    v9x_u32 pitches[1];
+    v9x_u32 z_pitch;
+    v9x_u32 colour_pitch;
+    v9x_u32 rows;
+    DWORD z_bytes;
+    DWORD base = 0ul;
+    DWORD width = (DWORD)surface->lpGbl->wWidth;
+    DWORD height = (DWORD)surface->lpGbl->wHeight;
+    DWORD index;
+    DWORD offset;
+
+    if (data->dwSCnt != 1ul ||
+        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    for (index = 0ul; index < V9X_D3D_NV50_SHADOWS_MAX; ++index) {
+        if (v9x_d3d_nv50_shadows[index].used == 0ul) {
+            shadow = &v9x_d3d_nv50_shadows[index];
+            break;
+        }
+    }
+    if (shadow == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    v9x_d3d_nv50_tiled_layout(width, height, 2ul, &z_pitch, &rows);
+    v9x_d3d_nv50_tiled_layout(width, height, 4ul, &colour_pitch, &rows);
+    z_bytes = (z_pitch * rows + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
+              ~(V9X_D3D_NV50_TILED_ALIGN - 1ul);
+    offsets[0] = 0ul;
+    pitches[0] = z_pitch;
+    if (v9x_d3d_place_chain(data, V9X_D3D_NV50_TILED_ALIGN,
+                            z_bytes + colour_pitch * rows, offsets, pitches,
+                            &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    offset = v9x_surface_offset(surface);
+    shadow->used = 1ul;
+    shadow->z_offset = offset;
+    shadow->width = width;
+    shadow->height = height;
+    shadow->colour_offset = offset + z_bytes;
+    shadow->owner = V9X_D3D_NV50_NONE;
+    shadow->dirty = 0ul;
+    ++v9x_hal->d3d_diagnostics.texture_placed;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/*
  * Placement. An offscreen render target alone gets its rows on 64 bytes
  * and its base on 256, the rule every surface the engine has drawn into
  * kept (d3d_nv50_map.h); a flip chain's buffers come with the primary,
@@ -553,6 +957,9 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
 
+    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+        return v9x_d3d_nv50_create_depth(data, surface);
+    }
     if ((surface->ddsCaps & V9X_DDSCAPS_3DDEVICE) != 0ul &&
         (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
                              V9X_DDSCAPS_FLIP)) == 0ul) {
@@ -605,9 +1012,48 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/*
+ * A surface going. A Z buffer's shadow is flushed to the target it holds
+ * and freed with the block; a target a shadow holds is let go without a
+ * copy, since its memory is no longer the application's.
+ */
 static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
+    const V9X_DD_SURFACE_LCL *surface =
+        data != 0 ? (const V9X_DD_SURFACE_LCL *)data->lpDDSurface : 0;
+    V9X_D3D_NV50_SHADOW *shadow;
+    DWORD offset;
+
+    if (surface != 0 && surface->lpGbl != 0 &&
+        surface->lpGbl->fpVidMem != 0ul) {
+        offset = v9x_surface_offset(surface);
+        if (offset != 0xfffffffful) {
+            v9x_d3d_nv50_release_target(offset, 0);
+            shadow = v9x_d3d_nv50_shadow_of_z(offset);
+            if (shadow != 0) {
+                (void)v9x_d3d_nv50_shadow_flush(shadow);
+                shadow->used = 0ul;
+                (void)v9x_d3d_place_release(data, V9X_D3D_NV50_TILED_ALIGN);
+                return;
+            }
+        }
+    }
     (void)v9x_d3d_place_release(data, V9X_D3D_NV50_SURFACE_ALIGN);
+}
+
+/* A Blt is about to write the surface, or an Unlock has: any drawing a
+ * shadow holds for it goes back first, then no shadow holds it. */
+static void v9x_d3d_nv50_surface_written(const V9X_DD_SURFACE_LCL *surface)
+{
+    DWORD offset;
+
+    if (surface == 0 || surface->lpGbl == 0) {
+        return;
+    }
+    offset = v9x_surface_offset(surface);
+    if (offset != 0xfffffffful) {
+        v9x_d3d_nv50_release_target(offset, 1);
+    }
 }
 
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
@@ -620,5 +1066,12 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv50 = {
     v9x_d3d_nv50_create_surface,
     v9x_d3d_nv50_destroy_surface,
     v9x_d3d_nv50_draw,
-    v9x_d3d_nv50_accepts
+    v9x_d3d_nv50_accepts,
+    0,                                  /* draw_indexed */
+    0,                                  /* draw_tnl */
+    0,                                  /* tnl_available */
+    0,                                  /* lock_surface */
+    0,                                  /* unlock_surface */
+    0,                                  /* draw_shader */
+    v9x_d3d_nv50_surface_written
 };

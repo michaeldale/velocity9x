@@ -78,8 +78,37 @@ static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_NV50_TEXTURE *texture,
                    struct v9x_nv50_d3d_state *state, v9x_u32 *specular)
 {
-    return v9x_d3d_nv50_map_draw(draw, texture, registers, state, tic, tsc,
-                                 specular);
+    return v9x_d3d_nv50_map_draw(draw, texture, 0, registers, state, tic,
+                                 tsc, specular);
+}
+
+/* A 640x480 Z16 buffer's shadow view: the colour through the kind-70h
+ * window, the Z through the Z16 window, both tile mode 10h. */
+static void base_shadow(V9X_D3D_NV50_SHADOW_VIEW *view)
+{
+    memset(view, 0, sizeof(*view));
+    view->colour.address = V9X_NV50_VM_TILED + 0x00500000ul;
+    view->colour.width = 640ul;
+    view->colour.height = 480ul;
+    view->colour.tile_mode = V9X_D3D_NV50_TILE_MODE;
+    view->colour.tiled = 1ul;
+    view->zeta.address = V9X_NV50_VM_Z16 + 0x00400000ul;
+    view->zeta.width = 640ul;
+    view->zeta.height = 480ul;
+    view->zeta.tile_mode = V9X_D3D_NV50_TILE_MODE;
+    view->zeta.tiled = 1ul;
+    view->zeta_format = V9X_NV50_3D_ZETA_Z16;
+    view->with_zeta = 1ul;
+}
+
+static v9x_u32 map_shadow(const V9X_R3D_DRAW *draw,
+                          const V9X_D3D_NV50_SHADOW_VIEW *view,
+                          struct v9x_nv50_d3d_state *state)
+{
+    v9x_u32 specular;
+
+    return v9x_d3d_nv50_map_draw(draw, 0, view, registers, state, tic, tsc,
+                                 &specular);
 }
 
 static void test_target(void)
@@ -128,8 +157,10 @@ static void test_depth(void)
     struct v9x_nv50_d3d_state state;
     v9x_u32 specular;
 
-    /* Step 5a: a Z-tested draw on a bound buffer waits for the shadow
-     * targets; a bound buffer with Z off draws without it. */
+    V9X_D3D_NV50_SHADOW_VIEW view;
+
+    /* With no shadow, a Z-tested draw on a bound buffer is refused; a
+     * bound buffer with Z off draws without it. */
     base_draw(&draw);
     draw.depth.object = &depth_object;
     draw.depth.offset = 0x00300000ul;
@@ -137,11 +168,105 @@ static void test_depth(void)
     draw.depth.width = 640ul;
     draw.depth.height = 480ul;
     draw.depth_enable = 1ul;
+    draw.depth_write = 1ul;
     CHECK(map(&draw, 0, &state, &specular) ==
           V9X_D3D_NV50_REFUSE_DEPTH_SURFACE);
     draw.depth_enable = 0ul;
     CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
     CHECK(state.has_zeta == 0ul);
+
+    /* Step 5b: with the shadow, the draw goes to the tiled colour with
+     * the tiled Z, its function and write as asked; the scissor stays
+     * the target's. */
+    base_shadow(&view);
+    draw.depth_enable = 1ul;
+    draw.depth_func = V9X_R3D_CMP_LESSEQUAL;
+    CHECK(map_shadow(&draw, &view, &state) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.target.address == view.colour.address &&
+          state.target.tiled == 1ul &&
+          state.target.tile_mode == V9X_D3D_NV50_TILE_MODE &&
+          state.target.width == 640ul && state.target.height == 480ul);
+    CHECK(state.target_format == V9X_NV50_3D_RT_B5G6R5);
+    CHECK(state.has_zeta == 1ul &&
+          state.zeta.address == view.zeta.address &&
+          state.zeta_format == V9X_NV50_3D_ZETA_Z16);
+    CHECK(state.depth_test == 1ul && state.depth_write == 1ul &&
+          state.depth_func == 0x0203ul);
+    CHECK(state.scissor_right == 640ul && state.scissor_bottom == 480ul);
+    draw.depth_write = 0ul;
+    CHECK(map_shadow(&draw, &view, &state) == V9X_D3D_NV50_REFUSE_NONE &&
+          state.depth_write == 0ul);
+    draw.depth_func = 0ul;
+    CHECK(map_shadow(&draw, &view, &state) ==
+          V9X_D3D_NV50_REFUSE_DEPTH_FUNC);
+
+    /* A shadow smaller than the target cannot hold it. */
+    draw.depth_func = V9X_R3D_CMP_LESS;
+    view.colour.width = 320ul;
+    CHECK(map_shadow(&draw, &view, &state) == V9X_D3D_NV50_REFUSE_TARGET);
+
+    /* The shadow holding the target, the draw without Z: into the
+     * shadow, untested. */
+    base_shadow(&view);
+    view.with_zeta = 0ul;
+    draw.depth_enable = 0ul;
+    CHECK(map_shadow(&draw, &view, &state) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.target.address == view.colour.address &&
+          state.has_zeta == 0ul);
+    /* ... but a Z-tested draw needs a shadow with its Z buffer. */
+    draw.depth_enable = 1ul;
+    CHECK(map_shadow(&draw, &view, &state) ==
+          V9X_D3D_NV50_REFUSE_DEPTH_SURFACE);
+}
+
+static void test_tiled(void)
+{
+    V9X_D3D_NV50_SHADOW_VIEW view;
+    struct v9x_nv50_d3d_state state;
+    V9X_R3D_VERTEX vertices[6];
+    v9x_u32 pitch;
+    v9x_u32 rows;
+    v9x_u32 index;
+
+    /* Rows of 64 bytes and whole 8-row blocks, as the probe's 128x72
+     * Z16 and colour surfaces were. */
+    v9x_d3d_nv50_tiled_layout(640ul, 480ul, 2ul, &pitch, &rows);
+    CHECK(pitch == 1280ul && rows == 480ul);
+    v9x_d3d_nv50_tiled_layout(100ul, 75ul, 4ul, &pitch, &rows);
+    CHECK(pitch == 448ul && rows == 80ul);
+    v9x_d3d_nv50_tiled_layout(1ul, 1ul, 2ul, &pitch, &rows);
+    CHECK(pitch == 64ul && rows == 8ul);
+
+    /* A depth fill: Z ALWAYS with writes, colour masked, the scissor the
+     * rectangle, two triangles at value / 65535, no half-pixel move. */
+    base_shadow(&view);
+    CHECK(v9x_d3d_nv50_depth_fill_draw(&view, 10ul, 20ul, 110ul, 70ul,
+                                       0xfffful, registers, &state,
+                                       vertices));
+    CHECK(state.target.address == view.colour.address &&
+          state.target.tiled == 1ul);
+    CHECK(state.color_mask == 0ul);
+    CHECK(state.has_zeta == 1ul && state.depth_test == 1ul &&
+          state.depth_write == 1ul &&
+          state.depth_func == V9X_NV50_D3D_CMP_ALWAYS);
+    CHECK(state.scissor_left == 10ul && state.scissor_top == 20ul &&
+          state.scissor_right == 110ul && state.scissor_bottom == 70ul);
+    CHECK(state.blend == 0ul && state.alpha_test == 0ul &&
+          state.textured == 0ul && state.fp_variant == 0ul &&
+          state.fp_registers == registers[0]);
+    for (index = 0ul; index < 6ul; ++index) {
+        CHECK(vertices[index].sz == 1.0f && vertices[index].rhw == 1.0f);
+    }
+    CHECK(vertices[0].sx == 10.0f && vertices[0].sy == 20.0f);
+    CHECK(vertices[4].sx == 110.0f && vertices[4].sy == 70.0f);
+    CHECK(v9x_d3d_nv50_depth_fill_draw(&view, 0ul, 0ul, 640ul, 480ul, 0ul,
+                                       registers, &state, vertices) &&
+          vertices[0].sz == 0.0f);
+    /* Empty, or past the buffer. */
+    CHECK(!v9x_d3d_nv50_depth_fill_draw(&view, 5ul, 5ul, 5ul, 9ul, 0ul,
+                                        registers, &state, vertices));
+    CHECK(!v9x_d3d_nv50_depth_fill_draw(&view, 0ul, 0ul, 641ul, 9ul, 0ul,
+                                        registers, &state, vertices));
 }
 
 static void test_blend_and_alpha(void)
@@ -368,6 +493,7 @@ unsigned int v9x_run_d3d_nv50_map_tests(void)
     failures = 0u;
     test_target();
     test_depth();
+    test_tiled();
     test_blend_and_alpha();
     test_texture();
     test_lit();
