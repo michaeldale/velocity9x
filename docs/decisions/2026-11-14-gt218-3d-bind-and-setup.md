@@ -9,7 +9,7 @@ on M-BXMFA8 (GeForce 210, GT218 A8), boot 117. Evidence:
 
 ## What ran
 
-`V9XN5CH /lean /3d`, the probe built from the code committed as 3c10c1b0
+`V9XN5CH /lean /3d`, the probe built from the code committed as 213fd021
 (the report says `ad574774-dirty`: it was built from the tree just
 before that commit). On a fresh boot, before any DirectDraw use, the
 probe built its own channel at video memory 128 MiB with the 3D object
