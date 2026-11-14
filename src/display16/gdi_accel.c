@@ -356,6 +356,7 @@ static DWORD v9x_gdi_nv50_reserve;
  * asked at Enable it kept the arm off for the whole first boot
  * (M-BXMFA8, step 5.4). */
 static DWORD (*v9x_gdi_nv50_reserve_hook)(void);
+static WORD v9x_gdi_nv50_live(void);
 #endif
 
 /*
@@ -625,7 +626,15 @@ void __loadds FAR PASCAL V9xGdiBeginAccessSlow(void)
  */
 void v9x_gdi_accel_hold(WORD held)
 {
-    if (held != 0u && v9x_gdi_engine_live != 0u) {
+    /* The GT218 has nothing to wait for until the HAL's channel exists,
+     * and its idle test reads PFIFO, which is unmeasured before then (see
+     * the NV50 arm of v9x_gdi_accel_configure). */
+    if (held != 0u && v9x_gdi_engine_live != 0u
+#ifdef V9X_NVIDIA_FAMILY
+        && (v9x_gdi_engine_type != V9X_DD_ENGINE_TYPE_NV50 ||
+            v9x_gdi_nv50_live() != 0u)
+#endif
+        ) {
         V9xGdiBeginAccessSlow();
     }
     v9x_gdi_held = held;
@@ -1842,9 +1851,14 @@ void v9x_gdi_accel_configure(void)
         /* All of BAR0, which the mini-VDD mapped after checking PMC_BOOT_0
          * names chipset A8h. Live here means the arm can draw when the
          * HAL's channel exists; v9x_gdi_nv50_live asks that, and reads
-         * the reserve then, because it is not known yet at Enable. */
-        if (V9xNv3Selector(control_base) != 0u &&
-            V9xNv3Read(V9X_NV50_PFIFO_IB_GET) != 0xfffffffful) {
+         * the reserve then, because it is not known yet at Enable.
+         * Nothing is read here: at boot PFIFO is as the BIOS left it,
+         * and a PFIFO read in that state is unmeasured on this card,
+         * where reads have hung it (USERD, runs 3 and 6). d96e5bb8 read
+         * IB get here and M-BXMFA8 did not come back from its first
+         * boot. The first read is v9x_gdi_nv50_live's, of the two
+         * registers the HAL reads in the same state. */
+        if (V9xNv3Selector(control_base) != 0u) {
             v9x_gdi_nv50_reserve_hook = device->engine_reserve_offset;
             v9x_gdi_engine_live = 1u;
         }
