@@ -6,6 +6,22 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.51.0 - not yet released
 
+- **`intel-gma` package, HD 4600 (Haswell): environment bump mapping and
+  DOT3 bump mapping in Direct3D 8 and 9 programs.** A program that sets
+  a bump-map texture stage (`BUMPENVMAP`, up to three stages) or a DOT3
+  stage (`DOTPRODUCT3`) is now drawn, and the driver advertises both.
+  3DMark 2001 SE's two bump tests, which read "Not supported by
+  hardware", run: Environment Bump Mapping at 48.0 fps and DOT3 Bump
+  Mapping at 29.0 fps, in a full run of all 21 tests that scored 2524.
+  The texture factor is honoured in these stages and in cube-mapped
+  ones. Measured on one HD 4600 at a 16-bit desktop; nobody has compared
+  either test's picture with another card's
+  ([issue](docs/issues/2026-11-14-haswell-3dmark2001se-dot3-renderer-fault.md)
+  for a fault in the DOT3 test that turned out to be a test tool of
+  ours). The GMA 900 and 950 class (Gen3), which also runs pixel
+  shaders, shares the code and has not run it. DirectX 7 programs are
+  unchanged
+  ([record](docs/decisions/2026-11-14-dot3-and-bump-env-stage-ops.md)).
 - **`intel-gma` package, GMA X3100 (GM965): 32 MiB of texture memory in
   system RAM**, as the GMA 950 got in 0.49.0. The BIOS gives this chip at
   most 8 MiB, of which Direct3D could use about 4.5. The driver now maps

@@ -288,6 +288,10 @@ typedef struct v9x_d3d_context {
     float ddi8_ps_const[8][4];
     V9X_D3D_PS_STAGE ddi8_ps_stage[4];
     DWORD ddi8_ps_triangles;
+    /* D3DRENDERSTATE_TEXTUREFACTOR as set (D3DCOLOR; ContextCreate sets
+     * Direct3D's opaque white): D3DTA_TFACTOR in a stage drawn through
+     * v9x_d3d_ps_fixed. No fixed-function kernel reads it. */
+    DWORD texture_factor;
 } V9X_D3D_CONTEXT;
 
 /*

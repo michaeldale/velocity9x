@@ -1,0 +1,60 @@
+== run d1
+Caps patch: [36] and ffffffff or 00800000
+Validate experiment mask 500
+D ebp 00b6f4e4 tci 00000000 00000000 00000002 04000220 00b6f2dc 019f78cf 00000000 0000003c
+D dim 00000000 00000000 019f52cf 00a33460 0000003c 00000220 00000044 00000002
+D ttff at 00b6f4a0: 00000002 00000002 00ca0890 00ca08b0 00b6f598 020721ac 00c98e80 0087a7f8
+D ttff[2] cleared
+== run d2
+Caps patch: [36] and ffffffff or 00800000
+Validate experiment mask 500
+D ebp 00b6f4e4 tci 00000000 00000000 00000002 04000220 00b6f2dc 019f78cf 00000000 0000003c
+D dim 00000000 00000000 019f52cf 00a33460 0000003c 00000220 00000044 00000002
+D ttff at 00b6f4a0: 00000002 00000002 00ca0890 00ca08b0 00b6f598 020721ac 00c98e80 0087a7f8
+D entry 2 at 00b6f298 was 00000002, cleared
+== run vb2
+D dim 00000000 00000000 019f52cf 00a33880 0000003c 00000220 00000044 00000002
+D ttff at 00b6f4a0: 00000002 00000002 00cacf10 00cacf30 00b6f598 020821ac 00c9f1a0 0087a7f8
+Validate experiment mask 300
+D ebp 00b6f4e4 tci 00000000 00000000 00000002 30302057 32663662 6e203839 3020776f 30303030
+D dim 00000000 00000000 019f52cf 00a33460 0000003c 00000220 00000044 00000002
+D ttff at 00b6f4a0: 00000002 00000002 00ca0890 00ca08b0 00b6f598 020721ac 00c98e80 0087a7f8
+== run tlv1
+D ttff at 00b6f4a0: 00000002 00000002 00ca0890 00ca08b0 00b6f598 020721ac 00c98e80 0087a7f8
+Caps patch: [7] and ffffffff or 00000080
+Validate experiment mask 100
+D ebp 00b6f4e4 tci 00000000 00000000 00000044 04000220 00b6f2dc 019f78cf 00000000 0000003c
+D dim 00000000 00000000 019f52cf 00a33460 0000003c 00000220 00000044 00000000
+D ttff at 00b6f4a0: 00000002 00000002 00ca0890 00ca08b0 00b6f598 020721ac 00c98e80 0087a7f8
+== run vb2, vertex buffers and the watched slot before the DOT3 set-up
+W 00b6f298 now 00000002 (+4 00000000 +8 00b6f2b0 +c 00a33460)
+CreateVertexBuffer 80 usage 228 fvf 44 pool 2 -> 00000000
+CreateVertexBuffer 96 usage 218 fvf 142 pool 0 -> 00000000
+CreateVertexBuffer 96 usage 218 fvf 142 pool 0 -> 00000000
+CreateVertexBuffer 1152 usage 218 fvf 152 pool 0 -> 00000000
+CreateVertexBuffer 3456 usage 218 fvf 152 pool 0 -> 00000000
+CreateVertexBuffer 6912 usage 218 fvf 152 pool 0 -> 00000000
+CreateVertexBuffer 3456 usage 218 fvf 152 pool 0 -> 00000000
+CreateVertexBuffer 96 usage 218 fvf 142 pool 0 -> 00000000
+W 00b6f298 now 00000002 (+4 04000220 +8 00b6f2dc +c 019f78cf)
+CreateVertexBuffer 60 usage 220 fvf 44 pool 2 -> 00000000
+CreateVertexBuffer 60 usage 220 fvf 44 pool 2 -> 00000000
+== run m1, objects without a matrix
+M no matrix 2: inst 00c964a0 list 00000000-00000000 prim 00c96570 out 00c93430 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00c9cd20 list 00000000-00000000 prim 00c9bb00 out 00c9a160 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00ca61a0 list 00000000-00000000 prim 00ca60b0 out 00ca7c50 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00caa830 list 00000000-00000000 prim 00caa7f0 out 00cacc20 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00caacb0 list 00000000-00000000 prim 00caac70 out 00caaa30 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00cac440 list 00000000-00000000 prim 00cac400 out 00cac330 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00cac8b0 list 00000000-00000000 prim 00cac870 out 00cac610 material 00c9bc10 info 00c9f350 transf 00000004
+M no matrix 2: inst 00caddd0 list 00000000-00000000 prim 00cadd90 out 00cac050 material 00c9bc10 info 00c9f350 transf 00000004
+== run p1, the DOT3 material through its set-up
+P init mat 00c9bc10 a1 4 a2 3 info 00c9f350 src 00000000 transf 00000000 ret 004e70de
+P setTexture mat 00c9bc10 a1 0 a2 c9e9e0 info 00c9f350 src 00000049 transf 00000000 ret 004e70f9
+P setTexture mat 00c9bc10 a1 1 a2 c9f760 info 00c9f350 src 00000049 transf 00000000 ret 004e7114
+P setTexture mat 00c9bc10 a1 2 a2 c9f630 info 00c9f350 src 00000049 transf 00000000 ret 004e712f
+P setTexture mat 00c9bc10 a1 3 a2 c9f450 info 00c9f350 src 00000049 transf 00000000 ret 004e714a
+P disableLighting mat 00c9bc10 a1 ca1030 a2 ca0890 info 00c9f350 src 00000049 transf 00000000 ret 004e7170
+P setDiffuseSource mat 00c9bc10 a1 1 a2 ca1030 info 00c9f350 src 00000049 transf 00000000 ret 004e7181
+P setSpecularSource mat 00c9bc10 a1 1 a2 ca1030 info 00c9f350 src 00000049 transf 00000000 ret 004e7192
+P getDeviceMaterial mat 00c9bc10 a1 ca1030 a2 ca0890 info 00c9f350 src 00000049 transf 00000000 ret 004e71f2

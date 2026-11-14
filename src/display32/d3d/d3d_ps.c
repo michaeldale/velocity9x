@@ -284,8 +284,12 @@ void v9x_d3d_ps_forget(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
 #define V9X_D3D_PSF_OP_MOV   1ul
 #define V9X_D3D_PSF_OP_ADD   2ul
 #define V9X_D3D_PSF_OP_MUL   5ul
+#define V9X_D3D_PSF_OP_DP3   8ul
 #define V9X_D3D_PSF_OP_TEX   66ul
+#define V9X_D3D_PSF_OP_TEXBEM 67ul
 #define V9X_D3D_PSF_REG      0x80000000ul
+/* A source's modifier field (27:24): _bx2, 2x - 1. */
+#define V9X_D3D_PSF_SIGNED   ((v9x_u32)V9X_PS11_SRC_SIGN << 24)
 #define V9X_D3D_PSF_SATURATE 0x00100000ul
 #define V9X_D3D_PSF_XYZW     (0xe4ul << 16)
 #define V9X_D3D_PSF_MASK_ALL 0xful
@@ -301,11 +305,20 @@ void v9x_d3d_ps_forget(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
 #define V9X_D3D_PSF_TOP_MODULATE2X 5ul
 #define V9X_D3D_PSF_TOP_MODULATE4X 6ul
 #define V9X_D3D_PSF_TOP_ADD        7ul
+#define V9X_D3D_PSF_TOP_BUMPENVMAP 22ul
+#define V9X_D3D_PSF_TOP_BUMPENVMAPLUMINANCE 23ul
+#define V9X_D3D_PSF_TOP_DOTPRODUCT3 24ul
 #define V9X_D3D_PSF_TA_DIFFUSE     0ul
 #define V9X_D3D_PSF_TA_CURRENT     1ul
 #define V9X_D3D_PSF_TA_TEXTURE     2ul
+#define V9X_D3D_PSF_TA_TFACTOR     3ul
 #define V9X_D3D_PSF_TA_SPECULAR    4ul
 #define V9X_D3D_PSF_TA_SELECTOR    0x0000000ful
+
+/* The texture factor's constants (v9x_d3d_ps_fixed_env): as set, and
+ * signed for DOTPRODUCT3. */
+#define V9X_D3D_PSF_C_FACTOR        0ul
+#define V9X_D3D_PSF_C_FACTOR_SIGNED 1ul
 
 typedef struct v9x_d3d_psf {
     v9x_u32 *tokens;
@@ -348,9 +361,32 @@ static v9x_u32 v9x_d3d_psf_source(v9x_u32 arg, v9x_u32 stage)
                          V9X_D3D_PSF_XYZW
                    : v9x_d3d_psf_reg(V9X_PS11_FILE_TEMP, 0ul) |
                          V9X_D3D_PSF_XYZW;
+    case V9X_D3D_PSF_TA_TFACTOR:
+        return v9x_d3d_psf_reg(V9X_PS11_FILE_CONST, V9X_D3D_PSF_C_FACTOR) |
+               V9X_D3D_PSF_XYZW;
     default:
         return 0ul;
     }
+}
+
+/* The same argument read signed, as DOTPRODUCT3 reads both of its: _bx2
+ * on a register, and for the factor the constant that already holds it
+ * signed, so no constant carries a modifier. */
+static v9x_u32 v9x_d3d_psf_source_signed(v9x_u32 arg, v9x_u32 stage)
+{
+    if (arg == V9X_D3D_PSF_TA_TFACTOR) {
+        return v9x_d3d_psf_reg(V9X_PS11_FILE_CONST,
+                               V9X_D3D_PSF_C_FACTOR_SIGNED) |
+               V9X_D3D_PSF_XYZW;
+    }
+    return v9x_d3d_psf_source(arg, stage) | V9X_D3D_PSF_SIGNED;
+}
+
+/* A bump op of either form. */
+static int v9x_d3d_psf_is_bump(v9x_u32 op)
+{
+    return op == V9X_D3D_PSF_TOP_BUMPENVMAP ||
+           op == V9X_D3D_PSF_TOP_BUMPENVMAPLUMINANCE;
 }
 
 /* Whether an op has a translation, and whether it reads arg1 and arg2. */
@@ -369,6 +405,7 @@ static int v9x_d3d_psf_op_reads(v9x_u32 op, int *reads1, int *reads2)
     case V9X_D3D_PSF_TOP_MODULATE2X:
     case V9X_D3D_PSF_TOP_MODULATE4X:
     case V9X_D3D_PSF_TOP_ADD:
+    case V9X_D3D_PSF_TOP_DOTPRODUCT3:
         *reads1 = 1;
         *reads2 = 1;
         return 1;
@@ -378,13 +415,17 @@ static int v9x_d3d_psf_op_reads(v9x_u32 op, int *reads1, int *reads2)
 }
 
 /* Whether one combine (op, args) is translatable on `stage`, and whether
- * it samples the stage's texture. */
+ * it samples the stage's texture. DOTPRODUCT3 is a colour op only: dp3
+ * cannot write alpha alone in 1.1. */
 static int v9x_d3d_psf_check(v9x_u32 op, v9x_u32 arg1, v9x_u32 arg2,
-                             v9x_u32 stage, int *samples)
+                             v9x_u32 stage, int is_alpha, int *samples)
 {
     int reads1;
     int reads2;
 
+    if (is_alpha && op == V9X_D3D_PSF_TOP_DOTPRODUCT3) {
+        return 0;
+    }
     if (!v9x_d3d_psf_op_reads(op, &reads1, &reads2) ||
         (reads1 && v9x_d3d_psf_source(arg1, stage) == 0ul) ||
         (reads2 && v9x_d3d_psf_source(arg2, stage) == 0ul)) {
@@ -416,6 +457,15 @@ static void v9x_d3d_psf_combine(V9X_D3D_PSF *b, v9x_u32 op, v9x_u32 arg1,
     }
     dst = v9x_d3d_psf_reg(V9X_PS11_FILE_TEMP, 0ul) | (shift << 24) |
           V9X_D3D_PSF_SATURATE | (mask << 16);
+    if (op == V9X_D3D_PSF_TOP_DOTPRODUCT3) {
+        /* Both arguments signed; the sum of 2x - 1 products is the 4x
+         * of the half-biased ones. */
+        v9x_d3d_psf_put(b, V9X_D3D_PSF_OP_DP3);
+        v9x_d3d_psf_put(b, dst);
+        v9x_d3d_psf_put(b, v9x_d3d_psf_source_signed(arg1, stage));
+        v9x_d3d_psf_put(b, v9x_d3d_psf_source_signed(arg2, stage));
+        return;
+    }
     v9x_d3d_psf_put(b, opcode | (coissue ? V9X_D3D_PSF_COISSUE : 0ul));
     v9x_d3d_psf_put(b, dst);
     if (op == V9X_D3D_PSF_TOP_SELECT2) {
@@ -473,34 +523,52 @@ static void v9x_d3d_psf_stage(V9X_D3D_PSF *b, const V9X_D3D_STATE_STAGE *s,
     }
 }
 
-v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stage0,
-                         const V9X_D3D_STATE_STAGE *stage1, int two_stages,
+v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stages, v9x_u32 count,
                          int specular,
                          v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS])
 {
     V9X_D3D_PSF b;
-    int samples0 = 0;
-    int samples1 = 0;
-    int enabled0 = stage0->color_op != V9X_D3D_PSF_TOP_DISABLE;
-    int enabled1 = enabled0 && two_stages &&
-                   stage1->color_op != V9X_D3D_PSF_TOP_DISABLE;
+    int enabled[V9X_D3D_PS_FIXED_STAGES];
+    int bump[V9X_D3D_PS_FIXED_STAGES];
+    int samples[V9X_D3D_PS_FIXED_STAGES];
+    v9x_u32 i;
 
-    /* Every combine that runs must translate before anything is written. */
-    if (enabled0 &&
-        (!v9x_d3d_psf_check(stage0->color_op, stage0->color_arg1,
-                            stage0->color_arg2, 0ul, &samples0) ||
-         (stage0->alpha_op != V9X_D3D_PSF_TOP_DISABLE &&
-          !v9x_d3d_psf_check(stage0->alpha_op, stage0->alpha_arg1,
-                             stage0->alpha_arg2, 0ul, &samples0)))) {
-        return 0ul;
+    if (count > V9X_D3D_PS_FIXED_STAGES) {
+        count = V9X_D3D_PS_FIXED_STAGES;
     }
-    if (enabled1 &&
-        (!v9x_d3d_psf_check(stage1->color_op, stage1->color_arg1,
-                            stage1->color_arg2, 1ul, &samples1) ||
-         (stage1->alpha_op != V9X_D3D_PSF_TOP_DISABLE &&
-          !v9x_d3d_psf_check(stage1->alpha_op, stage1->alpha_arg1,
-                             stage1->alpha_arg2, 1ul, &samples1)))) {
-        return 0ul;
+    /* The cascade ends at the first disabled stage. A bump stage runs no
+     * combine of its own, so nothing of it is checked; every other
+     * combine that runs must translate before anything is written. */
+    for (i = 0ul; i < V9X_D3D_PS_FIXED_STAGES; ++i) {
+        const V9X_D3D_STATE_STAGE *s = &stages[i < count ? i : 0ul];
+
+        enabled[i] = i < count && (i == 0ul || enabled[i - 1ul]) &&
+                     s->color_op != V9X_D3D_PSF_TOP_DISABLE;
+        bump[i] = enabled[i] && s->color_op == V9X_D3D_PSF_TOP_BUMPENVMAP;
+        samples[i] = 0;
+        if (!enabled[i] || bump[i]) {
+            continue;
+        }
+        if (!v9x_d3d_psf_check(s->color_op, s->color_arg1, s->color_arg2, i,
+                               0, &samples[i]) ||
+            (s->alpha_op != V9X_D3D_PSF_TOP_DISABLE &&
+             !v9x_d3d_psf_check(s->alpha_op, s->alpha_arg1, s->alpha_arg2,
+                                i, 1, &samples[i]))) {
+            return 0ul;
+        }
+    }
+    /* A bump map is read only for the next stage's lookup to move; a bump
+     * stage moving another bump stage is not drawn. */
+    for (i = 0ul; i < V9X_D3D_PS_FIXED_STAGES; ++i) {
+        if (!bump[i]) {
+            continue;
+        }
+        if (i + 1ul < V9X_D3D_PS_FIXED_STAGES) {
+            if (bump[i + 1ul]) {
+                return 0ul;
+            }
+            samples[i] = samples[i + 1ul];
+        }
     }
 
     b.tokens = tokens;
@@ -508,26 +576,39 @@ v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stage0,
     b.failed = 0;
     v9x_d3d_psf_put(&b, V9X_D3D_PSF_VERSION);
     /* 1.1 samples before any arithmetic. */
-    if (samples0) {
-        v9x_d3d_psf_put(&b, V9X_D3D_PSF_OP_TEX);
-        v9x_d3d_psf_put(&b, v9x_d3d_psf_reg(V9X_PS11_FILE_TEXTURE, 0ul) |
-                                (V9X_D3D_PSF_MASK_ALL << 16));
+    for (i = 0ul; i < V9X_D3D_PS_FIXED_STAGES; ++i) {
+        if (!samples[i]) {
+            continue;
+        }
+        if (i != 0ul && bump[i - 1ul]) {
+            /* texbem tN, tN-1: stage N at its coordinates moved by the
+             * bump matrix times the bump map's (du, dv). */
+            v9x_d3d_psf_put(&b, V9X_D3D_PSF_OP_TEXBEM);
+            v9x_d3d_psf_put(&b, v9x_d3d_psf_reg(V9X_PS11_FILE_TEXTURE, i) |
+                                    (V9X_D3D_PSF_MASK_ALL << 16));
+            v9x_d3d_psf_put(&b,
+                            v9x_d3d_psf_reg(V9X_PS11_FILE_TEXTURE, i - 1ul) |
+                                V9X_D3D_PSF_XYZW);
+        } else {
+            v9x_d3d_psf_put(&b, V9X_D3D_PSF_OP_TEX);
+            v9x_d3d_psf_put(&b, v9x_d3d_psf_reg(V9X_PS11_FILE_TEXTURE, i) |
+                                    (V9X_D3D_PSF_MASK_ALL << 16));
+        }
     }
-    if (samples1) {
-        v9x_d3d_psf_put(&b, V9X_D3D_PSF_OP_TEX);
-        v9x_d3d_psf_put(&b, v9x_d3d_psf_reg(V9X_PS11_FILE_TEXTURE, 1ul) |
-                                (V9X_D3D_PSF_MASK_ALL << 16));
-    }
-    if (enabled0) {
-        v9x_d3d_psf_stage(&b, stage0, 0ul);
+    if (enabled[0] && !bump[0]) {
+        v9x_d3d_psf_stage(&b, &stages[0], 0ul);
     } else {
-        /* A disabled stage 0 ends the cascade: the vertex colour. */
+        /* A disabled stage 0 ends the cascade: the vertex colour. A bump
+         * stage passes it on. */
         v9x_d3d_psf_combine(&b, V9X_D3D_PSF_TOP_SELECT1,
                             V9X_D3D_PSF_TA_DIFFUSE, 0ul, 0ul,
                             V9X_D3D_PSF_MASK_ALL, 0);
     }
-    if (enabled1) {
-        v9x_d3d_psf_stage(&b, stage1, 1ul);
+    /* Later stages work on r0; a bump stage there leaves it as it is. */
+    for (i = 1ul; i < V9X_D3D_PS_FIXED_STAGES; ++i) {
+        if (enabled[i] && !bump[i]) {
+            v9x_d3d_psf_stage(&b, &stages[i], i);
+        }
     }
     if (specular) {
         v9x_d3d_psf_combine(&b, V9X_D3D_PSF_TOP_ADD,
@@ -536,4 +617,53 @@ v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stage0,
     }
     v9x_d3d_psf_put(&b, V9X_D3D_PSF_END);
     return b.failed ? 0ul : b.count;
+}
+
+int v9x_d3d_ps_fixed_needs(const V9X_D3D_STATE_STAGE *stages, v9x_u32 count)
+{
+    v9x_u32 i;
+
+    for (i = 0ul; i < count && i < V9X_D3D_PS_FIXED_STAGES; ++i) {
+        if (stages[i].color_op == V9X_D3D_PSF_TOP_DISABLE) {
+            return 0;
+        }
+        if (stages[i].color_op == V9X_D3D_PSF_TOP_DOTPRODUCT3 ||
+            v9x_d3d_psf_is_bump(stages[i].color_op)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void v9x_d3d_ps_fixed_env(const V9X_PS11_PROGRAM *program,
+                          const V9X_D3D_PS_STAGE stage[V9X_D3D_PS_STAGES],
+                          v9x_u32 factor, V9X_PS11_ENV *env)
+{
+    v9x_u32 i;
+    v9x_u32 k;
+
+    /* D3DCOLOR is alpha, red, green, blue from the top byte down. */
+    for (k = 0ul; k < 4ul; ++k) {
+        v9x_u32 shift = k == 3ul ? 24ul : 16ul - 8ul * k;
+        float value = (float)((factor >> shift) & 0xfful) / 255.0f;
+
+        env->c[V9X_D3D_PSF_C_FACTOR][k] = value;
+        env->c[V9X_D3D_PSF_C_FACTOR_SIGNED][k] = 2.0f * value - 1.0f;
+    }
+
+    for (i = 0ul; i < program->count; ++i) {
+        const V9X_PS11_INST *inst = &program->inst[i];
+        v9x_u32 to = inst->dst_reg;
+        v9x_u32 from = inst->src[0].reg;
+
+        if (inst->op != V9X_PS11_TEXBEM || to >= V9X_D3D_PS_STAGES ||
+            from >= V9X_D3D_PS_STAGES) {
+            continue;
+        }
+        for (k = 0ul; k < 4ul; ++k) {
+            env->bump[to][k] = stage[from].bump[k];
+        }
+        env->luminance[to][0] = stage[from].lscale;
+        env->luminance[to][1] = stage[from].loffset;
+    }
 }

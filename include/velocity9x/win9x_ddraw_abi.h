@@ -583,7 +583,9 @@ typedef struct v9x_ddhalinfo {
 #define V9X_D3DRENDERSTATE_FOGTABLESTART          36ul
 #define V9X_D3DRENDERSTATE_FOGTABLEEND            37ul
 #define V9X_D3DRENDERSTATE_FOGTABLEDENSITY        38ul
-#define V9X_D3DBLEND_ZERO                           1ul
+/* d3dtypes.h: the D3DCOLOR that D3DTA_TFACTOR reads. */
+#define V9X_D3DRENDERSTATE_TEXTUREFACTOR          60ul
+#define V9X_D3DBLEND_ZERO                          1ul
 #define V9X_D3DBLEND_ONE                            2ul
 #define V9X_D3DBLEND_SRCALPHA                       5ul
 #define V9X_D3DBLEND_INVSRCALPHA                    6ul
@@ -874,6 +876,9 @@ typedef char v9x_assert_misc2_size[
 #define V9X_D3DTEXOPCAPS_MODULATE         0x00000008ul
 #define V9X_D3DTEXOPCAPS_ADD              0x00000040ul
 #define V9X_D3DTEXOPCAPS_BLENDTEXTUREALPHA 0x00001000ul
+/* D3DTOP_BUMPENVMAP (22) and D3DTOP_DOTPRODUCT3 (24). */
+#define V9X_D3DTEXOPCAPS_BUMPENVMAP       0x00200000ul
+#define V9X_D3DTEXOPCAPS_DOTPRODUCT3      0x00800000ul
 
 typedef struct v9x_d3dtransformcaps {
     DWORD dwSize;

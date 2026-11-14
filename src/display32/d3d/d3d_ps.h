@@ -125,23 +125,62 @@ void v9x_d3d_ps_forget(V9X_D3D_PS_SHADER *table, v9x_u32 slots,
                        const void *owner);
 
 /*
- * Fixed-function texture stages 0 and 1 as a ps.1.1 program, so an engine
+ * Fixed-function texture stages 0 to 2 as a ps.1.1 program, so an engine
  * whose fixed-function kernels cannot sample a stage - a cube map - draws
  * it through its shader path, which can. D3D's stage arithmetic: stage 0's
- * CURRENT is the diffuse colour, each stage's result saturated, stage 1
- * only when two_stages, a disabled stage 0 colour the diffuse colour and
+ * CURRENT is the diffuse colour, each stage's result saturated, the
+ * cascade ending at the first disabled stage or at count, a disabled
+ * stage 0 colour the diffuse colour and
  * alpha with nothing sampled, an alpha DISABLE under an enabled colour the
  * input's alpha, and the specular colour added last when specular. Ops
  * SELECTARG1, SELECTARG2, MODULATE, MODULATE2X, MODULATE4X and ADD over
- * DIFFUSE, CURRENT, TEXTURE and SPECULAR, unmodified. Returns the token
- * count, or 0 for anything else, nothing to be drawn so. Host-tested
+ * DIFFUSE, CURRENT, TEXTURE, TFACTOR and SPECULAR, unmodified. Returns the
+ * token count, or 0 for anything else, nothing to be drawn so. Host-tested
  * against the reference interpreter (tests\host\test_d3d_ps.c).
+ *
+ * And the two ops no fixed-function kernel here draws:
+ *
+ *   - DOTPRODUCT3 as a colour op: dp3_sat of both arguments read signed
+ *     (_bx2, 2x - 1), into the colour channels only. The DirectX 8 SDK's
+ *     D3DTEXTUREOP page says a colour DOTPRODUCT3 leaves alpha alone in
+ *     fixed-function stages; that is recalled, not read here. As an alpha
+ *     op it is refused: 1.1's dp3 cannot write alpha alone.
+ *   - BUMPENVMAP on stage N with stage N+1 drawn: stage N+1 is sampled
+ *     by texbem from stage N's texel, and stage N itself passes CURRENT,
+ *     colour and alpha (its own alpha op is not run). That a bump stage
+ *     passes CURRENT is recalled from the reference rasterizer, not
+ *     measured. 3DMark 2001 SE's bump test has the base map on stage 0,
+ *     the bump map on 1 and the environment on 2 (the 4570, boot 247,
+ *     d3d8 proxy). Two bump stages in a row are refused, and so is
+ *     BUMPENVMAPLUMINANCE, no luminance bump format being published
+ *     (V8U8 and Q8W8V8U8 only).
+ *
+ * The texture factor is c0, and c1 holds it signed for DOTPRODUCT3, so no
+ * constant takes a modifier; v9x_d3d_ps_fixed_env fills both.
  */
 #define V9X_D3D_PS_FIXED_DWORDS 48u
+#define V9X_D3D_PS_FIXED_STAGES 3u
 
-v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stage0,
-                         const V9X_D3D_STATE_STAGE *stage1, int two_stages,
+/* stages[0..count-1], count 1 to V9X_D3D_PS_FIXED_STAGES: the stages the
+ * caller has state for. */
+v9x_u32 v9x_d3d_ps_fixed(const V9X_D3D_STATE_STAGE *stages, v9x_u32 count,
                          int specular,
                          v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS]);
+
+/* 1 when the stages that are drawn hold an op only the program above
+ * draws: DOTPRODUCT3 or a bump op as a colour op. */
+int v9x_d3d_ps_fixed_needs(const V9X_D3D_STATE_STAGE *stages, v9x_u32 count);
+
+/*
+ * What a draw under a v9x_d3d_ps_fixed program adds to v9x_d3d_ps_env's
+ * environment: c0 the texture factor (D3DCOLOR, alpha in the top byte) as
+ * r g b a in [0, 1], c1 the same signed; and for each texbem, the bump
+ * matrix and luminance terms of the stage it reads its (du, dv) from,
+ * placed on the stage it samples. Direct3D keeps a fixed-function bump
+ * matrix on the bump map's stage; texbem reads the sampled stage's.
+ */
+void v9x_d3d_ps_fixed_env(const V9X_PS11_PROGRAM *program,
+                          const V9X_D3D_PS_STAGE stage[V9X_D3D_PS_STAGES],
+                          v9x_u32 factor, V9X_PS11_ENV *env);
 
 #endif

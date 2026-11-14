@@ -2564,6 +2564,7 @@ DWORD __stdcall V9xD3dContextCreate(V9X_D3DHAL_CONTEXTCREATEDATA *data)
                 v9x_hal->d3d_diagnostics.uptime_first_d3d = GetTickCount();
             }
             context->specular_enable = 0ul;
+            context->texture_factor = 0xfffffffful;
             context->fog_enable = 0ul;
             context->fog_color = 0ul;
             v9x_d3d_fog_table_init(&context->fog_table);
@@ -3121,6 +3122,9 @@ static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
         break;
     case V9X_D3DRENDERSTATE_SPECULARENABLE:
         context->specular_enable = argument != 0ul;
+        break;
+    case V9X_D3DRENDERSTATE_TEXTUREFACTOR:
+        context->texture_factor = argument;
         break;
     case V9X_D3DRENDERSTATE_FOGCOLOR:
         context->fog_color = argument;
@@ -7181,6 +7185,9 @@ static void v9x_d3d_ps_fan(void *opaque, const v9x_u8 *first,
 #define V9X_D3D_CUBE_DRAW_LOGS 32ul
 
 static DWORD v9x_d3d_cube_draws_logged;
+/* The owner of the stages' own programs (v9x_d3d_ps_fixed_table, below):
+ * its address, which no context can be. */
+static v9x_u32 v9x_d3d_ps_fixed_owner;
 
 static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
                              V9X_D3D_CONTEXT *context,
@@ -7204,6 +7211,13 @@ static void v9x_d3d_ps_begin(const V9X_D3D_ENGINE_OPS *ops,
      * placed it, and samples that stage as one (step 5c). */
     v9x_d3d_ps_env(context->ddi8_ps_const, context->ddi8_ps_stage, 0ul,
                    &batch->shader.env);
+    /* The stages' own program reads the texture factor where an
+     * application's reads its constants, and a bump matrix from the bump
+     * map's stage. */
+    if (shader->owner == (const void *)&v9x_d3d_ps_fixed_owner) {
+        v9x_d3d_ps_fixed_env(&shader->program, context->ddi8_ps_stage,
+                             context->texture_factor, &batch->shader.env);
+    }
     for (s = 0ul; s < V9X_R3D_SHADER_STAGES; ++s) {
         v9x_d3d_ps_texture(context, &context->ddi8_ps_stage[s],
                            &batch->shader.texture[s]);
@@ -7252,8 +7266,6 @@ static v9x_u32 v9x_d3d_ps_fixed_words[V9X_D3D_PS_FIXED_SLOTS]
                                      [V9X_D3D_PS_FIXED_DWORDS];
 static v9x_u32 v9x_d3d_ps_fixed_count[V9X_D3D_PS_FIXED_SLOTS];
 static v9x_u32 v9x_d3d_ps_fixed_next;
-/* Its address is the table's owner, which no context can be. */
-static v9x_u32 v9x_d3d_ps_fixed_owner;
 
 /* Whether a stage's texture handle names a cube map, by the DDSCAPS2 its
  * CreateSurfaceEx recorded: a held copy's own reads zero, which every one
@@ -7270,40 +7282,75 @@ static int v9x_d3d_stage_is_cube(V9X_D3D_CONTEXT *context, DWORD handle)
     return entry != 0 && (entry->caps2 & V9X_DDSCAPS2_CUBEMAP) != 0ul;
 }
 
+/*
+ * The program for a DDI 8 context's stages as they stand, where the engine
+ * runs shaders and the stages want one: a cube bound, or an op only the
+ * program draws - DOTPRODUCT3, BUMPENVMAP (v9x_d3d_ps_fixed_needs). The
+ * token count, 0 for stages the fixed-function path keeps. A draw and
+ * ValidateTextureStageState both ask, the latter with `whole`: only a
+ * program that is every stage the application set is one pass.
+ */
+static v9x_u32 v9x_d3d_ps_fixed_tokens(
+    const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context, int whole,
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS])
+{
+    V9X_D3D_STATE_STAGE stages[V9X_D3D_PS_FIXED_STAGES];
+    int specular = context->specular_enable != 0ul;
+    int two;
+
+    if (ops == 0 || ops->draw_shader == 0 || ops->limits == 0 ||
+        context->ddi8 == 0ul) {
+        return 0ul;
+    }
+    /* Stages 1 and 2 are kept only on an engine that draws two stages
+     * (v9x_d3d_dp2_stage_state); elsewhere stage 0 is all there is. */
+    two = ops->limits->texture_stages >= 2ul;
+    stages[0].color_op = context->stage_color_op;
+    stages[0].color_arg1 = context->stage_color_arg1;
+    stages[0].color_arg2 = context->stage_color_arg2;
+    stages[0].alpha_op = context->stage_alpha_op;
+    stages[0].alpha_arg1 = context->stage_alpha_arg1;
+    stages[0].alpha_arg2 = context->stage_alpha_arg2;
+    stages[1].color_op = context->stage1_color_op;
+    stages[1].color_arg1 = context->stage1_color_arg1;
+    stages[1].color_arg2 = context->stage1_color_arg2;
+    stages[1].alpha_op = context->stage1_alpha_op;
+    stages[1].alpha_arg1 = context->stage1_alpha_arg1;
+    stages[1].alpha_arg2 = context->stage1_alpha_arg2;
+    stages[2].color_op = context->stage2_color_op;
+    stages[2].color_arg1 = context->stage2_color_arg1;
+    stages[2].color_arg2 = context->stage2_color_arg2;
+    stages[2].alpha_op = context->stage2_alpha_op;
+    stages[2].alpha_arg1 = context->stage2_alpha_arg1;
+    stages[2].alpha_arg2 = context->stage2_alpha_arg2;
+
+    /* DOTPRODUCT3 or a bump stage: all three stages, or nothing. */
+    if (v9x_d3d_ps_fixed_needs(stages, two ? 3ul : 1ul)) {
+        return v9x_d3d_ps_fixed(stages, two ? 3ul : 1ul, specular, tokens);
+    }
+    if (!v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[0].texture) &&
+        !(two &&
+          v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[1].texture))) {
+        return 0ul;
+    }
+    /* A cube: stages 0 and 1 as UT2004's were measured, stage 2 not
+     * drawn; so not the whole setup when stage 2 does anything. */
+    if (whole && two && stages[1].color_op != V9X_D3DTOP_DISABLE &&
+        stages[2].color_op != V9X_D3DTOP_DISABLE) {
+        return 0ul;
+    }
+    return v9x_d3d_ps_fixed(stages, two ? 2ul : 1ul, specular, tokens);
+}
+
 static const V9X_D3D_PS_SHADER *v9x_d3d_ps_fixed_shader(
     const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context)
 {
-    V9X_D3D_STATE_STAGE stage0;
-    V9X_D3D_STATE_STAGE stage1;
     v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
     v9x_u32 dwords;
     v9x_u32 slot;
     v9x_u32 i;
-    int two;
 
-    if (ops == 0 || ops->draw_shader == 0 || ops->limits == 0) {
-        return 0;
-    }
-    two = ops->limits->texture_stages >= 2ul;
-    if (!v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[0].texture) &&
-        !(two &&
-          v9x_d3d_stage_is_cube(context, context->ddi8_ps_stage[1].texture))) {
-        return 0;
-    }
-    stage0.color_op = context->stage_color_op;
-    stage0.color_arg1 = context->stage_color_arg1;
-    stage0.color_arg2 = context->stage_color_arg2;
-    stage0.alpha_op = context->stage_alpha_op;
-    stage0.alpha_arg1 = context->stage_alpha_arg1;
-    stage0.alpha_arg2 = context->stage_alpha_arg2;
-    stage1.color_op = context->stage1_color_op;
-    stage1.color_arg1 = context->stage1_color_arg1;
-    stage1.color_arg2 = context->stage1_color_arg2;
-    stage1.alpha_op = context->stage1_alpha_op;
-    stage1.alpha_arg1 = context->stage1_alpha_arg1;
-    stage1.alpha_arg2 = context->stage1_alpha_arg2;
-    dwords = v9x_d3d_ps_fixed(&stage0, &stage1, two,
-                              context->specular_enable != 0ul, tokens);
+    dwords = v9x_d3d_ps_fixed_tokens(ops, context, 0, tokens);
     if (dwords == 0ul) {
         return 0;
     }
@@ -8062,6 +8109,20 @@ DWORD __stdcall V9xD3dValidateTextureStageState(
         return V9X_DDHAL_DRIVER_HANDLED;
     }
 #endif
+    /* Stages a DDI 8 draw takes through their own pixel shader - a cube,
+     * DOTPRODUCT3, BUMPENVMAP - are one pass when that program exists,
+     * whatever the two units would have said of them; only when the
+     * program is the whole setup (v9x_d3d_ps_fixed_tokens). */
+    {
+        v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+
+        if (v9x_d3d_ps_fixed_tokens(v9x_d3d_engine(), context, 1, tokens) !=
+            0ul) {
+            data->dwNumPasses = 1ul;
+            data->ddrval = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
+        }
+    }
     /* With two stages the pair is answered whole: one pass when the
      * engine's two units draw it exactly, refused otherwise; and when
      * stage 1 changes nothing, stage 0 is answered as before. stage_two
@@ -8378,6 +8439,17 @@ static void v9x_d3d_caps8(V9X_D3DCAPS8 *caps)
             caps->MaxSimultaneousTextures = 4ul;
             caps->FVFCaps = (caps->FVFCaps & ~V9X_D3DFVFCAPS_TEXCOORDCOUNTMASK) |
                             V9X_D3D_PS_TEXCOORD_SETS;
+            /* BUMPENVMAP and DOTPRODUCT3 as fixed-function stage ops, drawn
+             * through the stages' own ps.1.1 program (v9x_d3d_ps_fixed),
+             * so only where shaders run and only told to DDI 8. Not
+             * BUMPENVMAPLUMINANCE: no luminance bump format is published.
+             * 3DMark 2001 SE runs both of its bump tests on them (the
+             * 4570, boot 258). Its DOT3 test faulted through boots 247 to
+             * 256 only while a d3d8 logging proxy of ours sat in its
+             * folder: docs\issues\2026-11-14-haswell-3dmark2001se-dot3-
+             * renderer-fault.md. */
+            caps->TextureOpCaps |= V9X_D3DTEXOPCAPS_BUMPENVMAP |
+                                   V9X_D3DTEXOPCAPS_DOTPRODUCT3;
         }
     }
     /* Cube maps, with mips, of power-of-two sides: 3DMark 2001 SE calls

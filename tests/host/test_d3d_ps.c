@@ -234,6 +234,9 @@ static void table_tests(void)
 #define TOP_MODULATE2X 5ul
 #define TOP_ADD        7ul
 #define TOP_BLENDDIFFUSEALPHA 12ul
+#define TOP_BUMPENVMAP 22ul
+#define TOP_BUMPENVMAPLUMINANCE 23ul
+#define TOP_DOT3       24ul
 #define TA_DIFFUSE     0ul
 #define TA_CURRENT     1ul
 #define TA_TEXTURE     2ul
@@ -249,6 +252,28 @@ static void ff_stage(V9X_D3D_STATE_STAGE *s, v9x_u32 cop, v9x_u32 c1,
     s->alpha_op = aop;
     s->alpha_arg1 = a1;
     s->alpha_arg2 = a2;
+}
+
+/* Stages 0 and 1 through the generator's array form: `two` draws both. */
+static v9x_u32 fixed2(const V9X_D3D_STATE_STAGE *s0,
+                      const V9X_D3D_STATE_STAGE *s1, int two, int specular,
+                      v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS])
+{
+    V9X_D3D_STATE_STAGE stages[2];
+
+    stages[0] = *s0;
+    stages[1] = *s1;
+    return v9x_d3d_ps_fixed(stages, two ? 2ul : 1ul, specular, tokens);
+}
+
+static int needs2(const V9X_D3D_STATE_STAGE *s0,
+                  const V9X_D3D_STATE_STAGE *s1, int two)
+{
+    V9X_D3D_STATE_STAGE stages[2];
+
+    stages[0] = *s0;
+    stages[1] = *s1;
+    return v9x_d3d_ps_fixed_needs(stages, two ? 2ul : 1ul);
 }
 
 /* Stage 0's texel and stage 1's, distinct in every channel. */
@@ -279,7 +304,7 @@ static int ff_run(const V9X_D3D_STATE_STAGE *s0,
     v9x_u32 dwords;
     v9x_u32 where;
 
-    dwords = v9x_d3d_ps_fixed(s0, s1, two, specular, tokens);
+    dwords = fixed2(s0, s1, two, specular, tokens);
     if (dwords == 0ul ||
         v9x_ps11_parse(tokens, dwords, &program, &where) != V9X_PS11_OK) {
         return 0;
@@ -360,23 +385,227 @@ static void fixed_tests(void)
     CHECK(ff_run(&s0, &s1, 1, 0, out) &&
           ff_is(out, 0.5f, 0.25f, 1.0f, 0.75f));
 
-    /* Not expressible here: a constant factor, a complemented argument,
-     * an op without a translation. */
-    ff_stage(&s0, TOP_MODULATE, TA_TEXTURE, TA_TFACTOR,
-             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
-    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+    /* Not expressible here: a complemented argument, an op without a
+     * translation. */
     ff_stage(&s0, TOP_MODULATE, TA_TEXTURE | TA_COMPLEMENT, TA_DIFFUSE,
              TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
-    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+    CHECK(fixed2(&s0, &s1, 1, 0, tokens) == 0ul);
     ff_stage(&s0, TOP_BLENDDIFFUSEALPHA, TA_TEXTURE, TA_DIFFUSE,
              TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
-    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
-    /* Nor is stage 1 reading a factor. */
+    CHECK(fixed2(&s0, &s1, 1, 0, tokens) == 0ul);
+}
+
+/* Stage 0's texel a (du, dv) pair; stage 1's its own coordinates, so a
+ * perturbed lookup shows where it read. */
+static void ffb_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                       const float *coords, float rgba[4])
+{
+    (void)user;
+    (void)count;
+    if (stage == 0ul) {
+        rgba[0] = 0.5f; rgba[1] = 0.25f; rgba[2] = 0.0f; rgba[3] = 1.0f;
+    } else {
+        rgba[0] = coords[0]; rgba[1] = coords[1];
+        rgba[2] = 0.5f; rgba[3] = 1.0f;
+    }
+}
+
+/* Three stages: the base texel, a (du, dv) pair, and stage 2's own
+ * coordinates. */
+static void ff3_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                       const float *coords, float rgba[4])
+{
+    if (stage == 0ul) {
+        ff_sample(user, stage, count, coords, rgba);
+    } else {
+        ffb_sample(user, stage == 1ul ? 0ul : 1ul, count, coords, rgba);
+    }
+}
+
+/* As ff_run, with the environment a fixed-function draw is given
+ * (v9x_d3d_ps_fixed_env): the texture factor, and `stages`' bump terms.
+ * Stage 1's coordinates are (0, 0.5). */
+static int ffe_run(const V9X_D3D_STATE_STAGE *s0,
+                   const V9X_D3D_STATE_STAGE *s1,
+                   const V9X_D3D_PS_STAGE stages[V9X_D3D_PS_STAGES],
+                   v9x_u32 factor, v9x_ps11_sample_fn sample, float out[4])
+{
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+    V9X_PS11_PROGRAM program;
+    V9X_PS11_ENV env;
+    V9X_PS11_PIXEL pixel;
+    float none[8][4];
+    v9x_u32 dwords;
+    v9x_u32 where;
+
+    dwords = fixed2(s0, s1, 1, 0, tokens);
+    if (dwords == 0ul ||
+        v9x_ps11_parse(tokens, dwords, &program, &where) != V9X_PS11_OK) {
+        return 0;
+    }
+    memset(none, 0, sizeof(none));
+    v9x_d3d_ps_env(none, stages, 0ul, &env);
+    env.unbound = 0ul;
+    v9x_d3d_ps_fixed_env(&program, stages, factor, &env);
+    memset(&pixel, 0, sizeof(pixel));
+    pixel.v[0][0] = 0.5f; pixel.v[0][1] = 0.25f;
+    pixel.v[0][2] = 1.0f; pixel.v[0][3] = 0.75f;
+    pixel.tc[1][1] = 0.5f;
+    return v9x_ps11_run(&program, &env, &pixel, sample, 0, out);
+}
+
+/*
+ * DOT3, environment bump mapping and the texture factor as fixed-function
+ * stage ops, through the same generator. DOT3 reads both arguments as
+ * signed (2x - 1), saturates the sum and writes the colour channels only;
+ * a BUMPENVMAP stage passes CURRENT and moves the next stage's lookup by
+ * its own matrix times its texel's (du, dv).
+ */
+static void fixed_bump_tests(void)
+{
+    V9X_D3D_STATE_STAGE s0;
+    V9X_D3D_STATE_STAGE s1;
+    V9X_D3D_PS_STAGE stages[V9X_D3D_PS_STAGES];
+    v9x_u32 tokens[V9X_D3D_PS_FIXED_DWORDS];
+    float out[4];
+    v9x_u32 s;
+
+    for (s = 0ul; s < V9X_D3D_PS_STAGES; ++s) {
+        v9x_d3d_ps_stage_reset(&stages[s], s);
+    }
+
+    /* DOT3 of the texel and the vertex colour: (-0.5, 0, 0.5) .
+     * (0, -0.5, 1) is 0.5 in every colour channel; alpha the vertex's. */
+    ff_stage(&s0, TOP_DOT3, TA_TEXTURE, TA_DIFFUSE,
+             TOP_SELECT2, TA_TEXTURE, TA_DIFFUSE);
+    ff_stage(&s1, TOP_DISABLE, TA_TEXTURE, TA_CURRENT,
+             TOP_DISABLE, TA_TEXTURE, TA_CURRENT);
+    CHECK(ff_run(&s0, &s1, 1, 0, out) && ff_is(out, 0.5f, 0.5f, 0.5f, 0.75f));
+    CHECK(needs2(&s0, &s1,1));
+
+    /* On stage 1 against CURRENT, a negative sum saturating to zero:
+     * (0, -0.75, -0.25) . (-0.5, 0, 0.5) is -0.125. */
     ff_stage(&s0, TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE,
              TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
-    ff_stage(&s1, TOP_ADD, TA_TFACTOR, TA_CURRENT,
+    ff_stage(&s1, TOP_DOT3, TA_TEXTURE, TA_CURRENT,
              TOP_SELECT2, TA_TEXTURE, TA_CURRENT);
-    CHECK(v9x_d3d_ps_fixed(&s0, &s1, 1, 0, tokens) == 0ul);
+    CHECK(ff_run(&s0, &s1, 1, 0, out) && ff_is(out, 0.0f, 0.0f, 0.0f, 0.5f));
+    CHECK(needs2(&s0, &s1,1));
+    /* Stage 1 is not drawn on a one-stage engine, so nothing needs it. */
+    CHECK(!needs2(&s0, &s1,0));
+
+    /* DOT3 against the texture factor, the light vector of the usual
+     * setup: factor (0, 128, 255) is (-1, 1/255, 1), the sum exactly 1. */
+    ff_stage(&s0, TOP_DOT3, TA_TEXTURE, TA_TFACTOR,
+             TOP_SELECT2, TA_TEXTURE, TA_DIFFUSE);
+    s1.color_op = TOP_DISABLE;
+    CHECK(ffe_run(&s0, &s1, stages, 0xff0080fful, ff_sample, out) &&
+          ff_is(out, 1.0f, 1.0f, 1.0f, 0.75f));
+    /* And the factor unsigned in an ordinary combine: texel times
+     * (1, 0, 1), alpha the factor's 0. */
+    ff_stage(&s0, TOP_MODULATE, TA_TEXTURE, TA_TFACTOR,
+             TOP_SELECT2, TA_TEXTURE, TA_TFACTOR);
+    CHECK(ffe_run(&s0, &s1, stages, 0x00ff00fful, ff_sample, out) &&
+          ff_is(out, 0.25f, 0.0f, 0.75f, 0.0f));
+    /* A factor alone is no reason to leave the fixed-function kernels. */
+    CHECK(!needs2(&s0, &s1,1));
+
+    /* DOT3 as an alpha op has no 1.1 instruction (dp3 cannot write alpha
+     * alone). */
+    ff_stage(&s0, TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE,
+             TOP_DOT3, TA_TEXTURE, TA_DIFFUSE);
+    CHECK(fixed2(&s0, &s1, 1, 0, tokens) == 0ul);
+
+    /* Environment bump: stage 0's matrix (0.5, 0, 0, 0.5) times its texel
+     * (0.5, 0.25) moves stage 1's (0, 0.5) to (0.25, 0.625). The matrix
+     * is the bump stage's; texbem reads the sampled stage's, which
+     * v9x_d3d_ps_fixed_env fills from it. */
+    stages[0].bump[0] = 0.5f;
+    stages[0].bump[3] = 0.5f;
+    stages[1].bump[0] = 8.0f;
+    stages[1].bump[3] = 8.0f;
+    ff_stage(&s0, TOP_BUMPENVMAP, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT1, TA_TEXTURE, TA_CURRENT);
+    ff_stage(&s1, TOP_SELECT1, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT1, TA_TEXTURE, TA_CURRENT);
+    CHECK(ffe_run(&s0, &s1, stages, 0ul, ffb_sample, out) &&
+          ff_is(out, 0.25f, 0.625f, 0.5f, 1.0f));
+    CHECK(needs2(&s0, &s1,1));
+    /* The bump stage itself passes the vertex colour: stage 1 adding its
+     * texel shows it under the sum, alpha passed through. */
+    ff_stage(&s1, TOP_ADD, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT2, TA_TEXTURE, TA_CURRENT);
+    CHECK(ffe_run(&s0, &s1, stages, 0ul, ffb_sample, out) &&
+          ff_is(out, 0.75f, 0.875f, 1.0f, 0.75f));
+    /* With no stage after it there is nothing to move: the vertex colour. */
+    s1.color_op = TOP_DISABLE;
+    CHECK(ffe_run(&s0, &s1, stages, 0ul, ffb_sample, out) &&
+          ff_is(out, 0.5f, 0.25f, 1.0f, 0.75f));
+
+    /* Three stages as 3DMark 2001 SE's bump test sets them (the 4570,
+     * boot 247): the base map, the bump map, the environment times
+     * CURRENT. Stage 1's matrix moves stage 2's (0, 0.5) to (0.25,
+     * 0.625); stage 2's texel is those coordinates, times the base
+     * texel (0.25, 0.5, 0.75, 0.5). */
+    {
+        V9X_D3D_STATE_STAGE three[3];
+        V9X_PS11_PROGRAM program;
+        V9X_PS11_ENV env;
+        V9X_PS11_PIXEL pixel;
+        float none[8][4];
+        v9x_u32 dwords;
+        v9x_u32 where;
+
+        ff_stage(&three[0], TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE,
+                 TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+        ff_stage(&three[1], TOP_BUMPENVMAP, TA_TEXTURE, TA_CURRENT,
+                 TOP_MODULATE, TA_TEXTURE, TA_CURRENT);
+        ff_stage(&three[2], TOP_MODULATE, TA_TEXTURE, TA_CURRENT,
+                 TOP_SELECT2, TA_TEXTURE, TA_CURRENT);
+        stages[0].bump[0] = 8.0f;
+        stages[0].bump[3] = 8.0f;
+        stages[1].bump[0] = 0.5f;
+        stages[1].bump[3] = 0.5f;
+        CHECK(v9x_d3d_ps_fixed_needs(three, 3ul));
+        dwords = v9x_d3d_ps_fixed(three, 3ul, 0, tokens);
+        CHECK(dwords != 0ul &&
+              v9x_ps11_parse(tokens, dwords, &program, &where) ==
+                  V9X_PS11_OK);
+        memset(none, 0, sizeof(none));
+        v9x_d3d_ps_env(none, stages, 0ul, &env);
+        env.unbound = 0ul;
+        v9x_d3d_ps_fixed_env(&program, stages, 0ul, &env);
+        memset(&pixel, 0, sizeof(pixel));
+        pixel.v[0][3] = 1.0f;
+        pixel.tc[2][1] = 0.5f;
+        CHECK(v9x_ps11_run(&program, &env, &pixel, ff3_sample, 0, out) &&
+              ff_is(out, 0.0625f, 0.3125f, 0.375f, 0.5f));
+        /* Two stages only: the bump stage has nothing to move, and the
+         * base texel passes. */
+        dwords = v9x_d3d_ps_fixed(three, 2ul, 0, tokens);
+        CHECK(dwords != 0ul &&
+              v9x_ps11_parse(tokens, dwords, &program, &where) ==
+                  V9X_PS11_OK &&
+              v9x_ps11_run(&program, &env, &pixel, ff3_sample, 0, out) &&
+              ff_is(out, 0.25f, 0.5f, 0.75f, 0.5f));
+        /* A bump stage moving a bump stage is not drawn. */
+        three[2].color_op = TOP_BUMPENVMAP;
+        CHECK(v9x_d3d_ps_fixed(three, 3ul, 0, tokens) == 0ul);
+    }
+
+    /* The luminance form has no format here to read a luminance from. */
+    ff_stage(&s0, TOP_BUMPENVMAPLUMINANCE, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT1, TA_TEXTURE, TA_CURRENT);
+    ff_stage(&s1, TOP_SELECT1, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT1, TA_TEXTURE, TA_CURRENT);
+    CHECK(fixed2(&s0, &s1, 1, 0, tokens) == 0ul);
+
+    /* Ordinary stages need no shader. */
+    ff_stage(&s0, TOP_MODULATE, TA_TEXTURE, TA_DIFFUSE,
+             TOP_SELECT1, TA_TEXTURE, TA_DIFFUSE);
+    ff_stage(&s1, TOP_ADD, TA_TEXTURE, TA_CURRENT,
+             TOP_SELECT2, TA_TEXTURE, TA_CURRENT);
+    CHECK(!needs2(&s0, &s1,1));
 }
 
 unsigned int v9x_run_d3d_ps_tests(void)
@@ -387,5 +616,6 @@ unsigned int v9x_run_d3d_ps_tests(void)
     wide_tests();
     table_tests();
     fixed_tests();
+    fixed_bump_tests();
     return failures;
 }

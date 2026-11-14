@@ -1,0 +1,189 @@
+CreateDevice 1 type 1 flags 20 1024x768 bbfmt 22 ds 77/0 -> 00000000
+GetAvailableTextureMem -> 23068672 (22528 KiB)
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 20 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 21 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 22 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 23 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 24 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 25 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 26 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 30 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 27 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 29 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 827611204 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 861165636 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 894720068 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 60 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 61 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 62 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 63 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 64 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 65 -> 8876086a
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 128x128 levels 1 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x64 levels 7 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+Skip experiment: draws with vs 00000000 skipped
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 512x512 levels 1 usage 0 fmt 60 pool 1 -> 00000000
+  (repeated 1 more)
+CreateTexture 512x512 levels 10 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+  stage 1 cop=7 ca1=2 ca2=1 aop=2 aa1=1 aa2=0 ca0=0 aa0=0 res=1 tci=1
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+  stage 1 cop=7 ca1=2 ca2=1 aop=2 aa1=1 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=1 ca2=0 aop=2 aa1=1 aa2=0 ca0=0 aa0=0 res=1 tci=2
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 88760819 passes 0 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=16 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=1
+  stage 2 cop=4 ca1=2 ca2=1 aop=4 aa1=2 aa2=1 ca0=0 aa0=0 res=1 tci=0
+Device 1 released: 2976 draw calls, 11670805 primitives
+CreateDevice 2 type 1 flags 20 1024x768 bbfmt 22 ds 77/0 -> 00000000
+GetAvailableTextureMem -> 23068672 (22528 KiB)
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 128x128 levels 1 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=4 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+CreateTexture 256x64 levels 7 usage 0 fmt 21 pool 1 -> 00000000
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=2 ca1=2 ca2=0 aop=2 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=3 ca1=2 ca2=0 aop=3 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=0
+Dev.GetDeviceCaps -> 0 PS ffff0101 (max 3f800000) VS fffe0101/96 streams 16 stages 4 simtex 4
+  maxtex 2048x2048 vol 0 aspect 0 texcaps 00034805 filter 0303033f cube 0303033f addr 00000007
+  caps2 00080000 dev 0008a650 pmisc 00000270 raster 00010190 blend 0000033f/0000033f stencil 00000000 fvf 00100004 texop 00a0104f vp 0000007b prim 65535 idx 65535
+  caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000270
+  caps[09] 00010190 000000ff 0000033f 0000033f 000000ff 00084208 00034805 0303033f 0303033f
+  caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+  caps[27] 00000001 501502f9 c5fff800 c5fff800 45fff800 45fff800 00000000 00000000 00100004
+  caps[36] 00a0104f 00000004 00000004 0000007b ffffffff 00000006 00000004 000000ff 42800000
+  caps[45] 0000ffff 0000ffff 00000010 000000ff fffe0101 00000060 ffff0101 3f800000
+CreateTexture 256x256 levels 9 usage 0 fmt 21 pool 1 -> 00000000
+CreateTexture 512x512 levels 10 usage 0 fmt 21 pool 1 -> 00000000
+CreateTexture 16x16 levels 5 usage 0 fmt 21 pool 1 -> 00000000
+  (repeated 1 more)
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=18 ca1=2 ca2=0 aop=4 aa1=2 aa2=0 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=4 ca1=1 ca2=2 aop=4 aa1=1 aa2=2 ca0=0 aa0=0 res=1 tci=2
+ValidateDevice -> 00000000 passes 1 ps 00000000
+  stage 0 cop=18 ca1=2 ca2=4 aop=4 aa1=2 aa2=4 ca0=0 aa0=0 res=1 tci=1
+  stage 1 cop=4 ca1=1 ca2=2 aop=4 aa1=1 aa2=2 ca0=0 aa0=0 res=1 tci=2
+ValidateDevice -> 00000000 passes 1 ps 00000000
