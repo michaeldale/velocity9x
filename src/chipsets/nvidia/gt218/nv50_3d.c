@@ -412,27 +412,58 @@ static void v9x_nv50_3d_vertex(struct v9x_nv50_push *push, v9x_u32 sx,
     v9x_nv50_3d_one(push, V9X_8597_VTX_ATTR_2I0, v9x_nv50_3d_xy(dx, dy));
 }
 
-/* A pitch-linear render target, as Mesa programs one with no Z: tile
- * mode and layer stride 0, RT_HORIZ the linear bit with the pitch,
- * RT_ARRAY_MODE 0 (EXA's own target is tiled, mode 1). Then no blending,
- * EXA's op Src. */
-static void v9x_nv50_3d_target(struct v9x_nv50_push *push, v9x_u32 target,
-                               v9x_u32 pitch, v9x_u32 height,
-                               v9x_u32 format)
+/* Render target 0, then no blending (EXA's op Src). A pitch surface as
+ * Mesa programs one with no Z: tile mode and layer stride 0, RT_HORIZ the
+ * linear bit with the pitch, RT_ARRAY_MODE 0. A block-linear one as EXA
+ * programs its own (NV50EXARenderTarget): the tile mode, layer stride 0,
+ * RT_HORIZ the width and height, RT_ARRAY_MODE 1. */
+static void v9x_nv50_3d_target_on(struct v9x_nv50_push *push,
+                                  const struct v9x_nv50_surface *target,
+                                  v9x_u32 format)
 {
     v9x_u32 rt[5];
 
     rt[0] = 0ul;
-    rt[1] = target;
+    rt[1] = target->address;
     rt[2] = format;
-    rt[3] = 0ul;
+    rt[3] = target->tiled != 0ul ? target->tile_mode : 0ul;
     rt[4] = 0ul;
     v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_RT_ADDRESS_HIGH0,
                          5ul, rt);
-    v9x_nv50_3d_two(push, V9X_8597_RT_HORIZ0,
-                    V9X_8597_RT_HORIZ_LINEAR | pitch, height);
-    v9x_nv50_3d_one(push, V9X_8597_RT_ARRAY_MODE, 0ul);
+    if (target->tiled != 0ul) {
+        v9x_nv50_3d_two(push, V9X_8597_RT_HORIZ0, target->width,
+                        target->height);
+        v9x_nv50_3d_one(push, V9X_8597_RT_ARRAY_MODE,
+                        V9X_8597_RT_ARRAY_ONE_LAYER);
+    } else {
+        v9x_nv50_3d_two(push, V9X_8597_RT_HORIZ0,
+                        V9X_8597_RT_HORIZ_LINEAR | target->pitch,
+                        target->height);
+        v9x_nv50_3d_one(push, V9X_8597_RT_ARRAY_MODE, 0ul);
+    }
     v9x_nv50_3d_one(push, V9X_8597_BLEND_ENABLE0, 0ul);
+}
+
+/* A pitch-linear target as a surface. */
+static void v9x_nv50_3d_linear(struct v9x_nv50_surface *out, v9x_u32 target,
+                               v9x_u32 pitch, v9x_u32 height)
+{
+    out->address = target;
+    out->pitch = pitch;
+    out->width = 0ul;
+    out->height = height;
+    out->tile_mode = 0ul;
+    out->tiled = 0ul;
+}
+
+static void v9x_nv50_3d_target(struct v9x_nv50_push *push, v9x_u32 target,
+                               v9x_u32 pitch, v9x_u32 height,
+                               v9x_u32 format)
+{
+    struct v9x_nv50_surface surface;
+
+    v9x_nv50_3d_linear(&surface, target, pitch, height);
+    v9x_nv50_3d_target_on(push, &surface, format);
 }
 
 void v9x_nv50_push_3d_solid_rect(struct v9x_nv50_push *push, v9x_u32 target,
@@ -452,11 +483,24 @@ void v9x_nv50_push_3d_textured_rect(struct v9x_nv50_push *push,
                                     v9x_u32 x, v9x_u32 y, v9x_u32 w,
                                     v9x_u32 h, v9x_u32 src_w, v9x_u32 src_h)
 {
+    struct v9x_nv50_surface surface;
+
+    v9x_nv50_3d_linear(&surface, target, pitch, height);
+    v9x_nv50_push_3d_rect_on(push, &surface, format, x, y, w, h, src_w,
+                             src_h);
+}
+
+void v9x_nv50_push_3d_rect_on(struct v9x_nv50_push *push,
+                              const struct v9x_nv50_surface *target,
+                              v9x_u32 format, v9x_u32 x, v9x_u32 y,
+                              v9x_u32 w, v9x_u32 h, v9x_u32 src_w,
+                              v9x_u32 src_h)
+{
     /* PFP_S, the texture just written, and EXA's vertex program with its
      * attributes 0, 8 and 9: set by every draw, because a Gouraud draw
      * leaves its own program and attribute enables behind, and the first
      * /3d:texture runs after one sampled texel (0, 0) everywhere. */
-    v9x_nv50_3d_target(push, target, pitch, height, format);
+    v9x_nv50_3d_target_on(push, target, format);
     v9x_nv50_3d_one(push, V9X_8597_FP_START_ID, 0ul);
     v9x_nv50_3d_one(push, V9X_8597_VP_START_ID, 0ul);
     v9x_nv50_3d_two(push, V9X_8597_VP_ATTR_EN0, 0x00000003ul, 0x00000033ul);

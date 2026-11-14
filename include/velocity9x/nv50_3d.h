@@ -206,6 +206,19 @@ void v9x_nv50_push_2d_surface_blit(struct v9x_nv50_push *push,
                                    v9x_u32 dx, v9x_u32 dy, v9x_u32 w,
                                    v9x_u32 h);
 #define V9X_NV50_2D_SURFACE_BLIT_WORDS_MAX 48ul
+
+/* The textured rectangle into any render target: a pitch surface as
+ * Mesa programs one with no Z, a block-linear one (through the kind-70h
+ * window) as EXA programs its own: RT_ADDRESS with the tile mode and a
+ * layer stride of 0, RT_HORIZ the width and height, RT_ARRAY_MODE 1.
+ * v9x_nv50_push_3d_textured_rect is this with a pitch surface. */
+void v9x_nv50_push_3d_rect_on(struct v9x_nv50_push *push,
+                              const struct v9x_nv50_surface *target,
+                              v9x_u32 format, v9x_u32 x, v9x_u32 y,
+                              v9x_u32 w, v9x_u32 h, v9x_u32 src_w,
+                              v9x_u32 src_h);
+/* RT_ARRAY_MODE for a single-layer tiled target (EXA, Mesa: one layer). */
+#define V9X_8597_RT_ARRAY_ONE_LAYER  1ul
 /* 502D: DST_FORMAT + 18h is DST_WIDTH; SRC_FORMAT + 18h is SRC_WIDTH. */
 #define V9X_502D_SET_SRC_WIDTH       0x0248ul
 #define V9X_502D_LAYOUT_BLOCKLINEAR  0ul

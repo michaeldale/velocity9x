@@ -507,6 +507,56 @@ static void test_surface_blit(void)
           blit[at + 9ul] == 0x08380000ul);
 }
 
+/* A textured rectangle into a tiled render target, as EXA programs its
+ * own (NV50EXARenderTarget: tile mode, layer stride 0, width and height,
+ * RT_ARRAY_MODE 1), addressed through the kind-70h window; and the same
+ * call with a linear surface gives the linear words exactly. */
+static void test_rect_on_surface(void)
+{
+    static v9x_u32 rect[V9X_NV50_3D_RECT_WORDS_MAX];
+    static v9x_u32 other[V9X_NV50_3D_RECT_WORDS_MAX];
+    struct v9x_nv50_surface target;
+    struct v9x_nv50_push push;
+    struct v9x_nv50_push old;
+    v9x_u32 header;
+    v9x_u32 at = 0ul;
+    v9x_u32 index;
+
+    target.address = V9X_NV50_VM_TILED + 0x083a0000ul;
+    target.pitch = 512ul;
+    target.width = 128ul;
+    target.height = 72ul;
+    target.tile_mode = 0x10ul;
+    target.tiled = 1ul;
+    v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_rect_on(&push, &target, V9X_NV50_3D_RT_BGRX8, 16ul,
+                             8ul, 40ul, 24ul, 40ul, 24ul);
+    CHECK(push.overflow == 0ul);
+    header = find_header(&push, 0x0200ul, &at);
+    CHECK(rect[at] == 0ul && rect[at + 1ul] == 0x283a0000ul &&
+          rect[at + 2ul] == 0xe6ul && rect[at + 3ul] == 0x10ul &&
+          rect[at + 4ul] == 0ul);
+    header = find_header(&push, 0x1240ul, &at);
+    CHECK(rect[at] == 128ul && rect[at + 1ul] == 72ul);
+    header = find_header(&push, 0x1224ul, &at);
+    CHECK(rect[at] == 1ul);
+
+    target.address = 0x08280000ul;
+    target.tile_mode = 0ul;
+    target.tiled = 0ul;
+    v9x_nv50_push_init(&push, rect, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_rect_on(&push, &target, V9X_NV50_3D_RT_BGRX8, 16ul,
+                             8ul, 40ul, 24ul, 4ul, 4ul);
+    v9x_nv50_push_init(&old, other, V9X_NV50_3D_RECT_WORDS_MAX);
+    v9x_nv50_push_3d_textured_rect(&old, 0x08280000ul, 512ul, 72ul,
+                                   V9X_NV50_3D_RT_BGRX8, 16ul, 8ul, 40ul,
+                                   24ul, 4ul, 4ul);
+    CHECK(push.count == old.count);
+    for (index = 0ul; index < push.count; ++index) {
+        CHECK(rect[index] == other[index]);
+    }
+}
+
 unsigned int v9x_run_nv50_3d_tests(void)
 {
     failures = 0u;
@@ -520,5 +570,6 @@ unsigned int v9x_run_nv50_3d_tests(void)
     test_textured_rect();
     test_vp_constants_upload();
     test_surface_blit();
+    test_rect_on_surface();
     return failures;
 }

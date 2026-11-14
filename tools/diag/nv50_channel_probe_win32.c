@@ -3115,6 +3115,160 @@ static int v9x_stage_z_tiled2d(void)
     return 1;
 }
 
+/*
+ * /z:tiledrt (with /3d): step 3 of docs\plans\nvidia-gt218-3d-z.md, the
+ * 3D engine drawing into a block-linear target. Three kicks, each waited
+ * for: 502D copies a pattern-filled linear surface into the tiled surface
+ * T (through the kind-70h window); the 3D engine draws phase 2's solid
+ * rectangle into T; 502D copies T out to a linear surface O. O must be the
+ * colour inside the rectangle and the pattern everywhere else.
+ */
+static int v9x_stage_z_tiledrt(void)
+{
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_3d_solid solid;
+    struct v9x_nv50_surface pattern;
+    struct v9x_nv50_surface t;
+    struct v9x_nv50_surface out;
+    struct v9x_nv50_push push;
+    DWORD words = V9X_DEPTH_PIXELS;
+    DWORD first;
+    DWORD block;
+    DWORD index;
+    DWORD x;
+    DWORD y;
+    DWORD inside_ok = 0ul;
+    DWORD inside_bad = 0ul;
+    DWORD outside_ok = 0ul;
+    DWORD outside_bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_word = 0ul;
+    int inside;
+
+    pattern.address = V9X_WINDOW_VRAM + V9X_Z_B_OFFSET;
+    pattern.pitch = V9X_FILL_WIDTH * 4ul;
+    pattern.width = V9X_FILL_WIDTH;
+    pattern.height = V9X_FILL_HEIGHT;
+    pattern.tile_mode = 0ul;
+    pattern.tiled = 0ul;
+    out = pattern;
+    out.address = V9X_WINDOW_VRAM + V9X_Z_A_OFFSET;
+    t = pattern;
+    t.address = V9X_NV50_VM_TILED + V9X_WINDOW_VRAM + V9X_Z_T_OFFSET;
+    t.tile_mode = V9X_Z_TILE_MODE;
+    t.tiled = 1ul;
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    v9x_nv50_3d_solid_tables(&scratch, V9X_3D_DRAW_ARGB, &solid);
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, V9X_Z_B_OFFSET, words, V9X_FILL_PATTERN);
+    v9x_op(V9X_OP_VRAM_FILL, V9X_Z_A_OFFSET, words, 0ul);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TEXEL,
+                  &solid.texel, 1ul);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TIC, solid.tic,
+                  V9X_NV50_3D_TIC_WORDS);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TSC, solid.tsc,
+                  V9X_NV50_3D_TSC_WORDS);
+    if (!v9x_run("z-rt-prepare")) {
+        v9x_finish("Z-RT-REFUSED", 13u);
+    }
+
+    first = v9x_push_next;
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_2d_surface_blit(&push, &pattern, &t,
+                                  V9X_502D_FORMAT_X8R8G8B8, 0ul, 0ul, 0ul,
+                                  0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT);
+    if (push.overflow != 0ul || !v9x_kick("ZTiledRtFill", &push, first)) {
+        v9x_text("ZTiledRt", "Result", "FILL-NOT-CLEAN");
+        return 0;
+    }
+
+    first = v9x_push_next;
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_3d_rect_on(&push, &t, V9X_NV50_3D_RT_BGRX8, V9X_3D_DRAW_X,
+                             V9X_3D_DRAW_Y, V9X_3D_DRAW_W, V9X_3D_DRAW_H,
+                             V9X_3D_DRAW_W, V9X_3D_DRAW_H);
+    if (push.overflow != 0ul || !v9x_kick("ZTiledRtDraw", &push, first)) {
+        v9x_text("ZTiledRt", "Result", "DRAW-NOT-CLEAN");
+        return 0;
+    }
+
+    first = v9x_push_next;
+    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_PUSH_STAGE_MAX);
+    v9x_nv50_push_2d_surface_blit(&push, &t, &out,
+                                  V9X_502D_FORMAT_X8R8G8B8, 0ul, 0ul, 0ul,
+                                  0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT);
+    if (push.overflow != 0ul || !v9x_kick("ZTiledRtCopy", &push, first)) {
+        v9x_text("ZTiledRt", "Result", "COPY-NOT-CLEAN");
+        return 0;
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_Z_A_OFFSET + block * 4ul, count, 0ul);
+        if (!v9x_run("z-rt-readback")) {
+            v9x_finish("Z-RT-READBACK-REFUSED", 13u);
+        }
+        for (index = 0ul; index < count; ++index) {
+            DWORD word = v9x_result.block[index] & V9X_COLOUR_MASK;
+            DWORD want;
+
+            x = (block + index) % V9X_FILL_WIDTH;
+            y = (block + index) / V9X_FILL_WIDTH;
+            inside = x >= V9X_3D_DRAW_X &&
+                     x < V9X_3D_DRAW_X + V9X_3D_DRAW_W &&
+                     y >= V9X_3D_DRAW_Y &&
+                     y < V9X_3D_DRAW_Y + V9X_3D_DRAW_H;
+            want = inside ? (V9X_3D_DRAW_ARGB & V9X_COLOUR_MASK)
+                          : (V9X_FILL_PATTERN & V9X_COLOUR_MASK);
+            if (word == want) {
+                if (inside) {
+                    ++inside_ok;
+                } else {
+                    ++outside_ok;
+                }
+                continue;
+            }
+            if (inside) {
+                ++inside_bad;
+            } else {
+                ++outside_bad;
+            }
+            if (first_bad == 0xfffffffful) {
+                first_bad = block + index;
+                first_bad_word = v9x_result.block[index];
+            }
+        }
+    }
+    v9x_number("ZTiledRt", "InsideOk", inside_ok);
+    v9x_number("ZTiledRt", "InsideBad", inside_bad);
+    v9x_number("ZTiledRt", "OutsideOk", outside_ok);
+    v9x_number("ZTiledRt", "OutsideBad", outside_bad);
+    if (first_bad != 0xfffffffful) {
+        v9x_number("ZTiledRt", "FirstBadX", first_bad % V9X_FILL_WIDTH);
+        v9x_number("ZTiledRt", "FirstBadY", first_bad / V9X_FILL_WIDTH);
+        v9x_key("ZTiledRt", "FirstBadWord", first_bad_word);
+    }
+    v9x_flush();
+    if (inside_bad == 0ul && outside_bad == 0ul) {
+        v9x_text("ZTiledRt", "Result", "PASS");
+        return 1;
+    }
+    v9x_text("ZTiledRt", "Result", "PIXELS-DIFFER");
+    return 0;
+}
+
 void __stdcall V9xNv50ChannelEntry(void)
 {
     DWORD bus;
@@ -3257,6 +3411,10 @@ void __stdcall V9xNv50ChannelEntry(void)
     }
     if (v9x_switch_given("/z:tiled2d") && !v9x_stage_z_tiled2d()) {
         v9x_finish("Z-TILED2D-FAILED", 12u);
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/z:tiledrt") &&
+        !v9x_stage_z_tiledrt()) {
+        v9x_finish("Z-TILEDRT-FAILED", 13u);
     }
     if (v9x_switch_given("/3d") && v9x_switch_given("/3d:texture")) {
         int ok32 = v9x_stage_3d_texture("Texture32", 0ul, 4ul,
