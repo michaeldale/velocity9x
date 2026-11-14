@@ -2,6 +2,18 @@
 
 #include "velocity9x/nv50_d3d.h"
 #include "velocity9x/nv50_shader.h"
+#include "velocity9x/gt218_reserve.h"
+
+/* The 3D scratch and push area fit the reserve after the channel's
+ * region, without overlap. */
+typedef char v9x_assert_scratch_after_region[
+    V9X_NV50_REGION_BYTES <= V9X_GT218_RESERVE_3D_SCRATCH ? 1 : -1];
+typedef char v9x_assert_push_after_scratch[
+    V9X_GT218_RESERVE_3D_SCRATCH + V9X_NV50_3D_SCRATCH_BYTES <=
+        V9X_GT218_RESERVE_3D_PUSH ? 1 : -1];
+typedef char v9x_assert_push_in_reserve[
+    V9X_GT218_RESERVE_3D_PUSH + V9X_GT218_RESERVE_3D_PUSH_BYTES <=
+        V9X_GT218_RESERVE_BYTES ? 1 : -1];
 
 /*
  * The GT218's Direct3D programs, state and vertices

@@ -630,6 +630,19 @@ int v9x_r128_cce_vertex_space(DWORD bytes, volatile DWORD **linear,
                               DWORD *card_offset);
 int v9x_r128_cce_queue_flip(DWORD crtc_offset);
 int v9x_r128_cce_flip_in_flight(void);
+/* The GT218's 3D batches, in engines/eng_nv50.c, on the 2D engine's one
+ * channel. begin validates the engine and waits for everything issued
+ * to drain (GDI's kicks too), then hands out the 3D push area and the 3D
+ * scratch (programs and texture tables), each as the CPU writes it and
+ * as the GPU addresses it, and the channel's build count (a rebuilt
+ * channel has lost the 3D object and setup). submit kicks count words
+ * written at the push area and returns without waiting. Zero from either
+ * when the engine cannot take the batch; a kick PFIFO never shows gives
+ * the engine up. */
+int v9x_nv50_3d_begin(volatile DWORD **push, DWORD *push_words,
+                      volatile DWORD **scratch, DWORD *scratch_gpu,
+                      DWORD *generation);
+int v9x_nv50_3d_submit(DWORD count);
 /* The Evergreen CP, in engines/eg_cp.c. ready: the 3D window is mapped
  * and the CP has not failed. submit starts it if needed (once per HAL),
  * waits for queued DMA work, and puts a padded stream in the ring; drain

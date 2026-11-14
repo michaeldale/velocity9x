@@ -139,6 +139,14 @@ $sources = @(
     "src\chipsets\nvidia\gt218\nv50_2d.c",
     "src\chipsets\nvidia\gt218\nv50_grctx.c",
     "src\chipsets\nvidia\gt218\nv50_init.c",
+    # The GT218 3D engine on the same channel: the setup, the encoder,
+    # the Direct3D programs and state, the neutral draw to them, and the
+    # engine that places surfaces and submits.
+    "src\chipsets\nvidia\gt218\nv50_3d.c",
+    "src\chipsets\nvidia\gt218\nv50_shader.c",
+    "src\chipsets\nvidia\gt218\nv50_d3d.c",
+    "src\display32\d3d\d3d_nv50_map.c",
+    "src\display32\d3d\d3d_nv50.c",
     # The RS690 2D engine: fill and copy through the host-tested builder;
     # flips on its AVIVO controller D1.
     "src\display32\engines\eng_rs690.c",

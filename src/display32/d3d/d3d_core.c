@@ -555,6 +555,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_rs690;
     case V9X_D3D_SELECT_R600:
         return &v9x_d3d_engine_r6;
+    case V9X_D3D_SELECT_NV50:
+        return &v9x_d3d_engine_nv50;
     default:
         return 0;
     }

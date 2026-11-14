@@ -125,8 +125,11 @@ static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_GT218_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_NV50;
+    /* D3D: the Tesla 3D engine on the same channel (d3d_nv50.c), whose
+     * builders the channel probe drew right on M-BXMFA8. */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_D3D;
 }
 
 /* Not static: resolved by name in the link map by the per-object audit. */

@@ -39,6 +39,7 @@
 #include "ddhal_internal.h"
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
+#include "velocity9x/gt218_reserve.h"
 
 /* Bounded busy-wait. The probe's waits ended on the first or second
  * read for 64x64 operations; a full-screen copy is far longer, and this
@@ -474,6 +475,65 @@ static int v9x_nv50_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     }
     v9x_present_note_submission();
     return V9X_BLT_DONE;
+}
+
+/*
+ * Direct3D's batches (d3d_nv50.c, ddhal_internal.h). A batch waits for
+ * everything before it as the 2D operations do, so the push area and the
+ * scratch are never written while the GPU reads them. The area is the
+ * reserve's (gt218_reserve.h), addressed through the identity VM.
+ */
+int v9x_nv50_3d_begin(volatile DWORD **push, DWORD *push_words,
+                      volatile DWORD **scratch, DWORD *scratch_gpu,
+                      DWORD *generation)
+{
+    if (!v9x_nv50_validate() || v9x_nv50_format() == 0ul ||
+        !v9x_nv50_wait_idle(1)) {
+        return 0;
+    }
+    *push = v9x_nv50_region(V9X_GT218_RESERVE_3D_PUSH);
+    *push_words = V9X_GT218_RESERVE_3D_PUSH_BYTES / 4ul;
+    *scratch = v9x_nv50_region(V9X_GT218_RESERVE_3D_SCRATCH);
+    *scratch_gpu = v9x_hal->engine.reserve_offset +
+                   V9X_GT218_RESERVE_3D_SCRATCH;
+    *generation = v9x_hal->engine.reset_count;
+    return 1;
+}
+
+int v9x_nv50_3d_submit(DWORD count)
+{
+    volatile DWORD *ring = v9x_nv50_region(V9X_NV50_IB);
+    DWORD entry[2];
+    DWORD at;
+    DWORD next;
+    DWORD spins;
+
+    if (count == 0ul || count > V9X_GT218_RESERVE_3D_PUSH_BYTES / 4ul) {
+        return 0;
+    }
+    at = v9x_nv50_read32(V9X_NV50_PFIFO_IB_GET);
+    if (at >= V9X_NV50_IB_ENTRIES) {
+        return 0;
+    }
+    v9x_nv50_ib_entry(v9x_hal->engine.reserve_offset +
+                          V9X_GT218_RESERVE_3D_PUSH,
+                      count, entry);
+    ring[at * 2ul] = entry[0];
+    ring[at * 2ul + 1ul] = entry[1];
+    /* The batch, its tables and the IB entry are all write-combined. */
+    v9x_wc_drain();
+    next = v9x_nv50_ib_next(at);
+    v9x_nv50_write32(V9X_NV50_USERD(V9X_NV50_ENGINE_CHID) +
+                     V9X_NV50_USERD_IB_PUT, next);
+    spins = V9X_NV50_PUT_SPINS;
+    while (v9x_nv50_read32(V9X_NV50_PFIFO_IB_PUT) != next) {
+        if (spins-- == 0ul) {
+            v9x_nv50_give_up(V9X_NV50_FAULT_IDLE, V9X_NV50_PFIFO_IB_PUT);
+            return 0;
+        }
+    }
+    v9x_present_note_submission();
+    return 1;
 }
 
 /* CANBLT is the non-blocking idle poll, as on the Trio. */

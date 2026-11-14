@@ -15,6 +15,18 @@
  * is 64 KiB aligned as the page tables need.
  */
 #define V9X_GT218_RESERVE_BYTES 0x00200000ul
+/*
+ * The 3D engine's part of the reserve, after the channel's region
+ * (nv50_chan.h, V9X_NV50_REGION_BYTES, E0000h): the scratch for programs
+ * and texture tables (nv50_3d.h's layout, 5000h), then the push area a
+ * Direct3D batch is built in, apart from the 16 KiB pushbuffer GDI and
+ * DirectDraw's 2D kicks reuse. 768 KiB holds about 3,600 triangles of
+ * the widest vertex (nv50_d3d.h, 18 words). Offsets from the reserve's
+ * start.
+ */
+#define V9X_GT218_RESERVE_3D_SCRATCH    0x000e0000ul
+#define V9X_GT218_RESERVE_3D_PUSH       0x00100000ul
+#define V9X_GT218_RESERVE_3D_PUSH_BYTES 0x000c0000ul
 /* The channel's VM maps the first 512 MiB of video memory, and the
  * reserve must lie inside it (nv50_chan.h, V9X_NV50_VM_BYTES). */
 #define V9X_GT218_RESERVE_VM_BYTES 0x20000000ul

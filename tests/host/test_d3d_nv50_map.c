@@ -1,0 +1,376 @@
+#include <stdio.h>
+#include <string.h>
+
+#include "../../src/display32/d3d/d3d_nv50_map.h"
+
+/*
+ * The neutral draw to the GT218's Tesla state
+ * (src\display32\d3d\d3d_nv50_map.c): targets, blends, the alpha test,
+ * textures and the fragment program variant, and every refusal.
+ */
+
+static unsigned int failures = 0u;
+#define CHECK(e) do { if (!(e)) { \
+    printf("FAIL %s:%u: %s\n", __FILE__, (unsigned int)__LINE__, #e); \
+    ++failures; } } while (0)
+
+static int surface_object;
+static int depth_object;
+static int texture_object;
+
+static v9x_u32 registers[V9X_NV50_D3D_FP_VARIANTS] = {
+    5ul, 16ul, 15ul, 16ul, 12ul, 16ul, 15ul, 16ul, 12ul, 16ul, 15ul, 16ul
+};
+
+static v9x_u32 float_bits(float value)
+{
+    union {
+        float f;
+        v9x_u32 u;
+    } converted;
+
+    converted.f = value;
+    return converted.u;
+}
+
+/* A 640x480 RGB565 target at 1 MiB, Gouraud, no depth, no blend, no
+ * texture. */
+static void base_draw(V9X_R3D_DRAW *draw)
+{
+    memset(draw, 0, sizeof(*draw));
+    draw->target.offset = 0x00100000ul;
+    draw->target.pitch = 1280ul;
+    draw->target.width = 640ul;
+    draw->target.height = 480ul;
+    draw->target.format = V9X_R3D_FORMAT_RGB565;
+    draw->target.object = &surface_object;
+    draw->depth_func = V9X_R3D_CMP_LESSEQUAL;
+    draw->src_blend = V9X_R3D_BLEND_ONE;
+    draw->dst_blend = V9X_R3D_BLEND_ZERO;
+    draw->alpha_func = V9X_R3D_CMP_ALWAYS;
+    draw->shade_mode = V9X_R3D_SHADE_GOURAUD;
+}
+
+/* A 64x32 ARGB8888 texture, rows of 256 bytes, at 2 MiB. */
+static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_NV50_TEXTURE *texture)
+{
+    draw->texture.object = &texture_object;
+    draw->texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    draw->texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    draw->texture.op = V9X_R3D_TEXOP_MODULATE;
+    draw->texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw->texture.wrap_u = 0ul;
+    draw->texture.wrap_v = 0ul;
+    draw->color_key_enable = 0ul;
+    texture->format = V9X_NV50_D3D_TEX_B8G8R8A8;
+    texture->width = 64ul;
+    texture->height = 32ul;
+    texture->pitch = 256ul;
+    texture->offset = 0x00200000ul;
+    texture->has_key = 0ul;
+    texture->key = 0ul;
+}
+
+static v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
+static v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+
+static v9x_u32 map(const V9X_R3D_DRAW *draw,
+                   const V9X_D3D_NV50_TEXTURE *texture,
+                   struct v9x_nv50_d3d_state *state, v9x_u32 *specular)
+{
+    return v9x_d3d_nv50_map_draw(draw, texture, registers, state, tic, tsc,
+                                 specular);
+}
+
+static void test_target(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 specular = 7ul;
+
+    base_draw(&draw);
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.target.address == 0x00100000ul);
+    CHECK(state.target.pitch == 1280ul && state.target.width == 640ul &&
+          state.target.height == 480ul && state.target.tiled == 0ul);
+    CHECK(state.target_format == V9X_NV50_3D_RT_B5G6R5);
+    CHECK(state.scissor_left == 0ul && state.scissor_top == 0ul &&
+          state.scissor_right == 640ul && state.scissor_bottom == 480ul);
+    CHECK(state.color_mask == V9X_NV50_D3D_MASK_RGB);
+    CHECK(state.has_zeta == 0ul && state.blend == 0ul &&
+          state.alpha_test == 0ul && state.textured == 0ul);
+    CHECK(state.fp_variant == 0ul && state.fp_registers == 5ul);
+    CHECK(specular == 0ul);
+
+    draw.target.format = V9X_R3D_FORMAT_XRGB8888;
+    draw.target.pitch = 2560ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.target_format == V9X_NV50_3D_RT_BGRX8);
+
+    /* XRGB1555, a pitch off 64 bytes, a base off 256, a pitch narrower
+     * than the width: refused. */
+    draw.target.format = V9X_R3D_FORMAT_XRGB1555;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_TARGET);
+    base_draw(&draw);
+    draw.target.pitch = 1300ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_TARGET);
+    base_draw(&draw);
+    draw.target.offset = 0x00100080ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_TARGET);
+    base_draw(&draw);
+    draw.target.pitch = 1216ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_TARGET);
+}
+
+static void test_depth(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 specular;
+
+    /* Step 5a: a Z-tested draw on a bound buffer waits for the shadow
+     * targets; a bound buffer with Z off draws without it. */
+    base_draw(&draw);
+    draw.depth.object = &depth_object;
+    draw.depth.offset = 0x00300000ul;
+    draw.depth.pitch = 1280ul;
+    draw.depth.width = 640ul;
+    draw.depth.height = 480ul;
+    draw.depth_enable = 1ul;
+    CHECK(map(&draw, 0, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_DEPTH_SURFACE);
+    draw.depth_enable = 0ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.has_zeta == 0ul);
+}
+
+static void test_blend_and_alpha(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 specular;
+
+    base_draw(&draw);
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.blend == 1ul &&
+          state.blend_src == V9X_NV50_D3D_BLEND_SRC_ALPHA &&
+          state.blend_dst == V9X_NV50_D3D_BLEND_ONE_MINUS_SRC_ALPHA);
+    draw.src_blend = V9X_R3D_BLEND_DESTCOLOR;
+    draw.dst_blend = V9X_R3D_BLEND_SRCCOLOR;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.blend_src == V9X_NV50_D3D_BLEND_DST_COLOR &&
+          state.blend_dst == V9X_NV50_D3D_BLEND_SRC_COLOR);
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHASAT;
+    draw.dst_blend = V9X_R3D_BLEND_ONE;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.blend_src == V9X_NV50_D3D_BLEND_SRC_ALPHA_SATURATE &&
+          state.blend_dst == V9X_NV50_D3D_BLEND_ONE);
+    /* Destination alpha: neither target holds it. SRCALPHASAT is a
+     * source factor only. */
+    draw.src_blend = V9X_R3D_BLEND_DESTALPHA;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_BLEND);
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_SRCALPHASAT;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_BLEND);
+
+    /* The alpha test: Direct3D's NEVER..ALWAYS as 200h..207h, the
+     * reference on 0..1. */
+    base_draw(&draw);
+    draw.alpha_test_enable = 1ul;
+    draw.alpha_func = V9X_R3D_CMP_GREATER;
+    draw.alpha_ref = 0x80ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.alpha_test == 1ul && state.alpha_func == 0x0204ul &&
+          state.alpha_ref == float_bits(128.0f / 255.0f));
+    draw.alpha_func = V9X_R3D_CMP_NEVER;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE &&
+          state.alpha_func == V9X_NV50_D3D_CMP_NEVER);
+    draw.alpha_func = V9X_R3D_CMP_ALWAYS;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE &&
+          state.alpha_func == V9X_NV50_D3D_CMP_ALWAYS);
+    draw.alpha_func = 0ul;
+    CHECK(map(&draw, 0, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_ALPHA_FUNC);
+}
+
+static void test_texture(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_NV50_TEXTURE texture;
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 specular;
+    v9x_u32 expect_tic[V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 expect_tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 index;
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.textured == 1ul);
+    CHECK(state.fp_variant ==
+          v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 0ul, 0ul));
+    CHECK(state.fp_registers == registers[state.fp_variant]);
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B8G8R8A8, 0x00200000ul,
+                               256ul, 64ul, 32ul, V9X_NV50_D3D_WRAP_REPEAT,
+                               1ul, 1ul, expect_tic, expect_tsc));
+    for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+        CHECK(tic[index] == expect_tic[index]);
+        CHECK(tsc[index] == expect_tsc[index]);
+    }
+
+    /* DECAL and COPY replace; MODULATEALPHA modulates. */
+    draw.texture.op = V9X_R3D_TEXOP_DECAL;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_REPLACE, 0ul, 0ul));
+    draw.texture.op = V9X_R3D_TEXOP_COPY;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_REPLACE, 0ul, 0ul));
+    draw.texture.op = V9X_R3D_TEXOP_MODULATEALPHA;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 0ul, 0ul));
+    draw.texture.op = V9X_R3D_TEXOP_ADD;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_OP);
+
+    /* Address modes; cylindrical wrap is refused. */
+    base_texture(&draw, &texture);
+    draw.texture.address = V9X_R3D_ADDRESS_CLAMP;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          (tsc[0] & 7ul) == V9X_NV50_D3D_WRAP_CLAMP);
+    draw.texture.address = V9X_R3D_ADDRESS_MIRROR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          (tsc[0] & 7ul) == V9X_NV50_D3D_WRAP_MIRROR);
+    draw.texture.address = V9X_R3D_ADDRESS_BORDER;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_ADDRESS);
+    draw.texture.address = V9X_R3D_ADDRESS_WRAP;
+    draw.texture.wrap_u = 1ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_ADDRESS);
+
+    /* Filters: level 0 alone, so a mip filter reads as its filter within
+     * the level; a mip filter as magnification is refused. */
+    base_texture(&draw, &texture);
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          tsc[1] == 0x51ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          tsc[1] == 0x61ul);
+    draw.texture.mag_filter = V9X_R3D_FILTER_MIPLINEAR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_FILTER);
+
+    /* Shape and format. */
+    base_texture(&draw, &texture);
+    texture.format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT);
+    CHECK(map(&draw, 0, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT);
+    base_texture(&draw, &texture);
+    texture.pitch = 200ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+    base_texture(&draw, &texture);
+    texture.offset = 0x00200040ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+    base_texture(&draw, &texture);
+    texture.width = 4096ul;
+    texture.pitch = 16384ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+    base_texture(&draw, &texture);
+    texture.pitch = 192ul; /* narrower than 64 texels of 4 bytes */
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+
+    /* A colour key in use waits for a kill instruction. */
+    base_texture(&draw, &texture);
+    texture.has_key = 1ul;
+    draw.color_key_enable = 1ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_COLOR_KEY);
+    draw.color_key_enable = 0ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+}
+
+static void test_lit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_NV50_TEXTURE texture;
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 specular;
+
+    base_draw(&draw);
+    draw.specular_enable = 1ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_NONE, 1ul, 0ul) &&
+          specular == 1ul);
+    draw.specular_enable = 0ul;
+    draw.fog_enable = 1ul;
+    draw.fog_color = 0x00123456ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_NONE, 0ul, 1ul) &&
+          specular == 1ul && state.fog_color == 0x00123456ul);
+    base_texture(&draw, &texture);
+    draw.specular_enable = 1ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.fp_variant == 11ul && state.fp_registers == 16ul);
+}
+
+static void test_explicit(void)
+{
+    V9X_R3D_DRAW draw;
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 specular;
+
+    base_draw(&draw);
+    draw.explicit_state = 1ul;
+    draw.scissor_left = 10ul;
+    draw.scissor_top = 20ul;
+    draw.scissor_right = 300ul;
+    draw.scissor_bottom = 200ul;
+    draw.write_mask = V9X_D3D_NV50_WRITE_RED | V9X_D3D_NV50_WRITE_BLUE;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.scissor_left == 10ul && state.scissor_top == 20ul &&
+          state.scissor_right == 300ul && state.scissor_bottom == 200ul);
+    CHECK(state.color_mask == 0x00000101ul);
+    draw.scissor_right = 700ul;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_EXPLICIT);
+    base_draw(&draw);
+    draw.texcoords1 = (const float *)&surface_object;
+    CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_EXPLICIT);
+}
+
+unsigned int v9x_run_d3d_nv50_map_tests(void)
+{
+    failures = 0u;
+    test_target();
+    test_depth();
+    test_blend_and_alpha();
+    test_texture();
+    test_lit();
+    test_explicit();
+    return failures;
+}

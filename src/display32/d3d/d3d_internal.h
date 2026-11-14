@@ -837,6 +837,8 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv3;
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rs690;
 /* d3d/d3d_r6.c: the HD 2600 XT's (RV630) shader core through the CP. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r6;
+/* d3d/d3d_nv50.c: the GT218's Tesla 3D engine on its 2D channel. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv50;
 
 
 /*
