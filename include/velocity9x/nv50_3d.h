@@ -161,6 +161,22 @@ void v9x_nv50_3d_texture_tables(v9x_u32 texture, v9x_u32 pitch,
                                 v9x_u32 width, v9x_u32 height,
                                 struct v9x_nv50_3d_solid *out);
 
+/*
+ * Upload count vertex-program constants into constant buffer 1 from
+ * entry 0 through the engine, as EXA's PUSH_DATAu does: CB_ADDR, then a
+ * non-incrementing CB_DATA(0). Constants written to video memory by the
+ * CPU after the buffer was bound were not seen by a draw on M-BXMFA8
+ * (docs\decisions\2026-11-14-gt218-3d-texture.md); the engine keeps its
+ * own copy.
+ */
+#define V9X_8597_CB_ADDR             0x0f00ul
+#define V9X_8597_CB_DATA0            0x0f04ul
+#define V9X_8597_CB_ADDR_ID_SHIFT    8u
+/* cl006c.h NV06C_OPCODE_NONINC_METHOD in bits 31:29. */
+#define V9X_NV50_PUSH_NONINC         0x40000000ul
+void v9x_nv50_push_3d_vp_constants(struct v9x_nv50_push *push,
+                                   const v9x_u32 *words, v9x_u32 count);
+
 /* One rectangle (x, y, w, h) textured by TIC entry 0 across its whole
  * area: the solid rectangle's draw, with source coordinates in texels of
  * a src_w x src_h texture. */

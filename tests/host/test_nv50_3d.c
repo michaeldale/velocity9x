@@ -375,6 +375,38 @@ static void test_textured_rect(void)
     }
 }
 
+/* The vertex constants uploaded through the engine, as EXA's PUSH_DATAu
+ * does: CB_ADDR names buffer 1 at entry 0, then CB_DATA(0) repeated, a
+ * non-incrementing method (cl006c.h opcode 2, bits 31:29). */
+static void test_vp_constants_upload(void)
+{
+    static v9x_u32 upload[32];
+    struct v9x_nv50_3d_solid tables;
+    struct v9x_nv50_push push;
+    v9x_u32 index;
+
+    v9x_nv50_3d_texture_tables(0x08304900ul, 64ul, 4ul, 4ul, &tables);
+    v9x_nv50_push_init(&push, upload, 32ul);
+    v9x_nv50_push_3d_vp_constants(&push, tables.vp_constants,
+                                  V9X_NV50_3D_VP_CONSTANT_WORDS);
+    CHECK(push.overflow == 0ul);
+    CHECK(push.count == 2ul + 1ul + 22ul);
+    CHECK(upload[0] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D, 0x0f00ul,
+                                            1ul));
+    CHECK(upload[1] == ((0ul << 8) | 1ul));
+    CHECK(upload[2] == (0x40000000ul | (22ul << 18) |
+                        ((v9x_u32)V9X_NV50_SUBC_3D << 13) | 0x0f04ul));
+    for (index = 0ul; index < 22ul; ++index) {
+        CHECK(upload[3ul + index] == tables.vp_constants[index]);
+    }
+
+    /* Overflow leaves no half-patched header behind. */
+    v9x_nv50_push_init(&push, upload, 4ul);
+    v9x_nv50_push_3d_vp_constants(&push, tables.vp_constants,
+                                  V9X_NV50_3D_VP_CONSTANT_WORDS);
+    CHECK(push.overflow != 0ul);
+}
+
 unsigned int v9x_run_nv50_3d_tests(void)
 {
     failures = 0u;
@@ -386,5 +418,6 @@ unsigned int v9x_run_nv50_3d_tests(void)
     test_gouraud_rect();
     test_texture_tables();
     test_textured_rect();
+    test_vp_constants_upload();
     return failures;
 }

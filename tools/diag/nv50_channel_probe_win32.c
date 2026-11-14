@@ -2784,6 +2784,7 @@ static int v9x_stage_3d_gouraud(const char *section, DWORD number,
 #define V9X_3D_TEX_SIZE      4ul
 #define V9X_3D_TEX_PITCH     64ul
 #define V9X_3D_TEX_FIRST     0x00340000ul
+#define V9X_3D_TEX_PUSH_WORDS 128ul
 
 static DWORD v9x_3d_texel(DWORD column, DWORD row)
 {
@@ -2842,7 +2843,7 @@ static int v9x_stage_3d_texture(const char *section, DWORD number,
     DWORD first_bad_expected = 0ul;
     int inside;
 
-    v9x_push_next += V9X_PUSH_STAGE_MAX;
+    v9x_push_next += V9X_3D_TEX_PUSH_WORDS;
     for (index = 0ul; index < sizeof(texture) / sizeof(texture[0]);
          ++index) {
         texture[index] = 0ul;
@@ -2864,11 +2865,14 @@ static int v9x_stage_3d_texture(const char *section, DWORD number,
                   V9X_NV50_3D_TIC_WORDS);
     v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TSC, tables.tsc,
                   V9X_NV50_3D_TSC_WORDS);
-    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP_DATA,
-                  tables.vp_constants, V9X_NV50_3D_VP_CONSTANT_WORDS);
+    /* The constants go through the engine, not the CPU: the first run of
+     * this stage wrote them to memory and every pixel came out texel
+     * (0, 0), as if 1/width were 0. */
     v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
                                   first_word,
-                       V9X_PUSH_STAGE_MAX);
+                       V9X_3D_TEX_PUSH_WORDS);
+    v9x_nv50_push_3d_vp_constants(&push, tables.vp_constants,
+                                  V9X_NV50_3D_VP_CONSTANT_WORDS);
     v9x_nv50_push_3d_textured_rect(&push, V9X_WINDOW_VRAM + offset, pitch,
                                    V9X_FILL_HEIGHT, format, V9X_3D_DRAW_X,
                                    V9X_3D_DRAW_Y, V9X_3D_DRAW_W,

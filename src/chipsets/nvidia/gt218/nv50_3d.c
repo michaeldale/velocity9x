@@ -271,6 +271,24 @@ void v9x_nv50_3d_texture_tables(v9x_u32 texture, v9x_u32 pitch,
     }
 }
 
+void v9x_nv50_push_3d_vp_constants(struct v9x_nv50_push *push,
+                                   const v9x_u32 *words, v9x_u32 count)
+{
+    v9x_u32 header_at;
+
+    v9x_nv50_3d_one(push, V9X_8597_CB_ADDR,
+                    (0ul << V9X_8597_CB_ADDR_ID_SHIFT) | V9X_8597_CB_VP);
+    /* The shared method writer only makes incrementing headers; write
+     * the run with it and turn its header into a non-incrementing one,
+     * which leaves the method at CB_DATA(0) for every word. */
+    header_at = push->count;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_CB_DATA0, count,
+                         words);
+    if (push->overflow == 0ul) {
+        push->words[header_at] |= V9X_NV50_PUSH_NONINC;
+    }
+}
+
 /* Two 16-bit coordinates in one word, y high (nv50_accel.h PUSH_VTX2s). */
 static v9x_u32 v9x_nv50_3d_xy(v9x_u32 x, v9x_u32 y)
 {
