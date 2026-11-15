@@ -164,11 +164,57 @@ Cycles per pixel.
   clears the channel's validation, and nothing rebuilt it. Not checked
   with counters.
 
-What this argues for, not done here: route GDI fills to the CPU when WC
-is on (or raise the fill threshold far above the copy threshold), and
-bring the channel up without waiting for a DirectDraw program (options B
-or C of `docs/plans/nvidia-gt218-gdi-engine.md`), including after a mode
-change.
+What this argued for: route GDI fills to the CPU when WC is on, and bring
+the channel up without waiting for a DirectDraw program (options B or C of
+`docs/plans/nvidia-gt218-gdi-engine.md`), including after a mode change.
+The first is done below; the second is not.
+
+## Addendum 2: GT218 GDI fills go to the CPU when the aperture is write-combined
+
+The change (Michael chose a shared flag over an unconditional CPU route or
+a raised threshold, 2026-11-15):
+
+- `enable16.c` exports `v9x_mtrr_wc_active`, set when `v9x_mtrr_install`
+  writes the pair (`MtrrWrite=ok`) or finds it already present. It runs in
+  `V9xHardwareEnable`, before `v9x_gdi_accel_configure`.
+- `gdi_accel.c` clears the fill primitive for the NV50 arm when that flag
+  is set. Copies and overlap copies stay on the engine. A machine where WC
+  is refused, or `NOWC.TXT` is set, keeps engine fills, which win there
+  from about 128x128.
+- `V9XGDI /accel`'s fault-injection step used a PatBlt, which no longer
+  reaches a bounded wait on this chip, so it reported
+  `injection-not-consumed` against a healthy driver. It now injects with a
+  non-overlapping screen copy when fills are not enabled and records
+  `InjectOperation=`.
+
+Build `8873d93f-dirty`, DRV/VXD/HAL/SETP by WININIT rename and `reset`,
+hash-checked. Boot 18: `GdiAcceleration=gdi-copy-overlap`,
+`MtrrWrite=ok`. Boot 19 (fresh, after a poisoned boot 18, below): V9XDDP
+COMPLETE, V9XGDI `/auto` PASS, `/accel` PASS with `InjectOperation=copy`,
+`PoisonedAfterInject=1`, `Compared=PASS`, 131 copies, 0 fills.
+
+dispbench at 1024x768x16 with the channel live (run `20261115-204208`,
+boot 18), cycles per pixel:
+
+| | CPU only | engine fills (19ec1531) | this build |
+|---|---:|---:|---:|
+| FillRect 32x32 | 16.03 | 84.08 | 15.16 |
+| FillRect 64x64 | 5.24 | 21.00 | 4.99 |
+| FillRect 128x128 | 3.10 | 6.73 | 3.04 |
+| FillRect 1024x768 | 2.36 | 2.53 | 2.36 |
+| PatBlt solid 64x64 | 3.80 | 19.65 | 3.61 |
+| BitBlt screen to screen 256x256 | 1,969.6 | 6.22 | 6.24 |
+| BitBlt screen to screen 64x64 | 1,972.3 | 25.72 | 25.66 |
+| ScrollDC | 1,969.7 | 4.99 | 4.99 |
+
+On boot 18 the first `/accel` (old harness) armed an injection that it
+never consumed; a later desktop copy consumed it and poisoned the session,
+so the next `/accel` read `poisoned-before-run`. That is the harness bug
+above, not the driver; boot 19 is the clean run.
+
+Not run: the change with WC off (`NOWC.TXT`), where fills should stay on
+the engine; and 32 bpp, where GDI still ran on the CPU in the earlier run
+for a reason not established.
 
 ## Not settled here
 
