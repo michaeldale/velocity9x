@@ -3848,14 +3848,41 @@ static void v9x_ps11_probe_one(struct v9x_nv50_push *push, DWORD method,
     v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, method, 1ul, &value);
 }
 
+/*
+ * What one draw covers: count vertices (three a triangle) at xy, x then
+ * y; the frame the attribute planes are fractions of (fx = (x - x0) /
+ * width); and the scissor, half-open in target pixels.
+ */
+struct v9x_probe_geometry {
+    DWORD count;
+    const float *xy;
+    float x0;
+    float y0;
+    float width;
+    float height;
+    DWORD scissor_left;
+    DWORD scissor_top;
+    DWORD scissor_right;
+    DWORD scissor_bottom;
+};
+
+/* /3d:ps11's rectangle, two triangles over the whole of its frame. */
+static const float v9x_ps11_rect_xy[12] = {
+    16.0f, 8.0f, 112.0f, 8.0f, 16.0f, 64.0f,
+    16.0f, 64.0f, 112.0f, 8.0f, 112.0f, 64.0f
+};
+static const struct v9x_probe_geometry v9x_ps11_rect = {
+    6ul, v9x_ps11_rect_xy, 16.0f, 8.0f, 96.0f, 56.0f,
+    0ul, 0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT
+};
+
 /* One vertex at (x, y), its attributes the planes there. */
-static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, DWORD x,
-                                  DWORD y)
+static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, float x,
+                                  float y,
+                                  const struct v9x_probe_geometry *geometry)
 {
-    float fx = (float)(long)(x - V9X_PS11_X0) /
-               (float)(long)(V9X_PS11_X1 - V9X_PS11_X0);
-    float fy = (float)(long)(y - V9X_PS11_Y0) /
-               (float)(long)(V9X_PS11_Y1 - V9X_PS11_Y0);
+    float fx = (x - geometry->x0) / geometry->width;
+    float fy = (y - geometry->y0) / geometry->height;
     DWORD data[4];
     DWORD a;
     DWORD c;
@@ -3868,8 +3895,8 @@ static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, DWORD x,
                              V9X_PS11_VTX_ATTR_4F(a + 1ul), 4ul, data);
     }
     /* The position last: attribute 0 emits the vertex; w 1. */
-    data[0] = v9x_ps11_probe_bits((float)(long)x);
-    data[1] = v9x_ps11_probe_bits((float)(long)y);
+    data[0] = v9x_ps11_probe_bits(x);
+    data[1] = v9x_ps11_probe_bits(y);
     data[2] = v9x_ps11_probe_bits(0.5f);
     data[3] = v9x_ps11_probe_bits(1.0f);
     v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_PS11_VTX_ATTR_4F(0ul),
@@ -3877,18 +3904,13 @@ static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, DWORD x,
 }
 
 /* One draw's push: state, the program's constants and textures, and the
- * rectangle. */
+ * geometry's triangles. */
 static void v9x_ps11_probe_push(struct v9x_nv50_push *push, DWORD bytes,
                                 DWORD format, const DWORD *constants,
                                 const struct v9x_nv50_ps11_info *info,
-                                const struct v9x_nv50_3d_scratch *scratch)
+                                const struct v9x_nv50_3d_scratch *scratch,
+                                const struct v9x_probe_geometry *geometry)
 {
-    static const DWORD corner_x[6] = { V9X_PS11_X0, V9X_PS11_X1, V9X_PS11_X0,
-                                       V9X_PS11_X0, V9X_PS11_X1,
-                                       V9X_PS11_X1 };
-    static const DWORD corner_y[6] = { V9X_PS11_Y0, V9X_PS11_Y0, V9X_PS11_Y1,
-                                       V9X_PS11_Y1, V9X_PS11_Y0,
-                                       V9X_PS11_Y1 };
     struct v9x_nv50_d3d_state state;
     unsigned char *raw = (unsigned char *)&state;
     DWORD map[V9X_PS11_RESULTS / 4ul];
@@ -3904,8 +3926,10 @@ static void v9x_ps11_probe_push(struct v9x_nv50_push *push, DWORD bytes,
     state.target.width = V9X_FILL_WIDTH;
     state.target.height = V9X_FILL_HEIGHT;
     state.target_format = format;
-    state.scissor_right = V9X_FILL_WIDTH;
-    state.scissor_bottom = V9X_FILL_HEIGHT;
+    state.scissor_left = geometry->scissor_left;
+    state.scissor_top = geometry->scissor_top;
+    state.scissor_right = geometry->scissor_right;
+    state.scissor_bottom = geometry->scissor_bottom;
     state.color_mask = V9X_NV50_D3D_MASK_RGB;
     state.fp_registers = info->registers;
     v9x_nv50_push_d3d_state(push, &state);
@@ -3963,8 +3987,9 @@ static void v9x_ps11_probe_push(struct v9x_nv50_push *push, DWORD bytes,
     }
 
     v9x_nv50_push_d3d_begin(push);
-    for (index = 0ul; index < 6ul; ++index) {
-        v9x_ps11_probe_vertex(push, corner_x[index], corner_y[index]);
+    for (index = 0ul; index < geometry->count; ++index) {
+        v9x_ps11_probe_vertex(push, geometry->xy[2ul * index],
+                              geometry->xy[2ul * index + 1ul], geometry);
     }
     v9x_nv50_push_d3d_end(push);
 }
@@ -4182,7 +4207,8 @@ static int v9x_ps11_probe_draw(const char *section, DWORD variant,
     v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
                                   first_word,
                        V9X_PS11_PUSH_WORDS);
-    v9x_ps11_probe_push(&push, bytes, format, constants, &info, scratch);
+    v9x_ps11_probe_push(&push, bytes, format, constants, &info, scratch,
+                        &v9x_ps11_rect);
     if (push.overflow != 0ul) {
         v9x_text(section, "Result", "PUSH-OVERFLOW");
         return 0;
@@ -4349,6 +4375,364 @@ static int v9x_stage_3d_ps11(const char *section, DWORD bytes, DWORD format)
     }
     v9x_text(section, "Result", all ? "PASS" : "PIXELS-DIFFER");
     return all;
+}
+
+/*
+ * /3d:guard: step 5 of docs\plans\nvidia-gt218-ps11.md, the guard band a
+ * clip_in_core of 0 needs, measured as Gen3's was (docs\decisions\
+ * 2026-11-01-gen3-guard-band-step1.md). After /3d:ps11's plumbing: its
+ * vertex program, and the translated `mov r0, v0` with v0 a plane over
+ * the whole target, so a pixel's colour says where the engine thinks it
+ * is. For each distance D, two triangles, one draw each, into the
+ * pattern-filled 128x72 X8R8G8B8 surface with the scissor 8 pixels in
+ * from every edge:
+ *
+ *   Cover   (-D, -D), (2D + 300, -D), (-D, 2D + 300): every vertex off
+ *           the target, the scissor wholly inside;
+ *   Sliver  (-D, 36), (100, 12), (100, 60): one vertex D off the left
+ *           edge, the long edges crossing the target.
+ *
+ * Judged: nothing outside the scissor may change (a leak); inside it, a
+ * pixel centre more than 0.1 pixel inside the triangle must be the plane's
+ * colour within two steps, one more than 0.1 outside the pattern, and the
+ * rest are not judged. Distances run up to 32,768 (coordinates to
+ * 65,836); every one is drawn even after one fails, unless a kick traps.
+ */
+#define V9X_GUARD_DISTANCES   8ul
+#define V9X_GUARD_INSET       8ul
+#define V9X_GUARD_MARGIN      0.1
+
+static const DWORD v9x_guard_distances[V9X_GUARD_DISTANCES] = {
+    0ul, 512ul, 1024ul, 2048ul, 4096ul, 8192ul, 16384ul, 32768ul
+};
+
+/* Signed distance of (px, py) from the edge a -> b, positive on the left
+ * as the triangle winds. */
+static double v9x_guard_edge(const float *a, const float *b, double px,
+                             double py)
+{
+    double ex = (double)b[0] - (double)a[0];
+    double ey = (double)b[1] - (double)a[1];
+    double length = ex * ex + ey * ey;
+    double cross = ex * (py - (double)a[1]) - ey * (px - (double)a[0]);
+    double root = length;
+    int step;
+
+    /* sqrt by Newton, the publisher links no maths library. */
+    if (length <= 0.0) {
+        return 0.0;
+    }
+    for (step = 0; step < 40; ++step) {
+        root = 0.5 * (root + length / root);
+    }
+    return cross / root;
+}
+
+/* 1 inside by more than the margin, -1 outside by more, 0 neither. */
+static int v9x_guard_cover(const float *xy, double px, double py)
+{
+    double d0 = v9x_guard_edge(&xy[0], &xy[2], px, py);
+    double d1 = v9x_guard_edge(&xy[2], &xy[4], px, py);
+    double d2 = v9x_guard_edge(&xy[4], &xy[0], px, py);
+    double area = ((double)xy[2] - (double)xy[0]) *
+                      ((double)xy[5] - (double)xy[1]) -
+                  ((double)xy[4] - (double)xy[0]) *
+                      ((double)xy[3] - (double)xy[1]);
+
+    if (area < 0.0) {
+        d0 = -d0;
+        d1 = -d1;
+        d2 = -d2;
+    }
+    if (d0 > V9X_GUARD_MARGIN && d1 > V9X_GUARD_MARGIN &&
+        d2 > V9X_GUARD_MARGIN) {
+        return 1;
+    }
+    if (d0 < -V9X_GUARD_MARGIN || d1 < -V9X_GUARD_MARGIN ||
+        d2 < -V9X_GUARD_MARGIN) {
+        return -1;
+    }
+    return 0;
+}
+
+static int v9x_guard_draw(const char *section, const char *name,
+                          const float *xy, const DWORD *code,
+                          const struct v9x_nv50_ps11_info *info,
+                          const DWORD *constants,
+                          const struct v9x_nv50_3d_scratch *scratch,
+                          DWORD first_word)
+{
+    struct v9x_probe_geometry geometry;
+    struct v9x_nv50_push push;
+    DWORD words = V9X_DEPTH_PIXELS;
+    DWORD pattern = V9X_FILL_PATTERN & V9X_COLOUR_MASK;
+    DWORD ok = 0ul;
+    DWORD bad = 0ul;
+    DWORD leaks = 0ul;
+    DWORD unjudged = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    DWORD first_bad_pixel = 0ul;
+    long max_diff = 0l;
+    DWORD block;
+    DWORD index;
+    char key[48];
+
+    geometry.count = 3ul;
+    geometry.xy = xy;
+    geometry.x0 = 0.0f;
+    geometry.y0 = 0.0f;
+    geometry.width = (float)(long)V9X_FILL_WIDTH;
+    geometry.height = (float)(long)V9X_FILL_HEIGHT;
+    geometry.scissor_left = V9X_GUARD_INSET;
+    geometry.scissor_top = V9X_GUARD_INSET;
+    geometry.scissor_right = V9X_FILL_WIDTH - V9X_GUARD_INSET;
+    geometry.scissor_bottom = V9X_FILL_HEIGHT - V9X_GUARD_INSET;
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, V9X_PS11_SURFACE, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_PS11_CODE, code, info->words);
+    if (!v9x_run("guard-data")) {
+        v9x_finish("GUARD-DATA-REFUSED", 8u);
+    }
+    v9x_ops_begin();
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_PS11_PUSH_WORDS);
+    v9x_ps11_probe_push(&push, 4ul, V9X_NV50_3D_RT_BGRX8, constants, info,
+                        scratch, &geometry);
+    if (push.overflow != 0ul) {
+        v9x_text(section, "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    if (!v9x_kick(section, &push, first_word)) {
+        lstrcpyA(key, name);
+        lstrcatA(key, "Kick");
+        v9x_text(section, key, "NOT-CLEAN");
+        v9x_mp_trap(section);
+        v9x_ps11_probe_trapped = 1;
+        return 0;
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD run = words - block;
+
+        if (run > V9X_N5CH_BLOCK) {
+            run = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_PS11_SURFACE + block * 4ul, run, 0ul);
+        if (!v9x_run("guard-readback")) {
+            v9x_finish("GUARD-READBACK-REFUSED", 8u);
+        }
+        for (index = block; index < block + run; ++index) {
+            DWORD pixel = v9x_result.block[index - block] & V9X_COLOUR_MASK;
+            DWORD x = index % V9X_FILL_WIDTH;
+            DWORD y = index / V9X_FILL_WIDTH;
+            double px = (double)(long)x + 0.5;
+            double py = (double)(long)y + 0.5;
+            int cover;
+            int good = 1;
+
+            if (x < geometry.scissor_left || x >= geometry.scissor_right ||
+                y < geometry.scissor_top || y >= geometry.scissor_bottom) {
+                if (pixel != pattern) {
+                    ++leaks;
+                }
+                continue;
+            }
+            cover = v9x_guard_cover(xy, px, py);
+            if (cover == 0) {
+                ++unjudged;
+                continue;
+            }
+            if (cover < 0) {
+                good = pixel == pattern;
+            } else {
+                float fx = (float)px / geometry.width;
+                float fy = (float)py / geometry.height;
+                long got[3];
+                long want[3];
+                long diff;
+                DWORD c;
+
+                got[0] = (long)((pixel >> 16) & 0xfful);
+                got[1] = (long)((pixel >> 8) & 0xfful);
+                got[2] = (long)(pixel & 0xfful);
+                for (c = 0ul; c < 3ul; ++c) {
+                    want[c] = v9x_ps11_probe_unorm(
+                        v9x_ps11_probe_plane(0ul, c, fx, fy), 255ul);
+                    diff = got[c] - want[c];
+                    if (diff < 0l) {
+                        diff = -diff;
+                    }
+                    if (diff > max_diff) {
+                        max_diff = diff;
+                    }
+                    if (diff > 2l) {
+                        good = 0;
+                    }
+                }
+            }
+            if (good) {
+                ++ok;
+                continue;
+            }
+            ++bad;
+            if (first_bad == 0xfffffffful) {
+                first_bad = index;
+                first_bad_pixel = pixel;
+            }
+        }
+    }
+    {
+        char field[64];
+
+        lstrcpyA(field, name);
+        lstrcatA(field, "Ok");
+        v9x_number(section, field, ok);
+        lstrcpyA(field, name);
+        lstrcatA(field, "Bad");
+        v9x_number(section, field, bad);
+        lstrcpyA(field, name);
+        lstrcatA(field, "Leaks");
+        v9x_number(section, field, leaks);
+        lstrcpyA(field, name);
+        lstrcatA(field, "Unjudged");
+        v9x_number(section, field, unjudged);
+        lstrcpyA(field, name);
+        lstrcatA(field, "MaxDiff");
+        v9x_number(section, field, (DWORD)max_diff);
+        if (first_bad != 0xfffffffful) {
+            lstrcpyA(field, name);
+            lstrcatA(field, "FirstBadX");
+            v9x_number(section, field, first_bad % V9X_FILL_WIDTH);
+            lstrcpyA(field, name);
+            lstrcatA(field, "FirstBadY");
+            v9x_number(section, field, first_bad / V9X_FILL_WIDTH);
+            lstrcpyA(field, name);
+            lstrcatA(field, "FirstBadPixel");
+            v9x_key(section, field, first_bad_pixel);
+        }
+    }
+    v9x_flush();
+    return bad == 0ul && leaks == 0ul && ok != 0ul;
+}
+
+/* A decimal for a key name; value under 100000. */
+static void v9x_guard_decimal(char *out, DWORD value)
+{
+    char digits[8];
+    int count = 0;
+    int at = 0;
+
+    do {
+        digits[count++] = (char)('0' + (int)(value % 10ul));
+        value /= 10ul;
+    } while (value != 0ul && count < 7);
+    while (count > 0) {
+        out[at++] = digits[--count];
+    }
+    out[at] = '\0';
+}
+
+static int v9x_stage_3d_guard(void)
+{
+    static DWORD code[V9X_PS11_CODE_WORDS];
+    static V9X_PS11_PROGRAM program;
+    static const DWORD tokens[] = {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_V, 0ul),
+        V9X_PT_END
+    };
+    const char *section = "Guard";
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_ps11_desc desc;
+    struct v9x_nv50_ps11_info info;
+    V9X_PS11_ENV env;
+    DWORD constants[V9X_NV50_PS11_C_FLOATS];
+    DWORD vp[V9X_PS11_VP_WORDS];
+    DWORD vp_count;
+    DWORD first_word = v9x_push_next;
+    DWORD where = 0ul;
+    DWORD index;
+    DWORD first_fail = 0xfffffffful;
+    float xy[6];
+    char name[32];
+
+    v9x_push_next += V9X_PS11_PUSH_WORDS;
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    vp_count = v9x_ps11_probe_vp(vp, V9X_PS11_VP_WORDS);
+    if (vp_count == 0ul ||
+        v9x_ps11_parse(tokens, sizeof(tokens) / sizeof(tokens[0]), &program,
+                       &where) != V9X_PS11_OK) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+    desc.cube = 0ul;
+    desc.projected = 0ul;
+    desc.unbound = 0ul;
+    desc.slot = V9X_PS11_CB_SLOT;
+    v9x_ps11_probe_env(0ul, &env);
+    if (v9x_nv50_ps11_build(code, V9X_PS11_CODE_WORDS, &program, &desc,
+                            &info) != V9X_STATUS_OK) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+    v9x_nv50_ps11_constants(&program, &env, constants);
+    v9x_ops_begin();
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_PS11_VP_START,
+                  vp, vp_count);
+    if (!v9x_run("guard-vp")) {
+        v9x_finish("GUARD-VP-REFUSED", 8u);
+    }
+
+    for (index = 0ul; index < V9X_GUARD_DISTANCES; ++index) {
+        float d = (float)(long)v9x_guard_distances[index];
+        int ok;
+
+        xy[0] = -d;
+        xy[1] = -d;
+        xy[2] = 2.0f * d + 300.0f;
+        xy[3] = -d;
+        xy[4] = -d;
+        xy[5] = 2.0f * d + 300.0f;
+        lstrcpyA(name, "Cover");
+        v9x_guard_decimal(name + lstrlenA(name), v9x_guard_distances[index]);
+        ok = v9x_guard_draw(section, name, xy, code, &info, constants,
+                            &scratch, first_word);
+        if (v9x_ps11_probe_trapped) {
+            v9x_text(section, "Result", "NOT-CLEAN");
+            return 0;
+        }
+        xy[0] = -d;
+        xy[1] = 36.0f;
+        xy[2] = 100.0f;
+        xy[3] = 12.0f;
+        xy[4] = 100.0f;
+        xy[5] = 60.0f;
+        lstrcpyA(name, "Sliver");
+        v9x_guard_decimal(name + lstrlenA(name), v9x_guard_distances[index]);
+        if (!v9x_guard_draw(section, name, xy, code, &info, constants,
+                            &scratch, first_word)) {
+            ok = 0;
+        }
+        if (v9x_ps11_probe_trapped) {
+            v9x_text(section, "Result", "NOT-CLEAN");
+            return 0;
+        }
+        if (!ok && first_fail == 0xfffffffful) {
+            first_fail = v9x_guard_distances[index];
+        }
+    }
+    if (first_fail != 0xfffffffful) {
+        v9x_number(section, "FirstFailDistance", first_fail);
+        v9x_text(section, "Result", "FAILS-PAST-BAND");
+        return 0;
+    }
+    v9x_text(section, "Result", "PASS");
+    return 1;
 }
 
 /*
@@ -5105,6 +5489,13 @@ void __stdcall V9xNv50ChannelEntry(void)
         if (!ok16) {
             v9x_finish("PS11-16-FAILED", 16u);
         }
+    }
+    /* /3d:guard: a measurement, so a band that fails somewhere is a
+     * result, not a stop; only a trap ends the run early. */
+    if (v9x_switch_given("/3d") && v9x_switch_given("/3d:guard") &&
+        !v9x_ps11_probe_trapped) {
+        (void)v9x_stage_3d_guard();
+        v9x_pusher_state();
     }
     v9x_finish("COMPLETE", 0u);
 }
