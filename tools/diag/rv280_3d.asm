@@ -19,8 +19,8 @@
 ;                       SE_VTE_CNTL, SE_VAP_CNTL_STATUS,
 ;                       SE_VTX_STATE_CNTL), RE_TOP_LEFT and
 ;                       RE_AUX_SCISSOR_CNTL (26C0h-26FFh), the texture and
-;                       blend block 2C00h-2FFFh, and RB3D_DSTCACHE_CTLSTAT
-;                       (325Ch). Aligned.
+;                       blend block 2C00h-2FFFh, and RB3D_ZCACHE_CTLSTAT to
+;                       RB3D_DSTCACHE_CTLSTAT (3254h-325Fh). Aligned.
 ;   MMIO read32       - CONFIG_MEMSIZE (00F8h), MC_FB_LOCATION (0148h),
 ;                       CP_CSQ_CNTL (0740h), RBBM_STATUS (0E40h), the 2D
 ;                       block 1400h-17BFh less WAIT_UNTIL (1720h), the CRTC
@@ -135,7 +135,7 @@ RSReadWindows label dword
     dd 2080h, 2200h     ; SE_VAP_CNTL .. SE_VTX_STATE_CNTL
     dd 26c0h, 2700h     ; RE_TOP_LEFT .. RE_AUX_SCISSOR_CNTL
     dd 2c00h, 3000h     ; PP_TX*, PP_TXCBLEND_* and the rest
-    dd 325ch, 3260h     ; RB3D_DSTCACHE_CTLSTAT
+    dd 3254h, 3260h     ; RB3D_ZCACHE_CTLSTAT .. RB3D_DSTCACHE_CTLSTAT
 RS_READ_WINDOW_COUNT    equ 12
 
 ; Writable windows: start, limit (exclusive). The RS690's MC_INDEX rule is
@@ -150,7 +150,7 @@ RSWriteWindows label dword
     dd 2080h, 2200h     ; SE_VAP_CNTL .. SE_VTX_STATE_CNTL
     dd 26c0h, 2700h     ; RE_TOP_LEFT .. RE_AUX_SCISSOR_CNTL
     dd 2c00h, 3000h     ; PP_TX*, PP_TXCBLEND_* and the rest
-    dd 325ch, 3260h     ; RB3D_DSTCACHE_CTLSTAT
+    dd 3254h, 3260h     ; RB3D_ZCACHE_CTLSTAT .. RB3D_DSTCACHE_CTLSTAT
 RS_WRITE_WINDOW_COUNT   equ 8
 
 RSResult label dword

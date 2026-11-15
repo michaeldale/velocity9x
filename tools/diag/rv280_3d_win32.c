@@ -41,6 +41,15 @@
  *   TexBilinear - texels 0-31 x 0-7 magnified 2x, bilinear, clamped; each
  *               channel within one step of the exact filter plus 1/32 of
  *               the four texels' spread, the RS690 probe's judge.
+ *   ZUnit / ZBuffer - three overlapping quads, Z16 LESS with writes, at
+ *               z 0.5, 0.25 and 0.75 (ZUnit) or those times 65535
+ *               (ZBuffer): which range the vertex Z is in is not in the
+ *               sources, so both run and ZRange reports which drew the
+ *               nearest quad on top. The Z buffer's values at three
+ *               columns are published.
+ *   Blend     - SRCALPHA / INVSRCALPHA, alpha 80h red over the prefill,
+ *               within a step of the model.
+ *   AlphaTest - GREATER 128 keeps the alpha-200 quad, drops the alpha-100.
  *   FillAfter3D - a 2D fill from the RS690 builder after the 3D tests,
  *               byte-exact, so the 3D state left behind does not break the
  *               engine DirectDraw uses.
@@ -464,9 +473,11 @@ static int rs_draw(const char *name, int gouraud, int order_rgba,
     target.bytes_per_pixel = rs_bpp;
     target.width = TEST_WIDTH;
     target.height = rs_height;
+    target.raster = 0;
     for (index = 0; index < 3; ++index) {
         vertices[index].x_bits = rs_float_bits(rs_tri_x[index]);
         vertices[index].y_bits = rs_float_bits(rs_tri_y[index]);
+        vertices[index].z_bits = 0u;
         vertices[index].colour = colours[index];
         vertices[index].s_bits = 0u;
         vertices[index].t_bits = 0u;
@@ -482,14 +493,14 @@ static int rs_draw(const char *name, int gouraud, int order_rgba,
         return 0;
     }
     rs_add_list(&list);
-    if (v9x_rv280_build_3d_triangles(vertices, 3u, order_rgba, 0, &list) !=
+    if (v9x_rv280_build_3d_triangles(vertices, 3u, order_rgba, 0u, &list) !=
         V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
         rs_failed = 1u;
         return 0;
     }
     rs_add_list(&list);
-    (void)v9x_rv280_build_3d_finish(&list);
+    (void)v9x_rv280_build_3d_finish(0, &list);
     rs_add_list(&list);
     after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
@@ -727,6 +738,7 @@ static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
     target.bytes_per_pixel = rs_bpp;
     target.width = TEST_WIDTH;
     target.height = rs_height;
+    target.raster = 0;
     texture.fb_gpu_base = rs_fb_gpu_base;
     texture.fb_bytes = TEST_FB;
     texture.offset = TEX_OFFSET;
@@ -743,6 +755,7 @@ static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
             rs_float_bits((long)left + (corner_x[index] ? (long)width : 0l));
         vertices[index].y_bits =
             rs_float_bits(corner_y[index] ? (long)TEX_HEIGHT : 0l);
+        vertices[index].z_bits = 0u;
         vertices[index].colour = colour;
         vertices[index].s_bits =
             rs_ratio_bits(corner_x[index] ? s_right : 0l, 1l);
@@ -761,14 +774,14 @@ static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
         return 0;
     }
     rs_add_list(&list);
-    if (v9x_rv280_build_3d_triangles(vertices, 6u, 0, 1, &list) !=
-        V9X_STATUS_OK) {
+    if (v9x_rv280_build_3d_triangles(vertices, 6u, 0, V9X_RV280_LAYOUT_ST,
+                                     &list) != V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
         rs_failed = 1u;
         return 0;
     }
     rs_add_list(&list);
-    (void)v9x_rv280_build_3d_finish(&list);
+    (void)v9x_rv280_build_3d_finish(0, &list);
     rs_add_list(&list);
     after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
@@ -1055,6 +1068,347 @@ static void rs_tex_bilinear_test(void)
     rs_write(rs_key(key, name, "Result"), "PASS");
 }
 
+/* No Z, blending off, no alpha test. */
+static void rs_zero_raster(struct v9x_rv280_3d_raster *raster)
+{
+    raster->z_enable = 0ul;
+    raster->z_offset = 0ul;
+    raster->z_pitch_bytes = 0ul;
+    raster->z_func = 0ul;
+    raster->z_write = 0ul;
+    raster->blend_enable = 0ul;
+    raster->blend_src = 0ul;
+    raster->blend_dst = 0ul;
+    raster->alpha_test_enable = 0ul;
+    raster->alpha_func = 0ul;
+    raster->alpha_ref = 0ul;
+}
+
+/* The Z buffer: 16-bit, 64 pixels to a row, 128 KiB past the surface. */
+#define ZBUF_OFFSET (TEST_BASE + 0x20000ul)
+#define ZBUF_PITCH (TEST_WIDTH * 2ul)
+
+/* One flat quad: columns left to left + width - 1, rows 0 to TEX_HEIGHT -
+ * 1, at depth z_bits, in colour. */
+struct rs_quad {
+    DWORD left;
+    DWORD width;
+    DWORD z_bits;
+    DWORD colour;
+};
+
+/*
+ * Prefill the surface (and with a raster Z buffer, fill Z with FFFFh), wait
+ * idle, the state once, each quad as two triangles, the finish (flushing Z
+ * when there is a Z buffer), wait idle, read the surface back. Non-zero with
+ * the surface in the result block.
+ */
+static int rs_draw_quads(const char *name,
+                         const struct v9x_rv280_3d_raster *raster,
+                         const struct rs_quad *quads, DWORD count)
+{
+    static const int corner_x[6] = { 0, 1, 0, 1, 1, 0 };
+    static const int corner_y[6] = { 0, 0, 1, 0, 1, 1 };
+    struct v9x_rv280_3d_target target;
+    struct v9x_rv280_3d_vertex vertices[6];
+    struct v9x_rv280_3d_list list;
+    char key[64];
+    DWORD after_index;
+    DWORD quad;
+    DWORD layout;
+    int index;
+
+    target.fb_gpu_base = rs_fb_gpu_base;
+    target.fb_bytes = TEST_FB;
+    target.offset = TEST_BASE;
+    target.pitch_bytes = rs_pitch;
+    target.bytes_per_pixel = rs_bpp;
+    target.width = TEST_WIDTH;
+    target.height = rs_height;
+    target.raster = raster;
+    layout = raster->z_enable ? V9X_RV280_LAYOUT_Z : 0u;
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    if (raster->z_enable) {
+        rs_add(RS_OP_LFB_FILL32, ZBUF_OFFSET, 0xfffffffful,
+               ZBUF_PITCH * rs_height / 4u);
+    }
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (v9x_rv280_build_3d_target(&target, 0, &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_add_list(&list);
+    for (quad = 0u; quad < count; ++quad) {
+        for (index = 0; index < 6; ++index) {
+            vertices[index].x_bits = rs_float_bits(
+                (long)quads[quad].left +
+                (corner_x[index] ? (long)quads[quad].width : 0l));
+            vertices[index].y_bits =
+                rs_float_bits(corner_y[index] ? (long)TEX_HEIGHT : 0l);
+            vertices[index].z_bits = quads[quad].z_bits;
+            vertices[index].colour = quads[quad].colour;
+            vertices[index].s_bits = 0u;
+            vertices[index].t_bits = 0u;
+        }
+        if (v9x_rv280_build_3d_triangles(vertices, 6u, 0, layout, &list) !=
+            V9X_STATUS_OK) {
+            rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
+            rs_failed = 1u;
+            return 0;
+        }
+        rs_add_list(&list);
+    }
+    (void)v9x_rv280_build_3d_finish(raster->z_enable ? 1 : 0, &list);
+    rs_add_list(&list);
+    after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_hex(rs_key(key, name, "WaitAfter"),
+                 rs_result_buffer.ops[after_index].result);
+    return 1;
+}
+
+/* A flat colour as the surface stores it. */
+static DWORD rs_store(DWORD argb)
+{
+    if (rs_bpp == 2u) {
+        return ((argb >> 8) & 0xf800ul) | ((argb >> 5) & 0x07e0ul) |
+               ((argb >> 3) & 0x001ful);
+    }
+    return argb & 0x00fffffful;
+}
+
+/* Pixels in rows 0 to TEX_HEIGHT - 1 compared with the colour model
+ * expected(x) (RGB, 0xffffffff meaning the prefill), the rest with the
+ * prefill. Publishes and returns the number wrong. */
+static DWORD rs_judge_columns(const char *name, const DWORD *expected)
+{
+    const unsigned char *actual = (const unsigned char *)rs_result_buffer.block;
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD wrong = 0u;
+    DWORD first = 0xfffffffful;
+
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            int ok;
+
+            if (y < TEX_HEIGHT && expected[x] != 0xfffffffful) {
+                ok = rs_rgb(pixel) == expected[x];
+            } else {
+                ok = pixel == rs_pixel(rs_model, x, y);
+            }
+            if (!ok) {
+                if (first == 0xfffffffful) {
+                    first = y * TEST_WIDTH + x;
+                }
+                ++wrong;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "Wrong"), wrong);
+    if (first != 0xfffffffful) {
+        rs_write_decimal(rs_key(key, name, "FirstWrongX"), first % TEST_WIDTH);
+        rs_write_decimal(rs_key(key, name, "FirstWrongY"), first / TEST_WIDTH);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, first % TEST_WIDTH,
+                              first / TEST_WIDTH));
+    }
+    return wrong;
+}
+
+/* The Z buffer's value at (x, 0) after the last draw, or FFFFFFFFh. */
+static DWORD rs_read_z(DWORD x)
+{
+    rs_begin();
+    rs_add(RS_OP_LFB_READ_BLOCK, ZBUF_OFFSET, 0u, ZBUF_PITCH / 4u);
+    if (!rs_run()) {
+        return 0xfffffffful;
+    }
+    return ((const unsigned short *)rs_result_buffer.block)[x];
+}
+
+/*
+ * ZTest: three quads, Z16 LESS with writes, drawn red at z 0.5, green at
+ * 0.25 over its right half, blue at 0.75 over the middle. With depth
+ * working, columns 4-19 are red, 20-51 green, blue nowhere. Run with z in
+ * [0, 1] and again scaled by 65535, since no source says which range the
+ * vertex Z is in without the viewport transform; the Z buffer's values at
+ * three columns say how it was stored.
+ */
+static int rs_z_test(const char *name, long scale)
+{
+    struct v9x_rv280_3d_raster raster;
+    struct rs_quad quads[3];
+    DWORD expected[TEST_WIDTH];
+    char key[64];
+    DWORD x;
+    DWORD wrong;
+
+    rs_zero_raster(&raster);
+    raster.z_enable = 1ul;
+    raster.z_offset = ZBUF_OFFSET;
+    raster.z_pitch_bytes = ZBUF_PITCH;
+    raster.z_func = 1ul;
+    raster.z_write = 1ul;
+    quads[0].left = 4u;
+    quads[0].width = 32u;
+    quads[0].z_bits = rs_ratio_bits(scale, 2l);
+    quads[0].colour = ARGB_RED;
+    quads[1].left = 20u;
+    quads[1].width = 32u;
+    quads[1].z_bits = rs_ratio_bits(scale, 4l);
+    quads[1].colour = ARGB_GREEN;
+    quads[2].left = 12u;
+    quads[2].width = 32u;
+    quads[2].z_bits = rs_ratio_bits(scale * 3l, 4l);
+    quads[2].colour = ARGB_BLUE;
+    if (!rs_draw_quads(name, &raster, quads, 3u)) {
+        return 0;
+    }
+    rs_save_block(scale == 1l ? 'Z' : 'U');
+    for (x = 0u; x < TEST_WIDTH; ++x) {
+        expected[x] = x >= 4u && x < 20u ? rs_store(ARGB_RED) :
+                      (x >= 20u && x < 52u ? rs_store(ARGB_GREEN) :
+                       0xfffffffful);
+    }
+    wrong = rs_judge_columns(name, expected);
+    rs_write_hex(rs_key(key, name, "ZAt8"), rs_read_z(8u));
+    rs_write_hex(rs_key(key, name, "ZAt30"), rs_read_z(30u));
+    rs_write_hex(rs_key(key, name, "ZAt60"), rs_read_z(60u));
+    rs_write(rs_key(key, name, "Result"), wrong == 0u ? "PASS" : "MISMATCH");
+    return wrong == 0u;
+}
+
+/*
+ * Blend: a red quad with alpha 80h over the prefill, SRCALPHA /
+ * INVSRCALPHA: each channel within a step of red * 128/255 + prefill *
+ * 127/255. Columns 8-39.
+ */
+static void rs_blend_test(void)
+{
+    static const char name[] = "Blend";
+    struct v9x_rv280_3d_raster raster;
+    struct rs_quad quad;
+    const unsigned char *actual;
+    char key[64];
+    long values[3];
+    long maxima[3];
+    long dst[3];
+    long worst = 0l;
+    DWORD x;
+    DWORD y;
+    DWORD wrong = 0u;
+    DWORD outside_changed = 0u;
+    DWORD prefill_pixel;
+    int channel;
+
+    rs_zero_raster(&raster);
+    raster.blend_enable = 1ul;
+    raster.blend_src = V9X_RV280_BLEND_FACTOR_SRC_ALPHA;
+    raster.blend_dst = V9X_RV280_BLEND_FACTOR_INV_SRC_ALPHA;
+    quad.left = 8u;
+    quad.width = 32u;
+    quad.z_bits = 0u;
+    quad.colour = 0x80ff0000ul;
+    if (!rs_draw_quads(name, &raster, &quad, 1u)) {
+        return;
+    }
+    rs_save_block('A');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    prefill_pixel = rs_pixel(rs_model, 0u, 0u);
+    rs_channels(prefill_pixel, dst, maxima);
+    rs_write_hex(rs_key(key, name, "PixelAt20"), rs_pixel(actual, 20u, 4u));
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+
+            if (y >= TEX_HEIGHT || x < 8u || x >= 40u) {
+                if (pixel != rs_pixel(rs_model, x, y)) {
+                    ++outside_changed;
+                }
+                continue;
+            }
+            rs_channels(pixel, values, maxima);
+            for (channel = 0; channel < 3; ++channel) {
+                long src = channel == 0 ? maxima[0] : 0l;
+                long expected = (src * 128l + dst[channel] * 127l + 127l) /
+                                255l;
+                long error = rs_abs(values[channel] - expected);
+
+                if (error > worst) {
+                    worst = error;
+                }
+                if (error > 1l) {
+                    ++wrong;
+                    break;
+                }
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), wrong);
+    rs_write_decimal(rs_key(key, name, "WorstChannelError"), (DWORD)worst);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    if (wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/*
+ * AlphaTest: GREATER 128, no blending. A red quad with alpha 200 at
+ * columns 4-27 is drawn; a green one with alpha 100 at 36-59 is not.
+ */
+static void rs_alpha_test(void)
+{
+    static const char name[] = "AlphaTest";
+    struct v9x_rv280_3d_raster raster;
+    struct rs_quad quads[2];
+    DWORD expected[TEST_WIDTH];
+    char key[64];
+    DWORD x;
+    DWORD wrong;
+
+    rs_zero_raster(&raster);
+    raster.alpha_test_enable = 1ul;
+    raster.alpha_func = 5ul;
+    raster.alpha_ref = 128ul;
+    quads[0].left = 4u;
+    quads[0].width = 24u;
+    quads[0].z_bits = 0u;
+    quads[0].colour = 0xc8ff0000ul;
+    quads[1].left = 36u;
+    quads[1].width = 24u;
+    quads[1].z_bits = 0u;
+    quads[1].colour = 0x6400ff00ul;
+    if (!rs_draw_quads(name, &raster, quads, 2u)) {
+        return;
+    }
+    rs_save_block('T');
+    for (x = 0u; x < TEST_WIDTH; ++x) {
+        expected[x] = x >= 4u && x < 28u ? rs_store(ARGB_RED) : 0xfffffffful;
+    }
+    wrong = rs_judge_columns(name, expected);
+    rs_write(rs_key(key, name, "Result"), wrong == 0u ? "PASS" : "MISMATCH");
+    if (wrong != 0u) {
+        rs_failed = 1u;
+    }
+}
+
 static void rs_fill_after_test(void)
 {
     static const char name[] = "FillAfter3D";
@@ -1253,6 +1607,18 @@ void WINAPI V9xRv2803dProbeEntry(void)
     rs_tex_exact_test("TexWrap", 'W', 0u, TEST_WIDTH, 2l);
     rs_tex_modulate_test();
     rs_tex_bilinear_test();
+    {
+        int unit = rs_z_test("ZUnit", 1l);
+        int buffer = rs_z_test("ZBuffer", 65535l);
+
+        rs_write("ZRange", unit ? (buffer ? "both" : "0-1") :
+                           (buffer ? "0-65535" : "neither"));
+        if (!unit && !buffer) {
+            rs_failed = 1u;
+        }
+    }
+    rs_blend_test();
+    rs_alpha_test();
     rs_fill_after_test();
 
     rs_write_hex("RbbmStatusAtEnd", rs_read_register(V9X_RS690_RBBM_STATUS));

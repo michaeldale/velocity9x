@@ -29,7 +29,12 @@
 #include "velocity9x/status.h"
 
 /* Registers (radeon_reg.h). */
+#define V9X_RV280_PP_MISC               0x1c14ul
 #define V9X_RV280_RB3D_BLENDCNTL        0x1c20ul
+#define V9X_RV280_RB3D_DEPTHOFFSET      0x1c24ul
+#define V9X_RV280_RB3D_DEPTHPITCH       0x1c28ul
+#define V9X_RV280_RB3D_ZSTENCILCNTL     0x1c2cul
+#define V9X_RV280_RB3D_ZCACHE_CTLSTAT   0x3254ul
 #define V9X_RV280_PP_CNTL               0x1c38ul
 #define V9X_RV280_RB3D_CNTL             0x1c3cul
 #define V9X_RV280_RB3D_COLOROFFSET      0x1c40ul
@@ -71,11 +76,50 @@
 #define V9X_RV280_SE_CNTL_BASE          0x9800001eul
 #define V9X_RV280_SE_DIFFUSE_FLAT       0x00000100ul
 #define V9X_RV280_SE_DIFFUSE_GOURAUD    0x00000200ul
+/* SE_CNTL's alpha shade model, bits 11:10 (radeon_reg.h:2271-2274). SOLID,
+ * the init's value, gave every fragment alpha 0 on M-HNBJNV: blending left
+ * the destination as it was and GREATER 128 dropped alpha 200
+ * (docs\decisions\2026-11-15-rv280-z-blend-probe.md). A draw shades alpha
+ * as it shades the colour. */
+#define V9X_RV280_SE_ALPHA_FLAT         0x00000400ul
+#define V9X_RV280_SE_ALPHA_GOURAUD      0x00000800ul
 /* RB3D_CNTL COLOR_FORMAT, bits 13:10. */
 #define V9X_RV280_COLOR_FORMAT_RGB565   0x00001000ul
 #define V9X_RV280_COLOR_FORMAT_ARGB8888 0x00001800ul
-/* RB3D_BLENDCNTL: source GL_ONE, destination GL_ZERO (no blending). */
+/* RB3D_BLENDCNTL: source GL_ONE, destination GL_ZERO (no blending). The
+ * factor codes, source at 16 and destination at 24, COMB_FCN_ADD_CLAMP 0
+ * (radeon_reg.h:2091-2119): ZERO 32, ONE 33, SRC_COLOR 34,
+ * ONE_MINUS_SRC_COLOR 35, DST_COLOR 36, ONE_MINUS_DST_COLOR 37, SRC_ALPHA
+ * 38, ONE_MINUS_SRC_ALPHA 39, DST_ALPHA 40, ONE_MINUS_DST_ALPHA 41. */
 #define V9X_RV280_BLEND_ONE_ZERO        0x20210000ul
+#define V9X_RV280_BLEND_SRC_SHIFT       16u
+#define V9X_RV280_BLEND_DST_SHIFT       24u
+#define V9X_RV280_BLEND_FACTOR_ZERO     32ul
+#define V9X_RV280_BLEND_FACTOR_ONE      33ul
+#define V9X_RV280_BLEND_FACTOR_SRC_ALPHA 38ul
+#define V9X_RV280_BLEND_FACTOR_INV_SRC_ALPHA 39ul
+#define V9X_RV280_BLEND_FACTOR_FIRST    32ul
+#define V9X_RV280_BLEND_FACTOR_LAST     41ul
+/* RB3D_CNTL: ALPHA_BLEND_ENABLE bit 0, Z_ENABLE bit 8. */
+#define V9X_RV280_RB3D_ALPHA_BLEND      0x00000001ul
+#define V9X_RV280_RB3D_Z_ENABLE         0x00000100ul
+/* RB3D_ZSTENCILCNTL: DEPTH_FORMAT_16BIT_INT_Z 0, Z_TEST at 4 (NEVER 0,
+ * LESS 1, LEQUAL 2, EQUAL 3, GEQUAL 4, GREATER 5, NEQUAL 6, ALWAYS 7),
+ * Z_WRITE_ENABLE bit 30; stencil left at 0 with STENCIL_ENABLE clear. */
+#define V9X_RV280_Z_TEST_SHIFT          4u
+#define V9X_RV280_Z_TEST_ALWAYS         7ul
+#define V9X_RV280_Z_WRITE_ENABLE        0x40000000ul
+/* RB3D_DEPTHPITCH: the pitch in pixels, a multiple of 8, at most 1FF8h. */
+#define V9X_RV280_DEPTH_PITCH_MAX       0x1ff8ul
+/* RB3D_ZCACHE_CTLSTAT: RB3D_ZC_FLUSH_ALL. */
+#define V9X_RV280_ZC_FLUSH_ALL          0x00000005ul
+/* PP_MISC: the alpha reference in 7:0, ALPHA_TEST op at 8 (FAIL 0, LESS
+ * 1, ... PASS 7); PP_CNTL ALPHA_TEST_ENABLE bit 23 (radeon_reg.h:
+ * 1756-1786). */
+#define V9X_RV280_ALPHA_TEST_SHIFT      8u
+#define V9X_RV280_PP_ALPHA_TEST_ENABLE  0x00800000ul
+/* SE_VTX_FMT_0: Z0 bit 0, a Z after X and Y. */
+#define V9X_RV280_VTX_FMT_Z0            0x00000001ul
 /* PP_CNTL: TEX_BLEND_0_ENABLE, no texture unit. */
 #define V9X_RV280_PP_BLEND_0_ONLY       0x00001000ul
 /* TXCBLEND_0 / TXABLEND_0: ARG_C = diffuse colour / alpha (selector 4 in
@@ -137,13 +181,17 @@
  * 2047. */
 #define V9X_RV280_TARGET_MAX            2047ul
 
-/* Vertices per SE_VF_CNTL in one triangle list here, and dwords per vertex
- * (X, Y, packed colour, then S, T when textured). */
+/* Vertices per SE_VF_CNTL in one triangle list here. A vertex is X, Y,
+ * then Z with V9X_RV280_LAYOUT_Z, the packed colour, then S, T with
+ * V9X_RV280_LAYOUT_ST: the fields in SE_VTX_FMT_0's then SE_VTX_FMT_1's
+ * bit order (r200.c r200_get_vtx_size_0). */
 #define V9X_RV280_3D_MAX_VERTICES       12u
-#define V9X_RV280_3D_VERTEX_DWORDS      3u
-#define V9X_RV280_3D_TEX_VERTEX_DWORDS  5u
+#define V9X_RV280_LAYOUT_Z              1u
+#define V9X_RV280_LAYOUT_ST             2u
 
-#define V9X_RV280_3D_LIST_MAX           64u
+/* The longest list: a state list, or 1 + 12 vertices of 6 dwords. The
+ * caller writes it in FIFO-sized batches. */
+#define V9X_RV280_3D_LIST_MAX           96u
 
 struct v9x_rv280_3d_list {
     v9x_u32 offsets[V9X_RV280_3D_LIST_MAX];
@@ -151,7 +199,29 @@ struct v9x_rv280_3d_list {
     v9x_u32 count;
 };
 
-/* The colour buffer: a surface in the frame buffer at a GPU address. */
+/* Depth, blending and the alpha test, in the hardware's own codes. A zero
+ * pointer in the target means none of them: no Z, blending off, no alpha
+ * test. */
+struct v9x_rv280_3d_raster {
+    /* A 16-bit Z buffer in the target's frame buffer. */
+    v9x_u32 z_enable;
+    v9x_u32 z_offset;
+    v9x_u32 z_pitch_bytes;
+    /* Z_TEST, 0 (NEVER) to 7 (ALWAYS), and whether passing writes Z. */
+    v9x_u32 z_func;
+    v9x_u32 z_write;
+    /* RB3D_BLENDCNTL factor codes, V9X_RV280_BLEND_FACTOR_FIRST..LAST. */
+    v9x_u32 blend_enable;
+    v9x_u32 blend_src;
+    v9x_u32 blend_dst;
+    /* ALPHA_TEST op, 0 (FAIL) to 7 (PASS), and the 8-bit reference. */
+    v9x_u32 alpha_test_enable;
+    v9x_u32 alpha_func;
+    v9x_u32 alpha_ref;
+};
+
+/* The colour buffer: a surface in the frame buffer at a GPU address, and
+ * its raster state (may be zero). */
 struct v9x_rv280_3d_target {
     v9x_u32 fb_gpu_base;
     v9x_u32 fb_bytes;
@@ -160,15 +230,18 @@ struct v9x_rv280_3d_target {
     v9x_u32 bytes_per_pixel;
     v9x_u32 width;
     v9x_u32 height;
+    const struct v9x_rv280_3d_raster *raster;
 };
 
-/* A screen-space vertex: x and y as IEEE single bits, a packed colour sent
- * as it is (a D3DCOLOR, measured: docs\decisions\2026-11-15-rv280-3d-draw-
- * probe.md), and normalised texture coordinates as IEEE single bits, sent
- * only for a textured list. */
+/* A screen-space vertex: x, y and z as IEEE single bits, a packed colour
+ * sent as it is (a D3DCOLOR, measured: docs\decisions\2026-11-15-rv280-
+ * 3d-draw-probe.md), and normalised texture coordinates as IEEE single
+ * bits. z is sent only with V9X_RV280_LAYOUT_Z, s and t only with
+ * V9X_RV280_LAYOUT_ST. */
 struct v9x_rv280_3d_vertex {
     v9x_u32 x_bits;
     v9x_u32 y_bits;
+    v9x_u32 z_bits;
     v9x_u32 colour;
     v9x_u32 s_bits;
     v9x_u32 t_bits;
@@ -194,10 +267,13 @@ struct v9x_rv280_3d_texture {
  * fourteen-or-fewer writes, once per mode on an idle engine. */
 v9x_status v9x_rv280_build_3d_init(struct v9x_rv280_3d_list *list);
 
-/* The colour buffer, the diffuse-only texture environment and the shade
- * model: V9X_STATUS_UNSUPPORTED for a depth the colour buffer has no format
- * for here (only 16 and 32 bpp), INVALID_ARGUMENT for a surface outside the
- * frame buffer, misaligned, or too large. */
+/* The colour buffer, its raster state, the diffuse-only texture
+ * environment and the shade model: V9X_STATUS_UNSUPPORTED for a depth the
+ * colour buffer has no format for here (only 16 and 32 bpp),
+ * INVALID_ARGUMENT for a surface or Z buffer outside the frame buffer,
+ * misaligned, or too large, or a raster code out of range. With Z enabled
+ * the vertex carries Z (SE_VTX_FMT_0 Z0): send it with
+ * V9X_RV280_LAYOUT_Z. */
 v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
                                      int gouraud,
                                      struct v9x_rv280_3d_list *list);
@@ -214,14 +290,17 @@ v9x_status v9x_rv280_build_3d_textured_target(
     const struct v9x_rv280_3d_texture *texture, v9x_u32 combine,
     struct v9x_rv280_3d_list *list);
 
-/* A triangle list: SE_VF_CNTL then each vertex's dwords to SE_PORT_DATA0,
- * with S and T after the colour when textured. count a multiple of 3,
+/* A triangle list: SE_VF_CNTL then each vertex's dwords to SE_PORT_DATA0
+ * in the layout V9X_RV280_LAYOUT_* names. count a multiple of 3,
  * 3..V9X_RV280_3D_MAX_VERTICES. */
 v9x_status v9x_rv280_build_3d_triangles(
     const struct v9x_rv280_3d_vertex *vertices, v9x_u32 count,
-    int colour_order_rgba, int textured, struct v9x_rv280_3d_list *list);
+    int colour_order_rgba, v9x_u32 layout, struct v9x_rv280_3d_list *list);
 
-/* WAIT_UNTIL 3D idle-clean, as RadeonFinishComposite ends a draw. */
-v9x_status v9x_rv280_build_3d_finish(struct v9x_rv280_3d_list *list);
+/* WAIT_UNTIL 3D idle-clean, as RadeonFinishComposite ends a draw; with
+ * flush_z, the Z cache flushed first (RB3D_ZCACHE_CTLSTAT ZC_FLUSH_ALL),
+ * so the Z buffer can be read back. */
+v9x_status v9x_rv280_build_3d_finish(int flush_z,
+                                     struct v9x_rv280_3d_list *list);
 
 #endif

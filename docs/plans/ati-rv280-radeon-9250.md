@@ -25,8 +25,19 @@ hardware, GDI in the screen shadow, and VBE modes.
   within 0.75 of a step, at 16 and 32 bpp
   ([record](../decisions/2026-11-15-rv280-texture-probe.md)).
 
-Next in phase 5: Z, blend and alpha test, perspective (RHW in the
-vertex), each in the probe first, then the HAL glue. Direct3D is `none` on this row until the
+- **Phase 5, Z, blend and alpha test:**
+  - Z16 LESS with writes is right with vertex Z in 0-1. The Z buffer is
+    stored tiled, and its layout is not decoded.
+  - SRCALPHA / INVSRCALPHA blending is exact.
+  - The alpha test is right.
+  - Alpha needed `SE_CNTL`'s alpha shade model set; left SOLID, it read 0.
+
+  ([record](../decisions/2026-11-15-rv280-z-blend-probe.md)).
+
+Next in phase 5: culling, perspective (RHW in the vertex), fog and
+specular in the probe, then the HAL glue: a host-tested map from the
+neutral draw to these builders, then the engine, as the RS690's
+`d3d_rs690_map.c` / `d3d_rs690.c` split. Direct3D is `none` on this row until the
 HAL lands:
 the `vbe` package gave this card software Direct3D, and the ati family
 defaults to hardware.

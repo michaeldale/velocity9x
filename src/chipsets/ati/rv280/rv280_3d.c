@@ -48,21 +48,81 @@ v9x_status v9x_rv280_build_3d_init(struct v9x_rv280_3d_list *list)
     return V9X_STATUS_OK;
 }
 
-/* The colour buffer, blending off, and the shade model: what every draw's
- * state shares. Leaves the texture environment and SE_VTX_FMT_1 to the
- * caller. */
+/* The raster state's codes and its Z buffer, against the target's frame
+ * buffer: V9X_STATUS_OK or INVALID_ARGUMENT. */
+static v9x_status v9x_rv280_check_raster(
+    const struct v9x_rv280_3d_target *target,
+    const struct v9x_rv280_3d_raster *raster)
+{
+    v9x_u32 z_pitch_pixels;
+    v9x_u32 z_bytes;
+
+    if (raster->z_func > V9X_RV280_Z_TEST_ALWAYS) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (raster->blend_enable &&
+        (raster->blend_src < V9X_RV280_BLEND_FACTOR_FIRST ||
+         raster->blend_src > V9X_RV280_BLEND_FACTOR_LAST ||
+         raster->blend_dst < V9X_RV280_BLEND_FACTOR_FIRST ||
+         raster->blend_dst > V9X_RV280_BLEND_FACTOR_LAST)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (raster->alpha_test_enable &&
+        (raster->alpha_func > 7ul || raster->alpha_ref > 255ul)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (!raster->z_enable) {
+        return V9X_STATUS_OK;
+    }
+
+    /* A 16-bit Z buffer the size of the target: RB3D_DEPTHPITCH in pixels,
+     * a multiple of 8, at most 1FF8h; RB3D_DEPTHOFFSET aligned as
+     * RB3D_COLOROFFSET is (an assumption: neither source states its
+     * alignment). */
+    if (raster->z_pitch_bytes == 0ul || raster->z_pitch_bytes % 2ul != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    z_pitch_pixels = raster->z_pitch_bytes / 2ul;
+    if (z_pitch_pixels % V9X_RV280_COLOR_PITCH_UNIT != 0ul ||
+        z_pitch_pixels > V9X_RV280_DEPTH_PITCH_MAX ||
+        z_pitch_pixels < target->width ||
+        raster->z_offset % V9X_RV280_COLOR_OFFSET_ALIGN != 0ul ||
+        raster->z_offset >= target->fb_bytes ||
+        raster->z_offset > 0xfffffffful - target->fb_gpu_base) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Bounded above by 1FF8h x 2 x 2047 bytes: no overflow. */
+    z_bytes = (target->height - 1ul) * raster->z_pitch_bytes +
+              target->width * 2ul;
+    if (z_bytes > target->fb_bytes - raster->z_offset) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return V9X_STATUS_OK;
+}
+
+/* The colour buffer, the raster state, and the shade model: what every
+ * draw's state shares. Leaves PP_CNTL, the texture environment and
+ * SE_VTX_FMT_1 to the caller, with the PP_CNTL bits the raster state needs
+ * in *pp_cntl_extra. */
 static v9x_status v9x_rv280_add_target(
     const struct v9x_rv280_3d_target *target, int gouraud,
-    struct v9x_rv280_3d_list *list)
+    struct v9x_rv280_3d_list *list, v9x_u32 *pp_cntl_extra)
 {
+    const struct v9x_rv280_3d_raster *raster;
     v9x_u32 format;
     v9x_u32 pitch_pixels;
     v9x_u32 address;
     v9x_u32 last_row_end;
+    v9x_u32 cntl;
+    v9x_u32 blend;
+    v9x_u32 zstencil;
+    v9x_u32 misc;
+    v9x_u32 vertex_format;
 
     if (target == 0 || list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    *pp_cntl_extra = 0ul;
     if (target->bytes_per_pixel == 2ul) {
         format = V9X_RV280_COLOR_FORMAT_RGB565;
     } else if (target->bytes_per_pixel == 4ul) {
@@ -105,23 +165,64 @@ static v9x_status v9x_rv280_add_target(
     }
     address = target->fb_gpu_base + target->offset;
 
+    /* No raster state: Z off and ALWAYS without writes, blending off, the
+     * alpha test off and PASS. */
+    raster = target->raster;
+    cntl = format;
+    blend = V9X_RV280_BLEND_ONE_ZERO;
+    zstencil = V9X_RV280_Z_TEST_ALWAYS << V9X_RV280_Z_TEST_SHIFT;
+    misc = 7ul << V9X_RV280_ALPHA_TEST_SHIFT;
+    vertex_format = V9X_RV280_VTX_FMT_PK_COLOR0;
+    if (raster != 0) {
+        if (v9x_rv280_check_raster(target, raster) != V9X_STATUS_OK) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        if (raster->z_enable) {
+            cntl |= V9X_RV280_RB3D_Z_ENABLE;
+            zstencil = (raster->z_func << V9X_RV280_Z_TEST_SHIFT) |
+                       (raster->z_write ? V9X_RV280_Z_WRITE_ENABLE : 0ul);
+            vertex_format |= V9X_RV280_VTX_FMT_Z0;
+        }
+        if (raster->blend_enable) {
+            cntl |= V9X_RV280_RB3D_ALPHA_BLEND;
+            blend = (raster->blend_src << V9X_RV280_BLEND_SRC_SHIFT) |
+                    (raster->blend_dst << V9X_RV280_BLEND_DST_SHIFT);
+        }
+        if (raster->alpha_test_enable) {
+            misc = raster->alpha_ref |
+                   (raster->alpha_func << V9X_RV280_ALPHA_TEST_SHIFT);
+            *pp_cntl_extra = V9X_RV280_PP_ALPHA_TEST_ENABLE;
+        }
+    }
+
     v9x_rv280_3d_begin(list);
-    /* R200PrepareComposite's colour buffer, blending off. */
-    v9x_rv280_3d_add(list, V9X_RV280_RB3D_CNTL, format);
+    /* R200PrepareComposite's colour buffer. */
+    v9x_rv280_3d_add(list, V9X_RV280_RB3D_CNTL, cntl);
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_COLOROFFSET, address);
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_COLORPITCH, pitch_pixels);
     v9x_rv280_3d_add(list, V9X_RV280_RE_TOP_LEFT, 0ul);
     v9x_rv280_3d_add(list, V9X_RV280_RE_WIDTH_HEIGHT,
                      target->width | (target->height << 16));
-    v9x_rv280_3d_add(list, V9X_RV280_RB3D_BLENDCNTL,
-                     V9X_RV280_BLEND_ONE_ZERO);
-    /* X, Y and a packed colour per vertex. */
-    v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_0,
-                     V9X_RV280_VTX_FMT_PK_COLOR0);
+    v9x_rv280_3d_add(list, V9X_RV280_RB3D_BLENDCNTL, blend);
+    /* The Z buffer, 16-bit integer Z, stencil off (radeon_reg.h:2151-2234;
+     * no R200 path in the X driver writes it). */
+    if (raster != 0 && raster->z_enable) {
+        v9x_rv280_3d_add(list, V9X_RV280_RB3D_DEPTHOFFSET,
+                         target->fb_gpu_base + raster->z_offset);
+        v9x_rv280_3d_add(list, V9X_RV280_RB3D_DEPTHPITCH,
+                         raster->z_pitch_bytes / 2ul);
+    }
+    v9x_rv280_3d_add(list, V9X_RV280_RB3D_ZSTENCILCNTL, zstencil);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_MISC, misc);
+    /* X, Y, Z with the Z buffer, and a packed colour per vertex. */
+    v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_0, vertex_format);
+    /* Alpha shaded as the colour is: left SOLID it read 0. */
     v9x_rv280_3d_add(list, V9X_RV280_SE_CNTL,
                      V9X_RV280_SE_CNTL_BASE |
-                     (gouraud ? V9X_RV280_SE_DIFFUSE_GOURAUD
-                              : V9X_RV280_SE_DIFFUSE_FLAT));
+                     (gouraud ? V9X_RV280_SE_DIFFUSE_GOURAUD |
+                                    V9X_RV280_SE_ALPHA_GOURAUD
+                              : V9X_RV280_SE_DIFFUSE_FLAT |
+                                    V9X_RV280_SE_ALPHA_FLAT));
     return V9X_STATUS_OK;
 }
 
@@ -130,14 +231,16 @@ v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
                                      struct v9x_rv280_3d_list *list)
 {
     v9x_status status;
+    v9x_u32 pp_extra;
 
-    status = v9x_rv280_add_target(target, gouraud, list);
+    status = v9x_rv280_add_target(target, gouraud, list, &pp_extra);
     if (status != V9X_STATUS_OK) {
         return status;
     }
     /* The diffuse colour through blend stage 0 with no texture unit,
      * measured (docs\decisions\2026-11-15-rv280-3d-draw-probe.md). */
-    v9x_rv280_3d_add(list, V9X_RV280_PP_CNTL, V9X_RV280_PP_BLEND_0_ONLY);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_CNTL,
+                     V9X_RV280_PP_BLEND_0_ONLY | pp_extra);
     v9x_rv280_3d_add(list, V9X_RV280_PP_TXCBLEND_0,
                      V9X_RV280_TXCBLEND_DIFFUSE);
     v9x_rv280_3d_add(list, V9X_RV280_PP_TXCBLEND2_0,
@@ -175,6 +278,7 @@ v9x_status v9x_rv280_build_3d_textured_target(
     v9x_u32 filter;
     v9x_u32 cblend;
     v9x_u32 ablend;
+    v9x_u32 pp_extra;
     v9x_status status;
 
     if (texture == 0 || target == 0 || list == 0) {
@@ -219,13 +323,14 @@ v9x_status v9x_rv280_build_3d_textured_target(
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
-    status = v9x_rv280_add_target(target, gouraud, list);
+    status = v9x_rv280_add_target(target, gouraud, list, &pp_extra);
     if (status != V9X_STATUS_OK) {
         return status;
     }
     filter = (texture->linear ? V9X_RV280_TXFILTER_LINEAR : 0ul) |
              (texture->clamp ? V9X_RV280_TXFILTER_CLAMP_LAST : 0ul);
-    v9x_rv280_3d_add(list, V9X_RV280_PP_CNTL, V9X_RV280_PP_TEX0_BLEND0);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_CNTL,
+                     V9X_RV280_PP_TEX0_BLEND0 | pp_extra);
     v9x_rv280_3d_add(list, V9X_RV280_PP_TXFILTER_0, filter);
     v9x_rv280_3d_add(list, V9X_RV280_PP_TXFORMAT_0,
                      format |
@@ -252,7 +357,7 @@ v9x_status v9x_rv280_build_3d_textured_target(
 
 v9x_status v9x_rv280_build_3d_triangles(
     const struct v9x_rv280_3d_vertex *vertices, v9x_u32 count,
-    int colour_order_rgba, int textured, struct v9x_rv280_3d_list *list)
+    int colour_order_rgba, v9x_u32 layout, struct v9x_rv280_3d_list *list)
 {
     v9x_u32 control;
     v9x_u32 index;
@@ -276,11 +381,16 @@ v9x_status v9x_rv280_build_3d_triangles(
                          vertices[index].x_bits);
         v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                          vertices[index].y_bits);
+        /* Z0 is SE_VTX_FMT_0's bit 0, so it follows X and Y. */
+        if ((layout & V9X_RV280_LAYOUT_Z) != 0u) {
+            v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
+                             vertices[index].z_bits);
+        }
         v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                          vertices[index].colour);
         /* SE_VTX_FMT_1's fields follow SE_VTX_FMT_0's (r200.c counts
          * them in that order): texture 0's S, T after the colour. */
-        if (textured) {
+        if ((layout & V9X_RV280_LAYOUT_ST) != 0u) {
             v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                              vertices[index].s_bits);
             v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
@@ -290,12 +400,17 @@ v9x_status v9x_rv280_build_3d_triangles(
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_rv280_build_3d_finish(struct v9x_rv280_3d_list *list)
+v9x_status v9x_rv280_build_3d_finish(int flush_z,
+                                     struct v9x_rv280_3d_list *list)
 {
     if (list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     v9x_rv280_3d_begin(list);
+    if (flush_z) {
+        v9x_rv280_3d_add(list, V9X_RV280_RB3D_ZCACHE_CTLSTAT,
+                         V9X_RV280_ZC_FLUSH_ALL);
+    }
     v9x_rv280_3d_add(list, V9X_RV280_WAIT_UNTIL, V9X_RV280_WAIT_3D_IDLECLEAN);
     return V9X_STATUS_OK;
 }
