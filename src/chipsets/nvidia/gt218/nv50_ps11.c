@@ -588,7 +588,9 @@ v9x_status v9x_nv50_ps11_build(v9x_u32 *words, v9x_u32 capacity,
     v9x_nv50_sh_rcp(sh, S, w, w);
     v9x_nv50_sh_fadd(sh, L, v9x_nv50_ps11_zero(), w, V9X_NV50_SH_NEG(w));
     for (i = 0ul; i < 2ul; ++i) {
-        if ((program->inputs & (1ul << i)) == 0ul) {
+        /* v1 also for fog, whose factor is its alpha. */
+        if ((program->inputs & (1ul << i)) == 0ul &&
+            !(i == 1ul && desc->fog != 0ul)) {
             continue;
         }
         for (c = 0ul; c < 4ul; ++c) {
@@ -660,6 +662,26 @@ v9x_status v9x_nv50_ps11_build(v9x_u32 *words, v9x_u32 capacity,
                             v9x_nv50_ps11_zero(), V9X_NV50_PS11_FLAGS);
             v9x_nv50_sh_predicate(sh, V9X_NV50_SH_CC_NE, V9X_NV50_PS11_FLAGS);
             v9x_nv50_sh_kil(sh);
+        }
+    }
+
+    /* Fog after the shader: r0 clamped, then its colour towards the fog
+     * colour by v1.w, interpolated above when fog is on. */
+    if (desc->fog != 0ul) {
+        v9x_u32 factor = R(V9X_NV50_PS11_R_V + 7ul);
+        v9x_u32 work = R(V9X_NV50_PS11_R_WORK);
+
+        for (c = 0ul; c < 4ul; ++c) {
+            v9x_nv50_sh_fmax(sh, R(c), R(c), v9x_nv50_ps11_zero());
+            v9x_nv50_sh_fmin(sh, R(c), R(c),
+                             v9x_nv50_ps11_c(&gen, V9X_NV50_PS11_C_ONE));
+        }
+        for (c = 0ul; c < 3ul; ++c) {
+            v9x_nv50_sh_fadd(sh, L, work, R(c),
+                             V9X_NV50_SH_NEG(v9x_nv50_ps11_c(
+                                 &gen, V9X_NV50_PS11_C_FOG + c)));
+            v9x_nv50_sh_fmad(sh, L, R(c), work, factor,
+                             v9x_nv50_ps11_c(&gen, V9X_NV50_PS11_C_FOG + c));
         }
     }
 

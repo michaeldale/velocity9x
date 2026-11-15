@@ -25,6 +25,18 @@ typedef char v9x_assert_fp2_fits[
             V9X_GT218_RESERVE_3D_FP2 &&
         V9X_GT218_RESERVE_3D_FP2 + V9X_GT218_RESERVE_3D_FP2_BYTES <=
             V9X_GT218_RESERVE_3D_PUSH ? 1 : -1];
+/* The pixel shader slots likewise, after the two-unit ones. */
+typedef char v9x_assert_ps_where_said[
+    V9X_GT218_RESERVE_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+        V9X_NV50_D3D_PS_FIRST == V9X_GT218_RESERVE_3D_PS ? 1 : -1];
+typedef char v9x_assert_ps_fits[
+    V9X_NV50_D3D_PS_SLOTS * V9X_NV50_D3D_PS_STRIDE <=
+            V9X_GT218_RESERVE_3D_PS_BYTES &&
+        V9X_NV50_D3D_PS_WORDS_MAX * 4ul <= V9X_NV50_D3D_PS_STRIDE &&
+        V9X_GT218_RESERVE_3D_FP2 + V9X_GT218_RESERVE_3D_FP2_BYTES <=
+            V9X_GT218_RESERVE_3D_PS &&
+        V9X_GT218_RESERVE_3D_PS + V9X_GT218_RESERVE_3D_PS_BYTES <=
+            V9X_GT218_RESERVE_3D_PUSH ? 1 : -1];
 typedef char v9x_assert_push_in_reserve[
     V9X_GT218_RESERVE_3D_PUSH + V9X_GT218_RESERVE_3D_PUSH_BYTES <=
         V9X_GT218_RESERVE_BYTES ? 1 : -1];
@@ -717,6 +729,114 @@ static void test_fp2(void)
     CHECK(v9x_nv50_d3d_fp2_start(3ul) == 0x7600ul);
 }
 
+/*
+ * Pixel shader draws (step 4 of nvidia-gt218-ps11.md): /3d:ps11's
+ * interface from the state, the shader vertex program, the constant block
+ * and the wide vertex.
+ */
+static void test_shader(void)
+{
+    static v9x_u32 words[V9X_NV50_D3D_STATE_WORDS_MAX + 80ul];
+    v9x_u32 vp[V9X_NV50_D3D_SHADER_VP_WORDS_MAX];
+    v9x_u32 expect[V9X_NV50_D3D_SHADER_VP_WORDS_MAX];
+    v9x_u32 block[4];
+    float wide[28];
+    struct v9x_nv50_d3d_state state;
+    struct v9x_nv50_push push;
+    struct v9x_nv50_sh sh;
+    v9x_u32 at = 0ul;
+    v9x_u32 header;
+    v9x_u32 index;
+    v9x_u32 binds;
+
+    /* The vertex program: 28 moves, attribute to result. */
+    v9x_nv50_sh_init(&sh, expect, V9X_NV50_D3D_SHADER_VP_WORDS_MAX);
+    for (index = 0ul; index < 28ul; ++index) {
+        v9x_nv50_sh_mov(&sh, LONG, V9X_NV50_SH_O(index * 4ul),
+                        V9X_NV50_SH_A(index * 4ul));
+    }
+    v9x_nv50_sh_exit(&sh);
+    CHECK(v9x_nv50_d3d_shader_vp(vp, V9X_NV50_D3D_SHADER_VP_WORDS_MAX) ==
+          sh.count);
+    for (index = 0ul; index < sh.count; ++index) {
+        CHECK(vp[index] == expect[index]);
+    }
+    CHECK(v9x_nv50_d3d_ps_start(2ul) == 0x11000ul);
+
+    base_state(&state);
+    state.shader = 1ul;
+    state.kills = 1ul;
+    state.fp_start = v9x_nv50_d3d_ps_start(1ul);
+    state.fp_registers = 64ul;
+    state.code_flush = 1ul;
+    v9x_nv50_push_init(&push, words, V9X_NV50_D3D_STATE_WORDS_MAX);
+    v9x_nv50_push_d3d_state(&push, &state);
+    CHECK(push.overflow == 0ul);
+    header = find(&push, V9X_8597_VP_START_ID, &at);
+    CHECK(header != 0xfffffffful && words[at] == 0x600ul);
+    CHECK(find(&push, 0x1440ul, &at) != 0xfffffffful);   /* CODE_CB_FLUSH */
+    header = find(&push, V9X_8597_FP_START_ID, &at);
+    CHECK(header != 0xfffffffful && words[at] == 0x10000ul);
+    header = find(&push, 0x19a8ul, &at);                  /* FP_CONTROL */
+    CHECK(header != 0xfffffffful && words[at] == 0x00100000ul);
+    header = find(&push, V9X_8597_VP_ATTR_EN0, &at);
+    CHECK(header != 0xfffffffful && words[at] == 0x0ffffffful &&
+          words[at + 1ul] == 0ul);
+    header = find(&push, V9X_8597_VP_RESULT_MAP_SIZE, &at);
+    CHECK(header != 0xfffffffful && words[at] == 28ul);
+    header = find(&push, V9X_8597_VP_RESULT_MAP0, &at);
+    CHECK(header != 0xfffffffful && ((header >> 18) & 0x7fful) == 7ul &&
+          words[at] == 0x03020100ul && words[at + 6ul] == 0x1b1a1918ul);
+    header = find(&push, V9X_8597_FP_INTERPOLANT_CTRL, &at);
+    CHECK(header != 0xfffffffful && words[at] == 0x08180418ul &&
+          words[at + 1ul] == 64ul);
+    /* All four units bound: TIC N for unit N. */
+    binds = 0ul;
+    at = 0ul;
+    while (find_from(&push, V9X_8597_BIND_TIC2, at, &at) != 0xfffffffful) {
+        CHECK(words[at] == ((binds << 9) | (binds << 1) | 1ul));
+        ++binds;
+        ++at;
+    }
+    CHECK(binds == 4ul);
+
+    /* A fixed-function draw writes FP_CONTROL 0, after a shader killed. */
+    base_state(&state);
+    v9x_nv50_push_init(&push, words, V9X_NV50_D3D_STATE_WORDS_MAX);
+    v9x_nv50_push_d3d_state(&push, &state);
+    header = find(&push, 0x19a8ul, &at);
+    CHECK(header != 0xfffffffful && words[at] == 0ul);
+
+    /* The constant block: CB_ADDR entry 0 of buffer 2, then the words
+     * non-incrementing. */
+    for (index = 0ul; index < 4ul; ++index) {
+        block[index] = 0x3f800000ul + index;
+    }
+    v9x_nv50_push_init(&push, words, 16ul);
+    v9x_nv50_push_d3d_constants(&push, block, 4ul);
+    CHECK(push.count == 7ul && words[1] == V9X_8597_CB_FP &&
+          (words[2] & V9X_NV50_PUSH_NONINC) != 0ul && words[6] == block[3]);
+
+    /* A wide vertex: attributes 1-6, then the position with the centre
+     * added and rhw as the weight (1 for an rhw that is not positive). */
+    for (index = 0ul; index < 28ul; ++index) {
+        wide[index] = 0.25f * (float)index;
+    }
+    wide[3] = -1.0f;
+    v9x_nv50_push_init(&push, words, 64ul);
+    v9x_nv50_push_d3d_wide(&push, wide, 0.5f);
+    CHECK(push.count == V9X_NV50_D3D_WIDE_WORDS);
+    CHECK(words[0] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D, 0x0510ul, 4ul));
+    CHECK(words[1] == 0x3f800000ul);                      /* wide[4] 1.0 */
+    CHECK(words[25] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D, 0x0560ul,
+                                            4ul));
+    CHECK(words[30] == V9X_NV50_PUSH_HEADER(V9X_NV50_SUBC_3D, 0x0500ul,
+                                            4ul));
+    CHECK(words[31] == 0x3f000000ul);                     /* 0 + 0.5 */
+    CHECK(words[32] == 0x3f400000ul);                     /* 0.25 + 0.5 */
+    CHECK(words[34] == 0x3f800000ul);                     /* weight 1 */
+}
+
 unsigned int v9x_run_nv50_d3d_tests(void)
 {
     failures = 0u;
@@ -726,5 +846,6 @@ unsigned int v9x_run_nv50_d3d_tests(void)
     test_texture();
     test_state();
     test_vertex();
+    test_shader();
     return failures;
 }

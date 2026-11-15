@@ -121,6 +121,15 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
                               v9x_u32 *with_specular);
 
 /*
+ * One pixel shader stage's texture (sampler as the draw describes it,
+ * resolved as texture) into its TIC and TSC words, by the same rules as a
+ * fixed-function draw's: a V9X_D3D_NV50_REFUSE_* reason.
+ */
+v9x_u32 v9x_d3d_nv50_map_unit(const V9X_R3D_TEXTURE *sampler,
+                              const V9X_D3D_NV50_TEXTURE *texture,
+                              v9x_u32 *tic, v9x_u32 *tsc);
+
+/*
  * A depth fill of [left, right) by [top, bottom) of the shadow view's Z
  * buffer at value (the 16-bit full scale), as a draw: two triangles at
  * the value, depth test ALWAYS with writes, every colour channel masked,

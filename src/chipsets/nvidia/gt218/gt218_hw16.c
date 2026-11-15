@@ -126,10 +126,14 @@ static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
     *mapped_aperture_bytes = V9X_GT218_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_NV50;
     /* D3D: the Tesla 3D engine on the same channel (d3d_nv50.c), whose
-     * builders the channel probe drew right on M-BXMFA8. */
+     * builders the channel probe drew right on M-BXMFA8. DDI 8 over DDI
+     * 6: pixel shaders on the translator V9XN5CH /3d:ps11 drew right, two
+     * stages first as Michael chose (step 4 of docs\plans\
+     * nvidia-gt218-ps11.md). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_D3D;
+                   V9X_DD_ENGINE_CAP_D3D |
+                   V9X_DD_ENGINE_CAP_D3D_DDI8;
 }
 
 /* Not static: resolved by name in the link map by the per-object audit. */

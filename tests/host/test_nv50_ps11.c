@@ -84,6 +84,9 @@ static v9x_u32 program_words[PROGRAM_DWORDS];
 /* Programs run through the model, and the largest one's size. */
 static v9x_u32 checked;
 static v9x_u32 largest;
+/* Fog after the shader for the next cases, and its colour. */
+static v9x_u32 fog_on;
+static float fog_rgb[3];
 
 static void put(v9x_u32 word)
 {
@@ -185,6 +188,7 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
     desc.projected = env->projected;
     desc.unbound = env->unbound;
     desc.slot = 2ul;
+    desc.fog = fog_on;
     status = v9x_nv50_ps11_build(program_words, PROGRAM_DWORDS, program,
                                  &desc, &info);
     if (status != V9X_STATUS_OK) {
@@ -200,6 +204,11 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
     }
     CHECK((info.kills != 0ul) == (program->has_kill != 0ul));
     v9x_nv50_ps11_constants(program, env, constants);
+    for (c = 0ul; c < 3ul; ++c) {
+        float value = fog_rgb[c];
+
+        memcpy(&constants[V9X_NV50_PS11_C_FOG + c], &value, sizeof(value));
+    }
 
     for (p = 0ul; p < PIXELS; ++p) {
         V9X_PS11_PIXEL pixel;
@@ -231,6 +240,18 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
         kept = v9x_ps11_run(program, env, &pixel, interpreter_texel, 0, out);
         if (!kept) {
             ++killed;
+        }
+        /* Fog as Gen3's test applies it: r0 clamped, then (c - fog) f +
+         * fog with f v1.w. */
+        if (fog_on) {
+            float f = pixel.v[1][3];
+
+            for (c = 0ul; c < 4ul; ++c) {
+                out[c] = out[c] < 0.0f ? 0.0f : out[c] > 1.0f ? 1.0f : out[c];
+            }
+            for (c = 0ul; c < 3ul; ++c) {
+                out[c] = (out[c] - fog_rgb[c]) * f + fog_rgb[c];
+            }
         }
         if (!v9x_nv50_sim_run(&sim, program_words, info.words, sim_texel)) {
             printf("FAIL %s: the model stopped at word %lu (%s)\n", name,
@@ -449,6 +470,22 @@ static void cases(void)
     put(END);
     check_case("cnd", &env, 0ul);
 
+    /* The same fogged: some channels leave [0, 1] and are clamped first. */
+    fog_on = 1ul;
+    fog_rgb[0] = 0.25f; fog_rgb[1] = 0.5f; fog_rgb[2] = 1.0f;
+    check_case("cnd fog", &env, 0ul);
+
+    /* Fog with texkill: the kept pixels fogged, the rest still killed. */
+    zero_env(&env);
+    used = 0ul;
+    put(VER(1ul, 0ul));
+    put(OP_TEX); put(DST(T, 0, ALL, 0, 0));
+    put(OP_TEXKILL); put(DST(T, 1, ALL, 0, 0));
+    put(OP_MOV); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 0, XYZW, 0));
+    put(END);
+    check_case("texkill fog", &env, 1ul);
+    fog_on = 0ul;
+
     /* An unbound stage reads (0, 0, 0, 1); texkill still kills. */
     zero_env(&env);
     env.unbound = 1ul;
@@ -487,6 +524,7 @@ static void refusals(void)
     desc.projected = 0ul;
     desc.unbound = 0ul;
     desc.slot = 2ul;
+    desc.fog = 0ul;
 
     used = 0ul;
     put(VER(1ul, 1ul));

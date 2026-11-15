@@ -1,0 +1,86 @@
+﻿[Shell_TrayWnd]   (handle 252, pid 4294749571)
+  TrayClockWClass #303: 11:00 PM
+[#32770] 3DMark2000 Overall Score  (handle 1948, pid 4278330603)
+  Button #1159: &Online ResultBrowser
+  Button #505: &Edit Description
+  Button #1131: &Save Project
+  Button #4: Se&ttings
+  Button #5: Show &Details
+  Button #1132: &ResultBrowser
+  Button #2: C&lose
+  Static #1134: 3D marks
+  Static #65535: ÿö
+  Button #65535: 3DMark Score
+  Static #65535: ÿ÷
+  Static #1133: 4739
+  Static #65535: ÿm
+  Static #65535: Congratulations!
+    You have successfully run the benchmark. Your score is:
+  Static #65535: ÿú
+  Static #65535: ÿû
+  Static #65535: ÿÆ
+  Static #65535: ÿú
+  Static #65535: Online ResultBrowser also gives you information on the best upgrade choices for your system.
+  Static #65535: View your result details with the Online ResultBrowser
+[3DMark2000:400000:b:0:6] 3DMark2000 Pro - Untitled  (handle 896, pid 4278330603)
+  Afx:400000:b:14c6:6:2fa7 #65280: Untitled
+  Button #1011: Ed&it...
+  Button #1007: &Change...
+  Button #1009: Ch&ange...
+  Button #1008: Cha&nge...
+  Button #1010: ResultBro&wser
+  Button #1013: Hel&p...
+  Button #32806: Ba&tch Run
+  Button #1107: &System Info
+  Button #1059: &Benchmark
+  Button #1106: &Demo Mode
+  Button #65535: 2. Selected Tests
+  Button #65535: 3. Testing Options
+  Static #65535: Looping:
+  Static #65535: ÿŽ
+  Static #65535: ÿ‚
+  Static #65535: Repeat:
+  Static #65535: Sounds:
+  Static #1023: No
+  Static #1024: 1
+  Static #1025: Enabled
+  Static #65535: Fill Rate:
+  Static #1056: Yes (2 of 2)
+  Static #65535: Game 1 - Helicopter:
+  Static #1057: Yes (3 of 3)
+  Static #65535: Game 2 - Adventure:
+  Static #1058: Yes (3 of 3)
+  Static #1065: My Project
+  Button #65535: 1. Project Description
+  Static #65535: Texture Rendering Speed:
+  Static #1060: Yes (4 of 4)
+  Button #65535: 5. Run
+  Static #65535: ÿÅ
+  Static #65535: Titles:
+  Static #1027: Yes
+  Button #65535: 4. Display and CPU Settings
+  Static #65535: ÿ
+  Static #1020: Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)
+  Static #1021: 1024 * 768, 16 bit color, 16 bit textures
+  Static #1022: Triple Frame Buffer
+  Static #65535: Z-Buffer,
+  Static #1026: 16-bit
+  Static #65535: ÿ€
+  Static #65535: ÿ£
+  Static #65535: ÿ¤
+  Static #65535: ÿž
+  Static #65535: Image Quality:
+  Static #1063: Yes (2 of 2)
+  Static #1028: Intel(R) Pentium(R) III optimizations
+  Static #65535: Using
+  Static #65535: ÿ¢
+  Static #65535: Bump Mapping:
+  Static #1066: Yes (4 of 4)
+  Static #65535: ÿ§
+  Static #65535: High Polygon Count:
+  Static #1062: Yes (3 of 3)
+  Static #65535: CPU Speed:
+  Static #1061: Yes
+  msctls_statusbar32 #59393: For Help, press F1
+  ToolbarWindow32 #59392: 3DMark Toolbar
+[Progman] Program Manager  (handle 312, pid 4294749571)

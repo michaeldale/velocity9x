@@ -91,6 +91,26 @@ v9x_u32 v9x_nv50_d3d_fp2_start(v9x_u32 slot);
 v9x_u32 v9x_nv50_d3d_fp2(const struct v9x_nv50_d3d_combine *c,
                          v9x_u32 *words, v9x_u32 max, v9x_u32 *registers);
 
+/*
+ * Pixel shader draws (step 4 of docs\plans\nvidia-gt218-ps11.md): the
+ * wide vertex (r3d.h, V9X_R3D_SHADER_FLOATS) as attributes 0-6 - the
+ * position, diffuse, specular and coordinate sets 0-3, four floats each
+ * - which the shader vertex program copies to results 0-27, read as
+ * nv50_ps11.h lays out v[]. Translated programs (nv50_ps11.c) go into
+ * slots past the two-unit ones (gt218_reserve.h), FP start offsets from
+ * the same code base.
+ */
+#define V9X_NV50_D3D_SHADER_VP_START 0x0600ul
+#define V9X_NV50_D3D_SHADER_VP_WORDS_MAX 64ul
+#define V9X_NV50_D3D_SHADER_RESULTS  28ul
+#define V9X_NV50_D3D_SHADER_UNITS    4ul
+#define V9X_NV50_D3D_PS_FIRST        0xf000ul
+#define V9X_NV50_D3D_PS_STRIDE       0x1000ul
+#define V9X_NV50_D3D_PS_SLOTS        16ul
+#define V9X_NV50_D3D_PS_WORDS_MAX    1024ul
+v9x_u32 v9x_nv50_d3d_shader_vp(v9x_u32 *words, v9x_u32 max);
+v9x_u32 v9x_nv50_d3d_ps_start(v9x_u32 slot);
+
 /* The fragment program's constants (buffer 2), sent with each fogged
  * draw: the fog colour in 0 to 2, its negation in 4 to 6. */
 #define V9X_NV50_D3D_FP_CONSTANTS    8ul
@@ -171,6 +191,12 @@ struct v9x_nv50_d3d_state {
     v9x_u32 code_flush;
     /* The two units' combine, from which the HAL finds the program. */
     struct v9x_nv50_d3d_combine combine;
+    /* A pixel shader draw: the shader vertex program and interface, the
+     * program at fp_start, all four texture units bound, USES_KIL when
+     * kills is set; the caller sends the constant block
+     * (v9x_nv50_push_d3d_constants). Other draws write FP_CONTROL 0. */
+    v9x_u32 shader;
+    v9x_u32 kills;
 };
 
 /* The colour mask: red, green, blue, alpha writes, a nibble each. */
@@ -198,6 +224,15 @@ void v9x_nv50_push_d3d_vertex(struct v9x_nv50_push *push, float sx, float sy,
  * v9x_nv50_push_d3d_vertex, which emits it. */
 void v9x_nv50_push_d3d_uv1(struct v9x_nv50_push *push, float tu1, float tv1);
 #define V9X_NV50_D3D_UV1_WORDS       3ul
+
+/* count words of the fragment constant buffer from entry 0. */
+void v9x_nv50_push_d3d_constants(struct v9x_nv50_push *push,
+                                 const v9x_u32 *words, v9x_u32 count);
+/* One wide vertex (28 floats), centre added to x and y, the position last;
+ * rhw as v9x_nv50_push_d3d_vertex takes it. */
+void v9x_nv50_push_d3d_wide(struct v9x_nv50_push *push, const float *vertex,
+                            float centre);
+#define V9X_NV50_D3D_WIDE_WORDS      35ul
 
 /* VERTEX_BEGIN_GL triangles, and its end. */
 void v9x_nv50_push_d3d_begin(struct v9x_nv50_push *push);

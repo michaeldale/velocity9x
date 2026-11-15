@@ -3864,6 +3864,10 @@ struct v9x_probe_geometry {
     DWORD scissor_top;
     DWORD scissor_right;
     DWORD scissor_bottom;
+    /* Null, or each vertex's v0 r g b a (in place of the plane) and its
+     * weight, the position's fourth word (in place of 1). */
+    const float *colour;
+    const float *rhw;
 };
 
 /* /3d:ps11's rectangle, two triangles over the whole of its frame. */
@@ -3873,13 +3877,14 @@ static const float v9x_ps11_rect_xy[12] = {
 };
 static const struct v9x_probe_geometry v9x_ps11_rect = {
     6ul, v9x_ps11_rect_xy, 16.0f, 8.0f, 96.0f, 56.0f,
-    0ul, 0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT
+    0ul, 0ul, V9X_FILL_WIDTH, V9X_FILL_HEIGHT, 0, 0
 };
 
-/* One vertex at (x, y), its attributes the planes there. */
+/* Vertex index's attributes: the planes at (x, y), or its own colour. */
 static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, float x,
                                   float y,
-                                  const struct v9x_probe_geometry *geometry)
+                                  const struct v9x_probe_geometry *geometry,
+                                  DWORD index)
 {
     float fx = (x - geometry->x0) / geometry->width;
     float fy = (y - geometry->y0) / geometry->height;
@@ -3889,16 +3894,21 @@ static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, float x,
 
     for (a = 0ul; a < V9X_PS11_ATTRIBUTES; ++a) {
         for (c = 0ul; c < 4ul; ++c) {
-            data[c] = v9x_ps11_probe_bits(v9x_ps11_probe_plane(a, c, fx, fy));
+            data[c] = v9x_ps11_probe_bits(
+                a == 0ul && geometry->colour != 0
+                    ? geometry->colour[index * 4ul + c]
+                    : v9x_ps11_probe_plane(a, c, fx, fy));
         }
         v9x_nv50_push_method(push, V9X_NV50_SUBC_3D,
                              V9X_PS11_VTX_ATTR_4F(a + 1ul), 4ul, data);
     }
-    /* The position last: attribute 0 emits the vertex; w 1. */
+    /* The position last: attribute 0 emits the vertex; w 1 or the
+     * vertex's own weight. */
     data[0] = v9x_ps11_probe_bits(x);
     data[1] = v9x_ps11_probe_bits(y);
     data[2] = v9x_ps11_probe_bits(0.5f);
-    data[3] = v9x_ps11_probe_bits(1.0f);
+    data[3] = v9x_ps11_probe_bits(geometry->rhw != 0 ? geometry->rhw[index]
+                                                     : 1.0f);
     v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_PS11_VTX_ATTR_4F(0ul),
                          4ul, data);
 }
@@ -3989,7 +3999,8 @@ static void v9x_ps11_probe_push(struct v9x_nv50_push *push, DWORD bytes,
     v9x_nv50_push_d3d_begin(push);
     for (index = 0ul; index < geometry->count; ++index) {
         v9x_ps11_probe_vertex(push, geometry->xy[2ul * index],
-                              geometry->xy[2ul * index + 1ul], geometry);
+                              geometry->xy[2ul * index + 1ul], geometry,
+                              index);
     }
     v9x_nv50_push_d3d_end(push);
 }
@@ -4187,6 +4198,7 @@ static int v9x_ps11_probe_draw(const char *section, DWORD variant,
     desc.projected = 0ul;
     desc.unbound = 0ul;
     desc.slot = V9X_PS11_CB_SLOT;
+    desc.fog = 0ul;
     if (v9x_nv50_ps11_build(code, V9X_PS11_CODE_WORDS, &program, &desc,
                             &info) != V9X_STATUS_OK) {
         lstrcpyA(key, v->name);
@@ -4406,6 +4418,15 @@ static const DWORD v9x_guard_distances[V9X_GUARD_DISTANCES] = {
     0ul, 512ul, 1024ul, 2048ul, 4096ul, 8192ul, 16384ul, 32768ul
 };
 
+/* The perspective cases: red, green, blue at the three vertices, and
+ * weights (rhw) as a near vertex and far ones give: PCover's two far
+ * corners at a twentieth, PSliver's far point at a fiftieth. */
+static const float v9x_guard_colours[12] = {
+    1.0f, 0.0f, 0.0f, 1.0f,  0.0f, 1.0f, 0.0f, 1.0f,  0.0f, 0.0f, 1.0f, 1.0f
+};
+static const float v9x_guard_rhw_cover[3] = { 1.0f, 0.05f, 0.05f };
+static const float v9x_guard_rhw_sliver[3] = { 0.02f, 1.0f, 1.0f };
+
 /* Signed distance of (px, py) from the edge a -> b, positive on the left
  * as the triangle winds. */
 static double v9x_guard_edge(const float *a, const float *b, double px,
@@ -4455,8 +4476,45 @@ static int v9x_guard_cover(const float *xy, double px, double py)
     return 0;
 }
 
+/*
+ * The perspective-correct colour at (px, py) from per-vertex colours and
+ * weights, as the engine interpolates: screen barycentrics b, then
+ * sum(b w c) / sum(b w), in doubles.
+ */
+static void v9x_guard_perspective(const float *xy, const float *colour,
+                                  const float *rhw, double px, double py,
+                                  float out[3])
+{
+    double area = ((double)xy[2] - (double)xy[0]) *
+                      ((double)xy[5] - (double)xy[1]) -
+                  ((double)xy[4] - (double)xy[0]) *
+                      ((double)xy[3] - (double)xy[1]);
+    double b[3];
+    double weight = 0.0;
+    DWORD i;
+    DWORD c;
+
+    b[0] = (((double)xy[2] - px) * ((double)xy[5] - py) -
+            ((double)xy[4] - px) * ((double)xy[3] - py)) / area;
+    b[1] = (((double)xy[4] - px) * ((double)xy[1] - py) -
+            ((double)xy[0] - px) * ((double)xy[5] - py)) / area;
+    b[2] = 1.0 - b[0] - b[1];
+    for (i = 0ul; i < 3ul; ++i) {
+        weight += b[i] * (double)rhw[i];
+    }
+    for (c = 0ul; c < 3ul; ++c) {
+        double sum = 0.0;
+
+        for (i = 0ul; i < 3ul; ++i) {
+            sum += b[i] * (double)rhw[i] * (double)colour[i * 4ul + c];
+        }
+        out[c] = (float)(sum / weight);
+    }
+}
+
 static int v9x_guard_draw(const char *section, const char *name,
-                          const float *xy, const DWORD *code,
+                          const float *xy, const float *colour,
+                          const float *rhw, const DWORD *code,
                           const struct v9x_nv50_ps11_info *info,
                           const DWORD *constants,
                           const struct v9x_nv50_3d_scratch *scratch,
@@ -4487,6 +4545,8 @@ static int v9x_guard_draw(const char *section, const char *name,
     geometry.scissor_top = V9X_GUARD_INSET;
     geometry.scissor_right = V9X_FILL_WIDTH - V9X_GUARD_INSET;
     geometry.scissor_bottom = V9X_FILL_HEIGHT - V9X_GUARD_INSET;
+    geometry.colour = colour;
+    geometry.rhw = rhw;
 
     v9x_ops_begin();
     v9x_op(V9X_OP_VRAM_FILL, V9X_PS11_SURFACE, words, V9X_FILL_PATTERN);
@@ -4550,17 +4610,24 @@ static int v9x_guard_draw(const char *section, const char *name,
             } else {
                 float fx = (float)px / geometry.width;
                 float fy = (float)py / geometry.height;
+                float perspective[3];
                 long got[3];
                 long want[3];
                 long diff;
                 DWORD c;
 
+                if (colour != 0) {
+                    v9x_guard_perspective(xy, colour, rhw, px, py,
+                                          perspective);
+                }
                 got[0] = (long)((pixel >> 16) & 0xfful);
                 got[1] = (long)((pixel >> 8) & 0xfful);
                 got[2] = (long)(pixel & 0xfful);
                 for (c = 0ul; c < 3ul; ++c) {
                     want[c] = v9x_ps11_probe_unorm(
-                        v9x_ps11_probe_plane(0ul, c, fx, fy), 255ul);
+                        colour != 0 ? perspective[c]
+                                    : v9x_ps11_probe_plane(0ul, c, fx, fy),
+                        255ul);
                     diff = got[c] - want[c];
                     if (diff < 0l) {
                         diff = -diff;
@@ -4673,6 +4740,7 @@ static int v9x_stage_3d_guard(void)
     desc.projected = 0ul;
     desc.unbound = 0ul;
     desc.slot = V9X_PS11_CB_SLOT;
+    desc.fog = 0ul;
     v9x_ps11_probe_env(0ul, &env);
     if (v9x_nv50_ps11_build(code, V9X_PS11_CODE_WORDS, &program, &desc,
                             &info) != V9X_STATUS_OK) {
@@ -4700,8 +4768,21 @@ static int v9x_stage_3d_guard(void)
         xy[5] = 2.0f * d + 300.0f;
         lstrcpyA(name, "Cover");
         v9x_guard_decimal(name + lstrlenA(name), v9x_guard_distances[index]);
-        ok = v9x_guard_draw(section, name, xy, code, &info, constants,
+        ok = v9x_guard_draw(section, name, xy, 0, 0, code, &info, constants,
                             &scratch, first_word);
+        if (v9x_ps11_probe_trapped) {
+            v9x_text(section, "Result", "NOT-CLEAN");
+            return 0;
+        }
+        /* The same in perspective: the far corners far away (a sky's
+         * shape), each vertex its own colour. */
+        lstrcpyA(name, "PCover");
+        v9x_guard_decimal(name + lstrlenA(name), v9x_guard_distances[index]);
+        if (!v9x_guard_draw(section, name, xy, v9x_guard_colours,
+                            v9x_guard_rhw_cover, code, &info, constants,
+                            &scratch, first_word)) {
+            ok = 0;
+        }
         if (v9x_ps11_probe_trapped) {
             v9x_text(section, "Result", "NOT-CLEAN");
             return 0;
@@ -4714,7 +4795,18 @@ static int v9x_stage_3d_guard(void)
         xy[5] = 60.0f;
         lstrcpyA(name, "Sliver");
         v9x_guard_decimal(name + lstrlenA(name), v9x_guard_distances[index]);
-        if (!v9x_guard_draw(section, name, xy, code, &info, constants,
+        if (!v9x_guard_draw(section, name, xy, 0, 0, code, &info, constants,
+                            &scratch, first_word)) {
+            ok = 0;
+        }
+        if (v9x_ps11_probe_trapped) {
+            v9x_text(section, "Result", "NOT-CLEAN");
+            return 0;
+        }
+        lstrcpyA(name, "PSliver");
+        v9x_guard_decimal(name + lstrlenA(name), v9x_guard_distances[index]);
+        if (!v9x_guard_draw(section, name, xy, v9x_guard_colours,
+                            v9x_guard_rhw_sliver, code, &info, constants,
                             &scratch, first_word)) {
             ok = 0;
         }

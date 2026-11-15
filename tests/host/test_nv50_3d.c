@@ -118,7 +118,7 @@ static void test_setup(void)
     CHECK(words[at] == 0ul && words[at + 1ul] == scratch.tic &&
           words[at + 2ul] == 0x800ul);
     header = find_header(&push, 0x155cul, &at);
-    CHECK(words[at + 1ul] == scratch.tsc && words[at + 2ul] == 1ul);
+    CHECK(words[at + 1ul] == scratch.tsc && words[at + 2ul] == 3ul);
     header = find_header(&push, 0x13bcul, &at);
     CHECK(words[at] == 0x54ul);
     header = find_header(&push, 0x1650ul, &at);

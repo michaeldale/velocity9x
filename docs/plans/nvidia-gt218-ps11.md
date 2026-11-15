@@ -3,7 +3,7 @@
 Date: 2026-11-15. Status: steps 0-3 done 2026-11-15
 ([XRGB8888](../decisions/2026-11-15-gt218-xrgb8888-textures.md),
 [encoder, translator, probe](../decisions/2026-11-15-gt218-ps11-translator.md));
-step 5 done ([guard band, two stages](../decisions/2026-11-15-gt218-guard-band-two-stages.md)); step 4 next. Decisions settled
+step 5 done ([guard band, two stages](../decisions/2026-11-15-gt218-guard-band-two-stages.md)); step 4 built, 3DMark 2001 SE owed ([draw_shader, DDI 8](../decisions/2026-11-15-gt218-draw-shader-ddi8.md)). Decisions settled
 2026-11-15 (end of this file): no T&L; two texture stages (step 5) are
 done before step 4 publishes DDI 8. Order of work: 0, 1, 2, 3, 5, 4, 6,
 7, 8.

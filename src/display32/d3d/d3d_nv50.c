@@ -23,6 +23,7 @@
 #include "d3d_internal.h"
 #include "d3d_nv50_map.h"
 #include "velocity9x/nv50_d3d.h"
+#include "velocity9x/nv50_ps11.h"
 
 /* Triangles one batch takes: at the widest vertex (18 words) 2,048 fill
  * 110,592 of the push area's 196,608 words, with room for the setup and
@@ -706,6 +707,16 @@ static int v9x_d3d_nv50_write_programs(volatile DWORD *scratch)
     for (index = 0ul; index < count; ++index) {
         at[index] = v9x_d3d_nv50_program[index];
     }
+    count = v9x_nv50_d3d_shader_vp(v9x_d3d_nv50_program,
+                                   V9X_NV50_D3D_FP_WORDS_MAX);
+    if (count == 0ul) {
+        return 0;
+    }
+    at = scratch +
+         (V9X_NV50_3D_SCRATCH_VP + V9X_NV50_D3D_SHADER_VP_START) / 4ul;
+    for (index = 0ul; index < count; ++index) {
+        at[index] = v9x_d3d_nv50_program[index];
+    }
     for (variant = 0ul; variant < V9X_NV50_D3D_FP_VARIANTS; ++variant) {
         count = v9x_nv50_d3d_fp(variant, v9x_d3d_nv50_program,
                                 V9X_NV50_D3D_FP_WORDS_MAX, &registers);
@@ -944,6 +955,342 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
         if (uv1 != 0) {
             uv1 += chunk * 3ul * 2ul;
         }
+        triangle_count -= chunk;
+    }
+    V9X_TIME_END(V9X_TIME_DECODE, started);
+    return 1;
+}
+
+/*
+ * PIXEL SHADERS, step 4 of docs\plans\nvidia-gt218-ps11.md: a list of
+ * triangles under a DirectX 8 pixel shader (d3d_internal.h, draw_shader).
+ * The program is v9x_nv50_ps11_build's (the translator V9XN5CH /3d:ps11
+ * drew on the card), cached by the shader and what of the draw it depends
+ * on in V9X_NV50_D3D_PS_SLOTS slots past the scratch. Every batch waits
+ * for the engine to drain (v9x_nv50_3d_begin), so a slot may be reused
+ * and rewritten in place; a slot's code is written once per channel
+ * build, with CODE_CB_FLUSH in the push after.
+ *
+ * The target, depth (through the shadow target, as every Z draw), blend
+ * and alpha test are the fixed-function map's; fog is the program's. The
+ * wide vertices come unclipped and are drawn inside the guard band as
+ * the fixed-function ones are. Not drawn yet: cube maps and the texm3x3
+ * lookups (cube placement and 3D sampling are step 6), refused and
+ * counted by the core as dropped.
+ */
+#define V9X_D3D_NV50_PS_CHUNK        1024ul
+#define V9X_D3D_NV50_PS_UNWRITTEN    0xfffffffful
+
+typedef struct v9x_d3d_nv50_ps_entry {
+    const V9X_PS11_PROGRAM *program;    /* null: an empty slot */
+    DWORD serial;
+    DWORD projected;
+    DWORD unbound;
+    DWORD fog;
+    DWORD registers;
+    DWORD kills;
+    DWORD generation;   /* the channel build its code was written in */
+} V9X_D3D_NV50_PS_ENTRY;
+
+static V9X_D3D_NV50_PS_ENTRY v9x_d3d_nv50_ps_cache[V9X_NV50_D3D_PS_SLOTS];
+static DWORD v9x_d3d_nv50_ps_next = 0ul;
+static v9x_u32 v9x_d3d_nv50_ps_words[V9X_NV50_D3D_PS_WORDS_MAX];
+static v9x_u32 v9x_d3d_nv50_ps_constants[V9X_NV50_PS11_C_FLOATS];
+/* The draw with its textures, specular and fog taken off, for the map's
+ * target, depth, blend and alpha test: static, as HAL stacks are small. */
+static V9X_R3D_DRAW v9x_d3d_nv50_ps_plain;
+
+/* entry's program into v9x_d3d_nv50_ps_words; its word count, 0 when it
+ * does not translate. */
+static v9x_u32 v9x_d3d_nv50_ps_translate(V9X_D3D_NV50_PS_ENTRY *entry)
+{
+    struct v9x_nv50_ps11_desc desc;
+    struct v9x_nv50_ps11_info info;
+
+    desc.cube = 0ul;
+    desc.projected = entry->projected;
+    desc.unbound = entry->unbound;
+    desc.slot = 0ul;    /* fragment slot 0, buffer 2 (nv50_d3d.c) */
+    desc.fog = entry->fog;
+    if (v9x_nv50_ps11_build(v9x_d3d_nv50_ps_words, V9X_NV50_D3D_PS_WORDS_MAX,
+                            entry->program, &desc, &info) != V9X_STATUS_OK) {
+        return 0ul;
+    }
+    entry->registers = info.registers;
+    entry->kills = info.kills;
+    return info.words;
+}
+
+/* The slot for this shader and draw: found, or the next one taken and its
+ * program translated to prove it builds (written later, per batch). */
+static V9X_D3D_NV50_PS_ENTRY *v9x_d3d_nv50_ps_entry(
+    const V9X_R3D_SHADER *shader, DWORD unbound, DWORD fog, DWORD *slot)
+{
+    V9X_D3D_NV50_PS_ENTRY *entry;
+    DWORD n;
+
+    for (n = 0ul; n < V9X_NV50_D3D_PS_SLOTS; ++n) {
+        entry = &v9x_d3d_nv50_ps_cache[n];
+        if (entry->program == shader->program &&
+            entry->serial == shader->serial &&
+            entry->projected == shader->env.projected &&
+            entry->unbound == unbound && entry->fog == fog) {
+            *slot = n;
+            return entry;
+        }
+    }
+    n = v9x_d3d_nv50_ps_next;
+    v9x_d3d_nv50_ps_next = (n + 1ul) % V9X_NV50_D3D_PS_SLOTS;
+    entry = &v9x_d3d_nv50_ps_cache[n];
+    entry->program = shader->program;
+    entry->serial = shader->serial;
+    entry->projected = shader->env.projected;
+    entry->unbound = unbound;
+    entry->fog = fog;
+    entry->generation = V9X_D3D_NV50_PS_UNWRITTEN;
+    if (v9x_d3d_nv50_ps_translate(entry) == 0ul) {
+        entry->program = 0;
+        return 0;
+    }
+    *slot = n;
+    return entry;
+}
+
+/* A wide triangle drawn as given: as v9x_d3d_nv50_guard for its x and y. */
+static int v9x_d3d_nv50_guard_wide(const float *triangle)
+{
+    V9X_R3D_VERTEX corners[3];
+    DWORD index;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        corners[index].sx = triangle[index * V9X_R3D_SHADER_FLOATS];
+        corners[index].sy = triangle[index * V9X_R3D_SHADER_FLOATS + 1ul];
+    }
+    return v9x_d3d_nv50_guard(corners);
+}
+
+static int v9x_d3d_nv50_draw_shader(const V9X_R3D_DRAW *draw,
+                                    const V9X_R3D_SHADER *shader,
+                                    const float *vertices,
+                                    DWORD triangle_count)
+{
+    struct v9x_nv50_d3d_state state;
+    struct v9x_nv50_3d_scratch scratch_gpu;
+    struct v9x_nv50_push push;
+    V9X_D3D_NV50_TEXTURE none[2];
+    V9X_D3D_NV50_TEXTURE resolved;
+    V9X_D3D_NV50_PS_ENTRY *entry;
+    V9X_D3D_NV50_SHADOW *shadow;
+    V9X_D3D_NV50_SHADOW_VIEW view;
+    v9x_u32 tic[V9X_NV50_D3D_SHADER_UNITS * V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[V9X_NV50_D3D_SHADER_UNITS * V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 with_specular;
+    v9x_u32 reason;
+    v9x_u32 count;
+    volatile DWORD *area;
+    volatile DWORD *scratch;
+    volatile DWORD *at;
+    DWORD area_words;
+    DWORD scratch_base;
+    DWORD generation;
+    DWORD sampled;
+    DWORD bound = 0ul;
+    DWORD stage;
+    DWORD slot = 0ul;
+    DWORD chunk;
+    DWORD index;
+    DWORD corner;
+    DWORD started;
+    int setup;
+
+    if (draw == 0 || shader == 0 || shader->program == 0 || vertices == 0 ||
+        triangle_count == 0ul || !v9x_d3d_nv50_ready() ||
+        !v9x_d3d_nv50_count_registers()) {
+        return 0;
+    }
+    started = V9X_TIME_BEGIN();
+
+    /* No cube maps and no texm3x3 lookups yet (step 6). */
+    for (index = 0ul; index < shader->program->count; ++index) {
+        DWORD op = shader->program->inst[index].op;
+
+        if (op == V9X_PS11_TEXM3X3TEX || op == V9X_PS11_TEXM3X3SPEC ||
+            op == V9X_PS11_TEXM3X3VSPEC) {
+            v9x_d3d_nv50_count_refusal(draw,
+                                       V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+    }
+    sampled = shader->program->samples;
+    for (stage = 0ul; stage < V9X_NV50_D3D_SHADER_UNITS; ++stage) {
+        if ((sampled & (1ul << stage)) == 0ul ||
+            shader->texture[stage].object == 0) {
+            continue;
+        }
+        if ((shader->env.cube & (1ul << stage)) != 0ul) {
+            v9x_d3d_nv50_count_refusal(draw,
+                                       V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        v9x_d3d_nv50_resolve_texture(&shader->texture[stage], &resolved);
+        reason = v9x_d3d_nv50_map_unit(&shader->texture[stage], &resolved,
+                                       tic + stage * V9X_NV50_3D_TIC_WORDS,
+                                       tsc + stage * V9X_NV50_3D_TSC_WORDS);
+        if (reason != V9X_D3D_NV50_REFUSE_NONE) {
+            v9x_d3d_nv50_count_refusal(draw, reason);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        bound |= 1ul << stage;
+    }
+    entry = v9x_d3d_nv50_ps_entry(shader, sampled & ~bound,
+                                  draw->fog_enable != 0ul ? 1ul : 0ul,
+                                  &slot);
+    if (entry == 0) {
+        v9x_d3d_nv50_count_refusal(draw, V9X_D3D_NV50_REFUSE_PROGRAMS);
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+
+    /* The constant block, the fog colour in its last floats. */
+    v9x_nv50_ps11_constants(shader->program, &shader->env,
+                            v9x_d3d_nv50_ps_constants);
+    for (index = 0ul; index < 3ul; ++index) {
+        union {
+            float value;
+            v9x_u32 bits;
+        } convert;
+
+        convert.value =
+            (float)(long)((draw->fog_color >> (16u - 8u * (unsigned)index)) &
+                          0xfful) / 255.0f;
+        v9x_d3d_nv50_ps_constants[V9X_NV50_PS11_C_FOG + index] = convert.bits;
+    }
+
+    /* The fixed-function map for target, depth, blend and alpha test. */
+    v9x_d3d_nv50_ps_plain = *draw;
+    v9x_d3d_nv50_ps_plain.texture.object = 0;
+    v9x_d3d_nv50_ps_plain.texture.levels = 0;
+    v9x_d3d_nv50_ps_plain.texture1.object = 0;
+    v9x_d3d_nv50_ps_plain.texture1.levels = 0;
+    v9x_d3d_nv50_ps_plain.texcoords1 = 0;
+    v9x_d3d_nv50_ps_plain.specular_enable = 0ul;
+    v9x_d3d_nv50_ps_plain.fog_enable = 0ul;
+    v9x_d3d_nv50_ps_plain.color_key_enable = 0ul;
+    none[0].format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
+    none[1].format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
+    shadow = v9x_d3d_nv50_shadow_for(draw, &view);
+    reason = v9x_d3d_nv50_map_draw(&v9x_d3d_nv50_ps_plain, none,
+                                   shadow != 0 ? &view : 0,
+                                   v9x_d3d_nv50_fp_registers, &state, tic,
+                                   tsc, &with_specular);
+    if (reason != V9X_D3D_NV50_REFUSE_NONE) {
+        v9x_d3d_nv50_count_refusal(draw, reason);
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+    state.shader = 1ul;
+    state.kills = entry->kills;
+    state.fp_start = v9x_nv50_d3d_ps_start(slot);
+    state.fp_registers = entry->registers;
+    if (shadow != 0) {
+        if (!v9x_d3d_nv50_shadow_take(shadow, draw)) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        shadow->dirty = 1ul;
+    }
+
+    while (triangle_count != 0ul) {
+        chunk = triangle_count > V9X_D3D_NV50_PS_CHUNK
+                    ? V9X_D3D_NV50_PS_CHUNK : triangle_count;
+        if (!v9x_nv50_3d_begin(&area, &area_words, &scratch, &scratch_base,
+                               &generation)) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        setup = !v9x_d3d_nv50_setup_sent ||
+                generation != v9x_d3d_nv50_setup_generation;
+        if (setup && !v9x_d3d_nv50_write_programs(scratch)) {
+            v9x_d3d_nv50_count_refusal(draw, V9X_D3D_NV50_REFUSE_STATE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        /* The program, once per channel build: the engine has drained,
+         * so nothing runs the slot while it changes. */
+        state.code_flush = 0ul;
+        if (entry->generation != generation) {
+            count = v9x_d3d_nv50_ps_translate(entry);
+            if (count == 0ul) {
+                v9x_d3d_nv50_count_refusal(draw,
+                                           V9X_D3D_NV50_REFUSE_PROGRAMS);
+                V9X_TIME_END(V9X_TIME_DECODE, started);
+                return 0;
+            }
+            at = scratch + (V9X_NV50_3D_SCRATCH_FP +
+                            v9x_nv50_d3d_ps_start(slot)) / 4ul;
+            for (index = 0ul; index < count; ++index) {
+                at[index] = v9x_d3d_nv50_ps_words[index];
+            }
+            entry->generation = generation;
+            state.code_flush = 1ul;
+        }
+        for (stage = 0ul; stage < V9X_NV50_D3D_SHADER_UNITS; ++stage) {
+            if ((bound & (1ul << stage)) == 0ul) {
+                continue;
+            }
+            for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+                scratch[V9X_NV50_3D_SCRATCH_TIC / 4ul +
+                        stage * V9X_NV50_3D_TIC_WORDS + index] =
+                    tic[stage * V9X_NV50_3D_TIC_WORDS + index];
+                scratch[V9X_NV50_3D_SCRATCH_TSC / 4ul +
+                        stage * V9X_NV50_3D_TSC_WORDS + index] =
+                    tsc[stage * V9X_NV50_3D_TSC_WORDS + index];
+            }
+        }
+
+        v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
+        if (setup) {
+            v9x_nv50_3d_scratch_at(scratch_base, &scratch_gpu);
+            v9x_nv50_push_bind_3d(&push);
+            v9x_nv50_push_3d_setup(&push, &scratch_gpu);
+        }
+        v9x_nv50_push_d3d_state(&push, &state);
+        v9x_nv50_push_d3d_constants(&push, v9x_d3d_nv50_ps_constants,
+                                    V9X_NV50_PS11_C_FLOATS);
+        v9x_nv50_push_d3d_begin(&push);
+        for (index = 0ul; index < chunk; ++index) {
+            const float *triangle =
+                vertices + index * 3ul * V9X_R3D_SHADER_FLOATS;
+
+            if (!v9x_d3d_nv50_guard_wide(triangle)) {
+                v9x_d3d_nv50_count_refusal(draw, V9X_D3D_NV50_DROP_GUARD);
+                continue;
+            }
+            for (corner = 0ul; corner < 3ul; ++corner) {
+                v9x_nv50_push_d3d_wide(
+                    &push, triangle + corner * V9X_R3D_SHADER_FLOATS,
+                    draw->centre_offset);
+            }
+        }
+        v9x_nv50_push_d3d_end(&push);
+        if (push.overflow != 0ul) {
+            v9x_d3d_nv50_count_refusal(draw, V9X_D3D_NV50_REFUSE_OVERFLOW);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        if (!v9x_nv50_3d_submit(push.count)) {
+            return 0;
+        }
+        if (setup) {
+            v9x_d3d_nv50_setup_generation = generation;
+            v9x_d3d_nv50_setup_sent = 1;
+        }
+        started = V9X_TIME_BEGIN();
+        vertices += chunk * 3ul * V9X_R3D_SHADER_FLOATS;
         triangle_count -= chunk;
     }
     V9X_TIME_END(V9X_TIME_DECODE, started);
@@ -1239,6 +1586,6 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv50 = {
     0,                                  /* tnl_available */
     0,                                  /* lock_surface */
     0,                                  /* unlock_surface */
-    0,                                  /* draw_shader */
+    v9x_d3d_nv50_draw_shader,           /* draw_shader: step 4 */
     v9x_d3d_nv50_surface_written
 };

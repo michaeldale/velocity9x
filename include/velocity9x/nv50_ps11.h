@@ -22,8 +22,10 @@
  *                     three-coordinate lookup)
  *
  * It leaves r0 in $r0-$r3, the colour result nv50_d3d.c's programs end
- * with, unclamped beyond the shader's own rules. Fog is not applied here;
- * step 4 of the plan adds it where draw_shader needs it.
+ * with, unclamped beyond the shader's own rules; or, with desc->fog, r0
+ * clamped to [0, 1] and its colour blended towards the fog colour as
+ * (r0 - fog) f + fog, f the specular alpha (v1.w), where the Direct3D core
+ * leaves the fog factor: Gen3's and Haswell's rule (i9xx_ps11.h).
  *
  * Cube lookups pass the direction as computed: the interpreter divides it
  * by its largest magnitude first, which a cube sampler does not need
@@ -59,6 +61,9 @@
 #define V9X_NV50_PS11_C_MINUS_ONE    58ul
 #define V9X_NV50_PS11_C_TWO          59ul
 #define V9X_NV50_PS11_C_FOUR         60ul
+/* The fog colour r g b, written by the caller (v9x_nv50_ps11_constants
+ * leaves them 0, black). */
+#define V9X_NV50_PS11_C_FOG          61ul
 #define V9X_NV50_PS11_C_FLOATS       64ul
 
 /* Registers a program allocates ($r0-$r63), FP_REG_ALLOC's count. */
@@ -71,6 +76,7 @@ struct v9x_nv50_ps11_desc {
                             /* lookups read (0, 0, 0, 1), unsampled   */
     v9x_u32 slot;           /* the constant buffer slot the block is  */
                             /* bound to                               */
+    v9x_u32 fog;            /* fog after the shader                   */
 };
 
 /* What a built program needs from the draw beside its code. */

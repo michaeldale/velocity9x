@@ -31,6 +31,10 @@
  * gap before the push area. */
 #define V9X_GT218_RESERVE_3D_FP2        0x000e8000ul
 #define V9X_GT218_RESERVE_3D_FP2_BYTES  0x00008000ul
+/* Translated pixel shaders (nv50_d3d.h V9X_NV50_D3D_PS_*): 16 slots of
+ * 4 KiB from F000h past the code base, so F0000h up to the push area. */
+#define V9X_GT218_RESERVE_3D_PS         0x000f0000ul
+#define V9X_GT218_RESERVE_3D_PS_BYTES   0x00010000ul
 #define V9X_GT218_RESERVE_3D_PUSH       0x00100000ul
 #define V9X_GT218_RESERVE_3D_PUSH_BYTES 0x000c0000ul
 /* The channel's VM maps the first 512 MiB of video memory, and the

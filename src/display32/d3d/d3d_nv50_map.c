@@ -423,6 +423,18 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
     return V9X_D3D_NV50_REFUSE_NONE;
 }
 
+/* A draw with nothing set, for a shader stage: no colour key (a shader
+ * draw states none), no blend op. Static, as HAL stacks are small. */
+static const V9X_R3D_DRAW v9x_d3d_nv50_plain_draw;
+
+v9x_u32 v9x_d3d_nv50_map_unit(const V9X_R3D_TEXTURE *sampler,
+                              const V9X_D3D_NV50_TEXTURE *texture,
+                              v9x_u32 *tic, v9x_u32 *tsc)
+{
+    return v9x_d3d_nv50_map_texture(&v9x_d3d_nv50_plain_draw, sampler,
+                                    texture, 0, tic, tsc);
+}
+
 void v9x_d3d_nv50_tiled_layout(v9x_u32 width, v9x_u32 height, v9x_u32 bytes,
                                v9x_u32 *pitch, v9x_u32 *rows)
 {

@@ -46,6 +46,14 @@
 #define V9X_NV50_D3D_ATTR_EN1        0x00000033ul
 #define V9X_8597_VTX_ATTR_2F_X9      0x03c8ul /* 380h + 9 * 8 */
 #define V9X_8597_CODE_CB_FLUSH       0x1440ul
+#define V9X_8597_TSC_FLUSH           0x1330ul
+#define V9X_8597_FP_CONTROL          0x19a8ul
+#define V9X_8597_FP_USES_KIL         0x00100000ul
+/* The shader interface (nv50_d3d.h): attributes 0-6 whole; UMASK W, 24
+ * non-flat interpolants from map entry 4, 24 in all. */
+#define V9X_NV50_D3D_SHADER_ATTR_EN0 0x0ffffffful
+#define V9X_NV50_D3D_SHADER_INTERPOLANTS 0x08180418ul
+#define V9X_8597_VTX_ATTR_4F(n)      (0x0500ul + 0x10ul * (n))
 
 #define V9X_NV50_D3D_V_W             0x00ul
 #define V9X_NV50_D3D_V_DIFFUSE       0x04ul
@@ -144,6 +152,30 @@ v9x_u32 v9x_nv50_d3d_fp_variant(v9x_u32 op, v9x_u32 specular, v9x_u32 fog)
 v9x_u32 v9x_nv50_d3d_fp_start(v9x_u32 variant)
 {
     return V9X_NV50_D3D_FP_FIRST + variant * V9X_NV50_D3D_FP_STRIDE;
+}
+
+v9x_u32 v9x_nv50_d3d_ps_start(v9x_u32 slot)
+{
+    return V9X_NV50_D3D_PS_FIRST + slot * V9X_NV50_D3D_PS_STRIDE;
+}
+
+/* The shader vertex program: attributes 0-6 to results 0-27, /3d:ps11's
+ * program. */
+v9x_u32 v9x_nv50_d3d_shader_vp(v9x_u32 *words, v9x_u32 max)
+{
+    struct v9x_nv50_sh sh;
+    v9x_u32 index;
+
+    v9x_nv50_sh_init(&sh, words, max);
+    for (index = 0ul; index < V9X_NV50_D3D_SHADER_RESULTS; ++index) {
+        v9x_nv50_sh_mov(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_O(index * 4ul),
+                        V9X_NV50_SH_A(index * 4ul));
+    }
+    v9x_nv50_sh_exit(&sh);
+    if (sh.invalid != 0ul || sh.overflow != 0ul) {
+        return 0ul;
+    }
+    return sh.count;
 }
 
 v9x_u32 v9x_nv50_d3d_vp(v9x_u32 *words, v9x_u32 max)
@@ -557,7 +589,9 @@ void v9x_nv50_push_d3d_state(struct v9x_nv50_push *push,
     /* The core culls before it hands triangles over. */
     v9x_nv50_d3d_one(push, V9X_8597_CULL_FACE_ENABLE, 0ul);
 
-    v9x_nv50_d3d_one(push, V9X_8597_VP_START_ID, V9X_NV50_D3D_VP_START);
+    v9x_nv50_d3d_one(push, V9X_8597_VP_START_ID,
+                     state->shader != 0ul ? V9X_NV50_D3D_SHADER_VP_START
+                                          : V9X_NV50_D3D_VP_START);
     /* A program written since the last draw: the code cache may hold what
      * was at its address before (Mesa flushes after every upload,
      * nv50_program.c). */
@@ -565,9 +599,47 @@ void v9x_nv50_push_d3d_state(struct v9x_nv50_push *push,
         v9x_nv50_d3d_one(push, V9X_8597_CODE_CB_FLUSH, 0ul);
     }
     v9x_nv50_d3d_one(push, V9X_8597_FP_START_ID,
-                     state->two_units != 0ul
+                     state->two_units != 0ul || state->shader != 0ul
                          ? state->fp_start
                          : v9x_nv50_d3d_fp_start(state->fp_variant));
+    /* Mesa writes FP_CONTROL with each program; USES_KIL only for one
+     * that discards, so a draw after a shader that killed clears it. */
+    v9x_nv50_d3d_one(push, V9X_8597_FP_CONTROL,
+                     state->shader != 0ul && state->kills != 0ul
+                         ? V9X_8597_FP_USES_KIL : 0ul);
+    if (state->shader != 0ul) {
+        /* /3d:ps11's interface: attributes 0-6 whole, 28 results mapped
+         * to the interpolant of the same number, 24 read by the program
+         * after the position (V9XN5CH /3d:ps11, W9QI0DAD boot 21). */
+        v9x_u32 map[V9X_NV50_D3D_SHADER_RESULTS / 4ul];
+        v9x_u32 index;
+
+        v9x_nv50_d3d_two(push, V9X_8597_VP_ATTR_EN0,
+                         V9X_NV50_D3D_SHADER_ATTR_EN0, 0ul);
+        v9x_nv50_d3d_one(push, V9X_8597_VP_REG_ALLOC_RESULT,
+                         V9X_NV50_D3D_SHADER_RESULTS);
+        v9x_nv50_d3d_one(push, V9X_8597_VP_RESULT_MAP_SIZE,
+                         V9X_NV50_D3D_SHADER_RESULTS);
+        for (index = 0ul; index < V9X_NV50_D3D_SHADER_RESULTS / 4ul;
+             ++index) {
+            v9x_u32 first = index * 4ul;
+
+            map[index] = first | ((first + 1ul) << 8) |
+                         ((first + 2ul) << 16) | ((first + 3ul) << 24);
+        }
+        v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VP_RESULT_MAP0,
+                             V9X_NV50_D3D_SHADER_RESULTS / 4ul, map);
+        v9x_nv50_d3d_two(push, V9X_8597_FP_INTERPOLANT_CTRL,
+                         V9X_NV50_D3D_SHADER_INTERPOLANTS,
+                         state->fp_registers);
+        v9x_nv50_d3d_one(push, V9X_8597_TIC_FLUSH, 0ul);
+        v9x_nv50_d3d_one(push, V9X_8597_TSC_FLUSH, 0ul);
+        for (index = 0ul; index < V9X_NV50_D3D_SHADER_UNITS; ++index) {
+            v9x_nv50_d3d_one(push, V9X_8597_BIND_TIC2,
+                             (index << 9) | (index << 1) | 1ul);
+        }
+        return;
+    }
     v9x_nv50_d3d_two(push, V9X_8597_VP_ATTR_EN0, V9X_NV50_D3D_ATTR_EN0,
                      V9X_NV50_D3D_ATTR_EN1);
     v9x_nv50_d3d_one(push, V9X_8597_VP_REG_ALLOC_RESULT,
@@ -595,6 +667,49 @@ void v9x_nv50_push_d3d_state(struct v9x_nv50_push *push,
                                 : (state->fp_variant & 1ul) != 0ul) {
         v9x_nv50_d3d_fog_constants(push, state->fog_color);
     }
+}
+
+void v9x_nv50_push_d3d_constants(struct v9x_nv50_push *push,
+                                 const v9x_u32 *words, v9x_u32 count)
+{
+    v9x_u32 header_at;
+
+    v9x_nv50_d3d_one(push, V9X_8597_CB_ADDR,
+                     (0ul << V9X_8597_CB_ADDR_ID_SHIFT) | V9X_8597_CB_FP);
+    header_at = push->count;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_CB_DATA0, count,
+                         words);
+    if (push->overflow == 0ul) {
+        push->words[header_at] |= V9X_NV50_PUSH_NONINC;
+    }
+}
+
+void v9x_nv50_push_d3d_wide(struct v9x_nv50_push *push, const float *vertex,
+                            float centre)
+{
+    v9x_u32 data[4];
+    v9x_u32 attribute;
+    v9x_u32 c;
+    float weight;
+
+    for (attribute = 1ul; attribute < 7ul; ++attribute) {
+        for (c = 0ul; c < 4ul; ++c) {
+            data[c] = v9x_nv50_d3d_bits(vertex[attribute * 4ul + c]);
+        }
+        v9x_nv50_push_method(push, V9X_NV50_SUBC_3D,
+                             V9X_8597_VTX_ATTR_4F(attribute), 4ul, data);
+    }
+    /* The position last, as v9x_nv50_push_d3d_vertex sends it. */
+    weight = 1.0f;
+    if (vertex[3] > 0.0f) {
+        weight = vertex[3];
+    }
+    data[0] = v9x_nv50_d3d_bits(vertex[0] + centre);
+    data[1] = v9x_nv50_d3d_bits(vertex[1] + centre);
+    data[2] = v9x_nv50_d3d_bits(vertex[2]);
+    data[3] = v9x_nv50_d3d_bits(weight);
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VTX_ATTR_4F(0ul),
+                         4ul, data);
 }
 
 void v9x_nv50_push_d3d_uv1(struct v9x_nv50_push *push, float tu1, float tv1)
