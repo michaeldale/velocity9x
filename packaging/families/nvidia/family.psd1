@@ -196,6 +196,10 @@
         DefaultMode = '8,640,480'
         ForcedModes = @('8,640,480', '8,800,600', '8,1024,768',
                         '16,640,480', '16,800,600', '16,1024,768')
+        # The GT218's GDI copies wait for the HAL's NV50 channel; a Run entry
+        # brings it up at logon (scripts\lib\inf.ps1, V9xEngineStart). The
+        # RIVA 128 row is unaffected: the entry point skips any other engine.
+        StartEngineAtLogon = $true
     }
 
     Package = @{

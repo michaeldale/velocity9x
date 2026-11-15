@@ -1785,10 +1785,30 @@ static DWORD v9x_accel_run(HWND window)
         v9x_accel_write_uint("InjectArmed",
                              v9x_accel_arm_fault(state.screen, 1ul) ? 1ul
                                                                     : 0ul);
-        PatBlt(state.screen, state.origin_x, state.origin_y,
-               V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT, PATCOPY);
-        PatBlt(state.reference, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
-               PATCOPY);
+        if ((stats.enabled & V9X_GDI_PRIM_FILL) != 0ul) {
+            v9x_accel_write_text("InjectOperation", "fill");
+            PatBlt(state.screen, state.origin_x, state.origin_y,
+                   V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT, PATCOPY);
+            PatBlt(state.reference, 0, 0, V9X_ACCEL_WIDTH, V9X_ACCEL_HEIGHT,
+                   PATCOPY);
+        } else {
+            /*
+             * Fills can be off while copies run on the engine: the GT218
+             * keeps fills on the CPU when the aperture is write-combined
+             * (docs\decisions\2026-11-15-gt218-write-combining.md), and a
+             * PatBlt then never reaches a bounded wait. A copy of the
+             * left half onto the right half, the same in both DCs, does;
+             * the halves do not overlap, so it needs only the copy
+             * primitive, and 160x240 is far above the threshold.
+             */
+            v9x_accel_write_text("InjectOperation", "copy");
+            BitBlt(state.screen, state.origin_x + V9X_ACCEL_WIDTH / 2,
+                   state.origin_y, V9X_ACCEL_WIDTH / 2, V9X_ACCEL_HEIGHT,
+                   state.screen, state.origin_x, state.origin_y, SRCCOPY);
+            BitBlt(state.reference, V9X_ACCEL_WIDTH / 2, 0,
+                   V9X_ACCEL_WIDTH / 2, V9X_ACCEL_HEIGHT, state.reference,
+                   0, 0, SRCCOPY);
+        }
         SelectObject(state.screen, previous_screen);
         SelectObject(state.reference, previous_reference);
         DeleteObject(brush);

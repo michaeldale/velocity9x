@@ -60,7 +60,8 @@ $includeDir = Join-Path $repoRoot "include"
 $sources = @(
     (Join-Path $diagDir "settings_propsheet.c"),
     (Join-Path $diagDir "settings_status.c"),
-    (Join-Path $diagDir "settings_syncmodes.c")
+    (Join-Path $diagDir "settings_syncmodes.c"),
+    (Join-Path $diagDir "settings_engine.c")
 )
 $objects = @()
 $library = Join-Path $outputDir "v9xsetp.dll"
@@ -140,6 +141,7 @@ $linkLines = @(
     # RunOnce command line spells it.
     "export V9xRegisterPage='_V9xRegisterPage@16'",
     "export V9xSyncModes='_V9xSyncModes@16'",
+    "export V9xEngineStart='_V9xEngineStart@16'",
     "name '$library'"
 )
 $linkLines += $objects | ForEach-Object { "file '$_'" }
@@ -178,7 +180,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Open Watcom could not inspect the settings page."
 }
 foreach ($export in @("DllGetClassObject", "DllCanUnloadNow",
-                      "V9xRegisterPage", "V9xSyncModes")) {
+                      "V9xRegisterPage", "V9xSyncModes", "V9xEngineStart")) {
     if ($dumpText -notmatch [regex]::Escape($export)) {
         throw "The settings page does not export $export."
     }

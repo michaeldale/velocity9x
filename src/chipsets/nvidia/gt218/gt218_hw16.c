@@ -148,9 +148,11 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
     V9X_GT218_MAP_BYTES,
     v9x_gt218_reserve_offset,
     /*
-     * Write-combine over the memory reported, clamped to the mapping, as
-     * the vbe package did on this card (boot 81: MTRR 0, 8 MiB at
-     * CF000000h, MtrrWrite=ok). Over BAR1 it is unmeasured.
+     * Write-combine over the memory reported, clamped to the mapping: the
+     * measure_video_memory hook makes that the whole 128 MiB BAR1 map.
+     * Measured on W9QI0DAD: FbWrite 332 to 2,965 MB/s, engine probe
+     * results identical either way
+     * (docs\decisions\2026-11-15-gt218-write-combining.md).
      */
     V9X_HW16_WC_VRAM,
     0,

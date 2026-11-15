@@ -440,6 +440,16 @@ function New-V9xInfText {
         # family's mode list is its INF, already in the registry.
         ('HKLM,Software\Microsoft\Windows\CurrentVersion\Run,V9xSyncModes,,' +
          '"rundll32.exe v9xsetp.dll,V9xSyncModes"')
+    }) + @(if ($Family.Inf.ContainsKey('StartEngineAtLogon') -and
+               $Family.Inf.StartEngineAtLogon) {
+        # Run, every logon: the engine a family's GDI waits on that only the
+        # HAL builds (the GT218's NV50 channel) is brought up by one small
+        # DirectDraw fill, so GDI copies use it from the desktop on rather
+        # than from the first DirectDraw program. V9xEngineStart asks the
+        # driver first and does nothing on any other engine
+        # (tools\diag\settings_engine.c).
+        ('HKLM,Software\Microsoft\Windows\CurrentVersion\Run,V9xEngineStart,,' +
+         '"rundll32.exe v9xsetp.dll,V9xEngineStart"')
     })
 
     if ($perChipRegistry) {

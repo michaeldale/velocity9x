@@ -86,6 +86,17 @@ DWORD v9x_map_physical_base = 0ul;
 WORD v9x_dpmi_map_error = 0u;
 
 /*
+ * Non-zero once the aperture is write-combined this boot: the pair written
+ * (MtrrWrite=ok) or found already in place (MtrrWrite=present). Zero when the
+ * chip does not opt in, the policy refused, the NOWC.TXT marker is set, or
+ * the write failed. Set by v9x_mtrr_install at the first Enable, before
+ * gdi_accel.c configures; gdi_accel.c reads it to keep the GT218's fills on
+ * the CPU, where combined stores beat an engine kick
+ * (docs\decisions\2026-11-15-gt218-write-combining.md).
+ */
+WORD v9x_mtrr_wc_active = 0u;
+
+/*
  * VRAM as the BIOS reported it, or 0 when nothing asked.
  *
  * Only the tier-0 path fills this in: a family with a read_aperture hook knows
@@ -738,6 +749,7 @@ static void v9x_mtrr_install(const struct v9x_mtrr_state *state,
     window = v9x_mtrr_window(v9x_map_physical_base,
                              v9x_mtrr_aperture_bytes());
     if (v9x_mtrr_wc_present(state, v9x_map_physical_base, window)) {
+        v9x_mtrr_wc_active = 1u;
         v9x_write_ini_key("MtrrWrite", "present");
         return;
     }
@@ -767,6 +779,7 @@ static void v9x_mtrr_install(const struct v9x_mtrr_state *state,
 
     /* ok or the mini-VDD's reason, then the pair as read back. */
     if (written != 0u) {
+        v9x_mtrr_wc_active = 1u;
         text[at++] = 'o'; text[at++] = 'k';
     } else {
         text[at++] = 'w'; text[at++] = 'h'; text[at++] = 'y';

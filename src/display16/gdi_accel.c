@@ -86,6 +86,8 @@ extern void FAR PASCAL V9xWcDrain(void);
 /* ddi.c: the framebuffer selector's limit, the map's bytes less one. */
 extern WORD v9x_map_pages_hi;
 extern WORD v9x_map_pages_lo;
+/* enable16.c: non-zero when this boot's aperture is write-combined. */
+extern WORD v9x_mtrr_wc_active;
 #endif
 
 /* ddi.c: the live screen PDEVICE, or NULL between Disable and Enable. This is
@@ -1779,6 +1781,19 @@ void v9x_gdi_accel_configure(void)
          v9x_nv50_2d_format(
              (v9x_u32)v9x_driver_pdevice->deBitsPixel / 8ul) == 0ul)) {
         enabled = 0ul;
+    }
+    /* Fills stay on the CPU when the aperture is write-combined. Each
+     * engine fill pays about 15 us to push, kick and wait; combined CPU
+     * stores have no setup and run near the link's speed, so the engine
+     * lost at every size from 32x32 to 128x128 and only tied at full
+     * screen (W9QI0DAD, 1024x768x16: FillRect 64x64 5.24 cycles/px on the
+     * CPU, 21.00 on the engine). Uncached, the engine wins from about
+     * 128x128, so it keeps fills where WC is off or refused. Copies read
+     * the screen, which WC does not speed up, and stay on the engine
+     * (docs\decisions\2026-11-15-gt218-write-combining.md). */
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50 &&
+        v9x_mtrr_wc_active != 0u) {
+        enabled &= ~V9X_GDI_PRIM_FILL;
     }
 #endif
     /* A latched poison outlives a mode switch, so a ReEnable must not
