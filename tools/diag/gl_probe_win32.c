@@ -2971,6 +2971,223 @@ void __stdcall V9xGlProbeEntry(void)
             }
 
             /*
+             * A repeating texture drawn right after a clamped one, as Quake 3
+             * alternates lightmaps (clamp) and walls (repeat). The second
+             * texture is two texels, red then green, NEAREST, over u 0 to
+             * 2: at u = 1.25 REPEAT reads red and CLAMP green. Green means
+             * the engine sampled with the first draw's address mode (a
+             * sampler cache nobody flushed; Quake 3's streaks on M-BXMFA8,
+             * 2026-11-16).
+             */
+            {
+                static const GLubyte grey[4 * 4 * 3] = { 0 };
+                static const GLubyte pair[2 * 3] = { 255, 0, 0, 0, 255, 0 };
+                GLuint names[2] = { 0u, 0u };
+                DWORD pixel;
+                int t;
+
+                glGenTextures(2, names);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                for (t = 0; t < 2; ++t) {
+                    glBindTexture(GL_TEXTURE_2D, names[t]);
+                    if (t == 0) {
+                        glTexImage2D(GL_TEXTURE_2D, 0, 3, 4, 4, 0, GL_RGB,
+                                     GL_UNSIGNED_BYTE, grey);
+                    } else {
+                        glTexImage2D(GL_TEXTURE_2D, 0, 3, 2, 1, 0, GL_RGB,
+                                     GL_UNSIGNED_BYTE, pair);
+                    }
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                    GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                    GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,
+                                    t == 0 ? GL_CLAMP : GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,
+                                    t == 0 ? GL_CLAMP : GL_REPEAT);
+                }
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glEnable(GL_TEXTURE_2D);
+                glDisable(GL_DEPTH_TEST);
+                glDisable(GL_BLEND);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                for (t = 0; t < 2; ++t) {
+                    GLfloat y0 = (GLfloat)(20 + t * 60);
+                    GLfloat u1 = t == 0 ? 1.0f : 2.0f;
+
+                    glBindTexture(GL_TEXTURE_2D, names[t]);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(20.0f, y0);
+                    glTexCoord2f(u1, 0.0f);
+                    glVertex2f(220.0f, y0);
+                    glTexCoord2f(u1, 1.0f);
+                    glVertex2f(220.0f, y0 + 40.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(20.0f, y0 + 40.0f);
+                    glEnd();
+                }
+                glFinish();
+                /* u = 1.25 at x = 20 + 200 * 1.25 / 2. */
+                pixel = v9x_glp_read(145, 100);
+                v9x_glp_hex("WrapAfterClampPixel", pixel);
+                v9x_glp_hex("WrapAfterClampFirstHalf", v9x_glp_read(45, 100));
+                v9x_glp_uint("WrapAfterClampOk",
+                            ((pixel >> 16) & 0xffu) > 0x80u &&
+                                ((pixel >> 8) & 0xffu) < 0x80u ? 1ul : 0ul);
+                v9x_glp_hex("ErrorAfterWrapAfterClamp", (DWORD)glGetError());
+                glDisable(GL_TEXTURE_2D);
+                glDeleteTextures(2, names);
+            }
+
+            /*
+             * Do frames write where they should not? 48 textures of one
+             * colour each, then 20 frames of colour and depth clears and
+             * depth-tested quads with SwapBuffers, then each texture drawn
+             * and read at four points. A changed texel is rendering landing
+             * in texture memory; a frame corner that is not the clear
+             * colour is something landing in the target (Quake 3's white
+             * glyphs and Quake II's corner strips, M-BXMFA8 2026-11-16).
+             */
+            {
+                static GLubyte fill[128 * 128 * 3];
+                static const GLint spot[4][2] = {
+                    { 21, 21 }, { 146, 21 }, { 21, 146 }, { 84, 84 }
+                };
+                GLuint names[48];
+                DWORD changed = 0ul;
+                DWORD first_bad = 0xfffffffful;
+                DWORD first_value = 0ul;
+                DWORD first_spot = 0ul;
+                DWORD corner_top_left;
+                DWORD corner_bottom_right;
+                int t;
+                int f;
+                int i;
+
+                glGenTextures(48, names);
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+                for (t = 0; t < 48; ++t) {
+                    for (i = 0; i < 128 * 128; ++i) {
+                        fill[i * 3 + 0] = (GLubyte)(t * 5);
+                        fill[i * 3 + 1] = (GLubyte)(255 - t * 5);
+                        fill[i * 3 + 2] = 0x80;
+                    }
+                    glBindTexture(GL_TEXTURE_2D, names[t]);
+                    glTexImage2D(GL_TEXTURE_2D, 0, 3, 128, 128, 0, GL_RGB,
+                                 GL_UNSIGNED_BYTE, fill);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                    GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
+                                    GL_NEAREST);
+                }
+                glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                glMatrixMode(GL_PROJECTION);
+                glLoadIdentity();
+                glOrtho(0.0, (GLdouble)width, 0.0, (GLdouble)height,
+                        -1.0, 1.0);
+                glMatrixMode(GL_MODELVIEW);
+                glLoadIdentity();
+                glDisable(GL_BLEND);
+                /* The frames: textured too, so the engine draws as a game
+                 * does, every texture bound in turn. */
+                for (f = 0; f < 21; ++f) {
+                    glClearColor(0.2f, 0.4f, 0.6f, 1.0f);
+                    glClearDepth(1.0);
+                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    glEnable(GL_DEPTH_TEST);
+                    glDepthFunc(GL_LEQUAL);
+                    glEnable(GL_TEXTURE_2D);
+                    for (t = 0; t < 48; ++t) {
+                        GLfloat x0 = (GLfloat)(40 + (t % 8) * 20);
+                        GLfloat y0 = (GLfloat)(40 + (t / 8) * 20);
+                        GLfloat z = (GLfloat)((t % 5) - 2) * 0.3f;
+
+                        glBindTexture(GL_TEXTURE_2D, names[t]);
+                        glBegin(GL_QUADS);
+                        glTexCoord2f(0.0f, 0.0f);
+                        glVertex3f(x0, y0, z);
+                        glTexCoord2f(1.0f, 0.0f);
+                        glVertex3f(x0 + 60.0f, y0, z);
+                        glTexCoord2f(1.0f, 1.0f);
+                        glVertex3f(x0 + 60.0f, y0 + 60.0f, z);
+                        glTexCoord2f(0.0f, 1.0f);
+                        glVertex3f(x0, y0 + 60.0f, z);
+                        glEnd();
+                    }
+                    glDisable(GL_TEXTURE_2D);
+                    glDisable(GL_DEPTH_TEST);
+                    if (f < 20) {
+                        SwapBuffers(hdc);
+                    }
+                }
+                glFinish();
+                corner_top_left = v9x_glp_read(1, height - 2);
+                corner_bottom_right = v9x_glp_read(width - 2, 1);
+                v9x_glp_hex("FrameCornerTopLeft", corner_top_left);
+                v9x_glp_hex("FrameCornerBottomRight", corner_bottom_right);
+
+                glEnable(GL_TEXTURE_2D);
+                for (t = 0; t < 48; ++t) {
+                    DWORD want = ((DWORD)(t * 5) << 16) |
+                                 ((DWORD)(255 - t * 5) << 8) | 0x80ul;
+                    int s;
+
+                    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+                    glClear(GL_COLOR_BUFFER_BIT);
+                    glBindTexture(GL_TEXTURE_2D, names[t]);
+                    glBegin(GL_QUADS);
+                    glTexCoord2f(0.0f, 0.0f);
+                    glVertex2f(20.0f, 20.0f);
+                    glTexCoord2f(1.0f, 0.0f);
+                    glVertex2f(148.0f, 20.0f);
+                    glTexCoord2f(1.0f, 1.0f);
+                    glVertex2f(148.0f, 148.0f);
+                    glTexCoord2f(0.0f, 1.0f);
+                    glVertex2f(20.0f, 148.0f);
+                    glEnd();
+                    glFinish();
+                    for (s = 0; s < 4; ++s) {
+                        DWORD got = v9x_glp_read(spot[s][0], spot[s][1]);
+                        int c;
+                        int bad = 0;
+
+                        for (c = 0; c < 3; ++c) {
+                            int a = (int)((got >> (8 * c)) & 0xffu);
+                            int b = (int)((want >> (8 * c)) & 0xffu);
+
+                            if (a - b > 8 || b - a > 8) {
+                                bad = 1;
+                            }
+                        }
+                        if (bad) {
+                            if (first_bad == 0xfffffffful) {
+                                first_bad = (DWORD)t;
+                                first_value = got;
+                                first_spot = (DWORD)s;
+                            }
+                            ++changed;
+                            break;
+                        }
+                    }
+                }
+                glDisable(GL_TEXTURE_2D);
+                v9x_glp_uint("SurviveTexturesChanged", changed);
+                v9x_glp_uint("SurviveFirstTexture", first_bad);
+                v9x_glp_uint("SurviveFirstSpot", first_spot);
+                v9x_glp_hex("SurviveFirstValue", first_value);
+                v9x_glp_hex("ErrorAfterSurvive", (DWORD)glGetError());
+                glDeleteTextures(48, names);
+            }
+
+            /*
              * One texture rewritten between draws, as Quake 2 rewrites its
              * dynamic lightmap several times a frame: colour A by
              * glTexImage2D, a quad; B by glTexSubImage2D, a second quad; C,

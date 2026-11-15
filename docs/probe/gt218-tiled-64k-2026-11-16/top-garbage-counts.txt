@@ -1,0 +1,36 @@
+build/driver-results/w9qi0dad-q3/before: 5 of 6 frames with top garbage  shot1.png=X shot2.png=X shot3.png=X shot4.png=X shot5.png=. shot6.png=X
+build/driver-results/w9qi0dad-q3/f8: 8 of 8 frames with top garbage  shot0000.tga=X shot0001.tga=X shot0002.tga=X shot0003.tga=X shot1.png=X shot2.png=X shot3.png=X shot4.png=X
+build/driver-results/w9qi0dad-q3/vlight: 7 of 7 frames with top garbage  shot0000.tga=X shot0001.tga=X shot0002.tga=X shot0003.tga=X shot1.png=X shot2.png=X shot3.png=X
+build/driver-results/w9qi0dad-q3/after64kd: 1 of 7 frames with top garbage  shot0000.tga=. shot0001.tga=. shot0002.tga=. shot0003.tga=X shot1.png=. shot2.png=. shot3.png=.
+build/driver-results/w9qi0dad-q3/after64ke: 0 of 15 frames with top garbage  shot0000.tga=. shot0001.tga=. shot0002.tga=. shot0003.tga=. shot0004.tga=. shot0005.tga=. shot0006.tga=. shot1.png=. shot2.png=. shot3.png=. shot4.png=. shot5.png=. shot6.png=. shot7.png=. shot8.png=.
+2f8a3fe57267c6a145057f0a9989d9e8 *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0002.tga
+400fcd864a8b623b758565443afb2d10 *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0000.tga
+435e4dcdc93f3d8f180fb4a9821d734a *build/driver-results/w9qi0dad-q3/f8/tga/shot0000.tga
+55414327680a6f385a93d68f6f825268 *build/driver-results/w9qi0dad-q3/f8/tga/shot0001.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64k/tga/shot0001.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64k/tga/shot0002.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64kb/tga/shot0000.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64kb/tga/shot0001.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64kb/tga/shot0002.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64kc/tga/shot0000.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64kc/tga/shot0001.tga
+580c3a27145b4e4b0b5f011a1f2fd4dc *build/driver-results/w9qi0dad-q3/after64kc/tga/shot0002.tga
+73a59bc4b5e7938be1cbf5ea8c657b93 *build/driver-results/w9qi0dad-q3/vlight/tga/shot0000.tga
+87d2ca5dc1c0adbc677414a07df00873 *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0006.tga
+8af52bb5b197a7a79120d11295d09b15 *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0005.tga
+8b8b0caf5de4e421990712d208424ec6 *build/driver-results/w9qi0dad-q3/vlight/tga/shot0002.tga
+9d7e610860fb63996bee7989c4f5a363 *build/driver-results/w9qi0dad-q3/after64k/tga/shot0000.tga
+9df6348918e55807955555764c6bfe21 *build/driver-results/w9qi0dad-q3/vlight/tga/shot0001.tga
+a0cd79abcb4c6b90401364d2379d0079 *build/driver-results/w9qi0dad-q3/after64kd/tga/shot0002.tga
+a4b271a781cfa8f7fda04b53cb2f1246 *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0001.tga
+a5c91a8cad6c73bcb3c1f3240aaddb9c *build/driver-results/w9qi0dad-q3/after64kd/tga/shot0000.tga
+a99edb688543c403df1a7894ea89367c *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0003.tga
+d66eccdd2d5b1f3d70590e5bc43e1f42 *build/driver-results/w9qi0dad-q3/f8/tga/shot0002.tga
+e7e5b2648746e00a05370c63c900d146 *build/driver-results/w9qi0dad-q3/after64kd/tga/shot0001.tga
+eddf5856587e934628fb0ed92c956bec *build/driver-results/w9qi0dad-q3/after64ke/tga/shot0004.tga
+eefe104ed8b13ad41ca3ab64e0d608bd *build/driver-results/w9qi0dad-q3/after64k/tga/shot0003.tga
+eefe104ed8b13ad41ca3ab64e0d608bd *build/driver-results/w9qi0dad-q3/after64kb/tga/shot0003.tga
+eefe104ed8b13ad41ca3ab64e0d608bd *build/driver-results/w9qi0dad-q3/after64kc/tga/shot0003.tga
+eefe104ed8b13ad41ca3ab64e0d608bd *build/driver-results/w9qi0dad-q3/after64kd/tga/shot0003.tga
+eefe104ed8b13ad41ca3ab64e0d608bd *build/driver-results/w9qi0dad-q3/f8/tga/shot0003.tga
+eefe104ed8b13ad41ca3ab64e0d608bd *build/driver-results/w9qi0dad-q3/vlight/tga/shot0003.tga

@@ -92,10 +92,14 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
  */
 #define V9X_D3D_NV50_SHADOWS_MAX     8ul
 #define V9X_D3D_NV50_NONE            0xfffffffful
-/* Tiled blocks on 4 KiB: the probe's tiled surfaces sat on 64 KiB, and
- * 4 KiB is what the heap's mapping alignment allows; unmeasured below
- * 64 KiB. */
-#define V9X_D3D_NV50_TILED_ALIGN     0x1000ul
+/* Tiled blocks, and the Z and colour within them, on the kind windows'
+ * 64 KiB pages, as the probe's tiled surfaces sat. On 4 KiB the Z's last
+ * page held the colour's first rows and the colour's last page the next
+ * surface: each kind lays out the whole page its own way, and Quake 3
+ * drew garbage in its top rows and streaked textures (W9QI0DAD,
+ * M-BXMFA8, 2026-11-16). */
+#define V9X_D3D_NV50_TILED_ALIGN     0x10000ul
+#define V9X_D3D_NV50_HEAP_ALIGN      0x1000ul
 
 typedef struct v9x_d3d_nv50_shadow {
     DWORD used;
@@ -1376,10 +1380,11 @@ int v9x_d3d_nv50_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 }
 
 /*
- * A Z16 buffer, tiled, and its colour shadow in one block on 4 KiB: the
+ * A Z16 buffer, tiled, and its colour shadow in one block on 64 KiB: the
  * Z first, its rows on 64 bytes and 8-row blocks
- * (v9x_d3d_nv50_tiled_layout), then the colour at 4 bytes a pixel, which
- * also holds a 16 bpp target. Declined, touching nothing, when every
+ * (v9x_d3d_nv50_tiled_layout), then on the next 64 KiB the colour at 4
+ * bytes a pixel, which also holds a 16 bpp target. Declined, touching
+ * nothing, when every
  * shadow is in use; DirectDraw then places it linear and its Z-tested
  * draws are refused.
  */
@@ -1388,11 +1393,11 @@ static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
 {
     V9X_D3D_NV50_SHADOW *shadow = 0;
     v9x_u32 offsets[1];
-    v9x_u32 pitches[1];
     v9x_u32 z_pitch;
     v9x_u32 colour_pitch;
     v9x_u32 rows;
     DWORD z_bytes;
+    DWORD colour_bytes;
     DWORD base = 0ul;
     DWORD width = (DWORD)surface->lpGbl->wWidth;
     DWORD height = (DWORD)surface->lpGbl->wHeight;
@@ -1416,13 +1421,26 @@ static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
     v9x_d3d_nv50_tiled_layout(width, height, 4ul, &colour_pitch, &rows);
     z_bytes = (z_pitch * rows + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
               ~(V9X_D3D_NV50_TILED_ALIGN - 1ul);
+    colour_bytes = (colour_pitch * rows + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
+                   ~(V9X_D3D_NV50_TILED_ALIGN - 1ul);
     offsets[0] = 0ul;
-    pitches[0] = z_pitch;
-    if (v9x_d3d_place_chain(data, V9X_D3D_NV50_TILED_ALIGN,
-                            z_bytes + colour_pitch * rows, offsets, pitches,
-                            &base) != 0ul) {
+    /* The heap places on 4 KiB at most (its mapping's alignment: asked
+     * for 64 KiB, every Z was declined and Quake 3's draws refused,
+     * W9QI0DAD boot 33), so the block is asked on 4 KiB with a page to
+     * spare, and the Z moved up to the next 64 KiB of video memory. The
+     * block's start stays in dwReserved1 for the release. */
+    if (v9x_d3d_place_block(data, V9X_D3D_NV50_HEAP_ALIGN,
+                            V9X_D3D_NV50_HEAP_ALIGN,
+                            (z_bytes + colour_bytes +
+                             V9X_D3D_NV50_TILED_ALIGN) /
+                                V9X_D3D_NV50_HEAP_ALIGN,
+                            offsets, &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
+    surface->lpGbl->fpVidMem +=
+        ((base + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
+         ~(V9X_D3D_NV50_TILED_ALIGN - 1ul)) - base;
+    surface->lpGbl->lPitch = (LONG)z_pitch;
     offset = v9x_surface_offset(surface);
     shadow->used = 1ul;
     shadow->z_offset = offset;

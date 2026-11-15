@@ -1,0 +1,15 @@
+WrapAfterClampPixel=0x00FF0000
+WrapAfterClampFirstHalf=0x00FF0000
+WrapAfterClampOk=1
+ErrorAfterWrapAfterClamp=0x00000000
+WrapAfterClampPixel=0x00FF0000
+WrapAfterClampFirstHalf=0x00FF0000
+WrapAfterClampOk=1
+ErrorAfterWrapAfterClamp=0x00000000
+FrameCornerTopLeft=0x0031659C
+FrameCornerBottomRight=0x0031659C
+SurviveTexturesChanged=0
+SurviveFirstTexture=4294967295
+SurviveFirstSpot=0
+SurviveFirstValue=0x00000000
+ErrorAfterSurvive=0x00000000
