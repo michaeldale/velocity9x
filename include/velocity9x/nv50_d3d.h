@@ -74,6 +74,7 @@ v9x_u32 v9x_nv50_d3d_fp(v9x_u32 variant, v9x_u32 *words, v9x_u32 max,
 #define V9X_NV50_D3D_TEX_B5G5R5A1    2ul
 #define V9X_NV50_D3D_TEX_B4G4R4A4    3ul
 #define V9X_NV50_D3D_TEX_B8G8R8A8    4ul
+#define V9X_NV50_D3D_TEX_B8G8R8X8    5ul
 
 /* Sampler address modes and filters (G80_TSC_WRAP_*, _FILTER_*). */
 #define V9X_NV50_D3D_WRAP_REPEAT     0ul

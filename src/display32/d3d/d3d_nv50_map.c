@@ -131,7 +131,11 @@ static int v9x_d3d_nv50_op(v9x_u32 op, v9x_u32 *program_op)
 
 static v9x_u32 v9x_d3d_nv50_bytes_per_texel(v9x_u32 format)
 {
-    return format == V9X_NV50_D3D_TEX_B8G8R8A8 ? 4ul : 2ul;
+    if (format == V9X_NV50_D3D_TEX_B8G8R8A8 ||
+        format == V9X_NV50_D3D_TEX_B8G8R8X8) {
+        return 4ul;
+    }
+    return 2ul;
 }
 
 /* A float's bits for ref / 255, the alpha test's reference. */

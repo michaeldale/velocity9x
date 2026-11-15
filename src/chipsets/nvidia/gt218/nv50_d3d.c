@@ -271,10 +271,16 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
 
     /* Mesa's nv50_formats.c rows for B8G8R8A8, B5G6R5 (alpha one),
      * B5G5R5A1 and B4G4R4A4 UNORM: each reads blue from the memory
-     * component the size names R, so X takes B and Z takes R. */
+     * component the size names R, so X takes B and Z takes R. B8G8R8X8
+     * is Mesa's F3 row: the 8888 sizes with W from the constant one, so
+     * the unused top byte never reaches alpha. */
     switch (format) {
     case V9X_NV50_D3D_TEX_B8G8R8A8:
         sizes = V9X_NV50_TIC_SIZES_A8B8G8R8;
+        break;
+    case V9X_NV50_D3D_TEX_B8G8R8X8:
+        sizes = V9X_NV50_TIC_SIZES_A8B8G8R8;
+        alpha = V9X_NV50_TIC_SOURCE_ONE;
         break;
     case V9X_NV50_D3D_TEX_B5G6R5:
         sizes = V9X_NV50_TIC_SIZES_B5G6R5;

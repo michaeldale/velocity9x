@@ -152,6 +152,14 @@ static DWORD v9x_d3d_nv50_format_of(const V9X_DD_SURFACE_LCL *surface,
         *bytes_out = 4ul;
         return V9X_NV50_D3D_TEX_B8G8R8A8;
     }
+    if (format->dwRGBBitCount == 32ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x00ff0000ul &&
+        format->dwGBitMask == 0x0000ff00ul &&
+        format->dwBBitMask == 0x000000fful) {
+        *bytes_out = 4ul;
+        return V9X_NV50_D3D_TEX_B8G8R8X8;
+    }
     return V9X_D3D_NV50_TEXTURE_UNKNOWN;
 }
 
@@ -170,7 +178,8 @@ static int v9x_d3d_nv50_texture_format(const V9X_DD_SURFACE_LCL *surface,
 /*
  * What d3d_nv50_map.c accepts: the alpha test with every function, the
  * blend factors without destination alpha, flat and Gouraud colour and
- * alpha, textures in RGB565, ARGB1555, ARGB4444 and ARGB8888, point and
+ * alpha, textures in RGB565, ARGB1555, ARGB4444, ARGB8888 and XRGB8888,
+ * point and
  * bilinear, wrap, mirror and clamp, DECAL, COPY, MODULATE and
  * MODULATEALPHA, the mip filters read on level 0; specular, and vertex
  * and table fog. Z16 is published for the shadow targets of step 5b;
@@ -263,8 +272,8 @@ static void v9x_d3d_nv50_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB1555, ARGB4444, ARGB8888. */
-    for (index = 0ul; index < 4ul; ++index) {
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888, XRGB8888. */
+    for (index = 0ul; index < 5ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
         shared->texture_formats[index].dwSize = sizeof(V9X_DDSURFACEDESC);
@@ -296,8 +305,14 @@ static void v9x_d3d_nv50_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
     shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBBitCount = 32ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwRBitMask = 0x00ff0000ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwGBitMask = 0x0000ff00ul;
+    shared->texture_formats[4].ddpfPixelFormat.dwBBitMask = 0x000000fful;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 4ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }

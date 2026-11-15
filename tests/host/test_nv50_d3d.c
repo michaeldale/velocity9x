@@ -250,6 +250,12 @@ static void test_texture(void)
     CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B4G4R4A4, 0x4000ul, 64ul,
                                16ul, 16ul, 0ul, 0ul, 0ul, tic, tsc));
     CHECK(tic[0] == 0x2a712492ul);
+
+    /* B8G8R8X8: the 8888 sizes with alpha the constant one, Mesa's F3
+     * B8G8R8X8_UNORM row (V9XD32 T22X). */
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B8G8R8X8, 0x4000ul, 64ul,
+                               16ul, 16ul, 0ul, 0ul, 0ul, tic, tsc));
+    CHECK(tic[0] == 0x3a712488ul);
     CHECK(!v9x_nv50_d3d_texture(0ul, 0x4000ul, 64ul, 16ul, 16ul, 0ul, 0ul,
                                 0ul, tic, tsc));
 }
