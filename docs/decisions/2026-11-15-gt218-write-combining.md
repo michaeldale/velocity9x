@@ -125,10 +125,55 @@ record; no other code changes.
 By the same-design rule this covers M-BXMFA8's GeForce 210 (same row,
 same code), which ran with this pair on for boots 83-127 already.
 
+## Addendum, same day: GDI with the channel live
+
+Boot 17, WC on, same files. V9XDDP run first (COMPLETE; its exit leaves
+the channel up, `GdiAcceleration=gdi-fill-copy-overlap`), then dispbench
+`-Tools DBTIME,DBGDI` at the same two modes: runs `20261115-201636` (16)
+and `-201756` (32), against the WC-on CPU runs `-192934` and `-193157`.
+Cycles per pixel.
+
+| 1024x768x16 | CPU only (WC on) | channel live |
+|---|---:|---:|
+| BitBlt screen to screen 256x256 | 1,969.6 | **6.22** |
+| BitBlt screen to screen 128x128 | 1,966.5 | 10.14 |
+| BitBlt screen to screen 64x64 | 1,972.3 | 25.72 |
+| BitBlt screen to screen 32x32 | 1,985.0 | 90.87 |
+| BitBlt screen to screen 16x16, 8x8 | 2,010.2, 2,133.5 | unchanged (below the threshold) |
+| ScrollDC / ScrollBitBlt | 1,969.7 | 4.99 |
+| FillRect 1024x768 | 2.36 | 2.53 |
+| FillRect 128x128 | 3.10 | 6.73 |
+| FillRect 64x64 | 5.24 | 21.00 |
+| FillRect 32x32 | 16.03 | 84.08 |
+| PatBlt solid 64x64 | 3.80 | 19.65 |
+| ROP SRCCOPY 64x64 | 1,973.2 | 25.63 |
+| ROP SRCAND / SRCINVERT 64x64 | ~4,070 | unchanged (not on the engine) |
+
+- **Copies:** screen-to-screen copies and scrolls go from read-bound CPU
+  copies to the engine: 22 times faster at 32x32, 77 at 64x64, 317 at 256x256 and
+  395 for a scroll. Window
+  moves and scrolling are this case.
+- **Fills now lose on the engine.** With WC on, the CPU fills at
+  near-link speed with no per-call setup, while each engine fill pays
+  about 15 us to kick and wait. At 32x32 the engine is 5 times slower,
+  at 64x64 4 times, and it only breaks even at full screen. GDI's
+  engine threshold (`Threshold=1024` pixels in V9XGDI's `/accel` report)
+  was chosen before write-combining was measured here.
+- **32 bpp ran entirely on the CPU** (every row matches the CPU-only
+  run). Most likely dispbench's switch to 32 bpp re-ran Enable, which
+  clears the channel's validation, and nothing rebuilt it. Not checked
+  with counters.
+
+What this argues for, not done here: route GDI fills to the CPU when WC
+is on (or raise the fill threshold far above the copy threshold), and
+bring the channel up without waiting for a DirectDraw program (options B
+or C of `docs/plans/nvidia-gt218-gdi-engine.md`), including after a mode
+change.
+
 ## Not settled here
 
-- GDI throughput with the channel live (after a DirectDraw program), with
-  WC on: not measured.
+- GDI on the engine at 32 bpp, and after any mode change, without a
+  DirectDraw program to rebuild the channel.
 - Screen-to-screen GDI copies are CPU reads at ~2,000-4,000 cycles a
   pixel until the channel exists.
 - Frame correctness under 3DMark was not inspected (no grabs without
