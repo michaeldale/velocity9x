@@ -392,7 +392,9 @@
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
             @{ Name = 'resources'; Path = 'src\common\resources.c' }
-            @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c' }
+            # In LEAFCODE since the one-display guard in ddi.c took _TEXT
+            # 435 bytes past its budget (leaf16.h).
+            @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }

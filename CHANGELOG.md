@@ -6,6 +6,18 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.53.0 - not yet released
 
+- **Every package: one display per Windows session.** When a second
+  device is bound to Velocity9x, Windows 98 loads a second copy of the
+  driver for it. A second device is typically a card's second head,
+  forced onto one of our rows by Have Disk. That copy now refuses to
+  start, instead of setting a mode on the one card the desktop runs on.
+  Before, opening the Settings tab of Display Properties could switch
+  the screen to VGA text mode under the running desktop. A Radeon 9250
+  on the `vbe` package did this, and an 86Box guest with a second card
+  reproduces it. In 86Box the fix holds through the Settings tab and
+  live mode switches. It has not run on the 9250 yet
+  ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
+
 ## 0.52.0 - 2026-11-15
 
 - **`ati` package: the ATI Radeon HD 2400 Pro (RV610, `1002:94C3`).**

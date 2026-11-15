@@ -14,6 +14,8 @@
 #define VELOCITY9X_VBE_PARSE_H
 
 #include "velocity9x/types.h"
+/* V9X_LEAF_FAR: the ati family compiles vbe_parse.c in LEAFCODE. */
+#include "velocity9x/leaf16.h"
 /* The mask-source flags a parsed summary reports are the same V9X_VBE_RF_*
  * bits the mini-VDD stores in a cache record, so they are defined once, beside
  * the rest of that contract. */
@@ -78,7 +80,7 @@ struct v9x_vbe_controller_summary {
  * caller filling this in from mini-VDD registers rather than from a block must
  * start defined, and adding a field here must not leave one such call site
  * reading a stack leftover. */
-void v9x_vbe_controller_summary_clear(
+void V9X_LEAF_FAR v9x_vbe_controller_summary_clear(
     struct v9x_vbe_controller_summary *out);
 
 struct v9x_vbe_mode_summary {
@@ -150,7 +152,7 @@ struct v9x_vbe_mode_summary {
  * block - the mini-VDD hands its answers back in registers - must still start
  * from a defined state, and adding a field to the struct then cannot leave one
  * of those call sites reading a stack leftover. */
-void v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out);
+void V9X_LEAF_FAR v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out);
 
 /*
  * The significant depth for a summary whose channel fields are already filled
@@ -159,7 +161,7 @@ void v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out);
  * 5:6:5 assumption v9x_vbe_masks_to_bits documents. Zero when the summary
  * describes no depth at all.
  */
-v9x_u16 v9x_vbe_summary_significant_depth(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_summary_significant_depth(
     const struct v9x_vbe_mode_summary *summary);
 
 /*
@@ -167,7 +169,7 @@ v9x_u16 v9x_vbe_summary_significant_depth(
  * ATI BIOS reports for its 5:5:5 modes (two bytes a pixel, the top bit
  * unused), and the value itself otherwise.
  */
-v9x_u16 v9x_vbe_storage_bits(v9x_u16 bits_per_pixel);
+v9x_u16 V9X_LEAF_FAR v9x_vbe_storage_bits(v9x_u16 bits_per_pixel);
 
 /*
  * 4F00h. V9X_TRUE when the block is a credible VBE 1.2-or-later answer:
@@ -175,7 +177,7 @@ v9x_u16 v9x_vbe_storage_bits(v9x_u16 bits_per_pixel);
  * is zeroed on refusal. A 1.x controller serves only a family that finds its
  * aperture itself (v9x_vbe_controller_scan_usable in vbe_modes.h).
  */
-v9x_u16 v9x_vbe_parse_controller_info(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_parse_controller_info(
     const v9x_u8 *block, struct v9x_vbe_controller_summary *out);
 
 /*
@@ -194,7 +196,7 @@ v9x_u16 v9x_vbe_parse_controller_info(
  * those offsets, which is exactly the fault the rule cannot detect and the
  * reason for the requirement.
  */
-v9x_u16 v9x_vbe_parse_mode_info(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_parse_mode_info(
     const v9x_u8 *block, struct v9x_vbe_mode_summary *out);
 
 /*
@@ -205,7 +207,7 @@ v9x_u16 v9x_vbe_parse_mode_info(
  * block can apply it too - the mini-VDD hands its answers back in registers,
  * not as 256 bytes. One source of truth for the rule, two ways in.
  */
-v9x_u16 v9x_vbe_mode_summary_is_drivable(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_mode_summary_is_drivable(
     const struct v9x_vbe_mode_summary *summary);
 
 /*
@@ -216,7 +218,7 @@ v9x_u16 v9x_vbe_mode_summary_is_drivable(
  * misplace every scan line, and the caller refuses the mode rather than
  * adapting to it.
  */
-v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
+v9x_u16 V9X_LEAF_FAR v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
                              v9x_u16 width, v9x_u16 height,
                              v9x_u16 bits_per_pixel, v9x_u16 pitch);
 
@@ -230,7 +232,7 @@ v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
  * behaves as v9x_vbe_mode_matches, confirmed or not. Zero confirmed_stride
  * means nothing was confirmed.
  */
-v9x_u16 v9x_vbe_mode_matches_widened(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_mode_matches_widened(
     const struct v9x_vbe_mode_summary *summary,
     v9x_u16 width, v9x_u16 height, v9x_u16 bits_per_pixel, v9x_u16 pitch,
     v9x_u16 confirmed_stride);
@@ -254,7 +256,7 @@ v9x_u16 v9x_vbe_mode_matches_widened(
  * A size of zero for any of the three colour channels, or a channel that does
  * not fit inside the pixel, is a refusal at every depth.
  */
-v9x_u16 v9x_vbe_masks_to_bits(const struct v9x_vbe_mode_summary *summary,
+v9x_u16 V9X_LEAF_FAR v9x_vbe_masks_to_bits(const struct v9x_vbe_mode_summary *summary,
                               v9x_u32 *red, v9x_u32 *green, v9x_u32 *blue);
 
 #endif /* VELOCITY9X_VBE_PARSE_H */

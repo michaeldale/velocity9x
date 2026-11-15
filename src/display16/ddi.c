@@ -292,6 +292,34 @@ static WORD v9x_repaint_pending;
  */
 static WORD v9x_ever_enabled;
 
+/*
+ * One Velocity9x display per Windows session.
+ *
+ * Windows 98 loads a separate instance of this driver, with its own data
+ * segment, for every Display-class device bound to it. A second device is
+ * usually the second PCI function of the same card (class 0380), forced onto
+ * one of our rows by a Have Disk pick. The Settings tab of Display Properties
+ * then enables that instance. Each instance believes it owns the card: its
+ * Enable sets a mode through the BIOS or the chip registers, and its Disable
+ * sets VGA text mode. All of that lands on the one card the desktop is
+ * using. On a Radeon 9250 this put the screen into text mode under the live
+ * desktop (docs\issues\2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md).
+ *
+ * The instances share no memory, so the owner is marked with a global atom:
+ * Windows 9x keeps one global atom table for the whole session. The first
+ * instance to reach enable-ok adds the atom. An instance that finds it
+ * present without having added it refuses both the GDIINFO query and Enable
+ * before touching any hardware, and Windows reports that display as unusable.
+ * The owner deletes the atom in Disable and adds it again on its next
+ * successful Enable, so its own live mode switches pass.
+ *
+ * A second card of a different design is refused as well. Nothing in this
+ * driver can drive two displays: INT 10h reaches only the boot adapter, and
+ * the chip paths find their registers by the first PCI match.
+ */
+#define V9X_DISPLAY_OWNER_ATOM "Velocity9xDisplayOwner"
+static ATOM v9x_owner_atom;
+
 #ifdef V9X_DOSBOX_TRACE
 /*
  * Trace the DOS-box round trip to disk, for
@@ -1303,6 +1331,84 @@ static void v9x_set_point(V9X_POINT_TYPE FAR *point, short x, short y)
     point->y = y;
 }
 
+/*
+ * The global atom functions live in USER, which this module must not import:
+ * GDI loads a display driver before USER exists, and an import of a module
+ * that is not loaded fails the whole load (scripts\audit-family-binary.ps1
+ * refuses it). USER is loaded by the time it asks for a GDIINFO query or an
+ * Enable, so they are looked up by name then, as v9x_resolve_user_repaint
+ * does for the repaint export. If the lookup fails the guard is off and the
+ * driver behaves as it did before it existed.
+ */
+typedef ATOM (FAR PASCAL *V9X_ATOM_BY_NAME)(LPCSTR name);
+typedef ATOM (FAR PASCAL *V9X_ATOM_DELETE)(ATOM atom);
+static V9X_ATOM_BY_NAME v9x_global_add_atom;
+static V9X_ATOM_BY_NAME v9x_global_find_atom;
+static V9X_ATOM_DELETE v9x_global_delete_atom;
+static WORD v9x_atom_resolved;
+
+static WORD v9x_resolve_atom_functions(void)
+{
+    HMODULE user;
+
+    if (v9x_atom_resolved == 0u) {
+        v9x_atom_resolved = 1u;
+        user = GetModuleHandle("USER");
+        if (user != 0) {
+            v9x_global_add_atom =
+                (V9X_ATOM_BY_NAME)GetProcAddress(user, "GLOBALADDATOM");
+            v9x_global_find_atom =
+                (V9X_ATOM_BY_NAME)GetProcAddress(user, "GLOBALFINDATOM");
+            v9x_global_delete_atom =
+                (V9X_ATOM_DELETE)GetProcAddress(user, "GLOBALDELETEATOM");
+        }
+        if (v9x_global_add_atom == 0 || v9x_global_find_atom == 0 ||
+            v9x_global_delete_atom == 0) {
+            v9x_serial_write("V9X-DRV atom-exports-missing\r\n");
+        }
+    }
+    return (WORD)(v9x_global_add_atom != 0 && v9x_global_find_atom != 0 &&
+                  v9x_global_delete_atom != 0);
+}
+
+/* The ownership check described at v9x_owner_atom. */
+static WORD v9x_other_instance_owns_display(void)
+{
+    if (v9x_owner_atom != 0) {
+        return 0u;
+    }
+    if (v9x_resolve_atom_functions() == 0u) {
+        return 0u;
+    }
+    if ((*v9x_global_find_atom)(V9X_DISPLAY_OWNER_ATOM) == 0) {
+        return 0u;
+    }
+    /*
+     * The trail only: Stage= in V9XBOOT.INI belongs to the owner, and a
+     * refused instance must not make a healthy boot read as failed.
+     */
+#ifdef V9X_DURABLE_TRAIL
+    v9x_durable_trail("refused-second-display");
+#endif
+    v9x_serial_write("V9X-DRV refused second display instance\r\n");
+    return 1u;
+}
+
+static void v9x_claim_display(void)
+{
+    if (v9x_owner_atom == 0 && v9x_resolve_atom_functions() != 0u) {
+        v9x_owner_atom = (*v9x_global_add_atom)(V9X_DISPLAY_OWNER_ATOM);
+    }
+}
+
+static void v9x_release_display(void)
+{
+    if (v9x_owner_atom != 0) {
+        (void)(*v9x_global_delete_atom)(v9x_owner_atom);
+        v9x_owner_atom = 0;
+    }
+}
+
 static WORD v9x_fill_gdi_info(V9X_GDI_INFO FAR *info,
                               LPSTR destination_type,
                               LPSTR output_file,
@@ -1311,6 +1417,9 @@ static WORD v9x_fill_gdi_info(V9X_GDI_INFO FAR *info,
     WORD result;
     WORD extra_size;
 
+    if (v9x_other_instance_owns_display() != 0u) {
+        return 0u;
+    }
     if (v9x_ever_enabled == 0u) {
         v9x_boot_trace("query-start");
     }
@@ -1422,6 +1531,9 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     WORD bits_selector;
     WORD pdevice_flags = V9X_DE_MINIDRIVER | V9X_DE_VRAM;
 
+    if (v9x_other_instance_owns_display() != 0u) {
+        return 0u;
+    }
     if (v9x_dib_pdevice_size == 0u) {
         v9x_boot_trace("fail-pdevice-size");
         return 0u;
@@ -1699,6 +1811,7 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     if (v9x_reenabling == 0u) {
         (void)V9xDdCreateDriverObject(1u);
     }
+    v9x_claim_display();
     v9x_boot_trace("enable-ok");
     /* The validated inventory is written only after a successful enable: a
      * boot that never reached the desktop must not leave a Complete=1 file
@@ -1747,6 +1860,7 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     v9x_dosbox_trace("disable-pre-hardware");
     V9xHardwareDisable();
     v9x_screen_selector = 0u;
+    v9x_release_display();
     v9x_serial_write("V9X-DRV disable\r\n");
     v9x_dosbox_trace("disable-exit");
     return 0xffffu;

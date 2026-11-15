@@ -12,7 +12,10 @@
  * are src\common\mtrr.c and edid.c, and the screen shadow's shadow.c and
  * shadow16.c, which call each other near and so must share the segment.
  * src\common\d3dmode.c joined them when the ati family's R6xx row took
- * _TEXT 49 bytes past its budget again (2026-11-13).
+ * _TEXT 49 bytes past its budget again (2026-11-13), and
+ * src\common\vbe_parse.c when ddi.c's one-display guard took it 459 bytes
+ * past (2026-11-15); the intel-gma and nvidia
+ * families moved it for the same reason.
  *
  * Open Watcom's compact model compiles every C call near, and a near call
  * cannot cross a segment (velocity9x\intel16.h says why that is a wild

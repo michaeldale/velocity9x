@@ -1,10 +1,11 @@
 # vbe on a Radeon 9200: sixteen illegible thumbnails of the screen
 
 Date: 2026-11-13
-Status: open; cause found 2026-11-15 (section at the end): our `vbe`
-driver is also bound to the card's second head, so Windows 98 runs a
-second instance on the same card when the Settings tab opens. The fix
-on the machine has not been applied yet. Field report, no RV280 card on
+Status: open; cause found and a driver guard written on 2026-11-15
+(the sections at the end). Our `vbe` driver is also bound to the card's
+second head, so Windows 98 runs a second instance on the same card when
+the Settings tab opens. Reproduced and fixed in 86Box. Not yet run on
+the reporter's 9250. Field report, no RV280 card on
 our own machines. Files and photos arrived 2026-11-14 (section below): a
 Radeon 9250 on Windows 98 SE, 0.49.0 too, clean boot, the screen breaks
 when the Settings tab is clicked.
@@ -311,3 +312,60 @@ tested:
 
 The QEMU row matching the 9250's second head shows that a Have Disk
 install can force any row onto any device.
+
+## 2026-11-15: reproduced in 86Box, and a driver guard
+
+Evidence: [`../probe/dualhead-86box-2026-11-15/`](../probe/dualhead-86box-2026-11-15/).
+
+### The guest
+
+`Win98SE-DualHead` (host port 9876) is a clone of `Win98SE-Mach64VT2`:
+- An ATI Mach64 VT2 is the primary, on the `ati` family.
+- 86Box 6.0's `gfxcard_2` adds a ViRGE/DX, the second "86Box Monitor"
+  window.
+- Windows 98 SE gave the ViRGE its own S3 driver. `dualbind.reg` then
+  bound that devnode to a copy of our class key, `Display\0004`, which
+  loads `V9XDISP.DRV`. That is the 9250's arrangement on two cards:
+  two Display devnodes, one driver.
+
+### Before: the older ati build, without the guard
+
+That build's `V9XDISP.DRV` is the 0.35.1-numbered fixture already on
+the guest. The Settings tab, clicked once, showed two monitors. Within
+about 10 s the primary's emulated screen dropped to VGA text mode,
+70 Hz and 720x400 (`before-settings-tab-primary-text-mode.png`), with
+Windows still running behind it. That is the fault the 9250's owner
+photographed, now reproduced.
+
+### After: `123e978e-dirty`, with the guard
+
+Changes:
+- `src/display16/ddi.c`: the first instance to reach `enable-ok` adds a
+  global atom and deletes it in Disable.
+- An instance that finds the atom without having added it refuses the
+  GDIINFO query and Enable before touching hardware. It writes
+  `refused-second-display` to `V9XTRAIL.TXT` only, so `Stage=` in
+  `V9XBOOT.INI` stays the owner's.
+- The atom functions are USER exports, which a display driver must not
+  import, so they are looked up by name at the first query.
+
+The new package was installed by `update-associated-driver.ps1`, with
+the `V9XDISP.DRV` hash checked on the guest. Boot 163:
+- **Settings tab:** two monitors are shown, and monitor 2 is offered
+  but not active. The primary stays at 1024x768, 60 Hz
+  (`after-settings-tab-primary-intact.png`). The trail has `libmain`
+  then `refused-second-display` at 14:21:43.
+- **Live mode switches on the primary:** `V9XMSW /set:800x600x16`, then
+  back to 1024x768x16. Each gives `enable-start` and `enable-ok`, and
+  the agent reads the new size.
+- **Settings tab again:** refused again at 14:22:50, primary intact
+  (`after-mode-switches-settings-tab.png`).
+
+### Not tested
+
+- The `vbe` package on the 9250 itself: that machine is offline. The
+  guard is in the shared `ddi.c`, and the `vbe` package builds and
+  passes the gate.
+- The release of the atom in Disable, at shutdown or exit to MS-DOS
+  mode, followed by a new owner in the same session.
+- A guest with two cards that Windows' own drivers run.

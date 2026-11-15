@@ -63,7 +63,7 @@ static v9x_u32 v9x_vbe_read_u32(const v9x_u8 *data)
            ((v9x_u32)data[3] << 24);
 }
 
-void v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out)
+void V9X_LEAF_FAR v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out)
 {
     if (out == 0) {
         return;
@@ -88,14 +88,14 @@ void v9x_vbe_mode_summary_clear(struct v9x_vbe_mode_summary *out)
     out->rsvd_field_position = 0u;
 }
 
-v9x_u16 v9x_vbe_storage_bits(v9x_u16 bits_per_pixel)
+v9x_u16 V9X_LEAF_FAR v9x_vbe_storage_bits(v9x_u16 bits_per_pixel)
 {
     /* VBE 1.2 counts a 5:5:5 mode's colour bits; the pixel is still two
      * bytes, which is what every stride and match rule here measures. */
     return bits_per_pixel == 15u ? 16u : bits_per_pixel;
 }
 
-v9x_u16 v9x_vbe_summary_significant_depth(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_summary_significant_depth(
     const struct v9x_vbe_mode_summary *summary)
 {
     v9x_u16 total;
@@ -125,7 +125,7 @@ v9x_u16 v9x_vbe_summary_significant_depth(
     return total;
 }
 
-void v9x_vbe_controller_summary_clear(
+void V9X_LEAF_FAR v9x_vbe_controller_summary_clear(
     struct v9x_vbe_controller_summary *out)
 {
     if (out == 0) {
@@ -137,7 +137,7 @@ void v9x_vbe_controller_summary_clear(
     out->oem_software_rev = 0u;
 }
 
-v9x_u16 v9x_vbe_parse_controller_info(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_parse_controller_info(
     const v9x_u8 *block, struct v9x_vbe_controller_summary *out)
 {
     v9x_u16 version;
@@ -182,7 +182,7 @@ v9x_u16 v9x_vbe_parse_controller_info(
     return V9X_TRUE;
 }
 
-v9x_u16 v9x_vbe_mode_summary_is_drivable(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_mode_summary_is_drivable(
     const struct v9x_vbe_mode_summary *summary)
 {
     if (summary == 0) {
@@ -208,7 +208,7 @@ v9x_u16 v9x_vbe_mode_summary_is_drivable(
     return V9X_TRUE;
 }
 
-v9x_u16 v9x_vbe_parse_mode_info(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_parse_mode_info(
     const v9x_u8 *block, struct v9x_vbe_mode_summary *out)
 {
     struct v9x_vbe_mode_summary candidate;
@@ -303,7 +303,7 @@ v9x_u16 v9x_vbe_parse_mode_info(
     return V9X_TRUE;
 }
 
-v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
+v9x_u16 V9X_LEAF_FAR v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
                              v9x_u16 width, v9x_u16 height,
                              v9x_u16 bits_per_pixel, v9x_u16 pitch)
 {
@@ -323,7 +323,7 @@ v9x_u16 v9x_vbe_mode_matches(const struct v9x_vbe_mode_summary *summary,
     return stride == pitch ? V9X_TRUE : V9X_FALSE;
 }
 
-v9x_u16 v9x_vbe_mode_matches_widened(
+v9x_u16 V9X_LEAF_FAR v9x_vbe_mode_matches_widened(
     const struct v9x_vbe_mode_summary *summary,
     v9x_u16 width, v9x_u16 height, v9x_u16 bits_per_pixel, v9x_u16 pitch,
     v9x_u16 confirmed_stride)
@@ -369,7 +369,7 @@ static v9x_u32 v9x_vbe_channel_mask(v9x_u16 size, v9x_u16 position,
     return mask << position;
 }
 
-v9x_u16 v9x_vbe_masks_to_bits(const struct v9x_vbe_mode_summary *summary,
+v9x_u16 V9X_LEAF_FAR v9x_vbe_masks_to_bits(const struct v9x_vbe_mode_summary *summary,
                               v9x_u32 *red, v9x_u32 *green, v9x_u32 *blue)
 {
     v9x_u32 r;
