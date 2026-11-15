@@ -15,8 +15,8 @@ build identifier so exact guest-tested binaries remain traceable.
   the screen to VGA text mode under the running desktop. A Radeon 9250
   on the `vbe` package did this, and an 86Box guest with a second card
   reproduces it. In 86Box the fix holds through the Settings tab and
-  live mode switches. It has not run on the 9250 yet
-  ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
+  live mode switches. On the reporter's 9250 the screen stays good when
+  the Settings tab is opened ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
 
 ## 0.52.0 - 2026-11-15
 

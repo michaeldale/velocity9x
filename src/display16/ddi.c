@@ -319,6 +319,7 @@ static WORD v9x_ever_enabled;
  */
 #define V9X_DISPLAY_OWNER_ATOM "Velocity9xDisplayOwner"
 static ATOM v9x_owner_atom;
+static WORD v9x_display_owned_elsewhere(void);
 
 #ifdef V9X_DOSBOX_TRACE
 /*
@@ -1069,6 +1070,17 @@ void v9x_display_boot_log(void)
      * normally reach the host log. The INI marker is strong load evidence,
      * but its absence is inconclusive because the early file write can fail. */
 #ifdef V9X_BOOT_TRACE
+    /*
+     * A second instance must not overwrite the owner's Stage=: on M-HNBJNV
+     * (2026-11-15) a refused instance left Stage=libmain over a healthy
+     * boot's enable-ok. The trail still gets the line.
+     */
+    if (v9x_display_owned_elsewhere() != 0u) {
+#ifdef V9X_DURABLE_TRAIL
+        v9x_durable_trail("libmain");
+#endif
+        return;
+    }
     if (!v9x_boot_trace("libmain")) {
         v9x_serial_write("V9X-DRV trace-write-fail stage=libmain build="
                          V9X_BUILD_ID "\r\n");
@@ -1352,16 +1364,21 @@ static WORD v9x_resolve_atom_functions(void)
     HMODULE user;
 
     if (v9x_atom_resolved == 0u) {
-        v9x_atom_resolved = 1u;
+        /*
+         * LibMain asks too. The boot's first instance loads before USER, so
+         * a missing USER is not latched: it means "ask again later".
+         */
         user = GetModuleHandle("USER");
-        if (user != 0) {
-            v9x_global_add_atom =
-                (V9X_ATOM_BY_NAME)GetProcAddress(user, "GLOBALADDATOM");
-            v9x_global_find_atom =
-                (V9X_ATOM_BY_NAME)GetProcAddress(user, "GLOBALFINDATOM");
-            v9x_global_delete_atom =
-                (V9X_ATOM_DELETE)GetProcAddress(user, "GLOBALDELETEATOM");
+        if (user == 0) {
+            return 0u;
         }
+        v9x_atom_resolved = 1u;
+        v9x_global_add_atom =
+            (V9X_ATOM_BY_NAME)GetProcAddress(user, "GLOBALADDATOM");
+        v9x_global_find_atom =
+            (V9X_ATOM_BY_NAME)GetProcAddress(user, "GLOBALFINDATOM");
+        v9x_global_delete_atom =
+            (V9X_ATOM_DELETE)GetProcAddress(user, "GLOBALDELETEATOM");
         if (v9x_global_add_atom == 0 || v9x_global_find_atom == 0 ||
             v9x_global_delete_atom == 0) {
             v9x_serial_write("V9X-DRV atom-exports-missing\r\n");
@@ -1371,8 +1388,8 @@ static WORD v9x_resolve_atom_functions(void)
                   v9x_global_delete_atom != 0);
 }
 
-/* The ownership check described at v9x_owner_atom. */
-static WORD v9x_other_instance_owns_display(void)
+/* The ownership test described at v9x_owner_atom, without a trace. */
+static WORD v9x_display_owned_elsewhere(void)
 {
     if (v9x_owner_atom != 0) {
         return 0u;
@@ -1380,7 +1397,13 @@ static WORD v9x_other_instance_owns_display(void)
     if (v9x_resolve_atom_functions() == 0u) {
         return 0u;
     }
-    if ((*v9x_global_find_atom)(V9X_DISPLAY_OWNER_ATOM) == 0) {
+    return (WORD)((*v9x_global_find_atom)(V9X_DISPLAY_OWNER_ATOM) != 0);
+}
+
+/* The same test at the query and at Enable, which refuse on it. */
+static WORD v9x_other_instance_owns_display(void)
+{
+    if (v9x_display_owned_elsewhere() == 0u) {
         return 0u;
     }
     /*

@@ -1,11 +1,12 @@
 # vbe on a Radeon 9200: sixteen illegible thumbnails of the screen
 
 Date: 2026-11-13
-Status: open; cause found and a driver guard written on 2026-11-15
-(the sections at the end). Our `vbe` driver is also bound to the card's
-second head, so Windows 98 runs a second instance on the same card when
-the Settings tab opens. Reproduced and fixed in 86Box. Not yet run on
-the reporter's 9250. Field report, no RV280 card on
+Status: **fixed on main (0.53.0), confirmed on the reporter's 9250 on
+2026-11-15.** Our `vbe` driver is also bound to the card's second head,
+so Windows 98 ran a second instance on the same card when the Settings
+tab opened. A driver guard now refuses that instance. Reproduced and
+fixed in 86Box, then run on M-HNBJNV, where the owner reports the screen
+stays good (the sections at the end). Field report, no RV280 card on
 our own machines. Files and photos arrived 2026-11-14 (section below): a
 Radeon 9250 on Windows 98 SE, 0.49.0 too, clean boot, the screen breaks
 when the Settings tab is clicked.
@@ -363,9 +364,43 @@ the `V9XDISP.DRV` hash checked on the guest. Boot 163:
 
 ### Not tested
 
-- The `vbe` package on the 9250 itself: that machine is offline. The
-  guard is in the shared `ddi.c`, and the `vbe` package builds and
-  passes the gate.
 - The release of the atom in Disable, at shutdown or exit to MS-DOS
   mode, followed by a new owner in the same session.
 - A guest with two cards that Windows' own drivers run.
+
+## 2026-11-15: on the reporter's 9250 (M-HNBJNV)
+
+Evidence: [`../probe/field-radeon-9250-hnbjnv-2026-11-15/guard/`](../probe/field-radeon-9250-hnbjnv-2026-11-15/guard/).
+
+### First install: `123e978e-dirty` (the code of d03a1ab1)
+
+Installed as the eight-file `vbe` set by WININIT renames.
+- **The first attempt fell short.** One relay call timed out while
+  staging, and three files, `V9XMINI.VXD`, `V9XHAL.DLL` and
+  `V9XSETP.DLL`, kept their 0.51.0 copies; the other five were the new
+  build. The three were staged again one by one, each copy
+  hash-checked before the rename was scheduled. After boot 16 all eight
+  matched.
+- **Settings tab:** clicked at 00:21:26. The trail has `libmain` then
+  `refused-second-display`, and the desktop stayed at 1024x768.
+- **The owner's report,** relayed by Michael: "display is good".
+- **A flaw:** `V9XBOOT.INI` read `Stage=libmain`. The refused instance
+  still wrote its LibMain marker over the owner's `enable-ok`, which
+  makes a healthy boot read as unconfirmed.
+
+### Second install: `d03a1ab1-dirty`, the code of the follow-up commit
+
+What changed:
+- LibMain checks the atom too. An instance that finds another owner
+  writes only to the trail, and leaves `Stage=` to the owner.
+- A missing USER no longer latches the lookup off. The boot's first
+  instance loads before USER, so it now looks again later.
+
+All eight files were staged with hash checks; boot 17. The Settings
+tab gave two refusals, at 00:33:18 and 00:33:28, likely one at the
+dialog's open and one at the tab's click. `Stage=enable-ok` held, and
+the desktop stayed at 1024x768.
+
+Still on the machine, not addressed: the second head's devnode keeps
+our driver, and the leftover SiS, WinVBE and QEMU-row class keys
+remain. They no longer break the display.
