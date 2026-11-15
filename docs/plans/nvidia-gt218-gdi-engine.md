@@ -151,8 +151,16 @@ code segment of its own, `NV50CODE`, with every call in declared
 `wdis -a` shows the calls into it far and its in-segment calls as
 `push cs` + near call, which return correctly through its `retf`.
 
+2026-11-15: timings exist now (dispbench on W9QI0DAD): with the channel up,
+screen copies and scrolls drop from ~1,970 to 5-6 cycles a pixel, and GDI
+fills moved back to the CPU when the aperture is write-combined
+([2026-11-15-gt218-write-combining.md](../decisions/2026-11-15-gt218-write-combining.md)).
+**Michael chose B**: `V9xEngineStart` in `V9XSETP.DLL`, run at logon,
+brings the channel up with one DirectDraw fill
+([2026-11-15-gt218-gdi-engine-at-logon.md](../decisions/2026-11-15-gt218-gdi-engine-at-logon.md)).
+
 ## Decisions owed
 
-- Settled: A.
-- Whether to go past A is still open, and 5.0 gave no timing to judge
-  it by.
+- Settled: A, then B (2026-11-15).
+- C (bring-up in the 16-bit driver) is not planned; it would only matter
+  before logon, or if a mode change is found to drop the channel.

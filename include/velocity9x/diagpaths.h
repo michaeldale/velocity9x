@@ -63,6 +63,9 @@
  * buffer, as before 0.46.0. For A/B runs and as a way out. */
 #define V9X_DIAG_NOSHADOW_TXT V9X_DIAG_PATH("NOSHADOW.TXT") /* ddi.c */
 
+/* Settings page DLL, run at logon by rundll32. */
+#define V9X_DIAG_ENGINE_INI  V9X_DIAG_PATH("V9XENG.INI")    /* settings_engine.c */
+
 /* 32-bit DirectDraw HAL. */
 #define V9X_DIAG_TRACE_INI   V9X_DIAG_PATH("V9XTRACE.INI")  /* ddhal_core.c */
 
