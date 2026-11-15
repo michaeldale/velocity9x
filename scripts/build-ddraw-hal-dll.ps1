@@ -154,6 +154,11 @@ $sources = @(
     "src\display32\engines\eng_rs690.c",
     "src\display32\engines\rs690_scanout.c",
     "src\chipsets\ati\rs690\rs690_2d.c",
+    # The RV280's 2D engine: the same builder, the pre-R300 flush; flips
+    # on its legacy CRTC.
+    "src\display32\engines\eng_rv280.c",
+    "src\display32\engines\rv280_scanout.c",
+    "src\chipsets\ati\rv280\rv280_crtc.c",
     # Its D3D object's words, for the bring-up and d3d_nv3.c.
     "src\chipsets\nvidia\nv3_3d.c",
     # The Rage 128 2D engine: fill and copy through the host-tested builder.
@@ -301,6 +306,11 @@ $sources = @(
     "src\chipsets\ati\rs690\rs690_3d.c",
     "src\display32\d3d\d3d_rs690_map.c",
     "src\display32\d3d\d3d_rs690.c",
+    # The Radeon 9250's R200 3D engine: register values, the neutral draw
+    # to them, and the engine that writes them with the CP off.
+    "src\chipsets\ati\rv280\rv280_3d.c",
+    "src\display32\d3d\d3d_rv280_map.c",
+    "src\display32\d3d\d3d_rv280.c",
     # The RIVA 128 D3D object: swizzled texture copies and PIO methods.
     "src\display32\d3d\d3d_nv3.c",
     "src\display32\d3d\d3d_hsw.c",

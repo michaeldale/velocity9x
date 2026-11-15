@@ -1,5 +1,7 @@
 # Plans
 
+- [Rendering service boundaries and workload replay](render-core-services-and-replay.md) - Proposed 2026-11-15; explicit services around the Direct3D processing core, complete workload capture/replay, and integration regression checks. Nothing implemented.
+
 Index reviewed against the plan files, the changelog and the README's card
 tables on 2026-11-10. Where a line says a plan's own status is behind, the
 shipped state is from the changelog; the plan file was not rewritten.

@@ -47,7 +47,8 @@ The SwapBuffers failure at Quake II's exit was not traced; no
 ## The change
 
 - `r3d_abi.h`: `V9X_R3D_ABI_ENGINE_NV50` 17 (a new value of an existing
-  field; front ends only log it).
+  field; front ends only log it). 18 since the merge into main, where the
+  Radeon 9250's R200 had taken 17; the logs below were taken at 17.
 - `d3d_core.c`: the GT218 described as "Velocity9x GeForce 210", with
   video-memory textures 1 to 2048, power-of-two edges, all three
   interface formats: what `v9x_d3d_nv50_create_surface` places and the

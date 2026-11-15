@@ -854,6 +854,8 @@ extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rs690;
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_r6;
 /* d3d/d3d_nv50.c: the GT218's Tesla 3D engine on its 2D channel. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv50;
+/* d3d/d3d_rv280.c: the Radeon 9250's R200 3D engine, by register writes. */
+extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_rv280;
 
 
 /*

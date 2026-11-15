@@ -2233,6 +2233,8 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
         return &v9x_engine32_r6;
     case V9X_DD_ENGINE_TYPE_NV50:
         return &v9x_engine32_nv50;
+    case V9X_DD_ENGINE_TYPE_ATI_RV280:
+        return &v9x_engine32_rv280;
     default:
         break;
     }

@@ -127,6 +127,13 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
             return V9X_D3D_SELECT_NONE;
         }
         return V9X_D3D_SELECT_NV50;
+    case V9X_DD_ENGINE_TYPE_ATI_RV280:
+        /* The Radeon 9250: rv280_hw16.c stamps CAP_D3D beside the 2D
+         * engine; without it the type selects nothing. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+            return V9X_D3D_SELECT_NONE;
+        }
+        return V9X_D3D_SELECT_RV280;
     default:
         return V9X_D3D_SELECT_NONE;
     }

@@ -88,6 +88,10 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\mach64_crtc.c',
         # Rage 128 scanout start and flip status.
         'src\chipsets\ati\rage128\r128_crtc.c',
+        # Radeon 9250 (RV280) scanout start and flip status.
+        'src\chipsets\ati\rv280\rv280_crtc.c',
+        # Radeon 9250 (RV280) R200 3D register values.
+        'src\chipsets\ati\rv280\rv280_3d.c',
         # Rage 128 bus-master ring placement and free space.
         'src\chipsets\ati\rage128\r128_ring.c',
         'src\chipsets\ati\rage2_trap.c',
@@ -314,6 +318,9 @@ function Get-V9xHostSourceNames {
         # The neutral draw to RS690 3D builder state.
         'src\display32\d3d\d3d_rs690_map.c',
         'tests\host\test_d3d_rs690_map.c',
+        # The neutral draw to RV280 (Radeon 9250, R200) 3D builder state.
+        'src\display32\d3d\d3d_rv280_map.c',
+        'tests\host\test_d3d_rv280_map.c',
         'src\display32\d3d\d3d_hsw_map.c',
         'tests\host\test_d3d_hsw_map.c',
         'src\display32\d3d\d3d_mga_map.c',
@@ -399,6 +406,8 @@ function Get-V9xHostSourceNames {
         'tests\host\test_mach64_draw.c',
         'tests\host\test_mach64_crtc.c',
         'tests\host\test_r128_crtc.c',
+        'tests\host\test_rv280_crtc.c',
+        'tests\host\test_rv280_3d.c',
         'tests\host\test_r128_ring.c',
         'tests\host\test_rage2_trap.c',
         'tests\host\rage2_reference.c',

@@ -490,6 +490,7 @@ extern const V9X_ENGINE32_OPS v9x_engine32_eg;
 extern const V9X_ENGINE32_OPS v9x_engine32_vi;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv3;
 extern const V9X_ENGINE32_OPS v9x_engine32_rs690;
+extern const V9X_ENGINE32_OPS v9x_engine32_rv280;
 extern const V9X_ENGINE32_OPS v9x_engine32_r6;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv50;
 /* Haswell's Y-tiled Z buffers are filled by the render engine, not the
@@ -617,6 +618,27 @@ int v9x_rs690_flip_address(DWORD byte_offset, DWORD *address);
  * not usable. Marks the engine as having drawn, so the next idle wait
  * flushes. */
 int v9x_rs690_3d_begin(DWORD *fb_gpu_base, DWORD *desktop_offset);
+/* The Radeon 9250's (RV280) legacy CRTC, in engines/rv280_scanout.c:
+ * active only for ATI_RV280 stamped with V9X_DD_ENGINE_CAP_FLIP. Written
+ * under OFFSET_LOCK as r100_page_flip does, taken at the vertical blank;
+ * pending until GUI_TRIG_OFFSET clears. */
+int v9x_rv280_scanout_active(void);
+int v9x_rv280_scanout_live(void);
+int v9x_rv280_in_vblank(void);
+int v9x_rv280_set_display_start(DWORD byte_offset);
+int v9x_rv280_flip_pending(void);
+void v9x_rv280_note_flip_done(void);
+void v9x_rv280_scanout_reset(void);
+/* engines/eng_rv280.c, for rv280_scanout.c: CRTC_OFFSET's value for the
+ * surface at byte_offset, after the 2D engine has gone idle; zero when it
+ * cannot be given. */
+int v9x_rv280_flip_address(DWORD byte_offset, DWORD *value);
+/* engines/eng_rv280.c, for d3d/d3d_rv280.c: the engine validated (its 2D
+ * and 3D init lists written for this mode) and idle after 2D work, the
+ * frame buffer's GPU address and where the mapped frame buffer starts in
+ * it; zero when the engine is not usable. Marks the engine as having drawn,
+ * so the next idle wait flushes. */
+int v9x_rv280_3d_start(DWORD *fb_gpu_base, DWORD *desktop_offset);
 /* Non-zero when this Rage 128's flips go into the CCE ring behind the
  * frame instead of waiting for it. */
 int v9x_r128_flip_queues(void);

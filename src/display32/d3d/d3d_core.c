@@ -557,6 +557,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_r6;
     case V9X_D3D_SELECT_NV50:
         return &v9x_d3d_engine_nv50;
+    case V9X_D3D_SELECT_RV280:
+        return &v9x_d3d_engine_rv280;
     default:
         return 0;
     }
@@ -10269,6 +10271,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_rs690) {
         out->engine = V9X_R3D_ABI_ENGINE_RS690;
         name = "Velocity9x Radeon X1200";
+    } else if (ops == &v9x_d3d_engine_rv280) {
+        out->engine = V9X_R3D_ABI_ENGINE_RV280;
+        name = "Velocity9x Radeon 9250";
     } else if (ops == &v9x_d3d_engine_nv3) {
         out->engine = V9X_R3D_ABI_ENGINE_NV3;
         name = "Velocity9x RIVA 128";
@@ -10422,6 +10427,15 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          * no fallback, so without this branch the ICD and Glide kept every
          * texture on the CPU and no textured draw was drawn (V9XGLIDP's
          * five texture checks, M-GB8KRE boot 87). */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_rv280) {
+        /* The Radeon 9250's, on the X1200's terms: power-of-two edges, 1
+         * to 2048, the five formats, placed by v9x_d3d_rv280_create_surface
+         * with 32-byte rows. CPU levels are refused (d3d_rv280_map.c) and
+         * the tiled Z rules out a software fallback, so without this branch
+         * no textured interface draw would be drawn. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
