@@ -17,6 +17,57 @@ build identifier so exact guest-tested binaries remain traceable.
   reproduces it. In 86Box the fix holds through the Settings tab and
   live mode switches. On the reporter's 9250 the screen stays good when
   the Settings tab is opened ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
+  The refused copy also no longer overwrites the boot record, which had
+  made a healthy boot read as unconfirmed.
+- **`ati` package: the ATI Radeon 9250 (RV280, `1002:5960`).** Modes
+  through the VESA BIOS; DirectDraw fills and copies on the 2D engine,
+  page flips at the vertical blank; Direct3D, OpenGL and Glide on the
+  R200 3D engine, written by the CPU with the command processor off. On
+  one card through remote help V9XD32 passes at 16 and 32 bpp, as do
+  the OpenGL and Glide probes, and 3DMark 2000 completes (905, 871 on
+  the merged build); the Quake 2 demo runs through OpenGL at 54.7 fps
+  (640x480 windowed). One OpenGL probe's depth-tested quad is still
+  wrong in a narrow band
+  ([issue](docs/issues/2026-11-15-rv280-gl-geomscan-band.md)). The
+  Radeon 9200SE (`1002:5964`) is listed as the same chip and has not
+  been tried. The card's second head stays unclaimed
+  ([Direct3D](docs/decisions/2026-11-15-rv280-d3d-hal.md),
+  [OpenGL and Glide](docs/decisions/2026-11-15-rv280-render-interface.md),
+  [applications](docs/decisions/2026-11-15-rv280-3dmark2000-quake2.md),
+  [plan](docs/plans/ati-rv280-radeon-9250.md)).
+- **`nvidia` package, GeForce 210: OpenGL draws.** In 0.52.0 every
+  textured OpenGL draw was dropped, so Quake II and Quake 3 showed a
+  black or frozen picture. The OpenGL driver now knows the engine and
+  keeps textures in video memory; on the reporter's card the Quake 3
+  demo runs with every draw on the engine. Quake 3 then drew garbage in
+  the frame's top rows and streaked textures, because the depth buffer
+  and its colour copy shared 64 KiB pages; each now has its own. On the
+  test card the garbage went from 13 frames of 14 to none of 21. Not
+  yet checked on the reporter's card at 1024x768x32, and Quake II's
+  SwapBuffers message on exit is not traced
+  ([describe](docs/decisions/2026-11-16-gt218-opengl-describe.md),
+  [pages](docs/decisions/2026-11-16-gt218-tiled-64k-pages.md)).
+- **`nvidia` package, GeForce 210: DirectX 8 pixel shaders.** Pixel
+  shader 1.1 programs are translated to the chip's own code, two
+  texture stages draw in one pass, X8R8G8B8 textures are sampled, and
+  the driver now offers the DirectX 8 interface. On the test card
+  V9XD32's shader programs pass apart from cube maps and three pixels of one
+  fog case; 3DMark 2000
+  completes (4739) and 3DMark 2001 SE completes (2855) with every test
+  listed, but parts of its frames are not drawn: cube maps, `texm3x3`
+  shaders and some texture formats are still refused
+  ([shaders](docs/decisions/2026-11-15-gt218-draw-shader-ddi8.md),
+  [two stages](docs/decisions/2026-11-15-gt218-guard-band-two-stages.md),
+  [plan](docs/plans/nvidia-gt218-ps11.md)).
+- **`nvidia` package, GeForce 210: GDI on the engine from logon.**
+  Screen copies and scrolls ran on the CPU at about 1,970 cycles a
+  pixel until a DirectDraw program first started the engine; a logon
+  step now starts it, and they run at 5 to 6. Fills stay on the CPU
+  when the frame buffer is write-combined, where the CPU wins below
+  full-screen sizes. Measured at 16 bpp only; a fresh install that adds
+  the logon step has not been run
+  ([logon](docs/decisions/2026-11-15-gt218-gdi-engine-at-logon.md),
+  [write-combining](docs/decisions/2026-11-15-gt218-write-combining.md)).
 
 ## 0.52.0 - 2026-11-15
 
