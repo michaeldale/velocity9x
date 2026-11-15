@@ -2,8 +2,9 @@
  * ATI Radeon 9250 / 9200SE (RV280) 2D engine for V9XHAL.DLL: DirectDraw
  * solid fill and screen copy.
  *
- * The RS690's engine module (eng_rs690.c) less its 3D setup, with the
- * RV280's own flush and frame-buffer location. Registers through the 64 KiB
+ * The RS690's engine module (eng_rs690.c), with the RV280's own flush,
+ * frame-buffer location and R200 3D init (for d3d_rv280.c). Registers
+ * through the 64 KiB
  * register BAR, which the 16-bit side had the mini-VDD map (rv280_hw16.c).
  * Register values come from the RS690's host-tested builder,
  * src\chipsets\ati\rs690\rs690_2d.c: the legacy Radeon 2D register file,
@@ -30,6 +31,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/rs690_2d.h"
+#include "velocity9x/rv280_3d.h"
 #include "velocity9x/rv280_crtc.h"
 
 /* Bounded busy-wait, as the RS690's: it only has to tell slow from stuck. */
@@ -62,6 +64,9 @@
  * validation. One engine, so one of each: V9XHAL's statics are shared by
  * every process, which is what this needs. */
 static int v9x_rv280_dirty;
+/* Set when a 2D operation went in since the engine was last seen idle:
+ * d3d_rv280.c's draws wait for it first (v9x_rv280_3d_start). */
+static int v9x_rv280_2d_pending;
 static DWORD v9x_rv280_fb_base;
 static DWORD v9x_rv280_aperture;
 
@@ -137,6 +142,7 @@ static int v9x_rv280_validated(void)
 static int v9x_rv280_validate(void)
 {
     struct v9x_rs690_blt init;
+    struct v9x_rv280_3d_list init3d;
     DWORD memsize;
     DWORD aperture;
     DWORD index;
@@ -176,7 +182,22 @@ static int v9x_rv280_validate(void)
     if (!v9x_rv280_poll_idle(V9X_RV280_WAIT_SPINS)) {
         return 0;
     }
+    /* The R200 3D engine's once-per-mode setup, RADEONInit3DEngine's R200
+     * branch, for d3d_rv280.c: VBE leaves SE_CNTL and RB3D_CNTL holding
+     * values of its own. Twelve writes, inside the FIFO's 64 entries, on
+     * the idle engine; the 2D engine was exact after it in every probe run
+     * (docs\decisions\2026-11-15-rv280-3d-draw-probe.md). */
+    if (v9x_rv280_build_3d_init(&init3d) != V9X_STATUS_OK) {
+        return 0;
+    }
+    for (index = 0ul; index < init3d.count; ++index) {
+        v9x_rv280_write32(init3d.offsets[index], init3d.values[index]);
+    }
+    if (!v9x_rv280_poll_idle(V9X_RV280_WAIT_SPINS)) {
+        return 0;
+    }
     v9x_rv280_dirty = 0;
+    v9x_rv280_2d_pending = 0;
     v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
     return 1;
 }
@@ -204,6 +225,7 @@ static int v9x_rv280_wait_idle(int wait)
     if (v9x_rv280_poll_idle(reads) &&
         (!v9x_rv280_dirty || v9x_rv280_flush(reads))) {
         v9x_rv280_dirty = 0;
+        v9x_rv280_2d_pending = 0;
         return 1;
     }
     if (!wait) {
@@ -228,7 +250,38 @@ static void v9x_rv280_emit(const struct v9x_rs690_blt *blt)
     }
     (void)v9x_rv280_read32(V9X_RS690_RBBM_STATUS);
     v9x_rv280_dirty = 1;
+    v9x_rv280_2d_pending = 1;
     v9x_present_note_submission();
+}
+
+/*
+ * A Z buffer the Direct3D engine draws is tiled: the R100/R200 family keeps
+ * every depth buffer so, with no control to turn it off, and the layout is
+ * not decoded (docs\decisions\2026-11-15-rv280-z-blend-probe.md). A linear
+ * rectangle of it is the wrong pixels, but a constant over all of it is the
+ * same value in every pixel whatever the tiling. So a fill of the whole
+ * surface is widened to the pitch and the rows d3d_rv280.c placed
+ * (V9X_RV280_DEPTH_ROW_ALIGN), and a fill of less is declined, which fails
+ * it (depth_tiled), as eng_r6.c does for its 1D tiles before its CP path.
+ */
+static int v9x_rv280_tiled_depth_fill(const V9X_DDHAL_BLTDATA *data,
+                                      struct v9x_rs690_fill *fill)
+{
+    const V9X_DD_SURFACE_LCL *surface = data->lpDDDestSurface;
+
+    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
+        !v9x_d3d_depth_tiled()) {
+        return 1;
+    }
+    if (fill->left != 0ul || fill->top != 0ul ||
+        fill->width != (DWORD)surface->lpGbl->wWidth ||
+        fill->height != (DWORD)surface->lpGbl->wHeight) {
+        return 0;
+    }
+    fill->width = fill->pitch_bytes / fill->bytes_per_pixel;
+    fill->height = (fill->height + V9X_RV280_DEPTH_ROW_ALIGN - 1ul) &
+                   ~(V9X_RV280_DEPTH_ROW_ALIGN - 1ul);
+    return 1;
 }
 
 static int v9x_rv280_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
@@ -255,7 +308,8 @@ static int v9x_rv280_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     fill.width = (DWORD)(data->rDest[2] - data->rDest[0]);
     fill.height = (DWORD)(data->rDest[3] - data->rDest[1]);
     fill.color = data->bltFX.dwFillColor;
-    if (v9x_rs690_build_fill(&fill, &blt) != V9X_STATUS_OK) {
+    if (!v9x_rv280_tiled_depth_fill(data, &fill) ||
+        v9x_rs690_build_fill(&fill, &blt) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
     if (!v9x_rv280_wait_idle(wait)) {
@@ -330,6 +384,27 @@ int v9x_rv280_flip_address(DWORD byte_offset, DWORD *value)
         return 0;
     }
     *value = start;
+    return 1;
+}
+
+/*
+ * For d3d_rv280.c, before a draw: the engine validated (its 2D and 3D init
+ * lists written for this mode), idle after any 2D work so a draw never
+ * lands on a fill still running, and where the frame buffer is. Marks the
+ * engine as having drawn, so the next idle wait flushes the destination
+ * cache. As v9x_rs690_3d_begin.
+ */
+int v9x_rv280_3d_start(DWORD *fb_gpu_base, DWORD *desktop_offset)
+{
+    if (fb_gpu_base == 0 || desktop_offset == 0 || !v9x_rv280_validate()) {
+        return 0;
+    }
+    if (v9x_rv280_2d_pending && !v9x_rv280_wait_idle(1)) {
+        return 0;
+    }
+    *fb_gpu_base = v9x_rv280_fb_base;
+    *desktop_offset = v9x_rv280_desktop_offset();
+    v9x_rv280_dirty = 1;
     return 1;
 }
 

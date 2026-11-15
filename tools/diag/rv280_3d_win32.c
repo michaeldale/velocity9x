@@ -756,6 +756,7 @@ static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
     texture.offset = TEX_OFFSET;
     texture.pitch_bytes = TEX_WIDTH * rs_bpp;
     texture.bytes_per_pixel = rs_bpp;
+    texture.format = V9X_RV280_TEXFMT_DEFAULT;
     texture.width = TEX_WIDTH;
     texture.height = TEX_HEIGHT;
     texture.linear = linear;
@@ -1664,6 +1665,7 @@ static void rs_perspective_test(void)
     texture.offset = TEX_OFFSET;
     texture.pitch_bytes = TEX_WIDTH * rs_bpp;
     texture.bytes_per_pixel = rs_bpp;
+    texture.format = V9X_RV280_TEXFMT_DEFAULT;
     texture.width = TEX_WIDTH;
     texture.height = TEX_HEIGHT;
     texture.linear = 0ul;

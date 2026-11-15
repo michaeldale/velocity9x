@@ -247,6 +247,12 @@ static v9x_status v9x_rv280_add_target(
         }
     }
 
+    /* The X byte kept by the plane mask, which needs its enable bit (V9XD32
+     * on M-HNBJNV read FF13579Bh for 0013579Bh without it). */
+    if (raster != 0 && raster->keep_x && target->bytes_per_pixel == 4ul) {
+        cntl |= V9X_RV280_RB3D_PLANE_MASK;
+    }
+
     v9x_rv280_3d_begin(list);
     /* R200PrepareComposite's colour buffer. */
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_CNTL, cntl);
@@ -256,6 +262,11 @@ static v9x_status v9x_rv280_add_target(
     v9x_rv280_3d_add(list, V9X_RV280_RE_WIDTH_HEIGHT,
                      target->width | (target->height << 16));
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_BLENDCNTL, blend);
+    v9x_rv280_3d_add(list, V9X_RV280_RB3D_PLANEMASK,
+                     raster != 0 && raster->keep_x &&
+                             target->bytes_per_pixel == 4ul
+                         ? V9X_RV280_PLANEMASK_NO_X
+                         : V9X_RV280_PLANEMASK_ALL);
     /* The Z buffer, 16-bit integer Z, stencil off (radeon_reg.h:2151-2234;
      * no R200 path in the X driver writes it). */
     if (raster != 0 && raster->z_enable) {
@@ -346,32 +357,74 @@ v9x_status v9x_rv280_build_3d_textured_target(
     if (texture == 0 || target == 0 || list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    if (texture->bytes_per_pixel == 2ul) {
-        format = V9X_RV280_TXFORMAT_RGB565;
-    } else if (texture->bytes_per_pixel == 4ul) {
-        format = V9X_RV280_TXFORMAT_ARGB8888 |
+    /* The format and its texel size must agree. */
+    switch (texture->format) {
+    case V9X_RV280_TEXFMT_DEFAULT:
+        if (texture->bytes_per_pixel == 2ul) {
+            format = V9X_RV280_TXFORMAT_RGB565;
+        } else if (texture->bytes_per_pixel == 4ul) {
+            format = V9X_RV280_TXFORMAT_ARGB8888 |
+                     V9X_RV280_TXFORMAT_ALPHA_IN_MAP;
+        } else {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        break;
+    case V9X_RV280_TEXFMT_ARGB1555:
+    case V9X_RV280_TEXFMT_ARGB4444:
+        if (texture->bytes_per_pixel != 2ul) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        format = (texture->format == V9X_RV280_TEXFMT_ARGB1555
+                      ? V9X_RV280_TXFORMAT_ARGB1555
+                      : V9X_RV280_TXFORMAT_ARGB4444) |
                  V9X_RV280_TXFORMAT_ALPHA_IN_MAP;
-    } else {
+        break;
+    case V9X_RV280_TEXFMT_XRGB8888:
+        if (texture->bytes_per_pixel != 4ul) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        format = V9X_RV280_TXFORMAT_ARGB8888;
+        break;
+    default:
         return V9X_STATUS_UNSUPPORTED;
     }
-    if (combine == V9X_RV280_COMBINE_DECAL) {
+    switch (combine) {
+    case V9X_RV280_COMBINE_DECAL:
         cblend = V9X_RV280_TXCBLEND_TEXEL;
         ablend = V9X_RV280_TXABLEND_TEXEL;
-    } else if (combine == V9X_RV280_COMBINE_MODULATE) {
+        break;
+    case V9X_RV280_COMBINE_MODULATE:
         cblend = V9X_RV280_TXCBLEND_MODULATE;
         ablend = V9X_RV280_TXABLEND_MODULATE;
-    } else {
+        break;
+    case V9X_RV280_COMBINE_MODULATE_TEXEL_ALPHA:
+        cblend = V9X_RV280_TXCBLEND_MODULATE;
+        ablend = V9X_RV280_TXABLEND_TEXEL;
+        break;
+    case V9X_RV280_COMBINE_MODULATE_DIFFUSE_ALPHA:
+        cblend = V9X_RV280_TXCBLEND_MODULATE;
+        ablend = V9X_RV280_TXABLEND_DIFFUSE;
+        break;
+    case V9X_RV280_COMBINE_DECAL_DIFFUSE_ALPHA:
+        cblend = V9X_RV280_TXCBLEND_TEXEL;
+        ablend = V9X_RV280_TXABLEND_DIFFUSE;
+        break;
+    default:
         return V9X_STATUS_UNSUPPORTED;
     }
 
     /* R200TextureSetup's repeat path: a power of two on each side, its
-     * size in TXFORMAT, rows packed (RADEONPitchMatches) at a multiple of
-     * 32 bytes, the offset 32-byte aligned (CHECK_OFFSET 1Fh). */
+     * size in TXFORMAT, the offset 32-byte aligned (CHECK_OFFSET 1Fh).
+     * The rows are the texture's own rounded up to 32 bytes, where the
+     * sampler steps a power-of-two texture's rows (V9X_RV280_TEX_ROW_ALIGN);
+     * the probes measured rows of 64 and 128 bytes, where the two agree. */
     log2_width = v9x_rv280_log2_side(texture->width);
     log2_height = v9x_rv280_log2_side(texture->height);
     if (log2_width == 0xfful || log2_height == 0xfful ||
-        texture->pitch_bytes != texture->width * texture->bytes_per_pixel ||
-        texture->pitch_bytes % V9X_RV280_TEX_ALIGN != 0ul ||
+        texture->pitch_bytes !=
+            ((texture->width * texture->bytes_per_pixel +
+              V9X_RV280_TEX_ROW_ALIGN - 1ul) &
+             ~(V9X_RV280_TEX_ROW_ALIGN - 1ul)) ||
         texture->offset % V9X_RV280_TEX_ALIGN != 0ul ||
         texture->fb_gpu_base % V9X_RV280_TEX_ALIGN != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;

@@ -67,10 +67,12 @@ static void v9x_rv280_fill_engine(unsigned long framebuffer_linear_base,
     *mapped_aperture_bytes = V9X_RV280_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RV280;
     /* FLIP: the legacy CRTC's CRTC_OFFSET, where the register probe read
-     * the VBE desktop (rv280_scanout.c). */
+     * the VBE desktop (rv280_scanout.c). D3D: the R200 3D engine through
+     * the same window (d3d_rv280.c). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_FLIP;
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_D3D;
 }
 
 /* The row's tail, shared by the chip and its alias: everything after the
@@ -79,7 +81,7 @@ static void v9x_rv280_fill_engine(unsigned long framebuffer_linear_base,
     "ati-rv280-unavailable-v1", \
     "vbe-lfb", \
     "directdraw-fill-copy", \
-    "not-advertised", \
+    "hardware-rv280-pio", \
     0,                      /* enable_aperture */ \
     v9x_rv280_fill_engine, \
     0u,                     /* framebuffer_bar: BAR0 */ \

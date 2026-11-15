@@ -805,11 +805,14 @@
             # (docs\decisions\2026-11-15-rv280-2d-write-probe.md); the rest is
             # drawn by the CPU (docs\plans\ati-rv280-radeon-9250.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            # The R200 3D engine by register writes, no CP: its state and TL
+            # vertices drawn as modelled at 16 and 32 bpp on this card
+            # (docs\decisions\2026-11-15-rv280-cull-rhw-fog-probe.md).
+            Direct3D = 'hardware-rv280-pio'
             EngineType = 'ATI_RV280'
             # FLIP: CRTC_OFFSET under OFFSET_LOCK, as Linux r100_page_flip
             # (rv280_scanout.c).
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What M-HNBJNV's VBE 4F00h reports; the card's real memory is
             # read in phase 2 (CONFIG_MEMSIZE).
             VideoMemoryBytes = 16777216

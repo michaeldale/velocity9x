@@ -268,6 +268,9 @@ typedef struct v9x_r3d_abi_state {
 /* The R6xx CP engine (d3d_r6.c, the HD 2600 XT), 2026-11-13, on the same
  * terms; it described as 0 until then. */
 #define V9X_R3D_ABI_ENGINE_R600     16ul
+/* The Radeon 9250's R200 engine (d3d_rv280.c), 2026-11-15, on the same
+ * terms. */
+#define V9X_R3D_ABI_ENGINE_RV280    17ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;

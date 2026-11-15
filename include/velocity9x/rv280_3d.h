@@ -138,6 +138,9 @@
 #define V9X_RV280_BLEND_FACTOR_LAST     41ul
 /* RB3D_CNTL: ALPHA_BLEND_ENABLE bit 0, Z_ENABLE bit 8. */
 #define V9X_RV280_RB3D_ALPHA_BLEND      0x00000001ul
+/* RB3D_CNTL: PLANE_MASK_ENABLE bit 1. RB3D_PLANEMASK applies only with it
+ * set, as Mesa's r200ColorMask sets it (r200_state.c:685-698). */
+#define V9X_RV280_RB3D_PLANE_MASK       0x00000002ul
 #define V9X_RV280_RB3D_Z_ENABLE         0x00000100ul
 /* RB3D_ZSTENCILCNTL: DEPTH_FORMAT_16BIT_INT_Z 0, Z_TEST at 4 (NEVER 0,
  * LESS 1, LEQUAL 2, EQUAL 3, GEQUAL 4, GREATER 5, NEQUAL 6, ALWAYS 7),
@@ -182,6 +185,16 @@
 #define V9X_RV280_TXFORMAT_RGB565       0x00000004ul
 #define V9X_RV280_TXFORMAT_ARGB8888     0x00000006ul
 #define V9X_RV280_TXFORMAT_ALPHA_IN_MAP 0x00000040ul
+/* PP_TXFORMAT_0's ARGB1555 3 and ARGB4444 5 (r200_reg.h:878-885), with
+ * ALPHA_IN_MAP; XRGB8888 is ARGB8888 without it, the alpha read as one.
+ * From the register header, not yet measured on the 9250. */
+#define V9X_RV280_TXFORMAT_ARGB1555     0x00000003ul
+#define V9X_RV280_TXFORMAT_ARGB4444     0x00000005ul
+/* The texture's format (v9x_rv280_3d_texture.format). */
+#define V9X_RV280_TEXFMT_DEFAULT        0ul
+#define V9X_RV280_TEXFMT_ARGB1555       1ul
+#define V9X_RV280_TEXFMT_ARGB4444       2ul
+#define V9X_RV280_TEXFMT_XRGB8888       3ul
 #define V9X_RV280_TXFORMAT_WIDTH_SHIFT  8u
 #define V9X_RV280_TXFORMAT_HEIGHT_SHIFT 12u
 /* PP_TXOFFSET_0's alignment (R200_TXO_OFFSET_MASK FFFFFFE0h), the pitch's
@@ -192,9 +205,33 @@
 /* SE_VTX_FMT_1: texture 0 has two components (S, T). */
 #define V9X_RV280_VTX_FMT_1_TEX0_ST     0x00000002ul
 
-/* How blend stage 0 combines texel and diffuse colour. */
-#define V9X_RV280_COMBINE_DECAL         0u
-#define V9X_RV280_COMBINE_MODULATE      1u
+/* How blend stage 0 combines texel and diffuse colour, colour then alpha:
+ *   DECAL                   texel, texel alpha;
+ *   MODULATE                texel * diffuse, texel alpha * diffuse alpha;
+ *   MODULATE_TEXEL_ALPHA    texel * diffuse, texel alpha;
+ *   MODULATE_DIFFUSE_ALPHA  texel * diffuse, diffuse alpha;
+ *   DECAL_DIFFUSE_ALPHA     texel, diffuse alpha.
+ * The alpha forms are TXABLEND_0 with the same selectors TXCBLEND_0 uses:
+ * R0 alpha (10) for the texel's, diffuse alpha (4) for the vertex's. */
+#define V9X_RV280_COMBINE_DECAL                  0u
+#define V9X_RV280_COMBINE_MODULATE               1u
+#define V9X_RV280_COMBINE_MODULATE_TEXEL_ALPHA   2u
+#define V9X_RV280_COMBINE_MODULATE_DIFFUSE_ALPHA 3u
+#define V9X_RV280_COMBINE_DECAL_DIFFUSE_ALPHA    4u
+/* A power-of-two texture's rows are 32-byte aligned on the R200 (Mesa
+ * radeon_common_context.c:188, texture_row_align 32, used by
+ * radeon_mipmap_tree.c get_texture_image_row_stride). */
+#define V9X_RV280_TEX_ROW_ALIGN         32ul
+/* RB3D_PLANEMASK: every bit written, or all but an XRGB8888 target's X
+ * byte, which would otherwise take the fragment's alpha (the RS690's
+ * V9XD32 read FF13579Bh for 0013579Bh). */
+/* The rows a Z buffer is placed with, a multiple of this, so a fill of the
+ * whole buffer covers every tile whatever their height. The tile shape is
+ * not decoded; 32 rows is a margin over any R200 tile height, not a
+ * measurement. */
+#define V9X_RV280_DEPTH_ROW_ALIGN       32ul
+#define V9X_RV280_PLANEMASK_ALL         0xfffffffful
+#define V9X_RV280_PLANEMASK_NO_X        0x00fffffful
 
 /* TXCBLEND2_0 / TXABLEND2_0: CLAMP_0_1, OUTPUT_REG_R0. */
 #define V9X_RV280_TXBLEND2_TO_R0        0x00011000ul
@@ -268,6 +305,8 @@ struct v9x_rv280_3d_raster {
     v9x_u32 fog_colour;
     /* The specular colour added to the fragment colour. */
     v9x_u32 specular_enable;
+    /* A 32 bpp target's top byte is X: leave it unwritten. */
+    v9x_u32 keep_x;
 };
 
 /* The colour buffer: a surface in the frame buffer at a GPU address, its
@@ -312,6 +351,9 @@ struct v9x_rv280_3d_texture {
     v9x_u32 offset;
     v9x_u32 pitch_bytes;
     v9x_u32 bytes_per_pixel;
+    /* V9X_RV280_TEXFMT_*: DEFAULT is RGB565 at 2 bytes and ARGB8888 with
+     * alpha at 4, the two the probes measured. */
+    v9x_u32 format;
     v9x_u32 width;
     v9x_u32 height;
     /* Non-zero for bilinear (MAG and MIN LINEAR), else nearest. */
@@ -339,8 +381,9 @@ v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
  * texture unit 0 sampled into blend stage 0 and combined as combine says
  * (V9X_RV280_COMBINE_*), and S, T in the vertex: R200TextureSetup's unit 0
  * for a power-of-two texture. INVALID_ARGUMENT for a texture that is not a
- * power of two on a side, larger than 2048, not 32-byte aligned, not packed
- * at a 32-byte multiple pitch, or outside the frame buffer; UNSUPPORTED
+ * power of two on a side, larger than 2048, not 32-byte aligned, whose
+ * pitch is not its row rounded up to 32 bytes (V9X_RV280_TEX_ROW_ALIGN), or
+ * outside the frame buffer; UNSUPPORTED
  * for a depth other than 16 or 32 bpp or an unknown combine. */
 v9x_status v9x_rv280_build_3d_textured_target(
     const struct v9x_rv280_3d_target *target, int gouraud,

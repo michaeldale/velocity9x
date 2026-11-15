@@ -51,6 +51,7 @@ static void zero_raster(struct v9x_rv280_3d_raster *raster)
     raster->fog_enable = 0ul;
     raster->fog_colour = 0ul;
     raster->specular_enable = 0ul;
+    raster->keep_x = 0ul;
 }
 
 static void test_init(void)
@@ -254,10 +255,48 @@ static void test_textured(void)
     texture.offset = HN_SURFACE + 0x10000ul;
     texture.pitch_bytes = 64ul;
     texture.bytes_per_pixel = 2ul;
+    texture.format = V9X_RV280_TEXFMT_DEFAULT;
     texture.width = 32ul;
     texture.height = 16ul;
     texture.linear = 0ul;
     texture.clamp = 0ul;
+
+    /* ARGB1555 and ARGB4444 with their alpha, XRGB8888 without; a format
+     * whose texel size disagrees is refused. */
+    texture.format = V9X_RV280_TEXFMT_ARGB1555;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_0) == 0x00004543ul);
+    texture.format = V9X_RV280_TEXFMT_ARGB4444;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_0) == 0x00004545ul);
+    texture.format = V9X_RV280_TEXFMT_XRGB8888;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    texture.bytes_per_pixel = 4ul;
+    texture.pitch_bytes = 128ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_0) == 0x00004506ul);
+    texture.format = V9X_RV280_TEXFMT_ARGB1555;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    texture.format = 4ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    texture.format = V9X_RV280_TEXFMT_DEFAULT;
+    texture.bytes_per_pixel = 2ul;
+    texture.pitch_bytes = 64ul;
 
     list.count = 0u;
     CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
@@ -299,6 +338,43 @@ static void test_textured(void)
     CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND_0) == 0x0000008aul);
     CHECK(list_value(&list, V9X_RV280_PP_TXABLEND_0) == 0x0000008aul);
     CHECK(list_value(&list, V9X_RV280_SE_CNTL) == 0x9a00aa1eul);
+    /* The alpha forms: texel alpha, diffuse alpha, decal with diffuse. */
+    CHECK(v9x_rv280_build_3d_textured_target(
+              &target, 1, &texture, V9X_RV280_COMBINE_MODULATE_TEXEL_ALPHA,
+              &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND_0) == 0x0000008aul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXABLEND_0) == 0x0010000aul);
+    CHECK(v9x_rv280_build_3d_textured_target(
+              &target, 1, &texture,
+              V9X_RV280_COMBINE_MODULATE_DIFFUSE_ALPHA, &list) ==
+          V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND_0) == 0x0000008aul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXABLEND_0) == 0x00001000ul);
+    CHECK(v9x_rv280_build_3d_textured_target(
+              &target, 1, &texture, V9X_RV280_COMBINE_DECAL_DIFFUSE_ALPHA,
+              &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND_0) == 0x0010000aul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXABLEND_0) == 0x00001000ul);
+    /* A small texture's rows are padded to 32 bytes: 8 x 8 at 16 bpp has
+     * 16-byte rows and a 32-byte pitch. */
+    texture.width = 8ul;
+    texture.height = 8ul;
+    texture.bytes_per_pixel = 2ul;
+    texture.pitch_bytes = 32ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXPITCH_0) == 0ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_0) == 0x00003304ul);
+    texture.pitch_bytes = 16ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    texture.width = 32ul;
+    texture.height = 16ul;
+    texture.bytes_per_pixel = 4ul;
+    texture.pitch_bytes = 128ul;
 
     /* Refusals: not a power of two; pitch not packed; misaligned; past the
      * frame buffer; an unknown combine; 8 bpp. */
@@ -409,6 +485,7 @@ static void test_raster(void)
     texture.offset = HN_SURFACE + 0x10000ul;
     texture.pitch_bytes = 64ul;
     texture.bytes_per_pixel = 2ul;
+    texture.format = V9X_RV280_TEXFMT_DEFAULT;
     texture.width = 32ul;
     texture.height = 16ul;
     texture.linear = 0ul;
@@ -490,6 +567,23 @@ static void test_cull_w_fog(void)
     CHECK(list_value(&list, V9X_RV280_SE_VTE_CNTL) == 0ul);
     CHECK(list_value(&list, V9X_RV280_SE_VAP_CNTL) == 0x00250000ul);
     CHECK(list_value(&list, V9X_RV280_PP_FOG_COLOR) == 0x06000000ul);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0xfffffffful);
+    /* An XRGB8888 target keeps its X byte; RGB565 has none to keep. */
+    raster.keep_x = 1ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0xfffffffful);
+    CHECK((list_value(&list, V9X_RV280_RB3D_CNTL) & 0x00000002ul) == 0ul);
+    target.bytes_per_pixel = 4ul;
+    target.pitch_bytes = 256ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0x00fffffful);
+    /* The mask is applied only with RB3D_CNTL's PLANE_MASK_ENABLE (bit 1):
+     * without it V9XD32 on M-HNBJNV read FF13579Bh for 0013579Bh. */
+    CHECK(list_value(&list, V9X_RV280_RB3D_CNTL) ==
+          (0x00001800ul | 0x00000002ul));
+    target.bytes_per_pixel = 2ul;
+    target.pitch_bytes = 128ul;
+    raster.keep_x = 0ul;
 
     /* Cull back faces, clockwise front: BFACE_SOLID cleared. */
     raster.cull_back = 1ul;

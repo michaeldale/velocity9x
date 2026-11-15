@@ -48,6 +48,8 @@
 #define V9X_D3D_SELECT_R600      18ul
 /* The GT218's Tesla 3D engine, on the 2D engine's channel (d3d_nv50.c). */
 #define V9X_D3D_SELECT_NV50      19ul
+/* The Radeon 9250's R200 3D engine, by register writes (d3d_rv280.c). */
+#define V9X_D3D_SELECT_RV280     20ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

@@ -2,7 +2,8 @@
 
 Date: 2026-11-15
 
-Status: phases 0 to 4 done on branch `ati-rv280`. The `rv280` row runs
+Status: phases 0 to 4 done on branch `ati-rv280`; phase 5's Direct3D
+HAL passes V9XD32. The `rv280` row runs
 M-HNBJNV's 9250 (boot 19) with DirectDraw fill, copy and flips on the
 hardware, GDI in the screen shadow, and VBE modes.
 - **Phase 2:** the scanout sits at GPU address 0, the card has 128 MiB,
@@ -41,18 +42,19 @@ hardware, GDI in the screen shadow, and VBE modes.
   - Fog comes from the specular alpha.
   ([record](../decisions/2026-11-15-rv280-cull-rhw-fog-probe.md)).
 
-Next in phase 5: the HAL glue, as the RS690's `d3d_rs690_map.c` /
-`d3d_rs690.c` split:
-- a host-tested map from the neutral draw to these builders;
-- then the engine: texture and Z placement, PIO submission behind
-  `eng_rv280.c`'s idle and flips;
-- then `D3D` in the row's EngineCaps.
+- **Phase 5, the Direct3D HAL:** `d3d_rv280_map.c` / `d3d_rv280.c`, the
+  RS690's split, with `D3D` in the row's EngineCaps. V9XD32 passes at 16
+  and 32 bpp on boot 22. Five texture formats, no mipmaps, Z tiled with
+  whole-surface fills only. The engine stays out of the render
+  interface (`render_interface_off`), so OpenGL is Windows' software
+  renderer as before
+  ([record](../decisions/2026-11-15-rv280-d3d-hal.md)).
 
-Mipmaps, other texture formats and the colour key can follow V9XD32's
-first run. Direct3D is `none` on this row until the
-HAL lands:
-the `vbe` package gave this card software Direct3D, and the ati family
-defaults to hardware.
+Next in phase 5:
+- 3DMark 2000 and a game;
+- the render interface's scissor and write mask, so the ICD and Glide
+  draw on the R200;
+- mipmaps, the colour key, and partial depth fills.
 
 Target: the RV280 as a new generation in the one `ati` family, module
 tree `src/chipsets/ati/rv280/`.

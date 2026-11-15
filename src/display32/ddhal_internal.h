@@ -633,6 +633,12 @@ void v9x_rv280_scanout_reset(void);
  * surface at byte_offset, after the 2D engine has gone idle; zero when it
  * cannot be given. */
 int v9x_rv280_flip_address(DWORD byte_offset, DWORD *value);
+/* engines/eng_rv280.c, for d3d/d3d_rv280.c: the engine validated (its 2D
+ * and 3D init lists written for this mode) and idle after 2D work, the
+ * frame buffer's GPU address and where the mapped frame buffer starts in
+ * it; zero when the engine is not usable. Marks the engine as having drawn,
+ * so the next idle wait flushes. */
+int v9x_rv280_3d_start(DWORD *fb_gpu_base, DWORD *desktop_offset);
 /* Non-zero when this Rage 128's flips go into the CCE ring behind the
  * frame instead of waiting for it. */
 int v9x_r128_flip_queues(void);

@@ -557,6 +557,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_r6;
     case V9X_D3D_SELECT_NV50:
         return &v9x_d3d_engine_nv50;
+    case V9X_D3D_SELECT_RV280:
+        return &v9x_d3d_engine_rv280;
     default:
         return 0;
     }
@@ -9119,7 +9121,7 @@ static const V9X_D3D_ENGINE_OPS *v9x_r3d_engine(void)
     const V9X_D3D_ENGINE_OPS *ops = v9x_d3d_engine();
 
     if (v9x_hal == 0 || ops == 0 || ops->ready == 0 || !ops->ready() ||
-        ops->draw == 0) {
+        ops->draw == 0 || ops->limits->render_interface_off != 0ul) {
         return 0;
     }
     return ops;
@@ -10269,6 +10271,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
     } else if (ops == &v9x_d3d_engine_rs690) {
         out->engine = V9X_R3D_ABI_ENGINE_RS690;
         name = "Velocity9x Radeon X1200";
+    } else if (ops == &v9x_d3d_engine_rv280) {
+        out->engine = V9X_R3D_ABI_ENGINE_RV280;
+        name = "Velocity9x Radeon 9250";
     } else if (ops == &v9x_d3d_engine_nv3) {
         out->engine = V9X_R3D_ABI_ENGINE_NV3;
         name = "Velocity9x RIVA 128";

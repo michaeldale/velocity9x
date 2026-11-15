@@ -304,6 +304,11 @@ $sources = @(
     "src\chipsets\ati\rs690\rs690_3d.c",
     "src\display32\d3d\d3d_rs690_map.c",
     "src\display32\d3d\d3d_rs690.c",
+    # The Radeon 9250's R200 3D engine: register values, the neutral draw
+    # to them, and the engine that writes them with the CP off.
+    "src\chipsets\ati\rv280\rv280_3d.c",
+    "src\display32\d3d\d3d_rv280_map.c",
+    "src\display32\d3d\d3d_rv280.c",
     # The RIVA 128 D3D object: swizzled texture copies and PIO methods.
     "src\display32\d3d\d3d_nv3.c",
     "src\display32\d3d\d3d_hsw.c",

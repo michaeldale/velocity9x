@@ -316,6 +316,9 @@ function Get-V9xHostSourceNames {
         # The neutral draw to RS690 3D builder state.
         'src\display32\d3d\d3d_rs690_map.c',
         'tests\host\test_d3d_rs690_map.c',
+        # The neutral draw to RV280 (Radeon 9250, R200) 3D builder state.
+        'src\display32\d3d\d3d_rv280_map.c',
+        'tests\host\test_d3d_rv280_map.c',
         'src\display32\d3d\d3d_hsw_map.c',
         'tests\host\test_d3d_hsw_map.c',
         'src\display32\d3d\d3d_mga_map.c',
