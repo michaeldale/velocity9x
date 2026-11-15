@@ -36,6 +36,8 @@
 #include "velocity9x/nv50_3d.h"
 #include "velocity9x/nv50_d3d.h"
 #include "velocity9x/nv50_shader.h"
+#include "velocity9x/nv50_ps11.h"
+#include "velocity9x/ps11.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -3457,6 +3459,899 @@ static int v9x_stage_3d_d3d(void)
 }
 
 /*
+ * /3d:ps11: step 3 of docs\plans\nvidia-gt218-ps11.md. Pixel shader 1.1
+ * programs translated by v9x_nv50_ps11_build (nv50_ps11.c) drawn straight
+ * to the engine, after /3d's setup, and every pixel judged against the
+ * reference interpreter (d3d_ps11_ref.c, linked here) given the same
+ * inputs and nearest samples of the same texels: the analogue of
+ * V9XHSWMM /ps11 on the HD 4600.
+ *
+ * Five programs: Arith (every arithmetic instruction and source
+ * modifier, shifts, saturation, the [-1, 1] clamp, co-issue, cnd and a
+ * def), FourTex (four textures, samplers and binding entries), Kill
+ * (texkill over part of the rectangle), Bem (a dependent read through
+ * stage 1's bump matrix) and Cnd (a select either way). Each is drawn
+ * twice, as written and with mov r0.rgb, r0.a appended, since an X8R8G8B8
+ * or R5G6B5 target keeps no alpha; at 32 and then 16 bpp. Each draw
+ * fills the 128x72 surface with the pattern and draws one rectangle,
+ * (16, 8)-(112, 64), as two triangles with w 1, whose six attributes
+ * (v0, v1, coordinate sets 0-3) are planes over it, so each pixel's
+ * inputs are known exactly at its centre.
+ *
+ * Textures: four 8x8 A8R8G8B8 textures, pitch 64, nearest and clamped,
+ * of distinct texels; a sample within V9X_PS11_MARGIN of a texel edge,
+ * and a kill coordinate within V9X_PS11_KILL_MARGIN of zero, leave the
+ * pixel unjudged rather than guessed. A judged pixel must be within two
+ * steps a channel at 8 bits and one at 5 or 6 (the float-to-unorm rule
+ * is not measured); a killed one must still be the pattern; outside the
+ * rectangle, the pattern.
+ *
+ * Layout in the window: the surface at 330000h, the textures from
+ * 339000h 200h apart, the fragment code at 33A000h (its own
+ * FP_ADDRESS, since the scratch's 4 KiB code area holds the Direct3D
+ * variants), the vertex program in the scratch at 600h.
+ */
+#define V9X_PS11_SURFACE      0x00330000ul
+#define V9X_PS11_TEXTURES     0x00339000ul
+#define V9X_PS11_TEX_STEP     0x00000200ul
+#define V9X_PS11_CODE         0x0033a000ul
+#define V9X_PS11_CODE_WORDS   1024ul
+#define V9X_PS11_VP_START     0x0600ul
+#define V9X_PS11_VP_WORDS     64ul
+#define V9X_PS11_PUSH_WORDS   640ul
+#define V9X_PS11_SIDE         8ul
+#define V9X_PS11_TEX_PITCH    64ul
+#define V9X_PS11_STAGES       4ul
+#define V9X_PS11_ATTRIBUTES   6ul     /* v0, v1, sets 0-3 */
+#define V9X_PS11_RESULTS      28ul    /* position and the six, x y z w */
+#define V9X_PS11_X0           16ul
+#define V9X_PS11_Y0           8ul
+#define V9X_PS11_X1           112ul
+#define V9X_PS11_Y1           64ul
+#define V9X_PS11_MARGIN       0.05f
+#define V9X_PS11_KILL_MARGIN  0.01f
+#define V9X_PS11_VARIANTS     5ul
+/* The fragment program's constant slot 0, which /3d's setup binds to
+ * buffer 2 (nv50_d3d.c's programs read their fog colour there). */
+#define V9X_PS11_CB_SLOT      0ul
+
+/* Methods past nv50_3d.h's (Mesa nv50_3d.xml.h). */
+#define V9X_PS11_VTX_ATTR_4F(n)    (0x0500ul + 0x10ul * (n))
+#define V9X_PS11_FP_CONTROL        0x19a8ul
+#define V9X_PS11_FP_USES_KIL       0x00100000ul
+#define V9X_PS11_CODE_CB_FLUSH     0x1440ul
+#define V9X_PS11_TSC_FLUSH         0x1330ul
+/* FP_INTERPOLANT_CTRL: UMASK W, 24 non-flat interpolants from map entry
+ * 4 (the position's four first), 24 in all: nv50_ps11.h's v[] layout. */
+#define V9X_PS11_INTERPOLANTS      0x08180418ul
+/* Attributes 0-6, all four components each. */
+#define V9X_PS11_ATTR_EN0          0x0ffffffful
+/* BIND_TIC(2): TIC entry N for texture unit N, valid. */
+#define V9X_PS11_BIND(n)           (((n) << 9) | ((n) << 1) | 1ul)
+
+/* Shader tokens, as test_d3d_ps11.c builds them. */
+#define V9X_PT_VER(minor)    (0xffff0100ul | (minor))
+#define V9X_PT_END           0x0000fffful
+#define V9X_PT_COISSUE       0x40000000ul
+#define V9X_PT_DST(file, reg, mask, mod, shift) \
+    (0x80000000ul | ((DWORD)(file) << 28) | ((DWORD)(shift) << 24) | \
+     ((DWORD)(mod) << 20) | ((DWORD)(mask) << 16) | (DWORD)(reg))
+#define V9X_PT_SRC(file, reg, swizzle, mod) \
+    (0x80000000ul | ((DWORD)(file) << 28) | ((DWORD)(mod) << 24) | \
+     ((DWORD)(swizzle) << 16) | (DWORD)(reg))
+#define V9X_PT_R  0ul
+#define V9X_PT_V  1ul
+#define V9X_PT_C  2ul
+#define V9X_PT_T  3ul
+#define V9X_PT_XYZW 0xe4ul
+#define V9X_PT_AAAA 0xfful
+#define V9X_PT_OP_MOV  1ul
+#define V9X_PT_OP_ADD  2ul
+#define V9X_PT_OP_SUB  3ul
+#define V9X_PT_OP_MAD  4ul
+#define V9X_PT_OP_MUL  5ul
+#define V9X_PT_OP_DP3  8ul
+#define V9X_PT_OP_LRP  18ul
+#define V9X_PT_OP_CND  80ul
+#define V9X_PT_OP_DEF  81ul
+#define V9X_PT_OP_TEXKILL 65ul
+#define V9X_PT_OP_TEX     66ul
+#define V9X_PT_OP_TEXBEM  67ul
+#define V9X_PT_TO_R(n, mask) V9X_PT_DST(V9X_PT_R, n, mask, 0ul, 0ul)
+#define V9X_PT_TO_T(n)       V9X_PT_DST(V9X_PT_T, n, 0xful, 0ul, 0ul)
+#define V9X_PT_SRC_PLAIN(file, n) V9X_PT_SRC(file, n, V9X_PT_XYZW, 0ul)
+
+struct v9x_ps11_probe_variant {
+    const char *name;
+    DWORD tokens[48];
+};
+
+static const struct v9x_ps11_probe_variant
+    v9x_ps11_probe_variants[V9X_PS11_VARIANTS] = {
+    /* test_nv50_ps11.c's "arithmetic". */
+    { "Arith", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_DEF, V9X_PT_DST(V9X_PT_C, 1ul, 0xful, 0ul, 0ul),
+        0x3f400000ul, 0xbf000000ul, 0x3e800000ul, 0x3fc00000ul,
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_V, 0ul),
+        V9X_PT_OP_MAD, V9X_PT_DST(V9X_PT_R, 1ul, 0xful, 1ul, 1ul),
+        V9X_PT_SRC(V9X_PT_C, 1ul, V9X_PT_XYZW, 4ul),
+        V9X_PT_SRC(V9X_PT_V, 1ul, V9X_PT_XYZW, 6ul),
+        V9X_PT_SRC(V9X_PT_R, 0ul, V9X_PT_AAAA, 1ul),
+        V9X_PT_OP_DP3, V9X_PT_DST(V9X_PT_R, 0ul, 0x7ul, 0ul, 15ul),
+        V9X_PT_SRC(V9X_PT_R, 1ul, V9X_PT_XYZW, 2ul),
+        V9X_PT_SRC(V9X_PT_C, 2ul, V9X_PT_XYZW, 3ul),
+        V9X_PT_OP_LRP | V9X_PT_COISSUE, V9X_PT_TO_R(0ul, 0x8ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_V, 0ul), V9X_PT_SRC_PLAIN(V9X_PT_R, 1ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_C, 2ul),
+        V9X_PT_OP_CND, V9X_PT_TO_R(1ul, 0xful),
+        V9X_PT_SRC(V9X_PT_R, 0ul, V9X_PT_AAAA, 0ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_R, 0ul),
+        V9X_PT_SRC(V9X_PT_V, 1ul, V9X_PT_XYZW, 5ul),
+        V9X_PT_OP_ADD, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_R, 1ul),
+        V9X_PT_SRC(V9X_PT_C, 3ul, V9X_PT_XYZW, 1ul),
+        V9X_PT_OP_SUB, V9X_PT_TO_R(0ul, 0x7ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_R, 0ul), V9X_PT_SRC_PLAIN(V9X_PT_C, 1ul),
+        V9X_PT_OP_MUL, V9X_PT_DST(V9X_PT_R, 0ul, 0xful, 0ul, 2ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_R, 0ul), V9X_PT_SRC_PLAIN(V9X_PT_V, 0ul),
+        V9X_PT_END } },
+    /* tex t0-t3; mul r1, t0, t1; mul r0, t2, t3; lrp r0, c0, r1, r0. */
+    { "FourTex", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul), V9X_PT_OP_TEX, V9X_PT_TO_T(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(2ul), V9X_PT_OP_TEX, V9X_PT_TO_T(3ul),
+        V9X_PT_OP_MUL, V9X_PT_TO_R(1ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul), V9X_PT_SRC_PLAIN(V9X_PT_T, 1ul),
+        V9X_PT_OP_MUL, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 2ul), V9X_PT_SRC_PLAIN(V9X_PT_T, 3ul),
+        V9X_PT_OP_LRP, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_C, 0ul), V9X_PT_SRC_PLAIN(V9X_PT_R, 1ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_R, 0ul),
+        V9X_PT_END } },
+    /* tex t0; texkill t1; mov r0, t0. */
+    { "Kill", {
+        V9X_PT_VER(0ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul), V9X_PT_OP_TEXKILL, V9X_PT_TO_T(1ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul),
+        V9X_PT_END } },
+    /* tex t0; texbem t1, t0; mov r0, t1. */
+    { "Bem", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul),
+        V9X_PT_OP_TEXBEM, V9X_PT_TO_T(1ul), V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 1ul),
+        V9X_PT_END } },
+    /* add r0.a, v0.a, v1.a; cnd r0, r0.a, c0, v1. */
+    { "Cnd", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_ADD, V9X_PT_TO_R(0ul, 0x8ul),
+        V9X_PT_SRC(V9X_PT_V, 0ul, V9X_PT_AAAA, 0ul),
+        V9X_PT_SRC(V9X_PT_V, 1ul, V9X_PT_AAAA, 0ul),
+        V9X_PT_OP_CND, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC(V9X_PT_R, 0ul, V9X_PT_AAAA, 0ul),
+        V9X_PT_SRC_PLAIN(V9X_PT_C, 0ul), V9X_PT_SRC_PLAIN(V9X_PT_V, 1ul),
+        V9X_PT_END } }
+};
+
+#ifdef __WATCOMC__
+/* Float to long by fistp, rounding to nearest: a cast would call
+ * Watcom's __CHP, from the C runtime the probe does not link (the HD
+ * 4600 probe's helper). */
+static long v9x_ps11_probe_long(float value);
+#pragma aux v9x_ps11_probe_long = \
+    "sub esp,4" \
+    "fistp dword ptr [esp]" \
+    "pop eax" \
+    parm [8087] value [eax] modify exact [eax];
+#else
+static long v9x_ps11_probe_long(float value)
+{
+    return (long)(value < 0.0f ? value - 0.5f : value + 0.5f);
+}
+#endif
+
+static DWORD v9x_ps11_probe_bits(float value)
+{
+    union {
+        float f;
+        DWORD u;
+    } convert;
+
+    convert.f = value;
+    return convert.u;
+}
+
+/* Stage N's texel (x, y), A8R8G8B8: distinct across each texture. */
+static DWORD v9x_ps11_probe_texel(DWORD stage, DWORD x, DWORD y)
+{
+    DWORD a;
+    DWORD r;
+    DWORD g;
+    DWORD b;
+
+    if (stage == 0ul) {
+        a = 0xfful - x * 8ul;
+        r = 0x58ul + x * 12ul;
+        g = 0x58ul + y * 12ul;
+        b = 0xe0ul - (x + y) * 4ul;
+    } else if (stage == 1ul) {
+        a = 0x90ul + y * 8ul;
+        r = x * 32ul + 16ul;
+        g = 0xfful - y * 32ul;
+        b = 0x40ul + ((x + y) & 1ul) * 0x80ul;
+    } else if (stage == 2ul) {
+        a = 0x70ul + x * 16ul;
+        r = 0x20ul + y * 28ul;
+        g = 0x30ul + x * 20ul;
+        b = 0xc0ul - y * 16ul;
+    } else {
+        a = 0xd0ul - (x + y) * 4ul;
+        r = 0xf0ul - x * 16ul;
+        g = 0x10ul + x * y * 3ul;
+        b = y * 32ul + 8ul;
+    }
+    return (a << 24) | (r << 16) | (g << 8) | b;
+}
+
+/*
+ * Attribute a's component c as a plane over the rectangle: f = P + Q fx
+ * + R fy, fx and fy the position's fraction across and down. Colours
+ * stay in [0, 1]; coordinate x and y sweep a little past [0, 1], set 1's
+ * x from below zero so Kill kills part of the rectangle; z is positive;
+ * w is 1.
+ */
+static float v9x_ps11_probe_plane(DWORD a, DWORD c, float fx, float fy)
+{
+    float p;
+    float q;
+    float r;
+
+    if (a < 2ul) {
+        p = 0.05f + 0.1f * (float)(long)c + 0.05f * (float)(long)a;
+        q = 0.4f - 0.05f * (float)(long)c;
+        r = 0.2f + 0.1f * (float)(long)a;
+    } else if (c == 0ul) {
+        p = a == 3ul ? -0.3f : -0.05f + 0.02f * (float)(long)a;
+        q = 1.15f;
+        r = 0.1f;
+    } else if (c == 1ul) {
+        p = -0.04f;
+        q = 0.08f;
+        r = 1.1f - 0.03f * (float)(long)a;
+    } else if (c == 2ul) {
+        p = 0.3f;
+        q = -0.2f;
+        r = 0.25f;
+    } else {
+        return 1.0f;
+    }
+    return p + q * fx + r * fy;
+}
+
+static void v9x_ps11_probe_env(DWORD variant, V9X_PS11_ENV *env)
+{
+    unsigned char *bytes = (unsigned char *)env;
+    DWORD k;
+
+    for (k = 0ul; k < sizeof(*env); ++k) {
+        bytes[k] = 0u;
+    }
+    for (k = 0ul; k < 8ul; ++k) {
+        env->c[k][0] = 0.1f * (float)(long)k - 0.3f;
+        env->c[k][1] = 1.5f - 0.2f * (float)(long)k;
+        env->c[k][2] = -1.25f + 0.25f * (float)(long)k;
+        env->c[k][3] = 0.45f;
+    }
+    if (variant == 1ul) {
+        env->c[0][0] = 0.25f;
+        env->c[0][1] = 0.5f;
+        env->c[0][2] = 0.75f;
+        env->c[0][3] = 0.6f;
+    }
+    env->bump[1][0] = 0.25f;
+    env->bump[1][1] = -0.1f;
+    env->bump[1][2] = 0.05f;
+    env->bump[1][3] = 0.3f;
+}
+
+struct v9x_ps11_probe_lookup {
+    int unjudged;
+};
+
+/* A nearest texel index under CLAMP; near a texel edge, unjudged. */
+static DWORD v9x_ps11_probe_index(float coord, int *unjudged)
+{
+    float scaled = coord * (float)(long)V9X_PS11_SIDE;
+    long index;
+    float fraction;
+
+    if (scaled <= 0.0f) {
+        if (scaled > -V9X_PS11_MARGIN) {
+            *unjudged = 1;
+        }
+        return 0ul;
+    }
+    if (scaled >= (float)(long)V9X_PS11_SIDE) {
+        if (scaled < (float)(long)V9X_PS11_SIDE + V9X_PS11_MARGIN) {
+            *unjudged = 1;
+        }
+        return V9X_PS11_SIDE - 1ul;
+    }
+    index = v9x_ps11_probe_long(scaled - 0.5f);
+    fraction = scaled - (float)index;
+    if (fraction < V9X_PS11_MARGIN || fraction > 1.0f - V9X_PS11_MARGIN) {
+        *unjudged = 1;
+    }
+    if (index < 0l) {
+        index = 0l;
+    }
+    if (index >= (long)V9X_PS11_SIDE) {
+        index = (long)V9X_PS11_SIDE - 1l;
+    }
+    return (DWORD)index;
+}
+
+static void v9x_ps11_probe_sample(void *user, v9x_u32 stage, v9x_u32 count,
+                                  const float *coords, float rgba[4])
+{
+    struct v9x_ps11_probe_lookup *lookup =
+        (struct v9x_ps11_probe_lookup *)user;
+    DWORD texel;
+
+    (void)count;
+    texel = v9x_ps11_probe_texel(
+        stage, v9x_ps11_probe_index(coords[0], &lookup->unjudged),
+        v9x_ps11_probe_index(coords[1], &lookup->unjudged));
+    rgba[0] = (float)(long)((texel >> 16) & 0xfful) / 255.0f;
+    rgba[1] = (float)(long)((texel >> 8) & 0xfful) / 255.0f;
+    rgba[2] = (float)(long)(texel & 0xfful) / 255.0f;
+    rgba[3] = (float)(long)(texel >> 24) / 255.0f;
+}
+
+/* value on [0, 1] as an integer of steps steps, rounded. */
+static long v9x_ps11_probe_unorm(float value, DWORD steps)
+{
+    if (!(value > 0.0f)) {
+        return 0l;
+    }
+    if (value >= 1.0f) {
+        return (long)steps;
+    }
+    return v9x_ps11_probe_long(value * (float)(long)steps);
+}
+
+/* The vertex program: every attribute to the result of the same number. */
+static DWORD v9x_ps11_probe_vp(DWORD *words, DWORD max)
+{
+    struct v9x_nv50_sh sh;
+    DWORD index;
+
+    v9x_nv50_sh_init(&sh, words, max);
+    for (index = 0ul; index < V9X_PS11_RESULTS; ++index) {
+        v9x_nv50_sh_mov(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_O(index * 4ul),
+                        V9X_NV50_SH_A(index * 4ul));
+    }
+    v9x_nv50_sh_exit(&sh);
+    if (sh.invalid != 0ul || sh.overflow != 0ul) {
+        return 0ul;
+    }
+    return sh.count;
+}
+
+static void v9x_ps11_probe_one(struct v9x_nv50_push *push, DWORD method,
+                               DWORD value)
+{
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, method, 1ul, &value);
+}
+
+/* One vertex at (x, y), its attributes the planes there. */
+static void v9x_ps11_probe_vertex(struct v9x_nv50_push *push, DWORD x,
+                                  DWORD y)
+{
+    float fx = (float)(long)(x - V9X_PS11_X0) /
+               (float)(long)(V9X_PS11_X1 - V9X_PS11_X0);
+    float fy = (float)(long)(y - V9X_PS11_Y0) /
+               (float)(long)(V9X_PS11_Y1 - V9X_PS11_Y0);
+    DWORD data[4];
+    DWORD a;
+    DWORD c;
+
+    for (a = 0ul; a < V9X_PS11_ATTRIBUTES; ++a) {
+        for (c = 0ul; c < 4ul; ++c) {
+            data[c] = v9x_ps11_probe_bits(v9x_ps11_probe_plane(a, c, fx, fy));
+        }
+        v9x_nv50_push_method(push, V9X_NV50_SUBC_3D,
+                             V9X_PS11_VTX_ATTR_4F(a + 1ul), 4ul, data);
+    }
+    /* The position last: attribute 0 emits the vertex; w 1. */
+    data[0] = v9x_ps11_probe_bits((float)(long)x);
+    data[1] = v9x_ps11_probe_bits((float)(long)y);
+    data[2] = v9x_ps11_probe_bits(0.5f);
+    data[3] = v9x_ps11_probe_bits(1.0f);
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_PS11_VTX_ATTR_4F(0ul),
+                         4ul, data);
+}
+
+/* One draw's push: state, the program's constants and textures, and the
+ * rectangle. */
+static void v9x_ps11_probe_push(struct v9x_nv50_push *push, DWORD bytes,
+                                DWORD format, const DWORD *constants,
+                                const struct v9x_nv50_ps11_info *info,
+                                const struct v9x_nv50_3d_scratch *scratch)
+{
+    static const DWORD corner_x[6] = { V9X_PS11_X0, V9X_PS11_X1, V9X_PS11_X0,
+                                       V9X_PS11_X0, V9X_PS11_X1,
+                                       V9X_PS11_X1 };
+    static const DWORD corner_y[6] = { V9X_PS11_Y0, V9X_PS11_Y0, V9X_PS11_Y1,
+                                       V9X_PS11_Y1, V9X_PS11_Y0,
+                                       V9X_PS11_Y1 };
+    struct v9x_nv50_d3d_state state;
+    unsigned char *raw = (unsigned char *)&state;
+    DWORD map[V9X_PS11_RESULTS / 4ul];
+    DWORD data[3];
+    DWORD header_at;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(state); ++index) {
+        raw[index] = 0u;
+    }
+    state.target.address = V9X_WINDOW_VRAM + V9X_PS11_SURFACE;
+    state.target.pitch = V9X_FILL_WIDTH * bytes;
+    state.target.width = V9X_FILL_WIDTH;
+    state.target.height = V9X_FILL_HEIGHT;
+    state.target_format = format;
+    state.scissor_right = V9X_FILL_WIDTH;
+    state.scissor_bottom = V9X_FILL_HEIGHT;
+    state.color_mask = V9X_NV50_D3D_MASK_RGB;
+    state.fp_registers = info->registers;
+    v9x_nv50_push_d3d_state(push, &state);
+
+    /* The programs and their interface, over the Direct3D state's. */
+    v9x_ps11_probe_one(push, V9X_8597_VP_START_ID, V9X_PS11_VP_START);
+    data[0] = 0ul;
+    data[1] = V9X_WINDOW_VRAM + V9X_PS11_CODE;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_FP_ADDRESS_HIGH,
+                         2ul, data);
+    v9x_ps11_probe_one(push, V9X_PS11_CODE_CB_FLUSH, 0ul);
+    v9x_ps11_probe_one(push, V9X_8597_FP_START_ID, 0ul);
+    data[0] = V9X_PS11_ATTR_EN0;
+    data[1] = 0ul;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VP_ATTR_EN0, 2ul,
+                         data);
+    v9x_ps11_probe_one(push, V9X_8597_VP_REG_ALLOC_RESULT, V9X_PS11_RESULTS);
+    v9x_ps11_probe_one(push, V9X_8597_VP_RESULT_MAP_SIZE, V9X_PS11_RESULTS);
+    for (index = 0ul; index < V9X_PS11_RESULTS / 4ul; ++index) {
+        DWORD first = index * 4ul;
+
+        map[index] = first | ((first + 1ul) << 8) | ((first + 2ul) << 16) |
+                     ((first + 3ul) << 24);
+    }
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VP_RESULT_MAP0,
+                         V9X_PS11_RESULTS / 4ul, map);
+    data[0] = V9X_PS11_INTERPOLANTS;
+    data[1] = info->registers;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D,
+                         V9X_8597_FP_INTERPOLANT_CTRL, 2ul, data);
+    v9x_ps11_probe_one(push, V9X_PS11_FP_CONTROL,
+                       info->kills != 0ul ? V9X_PS11_FP_USES_KIL : 0ul);
+
+    /* The constant block into the fragment program's buffer. */
+    v9x_ps11_probe_one(push, V9X_8597_CB_ADDR,
+                       (0ul << V9X_8597_CB_ADDR_ID_SHIFT) | V9X_8597_CB_FP);
+    header_at = push->count;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_CB_DATA0,
+                         V9X_NV50_PS11_C_FLOATS, constants);
+    if (push->overflow == 0ul) {
+        push->words[header_at] |= V9X_NV50_PUSH_NONINC;
+    }
+
+    /* Four texture and sampler entries (LINKED_TSC: sampler N is TSC N,
+     * so the TSC limit goes from the setup's 0 to 3). */
+    data[0] = 0ul;
+    data[1] = scratch->tsc;
+    data[2] = V9X_PS11_STAGES - 1ul;
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_TSC_ADDRESS_HIGH,
+                         3ul, data);
+    v9x_ps11_probe_one(push, V9X_8597_TIC_FLUSH, 0ul);
+    v9x_ps11_probe_one(push, V9X_PS11_TSC_FLUSH, 0ul);
+    for (index = 0ul; index < V9X_PS11_STAGES; ++index) {
+        v9x_ps11_probe_one(push, V9X_8597_BIND_TIC2, V9X_PS11_BIND(index));
+    }
+
+    v9x_nv50_push_d3d_begin(push);
+    for (index = 0ul; index < 6ul; ++index) {
+        v9x_ps11_probe_vertex(push, corner_x[index], corner_y[index]);
+    }
+    v9x_nv50_push_d3d_end(push);
+}
+
+/* The stages texkill reads. */
+static DWORD v9x_ps11_probe_kills(const V9X_PS11_PROGRAM *program)
+{
+    DWORD stages = 0ul;
+    DWORD i;
+
+    for (i = 0ul; i < program->count; ++i) {
+        if (program->inst[i].op == V9X_PS11_TEXKILL) {
+            stages |= 1ul << program->inst[i].dst_reg;
+        }
+    }
+    return stages;
+}
+
+struct v9x_ps11_probe_tally {
+    DWORD ok;
+    DWORD bad;
+    DWORD unjudged;
+    DWORD killed;
+    DWORD outside_bad;
+    long max_diff;
+    DWORD first_bad;
+    DWORD first_bad_pixel;
+    DWORD first_bad_expected;
+};
+
+/* Judge one read-back pixel at index against the interpreter. */
+static void v9x_ps11_probe_judge(const V9X_PS11_PROGRAM *program,
+                                 const V9X_PS11_ENV *env, DWORD kills,
+                                 DWORD index, DWORD pixel, DWORD bytes,
+                                 struct v9x_ps11_probe_tally *tally)
+{
+    DWORD x = index % V9X_FILL_WIDTH;
+    DWORD y = index / V9X_FILL_WIDTH;
+    DWORD pattern = bytes == 4ul ? (V9X_FILL_PATTERN & V9X_COLOUR_MASK)
+                                 : (V9X_FILL_PATTERN & 0xfffful);
+    struct v9x_ps11_probe_lookup lookup;
+    V9X_PS11_PIXEL inputs;
+    float out[4];
+    float fx;
+    float fy;
+    long want[3];
+    long got[3];
+    long diff;
+    long slack = bytes == 4ul ? 2l : 1l;
+    DWORD expected = 0ul;
+    DWORD a;
+    DWORD c;
+    int kept;
+    int good = 1;
+
+    if (x < V9X_PS11_X0 || x >= V9X_PS11_X1 || y < V9X_PS11_Y0 ||
+        y >= V9X_PS11_Y1) {
+        if (pixel != pattern) {
+            ++tally->outside_bad;
+        }
+        return;
+    }
+    fx = ((float)(long)(x - V9X_PS11_X0) + 0.5f) /
+         (float)(long)(V9X_PS11_X1 - V9X_PS11_X0);
+    fy = ((float)(long)(y - V9X_PS11_Y0) + 0.5f) /
+         (float)(long)(V9X_PS11_Y1 - V9X_PS11_Y0);
+    lookup.unjudged = 0;
+    for (a = 0ul; a < V9X_PS11_ATTRIBUTES; ++a) {
+        for (c = 0ul; c < 4ul; ++c) {
+            float value = v9x_ps11_probe_plane(a, c, fx, fy);
+
+            if (a < 2ul) {
+                inputs.v[a][c] = value;
+            } else {
+                inputs.tc[a - 2ul][c] = value;
+                if ((kills & (1ul << (a - 2ul))) != 0ul && c < 3ul &&
+                    value < V9X_PS11_KILL_MARGIN &&
+                    value > -V9X_PS11_KILL_MARGIN) {
+                    lookup.unjudged = 1;
+                }
+            }
+        }
+    }
+    kept = v9x_ps11_run(program, env, &inputs, v9x_ps11_probe_sample,
+                        &lookup, out);
+    if (lookup.unjudged) {
+        ++tally->unjudged;
+        return;
+    }
+    if (!kept) {
+        if (pixel == pattern) {
+            ++tally->killed;
+            return;
+        }
+        good = 0;
+        expected = pattern;
+    } else if (bytes == 4ul) {
+        for (c = 0ul; c < 3ul; ++c) {
+            want[c] = v9x_ps11_probe_unorm(out[c], 255ul);
+        }
+        got[0] = (long)((pixel >> 16) & 0xfful);
+        got[1] = (long)((pixel >> 8) & 0xfful);
+        got[2] = (long)(pixel & 0xfful);
+        expected = ((DWORD)want[0] << 16) | ((DWORD)want[1] << 8) |
+                   (DWORD)want[2];
+    } else {
+        want[0] = v9x_ps11_probe_unorm(out[0], 31ul);
+        want[1] = v9x_ps11_probe_unorm(out[1], 63ul);
+        want[2] = v9x_ps11_probe_unorm(out[2], 31ul);
+        got[0] = (long)((pixel >> 11) & 0x1ful);
+        got[1] = (long)((pixel >> 5) & 0x3ful);
+        got[2] = (long)(pixel & 0x1ful);
+        expected = ((DWORD)want[0] << 11) | ((DWORD)want[1] << 5) |
+                   (DWORD)want[2];
+    }
+    if (kept) {
+        for (c = 0ul; c < 3ul; ++c) {
+            diff = got[c] - want[c];
+            if (diff < 0l) {
+                diff = -diff;
+            }
+            if (diff > tally->max_diff) {
+                tally->max_diff = diff;
+            }
+            if (diff > slack) {
+                good = 0;
+            }
+        }
+    }
+    if (good) {
+        ++tally->ok;
+        return;
+    }
+    ++tally->bad;
+    if (tally->first_bad == 0xfffffffful) {
+        tally->first_bad = index;
+        tally->first_bad_pixel = pixel;
+        tally->first_bad_expected = expected;
+    }
+}
+
+/* One program, one pass, at one depth; nonzero when every judged pixel
+ * agrees. */
+static int v9x_ps11_probe_trapped = 0;
+
+static int v9x_ps11_probe_draw(const char *section, DWORD variant,
+                               DWORD alpha_pass, DWORD bytes, DWORD format,
+                               const struct v9x_nv50_3d_scratch *scratch,
+                               DWORD first_word)
+{
+    static DWORD code[V9X_PS11_CODE_WORDS];
+    static V9X_PS11_PROGRAM program;
+    const struct v9x_ps11_probe_variant *v = &v9x_ps11_probe_variants[variant];
+    struct v9x_nv50_ps11_desc desc;
+    struct v9x_nv50_ps11_info info;
+    struct v9x_ps11_probe_tally tally;
+    struct v9x_nv50_push push;
+    V9X_PS11_ENV env;
+    DWORD constants[V9X_NV50_PS11_C_FLOATS];
+    DWORD words = V9X_DEPTH_PIXELS * bytes / 4ul;
+    DWORD dwords = 0ul;
+    DWORD where = 0ul;
+    DWORD kills;
+    DWORD block;
+    DWORD index;
+    char key[48];
+
+    while (v->tokens[dwords] != V9X_PT_END) {
+        ++dwords;
+    }
+    ++dwords;
+    if (v9x_ps11_parse(v->tokens, dwords, &program, &where) != V9X_PS11_OK) {
+        lstrcpyA(key, v->name);
+        lstrcatA(key, "Parse");
+        v9x_number(section, key, where);
+        return 0;
+    }
+    if (alpha_pass != 0ul) {
+        V9X_PS11_INST *inst = &program.inst[program.count];
+        unsigned char *raw = (unsigned char *)inst;
+
+        for (index = 0ul; index < sizeof(*inst); ++index) {
+            raw[index] = 0u;
+        }
+        inst->op = (v9x_u8)V9X_PS11_MOV;
+        inst->dst_file = (v9x_u8)V9X_PS11_FILE_TEMP;
+        inst->dst_mask = 0x7u;
+        inst->sources = 1u;
+        inst->src[0].file = (v9x_u8)V9X_PS11_FILE_TEMP;
+        inst->src[0].swizzle = (v9x_u8)V9X_PT_AAAA;
+        ++program.count;
+    }
+    v9x_ps11_probe_env(variant, &env);
+    desc.cube = 0ul;
+    desc.projected = 0ul;
+    desc.unbound = 0ul;
+    desc.slot = V9X_PS11_CB_SLOT;
+    if (v9x_nv50_ps11_build(code, V9X_PS11_CODE_WORDS, &program, &desc,
+                            &info) != V9X_STATUS_OK) {
+        lstrcpyA(key, v->name);
+        lstrcatA(key, "Build");
+        v9x_text(section, key, "FAILED");
+        return 0;
+    }
+    v9x_nv50_ps11_constants(&program, &env, constants);
+    kills = v9x_ps11_probe_kills(&program);
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, V9X_PS11_SURFACE, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_PS11_CODE, code, info.words);
+    if (!v9x_run("ps11-data")) {
+        v9x_finish("PS11-DATA-REFUSED", 8u);
+    }
+    v9x_ops_begin();
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) +
+                                  first_word,
+                       V9X_PS11_PUSH_WORDS);
+    v9x_ps11_probe_push(&push, bytes, format, constants, &info, scratch);
+    if (push.overflow != 0ul) {
+        v9x_text(section, "Result", "PUSH-OVERFLOW");
+        return 0;
+    }
+    lstrcpyA(key, v->name);
+    lstrcatA(key, alpha_pass != 0ul ? "AlphaWords" : "Words");
+    v9x_number(section, key, info.words);
+    if (!v9x_kick(section, &push, first_word)) {
+        lstrcpyA(key, v->name);
+        lstrcatA(key, alpha_pass != 0ul ? "AlphaKick" : "Kick");
+        v9x_text(section, key, "NOT-CLEAN");
+        v9x_mp_trap(section);
+        v9x_ps11_probe_trapped = 1;
+        return 0;
+    }
+
+    tally.ok = 0ul;
+    tally.bad = 0ul;
+    tally.unjudged = 0ul;
+    tally.killed = 0ul;
+    tally.outside_bad = 0ul;
+    tally.max_diff = 0l;
+    tally.first_bad = 0xfffffffful;
+    tally.first_bad_pixel = 0ul;
+    tally.first_bad_expected = 0ul;
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD run = words - block;
+
+        if (run > V9X_N5CH_BLOCK) {
+            run = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_PS11_SURFACE + block * 4ul, run, 0ul);
+        if (!v9x_run("ps11-readback")) {
+            v9x_finish("PS11-READBACK-REFUSED", 8u);
+        }
+        for (index = block * 4ul / bytes;
+             index < (block + run) * 4ul / bytes; ++index) {
+            v9x_ps11_probe_judge(
+                &program, &env, kills, index,
+                v9x_depth_pixel(v9x_result.block,
+                                index - block * 4ul / bytes, bytes),
+                bytes, &tally);
+        }
+    }
+
+    lstrcpyA(key, v->name);
+    lstrcatA(key, alpha_pass != 0ul ? "A" : "");
+    {
+        char name[64];
+
+        lstrcpyA(name, key);
+        lstrcatA(name, "Ok");
+        v9x_number(section, name, tally.ok);
+        lstrcpyA(name, key);
+        lstrcatA(name, "Bad");
+        v9x_number(section, name, tally.bad);
+        lstrcpyA(name, key);
+        lstrcatA(name, "Unjudged");
+        v9x_number(section, name, tally.unjudged);
+        lstrcpyA(name, key);
+        lstrcatA(name, "Killed");
+        v9x_number(section, name, tally.killed);
+        lstrcpyA(name, key);
+        lstrcatA(name, "OutsideBad");
+        v9x_number(section, name, tally.outside_bad);
+        lstrcpyA(name, key);
+        lstrcatA(name, "MaxDiff");
+        v9x_number(section, name, (DWORD)tally.max_diff);
+        if (tally.first_bad != 0xfffffffful) {
+            lstrcpyA(name, key);
+            lstrcatA(name, "FirstBadX");
+            v9x_number(section, name, tally.first_bad % V9X_FILL_WIDTH);
+            lstrcpyA(name, key);
+            lstrcatA(name, "FirstBadY");
+            v9x_number(section, name, tally.first_bad / V9X_FILL_WIDTH);
+            lstrcpyA(name, key);
+            lstrcatA(name, "FirstBadPixel");
+            v9x_key(section, name, tally.first_bad_pixel);
+            lstrcpyA(name, key);
+            lstrcatA(name, "FirstBadExpected");
+            v9x_key(section, name, tally.first_bad_expected);
+        }
+    }
+    v9x_flush();
+    return tally.bad == 0ul && tally.outside_bad == 0ul && tally.ok != 0ul;
+}
+
+static int v9x_stage_3d_ps11(const char *section, DWORD bytes, DWORD format)
+{
+    static DWORD texture[V9X_PS11_SIDE * V9X_PS11_TEX_PITCH / 4ul];
+    struct v9x_nv50_3d_scratch scratch;
+    DWORD vp[V9X_PS11_VP_WORDS];
+    DWORD tic[V9X_NV50_3D_TIC_WORDS];
+    DWORD tsc[V9X_NV50_3D_TSC_WORDS];
+    DWORD vp_count;
+    DWORD stage;
+    DWORD variant;
+    DWORD x;
+    DWORD y;
+    DWORD first_word = v9x_push_next;
+    int all = 1;
+
+    v9x_push_next += V9X_PS11_PUSH_WORDS;
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    vp_count = v9x_ps11_probe_vp(vp, V9X_PS11_VP_WORDS);
+    if (vp_count == 0ul) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+
+    /* The vertex program, and the four textures and their tables. */
+    v9x_ops_begin();
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_PS11_VP_START,
+                  vp, vp_count);
+    for (stage = 0ul; stage < V9X_PS11_STAGES; ++stage) {
+        for (y = 0ul; y < V9X_PS11_SIDE; ++y) {
+            for (x = 0ul; x < V9X_PS11_TEX_PITCH / 4ul; ++x) {
+                texture[y * (V9X_PS11_TEX_PITCH / 4ul) + x] =
+                    x < V9X_PS11_SIDE ? v9x_ps11_probe_texel(stage, x, y)
+                                      : 0ul;
+            }
+        }
+        if (!v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B8G8R8A8,
+                                  V9X_WINDOW_VRAM + V9X_PS11_TEXTURES +
+                                      stage * V9X_PS11_TEX_STEP,
+                                  V9X_PS11_TEX_PITCH, V9X_PS11_SIDE,
+                                  V9X_PS11_SIDE, V9X_NV50_D3D_WRAP_CLAMP,
+                                  0ul, 0ul, tic, tsc)) {
+            v9x_text(section, "Result", "ENCODE-FAILED");
+            return 0;
+        }
+        v9x_vram_data(V9X_PS11_TEXTURES + stage * V9X_PS11_TEX_STEP, texture,
+                      sizeof(texture) / sizeof(texture[0]));
+        v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TIC +
+                          stage * V9X_NV50_3D_TIC_WORDS * 4ul,
+                      tic, V9X_NV50_3D_TIC_WORDS);
+        v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_TSC +
+                          stage * V9X_NV50_3D_TSC_WORDS * 4ul,
+                      tsc, V9X_NV50_3D_TSC_WORDS);
+    }
+    if (!v9x_run("ps11-tables")) {
+        v9x_finish("PS11-TABLES-REFUSED", 8u);
+    }
+
+    /* Every program both passes; a draw that does not run clean ends the
+     * stage, since a trap stays latched for what follows. */
+    for (variant = 0ul; variant < V9X_PS11_VARIANTS; ++variant) {
+        DWORD pass;
+
+        for (pass = 0ul; pass < 2ul; ++pass) {
+            int ok = v9x_ps11_probe_draw(section, variant, pass, bytes,
+                                         format, &scratch, first_word);
+
+            if (!ok) {
+                all = 0;
+                if (v9x_ps11_probe_trapped) {
+                    v9x_text(section, "Result", "NOT-CLEAN");
+                    return 0;
+                }
+            }
+        }
+    }
+    v9x_text(section, "Result", all ? "PASS" : "PIXELS-DIFFER");
+    return all;
+}
+
+/*
  * /z:tiled2d: step 2 of docs\plans\nvidia-gt218-3d-z.md, the first use of
  * an alias window, no 3D. A 128x72 X8R8G8B8 gradient in linear surface A
  * is copied by 502D into T, a block-linear surface (tile mode 10h, eight
@@ -4191,6 +5086,24 @@ void __stdcall V9xNv50ChannelEntry(void)
         v9x_pusher_state();
         if (!ok) {
             v9x_finish("D3D-FAILED", 15u);
+        }
+    }
+    /* /3d:ps11 last: it moves FP_ADDRESS and the TSC limit off the
+     * setup's values. 16 bpp only if 32 bpp ran clean, since a trap
+     * stays latched. */
+    if (v9x_switch_given("/3d") && v9x_switch_given("/3d:ps11")) {
+        int ok32 = v9x_stage_3d_ps11("Ps11Bpp32", 4ul, V9X_NV50_3D_RT_BGRX8);
+        int ok16 = 0;
+
+        if (!v9x_ps11_probe_trapped) {
+            ok16 = v9x_stage_3d_ps11("Ps11Bpp16", 2ul, V9X_NV50_3D_RT_B5G6R5);
+        }
+        v9x_pusher_state();
+        if (!ok32) {
+            v9x_finish("PS11-32-FAILED", 16u);
+        }
+        if (!ok16) {
+            v9x_finish("PS11-16-FAILED", 16u);
         }
     }
     v9x_finish("COMPLETE", 0u);

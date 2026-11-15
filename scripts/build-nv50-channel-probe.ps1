@@ -96,6 +96,10 @@ $sources = @(
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_3d.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_shader.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_d3d.c'),
+    # /3d:ps11: the translator, the parser and the reference interpreter.
+    (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_ps11.c'),
+    (Join-Path $repoRoot 'src\display32\d3d\d3d_ps11.c'),
+    (Join-Path $repoRoot 'src\display32\d3d\d3d_ps11_ref.c'),
     (Join-Path $repoRoot 'src\chipsets\nvidia\gt218\nv50_grctx.c')
 )
 $objects = @()
