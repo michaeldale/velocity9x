@@ -30,6 +30,7 @@
 
 /* Registers (radeon_reg.h). */
 #define V9X_RV280_PP_MISC               0x1c14ul
+#define V9X_RV280_PP_FOG_COLOR          0x1c18ul
 #define V9X_RV280_RB3D_BLENDCNTL        0x1c20ul
 #define V9X_RV280_RB3D_DEPTHOFFSET      0x1c24ul
 #define V9X_RV280_RB3D_DEPTHPITCH       0x1c28ul
@@ -79,10 +80,45 @@
 /* SE_CNTL's alpha shade model, bits 11:10 (radeon_reg.h:2271-2274). SOLID,
  * the init's value, gave every fragment alpha 0 on M-HNBJNV: blending left
  * the destination as it was and GREATER 128 dropped alpha 200
- * (docs\decisions\2026-11-15-rv280-z-blend-probe.md). A draw shades alpha
- * as it shades the colour. */
+ * (docs\decisions\2026-11-15-rv280-z-blend-probe.md). A draw shades alpha,
+ * specular (13:12), fog (15:14) and discrete fog (25:24) as it shades the
+ * colour, as Mesa's r200ShadeModel does (r200_state.c:1306-1336). */
 #define V9X_RV280_SE_ALPHA_FLAT         0x00000400ul
 #define V9X_RV280_SE_ALPHA_GOURAUD      0x00000800ul
+#define V9X_RV280_SE_SHADE_FLAT_REST    0x01005000ul
+#define V9X_RV280_SE_SHADE_GOURAUD_REST 0x0200a000ul
+/* SE_CNTL's face controls (Mesa r200_reg.h:220-227): FFACE_CULL_CCW bit 0
+ * (clear: clockwise triangles are front faces), BFACE_SOLID 2:1 and
+ * FFACE_SOLID 4:3, cleared to cull. Which screen winding the hardware calls
+ * clockwise, with y down, is measured by V9XR23D's Cull test. */
+#define V9X_RV280_SE_FFACE_CULL_CCW     0x00000001ul
+#define V9X_RV280_SE_BFACE_SOLID        0x00000006ul
+#define V9X_RV280_SE_FFACE_SOLID        0x00000018ul
+/* SE_VTE_CNTL's VTX_XY_FMT and VTX_Z_FMT (X, Y and Z already divided by W)
+ * with VTX_W0_FMT clear (the W field holds 1/W), and SE_VAP_CNTL without
+ * FORCE_W_TO_ONE: Mesa's projected path with W for textures
+ * (r200_swtcl.c:259-269), Direct3D's TL vertex as it is (sx, sy, sz,
+ * rhw). */
+#define V9X_RV280_VTE_XYZ_DIVIDED       0x00000300ul
+#define V9X_RV280_VAP_CNTL_KEEP_W       0x00240000ul
+/* RE_CNTL: PERSPECTIVE_ENABLE bit 3 (Mesa r200_reg.h:266-270), on in
+ * Mesa's initial state (r200_state_init.c:1001). The init's RE_CNTL of 0,
+ * the X driver's, drew a texture affine with 1/W in the vertex on M-HNBJNV
+ * (docs\decisions\2026-11-15-rv280-cull-rhw-fog-probe.md); every draw
+ * sets it. */
+#define V9X_RV280_RE_PERSPECTIVE        0x00000008ul
+/* PP_CNTL: SPECULAR_ENABLE bit 21, FOG_ENABLE bit 22 (Mesa r200_reg.h:
+ * 177-178). */
+#define V9X_RV280_PP_SPECULAR_ENABLE    0x00200000ul
+#define V9X_RV280_PP_FOG_ENABLE         0x00400000ul
+/* PP_FOG_COLOR: the fog RGB in 23:0, FOG_VERTEX (bit 24 clear), the factor
+ * from the specular alpha, FOG_USE_SPEC_ALPHA 3<<25: Mesa's swtcl state
+ * (r200_state_init.c:920-921, r200_swtcl.c:176-181). */
+#define V9X_RV280_FOG_COLOR_MASK        0x00fffffful
+#define V9X_RV280_FOG_USE_SPEC_ALPHA    0x06000000ul
+/* SE_VTX_FMT_0: W0 bit 1; COLOR_1 packed RGBA (1 << 13). */
+#define V9X_RV280_VTX_FMT_W0            0x00000002ul
+#define V9X_RV280_VTX_FMT_PK_COLOR1     0x00002000ul
 /* RB3D_CNTL COLOR_FORMAT, bits 13:10. */
 #define V9X_RV280_COLOR_FORMAT_RGB565   0x00001000ul
 #define V9X_RV280_COLOR_FORMAT_ARGB8888 0x00001800ul
@@ -182,16 +218,20 @@
 #define V9X_RV280_TARGET_MAX            2047ul
 
 /* Vertices per SE_VF_CNTL in one triangle list here. A vertex is X, Y,
- * then Z with V9X_RV280_LAYOUT_Z, the packed colour, then S, T with
- * V9X_RV280_LAYOUT_ST: the fields in SE_VTX_FMT_0's then SE_VTX_FMT_1's
- * bit order (r200.c r200_get_vtx_size_0). */
+ * then Z with V9X_RV280_LAYOUT_Z, W (1/W) with V9X_RV280_LAYOUT_W, the
+ * packed colour, the packed specular colour with V9X_RV280_LAYOUT_SPECULAR,
+ * then S, T with V9X_RV280_LAYOUT_ST: the fields in SE_VTX_FMT_0's then
+ * SE_VTX_FMT_1's bit order (r200.c r200_get_vtx_size_0; Mesa's swtcl emits
+ * them so, r200_swtcl.c:100-170). */
 #define V9X_RV280_3D_MAX_VERTICES       12u
 #define V9X_RV280_LAYOUT_Z              1u
 #define V9X_RV280_LAYOUT_ST             2u
+#define V9X_RV280_LAYOUT_W              4u
+#define V9X_RV280_LAYOUT_SPECULAR       8u
 
-/* The longest list: a state list, or 1 + 12 vertices of 6 dwords. The
+/* The longest list: a state list, or 1 + 12 vertices of 8 dwords. The
  * caller writes it in FIFO-sized batches. */
-#define V9X_RV280_3D_LIST_MAX           96u
+#define V9X_RV280_3D_LIST_MAX           104u
 
 struct v9x_rv280_3d_list {
     v9x_u32 offsets[V9X_RV280_3D_LIST_MAX];
@@ -218,10 +258,23 @@ struct v9x_rv280_3d_raster {
     v9x_u32 alpha_test_enable;
     v9x_u32 alpha_func;
     v9x_u32 alpha_ref;
+    /* SE_CNTL's faces: which winding is front (non-zero: CCW), and which
+     * faces are culled. */
+    v9x_u32 front_ccw;
+    v9x_u32 cull_front;
+    v9x_u32 cull_back;
+    /* Vertex fog from the specular alpha, toward fog_colour (RGB). */
+    v9x_u32 fog_enable;
+    v9x_u32 fog_colour;
+    /* The specular colour added to the fragment colour. */
+    v9x_u32 specular_enable;
 };
 
-/* The colour buffer: a surface in the frame buffer at a GPU address, and
- * its raster state (may be zero). */
+/* The colour buffer: a surface in the frame buffer at a GPU address, its
+ * raster state (may be zero), and the vertex layout the draws will send:
+ * V9X_RV280_LAYOUT_Z, _W and _SPECULAR (S and T follow from the textured
+ * builder). Z is required with a Z buffer, the specular colour with fog or
+ * specular. */
 struct v9x_rv280_3d_target {
     v9x_u32 fb_gpu_base;
     v9x_u32 fb_bytes;
@@ -231,18 +284,22 @@ struct v9x_rv280_3d_target {
     v9x_u32 width;
     v9x_u32 height;
     const struct v9x_rv280_3d_raster *raster;
+    v9x_u32 layout;
 };
 
-/* A screen-space vertex: x, y and z as IEEE single bits, a packed colour
- * sent as it is (a D3DCOLOR, measured: docs\decisions\2026-11-15-rv280-
- * 3d-draw-probe.md), and normalised texture coordinates as IEEE single
- * bits. z is sent only with V9X_RV280_LAYOUT_Z, s and t only with
- * V9X_RV280_LAYOUT_ST. */
+/* A screen-space vertex: x, y and z as IEEE single bits, w as 1/W in IEEE
+ * single bits (D3D's rhw), a packed colour and a packed specular colour sent
+ * as they are (D3DCOLORs, measured: docs\decisions\2026-11-15-rv280-3d-
+ * draw-probe.md; the specular alpha is the fog factor), and normalised
+ * texture coordinates as IEEE single bits. Each optional field is sent only
+ * with its V9X_RV280_LAYOUT_* bit. */
 struct v9x_rv280_3d_vertex {
     v9x_u32 x_bits;
     v9x_u32 y_bits;
     v9x_u32 z_bits;
+    v9x_u32 w_bits;
     v9x_u32 colour;
+    v9x_u32 specular;
     v9x_u32 s_bits;
     v9x_u32 t_bits;
 };

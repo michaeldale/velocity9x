@@ -50,6 +50,14 @@
  *   Blend     - SRCALPHA / INVSRCALPHA, alpha 80h red over the prefill,
  *               within a step of the model.
  *   AlphaTest - GREATER 128 keeps the alpha-200 quad, drops the alpha-100.
+ *   Cull      - a screen-clockwise and a screen-counter-clockwise triangle
+ *               under three face settings: which survives each, and so
+ *               which winding the hardware calls clockwise.
+ *   Perspective - 1/W 1 to 0.25 across a textured quad: perspective-
+ *               correct texel columns, not affine ones.
+ *   FogFlat / FogGouraud - vertex fog from the specular alpha toward blue,
+ *               80h everywhere, then FFh to 0 across the quad.
+ *   Specular  - diffuse 404040h plus specular 202020h: 606060h.
  *   FillAfter3D - a 2D fill from the RS690 builder after the 3D tests,
  *               byte-exact, so the 3D state left behind does not break the
  *               engine DirectDraw uses.
@@ -474,10 +482,13 @@ static int rs_draw(const char *name, int gouraud, int order_rgba,
     target.width = TEST_WIDTH;
     target.height = rs_height;
     target.raster = 0;
+    target.layout = 0u;
     for (index = 0; index < 3; ++index) {
         vertices[index].x_bits = rs_float_bits(rs_tri_x[index]);
         vertices[index].y_bits = rs_float_bits(rs_tri_y[index]);
         vertices[index].z_bits = 0u;
+        vertices[index].w_bits = 0u;
+        vertices[index].specular = 0u;
         vertices[index].colour = colours[index];
         vertices[index].s_bits = 0u;
         vertices[index].t_bits = 0u;
@@ -739,6 +750,7 @@ static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
     target.width = TEST_WIDTH;
     target.height = rs_height;
     target.raster = 0;
+    target.layout = 0u;
     texture.fb_gpu_base = rs_fb_gpu_base;
     texture.fb_bytes = TEST_FB;
     texture.offset = TEX_OFFSET;
@@ -756,6 +768,8 @@ static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
         vertices[index].y_bits =
             rs_float_bits(corner_y[index] ? (long)TEX_HEIGHT : 0l);
         vertices[index].z_bits = 0u;
+        vertices[index].w_bits = 0u;
+        vertices[index].specular = 0u;
         vertices[index].colour = colour;
         vertices[index].s_bits =
             rs_ratio_bits(corner_x[index] ? s_right : 0l, 1l);
@@ -1082,6 +1096,12 @@ static void rs_zero_raster(struct v9x_rv280_3d_raster *raster)
     raster->alpha_test_enable = 0ul;
     raster->alpha_func = 0ul;
     raster->alpha_ref = 0ul;
+    raster->front_ccw = 0ul;
+    raster->cull_front = 0ul;
+    raster->cull_back = 0ul;
+    raster->fog_enable = 0ul;
+    raster->fog_colour = 0ul;
+    raster->specular_enable = 0ul;
 }
 
 /* The Z buffer: 16-bit, 64 pixels to a row, 128 KiB past the surface. */
@@ -1127,6 +1147,7 @@ static int rs_draw_quads(const char *name,
     target.height = rs_height;
     target.raster = raster;
     layout = raster->z_enable ? V9X_RV280_LAYOUT_Z : 0u;
+    target.layout = layout;
 
     rs_begin();
     rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
@@ -1149,6 +1170,8 @@ static int rs_draw_quads(const char *name,
             vertices[index].y_bits =
                 rs_float_bits(corner_y[index] ? (long)TEX_HEIGHT : 0l);
             vertices[index].z_bits = quads[quad].z_bits;
+            vertices[index].w_bits = 0u;
+            vertices[index].specular = 0u;
             vertices[index].colour = quads[quad].colour;
             vertices[index].s_bits = 0u;
             vertices[index].t_bits = 0u;
@@ -1409,6 +1432,458 @@ static void rs_alpha_test(void)
     }
 }
 
+/* One quad corner: position, 1/W, colours and texture coordinates as the
+ * vertex sends them. */
+struct rs_corner {
+    long x;
+    long y;
+    DWORD w_bits;
+    DWORD colour;
+    DWORD specular;
+    DWORD s_bits;
+    DWORD t_bits;
+};
+
+/*
+ * Prefill, (the texture,) wait idle, the state, the triangles, the finish,
+ * wait idle, read back. vertices are given as corners, three to a triangle.
+ * texture may be zero for the diffuse-only environment.
+ */
+static int rs_draw_corners(const char *name,
+                           const struct v9x_rv280_3d_raster *raster,
+                           DWORD layout,
+                           const struct v9x_rv280_3d_texture *texture,
+                           int gouraud, const struct rs_corner *corners,
+                           DWORD count)
+{
+    struct v9x_rv280_3d_target target;
+    struct v9x_rv280_3d_vertex vertices[V9X_RV280_3D_MAX_VERTICES];
+    struct v9x_rv280_3d_list list;
+    char key[64];
+    DWORD after_index;
+    DWORD index;
+    v9x_status status;
+
+    target.fb_gpu_base = rs_fb_gpu_base;
+    target.fb_bytes = TEST_FB;
+    target.offset = TEST_BASE;
+    target.pitch_bytes = rs_pitch;
+    target.bytes_per_pixel = rs_bpp;
+    target.width = TEST_WIDTH;
+    target.height = rs_height;
+    target.raster = raster;
+    target.layout = layout & ~(DWORD)V9X_RV280_LAYOUT_ST;
+    for (index = 0u; index < count; ++index) {
+        vertices[index].x_bits = rs_float_bits(corners[index].x);
+        vertices[index].y_bits = rs_float_bits(corners[index].y);
+        vertices[index].z_bits = 0u;
+        vertices[index].w_bits = corners[index].w_bits;
+        vertices[index].colour = corners[index].colour;
+        vertices[index].specular = corners[index].specular;
+        vertices[index].s_bits = corners[index].s_bits;
+        vertices[index].t_bits = corners[index].t_bits;
+    }
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    if (texture != 0) {
+        rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
+               TEX_WIDTH * TEX_HEIGHT * rs_bpp / 4u);
+        status = v9x_rv280_build_3d_textured_target(
+            &target, gouraud, texture, V9X_RV280_COMBINE_DECAL, &list);
+    } else {
+        status = v9x_rv280_build_3d_target(&target, gouraud, &list);
+    }
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (status != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_add_list(&list);
+    if (v9x_rv280_build_3d_triangles(vertices, count, 0, layout, &list) !=
+        V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_add_list(&list);
+    (void)v9x_rv280_build_3d_finish(0, &list);
+    rs_add_list(&list);
+    after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_hex(rs_key(key, name, "WaitAfter"),
+                 rs_result_buffer.ops[after_index].result);
+    return 1;
+}
+
+/* A quad from (left, 0) to (left + width, TEX_HEIGHT) as two triangles into
+ * corners[0..5]: left corners take left, right corners right. */
+static void rs_quad_corners(struct rs_corner *corners, DWORD left,
+                            DWORD width, const struct rs_corner *left_side,
+                            const struct rs_corner *right_side)
+{
+    static const int corner_x[6] = { 0, 1, 0, 1, 1, 0 };
+    static const int corner_y[6] = { 0, 0, 1, 0, 1, 1 };
+    int index;
+
+    for (index = 0; index < 6; ++index) {
+        corners[index] = corner_x[index] ? *right_side : *left_side;
+        corners[index].x = (long)left + (corner_x[index] ? (long)width : 0l);
+        corners[index].y = corner_y[index] ? (long)TEX_HEIGHT : 0l;
+        corners[index].t_bits = rs_ratio_bits(corner_y[index], 1l);
+    }
+}
+
+/* Whether a red (1) or green (2) triangle covers the pixel at the given
+ * column, row 5: the cull test's verdict per triangle. */
+static int rs_drawn_at(DWORD x, DWORD argb)
+{
+    const unsigned char *actual = (const unsigned char *)rs_result_buffer.block;
+
+    return rs_rgb(rs_pixel(actual, x, 5u)) == rs_store(argb);
+}
+
+/*
+ * Cull: a red triangle wound clockwise on the screen (y down: top-left,
+ * top-right, bottom-left) at columns 4-28 and a green one wound counter-
+ * clockwise at 36-60, drawn under three face settings. Reports which
+ * survives each; which winding the hardware calls clockwise is what this
+ * measures. Passes when each run keeps exactly one and the three runs
+ * agree with one reading of the bits.
+ */
+static void rs_cull_test(void)
+{
+    static const char name[] = "Cull";
+    static const char * const runs[3] = {
+        "BackCwFront", "FrontCwFront", "BackCcwFront"
+    };
+    struct v9x_rv280_3d_raster raster;
+    struct rs_corner corners[6];
+    char key[64];
+    char prefix[32];
+    int run;
+    int red[3];
+    int green[3];
+
+    corners[0].x = 4l;
+    corners[0].y = 1l;
+    corners[1].x = 28l;
+    corners[1].y = 1l;
+    corners[2].x = 4l;
+    corners[2].y = 14l;
+    corners[3].x = 36l;
+    corners[3].y = 1l;
+    corners[4].x = 36l;
+    corners[4].y = 14l;
+    corners[5].x = 60l;
+    corners[5].y = 1l;
+    for (run = 0; run < 6; ++run) {
+        corners[run].w_bits = 0u;
+        corners[run].colour = run < 3 ? ARGB_RED : ARGB_GREEN;
+        corners[run].specular = 0u;
+        corners[run].s_bits = 0u;
+        corners[run].t_bits = 0u;
+    }
+    for (run = 0; run < 3; ++run) {
+        rs_zero_raster(&raster);
+        raster.cull_back = run != 1 ? 1ul : 0ul;
+        raster.cull_front = run == 1 ? 1ul : 0ul;
+        raster.front_ccw = run == 2 ? 1ul : 0ul;
+        lstrcpyA(prefix, name);
+        lstrcatA(prefix, runs[run]);
+        if (!rs_draw_corners(prefix, &raster, 0u, 0, 0, corners, 6u)) {
+            return;
+        }
+        red[run] = rs_drawn_at(8u, ARGB_RED);
+        green[run] = rs_drawn_at(40u, ARGB_GREEN);
+        rs_write(rs_key(key, prefix, "Drawn"),
+                 red[run] ? (green[run] ? "both" : "screen-cw") :
+                 (green[run] ? "screen-ccw" : "neither"));
+    }
+    if (red[0] != green[0] && red[1] == green[0] && green[1] == red[0] &&
+        red[2] == green[0] && green[2] == red[0]) {
+        /* Culling back faces with a clockwise front kept the clockwise
+         * triangle: the hardware's clockwise is the screen's (y down). */
+        rs_write("CullScreenWindingIsHardware", red[0] ? "same" :
+                 "mirrored");
+        rs_write(rs_key(key, name, "Result"), "PASS");
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "MISMATCH");
+    rs_failed = 1u;
+}
+
+/* Which texel column a pixel shows: the gradient texture's texel n is n at
+ * 16 bpp and 2n | (2n + 1) << 16 at 32 bpp, and n's low five bits are the
+ * column. */
+static DWORD rs_texel_column(DWORD pixel)
+{
+    if (rs_bpp == 2u) {
+        return pixel & (TEX_WIDTH - 1u);
+    }
+    return ((pixel & 0xfffful) / 2ul) & (TEX_WIDTH - 1u);
+}
+
+/*
+ * Perspective: the 32 x 16 texture across a 64 x 16 quad, nearest, with
+ * 1/W 1 at the left edge and 0.25 at the right. Perspective-correct, pixel
+ * x's centre samples s = a * 0.25 / ((1 - a) + a * 0.25), a = (x + 0.5) /
+ * 64: texel column floor(32 s). Only the column is judged: a screen
+ * rectangle with 1/W changing across it is not the image of a flat
+ * rectangle, t/W at its corners (0, 0, 1, 0.25) is not one plane, so each
+ * triangle interpolates its own t, while s/W (0, 0.25, 0, 0.25) is one
+ * plane. Pixels within 0.08 of a column boundary are not judged; Affine
+ * counts how many judged pixels an affine mapping would also get right, so
+ * a pass is not one by accident.
+ */
+static void rs_perspective_test(void)
+{
+    static const char name[] = "Perspective";
+    struct v9x_rv280_3d_texture texture;
+    struct rs_corner left_side;
+    struct rs_corner right_side;
+    struct rs_corner corners[6];
+    const unsigned char *actual;
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD judged = 0u;
+    DWORD wrong = 0u;
+    DWORD affine_right = 0u;
+    DWORD outside_changed = 0u;
+
+    texture.fb_gpu_base = rs_fb_gpu_base;
+    texture.fb_bytes = TEST_FB;
+    texture.offset = TEX_OFFSET;
+    texture.pitch_bytes = TEX_WIDTH * rs_bpp;
+    texture.bytes_per_pixel = rs_bpp;
+    texture.width = TEX_WIDTH;
+    texture.height = TEX_HEIGHT;
+    texture.linear = 0ul;
+    texture.clamp = 1ul;
+    left_side.w_bits = rs_ratio_bits(1l, 1l);
+    left_side.colour = ARGB_RED;
+    left_side.specular = 0u;
+    left_side.s_bits = rs_ratio_bits(0l, 1l);
+    right_side = left_side;
+    right_side.w_bits = rs_ratio_bits(1l, 4l);
+    right_side.s_bits = rs_ratio_bits(1l, 1l);
+    rs_quad_corners(corners, 0u, TEST_WIDTH, &left_side, &right_side);
+    if (!rs_draw_corners(name, 0, V9X_RV280_LAYOUT_W | V9X_RV280_LAYOUT_ST,
+                         &texture, 0, corners, 6u)) {
+        return;
+    }
+    rs_save_block('P');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            /* With a = (2x + 1) / 128, u = 32 s = 32 (2x + 1) / (509 -
+             * 6x): integers, since a float-to-integer conversion would
+             * need the C runtime this tool does not link. */
+            long num = 32l * (2l * (long)x + 1l);
+            long den = 509l - 6l * (long)x;
+            long ix = num / den;
+            long rem = num % den;
+
+            if (y >= TEX_HEIGHT) {
+                if (pixel != rs_pixel(rs_model, x, y)) {
+                    ++outside_changed;
+                }
+                continue;
+            }
+            if (rem * 100l < den * 8l || rem * 100l > den * 92l) {
+                continue;
+            }
+            ++judged;
+            if (rs_texel_column(pixel) != (DWORD)ix) {
+                ++wrong;
+            }
+            /* Affine: u = 32 a = (2x + 1) / 4. */
+            if ((2l * (long)x + 1l) / 4l == ix) {
+                ++affine_right;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "Judged"), judged);
+    rs_write_decimal(rs_key(key, name, "Wrong"), wrong);
+    rs_write_decimal(rs_key(key, name, "AffineWouldMatch"), affine_right);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    if (judged == 0u || wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/*
+ * Fog: a white quad at columns 8-39, fog toward blue from the specular
+ * alpha, specular itself off. Flat: alpha 80h at every corner, so each
+ * channel within a step of white * 128/255 + blue * 127/255. Gouraud:
+ * alpha FFh on the left edge and 0 on the right, the factor interpolated at
+ * the pixel centre; within a step at 16 bpp, 4 at 32.
+ */
+static void rs_fog_test(const char *name, char letter, int gouraud)
+{
+    struct v9x_rv280_3d_raster raster;
+    struct rs_corner left_side;
+    struct rs_corner right_side;
+    struct rs_corner corners[6];
+    const unsigned char *actual;
+    char key[64];
+    long values[3];
+    long maxima[3];
+    long worst = 0l;
+    long tolerance = gouraud && rs_bpp == 4u ? 4l : 1l;
+    DWORD x;
+    DWORD y;
+    DWORD wrong = 0u;
+    DWORD outside_changed = 0u;
+    int channel;
+
+    rs_zero_raster(&raster);
+    raster.fog_enable = 1ul;
+    raster.fog_colour = 0x000000fful;
+    left_side.w_bits = 0u;
+    left_side.colour = 0xffffffful;
+    left_side.specular = gouraud ? 0xff000000ul : 0x80000000ul;
+    left_side.s_bits = 0u;
+    right_side = left_side;
+    right_side.specular = gouraud ? 0x00000000ul : 0x80000000ul;
+    rs_quad_corners(corners, 8u, 32u, &left_side, &right_side);
+    if (!rs_draw_corners(name, &raster, V9X_RV280_LAYOUT_SPECULAR, 0,
+                         gouraud, corners, 6u)) {
+        return;
+    }
+    rs_save_block(letter);
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    rs_write_hex(rs_key(key, name, "PixelAt20"), rs_pixel(actual, 20u, 4u));
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            /* The fog factor, out of 255 * 64, at the pixel centre. */
+            long factor = gouraud ?
+                255l * (64l - (2l * ((long)x - 8l) + 1l)) :
+                128l * 64l;
+
+            if (y >= TEX_HEIGHT || x < 8u || x >= 40u) {
+                if (pixel != rs_pixel(rs_model, x, y)) {
+                    ++outside_changed;
+                }
+                continue;
+            }
+            rs_channels(pixel, values, maxima);
+            for (channel = 0; channel < 3; ++channel) {
+                long fogged = channel == 2 ? maxima[2] : 0l;
+                long expected = (maxima[channel] * factor +
+                                 fogged * (255l * 64l - factor) +
+                                 255l * 32l) / (255l * 64l);
+                long error = rs_abs(values[channel] - expected);
+
+                if (error > worst) {
+                    worst = error;
+                }
+                if (error > tolerance) {
+                    ++wrong;
+                    break;
+                }
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), wrong);
+    rs_write_decimal(rs_key(key, name, "WorstChannelError"), (DWORD)worst);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    if (wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/*
+ * Specular: diffuse 404040h plus specular 202020h with SPECULAR_ENABLE,
+ * flat, columns 8-39: each channel within a step of 606060h. The specular
+ * alpha is FFh, no fog.
+ */
+static void rs_specular_test(void)
+{
+    static const char name[] = "Specular";
+    struct v9x_rv280_3d_raster raster;
+    struct rs_corner side;
+    struct rs_corner corners[6];
+    const unsigned char *actual;
+    char key[64];
+    long values[3];
+    long maxima[3];
+    long worst = 0l;
+    DWORD x;
+    DWORD y;
+    DWORD wrong = 0u;
+    DWORD outside_changed = 0u;
+    int channel;
+
+    rs_zero_raster(&raster);
+    raster.specular_enable = 1ul;
+    side.w_bits = 0u;
+    side.colour = 0xff404040ul;
+    side.specular = 0xff202020ul;
+    side.s_bits = 0u;
+    rs_quad_corners(corners, 8u, 32u, &side, &side);
+    if (!rs_draw_corners(name, &raster, V9X_RV280_LAYOUT_SPECULAR, 0, 0,
+                         corners, 6u)) {
+        return;
+    }
+    rs_save_block('S');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    rs_write_hex(rs_key(key, name, "PixelAt20"), rs_pixel(actual, 20u, 4u));
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+
+            if (y >= TEX_HEIGHT || x < 8u || x >= 40u) {
+                if (pixel != rs_pixel(rs_model, x, y)) {
+                    ++outside_changed;
+                }
+                continue;
+            }
+            rs_channels(pixel, values, maxima);
+            for (channel = 0; channel < 3; ++channel) {
+                long expected = (maxima[channel] * 0x60l + 127l) / 255l;
+                long error = rs_abs(values[channel] - expected);
+
+                if (error > worst) {
+                    worst = error;
+                }
+                if (error > 1l) {
+                    ++wrong;
+                    break;
+                }
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), wrong);
+    rs_write_decimal(rs_key(key, name, "WorstChannelError"), (DWORD)worst);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    if (wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
 static void rs_fill_after_test(void)
 {
     static const char name[] = "FillAfter3D";
@@ -1619,6 +2094,11 @@ void WINAPI V9xRv2803dProbeEntry(void)
     }
     rs_blend_test();
     rs_alpha_test();
+    rs_cull_test();
+    rs_perspective_test();
+    rs_fog_test("FogFlat", 'O', 0);
+    rs_fog_test("FogGouraud", 'R', 1);
+    rs_specular_test();
     rs_fill_after_test();
 
     rs_write_hex("RbbmStatusAtEnd", rs_read_register(V9X_RS690_RBBM_STATUS));

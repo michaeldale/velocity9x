@@ -34,10 +34,22 @@ hardware, GDI in the screen shadow, and VBE modes.
 
   ([record](../decisions/2026-11-15-rv280-z-blend-probe.md)).
 
-Next in phase 5: culling, perspective (RHW in the vertex), fog and
-specular in the probe, then the HAL glue: a host-tested map from the
-neutral draw to these builders, then the engine, as the RS690's
-`d3d_rs690_map.c` / `d3d_rs690.c` split. Direct3D is `none` on this row until the
+- **Phase 5, cull, perspective, fog, specular:** all are right.
+  - The hardware's clockwise is the screen's.
+  - Perspective needed `RE_CNTL`'s `PERSPECTIVE_ENABLE`, which the X
+    driver's init clears.
+  - Fog comes from the specular alpha.
+  ([record](../decisions/2026-11-15-rv280-cull-rhw-fog-probe.md)).
+
+Next in phase 5: the HAL glue, as the RS690's `d3d_rs690_map.c` /
+`d3d_rs690.c` split:
+- a host-tested map from the neutral draw to these builders;
+- then the engine: texture and Z placement, PIO submission behind
+  `eng_rv280.c`'s idle and flips;
+- then `D3D` in the row's EngineCaps.
+
+Mipmaps, other texture formats and the colour key can follow V9XD32's
+first run. Direct3D is `none` on this row until the
 HAL lands:
 the `vbe` package gave this card software Direct3D, and the ati family
 defaults to hardware.

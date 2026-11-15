@@ -71,6 +71,21 @@ static v9x_status v9x_rv280_check_raster(
         (raster->alpha_func > 7ul || raster->alpha_ref > 255ul)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    /* The fields each feature reads must be in the vertex: Z for the Z
+     * buffer, the specular colour (its alpha the fog factor) for fog and
+     * specular. */
+    if (raster->z_enable &&
+        (target->layout & V9X_RV280_LAYOUT_Z) == 0u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((raster->fog_enable || raster->specular_enable) &&
+        (target->layout & V9X_RV280_LAYOUT_SPECULAR) == 0u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (raster->fog_enable &&
+        (raster->fog_colour & ~V9X_RV280_FOG_COLOR_MASK) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     if (!raster->z_enable) {
         return V9X_STATUS_OK;
     }
@@ -118,6 +133,8 @@ static v9x_status v9x_rv280_add_target(
     v9x_u32 zstencil;
     v9x_u32 misc;
     v9x_u32 vertex_format;
+    v9x_u32 setup;
+    v9x_u32 fog;
 
     if (target == 0 || list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -172,7 +189,27 @@ static v9x_status v9x_rv280_add_target(
     blend = V9X_RV280_BLEND_ONE_ZERO;
     zstencil = V9X_RV280_Z_TEST_ALWAYS << V9X_RV280_Z_TEST_SHIFT;
     misc = 7ul << V9X_RV280_ALPHA_TEST_SHIFT;
+    fog = V9X_RV280_FOG_USE_SPEC_ALPHA;
+    /* Colour, alpha, specular, fog and discrete fog shaded alike; both
+     * faces drawn, clockwise front. */
+    setup = V9X_RV280_SE_CNTL_BASE |
+            (gouraud ? V9X_RV280_SE_DIFFUSE_GOURAUD |
+                           V9X_RV280_SE_ALPHA_GOURAUD |
+                           V9X_RV280_SE_SHADE_GOURAUD_REST
+                     : V9X_RV280_SE_DIFFUSE_FLAT |
+                           V9X_RV280_SE_ALPHA_FLAT |
+                           V9X_RV280_SE_SHADE_FLAT_REST);
+    /* The vertex: X, Y always, then what the layout names. */
     vertex_format = V9X_RV280_VTX_FMT_PK_COLOR0;
+    if ((target->layout & V9X_RV280_LAYOUT_Z) != 0u) {
+        vertex_format |= V9X_RV280_VTX_FMT_Z0;
+    }
+    if ((target->layout & V9X_RV280_LAYOUT_W) != 0u) {
+        vertex_format |= V9X_RV280_VTX_FMT_W0;
+    }
+    if ((target->layout & V9X_RV280_LAYOUT_SPECULAR) != 0u) {
+        vertex_format |= V9X_RV280_VTX_FMT_PK_COLOR1;
+    }
     if (raster != 0) {
         if (v9x_rv280_check_raster(target, raster) != V9X_STATUS_OK) {
             return V9X_STATUS_INVALID_ARGUMENT;
@@ -181,7 +218,22 @@ static v9x_status v9x_rv280_add_target(
             cntl |= V9X_RV280_RB3D_Z_ENABLE;
             zstencil = (raster->z_func << V9X_RV280_Z_TEST_SHIFT) |
                        (raster->z_write ? V9X_RV280_Z_WRITE_ENABLE : 0ul);
-            vertex_format |= V9X_RV280_VTX_FMT_Z0;
+        }
+        if (raster->cull_back) {
+            setup &= ~V9X_RV280_SE_BFACE_SOLID;
+        }
+        if (raster->cull_front) {
+            setup &= ~V9X_RV280_SE_FFACE_SOLID;
+        }
+        if (raster->front_ccw) {
+            setup |= V9X_RV280_SE_FFACE_CULL_CCW;
+        }
+        if (raster->fog_enable) {
+            fog |= raster->fog_colour;
+            *pp_cntl_extra |= V9X_RV280_PP_FOG_ENABLE;
+        }
+        if (raster->specular_enable) {
+            *pp_cntl_extra |= V9X_RV280_PP_SPECULAR_ENABLE;
         }
         if (raster->blend_enable) {
             cntl |= V9X_RV280_RB3D_ALPHA_BLEND;
@@ -191,7 +243,7 @@ static v9x_status v9x_rv280_add_target(
         if (raster->alpha_test_enable) {
             misc = raster->alpha_ref |
                    (raster->alpha_func << V9X_RV280_ALPHA_TEST_SHIFT);
-            *pp_cntl_extra = V9X_RV280_PP_ALPHA_TEST_ENABLE;
+            *pp_cntl_extra |= V9X_RV280_PP_ALPHA_TEST_ENABLE;
         }
     }
 
@@ -214,15 +266,25 @@ static v9x_status v9x_rv280_add_target(
     }
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_ZSTENCILCNTL, zstencil);
     v9x_rv280_3d_add(list, V9X_RV280_PP_MISC, misc);
-    /* X, Y, Z with the Z buffer, and a packed colour per vertex. */
+    v9x_rv280_3d_add(list, V9X_RV280_PP_FOG_COLOR, fog);
     v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_0, vertex_format);
-    /* Alpha shaded as the colour is: left SOLID it read 0. */
-    v9x_rv280_3d_add(list, V9X_RV280_SE_CNTL,
-                     V9X_RV280_SE_CNTL_BASE |
-                     (gouraud ? V9X_RV280_SE_DIFFUSE_GOURAUD |
-                                    V9X_RV280_SE_ALPHA_GOURAUD
-                              : V9X_RV280_SE_DIFFUSE_FLAT |
-                                    V9X_RV280_SE_ALPHA_FLAT));
+    /* With W in the vertex, X, Y and Z arrive divided and the W field holds
+     * 1/W, which the rasterizer keeps for perspective; without, the init's
+     * values: no flags, W forced to one. */
+    if ((target->layout & V9X_RV280_LAYOUT_W) != 0u) {
+        v9x_rv280_3d_add(list, V9X_RV280_SE_VTE_CNTL,
+                         V9X_RV280_VTE_XYZ_DIVIDED);
+        v9x_rv280_3d_add(list, V9X_RV280_SE_VAP_CNTL,
+                         V9X_RV280_VAP_CNTL_KEEP_W);
+    } else {
+        v9x_rv280_3d_add(list, V9X_RV280_SE_VTE_CNTL, 0ul);
+        v9x_rv280_3d_add(list, V9X_RV280_SE_VAP_CNTL,
+                         V9X_RV280_VAP_CNTL_BYPASS);
+    }
+    v9x_rv280_3d_add(list, V9X_RV280_SE_CNTL, setup);
+    /* Perspective-correct interpolation: with W forced to one it is the
+     * affine result, with 1/W it corrects. */
+    v9x_rv280_3d_add(list, V9X_RV280_RE_CNTL, V9X_RV280_RE_PERSPECTIVE);
     return V9X_STATUS_OK;
 }
 
@@ -381,13 +443,22 @@ v9x_status v9x_rv280_build_3d_triangles(
                          vertices[index].x_bits);
         v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                          vertices[index].y_bits);
-        /* Z0 is SE_VTX_FMT_0's bit 0, so it follows X and Y. */
+        /* Z0 and W0 are SE_VTX_FMT_0's bits 0 and 1, so they follow X and
+         * Y. */
         if ((layout & V9X_RV280_LAYOUT_Z) != 0u) {
             v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                              vertices[index].z_bits);
         }
+        if ((layout & V9X_RV280_LAYOUT_W) != 0u) {
+            v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
+                             vertices[index].w_bits);
+        }
         v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                          vertices[index].colour);
+        if ((layout & V9X_RV280_LAYOUT_SPECULAR) != 0u) {
+            v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
+                             vertices[index].specular);
+        }
         /* SE_VTX_FMT_1's fields follow SE_VTX_FMT_0's (r200.c counts
          * them in that order): texture 0's S, T after the colour. */
         if ((layout & V9X_RV280_LAYOUT_ST) != 0u) {
