@@ -490,6 +490,7 @@ extern const V9X_ENGINE32_OPS v9x_engine32_eg;
 extern const V9X_ENGINE32_OPS v9x_engine32_vi;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv3;
 extern const V9X_ENGINE32_OPS v9x_engine32_rs690;
+extern const V9X_ENGINE32_OPS v9x_engine32_rv280;
 extern const V9X_ENGINE32_OPS v9x_engine32_r6;
 extern const V9X_ENGINE32_OPS v9x_engine32_nv50;
 /* Haswell's Y-tiled Z buffers are filled by the render engine, not the

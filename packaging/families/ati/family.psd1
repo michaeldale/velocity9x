@@ -787,6 +787,59 @@
             }
             MapSymbols = @('v9x_r600_rv610_device')
         }
+        @{
+            Id = 'rv280'
+            Name = 'ATI Radeon 9250 (RV280)'
+            VendorId = '1002'
+            DeviceId = '5960'
+            # No SubsystemId: the bare id binds every board. Function 1, the
+            # second head (5940, class 0380), is never claimed.
+            DeviceDesc = 'Velocity9x ATI Radeon 9250 (RV280)'
+            Adapter = 'ATI Radeon 9250 (RV280)'
+            ClockDetector = 'ati-rv280-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # VBE modes, GDI in the screen shadow, as the vbe package ran this
+            # card on M-HNBJNV. DirectDraw fill and copy on the legacy Radeon
+            # 2D engine, the RS690's builder values measured byte-exact at 8,
+            # 16 and 32 bpp on this card
+            # (docs\decisions\2026-11-15-rv280-2d-write-probe.md); the rest is
+            # drawn by the CPU (docs\plans\ati-rv280-radeon-9250.md).
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'not-advertised'
+            EngineType = 'ATI_RV280'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # What M-HNBJNV's VBE 4F00h reports; the card's real memory is
+            # read in phase 2 (CONFIG_MEMSIZE).
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c); M-HNBJNV's BIOS lists all seven
+            # (V9XBOOT.INI, 2026-11-15).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('rv280_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_rv280_9250_device')
+
+            # The 9200SE: the same RV280, surveyed in the same machine with
+            # the same VBE BIOS mode list. Not run under this row.
+            Aliases = @(
+                @{ DeviceId = '5964'
+                   Name = 'ATI Radeon 9200SE (RV280)'
+                   DeviceDesc = 'Velocity9x ATI Radeon 9200SE (RV280)' }
+            )
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -856,6 +909,7 @@
             @{ Name = 'carrizo_hw16'; Path = 'src\chipsets\ati\vi\carrizo_hw16.c' }
             @{ Name = 'mullins_hw16'; Path = 'src\chipsets\ati\cik\mullins_hw16.c' }
             @{ Name = 'rs690_hw16'; Path = 'src\chipsets\ati\rs690\rs690_hw16.c' }
+            @{ Name = 'rv280_hw16'; Path = 'src\chipsets\ati\rv280\rv280_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
@@ -1011,6 +1065,10 @@
             }
             @{
                 ChipId = 'rv610'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rv280'
                 Emulator = 'none'
             }
         )

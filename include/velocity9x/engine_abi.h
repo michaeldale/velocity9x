@@ -142,6 +142,16 @@
  * Direct3D engine, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_NV50         16ul
+/*
+ * ATI Radeon 9250 / 9200SE (RV280) 2D engine (engines\eng_rv280.c): the
+ * RS690's legacy Radeon 2D builder (src\chipsets\ati\rs690\rs690_2d.c),
+ * direct register writes with the CP's queues off, with the pre-R300
+ * destination-cache flush (RB3D_DSTCACHE_CTLSTAT) and MC_FB_LOCATION for
+ * the frame buffer's GPU address. Measured byte-exact at 8, 16 and 32 bpp
+ * on M-HNBJNV (docs\decisions\2026-11-15-rv280-2d-write-probe.md). No
+ * Direct3D engine yet, so d3d_select.c gives this type none.
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_RV280    17ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

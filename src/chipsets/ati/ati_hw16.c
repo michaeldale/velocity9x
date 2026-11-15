@@ -36,6 +36,8 @@ extern const V9X_HW16_DEVICE v9x_vi_carrizo_device;
 extern const V9X_HW16_DEVICE v9x_rs690_device;
 extern const V9X_HW16_DEVICE v9x_r600_rv630_device;
 extern const V9X_HW16_DEVICE v9x_r600_rv610_device;
+extern const V9X_HW16_DEVICE v9x_rv280_9250_device;
+extern const V9X_HW16_DEVICE v9x_rv280_9200se_device;
 /* carrizo_hw16.c: the SDMA engine hook's outcome. */
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_cik_mullins_device;
@@ -147,6 +149,9 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
      * (cedar_hw16.c). */
     &v9x_r600_rv630_device,
     &v9x_r600_rv610_device,
+    /* RV280 (Radeon 9250): VBE modes and the screen shadow for now
+     * (rv280_hw16.c). */
+    &v9x_rv280_9250_device,
     /* The aliases, each declared in its chip's module: the VT2's, the
      * Rage IIC's (the Rage II class) and the Mobility-M's (the Rage Pro
      * class). A machine has one card, so order among them carries no
@@ -179,7 +184,8 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_ati_4c51_device,
     &v9x_ati_4c4e_device,
     &v9x_ati_4c52_device,
-    &v9x_ati_4c53_device
+    &v9x_ati_4c53_device,
+    &v9x_rv280_9200se_device
 };
 
 /*

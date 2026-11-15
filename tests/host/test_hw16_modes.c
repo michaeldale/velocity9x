@@ -201,6 +201,12 @@ const V9X_HW16_DEVICE v9x_r600_rv630_device = {
 const V9X_HW16_DEVICE v9x_r600_rv610_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_rv280_9250_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_rv280_9200se_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write)
 {
     (void)write;

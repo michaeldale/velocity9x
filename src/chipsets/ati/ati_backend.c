@@ -76,12 +76,13 @@ static const v9x_u16 v9x_ati_device_ids[] = {
     V9X_PCI_DEVICE_TRINITY_9901,
     V9X_PCI_DEVICE_CARRIZO_9874, V9X_PCI_DEVICE_MULLINS_9854,
     V9X_PCI_DEVICE_RS690_791F, V9X_PCI_DEVICE_RV630_9588,
-    V9X_PCI_DEVICE_RV610_94C3,
+    V9X_PCI_DEVICE_RV610_94C3, V9X_PCI_DEVICE_RV280_5960,
     0x5655u, 0x5656u,
     0x4754u, 0x4755u, 0x4756u, 0x4759u, 0x475au, 0x4c54u, 0x4c47u,
     0x4742u, 0x4744u, 0x4747u, 0x4749u, 0x4750u, 0x4751u, 0x474cu, 0x474du,
     0x474eu, 0x474fu, 0x4752u, 0x4753u, 0x4c42u, 0x4c44u, 0x4c49u, 0x4c50u,
-    0x4c51u, 0x4c4eu, 0x4c52u, 0x4c53u
+    0x4c51u, 0x4c4eu, 0x4c52u, 0x4c53u,
+    0x5964u
 };
 
 v9x_status v9x_ati_mach64_probe(
