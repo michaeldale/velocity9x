@@ -1,8 +1,11 @@
 # vbe on a Radeon 9200: sixteen illegible thumbnails of the screen
 
 Date: 2026-11-13
-Status: open. Field report, not reproduced: no RV280 card is on any of
-our machines. Files and photos arrived 2026-11-14 (section below): a
+Status: open; cause found 2026-11-15 (section at the end): our `vbe`
+driver is also bound to the card's second head, so Windows 98 runs a
+second instance on the same card when the Settings tab opens. The fix
+on the machine has not been applied yet. Field report, no RV280 card on
+our own machines. Files and photos arrived 2026-11-14 (section below): a
 Radeon 9250 on Windows 98 SE, 0.49.0 too, clean boot, the screen breaks
 when the Settings tab is clicked.
 
@@ -212,3 +215,99 @@ Settings tab, something in this install's three instances, or WinVBE.
   is.
 - If they are willing: remove every display adapter entry in Safe Mode,
   restart, install `vbe` once, and try the Settings tab again.
+
+## 2026-11-15: audit over remote help (M-HNBJNV): the second head carries our driver
+
+The reporter enrolled the machine in remote help (M-HNBJNV, VICO98,
+agent 0.17.0). Audited on boot 12. Evidence:
+[`../probe/field-radeon-9250-hnbjnv-2026-11-15/`](../probe/field-radeon-9250-hnbjnv-2026-11-15/),
+`C:\V9XDIAG` as pulled before the test below, and a screenshot of the
+Settings tab. The reporter's three `V9XSURV` files that were also in
+that folder are kept out of the repository, as before.
+
+### What the machine holds
+
+- Windows 98 SE (4.10.2222 A, Spanish), Pentium III 997 MHz, 512 MiB.
+  The installed build is `3d5a67b1`, the 0.51.0 release. The desktop is
+  1024x768x16; `V9XHW.INI` shows pitch 2048 agreed with the BIOS.
+- **Both PCI functions of the card are bound to our `vbe` driver:**
+  - `1002:5960` (class 0300) is `Display\0003`, matched by `PCI\CC_0300`.
+  - `1002:5940`, the second head (class 0380), is `Display\0004`. Its
+    `MatchingDeviceId` is `PCI\VEN_1234&DEV_1111&SUBSYS_11001AF4`, the
+    QEMU/Bochs VGA row. So a Have Disk pick forced our INF onto it.
+  - Device Manager shows both with no problem code.
+- Five Display class instances in all, three of ours:
+  - `0000`: `sis`, the SiS 6326 row;
+  - `0001`, `0002`: WinVBE;
+  - `0003`, `0004`: `vbe`.
+
+  Of the three marked instances `V9XSYNC.INI` counts, two are on this
+  card and one belongs to a card that is no longer fitted.
+- `HKLM\Config\0001\Display\Settings` has a monitor subkey for the
+  second head at 640x480x8. It also has subkeys for a GeForce2 MX
+  (`10DE:0110`) and the 9200SE's second head (`1002:5D44`), neither of
+  which is fitted.
+
+### The Settings tab, run once
+
+At 22:15 guest time, Display Properties was opened and the Settings tab
+clicked:
+- The tab shows **two monitors**: "1" on the Velocity9x VBE adapter, and
+  "2" not attached.
+- `V9XTRAIL.TXT` gained a new `libmain`, `query` and `enable-ok` at
+  22:15:53, with the desktop already running. A second instance of
+  `V9XDISP.DRV` was loaded and enabled for display 2.
+- `V9XBOOT.INI` was rewritten by that instance. It shows the same
+  1024x768x16 surface and finds the MTRR already set (`MtrrWrite=present`).
+
+The dialog was then cancelled. The screenshot path cannot see the CRT,
+so the break itself was not observed here. Within a minute Explorer's
+windows were gone with `EXPLORER.EXE` still running, which looks like a
+shutdown. The machine went offline at 02:24 UTC, before the `reset`
+sent for it reached it. Most likely the owner restarted it after the
+screen broke. Not confirmed.
+
+### Reading
+
+Partly measured, partly read from source:
+- **Measured:** a second instance of our driver loads and enables on
+  the same card when the Settings tab opens. It does that because
+  Windows 98 multi-monitor treats the second head as its own display.
+- **Read from source:** `V9XHARDWAREDISABLE`
+  (`src/display16/runtime.asm`) sets VGA mode 3 with `INT 10h` when an
+  instance is disabled.
+  - When the dialog releases display 2, that call goes to the one
+    physical card, which the primary desktop is still using.
+  - The card then scans out a text mode over a frame buffer that
+    Windows keeps writing at the graphics geometry. That is the
+    80-column coloured cell grid in the 2026-11-14 photos.
+- Not observed: the `Disable` call itself. It is not in the trail.
+
+This explains every account so far:
+- The fault is tied to the Settings tab and to changing settings.
+- The boot is clean.
+- The fault predates WinVBE.
+- `MarkedInstances=3` is a side effect of the extra bindings, not the
+  cause.
+
+Hypothesis 3, "installed on the second head", is now the leading cause,
+and the BIOS-call and WinVBE candidates lose their support.
+
+### Fix on the machine (owed, not done)
+
+In Device Manager, remove or disable the second "Velocity9x VBE-generic
+display" entry (`1002:5940`). When Windows offers a driver for that
+function again, leave it with no driver. Then restart and open the
+Settings tab: it should show one monitor and leave the screen intact.
+
+### Driver side (not decided)
+
+The `vbe` package cannot drive a second head. Two options, neither
+tested:
+- Its 16-bit driver could refuse to enable when a primary instance is
+  already live on the same adapter.
+- Its INF could carry an explicit no-driver entry for class 0380
+  functions.
+
+The QEMU row matching the 9250's second head shows that a Have Disk
+install can force any row onto any device.
