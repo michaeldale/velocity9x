@@ -3,7 +3,8 @@
 Date: 2026-11-15 (checked 2026-11-16 local)
 
 Machine: M-HNBJNV, Radeon 9250 (`1002:5960`), Windows 98 SE. Build:
-merge commit `20740abb` (main at `e738aa90` merged into `ati-rv280`).
+merge commit `20740abb` (main at `1551795e` merged into `ati-rv280`,
+whose tip `e738aa90` was Michael's plan commit on the branch).
 `run-checks.ps1` passed on it. Evidence:
 [`../probe/field-radeon-9250-hnbjnv-2026-11-15/premerge-boot27/`](../probe/field-radeon-9250-hnbjnv-2026-11-15/premerge-boot27/).
 
