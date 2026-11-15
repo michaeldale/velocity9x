@@ -66,8 +66,11 @@ static void v9x_rv280_fill_engine(unsigned long framebuffer_linear_base,
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_RV280_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RV280;
+    /* FLIP: the legacy CRTC's CRTC_OFFSET, where the register probe read
+     * the VBE desktop (rv280_scanout.c). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
 }
 
 /* The row's tail, shared by the chip and its alias: everything after the

@@ -2,17 +2,22 @@
 
 Date: 2026-11-15
 
-Status: phases 0 to 3 done on branch `ati-rv280`. The `rv280` row runs
-M-HNBJNV's 9250 (boot 18) with DirectDraw fill and copy on the 2D engine,
-GDI in the screen shadow, and VBE modes.
+Status: phases 0 to 4 done on branch `ati-rv280`. The `rv280` row runs
+M-HNBJNV's 9250 (boot 19) with DirectDraw fill, copy and flips on the
+hardware, GDI in the screen shadow, and VBE modes.
 - **Phase 2:** the scanout sits at GPU address 0, the card has 128 MiB,
   and the CP is off
   ([record](../decisions/2026-11-15-rv280-register-probe.md)).
 - **Phase 3:** the RS690 builder is byte-exact here with the pre-R300
   flush, and V9XDDP runs on the engine
   ([record](../decisions/2026-11-15-rv280-2d-write-probe.md)).
+- **Phase 4:** flips go through `CRTC_OFFSET` under `OFFSET_LOCK`, as
+  Linux's `r100_page_flip` does. They are taken at the blank at 8, 16
+  and 32 bpp, 23 of 23 by the time each was called done
+  ([record](../decisions/2026-11-15-rv280-flips.md)).
 
-Next is phase 4, flips. Direct3D is `none` on this row until phase 5:
+Next is phase 5, Direct3D on the R200. Direct3D is `none` on this row
+until then:
 the `vbe` package gave this card software Direct3D, and the ati family
 defaults to hardware.
 

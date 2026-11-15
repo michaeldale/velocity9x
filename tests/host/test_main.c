@@ -477,6 +477,10 @@ unsigned int v9x_run_mach64_crtc_tests(void);
  * blank, on A8U4I5's register reads. */
 unsigned int v9x_run_r128_crtc_tests(void);
 
+/* tests\host\test_rv280_crtc.c: the Radeon 9250's scanout start, flip
+ * status and blank, on M-HNBJNV's register reads. */
+unsigned int v9x_run_rv280_crtc_tests(void);
+
 /* tests\host\test_r128_ring.c: the Rage 128 bus-master ring's placement,
  * size and free space, on A8U4I5's measured aperture. */
 unsigned int v9x_run_r128_ring_tests(void);
@@ -1576,6 +1580,7 @@ int main(int argc, char **argv)
     failures += v9x_run_mach64_draw_tests();
     failures += v9x_run_mach64_crtc_tests();
     failures += v9x_run_r128_crtc_tests();
+    failures += v9x_run_rv280_crtc_tests();
     failures += v9x_run_r128_ring_tests();
     failures += v9x_run_rage2_trap_tests();
     failures += v9x_run_rage2_setup_tests();

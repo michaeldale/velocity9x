@@ -152,8 +152,11 @@ $sources = @(
     "src\display32\engines\eng_rs690.c",
     "src\display32\engines\rs690_scanout.c",
     "src\chipsets\ati\rs690\rs690_2d.c",
-    # The RV280's 2D engine: the same builder, the pre-R300 flush.
+    # The RV280's 2D engine: the same builder, the pre-R300 flush; flips
+    # on its legacy CRTC.
     "src\display32\engines\eng_rv280.c",
+    "src\display32\engines\rv280_scanout.c",
+    "src\chipsets\ati\rv280\rv280_crtc.c",
     # Its D3D object's words, for the bring-up and d3d_nv3.c.
     "src\chipsets\nvidia\nv3_3d.c",
     # The Rage 128 2D engine: fill and copy through the host-tested builder.

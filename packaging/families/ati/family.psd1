@@ -807,7 +807,9 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'ATI_RV280'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # FLIP: CRTC_OFFSET under OFFSET_LOCK, as Linux r100_page_flip
+            # (rv280_scanout.c).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # What M-HNBJNV's VBE 4F00h reports; the card's real memory is
             # read in phase 2 (CONFIG_MEMSIZE).
             VideoMemoryBytes = 16777216

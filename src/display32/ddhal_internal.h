@@ -618,6 +618,21 @@ int v9x_rs690_flip_address(DWORD byte_offset, DWORD *address);
  * not usable. Marks the engine as having drawn, so the next idle wait
  * flushes. */
 int v9x_rs690_3d_begin(DWORD *fb_gpu_base, DWORD *desktop_offset);
+/* The Radeon 9250's (RV280) legacy CRTC, in engines/rv280_scanout.c:
+ * active only for ATI_RV280 stamped with V9X_DD_ENGINE_CAP_FLIP. Written
+ * under OFFSET_LOCK as r100_page_flip does, taken at the vertical blank;
+ * pending until GUI_TRIG_OFFSET clears. */
+int v9x_rv280_scanout_active(void);
+int v9x_rv280_scanout_live(void);
+int v9x_rv280_in_vblank(void);
+int v9x_rv280_set_display_start(DWORD byte_offset);
+int v9x_rv280_flip_pending(void);
+void v9x_rv280_note_flip_done(void);
+void v9x_rv280_scanout_reset(void);
+/* engines/eng_rv280.c, for rv280_scanout.c: CRTC_OFFSET's value for the
+ * surface at byte_offset, after the 2D engine has gone idle; zero when it
+ * cannot be given. */
+int v9x_rv280_flip_address(DWORD byte_offset, DWORD *value);
 /* Non-zero when this Rage 128's flips go into the CCE ring behind the
  * frame instead of waiting for it. */
 int v9x_r128_flip_queues(void);

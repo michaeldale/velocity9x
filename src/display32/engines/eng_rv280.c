@@ -30,6 +30,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/rs690_2d.h"
+#include "velocity9x/rv280_crtc.h"
 
 /* Bounded busy-wait, as the RS690's: it only has to tell slow from stuck. */
 #define V9X_RV280_WAIT_SPINS 0x00200000ul
@@ -303,6 +304,33 @@ static int v9x_rv280_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     }
     v9x_rv280_emit(&blt);
     return V9X_BLT_DONE;
+}
+
+/*
+ * For rv280_scanout.c: the CRTC_OFFSET value, without the lock, for the
+ * surface at byte_offset into the mapped frame buffer, once the engine has
+ * finished everything drawn so far, so a flip never shows a frame the engine
+ * is still writing. Zero when the engine is not validated, does not go idle,
+ * or the offset is not one the CRTC can scan (rv280_crtc.c, host-tested).
+ */
+int v9x_rv280_flip_address(DWORD byte_offset, DWORD *value)
+{
+    v9x_u32 start;
+
+    if (value == 0 || !v9x_rv280_wait_idle(1)) {
+        return 0;
+    }
+    if (byte_offset > 0xfffffffful - v9x_rv280_desktop_offset() ||
+        v9x_rv280_crtc_start(v9x_rv280_fb_base,
+                             v9x_rv280_desktop_offset() +
+                                 v9x_hal->fb.vram_bytes,
+                             v9x_rv280_desktop_offset() + byte_offset,
+                             v9x_hal->fb.bits_per_pixel / 8ul,
+                             &start) != V9X_STATUS_OK) {
+        return 0;
+    }
+    *value = start;
+    return 1;
 }
 
 /* CANBLT is the non-blocking idle poll, as on the RS690. */
