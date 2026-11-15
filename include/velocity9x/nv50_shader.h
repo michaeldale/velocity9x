@@ -45,6 +45,38 @@
 /* interp's second source when there is none (linear, not perspective). */
 #define V9X_NV50_SH_NONE  0xfffffffful
 
+/*
+ * Modifiers carried in an operand's bits 18:16. NEG and ABS on a source,
+ * SAT (clamp to [0, 1]) on a destination. Only the instructions that
+ * encode them take them (fadd, fmul and fmad negate and saturate; fmin,
+ * fmax and set negate and take the absolute value); anywhere else a
+ * modifier makes the program invalid rather than silently dropped.
+ */
+#define V9X_NV50_SH_MOD_NEG          0x00010000ul
+#define V9X_NV50_SH_MOD_ABS          0x00020000ul
+#define V9X_NV50_SH_MOD_SAT          0x00040000ul
+#define V9X_NV50_SH_MODS             0x00070000ul
+#define V9X_NV50_SH_NEG(operand) ((v9x_u32)(operand) | V9X_NV50_SH_MOD_NEG)
+#define V9X_NV50_SH_ABS(operand) ((v9x_u32)(operand) | V9X_NV50_SH_MOD_ABS)
+#define V9X_NV50_SH_SAT(operand) ((v9x_u32)(operand) | V9X_NV50_SH_MOD_SAT)
+
+/*
+ * Condition codes (Mesa's emitCondCode, envydis' setf and predicate
+ * tables): ordered float comparisons for set, and the tests a predicated
+ * instruction makes of a flags register.
+ */
+#define V9X_NV50_SH_CC_NEVER         0x0ul
+#define V9X_NV50_SH_CC_LT            0x1ul
+#define V9X_NV50_SH_CC_EQ            0x2ul
+#define V9X_NV50_SH_CC_LE            0x3ul
+#define V9X_NV50_SH_CC_GT            0x4ul
+#define V9X_NV50_SH_CC_NE            0x5ul
+#define V9X_NV50_SH_CC_GE            0x6ul
+#define V9X_NV50_SH_CC_ALWAYS        0xful
+
+/* The four flags registers, $c0-$c3. */
+#define V9X_NV50_SH_FLAGS_MAX        4ul
+
 /* Instruction sizes. */
 #define V9X_NV50_SH_SHORT            4ul
 #define V9X_NV50_SH_LONG             8ul
@@ -60,6 +92,14 @@ struct v9x_nv50_sh {
      * hardware cannot encode; the program is then unusable. */
     v9x_u32 overflow;
     v9x_u32 invalid;
+    /* v9x_nv50_sh_predicate's condition and flags register for the next
+     * instruction, which must be long; pred_set while one is pending. */
+    v9x_u32 pred_set;
+    v9x_u32 pred_cc;
+    v9x_u32 pred_reg;
+    /* The last instruction is a flow instruction (kil), which has no
+     * exit bit. */
+    v9x_u32 last_flow;
 };
 
 void v9x_nv50_sh_init(struct v9x_nv50_sh *sh, v9x_u32 *words, v9x_u32 max);
@@ -91,7 +131,38 @@ void v9x_nv50_sh_interp(struct v9x_nv50_sh *sh, v9x_u32 dst,
  */
 void v9x_nv50_sh_tex(struct v9x_nv50_sh *sh, v9x_u32 dst, v9x_u32 tex,
                      v9x_u32 samp, v9x_u32 mask, v9x_u32 live);
-/* End the program at the last instruction, which must be long. */
+/*
+ * The same fetch with argc coordinates (1 to 4) in dst onwards: three for
+ * a 3D texture, or three with cube set for a cube map (a direction, any
+ * length).
+ */
+void v9x_nv50_sh_tex_n(struct v9x_nv50_sh *sh, v9x_u32 dst, v9x_u32 tex,
+                       v9x_u32 samp, v9x_u32 mask, v9x_u32 argc,
+                       v9x_u32 cube);
+/* dst = min(a, b) or max(a, b), f32, long; a a register or input, b may
+ * be a constant; NEG and ABS on either. */
+void v9x_nv50_sh_fmin(struct v9x_nv50_sh *sh, v9x_u32 dst, v9x_u32 a,
+                      v9x_u32 b);
+void v9x_nv50_sh_fmax(struct v9x_nv50_sh *sh, v9x_u32 dst, v9x_u32 a,
+                      v9x_u32 b);
+/*
+ * set.f32, long: compares a with b by cc (V9X_NV50_SH_CC_*) and writes
+ * 0xffffffff when it holds, else 0, to dst, or to nothing when dst is
+ * V9X_NV50_SH_NONE. flags, a flags register number or V9X_NV50_SH_NONE,
+ * also takes the result's flags: a later instruction predicated on it
+ * with CC_NE runs where the comparison held, CC_EQ where it did not
+ * (Mesa's pattern for a predicate, nv50_ir_lowering_nv50.cpp).
+ */
+void v9x_nv50_sh_set(struct v9x_nv50_sh *sh, v9x_u32 dst, v9x_u32 cc,
+                     v9x_u32 a, v9x_u32 b, v9x_u32 flags);
+/* The next instruction, which must be long, runs only where flags
+ * register reg passes cc. A select is a pair of predicated moves. */
+void v9x_nv50_sh_predicate(struct v9x_nv50_sh *sh, v9x_u32 cc, v9x_u32 reg);
+/* Discard the fragment (Mesa's emitFlow for OP_DISCARD), predicated or
+ * not. A program that kills needs FP_CONTROL's USES_KIL. */
+void v9x_nv50_sh_kil(struct v9x_nv50_sh *sh);
+/* End the program at the last instruction, which must be long and not a
+ * kil. */
 void v9x_nv50_sh_exit(struct v9x_nv50_sh *sh);
 
 #endif
