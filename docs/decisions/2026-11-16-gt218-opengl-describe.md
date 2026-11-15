@@ -2,8 +2,9 @@
 
 Date: 2026-11-16
 
-Status: fixed and measured on W9QI0DAD (V9XGLP, boot 31); being installed
-on M-BXMFA8, where Daniel reported it (Quake 3 and Quake II demos).
+Status: fixed and measured on W9QI0DAD (V9XGLP, boot 31) and on M-BXMFA8,
+where Daniel reported it (Quake 3 demo, boot 136: every textured draw on
+the card; no picture yet).
 
 Evidence: [`../probe/gt218-opengl-describe-2026-11-16/`](../probe/gt218-opengl-describe-2026-11-16/).
 
@@ -66,11 +67,35 @@ Same probe binary, boot 30 (DDI 8 build, no fix) against boot 31 (fix):
 So W9QI0DAD reproduced Daniel's failure in the probe: every textured
 read-back was black before the fix.
 
+## Measured: Quake 3 demo on M-BXMFA8
+
+The fix build (`gl-describe-dirty`, V9XGL 0.53.0) was installed by the
+WININIT route on boot 136. All five files were hash-checked and
+`WININIT.INI` was gone. The boot needed the owner's power-cycle: a
+bootable USB stick had been left in the machine. The agent started the
+Quake 3 demo, which ran for about 190 s
+(`m-bxmfa8-q3-fixed-V9XGL-excerpt.txt`):
+
+- `describe result=0 engine=17`;
+- every textured batch on the card: `hw=777330/36842034`, with
+  `cpu=0/0` and `hw-refused=0/0`;
+- `hwtex creates=10 create-failed=0`, 731 uploads (721 partial: the
+  intro cinematic);
+- about 91 swaps a second, as before the fix.
+
+The agent's screenshots of the game window timed out through the relay,
+so this run has no picture. The visual check is the owner's: Quake 3
+and Quake II, asked by chat, answer pending.
+
+The relay needed one change for this install: the 1.2 MB HAL upload
+timed out twice at the agent tool's pipeline window of 32 chunks (1 MB
+in one relay POST), and went through with a window of 4. That is a
+remote-agent matter, recorded here only because it decided the route.
+
 ## Not yet seen
 
-Quake 3 and Quake II on M-BXMFA8 after the fix (installation in
-progress at writing); GL two-unit draws (the interface still reports one
-unit, `texture_units` 1).
+The owner's view of Quake 3 and Quake II; GL two-unit draws (the
+interface still reports one unit, `texture_units` 1).
 
 ## Gates
 
