@@ -1,0 +1,199 @@
+1 pid=FFFD3543 attach instance=05EF0000 tls=19 version=0.52.0 V9XGL build=8e4a5b63 time=2026-11-15 14:03:32 uptime-ms=7703227 exe=C:\GAMES\Q3ADEMO\QUAKE3.EXE
+2 pid=FFFD3543 DrvValidateVersion version=1
+3 pid=FFFD3543 DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFD3543 describe result=0 engine=0 formats=00000002
+5 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+6 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+7 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+8 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+9 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+10 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+11 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+12 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+13 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+14 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+15 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+16 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+17 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+18 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+19 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+20 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+21 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+22 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+23 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+24 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+25 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+26 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+27 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+28 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+29 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+30 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+31 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+32 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+33 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+34 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+35 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+36 pid=FFFD3543 DrvSetPixelFormat hdc=00000776 index=1 recorded=1
+37 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=0 -> count=1
+38 pid=FFFD3543 DrvDescribePixelFormat index=1 bytes=40 -> count=1
+39 pid=FFFD3543 DrvCreateLayerContext hdc=00000776 layer=0 -> 1
+40 pid=FFFD3543 drawable window=00000C3C 640x480
+41 pid=FFFD3543   depth cell=16 bits=16
+42 pid=FFFD3543 DrvSetContext hdc=00000776 context=1 -> 1
+43 pid=FFFD3543 tnl allowed=0 batches=0 triangles=0
+44 pid=FFFD3543 DrvGetProcAddress name=wglSwapIntervalEXT -> NULL
+45 pid=FFFD3543 DrvGetProcAddress name=glLockArraysEXT -> entry
+46 pid=FFFD3543 DrvGetProcAddress name=glUnlockArraysEXT -> entry
+47 pid=FFFD3543 state tex=1027 size=02000100 tex=01010200 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+48 pid=FFFD3543 draw result=4 triangles=3 submitted=0
+49 pid=FFFD3543   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+50 pid=FFFD3543   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+51 pid=FFFD3543   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+52 pid=FFFD3543 time interval-ms=7703421 swaps=0 present-ms=0 draw-ms=288965826 upload-ms=0
+53 pid=FFFD3543 tsc frames=0 wall-ms=7703421 vertex-ms=2281079 flush-in-vertex-ms=0 flush-other-ms=49025245 bind-ms=420534 iface-ms=1912098 beginend-ms=2628049 swap-ms=0 vertices=4 flushes=1 draws=1 sink-ms=385200 sink-prep-ms=257186 sinks=1
+54 pid=FFFD3543 sink begin-ms=2233581 flush-ms=0 copy-ms=91521 prep-texture-ms=211426 prep-state-ms=39968 prep-same-ms=2317
+55 pid=FFFD3543 hwno hwtex-ms=42285 iface-cpu-ms=1914415 not-cpu=1 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+56 pid=FFFD3543 prim transform-ms=810947 inside-ms=66034 window-ms=55608 assemble-ms=556078 history-ms=13902 fast=0 clipped=2 culled=0
+57 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=2147483648/37 bind-ms=4188543/48 param-ms=891463/99 env-ms=48657/1 other-ms=0/0 tex-flush-ms=481934/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1891824/9
+58 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=1/3 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+59 pid=FFFD3543 counters hwtex lost=0
+60 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+61 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+62 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+63 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=1 r7=0 r8=0 other=0
+64 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+65 pid=FFFD3543 draw result=4 triangles=3 submitted=0
+66 pid=FFFD3543   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+67 pid=FFFD3543   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+68 pid=FFFD3543   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+69 pid=FFFD3543 draw result=4 triangles=3 submitted=0
+70 pid=FFFD3543   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+71 pid=FFFD3543   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+72 pid=FFFD3543   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+73 pid=FFFD3543 draw result=4 triangles=3 submitted=0
+74 pid=FFFD3543   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+75 pid=FFFD3543   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+76 pid=FFFD3543   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+77 pid=FFFD3543 draw result=4 triangles=3 submitted=0
+78 pid=FFFD3543   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+79 pid=FFFD3543   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+80 pid=FFFD3543   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+81 pid=FFFD3543 draw result=4 triangles=3 submitted=0
+82 pid=FFFD3543   v0 sx=441FFFFF sy=43F00000 sz=00000000 rhw=3F800000 tu=3F7FBFFF tv=3F7F7FFF
+83 pid=FFFD3543   v1 sx=00000000 sy=00000000 sz=00000000 rhw=3F800000 tu=3A800000 tv=3B000000
+84 pid=FFFD3543   v2 sx=44200000 sy=00000000 sz=00000000 rhw=3F800000 tu=3F7FC000 tv=3B000000
+85 pid=FFFD3543 cva first glLockArraysEXT first=0 count=4
+86 pid=FFFD3543 state tex=1041 size=02000200 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+87 pid=FFFD3543 state tex=1048 size=00800080 tex=01010200 blend=00050600 depth=01040101 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+88 pid=FFFD3543 state tex=1049 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FF242424 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+89 pid=FFFD3543 state tex=1048 size=00800080 tex=01010200 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+90 pid=FFFD3543 state tex=1046 size=01000080 tex=01040201 blend=01020200 depth=01040001 colour=FF242424 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+91 pid=FFFD3543 state tex=1047 size=00400080 tex=01040201 blend=01020200 depth=01040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+92 pid=FFFD3543 state tex=1035 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=FF000000 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+93 pid=FFFD3543 state tex=1036 size=01000100 tex=01040202 blend=01050600 depth=00040001 colour=19FF0000 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+94 pid=FFFD3543 state tex=1032 size=01000100 tex=01040202 blend=01050600 depth=01040001 colour=FF7F0000 mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+95 pid=FFFD3543 state tex=1038 size=00200020 tex=01040202 blend=01050600 depth=00040001 colour=FFFFFFFF mask=7 scissor=0,0,640,480 fog=0 tex1=0/00000000 env1=000000
+96 pid=FFFD3543 time interval-ms=10005 swaps=910 present-ms=460 draw-ms=12 upload-ms=0
+97 pid=FFFD3543 tsc frames=910 wall-ms=10005 vertex-ms=3 flush-in-vertex-ms=0 flush-other-ms=18 bind-ms=2 iface-ms=12 beginend-ms=1 swap-ms=460 vertices=2884 flushes=6140 draws=6140 sink-ms=25 sink-prep-ms=3 sinks=6140
+98 pid=FFFD3543 sink begin-ms=0 flush-ms=13 copy-ms=9 prep-texture-ms=1 prep-state-ms=1 prep-same-ms=0
+99 pid=FFFD3543 hwno hwtex-ms=0 iface-cpu-ms=12 not-cpu=6140 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+100 pid=FFFD3543 prim transform-ms=32 inside-ms=23 window-ms=50 assemble-ms=93 history-ms=10 fast=170525 clipped=47307 culled=0
+101 pid=FFFD3543 entry texsub-ms=3572/721 teximage-ms=3/4 bind-ms=0/2077 param-ms=0/16 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=0/4078
+102 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=2821/108479 cpu-nonsquare=3320/147282 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+103 pid=FFFD3543 counters hwtex lost=0
+104 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+105 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+106 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+107 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=6141 r7=0 r8=0 other=0
+108 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+109 pid=FFFD3543 time interval-ms=10000 swaps=909 present-ms=459 draw-ms=46 upload-ms=0
+110 pid=FFFD3543 tsc frames=909 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=61 bind-ms=6 iface-ms=46 beginend-ms=0 swap-ms=459 vertices=0 flushes=24903 draws=24903 sink-ms=111 sink-prep-ms=10 sinks=24904
+111 pid=FFFD3543 sink begin-ms=0 flush-ms=56 copy-ms=43 prep-texture-ms=6 prep-state-ms=3 prep-same-ms=1
+112 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=46 not-cpu=24903 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+113 pid=FFFD3543 prim transform-ms=154 inside-ms=109 window-ms=240 assemble-ms=419 history-ms=49 fast=836610 clipped=210474 culled=0
+114 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/10005 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12734
+115 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=16462/633173 cpu-nonsquare=14582/837744 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+116 pid=FFFD3543 counters hwtex lost=0
+117 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+118 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+119 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+120 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=31044 r7=0 r8=0 other=0
+121 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+122 pid=FFFD3543 time interval-ms=10009 swaps=910 present-ms=460 draw-ms=47 upload-ms=0
+123 pid=FFFD3543 tsc frames=910 wall-ms=10009 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=62 bind-ms=6 iface-ms=47 beginend-ms=0 swap-ms=460 vertices=0 flushes=25503 draws=25503 sink-ms=114 sink-prep-ms=10 sinks=25502
+124 pid=FFFD3543 sink begin-ms=0 flush-ms=58 copy-ms=44 prep-texture-ms=6 prep-state-ms=3 prep-same-ms=1
+125 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=47 not-cpu=25503 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+126 pid=FFFD3543 prim transform-ms=154 inside-ms=109 window-ms=239 assemble-ms=428 history-ms=49 fast=830488 clipped=216097 culled=0
+127 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/10004 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12732
+128 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=30106/1158042 cpu-nonsquare=26441/1533921 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+129 pid=FFFD3543 counters hwtex lost=0
+130 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+131 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+132 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+133 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=56547 r7=0 r8=0 other=0
+134 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+135 pid=FFFD3543 time interval-ms=10004 swaps=878 present-ms=444 draw-ms=47 upload-ms=0
+136 pid=FFFD3543 tsc frames=878 wall-ms=10004 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=343 bind-ms=287 iface-ms=47 beginend-ms=0 swap-ms=443 vertices=0 flushes=26214 draws=26214 sink-ms=394 sink-prep-ms=10 sinks=26214
+137 pid=FFFD3543 sink begin-ms=0 flush-ms=339 copy-ms=42 prep-texture-ms=6 prep-state-ms=3 prep-same-ms=1
+138 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=47 not-cpu=26214 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+139 pid=FFFD3543 prim transform-ms=148 inside-ms=106 window-ms=228 assemble-ms=449 history-ms=48 fast=776348 clipped=234230 culled=0
+140 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/9658 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12292
+141 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=43276/1664648 cpu-nonsquare=39485/2220930 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+142 pid=FFFD3543 counters hwtex lost=0
+143 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+144 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+145 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+146 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=82761 r7=0 r8=0 other=0
+147 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+148 pid=FFFD3543 time interval-ms=10000 swaps=904 present-ms=457 draw-ms=46 upload-ms=0
+149 pid=FFFD3543 tsc frames=904 wall-ms=10000 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=61 bind-ms=6 iface-ms=46 beginend-ms=0 swap-ms=459 vertices=0 flushes=24945 draws=24945 sink-ms=112 sink-prep-ms=10 sinks=24946
+150 pid=FFFD3543 sink begin-ms=0 flush-ms=56 copy-ms=44 prep-texture-ms=6 prep-state-ms=3 prep-same-ms=1
+151 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=46 not-cpu=24945 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+152 pid=FFFD3543 prim transform-ms=153 inside-ms=109 window-ms=239 assemble-ms=422 history-ms=49 fast=830557 clipped=210772 culled=0
+153 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/9950 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12664
+154 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=56842/2186457 cpu-nonsquare=50864/2910003 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+155 pid=FFFD3543 counters hwtex lost=0
+156 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+157 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+158 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+159 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=107706 r7=0 r8=0 other=0
+160 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+161 pid=FFFD3543 time interval-ms=10002 swaps=874 present-ms=442 draw-ms=44 upload-ms=0
+162 pid=FFFD3543 tsc frames=874 wall-ms=10002 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=59 bind-ms=6 iface-ms=44 beginend-ms=0 swap-ms=442 vertices=0 flushes=24171 draws=24171 sink-ms=109 sink-prep-ms=10 sinks=24170
+163 pid=FFFD3543 sink begin-ms=0 flush-ms=55 copy-ms=42 prep-texture-ms=5 prep-state-ms=3 prep-same-ms=0
+164 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=45 not-cpu=24171 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+165 pid=FFFD3543 prim transform-ms=147 inside-ms=105 window-ms=230 assemble-ms=407 history-ms=47 fast=800953 clipped=204196 culled=0
+166 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/9608 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12228
+167 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=69946/2690554 cpu-nonsquare=61931/3575115 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+168 pid=FFFD3543 counters hwtex lost=0
+169 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+170 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+171 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+172 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=131877 r7=0 r8=0 other=0
+173 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+174 pid=FFFD3543 time interval-ms=10008 swaps=905 present-ms=457 draw-ms=49 upload-ms=0
+175 pid=FFFD3543 tsc frames=905 wall-ms=10008 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=65 bind-ms=6 iface-ms=49 beginend-ms=0 swap-ms=458 vertices=0 flushes=27042 draws=27042 sink-ms=117 sink-prep-ms=10 sinks=27042
+176 pid=FFFD3543 sink begin-ms=0 flush-ms=61 copy-ms=44 prep-texture-ms=6 prep-state-ms=3 prep-same-ms=1
+177 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=49 not-cpu=27042 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+178 pid=FFFD3543 prim transform-ms=153 inside-ms=109 window-ms=236 assemble-ms=457 history-ms=49 fast=800213 clipped=241442 culled=0
+179 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/9955 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12670
+180 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=83521/3212739 cpu-nonsquare=75398/4283640 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+181 pid=FFFD3543 counters hwtex lost=0
+182 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+183 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+184 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+185 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=158919 r7=0 r8=0 other=0
+186 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+187 pid=FFFD3543 time interval-ms=10002 swaps=906 present-ms=458 draw-ms=46 upload-ms=0
+188 pid=FFFD3543 tsc frames=906 wall-ms=10002 vertex-ms=0 flush-in-vertex-ms=0 flush-other-ms=61 bind-ms=6 iface-ms=46 beginend-ms=0 swap-ms=458 vertices=0 flushes=25278 draws=25278 sink-ms=113 sink-prep-ms=10 sinks=25278
+189 pid=FFFD3543 sink begin-ms=0 flush-ms=57 copy-ms=44 prep-texture-ms=6 prep-state-ms=3 prep-same-ms=1
+190 pid=FFFD3543 hwno hwtex-ms=1 iface-cpu-ms=47 not-cpu=25278 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+191 pid=FFFD3543 prim transform-ms=153 inside-ms=109 window-ms=239 assemble-ms=425 history-ms=49 fast=828843 clipped=213963 culled=0
+192 pid=FFFD3543 entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=1/9966 param-ms=0/0 env-ms=0/0 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/12684
+193 pid=FFFD3543 paths batches/triangles untextured=0/0 hw=0/0 cpu=97111/3735501 cpu-nonsquare=87086/4976190 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+194 pid=FFFD3543 counters hwtex lost=0
+195 pid=FFFD3543 counters tnl batches=0 triangles=0 refused=0 failed=0
+196 pid=FFFD3543 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+197 pid=FFFD3543 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+198 pid=FFFD3543 counters hwtex live=0 creates=0 create-failed=0 evictions=0 uploads=0 partial=0 upload-kb=0 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=184197 r7=0 r8=0 other=0
+199 pid=FFFD3543 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0

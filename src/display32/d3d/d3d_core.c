@@ -10283,6 +10283,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         } else {
             name = "Velocity9x Radeon HD 2600 XT";
         }
+    } else if (ops == &v9x_d3d_engine_nv50) {
+        out->engine = V9X_R3D_ABI_ENGINE_NV50;
+        name = "Velocity9x GeForce 210";
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers
@@ -10437,6 +10440,18 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
          * 2048, placed by v9x_d3d_r6_create_surface at the linear-aligned
          * pitch (V9XD32's texture checks, M-NZHWBR boots 8-17). CPU levels
          * are refused (d3d_r6_map.c) and there is no fallback. */
+        out->hw_texture_size_max = ops->limits->texture_size_max;
+        out->hw_texture_size_min = ops->limits->texture_size_min;
+        out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
+    } else if (ops == &v9x_d3d_engine_nv50) {
+        /* The GeForce 210's: video-memory textures, 1 to 2048, all three
+         * formats, placed by v9x_d3d_nv50_create_surface with 64-byte
+         * rows on 256-byte bases (V9XD32's texture checks, W9QI0DAD).
+         * CPU levels are refused (d3d_nv50_map.c) and there is no
+         * fallback: without this branch the ICD kept every texture on the
+         * CPU, the engine refused every textured draw, and Quake 3 and
+         * Quake II drew a black window (M-BXMFA8, 2026-11-15). Powers of
+         * two until another shape is measured. */
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;

@@ -268,6 +268,10 @@ typedef struct v9x_r3d_abi_state {
 /* The R6xx CP engine (d3d_r6.c, the HD 2600 XT), 2026-11-13, on the same
  * terms; it described as 0 until then. */
 #define V9X_R3D_ABI_ENGINE_R600     16ul
+/* The GeForce 210's Tesla engine (d3d_nv50.c), 2026-11-16, on the same
+ * terms; it described as 0 until then, and OpenGL drew black on it
+ * (Quake 3 and Quake II on M-BXMFA8). */
+#define V9X_R3D_ABI_ENGINE_NV50     17ul
 
 typedef struct v9x_r3d_abi_describe {
     v9x_u32 struct_bytes;
