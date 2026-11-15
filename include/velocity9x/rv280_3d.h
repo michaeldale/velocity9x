@@ -51,6 +51,12 @@
 #define V9X_RV280_RE_AUX_SCISSOR_CNTL   0x26f0ul
 #define V9X_RV280_PP_TXMULTI_CTL_0      0x2c1cul
 #define V9X_RV280_PP_CNTL_X             0x2cc4ul
+#define V9X_RV280_PP_TXFILTER_0         0x2c00ul
+#define V9X_RV280_PP_TXFORMAT_0         0x2c04ul
+#define V9X_RV280_PP_TXFORMAT_X_0       0x2c08ul
+#define V9X_RV280_PP_TXSIZE_0           0x2c0cul
+#define V9X_RV280_PP_TXPITCH_0          0x2c10ul
+#define V9X_RV280_PP_TXOFFSET_0         0x2d00ul
 #define V9X_RV280_PP_TXCBLEND_0         0x2f00ul
 #define V9X_RV280_PP_TXCBLEND2_0        0x2f04ul
 #define V9X_RV280_PP_TXABLEND_0         0x2f08ul
@@ -76,6 +82,40 @@
  * bits 14:10), A = B = 0, OP MADD: out = 0 * 0 + diffuse. */
 #define V9X_RV280_TXCBLEND_DIFFUSE      0x00001000ul
 #define V9X_RV280_TXABLEND_DIFFUSE      0x00001000ul
+/* PP_CNTL with texture unit 0 sampling into R0 for blend stage 0. */
+#define V9X_RV280_PP_TEX0_BLEND0        0x00001010ul
+/* Decal, R200PrepareComposite's no-mask blend: A = R0 (texel), B = ZERO
+ * complemented, C = ZERO, MADD: out = texel * 1 + 0. */
+#define V9X_RV280_TXCBLEND_TEXEL        0x0010000aul
+#define V9X_RV280_TXABLEND_TEXEL        0x0010000aul
+/* Modulate: A = R0 (texel), B = diffuse (selector 4 at bit 5), C = ZERO,
+ * MADD: out = texel * diffuse. The X driver's mask path, with diffuse for
+ * the mask (radeon_exa_render.c:1096-1106). */
+#define V9X_RV280_TXCBLEND_MODULATE     0x0000008aul
+#define V9X_RV280_TXABLEND_MODULATE     0x0000008aul
+/* PP_TXFILTER_0: MAG and MIN LINEAR bits 0 and 1; CLAMP_S at 23, CLAMP_T
+ * at 27, WRAP 0, CLAMP_LAST 2 (radeon_reg.h:2639-2684). */
+#define V9X_RV280_TXFILTER_LINEAR       0x00000003ul
+#define V9X_RV280_TXFILTER_CLAMP_LAST   0x11000000ul
+/* PP_TXFORMAT_0: RGB565 4, ARGB8888 6, ALPHA_IN_MAP 1<<6, log2 width at
+ * 8, log2 height at 12; ST route 0 (radeon_reg.h:2694-2717). */
+#define V9X_RV280_TXFORMAT_RGB565       0x00000004ul
+#define V9X_RV280_TXFORMAT_ARGB8888     0x00000006ul
+#define V9X_RV280_TXFORMAT_ALPHA_IN_MAP 0x00000040ul
+#define V9X_RV280_TXFORMAT_WIDTH_SHIFT  8u
+#define V9X_RV280_TXFORMAT_HEIGHT_SHIFT 12u
+/* PP_TXOFFSET_0's alignment (R200_TXO_OFFSET_MASK FFFFFFE0h), the pitch's
+ * (R200TextureSetup: a multiple of 32 bytes, written less 32) and the
+ * largest side, 2048 (log2 11 in a 4-bit field). */
+#define V9X_RV280_TEX_ALIGN             32ul
+#define V9X_RV280_TEX_MAX_SIDE          2048ul
+/* SE_VTX_FMT_1: texture 0 has two components (S, T). */
+#define V9X_RV280_VTX_FMT_1_TEX0_ST     0x00000002ul
+
+/* How blend stage 0 combines texel and diffuse colour. */
+#define V9X_RV280_COMBINE_DECAL         0u
+#define V9X_RV280_COMBINE_MODULATE      1u
+
 /* TXCBLEND2_0 / TXABLEND2_0: CLAMP_0_1, OUTPUT_REG_R0. */
 #define V9X_RV280_TXBLEND2_TO_R0        0x00011000ul
 /* SE_VTX_FMT_0: XY always; COLOR_0 packed RGBA (1 << 11). */
@@ -98,9 +138,10 @@
 #define V9X_RV280_TARGET_MAX            2047ul
 
 /* Vertices per SE_VF_CNTL in one triangle list here, and dwords per vertex
- * (X, Y, packed colour). */
+ * (X, Y, packed colour, then S, T when textured). */
 #define V9X_RV280_3D_MAX_VERTICES       12u
 #define V9X_RV280_3D_VERTEX_DWORDS      3u
+#define V9X_RV280_3D_TEX_VERTEX_DWORDS  5u
 
 #define V9X_RV280_3D_LIST_MAX           64u
 
@@ -121,12 +162,32 @@ struct v9x_rv280_3d_target {
     v9x_u32 height;
 };
 
-/* A screen-space vertex: x and y as IEEE single bits, and a packed colour
- * sent as it is. */
+/* A screen-space vertex: x and y as IEEE single bits, a packed colour sent
+ * as it is (a D3DCOLOR, measured: docs\decisions\2026-11-15-rv280-3d-draw-
+ * probe.md), and normalised texture coordinates as IEEE single bits, sent
+ * only for a textured list. */
 struct v9x_rv280_3d_vertex {
     v9x_u32 x_bits;
     v9x_u32 y_bits;
     v9x_u32 colour;
+    v9x_u32 s_bits;
+    v9x_u32 t_bits;
+};
+
+/* Texture unit 0's source: a power-of-two surface with rows packed, in the
+ * frame buffer at a GPU address. */
+struct v9x_rv280_3d_texture {
+    v9x_u32 fb_gpu_base;
+    v9x_u32 fb_bytes;
+    v9x_u32 offset;
+    v9x_u32 pitch_bytes;
+    v9x_u32 bytes_per_pixel;
+    v9x_u32 width;
+    v9x_u32 height;
+    /* Non-zero for bilinear (MAG and MIN LINEAR), else nearest. */
+    v9x_u32 linear;
+    /* Non-zero to clamp S and T to the last texel, else wrap. */
+    v9x_u32 clamp;
 };
 
 /* RB3D_CNTL = 0 (RADEONEngineInit), then RADEONInit3DEngine's R200 branch:
@@ -141,11 +202,24 @@ v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
                                      int gouraud,
                                      struct v9x_rv280_3d_list *list);
 
-/* A triangle list: SE_VF_CNTL then each vertex's dwords to SE_PORT_DATA0.
- * count a multiple of 3, 3..V9X_RV280_3D_MAX_VERTICES. */
+/* The colour buffer and shade model as v9x_rv280_build_3d_target, with
+ * texture unit 0 sampled into blend stage 0 and combined as combine says
+ * (V9X_RV280_COMBINE_*), and S, T in the vertex: R200TextureSetup's unit 0
+ * for a power-of-two texture. INVALID_ARGUMENT for a texture that is not a
+ * power of two on a side, larger than 2048, not 32-byte aligned, not packed
+ * at a 32-byte multiple pitch, or outside the frame buffer; UNSUPPORTED
+ * for a depth other than 16 or 32 bpp or an unknown combine. */
+v9x_status v9x_rv280_build_3d_textured_target(
+    const struct v9x_rv280_3d_target *target, int gouraud,
+    const struct v9x_rv280_3d_texture *texture, v9x_u32 combine,
+    struct v9x_rv280_3d_list *list);
+
+/* A triangle list: SE_VF_CNTL then each vertex's dwords to SE_PORT_DATA0,
+ * with S and T after the colour when textured. count a multiple of 3,
+ * 3..V9X_RV280_3D_MAX_VERTICES. */
 v9x_status v9x_rv280_build_3d_triangles(
     const struct v9x_rv280_3d_vertex *vertices, v9x_u32 count,
-    int colour_order_rgba, struct v9x_rv280_3d_list *list);
+    int colour_order_rgba, int textured, struct v9x_rv280_3d_list *list);
 
 /* WAIT_UNTIL 3D idle-clean, as RadeonFinishComposite ends a draw. */
 v9x_status v9x_rv280_build_3d_finish(struct v9x_rv280_3d_list *list);

@@ -30,6 +30,17 @@
  *   Gouraud   - red, green and blue corners, in the order the flat tests
  *               found red in; each channel inside within a step of the
  *               interpolation at the pixel centre.
+ *   TexDecal  - a 32 x 16 texture (the VxD's gradient, every texel
+ *               different) on a quad of the same size, nearest, decal:
+ *               every pixel its texel, exactly (RGB at 32 bpp), nothing
+ *               outside touched. S and T follow the colour in the vertex.
+ *   TexWrap   - the texture twice across 64 pixels, s from 0 to 2,
+ *               wrapping: exact the same way.
+ *   TexModulate - TexDecal's mapping times a flat vertex colour 80C040h;
+ *               each channel within one step of texel * colour / 255.
+ *   TexBilinear - texels 0-31 x 0-7 magnified 2x, bilinear, clamped; each
+ *               channel within one step of the exact filter plus 1/32 of
+ *               the four texels' spread, the RS690 probe's judge.
  *   FillAfter3D - a 2D fill from the RS690 builder after the 3D tests,
  *               byte-exact, so the 3D state left behind does not break the
  *               engine DirectDraw uses.
@@ -58,6 +69,7 @@
 #define RS_OP_MMIO_WRITE32 1ul
 #define RS_OP_MMIO_READ32 2ul
 #define RS_OP_LFB_FILL32 5ul
+#define RS_OP_LFB_GRADIENT 6ul
 #define RS_OP_LFB_READ_BLOCK 7ul
 #define RS_OP_WAIT_IDLE 8ul
 #define RS_OP_WAIT_FIFO 9ul
@@ -77,6 +89,17 @@
 #define TEST_DWORDS (TEST_BYTES / 4ul)
 #define TEST_FB 0x02000000ul
 #define TEST_PREFILL 0xa5a5a5a5ul
+
+/* The texture: 32 x 16 texels in the surface's format, rows packed, 64 KiB
+ * past the surface. The VxD's gradient op fills it: dword i holds 2i and
+ * 2i + 1 in its halves, so at 16 bpp texel n is n and at 32 bpp texel n is
+ * 2n | (2n + 1) << 16, every texel different from its neighbours. */
+#define TEX_OFFSET (TEST_BASE + 0x10000ul)
+#define TEX_WIDTH 32ul
+#define TEX_HEIGHT 16ul
+
+/* The modulate test's flat vertex colour, D3D ARGB. */
+#define MODULATE_COLOUR 0xff80c040ul
 
 /* A D3D ARGB colour. */
 #define ARGB_RED   0xffff0000ul
@@ -445,6 +468,8 @@ static int rs_draw(const char *name, int gouraud, int order_rgba,
         vertices[index].x_bits = rs_float_bits(rs_tri_x[index]);
         vertices[index].y_bits = rs_float_bits(rs_tri_y[index]);
         vertices[index].colour = colours[index];
+        vertices[index].s_bits = 0u;
+        vertices[index].t_bits = 0u;
     }
 
     rs_begin();
@@ -457,7 +482,7 @@ static int rs_draw(const char *name, int gouraud, int order_rgba,
         return 0;
     }
     rs_add_list(&list);
-    if (v9x_rv280_build_3d_triangles(vertices, 3u, order_rgba, &list) !=
+    if (v9x_rv280_build_3d_triangles(vertices, 3u, order_rgba, 0, &list) !=
         V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
         rs_failed = 1u;
@@ -646,6 +671,383 @@ static void rs_gouraud_test(int order_rgba, int swap_red_blue)
     rs_write_decimal(rs_key(key, name, "WorstChannelError"), (DWORD)worst);
     rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
     if (inside == 0u || wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/* IEEE single bits of num / den. */
+static DWORD rs_ratio_bits(long num, long den)
+{
+    union {
+        float f;
+        DWORD d;
+    } bits;
+
+    bits.f = (float)num / (float)den;
+    return bits.d;
+}
+
+/* Texel (ix, iy) as the gradient op leaves it. */
+static DWORD rs_texel(DWORD ix, DWORD iy)
+{
+    DWORD n = iy * TEX_WIDTH + ix;
+
+    if (rs_bpp == 2u) {
+        return n & 0xfffful;
+    }
+    return (2ul * n) | ((2ul * n + 1ul) << 16);
+}
+
+/* Prefill, the texture, wait idle, the textured state, two triangles
+ * making a quad from (left, 0) to (left + width, TEX_HEIGHT) with s from 0
+ * to s_right and t from 0 to 1 / t_den, the finish, wait idle, read back.
+ * Clamped when linear, wrapping otherwise. */
+static int rs_draw_textured(const char *name, DWORD linear, DWORD combine,
+                            DWORD colour, DWORD left, DWORD width,
+                            long s_right, long t_den)
+{
+    struct v9x_rv280_3d_target target;
+    struct v9x_rv280_3d_texture texture;
+    struct v9x_rv280_3d_vertex vertices[6];
+    struct v9x_rv280_3d_list list;
+    static const int corner_x[6] = { 0, 1, 0, 1, 1, 0 };
+    static const int corner_y[6] = { 0, 0, 1, 0, 1, 1 };
+    char key[64];
+    DWORD before_index;
+    DWORD after_index;
+    int index;
+
+    target.fb_gpu_base = rs_fb_gpu_base;
+    target.fb_bytes = TEST_FB;
+    target.offset = TEST_BASE;
+    target.pitch_bytes = rs_pitch;
+    target.bytes_per_pixel = rs_bpp;
+    target.width = TEST_WIDTH;
+    target.height = rs_height;
+    texture.fb_gpu_base = rs_fb_gpu_base;
+    texture.fb_bytes = TEST_FB;
+    texture.offset = TEX_OFFSET;
+    texture.pitch_bytes = TEX_WIDTH * rs_bpp;
+    texture.bytes_per_pixel = rs_bpp;
+    texture.width = TEX_WIDTH;
+    texture.height = TEX_HEIGHT;
+    texture.linear = linear;
+    texture.clamp = linear;
+    /* Top-left, top-right, bottom-left; top-right, bottom-right,
+     * bottom-left. */
+    for (index = 0; index < 6; ++index) {
+        vertices[index].x_bits =
+            rs_float_bits((long)left + (corner_x[index] ? (long)width : 0l));
+        vertices[index].y_bits =
+            rs_float_bits(corner_y[index] ? (long)TEX_HEIGHT : 0l);
+        vertices[index].colour = colour;
+        vertices[index].s_bits =
+            rs_ratio_bits(corner_x[index] ? s_right : 0l, 1l);
+        vertices[index].t_bits = rs_ratio_bits(corner_y[index], t_den);
+    }
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
+           TEX_WIDTH * TEX_HEIGHT * rs_bpp / 4u);
+    before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (v9x_rv280_build_3d_textured_target(&target, 0, &texture, combine,
+                                           &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_add_list(&list);
+    if (v9x_rv280_build_3d_triangles(vertices, 6u, 0, 1, &list) !=
+        V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_add_list(&list);
+    (void)v9x_rv280_build_3d_finish(&list);
+    rs_add_list(&list);
+    after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_hex(rs_key(key, name, "WaitBefore"),
+                 rs_result_buffer.ops[before_index].result);
+    rs_write_hex(rs_key(key, name, "WaitAfter"),
+                 rs_result_buffer.ops[after_index].result);
+    return 1;
+}
+
+/* The colour bits a pixel compares on: all of a 16-bit pixel, the RGB of a
+ * 32-bit one (the alpha byte is not judged: the 3D engine writes it 0,
+ * docs\decisions\2026-11-15-rv280-3d-draw-probe.md). */
+static DWORD rs_rgb(DWORD pixel)
+{
+    return rs_bpp == 2u ? pixel : (pixel & 0x00fffffful);
+}
+
+/*
+ * Nearest-filtered, decal: a quad from (left, 0) of width pixels and 16 rows
+ * with s from 0 to s_right. Each pixel centre lands in the middle of a
+ * texel, so the result is exact: pixel (x, y) is texel ((x - left) * 32 *
+ * s_right / width mod 32, y), every other pixel the prefill. TexDecal maps
+ * the texture once; TexWrap twice across 64 pixels, wrapping.
+ */
+static void rs_tex_exact_test(const char *name, char letter, DWORD left,
+                              DWORD width, long s_right)
+{
+    const unsigned char *actual;
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD inside_wrong = 0u;
+    DWORD outside_changed = 0u;
+    DWORD first_wrong = 0xfffffffful;
+
+    if (!rs_draw_textured(name, 0ul, V9X_RV280_COMBINE_DECAL, ARGB_RED,
+                          left, width, s_right, 1l)) {
+        return;
+    }
+    rs_save_block(letter);
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+
+            if (x >= left && x < left + width && y < TEX_HEIGHT) {
+                DWORD ix = ((x - left) * TEX_WIDTH * (DWORD)s_right / width) %
+                           TEX_WIDTH;
+
+                if (rs_rgb(pixel) != rs_rgb(rs_texel(ix, y))) {
+                    if (first_wrong == 0xfffffffful) {
+                        first_wrong = y * TEST_WIDTH + x;
+                    }
+                    ++inside_wrong;
+                }
+            } else if (pixel != rs_pixel(rs_model, x, y)) {
+                ++outside_changed;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), inside_wrong);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    if (first_wrong != 0xfffffffful) {
+        DWORD fx = first_wrong % TEST_WIDTH;
+        DWORD fy = first_wrong / TEST_WIDTH;
+
+        rs_write_decimal(rs_key(key, name, "FirstWrongX"), fx);
+        rs_write_decimal(rs_key(key, name, "FirstWrongY"), fy);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, fx, fy));
+        rs_write_hex(rs_key(key, name, "FirstWrongTexel"),
+                     rs_texel(((fx - left) * TEX_WIDTH * (DWORD)s_right /
+                               width) % TEX_WIDTH, fy));
+    }
+    if (inside_wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/* TexDecal's mapping times a flat vertex colour: each channel within one
+ * step of texel * colour / 255. */
+static void rs_tex_modulate_test(void)
+{
+    static const char name[] = "TexModulate";
+    static const long colour8[3] = { 0x80l, 0xc0l, 0x40l };
+    const unsigned char *actual;
+    char key[64];
+    long values[3];
+    long texel[3];
+    long maxima[3];
+    long worst = 0l;
+    DWORD x;
+    DWORD y;
+    DWORD inside_wrong = 0u;
+    DWORD outside_changed = 0u;
+    int channel;
+
+    if (!rs_draw_textured(name, 0ul, V9X_RV280_COMBINE_MODULATE,
+                          MODULATE_COLOUR, 16u, TEX_WIDTH, 1l, 1l)) {
+        return;
+    }
+    rs_save_block('M');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+
+            if (x >= 16u && x < 16u + TEX_WIDTH && y < TEX_HEIGHT) {
+                rs_channels(pixel, values, maxima);
+                rs_channels(rs_texel(x - 16u, y), texel, maxima);
+                for (channel = 0; channel < 3; ++channel) {
+                    long expected = (texel[channel] * colour8[channel] +
+                                     127l) / 255l;
+                    long error = rs_abs(values[channel] - expected);
+
+                    if (error > worst) {
+                        worst = error;
+                    }
+                    if (error > 1l) {
+                        ++inside_wrong;
+                        break;
+                    }
+                }
+            } else if (pixel != rs_pixel(rs_model, x, y)) {
+                ++outside_changed;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), inside_wrong);
+    rs_write_decimal(rs_key(key, name, "WorstChannelError"), (DWORD)worst);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    if (inside_wrong != 0u || outside_changed != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/* A texel index clamped to the texture, as CLAMP_LAST samples. */
+static DWORD rs_clamp_index(long index, DWORD limit)
+{
+    if (index < 0l) {
+        return 0u;
+    }
+    if (index >= (long)limit) {
+        return limit - 1u;
+    }
+    return (DWORD)index;
+}
+
+/* The bilinear filter's tolerance: one step plus this share of the four
+ * texels' spread, as on the RS690 (its weights were coarse). */
+#define RS_BILINEAR_SPREAD_SHARE 32l
+
+/*
+ * TexBilinear: texels 0-31 x 0-7 magnified 2x to 64 x 16 pixels, bilinear,
+ * clamped; the RS690 probe's model. Pixel x's centre samples texel space at
+ * u = (x + 0.5) / 2 - 0.5 = (2x - 1) / 4, so in quarter texels: weights out
+ * of 16, each channel compared at 16 times its value.
+ */
+static void rs_tex_bilinear_test(void)
+{
+    static const char name[] = "TexBilinear";
+    const unsigned char *actual;
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD inside_wrong = 0u;
+    DWORD outside_changed = 0u;
+    DWORD first_wrong = 0xfffffffful;
+    long worst = 0l;
+
+    if (!rs_draw_textured(name, 1ul, V9X_RV280_COMBINE_DECAL, ARGB_RED, 0u,
+                          TEST_WIDTH, 1l, 2l)) {
+        return;
+    }
+    rs_save_block('B');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            long u4 = 2l * (long)x - 1l + 4l;
+            long v4 = 2l * (long)y - 1l + 4l;
+            long fu = u4 % 4l;
+            long fv = v4 % 4l;
+            long u0 = u4 / 4l - 1l;
+            long v0 = v4 / 4l - 1l;
+            DWORD texels[4];
+            long weights[4];
+            long values[3];
+            long maxima[3];
+            long expected[3] = { 0l, 0l, 0l };
+            long lowest[3] = { 255l, 255l, 255l };
+            long highest[3] = { 0l, 0l, 0l };
+            int corner;
+            int channel;
+            int wrong = 0;
+
+            if (y >= TEX_HEIGHT) {
+                if (pixel != rs_pixel(rs_model, x, y)) {
+                    ++outside_changed;
+                }
+                continue;
+            }
+            texels[0] = rs_texel(rs_clamp_index(u0, TEX_WIDTH),
+                                 rs_clamp_index(v0, TEX_HEIGHT));
+            texels[1] = rs_texel(rs_clamp_index(u0 + 1l, TEX_WIDTH),
+                                 rs_clamp_index(v0, TEX_HEIGHT));
+            texels[2] = rs_texel(rs_clamp_index(u0, TEX_WIDTH),
+                                 rs_clamp_index(v0 + 1l, TEX_HEIGHT));
+            texels[3] = rs_texel(rs_clamp_index(u0 + 1l, TEX_WIDTH),
+                                 rs_clamp_index(v0 + 1l, TEX_HEIGHT));
+            weights[0] = (4l - fu) * (4l - fv);
+            weights[1] = fu * (4l - fv);
+            weights[2] = (4l - fu) * fv;
+            weights[3] = fu * fv;
+            for (corner = 0; corner < 4; ++corner) {
+                rs_channels(texels[corner], values, maxima);
+                for (channel = 0; channel < 3; ++channel) {
+                    expected[channel] += weights[corner] * values[channel];
+                    if (values[channel] < lowest[channel]) {
+                        lowest[channel] = values[channel];
+                    }
+                    if (values[channel] > highest[channel]) {
+                        highest[channel] = values[channel];
+                    }
+                }
+            }
+            rs_channels(pixel, values, maxima);
+            for (channel = 0; channel < 3; ++channel) {
+                long allowed = 16l + (highest[channel] - lowest[channel]) *
+                               16l / RS_BILINEAR_SPREAD_SHARE;
+                long error = rs_abs(values[channel] * 16l -
+                                    expected[channel]);
+
+                if (error > worst) {
+                    worst = error;
+                }
+                if (error > allowed) {
+                    wrong = 1;
+                }
+            }
+            if (wrong) {
+                if (first_wrong == 0xfffffffful) {
+                    first_wrong = y * TEST_WIDTH + x;
+                }
+                ++inside_wrong;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), inside_wrong);
+    rs_write_decimal(rs_key(key, name, "OutsideChanged"), outside_changed);
+    rs_write_decimal(rs_key(key, name, "MaxErrorCenti"),
+                     (DWORD)((worst * 100l + 8l) / 16l));
+    if (first_wrong != 0xfffffffful) {
+        rs_write_decimal(rs_key(key, name, "FirstWrongX"),
+                         first_wrong % TEST_WIDTH);
+        rs_write_decimal(rs_key(key, name, "FirstWrongY"),
+                         first_wrong / TEST_WIDTH);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, first_wrong % TEST_WIDTH,
+                              first_wrong / TEST_WIDTH));
+    }
+    if (inside_wrong != 0u || outside_changed != 0u) {
         rs_write(rs_key(key, name, "Result"), "MISMATCH");
         rs_failed = 1u;
         return;
@@ -847,6 +1249,10 @@ void WINAPI V9xRv2803dProbeEntry(void)
         rs_write("ColourOrder", "none-drew-red-or-blue");
         rs_failed = 1u;
     }
+    rs_tex_exact_test("TexDecal", 'D', 8u, TEX_WIDTH, 1l);
+    rs_tex_exact_test("TexWrap", 'W', 0u, TEST_WIDTH, 2l);
+    rs_tex_modulate_test();
+    rs_tex_bilinear_test();
     rs_fill_after_test();
 
     rs_write_hex("RbbmStatusAtEnd", rs_read_register(V9X_RS690_RBBM_STATUS));

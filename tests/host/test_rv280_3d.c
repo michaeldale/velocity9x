@@ -140,9 +140,11 @@ static void test_triangles(void)
         vertices[index].x_bits = 0x41000000ul + index;
         vertices[index].y_bits = 0x42000000ul + index;
         vertices[index].colour = 0xff000000ul + index;
+        vertices[index].s_bits = 0x3e000000ul + index;
+        vertices[index].t_bits = 0x3f000000ul + index;
     }
 
-    CHECK(v9x_rv280_build_3d_triangles(vertices, 3u, 0, &list) ==
+    CHECK(v9x_rv280_build_3d_triangles(vertices, 3u, 0, 0, &list) ==
           V9X_STATUS_OK);
     CHECK(list.count == 1u + 3u * 3u);
     CHECK(list.offsets[0] == V9X_RV280_SE_VF_CNTL);
@@ -155,19 +157,135 @@ static void test_triangles(void)
     CHECK(list.offsets[9] == V9X_RV280_SE_PORT_DATA0 &&
           list.values[9] == 0xff000002ul);
 
-    CHECK(v9x_rv280_build_3d_triangles(vertices, 6u, 1, &list) ==
+    CHECK(v9x_rv280_build_3d_triangles(vertices, 6u, 1, 0, &list) ==
           V9X_STATUS_OK);
     CHECK(list.values[0] == 0x00060074ul);
     CHECK(list.count == 1u + 6u * 3u);
 
-    CHECK(v9x_rv280_build_3d_triangles(vertices, 4u, 0, &list) ==
+    /* Textured: S and T after the colour. */
+    CHECK(v9x_rv280_build_3d_triangles(vertices, 3u, 0, 1, &list) ==
+          V9X_STATUS_OK);
+    CHECK(list.count == 1u + 3u * 5u);
+    CHECK(list.values[3] == 0xff000000ul);
+    CHECK(list.values[4] == 0x3e000000ul);
+    CHECK(list.values[5] == 0x3f000000ul);
+    CHECK(list.values[6] == 0x41000001ul);
+    /* The longest textured list fits one list. */
+    CHECK(v9x_rv280_build_3d_triangles(vertices, V9X_RV280_3D_MAX_VERTICES,
+                                       0, 1, &list) == V9X_STATUS_OK);
+    CHECK(list.count == 1u + V9X_RV280_3D_MAX_VERTICES * 5u);
+    CHECK(list.values[list.count - 1u] == 0x3f00000bul);
+
+    CHECK(v9x_rv280_build_3d_triangles(vertices, 4u, 0, 0, &list) ==
           V9X_STATUS_INVALID_ARGUMENT);
-    CHECK(v9x_rv280_build_3d_triangles(vertices, 0u, 0, &list) ==
+    CHECK(v9x_rv280_build_3d_triangles(vertices, 0u, 0, 0, &list) ==
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(v9x_rv280_build_3d_triangles(vertices,
-                                       V9X_RV280_3D_MAX_VERTICES + 3u, 0,
+                                       V9X_RV280_3D_MAX_VERTICES + 3u, 0, 0,
                                        &list) == V9X_STATUS_INVALID_ARGUMENT);
-    CHECK(v9x_rv280_build_3d_triangles(0, 3u, 0, &list) ==
+    CHECK(v9x_rv280_build_3d_triangles(0, 3u, 0, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_textured(void)
+{
+    struct v9x_rv280_3d_target target;
+    struct v9x_rv280_3d_texture texture;
+    struct v9x_rv280_3d_list list;
+
+    target.fb_gpu_base = 0ul;
+    target.fb_bytes = HN_FB_BYTES;
+    target.offset = HN_SURFACE;
+    target.pitch_bytes = 128ul;
+    target.bytes_per_pixel = 2ul;
+    target.width = 64ul;
+    target.height = 32ul;
+    /* The probe's texture: 32 x 16 at 16 bpp, rows packed, 64 KiB past
+     * the surface. */
+    texture.fb_gpu_base = 0ul;
+    texture.fb_bytes = HN_FB_BYTES;
+    texture.offset = HN_SURFACE + 0x10000ul;
+    texture.pitch_bytes = 64ul;
+    texture.bytes_per_pixel = 2ul;
+    texture.width = 32ul;
+    texture.height = 16ul;
+    texture.linear = 0ul;
+    texture.clamp = 0ul;
+
+    list.count = 0u;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture,
+                                             V9X_RV280_COMBINE_DECAL,
+                                             &list) == V9X_STATUS_OK);
+    /* The colour buffer as untextured. */
+    CHECK(list_value(&list, V9X_RV280_RB3D_CNTL) == 0x00001000ul);
+    CHECK(list_value(&list, V9X_RV280_RB3D_COLOROFFSET) == HN_SURFACE);
+    CHECK(list_value(&list, V9X_RV280_RB3D_COLORPITCH) == 64ul);
+    CHECK(list_value(&list, V9X_RV280_SE_CNTL) == 0x9800011eul);
+    /* R200TextureSetup's unit 0: nearest, wrap; RGB565, log2 5 x 4. */
+    CHECK(list_value(&list, V9X_RV280_PP_CNTL) == 0x00001010ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFILTER_0) == 0ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_0) == 0x00004504ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_X_0) == 0ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXSIZE_0) ==
+          (31ul | (15ul << 16)));
+    CHECK(list_value(&list, V9X_RV280_PP_TXPITCH_0) == 32ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXOFFSET_0) ==
+          HN_SURFACE + 0x10000ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND_0) == 0x0010000aul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXABLEND_0) == 0x0010000aul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND2_0) == 0x00011000ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXABLEND2_0) == 0x00011000ul);
+    CHECK(list_value(&list, V9X_RV280_SE_VTX_FMT_0) == 0x00000800ul);
+    CHECK(list_value(&list, V9X_RV280_SE_VTX_FMT_1) == 0x00000002ul);
+
+    /* Modulate, bilinear, clamped, ARGB8888 with alpha. */
+    texture.linear = 1ul;
+    texture.clamp = 1ul;
+    texture.bytes_per_pixel = 4ul;
+    texture.pitch_bytes = 128ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 1, &texture,
+                                             V9X_RV280_COMBINE_MODULATE,
+                                             &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFILTER_0) == 0x11000003ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXFORMAT_0) == 0x00004546ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXPITCH_0) == 96ul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXCBLEND_0) == 0x0000008aul);
+    CHECK(list_value(&list, V9X_RV280_PP_TXABLEND_0) == 0x0000008aul);
+    CHECK(list_value(&list, V9X_RV280_SE_CNTL) == 0x9800021eul);
+
+    /* Refusals: not a power of two; pitch not packed; misaligned; past the
+     * frame buffer; an unknown combine; 8 bpp. */
+    texture.bytes_per_pixel = 2ul;
+    texture.pitch_bytes = 64ul;
+    texture.width = 24ul;
+    texture.pitch_bytes = 48ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture, 0u,
+                                             &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    texture.width = 32ul;
+    texture.pitch_bytes = 96ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture, 0u,
+                                             &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    texture.pitch_bytes = 64ul;
+    texture.offset = HN_SURFACE + 0x10010ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture, 0u,
+                                             &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    texture.offset = HN_FB_BYTES - 512ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture, 0u,
+                                             &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    texture.offset = HN_SURFACE + 0x10000ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture, 7u,
+                                             &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    texture.bytes_per_pixel = 1ul;
+    texture.pitch_bytes = 32ul;
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, &texture, 0u,
+                                             &list) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_rv280_build_3d_textured_target(&target, 0, 0, 0u, &list) ==
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
@@ -186,6 +304,7 @@ unsigned int v9x_run_rv280_3d_tests(void)
     test_init();
     test_target();
     test_triangles();
+    test_textured();
     test_finish();
     return failures;
 }

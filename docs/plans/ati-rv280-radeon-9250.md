@@ -20,9 +20,13 @@ hardware, GDI in the screen shadow, and VBE modes.
   with the CP off. Flat and Gouraud triangles are right at 16 and 32 bpp,
   a D3DCOLOR goes in as it is, and the 2D engine is still exact afterwards
   ([record](../decisions/2026-11-15-rv280-3d-draw-probe.md)).
+- **Phase 5, textures:** texture unit 0 as `R200TextureSetup` writes it.
+  Decal and wrap are exact, modulate is within a step, and bilinear is
+  within 0.75 of a step, at 16 and 32 bpp
+  ([record](../decisions/2026-11-15-rv280-texture-probe.md)).
 
-Next in phase 5: textures, then Z, then blend and alpha test, each in the
-probe first, then the HAL glue. Direct3D is `none` on this row until the
+Next in phase 5: Z, blend and alpha test, perspective (RHW in the
+vertex), each in the probe first, then the HAL glue. Direct3D is `none` on this row until the
 HAL lands:
 the `vbe` package gave this card software Direct3D, and the ati family
 defaults to hardware.

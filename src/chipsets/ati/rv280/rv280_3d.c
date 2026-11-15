@@ -48,9 +48,12 @@ v9x_status v9x_rv280_build_3d_init(struct v9x_rv280_3d_list *list)
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
-                                     int gouraud,
-                                     struct v9x_rv280_3d_list *list)
+/* The colour buffer, blending off, and the shade model: what every draw's
+ * state shares. Leaves the texture environment and SE_VTX_FMT_1 to the
+ * caller. */
+static v9x_status v9x_rv280_add_target(
+    const struct v9x_rv280_3d_target *target, int gouraud,
+    struct v9x_rv280_3d_list *list)
 {
     v9x_u32 format;
     v9x_u32 pitch_pixels;
@@ -112,9 +115,28 @@ v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
                      target->width | (target->height << 16));
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_BLENDCNTL,
                      V9X_RV280_BLEND_ONE_ZERO);
+    /* X, Y and a packed colour per vertex. */
+    v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_0,
+                     V9X_RV280_VTX_FMT_PK_COLOR0);
+    v9x_rv280_3d_add(list, V9X_RV280_SE_CNTL,
+                     V9X_RV280_SE_CNTL_BASE |
+                     (gouraud ? V9X_RV280_SE_DIFFUSE_GOURAUD
+                              : V9X_RV280_SE_DIFFUSE_FLAT));
+    return V9X_STATUS_OK;
+}
 
-    /* The diffuse colour through blend stage 0 with no texture unit: a
-     * hypothesis (rv280_3d.h), measured by V9XR23D. */
+v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
+                                     int gouraud,
+                                     struct v9x_rv280_3d_list *list)
+{
+    v9x_status status;
+
+    status = v9x_rv280_add_target(target, gouraud, list);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    /* The diffuse colour through blend stage 0 with no texture unit,
+     * measured (docs\decisions\2026-11-15-rv280-3d-draw-probe.md). */
     v9x_rv280_3d_add(list, V9X_RV280_PP_CNTL, V9X_RV280_PP_BLEND_0_ONLY);
     v9x_rv280_3d_add(list, V9X_RV280_PP_TXCBLEND_0,
                      V9X_RV280_TXCBLEND_DIFFUSE);
@@ -124,21 +146,113 @@ v9x_status v9x_rv280_build_3d_target(const struct v9x_rv280_3d_target *target,
                      V9X_RV280_TXABLEND_DIFFUSE);
     v9x_rv280_3d_add(list, V9X_RV280_PP_TXABLEND2_0,
                      V9X_RV280_TXBLEND2_TO_R0);
-
-    /* X, Y and a packed colour per vertex; no texture coordinates. */
-    v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_0,
-                     V9X_RV280_VTX_FMT_PK_COLOR0);
+    /* No texture coordinates. */
     v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_1, 0ul);
-    v9x_rv280_3d_add(list, V9X_RV280_SE_CNTL,
-                     V9X_RV280_SE_CNTL_BASE |
-                     (gouraud ? V9X_RV280_SE_DIFFUSE_GOURAUD
-                              : V9X_RV280_SE_DIFFUSE_FLAT));
+    return V9X_STATUS_OK;
+}
+
+/* log2 of a power of two from 1 to 2048, or 0xff for anything else. */
+static v9x_u32 v9x_rv280_log2_side(v9x_u32 side)
+{
+    v9x_u32 shift;
+
+    for (shift = 0ul; shift <= 11ul; ++shift) {
+        if (side == (1ul << shift)) {
+            return shift;
+        }
+    }
+    return 0xfful;
+}
+
+v9x_status v9x_rv280_build_3d_textured_target(
+    const struct v9x_rv280_3d_target *target, int gouraud,
+    const struct v9x_rv280_3d_texture *texture, v9x_u32 combine,
+    struct v9x_rv280_3d_list *list)
+{
+    v9x_u32 format;
+    v9x_u32 log2_width;
+    v9x_u32 log2_height;
+    v9x_u32 filter;
+    v9x_u32 cblend;
+    v9x_u32 ablend;
+    v9x_status status;
+
+    if (texture == 0 || target == 0 || list == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (texture->bytes_per_pixel == 2ul) {
+        format = V9X_RV280_TXFORMAT_RGB565;
+    } else if (texture->bytes_per_pixel == 4ul) {
+        format = V9X_RV280_TXFORMAT_ARGB8888 |
+                 V9X_RV280_TXFORMAT_ALPHA_IN_MAP;
+    } else {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    if (combine == V9X_RV280_COMBINE_DECAL) {
+        cblend = V9X_RV280_TXCBLEND_TEXEL;
+        ablend = V9X_RV280_TXABLEND_TEXEL;
+    } else if (combine == V9X_RV280_COMBINE_MODULATE) {
+        cblend = V9X_RV280_TXCBLEND_MODULATE;
+        ablend = V9X_RV280_TXABLEND_MODULATE;
+    } else {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+
+    /* R200TextureSetup's repeat path: a power of two on each side, its
+     * size in TXFORMAT, rows packed (RADEONPitchMatches) at a multiple of
+     * 32 bytes, the offset 32-byte aligned (CHECK_OFFSET 1Fh). */
+    log2_width = v9x_rv280_log2_side(texture->width);
+    log2_height = v9x_rv280_log2_side(texture->height);
+    if (log2_width == 0xfful || log2_height == 0xfful ||
+        texture->pitch_bytes != texture->width * texture->bytes_per_pixel ||
+        texture->pitch_bytes % V9X_RV280_TEX_ALIGN != 0ul ||
+        texture->offset % V9X_RV280_TEX_ALIGN != 0ul ||
+        texture->fb_gpu_base % V9X_RV280_TEX_ALIGN != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Inside the frame buffer: at most 2048 x 2048 x 4 bytes, so the
+     * product cannot overflow. */
+    if (texture->offset >= texture->fb_bytes ||
+        texture->pitch_bytes * texture->height >
+            texture->fb_bytes - texture->offset ||
+        texture->offset > 0xfffffffful - texture->fb_gpu_base) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = v9x_rv280_add_target(target, gouraud, list);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    filter = (texture->linear ? V9X_RV280_TXFILTER_LINEAR : 0ul) |
+             (texture->clamp ? V9X_RV280_TXFILTER_CLAMP_LAST : 0ul);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_CNTL, V9X_RV280_PP_TEX0_BLEND0);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXFILTER_0, filter);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXFORMAT_0,
+                     format |
+                     (log2_width << V9X_RV280_TXFORMAT_WIDTH_SHIFT) |
+                     (log2_height << V9X_RV280_TXFORMAT_HEIGHT_SHIFT));
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXFORMAT_X_0, 0ul);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXSIZE_0,
+                     (texture->width - 1ul) |
+                     ((texture->height - 1ul) << 16));
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXPITCH_0,
+                     texture->pitch_bytes - V9X_RV280_TEX_ALIGN);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXOFFSET_0,
+                     texture->fb_gpu_base + texture->offset);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXCBLEND_0, cblend);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXCBLEND2_0,
+                     V9X_RV280_TXBLEND2_TO_R0);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXABLEND_0, ablend);
+    v9x_rv280_3d_add(list, V9X_RV280_PP_TXABLEND2_0,
+                     V9X_RV280_TXBLEND2_TO_R0);
+    v9x_rv280_3d_add(list, V9X_RV280_SE_VTX_FMT_1,
+                     V9X_RV280_VTX_FMT_1_TEX0_ST);
     return V9X_STATUS_OK;
 }
 
 v9x_status v9x_rv280_build_3d_triangles(
     const struct v9x_rv280_3d_vertex *vertices, v9x_u32 count,
-    int colour_order_rgba, struct v9x_rv280_3d_list *list)
+    int colour_order_rgba, int textured, struct v9x_rv280_3d_list *list)
 {
     v9x_u32 control;
     v9x_u32 index;
@@ -164,6 +278,14 @@ v9x_status v9x_rv280_build_3d_triangles(
                          vertices[index].y_bits);
         v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
                          vertices[index].colour);
+        /* SE_VTX_FMT_1's fields follow SE_VTX_FMT_0's (r200.c counts
+         * them in that order): texture 0's S, T after the colour. */
+        if (textured) {
+            v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
+                             vertices[index].s_bits);
+            v9x_rv280_3d_add(list, V9X_RV280_SE_PORT_DATA0,
+                             vertices[index].t_bits);
+        }
     }
     return V9X_STATUS_OK;
 }
