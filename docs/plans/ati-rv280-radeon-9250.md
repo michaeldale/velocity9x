@@ -53,8 +53,13 @@ hardware, GDI in the screen shadow, and VBE modes.
   ([record](../decisions/2026-11-15-rv280-render-interface.md),
   [issue](../issues/2026-11-15-rv280-gl-geomscan-band.md)).
 
+- **Phase 5, first applications:** 3DMark 2000's default benchmark runs
+  to its score (905) with no refusals or timeouts, and its grabbed frames
+  look right. The Quake 2 demo runs on our ICD at 54.7 fps in
+  `timerefresh`, at 640x480 windowed
+  ([record](../decisions/2026-11-15-rv280-3dmark2000-quake2.md)).
+
 Next in phase 5:
-- 3DMark 2000 and a game;
 - GeomScan's band;
 - mipmaps, the colour key, and partial depth fills.
 
