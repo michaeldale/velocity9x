@@ -1,0 +1,78 @@
+﻿[Shell_TrayWnd]   (handle 424, pid 4294781811)
+  TrayClockWClass #303: 11:42 PM
+[#32770] 3DMark2001 SE Overall Score  (handle 2052, pid 4294751019)
+  Button #1016: &Online ResultBrowser
+  Button #505: &Edit Description
+  Button #1131: &Save Project
+  Button #1010: &ResultBrowser
+  Button #1135: Show &Details
+  Button #2: C&lose
+  Static #1134: 3D marks
+  Button #65535: 3DMark Score
+  Static #1133: 2855
+  Static #65535: ÿ°
+  Static #65530: Congratulations!
+    You have successfully run the benchmark. Your score is:
+  Static #65535: View and compare Your results with the Online ResultBrowser:
+  Static #65531 (hidden): Not enough tests run for a 3DMark score.
+    All game tests have to be run in order to calculate a 3DMark
+    score.
+  Static #65535: ÿ®
+  Static #65535: ÿ³
+  Static #65535: ÿ÷
+  Static #65535: ÿµ
+  Static #65535: ÿ¶
+  Static #1019: The benchmark was not run using default settings.
+[3DMark2001 SE:400000:b:0:6] Untitled - 3DMark2001 SE  (handle 1768, pid 4294751019)
+  Button #1011: Ed&it...
+  Button #1007: &Change...
+  Button #1009: Ch&ange...
+  Button #1008: Cha&nge...
+  Button #1107: &System Info
+  Button #1109 (hidden): C&PU Test
+  Button #1010: ResultBro&wser
+  Button #32806: Ba&tch Run
+  Button #1059: &Benchmark
+  Button #1106: &Demo
+  Button #1108: &Game Demo
+  Button #65535: Selected Tests
+  Button #65535: Options
+  Static #65535: Demo Looping:
+  Static #65535: ÿŽ
+  Static #65535: ÿ‚
+  Static #65535: Demo Sounds:
+  Static #1023: Disabled
+  Static #1025: Enabled
+  Static #65535: Pro Version Tests:
+  Static #1056: 0 of 4
+  Static #65535: Game Tests:
+  Static #1057: 7 of 7
+  Static #65535: Theoretical Tests:
+  Static #1058: 6 of 6
+  Static #1065: My Benchmark
+  Button #65535: Project
+  Button #65535: Pro Tools
+  Static #65535: ÿ¢
+  Static #1027: Low
+  Button #65535: Display and CPU Settings
+  Static #65535: ÿ
+  Static #1020: Velocity9x VBE-generic display (any VESA VBE 2.0+ adapter)
+  Static #1021: 1024x768, 32 bit color, 32 bit textures
+  Static #1026: D3D Software T&L
+  Static #65535: ÿ”
+  Static #65535: ÿ£
+  Static #65535: ÿ˜
+  Static #1000: Antialiasing: None
+  Static #65535: ÿ
+  Static #65535: DX8 Feature Tests:
+  Static #1061: 4 of 4
+  Button #65535: Run
+  Static #65535: ÿ†
+  Static #65535: Game Detail Level:
+  Static #65535: Name:
+  Static #65535: Result:
+  Static #1015: (Tests not run yet)
+  Static #65535: ÿÐ
+  Static #65535 (hidden): ÿ¦
+  Static #65535 (hidden): ÿ¡
+[Progman] Program Manager  (handle 484, pid 4294781811)

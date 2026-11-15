@@ -5,8 +5,8 @@ Date: 2026-11-15
 Status: implemented and measured on W9QI0DAD (ASUS GeForce 210, GT218
 `10DE:0A65`, FX-6300, Win98 SE), boots 25-30. Step 4 of
 [nvidia-gt218-ps11.md](../plans/nvidia-gt218-ps11.md), after step 5.
-V9XD32 T19 and T17 run; **3DMark 2001 SE has not run**: it is not
-installed on W9QI0DAD (see the end). Cube maps and the texm3x3 lookups
+V9XD32 T19 and T17 run, and 3DMark 2001 SE completes with every test
+listed (boot 30, addendum at the end). Cube maps and the texm3x3 lookups
 are step 6 and refused here.
 
 Evidence: [`../probe/w9qi0dad-gt218-ddi8-2026-11-15/`](../probe/w9qi0dad-gt218-ddi8-2026-11-15/).
@@ -102,10 +102,37 @@ frames. Two checks:
   interpolation. Every pixel within one step at every distance to 32,768
   off the target, no leaks (boot 27). The band does not explain the sky.
 
+## Addendum: 3DMark 2001 SE (boot 30)
+
+Installed from `C:\data\3DMARK01.EXE` (version 330) by driving its
+InstallShield wizard over the agent; Michael accepted the free licence
+in chat. Default folder, "Purchase Later" on the registration page, no
+restart asked for. The default benchmark (all 7 game, 6 theoretical and
+4 DX8 feature tests; its note "not run using default settings" is the
+D3D Software T&L this driver implies) completed in 7.7 minutes: Overall
+Score window 2855 (recorded, not compared), no `V9XN50F.TXT`. Every test
+has a result in Details, the pixel shader ones among them: Pixel Shader
+153.9 fps, Advanced Pixel Shader 30.3, Environment Bump Mapping 74.3,
+DOT3 Bump Mapping 22.8, Nature 11.0 (screenshot
+`3dmark2001se-details-tests.png`).
+
+Those numbers are of partly drawn frames. Between the snapshots, shader
+and fixed-function draws were refused 318,626 times for a texture format
+(policy counter 9) and 128,506 for a texture's shape (counter 10, which
+also counts the cube and texm3x3 refusals in `draw_shader`); 160
+triangles were dropped at the guard band (counter 19). The core's
+`V9XPS.LOG` (which also holds V9XD32's T19 contexts from the same boot,
+a few dozen triangles) sums to 7,083,898 triangles drawn under shaders
+and 447,134 shader draws dropped, one 3DMark context drawing nothing. Its refused-draw records name 256x256 32-bit textures and the
+cube faces the log's `cube-*` lines create; which test each belongs to
+was not traced. No frame was inspected (no flips to grab).
+
+Engine timeouts stayed 0.
+
 ## Open
 
-- 3DMark 2001 SE: the step's last gate. Its installer (`C:\data\
-  3DMARK01.EXE`, 41.6 MB) is on the machine but not installed.
+- What 3DMark 2001 SE's refused draws are: cube maps (step 6), DXT
+  (step 7), and whatever counter 9's formats are.
 - FfSpecFog's 3 pixels; tree pop-in and stutter in 3DMark 2000 against
   the step-0 build; the 3DMark 2000 sky (pre-existing).
 - Cube maps (step 6), DXT (step 7).
