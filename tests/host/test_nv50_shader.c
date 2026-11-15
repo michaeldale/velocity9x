@@ -357,6 +357,18 @@ static void test_ps11_refusals(void)
     v9x_nv50_sh_tex_n(&sh, R(8), 0ul, 0ul, 0xful, 2ul, 1ul);
     CHECK(sh.invalid != 0ul);
 
+    /* A short instruction's register fields are six bits (envydis
+     * sdst_bf, ssrc_bf): $r64 needs the long form. */
+    v9x_nv50_sh_init(&sh, code, 96ul);
+    v9x_nv50_sh_mov(&sh, S, R(64), R(1));
+    CHECK(sh.invalid != 0ul);
+    v9x_nv50_sh_init(&sh, code, 96ul);
+    v9x_nv50_sh_fadd(&sh, S, R(0), R(1), R(64));
+    CHECK(sh.invalid != 0ul);
+    v9x_nv50_sh_init(&sh, code, 96ul);
+    v9x_nv50_sh_mov(&sh, L, R(64), R(100));
+    CHECK(sh.invalid == 0ul);
+
     /* A program cannot end on a discard. */
     v9x_nv50_sh_init(&sh, code, 96ul);
     v9x_nv50_sh_kil(&sh);

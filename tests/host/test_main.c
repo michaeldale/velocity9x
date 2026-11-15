@@ -348,6 +348,10 @@ unsigned int v9x_run_nv50_3d_tests(void);
  * EXA's programs word for word. */
 unsigned int v9x_run_nv50_shader_tests(void);
 
+/* tests\host\test_nv50_ps11.c: pixel shader 1.x programs for the GT218
+ * in a model of the Tesla instructions, against the interpreter. */
+unsigned int v9x_run_nv50_ps11_tests(void);
+
 /* tests\host\test_nv50_d3d.c: the GT218 Direct3D programs, state and
  * vertices. */
 unsigned int v9x_run_nv50_d3d_tests(void);
@@ -1597,6 +1601,7 @@ int main(int argc, char **argv)
     failures += v9x_run_nv50_init_tests();
     failures += v9x_run_nv50_3d_tests();
     failures += v9x_run_nv50_shader_tests();
+    failures += v9x_run_nv50_ps11_tests();
     failures += v9x_run_nv50_d3d_tests();
     failures += v9x_run_d3d_nv50_map_tests();
     failures += v9x_run_r128_2d_tests();

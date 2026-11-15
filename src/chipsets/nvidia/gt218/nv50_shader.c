@@ -99,6 +99,17 @@ static v9x_u32 v9x_nv50_sh_mods(v9x_u32 operand)
     return operand & V9X_NV50_SH_MODS;
 }
 
+/* A short instruction's register fields are six bits (envydis sdst_bf,
+ * ssrc_bf, ssrc2_bf): bit 8, 15 and 22 beside them are the saturate,
+ * negate and size bits. A register past $r63 needs the long form. */
+#define V9X_NV50_SH_SHORT_REGS       64ul
+
+static int v9x_nv50_sh_short_reg(v9x_u32 operand)
+{
+    return (operand >> V9X_NV50_SH_FILE_SHIFT) != V9X_NV50_SH_FILE_R ||
+           (operand & 0xfffful) < V9X_NV50_SH_SHORT_REGS;
+}
+
 static v9x_u32 v9x_nv50_sh_file(v9x_u32 operand)
 {
     return operand >> V9X_NV50_SH_FILE_SHIFT;
@@ -313,7 +324,14 @@ static void v9x_nv50_sh_form_mul(struct v9x_nv50_sh *sh, v9x_u32 word0,
     v9x_u32 word1 = 0ul;
     v9x_u32 index;
 
+    for (index = 0ul; index < count; ++index) {
+        if (!v9x_nv50_sh_short_reg(src[index])) {
+            sh->invalid = 1ul;
+            return;
+        }
+    }
     if (v9x_nv50_sh_file(dst) != V9X_NV50_SH_FILE_R ||
+        !v9x_nv50_sh_short_reg(dst) ||
         !v9x_nv50_sh_files(src, count, V9X_NV50_SH_ENC_SHORT, &word0,
                            &word1)) {
         sh->invalid = 1ul;
@@ -343,7 +361,8 @@ void v9x_nv50_sh_mov(struct v9x_nv50_sh *sh, v9x_u32 size, v9x_u32 dst,
     }
     if (size == V9X_NV50_SH_SHORT) {
         if (v9x_nv50_sh_file(dst) != V9X_NV50_SH_FILE_R ||
-            file != V9X_NV50_SH_FILE_R) {
+            file != V9X_NV50_SH_FILE_R || !v9x_nv50_sh_short_reg(dst) ||
+            !v9x_nv50_sh_short_reg(src)) {
             sh->invalid = 1ul;
             return;
         }
@@ -492,8 +511,10 @@ void v9x_nv50_sh_interp(struct v9x_nv50_sh *sh, v9x_u32 dst,
     v9x_u32 word0 = V9X_NV50_SH_OP_INTERP;
 
     if (v9x_nv50_sh_mods(dst) != 0ul || v9x_nv50_sh_mods(varying) != 0ul ||
-        (persp != V9X_NV50_SH_NONE && v9x_nv50_sh_mods(persp) != 0ul) ||
+        (persp != V9X_NV50_SH_NONE && (v9x_nv50_sh_mods(persp) != 0ul ||
+                                       !v9x_nv50_sh_short_reg(persp))) ||
         v9x_nv50_sh_file(dst) != V9X_NV50_SH_FILE_R ||
+        !v9x_nv50_sh_short_reg(dst) ||
         v9x_nv50_sh_file(varying) != V9X_NV50_SH_FILE_V) {
         sh->invalid = 1ul;
         return;

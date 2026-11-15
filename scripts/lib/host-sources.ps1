@@ -130,6 +130,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\gt218\nv50_3d.c',
         # GT218 Tesla shader instruction encoder, no I/O.
         'src\chipsets\nvidia\gt218\nv50_shader.c',
+        # GT218 pixel shader 1.x translator, no I/O.
+        'src\chipsets\nvidia\gt218\nv50_ps11.c',
         # GT218 Direct3D programs, state and vertices, no I/O.
         'src\chipsets\nvidia\gt218\nv50_d3d.c',
         # GT218 engine reserve placement, no I/O.
@@ -419,6 +421,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_nv50_init.c',
         'tests\host\test_nv50_3d.c',
         'tests\host\test_nv50_shader.c',
+        'tests\host\test_nv50_ps11.c',
         'tests\host\test_nv50_d3d.c',
         'tests\host\test_r128_2d.c',
         'tests\host\test_r128_3d.c',
