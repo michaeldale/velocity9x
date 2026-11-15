@@ -90,6 +90,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rage128\r128_crtc.c',
         # Radeon 9250 (RV280) scanout start and flip status.
         'src\chipsets\ati\rv280\rv280_crtc.c',
+        # Radeon 9250 (RV280) R200 3D register values.
+        'src\chipsets\ati\rv280\rv280_3d.c',
         # Rage 128 bus-master ring placement and free space.
         'src\chipsets\ati\rage128\r128_ring.c',
         'src\chipsets\ati\rage2_trap.c',
@@ -400,6 +402,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_mach64_crtc.c',
         'tests\host\test_r128_crtc.c',
         'tests\host\test_rv280_crtc.c',
+        'tests\host\test_rv280_3d.c',
         'tests\host\test_r128_ring.c',
         'tests\host\test_rage2_trap.c',
         'tests\host\rage2_reference.c',

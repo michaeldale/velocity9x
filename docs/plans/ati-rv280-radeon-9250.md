@@ -16,8 +16,14 @@ hardware, GDI in the screen shadow, and VBE modes.
   and 32 bpp, 23 of 23 by the time each was called done
   ([record](../decisions/2026-11-15-rv280-flips.md)).
 
-Next is phase 5, Direct3D on the R200. Direct3D is `none` on this row
-until then:
+- **Phase 5, first step:** the R200 3D engine draws by register writes
+  with the CP off. Flat and Gouraud triangles are right at 16 and 32 bpp,
+  a D3DCOLOR goes in as it is, and the 2D engine is still exact afterwards
+  ([record](../decisions/2026-11-15-rv280-3d-draw-probe.md)).
+
+Next in phase 5: textures, then Z, then blend and alpha test, each in the
+probe first, then the HAL glue. Direct3D is `none` on this row until the
+HAL lands:
 the `vbe` package gave this card software Direct3D, and the ati family
 defaults to hardware.
 
