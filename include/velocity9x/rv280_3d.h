@@ -230,6 +230,23 @@
  * not decoded; 32 rows is a margin over any R200 tile height, not a
  * measurement. */
 #define V9X_RV280_DEPTH_ROW_ALIGN       32ul
+/* Channels v9x_rv280_3d_raster.masked_channels names, and each one's bits
+ * in RB3D_PLANEMASK. Mesa's r200ColorMask writes the mask packed in the
+ * target's format (radeonPackColor); at 16 bpp the bits are given in both
+ * halves, so either reading of the register keeps the channel. */
+#define V9X_RV280_CHANNEL_RED           1ul
+#define V9X_RV280_CHANNEL_GREEN         2ul
+#define V9X_RV280_CHANNEL_BLUE          4ul
+#define V9X_RV280_PLANE_RED_8888        0x00ff0000ul
+#define V9X_RV280_PLANE_GREEN_8888      0x0000ff00ul
+#define V9X_RV280_PLANE_BLUE_8888       0x000000fful
+#define V9X_RV280_PLANE_RED_565         0xf800f800ul
+#define V9X_RV280_PLANE_GREEN_565       0x07e007e0ul
+#define V9X_RV280_PLANE_BLUE_565        0x001f001ful
+/* RE_CNTL: SCISSOR_ENABLE bit 1 (r200_reg.h:268); Mesa's
+ * r200_vtbl_update_scissor sets it with the corners inclusive in
+ * RE_TOP_LEFT and RE_WIDTH_HEIGHT (r200_state.c:1577-1600). */
+#define V9X_RV280_RE_SCISSOR            0x00000002ul
 #define V9X_RV280_PLANEMASK_ALL         0xfffffffful
 #define V9X_RV280_PLANEMASK_NO_X        0x00fffffful
 
@@ -250,6 +267,11 @@
 #define V9X_RV280_COLOR_OFFSET_ALIGN    16ul
 #define V9X_RV280_COLOR_PITCH_UNIT      8ul
 #define V9X_RV280_COLOR_PITCH_MAX       0x1ff8ul
+/* The colour pitch must also be whole 32 bytes: 144 bytes at 16 bpp drew
+ * sheared from row 1, 288 at 32 bpp and 192 and 384 exact (V9XR23D Pitch8
+ * and Pitch32 on M-HNBJNV, 2026-11-15). The register's 8-pixel unit alone
+ * allows 16 bytes at 16 bpp; Mesa aligns R200 colour pitches to 64. */
+#define V9X_RV280_COLOR_PITCH_ALIGN     32ul
 /* RE_WIDTH_HEIGHT holds width and height in 16 bits each; X uses up to
  * 2047. */
 #define V9X_RV280_TARGET_MAX            2047ul
@@ -307,6 +329,18 @@ struct v9x_rv280_3d_raster {
     v9x_u32 specular_enable;
     /* A 32 bpp target's top byte is X: leave it unwritten. */
     v9x_u32 keep_x;
+    /* Colour channels left unwritten, V9X_RV280_CHANNEL_* bits, by
+     * RB3D_PLANEMASK. */
+    v9x_u32 masked_channels;
+    /* Pixels outside left..right-1, top..bottom-1 are not written:
+     * RE_CNTL's SCISSOR_ENABLE with RE_TOP_LEFT and RE_WIDTH_HEIGHT
+     * holding the inclusive corners. A non-empty rectangle inside the
+     * target. */
+    v9x_u32 scissor_enable;
+    v9x_u32 scissor_left;
+    v9x_u32 scissor_top;
+    v9x_u32 scissor_right;
+    v9x_u32 scissor_bottom;
 };
 
 /* The colour buffer: a surface in the frame buffer at a GPU address, its

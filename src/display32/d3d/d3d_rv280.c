@@ -47,6 +47,13 @@
  * which RB3D_DEPTHPITCH's multiple of 8 pixels allows. */
 #define V9X_D3D_RV280_SURFACE_ALIGN 32ul
 #define V9X_D3D_RV280_DEPTH_PITCH_ALIGN 64ul
+/* A Z buffer starts on a 4 KiB page, as the X driver places the R200's
+ * (radeon_accel.c:1303, RADEON_GPU_PAGE_SIZE): its tiles are 64x16 pixels
+ * in 4 KiB pairs (Mesa 7.10 radeon_span.c r200_depth_2byte). Placed on 32
+ * bytes, OpenGL's 360-pixel-wide depth buffer failed its depth test in a
+ * band near x 56-71, at the same place in every run (V9XGLP GeomScan on
+ * M-HNBJNV, boot 25). */
+#define V9X_D3D_RV280_DEPTH_ALIGN 4096ul
 
 /* Levels a placed chain may have: 2048 halves to 1 in eleven. Only level
  * 0 is sampled; the others are placed at the same row rule. */
@@ -83,7 +90,8 @@ static DWORD v9x_d3d_rv280_desktop;
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_rv280_limits = {
     16ul,           /* target_bits_per_pixel */
     16368ul,        /* target_pitch_max: COLORPITCH's 1FF8h pixels */
-    16ul,           /* target_pitch_align: 8 pixels at 16 bpp */
+    V9X_RV280_COLOR_PITCH_ALIGN, /* target_pitch_align: 32 bytes,
+                                    measured (V9XR23D Pitch8) */
     2047ul,         /* target_dimension_max: RE_WIDTH_HEIGHT, X's 2047 */
     1ul,            /* texture_size_min */
     2048ul,         /* texture_size_max */
@@ -99,16 +107,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_rv280_limits = {
     32752ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits: Z16 only */
     0ul,            /* centre_in_engine: the core moves, as it clips */
-    1ul,            /* texture_stages */
-    0ul,            /* guard_band_ddi6 */
-    0ul,            /* dxt_textures */
-    0ul,            /* modulate2x */
-    0ul,            /* bump_luminance */
-    /* render_interface_off: the interface's explicit draws need a scissor
-     * and write mask not built here, and the tiled Z rules out the software
-     * fallback, so OpenGL and Glide keep their own CPU path (V9XGLP drew
-     * nothing through this engine, M-HNBJNV boot 21). */
-    1ul
+    1ul             /* texture_stages */
 };
 
 static DWORD v9x_d3d_rv280_read(DWORD offset)
@@ -663,6 +662,14 @@ static int v9x_d3d_rv280_texture_edge(DWORD edge)
            edge <= v9x_d3d_rv280_limits.texture_size_max;
 }
 
+/* The block alignment a surface is placed with, and released by. */
+static DWORD v9x_d3d_rv280_align_of(const V9X_DD_SURFACE_LCL *surface)
+{
+    return (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul
+               ? V9X_D3D_RV280_DEPTH_ALIGN
+               : V9X_D3D_RV280_SURFACE_ALIGN;
+}
+
 static DWORD v9x_d3d_rv280_align(DWORD bytes, DWORD align)
 {
     return (bytes + align - 1ul) & ~(align - 1ul);
@@ -672,7 +679,8 @@ static DWORD v9x_d3d_rv280_align(DWORD bytes, DWORD align)
  * Placement. A video-memory texture of a format and size this engine
  * samples gets each level in a block of its own, 32-byte aligned, its rows
  * the width rounded up to 32 bytes (PP_TXOFFSET's rule and the pitch the
- * builder requires). A Z16 buffer gets 32-byte alignment, a 64-byte pitch,
+ * builder requires). An offscreen render target gets its rows whole 32
+ * bytes. A Z16 buffer gets 32-byte alignment, a 64-byte pitch,
  * and its rows rounded up to V9X_RV280_DEPTH_ROW_ALIGN, so the tiled
  * buffer's whole-surface fill (eng_rv280.c) covers every tile.
  */
@@ -702,7 +710,31 @@ static DWORD v9x_d3d_rv280_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
 
-    if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
+    if ((surface->ddsCaps & V9X_DDSCAPS_3DDEVICE) != 0ul &&
+        (surface->ddsCaps & (V9X_DDSCAPS_PRIMARYSURFACE |
+                             V9X_DDSCAPS_FLIP)) == 0ul) {
+        /* An offscreen render target alone, its rows whole 32 bytes
+         * (V9X_RV280_COLOR_PITCH_ALIGN), which DirectDraw's placement does
+         * not give: OpenGL's 360-pixel 16 bpp back buffer came at 720
+         * bytes and drew sheared (V9XGLP on M-HNBJNV, boot 23). A flip
+         * chain's back buffers come with the primary at the screen's
+         * pitch, which every mode here makes whole 32 bytes. As
+         * d3d_eg.c places its own. */
+        DWORD bits;
+
+        if (data->dwSCnt != 1ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        bits = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+                   ? surface->lpGbl->ddpfSurface.dwRGBBitCount
+                   : v9x_hal->info.vmiData.ddpfDisplay.dwRGBBitCount;
+        if (bits != 16ul && bits != 32ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        pitches[0] = v9x_d3d_rv280_align(width * (bits / 8ul),
+                                         V9X_RV280_COLOR_PITCH_ALIGN);
+        rows[0] = height;
+    } else if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (data->dwSCnt != 1ul ||
             v9x_d3d_depth_bytes_per_pixel(surface) != 2ul || width == 0ul ||
             height == 0ul) {
@@ -745,7 +777,7 @@ static DWORD v9x_d3d_rv280_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
             rows[level] = height;
         }
     }
-    if (v9x_d3d_place_each(data, V9X_D3D_RV280_SURFACE_ALIGN, pitches,
+    if (v9x_d3d_place_each(data, v9x_d3d_rv280_align_of(surface), pitches,
                            rows) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
@@ -756,7 +788,12 @@ static DWORD v9x_d3d_rv280_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 
 static void v9x_d3d_rv280_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
-    (void)v9x_d3d_place_release(data, V9X_D3D_RV280_SURFACE_ALIGN);
+    if (data == 0 || data->lpDDSurface == 0) {
+        return;
+    }
+    (void)v9x_d3d_place_release(
+        data, v9x_d3d_rv280_align_of(
+                  (const V9X_DD_SURFACE_LCL *)data->lpDDSurface));
 }
 
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */

@@ -1103,6 +1103,13 @@ static void rs_zero_raster(struct v9x_rv280_3d_raster *raster)
     raster->fog_enable = 0ul;
     raster->fog_colour = 0ul;
     raster->specular_enable = 0ul;
+    raster->keep_x = 0ul;
+    raster->masked_channels = 0ul;
+    raster->scissor_enable = 0ul;
+    raster->scissor_left = 0ul;
+    raster->scissor_top = 0ul;
+    raster->scissor_right = 0ul;
+    raster->scissor_bottom = 0ul;
 }
 
 /* The Z buffer: 16-bit, 64 pixels to a row, 128 KiB past the surface. */
@@ -1391,6 +1398,208 @@ static void rs_blend_test(void)
         return;
     }
     rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/*
+ * Scissor: a red quad over every column of rows 0-15, scissored to columns
+ * 12-39 and rows 2-5 (the builder's corners inclusive, as Mesa's r200
+ * writes them). Exactly that rectangle red, every other pixel the prefill.
+ */
+#define RS_SCISSOR_LEFT   12ul
+#define RS_SCISSOR_TOP    2ul
+#define RS_SCISSOR_RIGHT  40ul
+#define RS_SCISSOR_BOTTOM 6ul
+
+static void rs_scissor_test(void)
+{
+    static const char name[] = "Scissor";
+    struct v9x_rv280_3d_raster raster;
+    struct rs_quad quad;
+    const unsigned char *actual;
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD wrong = 0u;
+    DWORD inside_wrong = 0u;
+    DWORD first = 0xfffffffful;
+
+    rs_zero_raster(&raster);
+    raster.keep_x = 1ul;
+    raster.scissor_enable = 1ul;
+    raster.scissor_left = RS_SCISSOR_LEFT;
+    raster.scissor_top = RS_SCISSOR_TOP;
+    raster.scissor_right = RS_SCISSOR_RIGHT;
+    raster.scissor_bottom = RS_SCISSOR_BOTTOM;
+    quad.left = 0u;
+    quad.width = TEST_WIDTH;
+    quad.z_bits = 0u;
+    quad.colour = ARGB_RED;
+    if (!rs_draw_quads(name, &raster, &quad, 1u)) {
+        return;
+    }
+    rs_save_block('Q');
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            int inside = x >= RS_SCISSOR_LEFT && x < RS_SCISSOR_RIGHT &&
+                         y >= RS_SCISSOR_TOP && y < RS_SCISSOR_BOTTOM;
+            int ok = inside ? rs_rgb(pixel) == rs_store(ARGB_RED)
+                            : pixel == rs_pixel(rs_model, x, y);
+
+            if (!ok) {
+                if (first == 0xfffffffful) {
+                    first = y * TEST_WIDTH + x;
+                }
+                ++wrong;
+                if (inside) {
+                    ++inside_wrong;
+                }
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "Wrong"), wrong);
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), inside_wrong);
+    if (first != 0xfffffffful) {
+        rs_write_decimal(rs_key(key, name, "FirstWrongX"), first % TEST_WIDTH);
+        rs_write_decimal(rs_key(key, name, "FirstWrongY"), first / TEST_WIDTH);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, first % TEST_WIDTH,
+                              first / TEST_WIDTH));
+    }
+    if (wrong != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/*
+ * ChannelMask: a white quad over columns 8-39 of rows 0-15 with the given
+ * channels masked (and, at 32 bpp, the X byte kept): there each masked
+ * channel and X keep the prefill's bits and the rest are white; every other
+ * pixel is the prefill.
+ */
+static void rs_channel_mask_test(const char *name, char letter,
+                                 DWORD masked)
+{
+    struct v9x_rv280_3d_raster raster;
+    struct rs_quad quad;
+    const unsigned char *actual;
+    char key[64];
+    DWORD keep;
+    DWORD white;
+    DWORD x;
+    DWORD y;
+    DWORD wrong = 0u;
+    DWORD first = 0xfffffffful;
+
+    rs_zero_raster(&raster);
+    raster.keep_x = 1ul;
+    raster.masked_channels = masked;
+    quad.left = 8u;
+    quad.width = 32u;
+    quad.z_bits = 0u;
+    quad.colour = 0xfffffffful;
+    if (!rs_draw_quads(name, &raster, &quad, 1u)) {
+        return;
+    }
+    rs_save_block(letter);
+    actual = (const unsigned char *)rs_result_buffer.block;
+    /* The bits a pixel keeps from the prefill. */
+    if (rs_bpp == 2u) {
+        keep = ((masked & V9X_RV280_CHANNEL_RED) != 0ul ? 0xf800ul : 0ul) |
+               ((masked & V9X_RV280_CHANNEL_GREEN) != 0ul ? 0x07e0ul : 0ul) |
+               ((masked & V9X_RV280_CHANNEL_BLUE) != 0ul ? 0x001ful : 0ul);
+        white = 0xfffful;
+    } else {
+        keep = 0xff000000ul |
+               ((masked & V9X_RV280_CHANNEL_RED) != 0ul ? 0x00ff0000ul : 0ul) |
+               ((masked & V9X_RV280_CHANNEL_GREEN) != 0ul ? 0x0000ff00ul
+                                                          : 0ul) |
+               ((masked & V9X_RV280_CHANNEL_BLUE) != 0ul ? 0x000000fful : 0ul);
+        white = 0xfffffffful;
+    }
+    rs_model_prefill();
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            DWORD prefill = rs_pixel(rs_model, x, y);
+            DWORD expected = prefill;
+
+            if (y < TEX_HEIGHT && x >= 8u && x < 40u) {
+                expected = (prefill & keep) | (white & ~keep);
+            }
+            if (pixel != expected) {
+                if (first == 0xfffffffful) {
+                    first = y * TEST_WIDTH + x;
+                }
+                ++wrong;
+            }
+        }
+    }
+    rs_write_hex(rs_key(key, name, "PixelAt20"), rs_pixel(actual, 20u, 4u));
+    rs_write_decimal(rs_key(key, name, "Wrong"), wrong);
+    if (first != 0xfffffffful) {
+        rs_write_decimal(rs_key(key, name, "FirstWrongX"), first % TEST_WIDTH);
+        rs_write_decimal(rs_key(key, name, "FirstWrongY"), first / TEST_WIDTH);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, first % TEST_WIDTH,
+                              first / TEST_WIDTH));
+    }
+    if (wrong != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/*
+ * Pitch: a green quad over columns 4-51 of rows 0-15 into the test surface
+ * with its pitch widened by `extra` pixels. COLORPITCH takes any multiple
+ * of 8 pixels (radeon_reg.h's 1FF8h mask), but Mesa aligns R200 colour
+ * pitches to 64 bytes, and V9XGLP's 360-pixel (720-byte) OpenGL target
+ * drew sheared on M-HNBJNV. 8 extra pixels make a pitch that is not a
+ * multiple of 64 bytes at either depth; 32 make one that is (the control).
+ */
+static void rs_pitch_test(const char *name, char letter, DWORD extra)
+{
+    struct v9x_rv280_3d_raster raster;
+    struct rs_quad quad;
+    DWORD expected[TEST_WIDTH];
+    DWORD saved_pitch = rs_pitch;
+    DWORD saved_height = rs_height;
+    char key[64];
+    DWORD x;
+    DWORD wrong;
+
+    rs_pitch = (TEST_WIDTH + extra) * rs_bpp;
+    rs_height = TEST_BYTES / rs_pitch;
+    rs_write_decimal(rs_key(key, name, "PitchBytes"), rs_pitch);
+    rs_zero_raster(&raster);
+    raster.keep_x = 1ul;
+    quad.left = 4u;
+    quad.width = 48u;
+    quad.z_bits = 0u;
+    quad.colour = ARGB_GREEN;
+    if (rs_draw_quads(name, &raster, &quad, 1u)) {
+        rs_save_block(letter);
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            expected[x] = x >= 4u && x < 52u ? rs_store(ARGB_GREEN)
+                                             : 0xfffffffful;
+        }
+        wrong = rs_judge_columns(name, expected);
+        rs_write(rs_key(key, name, "Result"), wrong == 0u ? "PASS"
+                                                          : "MISMATCH");
+        if (wrong != 0u) {
+            rs_failed = 1u;
+        }
+    }
+    rs_pitch = saved_pitch;
+    rs_height = saved_height;
 }
 
 /*
@@ -1886,6 +2095,168 @@ static void rs_specular_test(void)
     rs_write(rs_key(key, name, "Result"), "PASS");
 }
 
+/*
+ * WideZ: V9XGLP's GeomScan on M-HNBJNV - a 360-pixel OpenGL target, its Z
+ * buffer's pitch 384 pixels, drawn green over the whole window at z 0.5,
+ * LESS, after a depth clear - came out black in a band near x 56-71. Here
+ * the same shape: a 360 x 32 target at a 384-pixel pitch, a Z buffer of
+ * 768-byte rows on a 4 KiB boundary set to FFFFh, one green quad over it
+ * all at z 0.5. two_d: the Z buffer set by the 2D engine over the pitch
+ * and all 32 rows, as eng_rv280.c's depth fill does; else by the CPU.
+ * Rows 0, 8, 16 and 24 read back: every pixel green.
+ */
+#define RS_WIDE_WIDTH 360ul
+#define RS_WIDE_PITCH_PIXELS 384ul
+#define RS_WIDE_ROWS 32ul
+
+static void rs_wide_z_test(const char *name, int two_d)
+{
+    static const int corner_x[6] = { 0, 1, 0, 1, 1, 0 };
+    static const int corner_y[6] = { 0, 0, 1, 0, 1, 1 };
+    struct v9x_rv280_3d_target target;
+    struct v9x_rv280_3d_raster raster;
+    struct v9x_rv280_3d_vertex vertices[6];
+    struct v9x_rv280_3d_list list;
+    struct v9x_rs690_fill fill;
+    struct v9x_rs690_blt init;
+    struct v9x_rs690_blt blt;
+    char key[64];
+    DWORD pitch = RS_WIDE_PITCH_PIXELS * rs_bpp;
+    DWORD z_pitch = RS_WIDE_PITCH_PIXELS * 2ul;
+    DWORD green = rs_store(ARGB_GREEN);
+    DWORD wrong = 0u;
+    DWORD first = 0xfffffffful;
+    DWORD row;
+    DWORD x;
+    int index;
+
+    rs_zero_raster(&raster);
+    raster.keep_x = 1ul;
+    raster.z_enable = 1ul;
+    raster.z_offset = ZBUF_OFFSET;
+    raster.z_pitch_bytes = z_pitch;
+    raster.z_func = 1ul;
+    raster.z_write = 1ul;
+    target.fb_gpu_base = rs_fb_gpu_base;
+    target.fb_bytes = TEST_FB;
+    target.offset = TEST_BASE;
+    target.pitch_bytes = pitch;
+    target.bytes_per_pixel = rs_bpp;
+    target.width = RS_WIDE_WIDTH;
+    target.height = RS_WIDE_ROWS;
+    target.raster = &raster;
+    target.layout = V9X_RV280_LAYOUT_Z;
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, 0u, pitch * RS_WIDE_ROWS / 4u);
+    if (two_d) {
+        if (v9x_rs690_build_init(rs_read_register(V9X_RS690_DP_DATATYPE),
+                                 &init) != V9X_STATUS_OK) {
+            rs_write(rs_key(key, name, "Result"), "INIT-REFUSED");
+            rs_failed = 1u;
+            return;
+        }
+        fill.fb_gpu_base = rs_fb_gpu_base;
+        fill.fb_bytes = TEST_FB;
+        fill.target_offset = ZBUF_OFFSET;
+        fill.pitch_bytes = z_pitch;
+        fill.bytes_per_pixel = 2u;
+        fill.left = 0u;
+        fill.top = 0u;
+        fill.width = RS_WIDE_PITCH_PIXELS;
+        fill.height = RS_WIDE_ROWS;
+        fill.color = 0xfffful;
+        if (v9x_rs690_build_fill(&fill, &blt) != V9X_STATUS_OK) {
+            rs_write(rs_key(key, name, "Result"), "FILL-REFUSED");
+            rs_failed = 1u;
+            return;
+        }
+        rs_add(RS_OP_LFB_FILL32, ZBUF_OFFSET, 0u, z_pitch * RS_WIDE_ROWS / 4u);
+        rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        rs_add_blt(&init);
+        rs_add_blt(&blt);
+    } else {
+        rs_add(RS_OP_LFB_FILL32, ZBUF_OFFSET, 0xfffffffful,
+               z_pitch * RS_WIDE_ROWS / 4u);
+    }
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (v9x_rv280_build_3d_target(&target, 0, &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return;
+    }
+    rs_add_list(&list);
+    for (index = 0; index < 6; ++index) {
+        vertices[index].x_bits =
+            rs_float_bits(corner_x[index] ? (long)RS_WIDE_WIDTH : 0l);
+        vertices[index].y_bits =
+            rs_float_bits(corner_y[index] ? (long)RS_WIDE_ROWS : 0l);
+        vertices[index].z_bits = rs_ratio_bits(1l, 2l);
+        vertices[index].w_bits = 0u;
+        vertices[index].colour = ARGB_GREEN;
+        vertices[index].specular = 0u;
+        vertices[index].s_bits = 0u;
+        vertices[index].t_bits = 0u;
+    }
+    if (v9x_rv280_build_3d_triangles(vertices, 6u, 0, V9X_RV280_LAYOUT_Z,
+                                     &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
+        rs_failed = 1u;
+        return;
+    }
+    rs_add_list(&list);
+    (void)v9x_rv280_build_3d_finish(1, &list);
+    rs_add_list(&list);
+    rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return;
+    }
+    for (row = 0u; row < RS_WIDE_ROWS; row += 8u) {
+        char row_key[32];
+        DWORD row_wrong = 0u;
+
+        rs_begin();
+        rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE + row * pitch, 0u,
+               RS_WIDE_WIDTH * rs_bpp / 4u);
+        if (!rs_run()) {
+            rs_write(rs_key(key, name, "Result"), "READ-NOT-RUN");
+            rs_failed = 1u;
+            return;
+        }
+        for (x = 0u; x < RS_WIDE_WIDTH; ++x) {
+            const unsigned char *at =
+                (const unsigned char *)rs_result_buffer.block + x * rs_bpp;
+            DWORD pixel = rs_bpp == 2u
+                ? ((DWORD)at[0] | ((DWORD)at[1] << 8))
+                : ((DWORD)at[0] | ((DWORD)at[1] << 8) |
+                   ((DWORD)at[2] << 16));
+
+            if (pixel != green) {
+                if (row_wrong == 0u) {
+                    wsprintfA(row_key, "Row%luFirstX", row);
+                    rs_write_decimal(rs_key(key, name, row_key), x);
+                }
+                ++row_wrong;
+                if (first == 0xfffffffful) {
+                    first = row * RS_WIDE_WIDTH + x;
+                }
+            }
+        }
+        wsprintfA(row_key, "Row%luWrong", row);
+        rs_write_decimal(rs_key(key, name, row_key), row_wrong);
+        wrong += row_wrong;
+    }
+    if (wrong != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
 static void rs_fill_after_test(void)
 {
     static const char name[] = "FillAfter3D";
@@ -2101,6 +2472,14 @@ void WINAPI V9xRv2803dProbeEntry(void)
     rs_fog_test("FogFlat", 'O', 0);
     rs_fog_test("FogGouraud", 'R', 1);
     rs_specular_test();
+    rs_wide_z_test("WideZCpu", 0);
+    rs_wide_z_test("WideZ2D", 1);
+    rs_pitch_test("Pitch8", 'H', 8u);
+    rs_pitch_test("Pitch32", 'J', 32u);
+    rs_scissor_test();
+    rs_channel_mask_test("MaskGreen", 'K', V9X_RV280_CHANNEL_GREEN);
+    rs_channel_mask_test("MaskRedBlue", 'L',
+                         V9X_RV280_CHANNEL_RED | V9X_RV280_CHANNEL_BLUE);
     rs_fill_after_test();
 
     rs_write_hex("RbbmStatusAtEnd", rs_read_register(V9X_RS690_RBBM_STATUS));

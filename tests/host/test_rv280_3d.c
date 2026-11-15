@@ -52,6 +52,12 @@ static void zero_raster(struct v9x_rv280_3d_raster *raster)
     raster->fog_colour = 0ul;
     raster->specular_enable = 0ul;
     raster->keep_x = 0ul;
+    raster->masked_channels = 0ul;
+    raster->scissor_enable = 0ul;
+    raster->scissor_left = 0ul;
+    raster->scissor_top = 0ul;
+    raster->scissor_right = 0ul;
+    raster->scissor_bottom = 0ul;
 }
 
 static void test_init(void)
@@ -107,6 +113,18 @@ static void test_target(void)
     CHECK(list_value(&list, V9X_RV280_SE_VTX_FMT_0) == 0x00000800ul);
     CHECK(list_value(&list, V9X_RV280_SE_VTX_FMT_1) == 0ul);
     CHECK(list_value(&list, V9X_RV280_SE_CNTL) == 0x9900551eul);
+
+    /* The pitch whole 32 bytes: 72 pixels at 16 bpp (144 bytes) drew
+     * sheared on M-HNBJNV (V9XR23D Pitch8), at 32 bpp (288 bytes) exact. */
+    target.pitch_bytes = 144ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    target.bytes_per_pixel = 4ul;
+    target.pitch_bytes = 288ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    target.bytes_per_pixel = 2ul;
+    target.pitch_bytes = 128ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
 
     CHECK(v9x_rv280_build_3d_target(&target, 1, &list) == V9X_STATUS_OK);
     CHECK(list_value(&list, V9X_RV280_SE_CNTL) == 0x9a00aa1eul);
@@ -674,8 +692,101 @@ static void test_full_vertex(void)
     CHECK(list.values[list.count - 1u] == 0x8bu);
 }
 
+/* The render interface's scissor and write mask. */
+static void test_scissor_mask(void)
+{
+    struct v9x_rv280_3d_target target;
+    struct v9x_rv280_3d_raster raster;
+    struct v9x_rv280_3d_list list;
+
+    target.fb_gpu_base = 0ul;
+    target.fb_bytes = HN_FB_BYTES;
+    target.offset = HN_SURFACE;
+    target.pitch_bytes = 128ul;
+    target.bytes_per_pixel = 2ul;
+    target.width = 64ul;
+    target.height = 32ul;
+    target.raster = &raster;
+    target.layout = 0u;
+    zero_raster(&raster);
+
+    /* No scissor: RE_CNTL perspective alone, the target's extent as
+     * before. */
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RE_CNTL) == 0x00000008ul);
+    CHECK(list_value(&list, V9X_RV280_RE_TOP_LEFT) == 0ul);
+    CHECK(list_value(&list, V9X_RV280_RE_WIDTH_HEIGHT) ==
+          (64ul | (32ul << 16)));
+
+    /* A scissor of columns 12-39, rows 2-5: SCISSOR_ENABLE, the corners
+     * inclusive. */
+    raster.scissor_enable = 1ul;
+    raster.scissor_left = 12ul;
+    raster.scissor_top = 2ul;
+    raster.scissor_right = 40ul;
+    raster.scissor_bottom = 6ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RE_CNTL) == 0x0000000aul);
+    CHECK(list_value(&list, V9X_RV280_RE_TOP_LEFT) == (12ul | (2ul << 16)));
+    CHECK(list_value(&list, V9X_RV280_RE_WIDTH_HEIGHT) ==
+          (39ul | (5ul << 16)));
+    /* The whole target. */
+    raster.scissor_left = 0ul;
+    raster.scissor_top = 0ul;
+    raster.scissor_right = 64ul;
+    raster.scissor_bottom = 32ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RE_WIDTH_HEIGHT) ==
+          (63ul | (31ul << 16)));
+    /* Empty, or past the target: refused. */
+    raster.scissor_right = 0ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    raster.scissor_right = 65ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    raster.scissor_right = 64ul;
+    raster.scissor_bottom = 33ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    raster.scissor_top = 32ul;
+    raster.scissor_bottom = 32ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    raster.scissor_enable = 0ul;
+
+    /* Red masked at 16 bpp: its bits in both halves, the enable set. */
+    raster.masked_channels = V9X_RV280_CHANNEL_RED;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0x07ff07fful);
+    CHECK((list_value(&list, V9X_RV280_RB3D_CNTL) & 0x00000002ul) != 0ul);
+    raster.masked_channels = V9X_RV280_CHANNEL_GREEN |
+                             V9X_RV280_CHANNEL_BLUE;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0xf800f800ul);
+    /* At 32 bpp, with the X byte kept too. */
+    target.bytes_per_pixel = 4ul;
+    target.pitch_bytes = 256ul;
+    raster.keep_x = 1ul;
+    raster.masked_channels = V9X_RV280_CHANNEL_GREEN;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0x00ff00fful);
+    CHECK((list_value(&list, V9X_RV280_RB3D_CNTL) & 0x00000002ul) != 0ul);
+    raster.keep_x = 0ul;
+    raster.masked_channels = V9X_RV280_CHANNEL_RED |
+                             V9X_RV280_CHANNEL_GREEN |
+                             V9X_RV280_CHANNEL_BLUE;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RV280_RB3D_PLANEMASK) == 0xff000000ul);
+    /* A bit past the three channels is refused. */
+    raster.masked_channels = 8ul;
+    CHECK(v9x_rv280_build_3d_target(&target, 0, &list) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_rv280_3d_tests(void)
 {
+    test_scissor_mask();
     test_init();
     test_target();
     test_triangles();

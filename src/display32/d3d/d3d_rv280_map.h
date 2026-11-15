@@ -15,10 +15,11 @@
  * same register field, the alpha test, textures (RGB565 and ARGB8888
  * measured; ARGB1555, ARGB4444 and XRGB8888 from r200_reg.h) nearest
  * or bilinear, wrapped or clamped, perspective-correct, decal or modulate,
- * vertex fog from the specular alpha, specular
- * (docs\decisions\2026-11-15-rv280-*-probe.md). Everything else is a refusal
- * with a reason: Direct3D's skip-and-count, the render interface's CPU
- * fallback. The vertices need no translation: V9X_R3D_VERTEX is D3DTLVERTEX
+ * vertex fog from the specular alpha, specular, and the render interface's
+ * scissor and write mask (docs\decisions\2026-11-15-rv280-*-probe.md).
+ * Everything else is a refusal with a reason: Direct3D's skip-and-count,
+ * the render interface's UNSUPPORTED (no software fallback: the tiled Z
+ * cannot be shared with the CPU). The vertices need no translation: V9X_R3D_VERTEX is D3DTLVERTEX
  * dword for dword, the builder's X, Y, Z, W, colour, specular, S, T.
  *
  * Plan: docs\plans\ati-rv280-radeon-9250.md, phase 5.
@@ -51,8 +52,8 @@ typedef struct v9x_d3d_rv280_texture {
 
 #define V9X_D3D_RV280_REFUSE_NONE            0ul
 #define V9X_D3D_RV280_REFUSE_TARGET          1ul  /* not RGB565/XRGB8888 */
-#define V9X_D3D_RV280_REFUSE_EXPLICIT        2ul  /* render-interface draw,
-                                                     CPU levels or a second
+#define V9X_D3D_RV280_REFUSE_EXPLICIT        2ul  /* a bad scissor, CPU
+                                                     levels or a second
                                                      unit */
 #define V9X_D3D_RV280_REFUSE_DEPTH_FUNC      3ul
 #define V9X_D3D_RV280_REFUSE_BLEND           4ul

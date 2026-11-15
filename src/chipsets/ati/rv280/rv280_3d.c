@@ -86,6 +86,19 @@ static v9x_status v9x_rv280_check_raster(
         (raster->fog_colour & ~V9X_RV280_FOG_COLOR_MASK) != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    if ((raster->masked_channels &
+         ~(V9X_RV280_CHANNEL_RED | V9X_RV280_CHANNEL_GREEN |
+           V9X_RV280_CHANNEL_BLUE)) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* A scissor is a non-empty rectangle inside the target. */
+    if (raster->scissor_enable &&
+        (raster->scissor_left >= raster->scissor_right ||
+         raster->scissor_top >= raster->scissor_bottom ||
+         raster->scissor_right > target->width ||
+         raster->scissor_bottom > target->height)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
     if (!raster->z_enable) {
         return V9X_STATUS_OK;
     }
@@ -135,6 +148,10 @@ static v9x_status v9x_rv280_add_target(
     v9x_u32 vertex_format;
     v9x_u32 setup;
     v9x_u32 fog;
+    v9x_u32 planemask;
+    v9x_u32 re_cntl;
+    v9x_u32 top_left;
+    v9x_u32 width_height;
 
     if (target == 0 || list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
@@ -152,7 +169,8 @@ static v9x_status v9x_rv280_add_target(
      * 1FF8h (radeon_reg.h; R200PrepareComposite :1024); RE_WIDTH_HEIGHT
      * the extent, up to R200CheckComposite's 2047. */
     if (target->pitch_bytes == 0ul ||
-        target->pitch_bytes % target->bytes_per_pixel != 0ul) {
+        target->pitch_bytes % target->bytes_per_pixel != 0ul ||
+        target->pitch_bytes % V9X_RV280_COLOR_PITCH_ALIGN != 0ul) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     pitch_pixels = target->pitch_bytes / target->bytes_per_pixel;
@@ -247,10 +265,42 @@ static v9x_status v9x_rv280_add_target(
         }
     }
 
-    /* The X byte kept by the plane mask, which needs its enable bit (V9XD32
-     * on M-HNBJNV read FF13579Bh for 0013579Bh without it). */
-    if (raster != 0 && raster->keep_x && target->bytes_per_pixel == 4ul) {
+    /* The bits left unwritten: the X byte and any masked channel. The mask
+     * needs its enable bit (V9XD32 on M-HNBJNV read FF13579Bh for
+     * 0013579Bh without it). */
+    planemask = V9X_RV280_PLANEMASK_ALL;
+    if (raster != 0) {
+        int wide = target->bytes_per_pixel == 4ul;
+
+        if (raster->keep_x && wide) {
+            planemask &= V9X_RV280_PLANEMASK_NO_X;
+        }
+        if ((raster->masked_channels & V9X_RV280_CHANNEL_RED) != 0ul) {
+            planemask &= ~(wide ? V9X_RV280_PLANE_RED_8888
+                                : V9X_RV280_PLANE_RED_565);
+        }
+        if ((raster->masked_channels & V9X_RV280_CHANNEL_GREEN) != 0ul) {
+            planemask &= ~(wide ? V9X_RV280_PLANE_GREEN_8888
+                                : V9X_RV280_PLANE_GREEN_565);
+        }
+        if ((raster->masked_channels & V9X_RV280_CHANNEL_BLUE) != 0ul) {
+            planemask &= ~(wide ? V9X_RV280_PLANE_BLUE_8888
+                                : V9X_RV280_PLANE_BLUE_565);
+        }
+    }
+    if (planemask != V9X_RV280_PLANEMASK_ALL) {
         cntl |= V9X_RV280_RB3D_PLANE_MASK;
+    }
+    /* The scissor, as Mesa's r200_vtbl_update_scissor writes it: the
+     * corners inclusive. Without one, the extent the probes drew with. */
+    re_cntl = V9X_RV280_RE_PERSPECTIVE;
+    top_left = 0ul;
+    width_height = target->width | (target->height << 16);
+    if (raster != 0 && raster->scissor_enable) {
+        re_cntl |= V9X_RV280_RE_SCISSOR;
+        top_left = raster->scissor_left | (raster->scissor_top << 16);
+        width_height = (raster->scissor_right - 1ul) |
+                       ((raster->scissor_bottom - 1ul) << 16);
     }
 
     v9x_rv280_3d_begin(list);
@@ -258,15 +308,10 @@ static v9x_status v9x_rv280_add_target(
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_CNTL, cntl);
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_COLOROFFSET, address);
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_COLORPITCH, pitch_pixels);
-    v9x_rv280_3d_add(list, V9X_RV280_RE_TOP_LEFT, 0ul);
-    v9x_rv280_3d_add(list, V9X_RV280_RE_WIDTH_HEIGHT,
-                     target->width | (target->height << 16));
+    v9x_rv280_3d_add(list, V9X_RV280_RE_TOP_LEFT, top_left);
+    v9x_rv280_3d_add(list, V9X_RV280_RE_WIDTH_HEIGHT, width_height);
     v9x_rv280_3d_add(list, V9X_RV280_RB3D_BLENDCNTL, blend);
-    v9x_rv280_3d_add(list, V9X_RV280_RB3D_PLANEMASK,
-                     raster != 0 && raster->keep_x &&
-                             target->bytes_per_pixel == 4ul
-                         ? V9X_RV280_PLANEMASK_NO_X
-                         : V9X_RV280_PLANEMASK_ALL);
+    v9x_rv280_3d_add(list, V9X_RV280_RB3D_PLANEMASK, planemask);
     /* The Z buffer, 16-bit integer Z, stencil off (radeon_reg.h:2151-2234;
      * no R200 path in the X driver writes it). */
     if (raster != 0 && raster->z_enable) {
@@ -295,7 +340,7 @@ static v9x_status v9x_rv280_add_target(
     v9x_rv280_3d_add(list, V9X_RV280_SE_CNTL, setup);
     /* Perspective-correct interpolation: with W forced to one it is the
      * affine result, with 1/W it corrects. */
-    v9x_rv280_3d_add(list, V9X_RV280_RE_CNTL, V9X_RV280_RE_PERSPECTIVE);
+    v9x_rv280_3d_add(list, V9X_RV280_RE_CNTL, re_cntl);
     return V9X_STATUS_OK;
 }
 

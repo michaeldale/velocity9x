@@ -557,18 +557,6 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD bump_luminance;
     /*
-     * Nonzero when the engine does not serve the render interface (the
-     * ICD, Glide, 3DCIF), whose draws then go to their own CPU path as on
-     * a chip with no Direct3D engine (describe answers NOT_READY). For an
-     * engine that refuses the interface's explicit draws (scissor, write
-     * mask) and has no software fallback, which would otherwise drop every
-     * one: the Radeon 9250, whose depth is tiled so the software engine
-     * cannot share it, drew nothing in V9XGLP until this (M-HNBJNV boot
-     * 21). Appended 2026-11-15; an initialiser that stops short leaves it
-     * zero.
-     */
-    DWORD render_interface_off;
-    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

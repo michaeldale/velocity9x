@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../../src/display32/d3d/d3d_rv280_map.h"
+#include "velocity9x/r3d_abi.h"     /* V9X_R3D_ABI_WRITE_* */
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -148,11 +149,54 @@ static void test_refusals(void)
     V9X_D3D_RV280_STATE state;
     int other;
 
-    /* The render interface's explicit draws go to its CPU fallback until
-     * scissor and write mask are built here. */
+    /* A Direct3D draw states no scissor and masks nothing. */
     base_draw(&draw);
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_NONE);
+    CHECK(state.raster.scissor_enable == 0ul);
+    CHECK(state.raster.masked_channels == 0ul);
+
+    /* The render interface's explicit draws are drawn with their scissor
+     * and write mask (V9XR23D Scissor, MaskGreen and MaskRedBlue, exact on
+     * M-HNBJNV at 16 and 32 bpp). */
     draw.explicit_state = 1ul;
+    draw.scissor_left = 0ul;
+    draw.scissor_top = 0ul;
+    draw.scissor_right = 800ul;
+    draw.scissor_bottom = 600ul;
+    draw.write_mask = V9X_R3D_ABI_WRITE_RGB;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_NONE);
+    CHECK(state.raster.scissor_enable == 1ul);
+    CHECK(state.raster.scissor_right == 800ul &&
+          state.raster.scissor_bottom == 600ul);
+    CHECK(state.raster.masked_channels == 0ul);
+    CHECK(builds(&state));
+    draw.scissor_left = 16ul;
+    draw.scissor_top = 8ul;
+    draw.scissor_right = 100ul;
+    draw.scissor_bottom = 50ul;
+    draw.write_mask = V9X_R3D_ABI_WRITE_GREEN | V9X_R3D_ABI_WRITE_BLUE;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_NONE);
+    CHECK(state.raster.scissor_left == 16ul &&
+          state.raster.scissor_top == 8ul &&
+          state.raster.scissor_right == 100ul &&
+          state.raster.scissor_bottom == 50ul);
+    CHECK(state.raster.masked_channels == V9X_RV280_CHANNEL_RED);
+    CHECK(builds(&state));
+    draw.write_mask = 0ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_NONE);
+    CHECK(state.raster.masked_channels ==
+          (V9X_RV280_CHANNEL_RED | V9X_RV280_CHANNEL_GREEN |
+           V9X_RV280_CHANNEL_BLUE));
+    /* An empty scissor or one past the target is refused, not clamped. */
+    draw.scissor_right = 16ul;
     CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_EXPLICIT);
+    draw.scissor_right = 801ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_EXPLICIT);
+    draw.scissor_right = 100ul;
+    draw.scissor_bottom = 601ul;
+    CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_EXPLICIT);
+
+    /* CPU levels and a second unit stay refused. */
     base_draw(&draw);
     draw.texture.level_count = 1ul;
     CHECK(map(&draw, 0, 0ul, &state) == V9X_D3D_RV280_REFUSE_EXPLICIT);

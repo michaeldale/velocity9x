@@ -8,6 +8,11 @@
 
 #define V9X_D3D_RV280_ALPHA_REF_MASK 0xfful
 
+/* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
+#define V9X_D3D_RV280_WRITE_RED      1ul
+#define V9X_D3D_RV280_WRITE_GREEN    2ul
+#define V9X_D3D_RV280_WRITE_BLUE     4ul
+
 /* What every draw sends of D3DTLVERTEX: X, Y, Z, 1/W, colour, specular.
  * The specular dword is sent even with fog and specular off; it costs a
  * dword a vertex and keeps the layout one per draw kind. */
@@ -194,6 +199,36 @@ static v9x_u32 v9x_d3d_rv280_map_texture(const V9X_R3D_DRAW *draw,
     return V9X_D3D_RV280_REFUSE_NONE;
 }
 
+/* An explicit draw's scissor and write mask, as the builder takes them.
+ * The scissor must be a non-empty rectangle inside the target; one that is
+ * not is refused rather than clamped, as the RS690's is. A channel the
+ * write mask leaves out is masked. */
+static int v9x_d3d_rv280_explicit(const V9X_R3D_DRAW *draw,
+                                  V9X_D3D_RV280_STATE *state)
+{
+    if (draw->scissor_left >= draw->scissor_right ||
+        draw->scissor_top >= draw->scissor_bottom ||
+        draw->scissor_right > draw->target.width ||
+        draw->scissor_bottom > draw->target.height) {
+        return 0;
+    }
+    state->raster.scissor_enable = 1ul;
+    state->raster.scissor_left = draw->scissor_left;
+    state->raster.scissor_top = draw->scissor_top;
+    state->raster.scissor_right = draw->scissor_right;
+    state->raster.scissor_bottom = draw->scissor_bottom;
+    if ((draw->write_mask & V9X_D3D_RV280_WRITE_RED) == 0ul) {
+        state->raster.masked_channels |= V9X_RV280_CHANNEL_RED;
+    }
+    if ((draw->write_mask & V9X_D3D_RV280_WRITE_GREEN) == 0ul) {
+        state->raster.masked_channels |= V9X_RV280_CHANNEL_GREEN;
+    }
+    if ((draw->write_mask & V9X_D3D_RV280_WRITE_BLUE) == 0ul) {
+        state->raster.masked_channels |= V9X_RV280_CHANNEL_BLUE;
+    }
+    return 1;
+}
+
 v9x_u32 v9x_d3d_rv280_map_draw(const V9X_R3D_DRAW *draw,
                                const V9X_D3D_RV280_TEXTURE *resolved,
                                v9x_u32 fb_gpu_base,
@@ -211,13 +246,16 @@ v9x_u32 v9x_d3d_rv280_map_draw(const V9X_R3D_DRAW *draw,
     }
     state->target.raster = &state->raster;
 
-    /* The render interface's explicit draws (OpenGL, Glide) need the
-     * scissor and write mask, not built here yet: refused, they go to its
-     * CPU fallback. Levels in CPU memory are not sampled and there is one
-     * unit: those are refused too. */
-    if (draw->explicit_state != 0ul ||
-        draw->texture.levels != 0 || draw->texture.level_count != 0ul ||
+    /* The render interface's draws (OpenGL, Glide, 3DCIF) are drawn with
+     * their scissor and write mask (V9XR23D Scissor, MaskGreen and
+     * MaskRedBlue, exact on M-HNBJNV at 16 and 32 bpp). Levels in CPU
+     * memory are not sampled and there is one unit: those stay refused. */
+    if (draw->texture.levels != 0 || draw->texture.level_count != 0ul ||
         draw->texcoords1 != 0 || draw->texture1.object != 0) {
+        return V9X_D3D_RV280_REFUSE_EXPLICIT;
+    }
+    if (draw->explicit_state != 0ul &&
+        !v9x_d3d_rv280_explicit(draw, state)) {
         return V9X_D3D_RV280_REFUSE_EXPLICIT;
     }
     switch (draw->target.format) {

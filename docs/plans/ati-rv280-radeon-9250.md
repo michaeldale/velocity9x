@@ -45,15 +45,17 @@ hardware, GDI in the screen shadow, and VBE modes.
 - **Phase 5, the Direct3D HAL:** `d3d_rv280_map.c` / `d3d_rv280.c`, the
   RS690's split, with `D3D` in the row's EngineCaps. V9XD32 passes at 16
   and 32 bpp on boot 22. Five texture formats, no mipmaps, Z tiled with
-  whole-surface fills only. The engine stays out of the render
-  interface (`render_interface_off`), so OpenGL is Windows' software
-  renderer as before
+  whole-surface fills only
   ([record](../decisions/2026-11-15-rv280-d3d-hal.md)).
+- **Phase 5, the render interface:** scissor and write mask measured, and
+  the colour pitch found to need whole 32 bytes. The ICD and Glide draw
+  on the R200: V9XGLP and V9XGLIDP pass, with GeomScan's band open
+  ([record](../decisions/2026-11-15-rv280-render-interface.md),
+  [issue](../issues/2026-11-15-rv280-gl-geomscan-band.md)).
 
 Next in phase 5:
 - 3DMark 2000 and a game;
-- the render interface's scissor and write mask, so the ICD and Glide
-  draw on the R200;
+- GeomScan's band;
 - mipmaps, the colour key, and partial depth fills.
 
 Target: the RV280 as a new generation in the one `ati` family, module
