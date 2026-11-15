@@ -49,6 +49,48 @@ v9x_u32 v9x_nv50_d3d_vp(v9x_u32 *words, v9x_u32 max);
 v9x_u32 v9x_nv50_d3d_fp(v9x_u32 variant, v9x_u32 *words, v9x_u32 max,
                         v9x_u32 *registers);
 
+/*
+ * Two texture units (step 5 of docs\plans\nvidia-gt218-ps11.md): unit 0
+ * combines its texel with the vertex colour, unit 1 its texel with unit
+ * 0's result, each by a colour op (the render interface's REPLACE,
+ * MODULATE, DECALALPHA and ADD, the last saturated as Direct3D's stages
+ * are) and an alpha op (FRAGMENT, REPLACE, MODULATE); then specular and
+ * fog as the one-unit variants. Unit 1's coordinates are attribute 9,
+ * u v, which the vertex program passes as results 14 and 15.
+ *
+ * There are too many combinations to place all, so the HAL builds them
+ * on demand into slots past the scratch's own area (gt218_reserve.h),
+ * keyed by v9x_nv50_d3d_combine_key; FP_START_ID is
+ * v9x_nv50_d3d_fp2_start(slot), an offset from the same code base.
+ */
+#define V9X_NV50_D3D_COLOR_REPLACE   0ul  /* Ct                 */
+#define V9X_NV50_D3D_COLOR_MODULATE  1ul  /* Cin Ct             */
+#define V9X_NV50_D3D_COLOR_DECAL     2ul  /* Cin + At (Ct - Cin) */
+#define V9X_NV50_D3D_COLOR_ADD       3ul  /* sat(Cin + Ct)      */
+#define V9X_NV50_D3D_COLOR_OPS       4ul
+#define V9X_NV50_D3D_ALPHA_FRAGMENT  0ul  /* Ain                */
+#define V9X_NV50_D3D_ALPHA_REPLACE   1ul  /* At                 */
+#define V9X_NV50_D3D_ALPHA_MODULATE  2ul  /* Ain At             */
+#define V9X_NV50_D3D_ALPHA_OPS       3ul
+struct v9x_nv50_d3d_combine {
+    v9x_u32 color[2];
+    v9x_u32 alpha[2];
+    v9x_u32 specular;
+    v9x_u32 fog;
+};
+#define V9X_NV50_D3D_COMBINE_NONE    0xfffffffful
+#define V9X_NV50_D3D_FP2_FIRST       0x7000ul
+#define V9X_NV50_D3D_FP2_STRIDE      0x0200ul
+#define V9X_NV50_D3D_FP2_SLOTS       64ul
+#define V9X_NV50_D3D_FP2_WORDS_MAX   128ul
+/* A number for the combination, or COMBINE_NONE for an op this does not
+ * draw. */
+v9x_u32 v9x_nv50_d3d_combine_key(const struct v9x_nv50_d3d_combine *c);
+v9x_u32 v9x_nv50_d3d_fp2_start(v9x_u32 slot);
+/* The combination's program, as v9x_nv50_d3d_fp. */
+v9x_u32 v9x_nv50_d3d_fp2(const struct v9x_nv50_d3d_combine *c,
+                         v9x_u32 *words, v9x_u32 max, v9x_u32 *registers);
+
 /* The fragment program's constants (buffer 2), sent with each fogged
  * draw: the fog colour in 0 to 2, its negation in 4 to 6. */
 #define V9X_NV50_D3D_FP_CONSTANTS    8ul
@@ -119,6 +161,16 @@ struct v9x_nv50_d3d_state {
     v9x_u32 fp_registers;
     v9x_u32 textured;
     v9x_u32 fog_color;
+    /* A two-unit draw: its program at fp_start (v9x_nv50_d3d_fp2_start)
+     * in place of fp_variant's, fog constants when fog is set, and
+     * CODE_CB_FLUSH first when code_flush says the program was just
+     * written. textured then names both units' tables. */
+    v9x_u32 two_units;
+    v9x_u32 fp_start;
+    v9x_u32 fog;
+    v9x_u32 code_flush;
+    /* The two units' combine, from which the HAL finds the program. */
+    struct v9x_nv50_d3d_combine combine;
 };
 
 /* The colour mask: red, green, blue, alpha writes, a nibble each. */
@@ -141,6 +193,11 @@ void v9x_nv50_push_d3d_vertex(struct v9x_nv50_push *push, float sx, float sy,
                               float centre, v9x_u32 with_specular,
                               v9x_u32 with_texture);
 #define V9X_NV50_D3D_VERTEX_WORDS_MAX 18ul
+
+/* Unit 1's coordinates for the next vertex (attribute 9), sent before
+ * v9x_nv50_push_d3d_vertex, which emits it. */
+void v9x_nv50_push_d3d_uv1(struct v9x_nv50_push *push, float tu1, float tv1);
+#define V9X_NV50_D3D_UV1_WORDS       3ul
 
 /* VERTEX_BEGIN_GL triangles, and its end. */
 void v9x_nv50_push_d3d_begin(struct v9x_nv50_push *push);

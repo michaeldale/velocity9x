@@ -174,12 +174,14 @@ void v9x_nv50_push_3d_setup(struct v9x_nv50_push *push,
     v9x_nv50_3d_one(push, V9X_8597_COLOR_MASK_COMMON, 1ul);
     v9x_nv50_3d_one(push, V9X_8597_ZETA_ENABLE, 0ul);
 
-    /* Texture image and sampler tables: TIC limit 800h, TSC limit 0, one
+    /* Texture image and sampler tables: TIC limit 800h, TSC limit 1 (EXA
+     * has 0; the second entry is Direct3D's second texture unit, step 5
+     * of nvidia-gt218-ps11.md, and /3d:ps11 drew with a limit of 3), one
      * sampler per texture (LINKED_TSC), and EXA's texture limits for the
      * fragment stage. */
     v9x_nv50_3d_address(push, V9X_8597_TIC_ADDRESS_HIGH, scratch->tic,
                         0x00000800ul);
-    v9x_nv50_3d_address(push, V9X_8597_TSC_ADDRESS_HIGH, scratch->tsc, 0ul);
+    v9x_nv50_3d_address(push, V9X_8597_TSC_ADDRESS_HIGH, scratch->tsc, 1ul);
     v9x_nv50_3d_one(push, V9X_8597_LINKED_TSC, 1ul);
     v9x_nv50_3d_one(push, V9X_8597_TEX_LIMITS2, 0x54ul);
 

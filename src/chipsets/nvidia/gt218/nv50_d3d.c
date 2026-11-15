@@ -30,24 +30,29 @@
  * read it): v[0x00] is the position's w term, diffuse from v[0x04],
  * specular from v[0x14], the coordinates at v[0x24]. The first /3d:d3d
  * run read from v[0x0c] and v[0x10], and its texture sampled texel (0, 0)
- * everywhere.
+ * everywhere. Unit 1's coordinates (attribute 9, step 5 of
+ * nvidia-gt218-ps11.md) follow as results 14 and 15, v[0x2c]; a one-unit
+ * draw does not send attribute 9 and its programs never read them.
  */
-#define V9X_NV50_D3D_RESULTS         14ul
+#define V9X_NV50_D3D_RESULTS         16ul
 #define V9X_NV50_D3D_MAP0            0x03020100ul
 #define V9X_NV50_D3D_MAP1            0x07060504ul
 #define V9X_NV50_D3D_MAP2            0x0b0a0908ul
-#define V9X_NV50_D3D_MAP3            0x40400d0cul
-/* UMASK W, ten non-flat interpolants, offset 4, ten in all. */
-#define V9X_NV50_D3D_INTERPOLANTS    0x080a040aul
-/* Attributes 0, 1 and 2 whole; 8's x and y. */
+#define V9X_NV50_D3D_MAP3            0x0f0e0d0cul
+/* UMASK W, twelve non-flat interpolants, offset 4, twelve in all. */
+#define V9X_NV50_D3D_INTERPOLANTS    0x080c040cul
+/* Attributes 0, 1 and 2 whole; 8's and 9's x and y. */
 #define V9X_NV50_D3D_ATTR_EN0        0x00000ffful
-#define V9X_NV50_D3D_ATTR_EN1        0x00000003ul
+#define V9X_NV50_D3D_ATTR_EN1        0x00000033ul
+#define V9X_8597_VTX_ATTR_2F_X9      0x03c8ul /* 380h + 9 * 8 */
+#define V9X_8597_CODE_CB_FLUSH       0x1440ul
 
 #define V9X_NV50_D3D_V_W             0x00ul
 #define V9X_NV50_D3D_V_DIFFUSE       0x04ul
 #define V9X_NV50_D3D_V_SPECULAR      0x14ul
 #define V9X_NV50_D3D_V_FOG           0x20ul /* specular alpha */
 #define V9X_NV50_D3D_V_COORDS        0x24ul
+#define V9X_NV50_D3D_V_COORDS1       0x2cul
 
 /* Fragment registers: the colour in $r0-$r3 (the result), w in $r4, a
  * temporary in $r5, the texel in $r8-$r11, specular in $r12-$r14, the
@@ -57,6 +62,8 @@
 #define V9X_NV50_D3D_R_TEXEL         8ul
 #define V9X_NV50_D3D_R_SPECULAR      12ul
 #define V9X_NV50_D3D_R_FOG           15ul
+/* A two-unit program's second texel, $r16-$r19. */
+#define V9X_NV50_D3D_R_TEXEL1        16ul
 
 /* The fog colour at c0[0..2], its negation at c0[4..6] (byte offsets).
  * The constants are uploaded to buffer 2, FP CB_DEF, which the setup
@@ -157,6 +164,66 @@ v9x_u32 v9x_nv50_d3d_vp(v9x_u32 *words, v9x_u32 max)
 }
 
 /*
+ * Every program's end: specular's colour added, and fog as (colour - fog)
+ * * f + fog with f the specular alpha, which the core leaves there for
+ * vertex and table fog alike (d3d_fog.h); then a long move to end on if
+ * the last instruction is short, and the exit. Returns the register count,
+ * at least used, or 0 when the program is unusable.
+ */
+static v9x_u32 v9x_nv50_d3d_fp_tail(struct v9x_nv50_sh *sh, v9x_u32 specular,
+                                    v9x_u32 fog, v9x_u32 used)
+{
+    v9x_u32 w = V9X_NV50_SH_R(V9X_NV50_D3D_R_W);
+    v9x_u32 index;
+
+    if (specular != 0ul) {
+        for (index = 0ul; index < 3ul; ++index) {
+            v9x_u32 lit = V9X_NV50_SH_R(V9X_NV50_D3D_R_SPECULAR + index);
+
+            v9x_nv50_sh_interp(
+                sh, lit,
+                V9X_NV50_SH_V(V9X_NV50_D3D_V_SPECULAR + index * 4ul), w);
+            v9x_nv50_sh_fadd(sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(index),
+                             V9X_NV50_SH_R(index), lit);
+        }
+        if (used < V9X_NV50_D3D_R_SPECULAR + 3ul) {
+            used = V9X_NV50_D3D_R_SPECULAR + 3ul;
+        }
+    }
+
+    if (fog != 0ul) {
+        v9x_u32 factor = V9X_NV50_SH_R(V9X_NV50_D3D_R_FOG);
+        v9x_u32 temp = V9X_NV50_SH_R(V9X_NV50_D3D_R_TEMP);
+
+        v9x_nv50_sh_interp(sh, factor, V9X_NV50_SH_V(V9X_NV50_D3D_V_FOG), w);
+        for (index = 0ul; index < 3ul; ++index) {
+            v9x_nv50_sh_fadd(sh, V9X_NV50_SH_LONG, temp,
+                             V9X_NV50_SH_R(index),
+                             V9X_NV50_SH_C(V9X_NV50_D3D_FP_SLOT,
+                                           V9X_NV50_D3D_C_FOG_NEG +
+                                               index * 4ul));
+            v9x_nv50_sh_fmad(sh, V9X_NV50_SH_LONG, V9X_NV50_SH_R(index),
+                             temp, factor,
+                             V9X_NV50_SH_C(V9X_NV50_D3D_FP_SLOT,
+                                           V9X_NV50_D3D_C_FOG + index * 4ul));
+        }
+        if (used < V9X_NV50_D3D_R_FOG + 1ul) {
+            used = V9X_NV50_D3D_R_FOG + 1ul;
+        }
+    }
+
+    if (sh->last_size != V9X_NV50_SH_LONG) {
+        v9x_nv50_sh_mov(sh, V9X_NV50_SH_LONG, V9X_NV50_SH_R(3),
+                        V9X_NV50_SH_R(3));
+    }
+    v9x_nv50_sh_exit(sh);
+    if (sh->invalid != 0ul || sh->overflow != 0ul) {
+        return 0ul;
+    }
+    return used;
+}
+
+/*
  * A variant: w from the interpolated 1 / w; diffuse, then the texture
  * blend (REPLACE takes the texel, MODULATE multiplies, all four
  * channels: a texture without alpha samples alpha 1, so the vertex's
@@ -216,44 +283,136 @@ v9x_u32 v9x_nv50_d3d_fp(v9x_u32 variant, v9x_u32 *words, v9x_u32 max,
         used = V9X_NV50_D3D_R_TEXEL + 4ul;
     }
 
-    if (specular != 0ul) {
-        for (index = 0ul; index < 3ul; ++index) {
-            v9x_u32 lit = V9X_NV50_SH_R(V9X_NV50_D3D_R_SPECULAR + index);
+    used = v9x_nv50_d3d_fp_tail(&sh, specular, fog, used);
+    if (used == 0ul) {
+        return 0ul;
+    }
+    *registers = used;
+    return sh.count;
+}
 
-            v9x_nv50_sh_interp(
-                &sh, lit,
-                V9X_NV50_SH_V(V9X_NV50_D3D_V_SPECULAR + index * 4ul), w);
-            v9x_nv50_sh_fadd(&sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(index),
-                             V9X_NV50_SH_R(index), lit);
+/* One unit's combine into $r0-$r3 from the texel at texel onwards
+ * (v9x_nv50_d3d_fp2): the colour first, which DECALALPHA weights by the
+ * texel's own alpha, then the alpha. ADD saturates, as Direct3D clamps
+ * every stage's result. */
+static int v9x_nv50_d3d_fp2_unit(struct v9x_nv50_sh *sh, v9x_u32 color,
+                                 v9x_u32 alpha, v9x_u32 texel)
+{
+    v9x_u32 temp = V9X_NV50_SH_R(V9X_NV50_D3D_R_TEMP);
+    v9x_u32 texel_alpha = V9X_NV50_SH_R(texel + 3ul);
+    v9x_u32 index;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_u32 out = V9X_NV50_SH_R(index);
+        v9x_u32 t = V9X_NV50_SH_R(texel + index);
+
+        switch (color) {
+        case V9X_NV50_D3D_COLOR_REPLACE:
+            v9x_nv50_sh_mov(sh, V9X_NV50_SH_SHORT, out, t);
+            break;
+        case V9X_NV50_D3D_COLOR_MODULATE:
+            v9x_nv50_sh_fmul(sh, V9X_NV50_SH_SHORT, out, out, t);
+            break;
+        case V9X_NV50_D3D_COLOR_ADD:
+            v9x_nv50_sh_fadd(sh, V9X_NV50_SH_LONG, V9X_NV50_SH_SAT(out), out,
+                             t);
+            break;
+        case V9X_NV50_D3D_COLOR_DECAL:
+            /* Cin + At (Ct - Cin). */
+            v9x_nv50_sh_fadd(sh, V9X_NV50_SH_LONG, temp, t,
+                             V9X_NV50_SH_NEG(out));
+            v9x_nv50_sh_fmad(sh, V9X_NV50_SH_LONG, out, temp, texel_alpha,
+                             out);
+            break;
+        default:
+            return 0;
         }
-        used = V9X_NV50_D3D_R_SPECULAR + 3ul;
     }
+    switch (alpha) {
+    case V9X_NV50_D3D_ALPHA_FRAGMENT:
+        break;
+    case V9X_NV50_D3D_ALPHA_REPLACE:
+        v9x_nv50_sh_mov(sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(3), texel_alpha);
+        break;
+    case V9X_NV50_D3D_ALPHA_MODULATE:
+        v9x_nv50_sh_fmul(sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(3),
+                         V9X_NV50_SH_R(3), texel_alpha);
+        break;
+    default:
+        return 0;
+    }
+    return 1;
+}
 
-    if (fog != 0ul) {
-        v9x_u32 factor = V9X_NV50_SH_R(V9X_NV50_D3D_R_FOG);
-        v9x_u32 temp = V9X_NV50_SH_R(V9X_NV50_D3D_R_TEMP);
+v9x_u32 v9x_nv50_d3d_combine_key(const struct v9x_nv50_d3d_combine *c)
+{
+    v9x_u32 key = 0ul;
+    v9x_u32 unit;
 
-        v9x_nv50_sh_interp(&sh, factor, V9X_NV50_SH_V(V9X_NV50_D3D_V_FOG), w);
-        for (index = 0ul; index < 3ul; ++index) {
-            v9x_nv50_sh_fadd(&sh, V9X_NV50_SH_LONG, temp,
-                             V9X_NV50_SH_R(index),
-                             V9X_NV50_SH_C(V9X_NV50_D3D_FP_SLOT,
-                                           V9X_NV50_D3D_C_FOG_NEG +
-                                               index * 4ul));
-            v9x_nv50_sh_fmad(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_R(index),
-                             temp, factor,
-                             V9X_NV50_SH_C(V9X_NV50_D3D_FP_SLOT,
-                                           V9X_NV50_D3D_C_FOG + index * 4ul));
+    for (unit = 0ul; unit < 2ul; ++unit) {
+        if (c->color[unit] >= V9X_NV50_D3D_COLOR_OPS ||
+            c->alpha[unit] >= V9X_NV50_D3D_ALPHA_OPS) {
+            return V9X_NV50_D3D_COMBINE_NONE;
         }
-        used = V9X_NV50_D3D_R_FOG + 1ul;
+        key = (key * V9X_NV50_D3D_COLOR_OPS + c->color[unit]) *
+                  V9X_NV50_D3D_ALPHA_OPS +
+              c->alpha[unit];
     }
+    key = key * 2ul + (c->specular != 0ul ? 1ul : 0ul);
+    return key * 2ul + (c->fog != 0ul ? 1ul : 0ul);
+}
 
-    if (sh.last_size != V9X_NV50_SH_LONG) {
-        v9x_nv50_sh_mov(&sh, V9X_NV50_SH_LONG, V9X_NV50_SH_R(3),
-                        V9X_NV50_SH_R(3));
+v9x_u32 v9x_nv50_d3d_fp2_start(v9x_u32 slot)
+{
+    return V9X_NV50_D3D_FP2_FIRST + slot * V9X_NV50_D3D_FP2_STRIDE;
+}
+
+/*
+ * Two units: w, diffuse, both texels (unit 0 from v[0x24], unit 1 from
+ * v[0x2c] on texture and sampler 1, which BIND_TIC2's second entry
+ * already names), the two combines, then specular and fog as a variant.
+ */
+v9x_u32 v9x_nv50_d3d_fp2(const struct v9x_nv50_d3d_combine *c,
+                         v9x_u32 *words, v9x_u32 max, v9x_u32 *registers)
+{
+    struct v9x_nv50_sh sh;
+    v9x_u32 index;
+    v9x_u32 used;
+    v9x_u32 w = V9X_NV50_SH_R(V9X_NV50_D3D_R_W);
+
+    if (v9x_nv50_d3d_combine_key(c) == V9X_NV50_D3D_COMBINE_NONE) {
+        return 0ul;
     }
-    v9x_nv50_sh_exit(&sh);
-    if (sh.invalid != 0ul || sh.overflow != 0ul) {
+    v9x_nv50_sh_init(&sh, words, max);
+    v9x_nv50_sh_interp(&sh, w, V9X_NV50_SH_V(V9X_NV50_D3D_V_W),
+                       V9X_NV50_SH_NONE);
+    v9x_nv50_sh_rcp(&sh, V9X_NV50_SH_SHORT, w, w);
+    for (index = 0ul; index < 4ul; ++index) {
+        v9x_nv50_sh_interp(&sh, V9X_NV50_SH_R(index),
+                           V9X_NV50_SH_V(V9X_NV50_D3D_V_DIFFUSE + index * 4ul),
+                           w);
+    }
+    for (index = 0ul; index < 2ul; ++index) {
+        v9x_nv50_sh_interp(&sh, V9X_NV50_SH_R(V9X_NV50_D3D_R_TEXEL + index),
+                           V9X_NV50_SH_V(V9X_NV50_D3D_V_COORDS + index * 4ul),
+                           w);
+        v9x_nv50_sh_interp(&sh, V9X_NV50_SH_R(V9X_NV50_D3D_R_TEXEL1 + index),
+                           V9X_NV50_SH_V(V9X_NV50_D3D_V_COORDS1 + index * 4ul),
+                           w);
+    }
+    v9x_nv50_sh_tex(&sh, V9X_NV50_SH_R(V9X_NV50_D3D_R_TEXEL), 0ul, 0ul, 0xful,
+                    0ul);
+    v9x_nv50_sh_tex(&sh, V9X_NV50_SH_R(V9X_NV50_D3D_R_TEXEL1), 1ul, 1ul,
+                    0xful, 0ul);
+    if (!v9x_nv50_d3d_fp2_unit(&sh, c->color[0], c->alpha[0],
+                               V9X_NV50_D3D_R_TEXEL) ||
+        !v9x_nv50_d3d_fp2_unit(&sh, c->color[1], c->alpha[1],
+                               V9X_NV50_D3D_R_TEXEL1)) {
+        return 0ul;
+    }
+    used = v9x_nv50_d3d_fp_tail(&sh, c->specular, c->fog,
+                                V9X_NV50_D3D_R_TEXEL1 + 4ul);
+    if (used == 0ul) {
         return 0ul;
     }
     *registers = used;
@@ -399,8 +558,16 @@ void v9x_nv50_push_d3d_state(struct v9x_nv50_push *push,
     v9x_nv50_d3d_one(push, V9X_8597_CULL_FACE_ENABLE, 0ul);
 
     v9x_nv50_d3d_one(push, V9X_8597_VP_START_ID, V9X_NV50_D3D_VP_START);
+    /* A program written since the last draw: the code cache may hold what
+     * was at its address before (Mesa flushes after every upload,
+     * nv50_program.c). */
+    if (state->code_flush != 0ul) {
+        v9x_nv50_d3d_one(push, V9X_8597_CODE_CB_FLUSH, 0ul);
+    }
     v9x_nv50_d3d_one(push, V9X_8597_FP_START_ID,
-                     v9x_nv50_d3d_fp_start(state->fp_variant));
+                     state->two_units != 0ul
+                         ? state->fp_start
+                         : v9x_nv50_d3d_fp_start(state->fp_variant));
     v9x_nv50_d3d_two(push, V9X_8597_VP_ATTR_EN0, V9X_NV50_D3D_ATTR_EN0,
                      V9X_NV50_D3D_ATTR_EN1);
     v9x_nv50_d3d_one(push, V9X_8597_VP_REG_ALLOC_RESULT,
@@ -424,9 +591,20 @@ void v9x_nv50_push_d3d_state(struct v9x_nv50_push *push,
         v9x_nv50_d3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_FIRST);
         v9x_nv50_d3d_one(push, V9X_8597_BIND_TIC2, V9X_8597_BIND_TIC_UNIT0);
     }
-    if ((state->fp_variant & 1ul) != 0ul) {
+    if (state->two_units != 0ul ? state->fog != 0ul
+                                : (state->fp_variant & 1ul) != 0ul) {
         v9x_nv50_d3d_fog_constants(push, state->fog_color);
     }
+}
+
+void v9x_nv50_push_d3d_uv1(struct v9x_nv50_push *push, float tu1, float tv1)
+{
+    v9x_u32 data[2];
+
+    data[0] = v9x_nv50_d3d_bits(tu1);
+    data[1] = v9x_nv50_d3d_bits(tv1);
+    v9x_nv50_push_method(push, V9X_NV50_SUBC_3D, V9X_8597_VTX_ATTR_2F_X9, 2ul,
+                         data);
 }
 
 void v9x_nv50_push_d3d_vertex(struct v9x_nv50_push *push, float sx, float sy,

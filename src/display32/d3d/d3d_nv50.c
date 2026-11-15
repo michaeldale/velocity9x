@@ -30,10 +30,14 @@
 #define V9X_D3D_NV50_CHUNK_TRIANGLES 2048ul
 #define V9X_D3D_NV50_LEVELS_MAX      12ul
 
-/* 16 and 32 bpp targets, textures to 2048, the core clipping every
- * triangle to the target; the engine samples at x + 0.5 (the probe drew
- * Direct3D's rectangles exactly with half a pixel added), so the core
- * moves the vertices; one stage. */
+/* 16 and 32 bpp targets, textures to 2048; the engine samples at x + 0.5
+ * (the probe drew Direct3D's rectangles exactly with half a pixel added),
+ * and adds that half itself as it sends each vertex. Two stages, so the
+ * core neither clips nor moves the vertices: the engine draws inside its
+ * guard band (V9X_D3D_NV50_GUARD) and the scissor keeps every pixel on
+ * the target (step 5 of docs\plans\nvidia-gt218-ps11.md, docs\decisions\
+ * 2026-11-15-gt218-guard-band-two-stages.md). Until then the core clipped
+ * every triangle and moved its vertices for one stage. */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
     16ul,           /* target_bits_per_pixel */
     32704ul,        /* target_pitch_max */
@@ -44,7 +48,7 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
     8192.0f,        /* coordinate_limit: EXA's scissor bounds */
     16ul,           /* depth_bits_per_pixel */
     V9X_D3D_NV50_SURFACE_ALIGN, /* texture_align */
-    1ul,            /* clip_in_core */
+    0ul,            /* clip_in_core */
     1ul,            /* depth_pitch_own */
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
@@ -52,9 +56,27 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
     1ul,            /* depth_tiled: Z16 is block-linear, kind 6Ch */
     65472ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits */
-    0ul,            /* centre_in_engine: the core moves, as it clips */
-    1ul             /* texture_stages */
+    1ul,            /* centre_in_engine: v9x_nv50_push_d3d_vertex adds it */
+    2ul,            /* texture_stages */
+    /* DDI 6 programs are told the band (coordinate_limit less a pixel),
+     * far inside the measured one, so the runtime stops clipping their
+     * triangles on the CPU, as on Gen3 and the HD 4600. */
+    1ul             /* guard_band_ddi6 */
 };
+
+/*
+ * The guard band, in coordinates: a triangle with every vertex inside
+ * +/- this is drawn as given, the scissor holding it to the target; one
+ * with a vertex beyond or not finite is dropped, as the core's clipper
+ * refuses such a vertex. MEASURED on W9QI0DAD (V9XN5CH /3d:guard, boot
+ * 22): no pixel left an 8-pixel-inset scissor and colour held within one
+ * step with vertices 32,768 pixels off the target, coordinates to 65,836,
+ * the furthest drawn. Halved for margin, as Gen3's band was.
+ */
+#define V9X_D3D_NV50_GUARD           16384.0f
+/* Finite, from the bits: Open Watcom's x87 compares do not see NaN
+ * (docs\decisions\2026-09-25-nan-detection-in-the-z-conversion.md). */
+#define V9X_D3D_NV50_EXPONENT_MASK   0x7f800000ul
 
 /*
  * Step 5b's shadow targets (d3d_nv50_map.h). Each Z buffer this engine
@@ -98,6 +120,20 @@ static v9x_u32 v9x_d3d_nv50_fp_registers[V9X_NV50_D3D_FP_VARIANTS];
 static DWORD v9x_d3d_nv50_setup_generation = 0xfffffffful;
 static int v9x_d3d_nv50_setup_sent = 0;
 static v9x_u32 v9x_d3d_nv50_program[V9X_NV50_D3D_FP_WORDS_MAX];
+
+/*
+ * Two-unit programs, built on first use into the slots after the
+ * scratch (nv50_d3d.h, V9X_NV50_D3D_FP2_*): the combination key and
+ * register count of each slot filled, in order. A slot is written once
+ * per channel build and never while a draw might run it, since it was
+ * empty; the cache starts over when the channel is rebuilt. Full, a new
+ * combination is refused and counted (V9X_D3D_NV50_REFUSE_PROGRAMS).
+ */
+static v9x_u32 v9x_d3d_nv50_fp2_keys[V9X_NV50_D3D_FP2_SLOTS];
+static v9x_u32 v9x_d3d_nv50_fp2_registers[V9X_NV50_D3D_FP2_SLOTS];
+static DWORD v9x_d3d_nv50_fp2_count = 0ul;
+static DWORD v9x_d3d_nv50_fp2_generation = 0xfffffffful;
+static v9x_u32 v9x_d3d_nv50_program2[V9X_NV50_D3D_FP2_WORDS_MAX];
 
 /* The surface's texture format (V9X_NV50_D3D_TEX_*) and bytes a texel,
  * or UNKNOWN. */
@@ -613,16 +649,20 @@ static v9x_u32 v9x_d3d_nv50_map(const V9X_R3D_DRAW *draw,
                                 v9x_u32 *tic, v9x_u32 *tsc,
                                 v9x_u32 *with_specular)
 {
-    V9X_D3D_NV50_TEXTURE texture;
+    V9X_D3D_NV50_TEXTURE texture[2];
 
     if (!v9x_d3d_nv50_count_registers()) {
         return V9X_D3D_NV50_REFUSE_STATE;
     }
-    texture.format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
+    texture[0].format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
+    texture[1].format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
     if (draw->texture.object != 0) {
-        v9x_d3d_nv50_resolve_texture(&draw->texture, &texture);
+        v9x_d3d_nv50_resolve_texture(&draw->texture, &texture[0]);
     }
-    return v9x_d3d_nv50_map_draw(draw, &texture, view,
+    if (draw->texcoords1 != 0 && draw->texture1.object != 0) {
+        v9x_d3d_nv50_resolve_texture(&draw->texture1, &texture[1]);
+    }
+    return v9x_d3d_nv50_map_draw(draw, texture, view,
                                  v9x_d3d_nv50_fp_registers, state, tic, tsc,
                                  with_specular);
 }
@@ -631,8 +671,8 @@ static int v9x_d3d_nv50_accepts(const V9X_R3D_DRAW *draw)
 {
     struct v9x_nv50_d3d_state state;
     V9X_D3D_NV50_SHADOW_VIEW view;
-    v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
-    v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 tic[2ul * V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[2ul * V9X_NV50_3D_TSC_WORDS];
     v9x_u32 with_specular;
     v9x_u32 reason;
 
@@ -682,6 +722,89 @@ static int v9x_d3d_nv50_write_programs(volatile DWORD *scratch)
 }
 
 /*
+ * Whether a triangle is drawn as given: every coordinate finite and inside
+ * the guard band (V9X_D3D_NV50_GUARD).
+ */
+static int v9x_d3d_nv50_guard(const V9X_R3D_VERTEX *triangle)
+{
+    union {
+        float value;
+        v9x_u32 bits;
+    } convert;
+    DWORD index;
+    DWORD axis;
+
+    for (index = 0ul; index < 3ul; ++index) {
+        for (axis = 0ul; axis < 2ul; ++axis) {
+            convert.value = axis == 0ul ? triangle[index].sx
+                                        : triangle[index].sy;
+            if ((convert.bits & V9X_D3D_NV50_EXPONENT_MASK) ==
+                    V9X_D3D_NV50_EXPONENT_MASK ||
+                !(convert.value >= -V9X_D3D_NV50_GUARD &&
+                  convert.value < V9X_D3D_NV50_GUARD)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+/*
+ * A two-unit draw's program: found in the cache by its combine, or built
+ * into the next empty slot through scratch, the reserve's CPU view, which
+ * then asks the push for CODE_CB_FLUSH. The cache starts over on a new
+ * channel generation. 0 when the cache is full or the program does not
+ * build.
+ */
+static int v9x_d3d_nv50_fp2_program(volatile DWORD *scratch,
+                                    DWORD generation,
+                                    struct v9x_nv50_d3d_state *state)
+{
+    v9x_u32 key = v9x_nv50_d3d_combine_key(&state->combine);
+    v9x_u32 count;
+    v9x_u32 registers;
+    volatile DWORD *at;
+    DWORD slot;
+    DWORD index;
+
+    state->code_flush = 0ul;
+    if (key == V9X_NV50_D3D_COMBINE_NONE) {
+        return 0;
+    }
+    if (generation != v9x_d3d_nv50_fp2_generation) {
+        v9x_d3d_nv50_fp2_count = 0ul;
+        v9x_d3d_nv50_fp2_generation = generation;
+    }
+    for (slot = 0ul; slot < v9x_d3d_nv50_fp2_count; ++slot) {
+        if (v9x_d3d_nv50_fp2_keys[slot] == key) {
+            state->fp_start = v9x_nv50_d3d_fp2_start(slot);
+            state->fp_registers = v9x_d3d_nv50_fp2_registers[slot];
+            return 1;
+        }
+    }
+    if (slot >= V9X_NV50_D3D_FP2_SLOTS) {
+        return 0;
+    }
+    count = v9x_nv50_d3d_fp2(&state->combine, v9x_d3d_nv50_program2,
+                             V9X_NV50_D3D_FP2_WORDS_MAX, &registers);
+    if (count == 0ul) {
+        return 0;
+    }
+    at = scratch + (V9X_NV50_3D_SCRATCH_FP + v9x_nv50_d3d_fp2_start(slot)) /
+                       4ul;
+    for (index = 0ul; index < count; ++index) {
+        at[index] = v9x_d3d_nv50_program2[index];
+    }
+    v9x_d3d_nv50_fp2_keys[slot] = key;
+    v9x_d3d_nv50_fp2_registers[slot] = registers;
+    v9x_d3d_nv50_fp2_count = slot + 1ul;
+    state->fp_start = v9x_nv50_d3d_fp2_start(slot);
+    state->fp_registers = registers;
+    state->code_flush = 1ul;
+    return 1;
+}
+
+/*
  * A run of triangles, in batches of at most V9X_D3D_NV50_CHUNK_TRIANGLES:
  * each batch waits for the engine to drain (eng_nv50.c), writes the
  * programs and setup when the channel is new to it and the texture's
@@ -695,8 +818,8 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
     struct v9x_nv50_d3d_state state;
     struct v9x_nv50_3d_scratch scratch_gpu;
     struct v9x_nv50_push push;
-    v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
-    v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 tic[2ul * V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[2ul * V9X_NV50_3D_TSC_WORDS];
     volatile DWORD *area;
     volatile DWORD *scratch;
     DWORD area_words;
@@ -704,7 +827,10 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
     DWORD generation;
     DWORD chunk;
     DWORD index;
+    DWORD corner;
+    DWORD tables;
     DWORD started;
+    const float *uv1 = draw != 0 ? draw->texcoords1 : 0;
     v9x_u32 with_specular = 0ul;
     v9x_u32 reason;
     int setup;
@@ -750,8 +876,17 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
             V9X_TIME_END(V9X_TIME_DECODE, started);
             return 0;
         }
+        if (state.two_units != 0ul &&
+            !v9x_d3d_nv50_fp2_program(scratch, generation, &state)) {
+            v9x_d3d_nv50_count_refusal(draw, V9X_D3D_NV50_REFUSE_PROGRAMS);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
         if (state.textured != 0ul) {
-            for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+            /* Entry 0, and entry 1 for unit 1 (TSC 1 by LINKED_TSC). */
+            tables = state.two_units != 0ul ? 2ul : 1ul;
+            for (index = 0ul; index < tables * V9X_NV50_3D_TIC_WORDS;
+                 ++index) {
                 scratch[V9X_NV50_3D_SCRATCH_TIC / 4ul + index] = tic[index];
                 scratch[V9X_NV50_3D_SCRATCH_TSC / 4ul + index] = tsc[index];
             }
@@ -767,14 +902,28 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
         }
         v9x_nv50_push_d3d_state(&push, &state);
         v9x_nv50_push_d3d_begin(&push);
-        for (index = 0ul; index < chunk * 3ul; ++index) {
-            const V9X_R3D_VERTEX *vertex = &vertices[index];
+        for (index = 0ul; index < chunk * 3ul; index += 3ul) {
+            /* The core no longer clips (clip_in_core 0): a triangle past
+             * the guard band, or with a coordinate that is not finite, is
+             * dropped and counted, as the clipper refused it. */
+            if (!v9x_d3d_nv50_guard(&vertices[index])) {
+                v9x_d3d_nv50_count_refusal(draw, V9X_D3D_NV50_DROP_GUARD);
+                continue;
+            }
+            for (corner = index; corner < index + 3ul; ++corner) {
+                const V9X_R3D_VERTEX *vertex = &vertices[corner];
 
-            v9x_nv50_push_d3d_vertex(&push, vertex->sx, vertex->sy,
-                                     vertex->sz, vertex->rhw, vertex->color,
-                                     vertex->specular, vertex->tu,
-                                     vertex->tv, draw->centre_offset,
-                                     with_specular, state.textured);
+                if (state.two_units != 0ul) {
+                    v9x_nv50_push_d3d_uv1(&push, uv1[2ul * corner],
+                                          uv1[2ul * corner + 1ul]);
+                }
+                v9x_nv50_push_d3d_vertex(&push, vertex->sx, vertex->sy,
+                                         vertex->sz, vertex->rhw,
+                                         vertex->color, vertex->specular,
+                                         vertex->tu, vertex->tv,
+                                         draw->centre_offset, with_specular,
+                                         state.textured);
+            }
         }
         v9x_nv50_push_d3d_end(&push);
         if (push.overflow != 0ul) {
@@ -792,6 +941,9 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
         }
         started = V9X_TIME_BEGIN();
         vertices += chunk * 3ul;
+        if (uv1 != 0) {
+            uv1 += chunk * 3ul * 2ul;
+        }
         triangle_count -= chunk;
     }
     V9X_TIME_END(V9X_TIME_DECODE, started);

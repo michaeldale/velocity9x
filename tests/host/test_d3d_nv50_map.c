@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../../src/display32/d3d/d3d_nv50_map.h"
+#include "velocity9x/r3d_abi.h"
 
 /*
  * The neutral draw to the GT218's Tesla state
@@ -71,8 +72,9 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_NV50_TEXTURE *texture)
     texture->key = 0ul;
 }
 
-static v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
-static v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+/* Room for a two-unit draw's two entries. */
+static v9x_u32 tic[2ul * V9X_NV50_3D_TIC_WORDS];
+static v9x_u32 tsc[2ul * V9X_NV50_3D_TSC_WORDS];
 
 static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_NV50_TEXTURE *texture,
@@ -488,6 +490,84 @@ static void test_explicit(void)
     CHECK(map(&draw, 0, &state, &specular) == V9X_D3D_NV50_REFUSE_EXPLICIT);
 }
 
+/* Two units (step 5 of nvidia-gt218-ps11.md): both units' tables, the
+ * combine in nv50_d3d.h's numbers, and the refusals. */
+static void test_two_units(void)
+{
+    static const float uv1[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+    V9X_R3D_DRAW draw;
+    V9X_D3D_NV50_TEXTURE texture[2];
+    struct v9x_nv50_d3d_state state;
+    v9x_u32 expect_tic[V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 expect_tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 specular;
+    v9x_u32 index;
+
+    base_draw(&draw);
+    base_texture(&draw, &texture[0]);
+    texture[1] = texture[0];
+    texture[1].format = V9X_NV50_D3D_TEX_B5G6R5;
+    texture[1].width = 16ul;
+    texture[1].height = 16ul;
+    texture[1].pitch = 64ul;
+    texture[1].offset = 0x00300000ul;
+    draw.texture1 = draw.texture;
+    draw.texture1.address = V9X_R3D_ADDRESS_CLAMP;
+    draw.texcoords1 = uv1;
+    draw.texture.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    draw.texture1.color_op = V9X_R3D_COLOROP_ADD;
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    draw.specular_enable = 1ul;
+    CHECK(map(&draw, texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(state.two_units == 1ul && state.textured == 1ul &&
+          specular == 1ul && state.fog == 0ul);
+    CHECK(state.combine.color[0] == V9X_NV50_D3D_COLOR_MODULATE &&
+          state.combine.alpha[0] == V9X_NV50_D3D_ALPHA_REPLACE &&
+          state.combine.color[1] == V9X_NV50_D3D_COLOR_ADD &&
+          state.combine.alpha[1] == V9X_NV50_D3D_ALPHA_FRAGMENT &&
+          state.combine.specular == 1ul && state.combine.fog == 0ul);
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B5G6R5, 0x00300000ul, 64ul,
+                               16ul, 16ul, V9X_NV50_D3D_WRAP_CLAMP, 1ul, 1ul,
+                               expect_tic, expect_tsc));
+    for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+        CHECK(tic[V9X_NV50_3D_TIC_WORDS + index] == expect_tic[index]);
+        CHECK(tsc[V9X_NV50_3D_TSC_WORDS + index] == expect_tsc[index]);
+    }
+
+    /* DECALALPHA and MODULATE map too. */
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_DECALALPHA;
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_MODULATE;
+    CHECK(map(&draw, texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.combine.color[1] == V9X_NV50_D3D_COLOR_DECAL &&
+          state.combine.alpha[1] == V9X_NV50_D3D_ALPHA_MODULATE);
+
+    /* MODULATE2X is not claimed; BLEND has no program. */
+    draw.texture1.color_op = V9X_R3D_COLOROP_MODULATE2X;
+    CHECK(map(&draw, texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_OP);
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_BLEND;
+    CHECK(map(&draw, texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_OP);
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+
+    /* A colour key, a second texture of no known format, and a second
+     * unit with no texture are refused. */
+    draw.color_key_enable = 1ul;
+    CHECK(map(&draw, texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_COLOR_KEY);
+    draw.color_key_enable = 0ul;
+    texture[1].format = V9X_D3D_NV50_TEXTURE_UNKNOWN;
+    CHECK(map(&draw, texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT);
+    texture[1].format = V9X_NV50_D3D_TEX_B5G6R5;
+    draw.texture1.object = 0;
+    CHECK(map(&draw, texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_EXPLICIT);
+}
+
 unsigned int v9x_run_d3d_nv50_map_tests(void)
 {
     failures = 0u;
@@ -498,5 +578,6 @@ unsigned int v9x_run_d3d_nv50_map_tests(void)
     test_texture();
     test_lit();
     test_explicit();
+    test_two_units();
     return failures;
 }

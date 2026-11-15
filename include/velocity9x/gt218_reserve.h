@@ -25,6 +25,12 @@
  * start.
  */
 #define V9X_GT218_RESERVE_3D_SCRATCH    0x000e0000ul
+/* Direct3D's two-unit fragment programs, built on demand (nv50_d3d.h
+ * V9X_NV50_D3D_FP2_*): 64 slots of 200h from 7000h past the scratch's
+ * code base (its FP area at +1000h), so E8000h to F0000h, inside the
+ * gap before the push area. */
+#define V9X_GT218_RESERVE_3D_FP2        0x000e8000ul
+#define V9X_GT218_RESERVE_3D_FP2_BYTES  0x00008000ul
 #define V9X_GT218_RESERVE_3D_PUSH       0x00100000ul
 #define V9X_GT218_RESERVE_3D_PUSH_BYTES 0x000c0000ul
 /* The channel's VM maps the first 512 MiB of video memory, and the

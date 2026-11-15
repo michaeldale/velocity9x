@@ -3,6 +3,7 @@
  * d3d_nv50_map.h. The codes are nv50_d3d.h's.
  */
 #include "d3d_nv50_map.h"
+#include "velocity9x/r3d_abi.h"
 
 #define V9X_D3D_NV50_ALPHA_REF_MASK 0xfful
 
@@ -151,12 +152,52 @@ static v9x_u32 v9x_d3d_nv50_alpha_ref(v9x_u32 ref)
     return converted.bits;
 }
 
+/* A two-unit draw's unit combine (r3d_abi.h's colour and alpha ops, and
+ * r3d.h's ADD) as nv50_d3d.h numbers them; 0 for one the programs do not
+ * draw, MODULATE2X among them (the limits do not claim it). */
+static int v9x_d3d_nv50_combine_ops(v9x_u32 color_op, v9x_u32 alpha_op,
+                                    v9x_u32 *color, v9x_u32 *alpha)
+{
+    switch (color_op) {
+    case V9X_R3D_ABI_COLOROP_REPLACE:
+        *color = V9X_NV50_D3D_COLOR_REPLACE;
+        break;
+    case V9X_R3D_ABI_COLOROP_MODULATE:
+        *color = V9X_NV50_D3D_COLOR_MODULATE;
+        break;
+    case V9X_R3D_ABI_COLOROP_DECALALPHA:
+        *color = V9X_NV50_D3D_COLOR_DECAL;
+        break;
+    case V9X_R3D_COLOROP_ADD:
+        *color = V9X_NV50_D3D_COLOR_ADD;
+        break;
+    default:
+        return 0;
+    }
+    switch (alpha_op) {
+    case V9X_R3D_ABI_ALPHAOP_FRAGMENT:
+        *alpha = V9X_NV50_D3D_ALPHA_FRAGMENT;
+        return 1;
+    case V9X_R3D_ABI_ALPHAOP_REPLACE:
+        *alpha = V9X_NV50_D3D_ALPHA_REPLACE;
+        return 1;
+    case V9X_R3D_ABI_ALPHAOP_MODULATE:
+        *alpha = V9X_NV50_D3D_ALPHA_MODULATE;
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* sampler's texture, resolved as texture, into tic and tsc. program_op is
+ * the one-unit blend's variant op, or null for a unit of a two-unit draw,
+ * whose combine is in color_op and alpha_op instead (r3d.h). */
 static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
+                                        const V9X_R3D_TEXTURE *sampler,
                                         const V9X_D3D_NV50_TEXTURE *texture,
                                         v9x_u32 *program_op, v9x_u32 *tic,
                                         v9x_u32 *tsc)
 {
-    const V9X_R3D_TEXTURE *sampler = &draw->texture;
     v9x_u32 wrap;
     v9x_u32 mag;
     v9x_u32 min;
@@ -173,7 +214,7 @@ static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
         (texture->offset % V9X_D3D_NV50_SURFACE_ALIGN) != 0ul) {
         return V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE;
     }
-    if (!v9x_d3d_nv50_op(sampler->op, program_op)) {
+    if (program_op != 0 && !v9x_d3d_nv50_op(sampler->op, program_op)) {
         return V9X_D3D_NV50_REFUSE_TEXTURE_OP;
     }
     /* The cylindrical WRAPU/WRAPV states have no sampler function. */
@@ -218,10 +259,12 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
     for (index = 0ul; index < sizeof(*state); ++index) {
         bytes[index] = 0u;
     }
-    /* Levels in CPU memory are not sampled, and there is one texture
-     * unit: the fallback draws those. */
-    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
-        draw->texture1.object != 0) {
+    /* Levels in CPU memory are not sampled, and a second unit comes with
+     * its coordinates or not at all: the fallback draws those. */
+    if (draw->texture.levels != 0 || draw->texture1.levels != 0 ||
+        (draw->texcoords1 == 0 && draw->texture1.object != 0) ||
+        (draw->texcoords1 != 0 &&
+         (draw->texture.object == 0 || draw->texture1.object == 0))) {
         return V9X_D3D_NV50_REFUSE_EXPLICIT;
     }
 
@@ -324,9 +367,43 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
         state->alpha_ref = v9x_d3d_nv50_alpha_ref(draw->alpha_ref);
     }
 
+    if (draw->texcoords1 != 0) {
+        /* Two units: each unit's tables, then its combine as the program
+         * numbers it. The colour key needs a kill the programs do not
+         * have, as for one unit. */
+        if (draw->color_key_enable != 0ul) {
+            return V9X_D3D_NV50_REFUSE_COLOR_KEY;
+        }
+        for (index = 0ul; index < 2ul; ++index) {
+            const V9X_R3D_TEXTURE *unit =
+                index == 0ul ? &draw->texture : &draw->texture1;
+
+            reason = v9x_d3d_nv50_map_texture(
+                draw, unit, &texture[index], 0,
+                tic + index * V9X_NV50_3D_TIC_WORDS,
+                tsc + index * V9X_NV50_3D_TSC_WORDS);
+            if (reason != V9X_D3D_NV50_REFUSE_NONE) {
+                return reason;
+            }
+            if (!v9x_d3d_nv50_combine_ops(unit->color_op, unit->alpha_op,
+                                          &state->combine.color[index],
+                                          &state->combine.alpha[index])) {
+                return V9X_D3D_NV50_REFUSE_TEXTURE_OP;
+            }
+        }
+        state->textured = 1ul;
+        state->two_units = 1ul;
+        state->combine.specular = draw->specular_enable != 0ul ? 1ul : 0ul;
+        state->combine.fog = draw->fog_enable != 0ul ? 1ul : 0ul;
+        state->fog = state->combine.fog;
+        state->fog_color = draw->fog_color;
+        *with_specular = draw->specular_enable != 0ul ||
+                         draw->fog_enable != 0ul ? 1ul : 0ul;
+        return V9X_D3D_NV50_REFUSE_NONE;
+    }
     if (draw->texture.object != 0) {
-        reason = v9x_d3d_nv50_map_texture(draw, texture, &program_op, tic,
-                                          tsc);
+        reason = v9x_d3d_nv50_map_texture(draw, &draw->texture, texture,
+                                          &program_op, tic, tsc);
         if (reason != V9X_D3D_NV50_REFUSE_NONE) {
             return reason;
         }

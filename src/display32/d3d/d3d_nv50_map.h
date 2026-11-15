@@ -57,6 +57,10 @@ typedef struct v9x_d3d_nv50_texture {
 #define V9X_D3D_NV50_REFUSE_TEXTURE_FILTER  13ul
 #define V9X_D3D_NV50_REFUSE_STATE           15ul /* the engine refused */
 #define V9X_D3D_NV50_REFUSE_OVERFLOW        17ul /* the push outgrew its area */
+#define V9X_D3D_NV50_REFUSE_PROGRAMS        18ul /* the two-unit cache is full */
+/* Not a refusal: one triangle dropped as past the guard band or not
+ * finite (d3d_nv50.c), counted with the refusals. */
+#define V9X_D3D_NV50_DROP_GUARD             19ul
 
 /*
  * Placement rules every surface the engine binds keeps: rows on 64 bytes
@@ -101,6 +105,12 @@ void v9x_d3d_nv50_tiled_layout(v9x_u32 width, v9x_u32 height, v9x_u32 bytes,
  * it is textured, and whether the vertices carry specular. shadow is null
  * for a draw straight into the linear target. Returns a
  * V9X_D3D_NV50_REFUSE_* reason; nothing is meaningful on a refusal.
+ *
+ * A two-unit draw (texcoords1 set; step 5 of nvidia-gt218-ps11.md) reads
+ * texture[1] as unit 1's and writes its tables after unit 0's, so texture
+ * names two and tic and tsc have room for two entries each. It sets
+ * state->two_units and state->combine; the program's start and register
+ * count are the caller's (its program cache).
  */
 v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
                               const V9X_D3D_NV50_TEXTURE *texture,

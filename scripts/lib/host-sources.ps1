@@ -421,6 +421,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_nv50_init.c',
         'tests\host\test_nv50_3d.c',
         'tests\host\test_nv50_shader.c',
+        'tests\host\nv50_sh_sim.c',
         'tests\host\test_nv50_ps11.c',
         'tests\host\test_nv50_d3d.c',
         'tests\host\test_r128_2d.c',

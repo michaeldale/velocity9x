@@ -3,6 +3,7 @@
 #include "velocity9x/nv50_d3d.h"
 #include "velocity9x/nv50_shader.h"
 #include "velocity9x/gt218_reserve.h"
+#include "nv50_sh_sim.h"
 
 /* The 3D scratch and push area fit the reserve after the channel's
  * region, without overlap. */
@@ -11,6 +12,19 @@ typedef char v9x_assert_scratch_after_region[
 typedef char v9x_assert_push_after_scratch[
     V9X_GT218_RESERVE_3D_SCRATCH + V9X_NV50_3D_SCRATCH_BYTES <=
         V9X_GT218_RESERVE_3D_PUSH ? 1 : -1];
+/* The two-unit program slots: where nv50_d3d.h's offsets from the code
+ * base put them, past the scratch and before the push area. */
+typedef char v9x_assert_fp2_where_said[
+    V9X_GT218_RESERVE_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+        V9X_NV50_D3D_FP2_FIRST == V9X_GT218_RESERVE_3D_FP2 ? 1 : -1];
+typedef char v9x_assert_fp2_fits[
+    V9X_NV50_D3D_FP2_SLOTS * V9X_NV50_D3D_FP2_STRIDE <=
+            V9X_GT218_RESERVE_3D_FP2_BYTES &&
+        V9X_NV50_D3D_FP2_WORDS_MAX * 4ul <= V9X_NV50_D3D_FP2_STRIDE &&
+        V9X_GT218_RESERVE_3D_SCRATCH + V9X_NV50_3D_SCRATCH_BYTES <=
+            V9X_GT218_RESERVE_3D_FP2 &&
+        V9X_GT218_RESERVE_3D_FP2 + V9X_GT218_RESERVE_3D_FP2_BYTES <=
+            V9X_GT218_RESERVE_3D_PUSH ? 1 : -1];
 typedef char v9x_assert_push_in_reserve[
     V9X_GT218_RESERVE_3D_PUSH + V9X_GT218_RESERVE_3D_PUSH_BYTES <=
         V9X_GT218_RESERVE_BYTES ? 1 : -1];
@@ -83,19 +97,19 @@ static void test_vp(void)
     v9x_u32 count;
     v9x_u32 index;
 
-    /* Fourteen long moves, input to result, the last ending the
-     * program. */
+    /* Sixteen long moves, input to result (unit 1's coordinates the last
+     * two), the last ending the program. */
     v9x_nv50_sh_init(&sh, expect, V9X_NV50_D3D_VP_WORDS_MAX);
-    for (index = 0ul; index < 14ul; ++index) {
+    for (index = 0ul; index < 16ul; ++index) {
         v9x_nv50_sh_mov(&sh, LONG, V9X_NV50_SH_O(index * 4ul),
                         V9X_NV50_SH_A(index * 4ul));
     }
     v9x_nv50_sh_exit(&sh);
-    CHECK(sh.invalid == 0ul && sh.overflow == 0ul && sh.count == 28ul);
+    CHECK(sh.invalid == 0ul && sh.overflow == 0ul && sh.count == 32ul);
 
     count = v9x_nv50_d3d_vp(words, V9X_NV50_D3D_VP_WORDS_MAX);
-    CHECK(count == 28ul);
-    for (index = 0ul; index < 28ul && count == 28ul; ++index) {
+    CHECK(count == 32ul);
+    for (index = 0ul; index < 32ul && count == 32ul; ++index) {
         CHECK(words[index] == expect[index]);
     }
     CHECK(v9x_nv50_d3d_vp(words, 27ul) == 0ul);
@@ -339,17 +353,17 @@ static void test_state(void)
     CHECK(header != 0xfffffffful && words[at] == 0x200ul);
     header = find(&push, V9X_8597_VP_ATTR_EN0, &at);
     CHECK(header != 0xfffffffful && words[at] == 0x0ffful &&
-          words[at + 1ul] == 0x3ul);
+          words[at + 1ul] == 0x33ul);
     header = find(&push, V9X_8597_VP_REG_ALLOC_RESULT, &at);
-    CHECK(header != 0xfffffffful && words[at] == 14ul);
+    CHECK(header != 0xfffffffful && words[at] == 16ul);
     header = find(&push, V9X_8597_VP_RESULT_MAP_SIZE, &at);
-    CHECK(header != 0xfffffffful && words[at] == 14ul);
+    CHECK(header != 0xfffffffful && words[at] == 16ul);
     header = find(&push, V9X_8597_VP_RESULT_MAP0, &at);
     CHECK(header != 0xfffffffful && ((header >> 18) & 0x7fful) == 4ul &&
           words[at] == 0x03020100ul && words[at + 1ul] == 0x07060504ul &&
-          words[at + 2ul] == 0x0b0a0908ul && words[at + 3ul] == 0x40400d0cul);
+          words[at + 2ul] == 0x0b0a0908ul && words[at + 3ul] == 0x0f0e0d0cul);
     header = find(&push, V9X_8597_FP_INTERPOLANT_CTRL, &at);
-    CHECK(header != 0xfffffffful && words[at] == 0x080a040aul &&
+    CHECK(header != 0xfffffffful && words[at] == 0x080c040cul &&
           words[at + 1ul] == 5ul);
     /* Untextured, no fog: no table binding, no constants. */
     CHECK(find(&push, V9X_8597_TIC_FLUSH, &at) == 0xfffffffful);
@@ -508,11 +522,207 @@ static void test_vertex(void)
           words[3] == 0ul);
 }
 
+/*
+ * Two units (step 5 of docs\plans\nvidia-gt218-ps11.md): every
+ * combination v9x_nv50_d3d_combine_key numbers, built by
+ * v9x_nv50_d3d_fp2 and run in the Tesla model (nv50_sh_sim.c) at a few
+ * fragments, held to the combine arithmetic in C: unit 0 on the vertex
+ * colour, unit 1 on its result, ADD saturated, then specular added and
+ * fog as (c - fog) f + fog with f the specular alpha.
+ */
+#define FP2_WEIGHT 0.5f
+
+static float fp2_attribute(v9x_u32 fragment, v9x_u32 a, v9x_u32 c)
+{
+    return 0.08f + 0.11f * (float)a + 0.07f * (float)c +
+           0.05f * (float)fragment - 0.04f * (float)((a + c) % 3ul);
+}
+
+static void fp2_texel(v9x_u32 unit, v9x_u32 argc, v9x_u32 cube,
+                      const float *coords, float rgba[4])
+{
+    v9x_u32 k;
+
+    (void)argc;
+    (void)cube;
+    for (k = 0ul; k < 4ul; ++k) {
+        rgba[k] = 0.15f + 0.17f * (float)k + 0.2f * (float)unit +
+                  0.3f * coords[0] - 0.1f * coords[1];
+        if (rgba[k] > 1.0f) {
+            rgba[k] -= 0.7f;
+        }
+    }
+}
+
+static void fp2_unit(v9x_u32 color, v9x_u32 alpha, const float *t, float *c)
+{
+    v9x_u32 k;
+
+    for (k = 0ul; k < 3ul; ++k) {
+        switch (color) {
+        case V9X_NV50_D3D_COLOR_REPLACE:  c[k] = t[k]; break;
+        case V9X_NV50_D3D_COLOR_MODULATE: c[k] = c[k] * t[k]; break;
+        case V9X_NV50_D3D_COLOR_DECAL:    c[k] += t[3] * (t[k] - c[k]); break;
+        default:
+            c[k] += t[k];
+            if (c[k] > 1.0f) {
+                c[k] = 1.0f;
+            }
+            break;
+        }
+    }
+    if (alpha == V9X_NV50_D3D_ALPHA_REPLACE) {
+        c[3] = t[3];
+    } else if (alpha == V9X_NV50_D3D_ALPHA_MODULATE) {
+        c[3] *= t[3];
+    }
+}
+
+static void test_fp2(void)
+{
+    static v9x_u32 words[V9X_NV50_D3D_FP2_WORDS_MAX];
+    static struct v9x_nv50_sim sim;
+    static const float fog[3] = { 0.25f, 0.5f, 0.75f };
+    struct v9x_nv50_d3d_combine c;
+    v9x_u32 seen[V9X_NV50_D3D_COLOR_OPS * V9X_NV50_D3D_ALPHA_OPS *
+                 V9X_NV50_D3D_COLOR_OPS * V9X_NV50_D3D_ALPHA_OPS * 4ul];
+    v9x_u32 total = sizeof(seen) / sizeof(seen[0]);
+    v9x_u32 key;
+    v9x_u32 count;
+    v9x_u32 registers;
+    v9x_u32 largest = 0ul;
+    v9x_u32 bad = 0ul;
+    v9x_u32 fragment;
+    v9x_u32 k;
+
+    for (key = 0ul; key < total; ++key) {
+        seen[key] = 0ul;
+    }
+    for (key = 0ul; key < total; ++key) {
+        v9x_u32 rest = key;
+
+        c.fog = rest % 2ul;
+        rest /= 2ul;
+        c.specular = rest % 2ul;
+        rest /= 2ul;
+        c.alpha[1] = rest % V9X_NV50_D3D_ALPHA_OPS;
+        rest /= V9X_NV50_D3D_ALPHA_OPS;
+        c.color[1] = rest % V9X_NV50_D3D_COLOR_OPS;
+        rest /= V9X_NV50_D3D_COLOR_OPS;
+        c.alpha[0] = rest % V9X_NV50_D3D_ALPHA_OPS;
+        c.color[0] = rest / V9X_NV50_D3D_ALPHA_OPS;
+        CHECK(v9x_nv50_d3d_combine_key(&c) == key);
+        if (v9x_nv50_d3d_combine_key(&c) < total) {
+            ++seen[v9x_nv50_d3d_combine_key(&c)];
+        }
+        count = v9x_nv50_d3d_fp2(&c, words, V9X_NV50_D3D_FP2_WORDS_MAX,
+                                 &registers);
+        CHECK(count != 0ul && registers <= 20ul);
+        if (count == 0ul) {
+            continue;
+        }
+        if (count > largest) {
+            largest = count;
+        }
+        for (fragment = 0ul; fragment < 3ul; ++fragment) {
+            float colour[4];
+            float t[4];
+            float uv[2];
+            v9x_u32 a;
+
+            memset(&sim, 0xcc, sizeof(sim));
+            sim.killed = 0;
+            sim.error = 0;
+            sim.slot = 0ul;
+            memset(sim.flags, 0, sizeof(sim.flags));
+            for (k = 0ul; k < 3ul; ++k) {
+                sim.c[k] = fog[k];
+                sim.c[4ul + k] = -fog[k];
+            }
+            sim.v[0] = FP2_WEIGHT;
+            /* v0 at 1-4, v1 5-8, unit 0's u v 9-10, unit 1's 11-12. */
+            for (a = 0ul; a < 3ul; ++a) {
+                for (k = 0ul; k < 4ul; ++k) {
+                    if (a == 2ul && k >= 2ul) {
+                        break;
+                    }
+                    sim.v[1ul + a * 4ul + k] =
+                        fp2_attribute(fragment, a, k) * FP2_WEIGHT;
+                }
+            }
+            sim.v[11] = fp2_attribute(fragment, 3ul, 0ul) * FP2_WEIGHT;
+            sim.v[12] = fp2_attribute(fragment, 3ul, 1ul) * FP2_WEIGHT;
+            if (!v9x_nv50_sim_run(&sim, words, count, fp2_texel)) {
+                printf("FAIL fp2 key %lu: the model stopped at word %lu "
+                       "(%s)\n", (unsigned long)key,
+                       (unsigned long)sim.error_at, sim.error);
+                ++failures;
+                return;
+            }
+            for (k = 0ul; k < 4ul; ++k) {
+                colour[k] = fp2_attribute(fragment, 0ul, k);
+            }
+            uv[0] = fp2_attribute(fragment, 2ul, 0ul);
+            uv[1] = fp2_attribute(fragment, 2ul, 1ul);
+            fp2_texel(0ul, 2ul, 0ul, uv, t);
+            fp2_unit(c.color[0], c.alpha[0], t, colour);
+            uv[0] = fp2_attribute(fragment, 3ul, 0ul);
+            uv[1] = fp2_attribute(fragment, 3ul, 1ul);
+            fp2_texel(1ul, 2ul, 0ul, uv, t);
+            fp2_unit(c.color[1], c.alpha[1], t, colour);
+            if (c.specular != 0ul) {
+                for (k = 0ul; k < 3ul; ++k) {
+                    colour[k] += fp2_attribute(fragment, 1ul, k);
+                }
+            }
+            if (c.fog != 0ul) {
+                float f = fp2_attribute(fragment, 1ul, 3ul);
+
+                for (k = 0ul; k < 3ul; ++k) {
+                    colour[k] = (colour[k] - fog[k]) * f + fog[k];
+                }
+            }
+            for (k = 0ul; k < 4ul; ++k) {
+                float got = v9x_nv50_sim_reg(&sim, k);
+                float diff = got - colour[k];
+
+                if (!(diff < 1.0e-5f && diff > -1.0e-5f)) {
+                    if (bad == 0ul) {
+                        printf("FAIL fp2 key %lu fragment %lu channel %lu: "
+                               "program %f, expected %f\n",
+                               (unsigned long)key, (unsigned long)fragment,
+                               (unsigned long)k, (double)got,
+                               (double)colour[k]);
+                    }
+                    ++bad;
+                }
+            }
+        }
+    }
+    CHECK(bad == 0ul);
+    for (key = 0ul; key < total; ++key) {
+        CHECK(seen[key] == 1ul);
+    }
+    CHECK(largest <= V9X_NV50_D3D_FP2_WORDS_MAX);
+    printf("INFO nv50_d3d fp2: %lu combinations held to their arithmetic, "
+           "the largest %lu words\n", (unsigned long)total,
+           (unsigned long)largest);
+
+    /* Ops past the set have no program. */
+    c.color[0] = V9X_NV50_D3D_COLOR_OPS;
+    c.alpha[0] = 0ul;
+    CHECK(v9x_nv50_d3d_combine_key(&c) == V9X_NV50_D3D_COMBINE_NONE);
+    CHECK(v9x_nv50_d3d_fp2(&c, words, V9X_NV50_D3D_FP2_WORDS_MAX,
+                           &registers) == 0ul);
+    CHECK(v9x_nv50_d3d_fp2_start(3ul) == 0x7600ul);
+}
+
 unsigned int v9x_run_nv50_d3d_tests(void)
 {
     failures = 0u;
     test_vp();
     test_fp();
+    test_fp2();
     test_texture();
     test_state();
     test_vertex();
