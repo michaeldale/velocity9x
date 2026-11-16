@@ -2,19 +2,18 @@
 
 Date: 2026-11-12
 
-Status: Desk work in progress on branch `ati-oland`, nothing measured. No
-machine with an R7 240 is on record. Michael chose route A and asked for
-the work to go ahead without hardware (2026-11-12). Done and host-tested:
-`si_dma.c` (Evergreen's plans as SI DMA packets) and the Oland microcode
-generator. Built but not run: `eng_vi.c` starts SI's ring and emits those
-packets when `V9X_DD_ENGINE_CAP_VI_OLAND` is set. **Blocked:** the
-16-bit row (`oland_hw16.c`, `V9xPciReadSiBars`) needs about 480 bytes of
-the ati driver's `_TEXT`, which had 131 free on `main` (57,213 of the
-57,344-byte budget), even with its hook and diagnostics moved to
-`LEAFCODE`. It is kept in a git stash on the branch until Michael picks a
-family-level fix. Without it nothing stamps the identity bit, so the
-engine code is unreachable. An offline tester can still run kit 1 (below),
-which needs no row.
+Status (2026-11-16): **Phases 0, 1, 2, 4 and 5 measured on one card**,
+branch `ati-oland-bringup`. W9QI0DAD has an Oland XT, `1002:6610`
+(Dell `1028:2120`, 2 GiB, 6 CUs). The row now targets 6610 and fits the
+ati `_TEXT` on main (57,205 of 57,344 bytes). On boot 49 SI's DMA engine
+drew V9XDDP's fills and copies and the chip took every flip, with no
+timeouts, including after 32 VBE mode round trips. Still open: Phase 3's
+byte-exact check (skipped), engine draws at 32 bpp, and Phase 6. Record:
+[`2026-11-16-oland-first-survey.md`](../decisions/2026-11-16-oland-first-survey.md).
+
+Earlier (2026-11-12): desk work on branch `ati-oland` with no card.
+Michael chose route A. The 16-bit row was stashed then because `_TEXT`
+had 131 bytes free.
 
 Target: the Radeon R7 240, an Oland part, which Linux binds as
 `CHIP_OLAND` (Southern Islands, `si.c` in radeon, `si.c`/`gfx_v6_0.c` in
