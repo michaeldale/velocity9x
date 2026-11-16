@@ -104,6 +104,17 @@
 #define VI_RSRC1(vgprs)             ((((v9x_u32)(vgprs) + 3ul) / 4ul - 1ul) | \
                                      0x000c0080ul)
 #define VI_SMALL_VGPRS              8ul
+#define VI_RSRC1_SGPRS_MASK         0x000003c0ul
+/* A GFX6 V#'s STRIDE, 14 bits. */
+#define VI_GFX6_STRIDE_MAX          0x3ffful
+/* The PS 1.x table's 64-bit address (vi_ps11.h). */
+#define VI_PS_TABLE_USER_SGPRS      2ul
+#define VI_VCC_SGPRS                2ul
+/* CB_COLOR0_INFO COMP_SWAP at 12:11 on GFX6 to GFX8 (gfx_6_0_sh_mask.h,
+ * gfx_8_0_sh_mask.h). */
+#define VI_CB_INFO_COMP_SWAP_SHIFT  11u
+/* The most PS inputs, SPI_PS_INPUT_CNTL_0..31. */
+#define VI_MAX_PARAMS               32ul
 #define VI_RSRC2_USER_SGPRS(n)      ((v9x_u32)(n) << 1)
 /* SPI_SHADER_PGM_RSRC3: CU_EN 15:0 every CU, WAVE_LIMIT 21:16 the most,
  * radeonsi's for both stages. Nothing else writes it, and with CU_EN 0 no
@@ -525,12 +536,35 @@ static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
  * RSRC3 and PGM_LO. GFX6 has neither, so its run starts at PGM_LO, the
  * register after them; CU enables there are SPI_STATIC_THREAD_MGMT's,
  * which gpu_init leaves on. */
+static void v9x_vi_3d_program_sgprs(struct v9x_vi_pm4 *stream,
+                                    v9x_u32 rsrc3_reg, int vs, v9x_u32 low,
+                                    v9x_u32 high, v9x_u32 vgprs,
+                                    v9x_u32 user_sgprs, v9x_u32 sgprs);
+
 static void v9x_vi_3d_program(struct v9x_vi_pm4 *stream, v9x_u32 rsrc3_reg,
                               int vs, v9x_u32 low, v9x_u32 high,
                               v9x_u32 vgprs, v9x_u32 user_sgprs)
 {
+    v9x_vi_3d_program_sgprs(stream, rsrc3_reg, vs, low, high, vgprs,
+                            user_sgprs, 0ul);
+}
+
+/* The same with sgprs SGPRs (the highest a program uses, + 1) in RSRC1's
+ * SGPRS, 9:6, granules of eight less one, VCC's two counted on top as
+ * radeonsi counts them on SI to VI; 0 keeps VI_RSRC1's 24. */
+static void v9x_vi_3d_program_sgprs(struct v9x_vi_pm4 *stream,
+                                    v9x_u32 rsrc3_reg, int vs, v9x_u32 low,
+                                    v9x_u32 high, v9x_u32 vgprs,
+                                    v9x_u32 user_sgprs, v9x_u32 sgprs)
+{
     v9x_u32 values[6];
     v9x_u32 count = 0ul;
+    v9x_u32 rsrc1 = VI_RSRC1(vgprs);
+
+    if (sgprs != 0ul) {
+        rsrc1 = (rsrc1 & ~VI_RSRC1_SGPRS_MASK) |
+                ((((sgprs + VI_VCC_SGPRS + 7ul) / 8ul) - 1ul) << 6);
+    }
 
     if (stream->gfx6) {
         rsrc3_reg += vs ? 2ul : 1ul;
@@ -542,7 +576,7 @@ static void v9x_vi_3d_program(struct v9x_vi_pm4 *stream, v9x_u32 rsrc3_reg,
     }
     values[count++] = v9x_vi_address_256(low, high);
     values[count++] = 0ul;
-    values[count++] = VI_RSRC1(vgprs);
+    values[count++] = rsrc1;
     values[count++] = VI_RSRC2_USER_SGPRS(user_sgprs);
     v9x_vi_pm4_set_sh(stream, rsrc3_reg, values, count);
 }
@@ -796,6 +830,7 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
 {
     v9x_u32 values[V9X_VI_TEXTURE_USER_SGPRS];
     v9x_u32 ps_sgprs;
+    v9x_u32 params;
     v9x_u32 depth_pitch;
     v9x_u32 depth_height;
     v9x_u32 format;
@@ -841,14 +876,21 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
          (draw->scissor_left >= draw->scissor_right ||
           draw->scissor_top >= draw->scissor_bottom ||
           draw->scissor_right > draw->pitch_pixels ||
-          draw->scissor_bottom > draw->height))) {
+          draw->scissor_bottom > draw->height)) ||
+        draw->params > VI_MAX_PARAMS || draw->target_swap > 3ul ||
+        (draw->vertex_stride != 0ul &&
+         (!stream->gfx6 || (draw->vertex_stride & 3ul) != 0ul ||
+          draw->vertex_stride > VI_GFX6_STRIDE_MAX)) ||
+        ((draw->ps_table_low & 3ul) != 0ul) ||
+        (draw->ps_table_low != 0ul && draw->texture_low != 0ul)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
+    params = draw->params != 0ul ? draw->params : VI_TL_PARAMS;
 
     v9x_vi_3d_cache_sync(stream);
     v9x_vi_3d_common_state(stream, draw->target_low, draw->target_high,
                            draw->pitch_pixels, draw->height, draw->format,
-                           draw->tile_mode_index, VI_TL_PARAMS,
+                           draw->tile_mode_index, params,
                            draw->target_mask_none != 0ul ? 0ul :
                            (draw->target_mask != 0ul ? draw->target_mask
                                                      : VI_CB_TARGET_MASK_RGBA),
@@ -858,6 +900,15 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                            draw->ps_kill != 0ul ? VI_DB_SHADER_KILL_ENABLE
                                                 : 0ul,
                            VI_COL_FORMAT_FP16_ABGR);
+    /* A component swap: CB_COLOR0_INFO again with it, the common state's
+     * value otherwise. */
+    if (draw->target_swap != 0ul) {
+        v9x_vi_context1(stream, VI_CB_COLOR0_BASE + 4ul,
+                        ((draw->format & 0x1ful) << 2) |
+                        (draw->blend_control != 0ul ? VI_CB_INFO_BLEND_CLAMP
+                                                    : 0ul) |
+                        (draw->target_swap << VI_CB_INFO_COMP_SWAP_SHIFT));
+    }
     /* A scissor narrower than the target: the generic one again, after
      * the common state's, which holds. */
     if (draw->scissor_right != 0ul) {
@@ -876,11 +927,19 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
      * SGPRs are a V# over the vertices. */
     if (stream->gfx6) {
         v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
-                          draw->shader_high, V9X_VI_TL_VS_VGPRS, 4ul);
+                          draw->shader_high,
+                          draw->vs_vgprs != 0ul ? draw->vs_vgprs
+                                                : V9X_VI_TL_VS_VGPRS, 4ul);
         values[0] = draw->vertex_low;
         values[1] = draw->vertex_high & VI_GFX6_RESOURCE_HIGH_MASK;
         values[2] = draw->vertex_count * V9X_VI_TL_VERTEX_BYTES;
         values[3] = VI_GFX6_TL_RESOURCE_WORD3;
+        /* A strided V# for an IDXEN VS (si_shader.h's wide VS): STRIDE at
+         * word 1 29:16, NUM_RECORDS then in vertices. */
+        if (draw->vertex_stride != 0ul) {
+            values[1] |= draw->vertex_stride << 16;
+            values[2] = draw->vertex_count;
+        }
         v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 4ul);
     } else {
         v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
@@ -890,11 +949,21 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
         v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 2ul);
     }
     ps_sgprs = draw->texture_low != 0ul ? V9X_VI_TEXTURE_USER_SGPRS : 0ul;
-    v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_PS, 0, draw->ps_low,
-                      draw->shader_high,
-                      draw->ps_vgprs != 0ul ? draw->ps_vgprs : VI_SMALL_VGPRS,
-                      ps_sgprs);
-    if (ps_sgprs != 0ul) {
+    if (draw->ps_table_low != 0ul) {
+        ps_sgprs = VI_PS_TABLE_USER_SGPRS;
+    }
+    v9x_vi_3d_program_sgprs(stream, VI_SPI_SHADER_PGM_RSRC3_PS, 0,
+                            draw->ps_low, draw->shader_high,
+                            draw->ps_vgprs != 0ul ? draw->ps_vgprs
+                                                  : VI_SMALL_VGPRS,
+                            ps_sgprs, draw->ps_sgprs);
+    /* A pixel shader 1.x program's table (vi_ps11.h): its address. */
+    if (draw->ps_table_low != 0ul) {
+        values[0] = draw->ps_table_low;
+        values[1] = draw->ps_table_high;
+        v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, values,
+                          VI_PS_TABLE_USER_SGPRS);
+    } else if (ps_sgprs != 0ul) {
         v9x_vi_3d_texture_descriptors(draw, values);
         v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, values,
                           ps_sgprs);

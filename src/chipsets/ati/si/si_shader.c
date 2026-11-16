@@ -17,6 +17,7 @@
 #define SI_MUBUF_OP_SHIFT           18u
 #define SI_MUBUF_LOAD_DWORDX4       0x0eul
 #define SI_MUBUF_OFFEN              0x00001000ul
+#define SI_MUBUF_IDXEN              0x00002000ul
 #define SI_MUBUF_SOFFSET_ZERO       0x80000000ul
 #define SI_MUBUF_VDATA_SHIFT        8u
 #define SI_MUBUF_SRSRC_SHIFT        16u
@@ -49,6 +50,17 @@ static void si_buffer_load_dwordx4(v9x_u32 vdata, v9x_u32 vaddr,
 {
     out[0] = SI_MUBUF_PREFIX | (SI_MUBUF_LOAD_DWORDX4 << SI_MUBUF_OP_SHIFT) |
              SI_MUBUF_OFFEN | (offset & 0xffful);
+    out[1] = SI_MUBUF_SOFFSET_ZERO | ((srsrc / 4ul) << SI_MUBUF_SRSRC_SHIFT) |
+             (vdata << SI_MUBUF_VDATA_SHIFT) | vaddr;
+}
+
+/* The same indexed: VADDR is the record, the V#'s STRIDE its size. */
+static void si_buffer_load_dwordx4_idxen(v9x_u32 vdata, v9x_u32 vaddr,
+                                         v9x_u32 srsrc, v9x_u32 offset,
+                                         v9x_u32 *out)
+{
+    out[0] = SI_MUBUF_PREFIX | (SI_MUBUF_LOAD_DWORDX4 << SI_MUBUF_OP_SHIFT) |
+             SI_MUBUF_IDXEN | (offset & 0xffful);
     out[1] = SI_MUBUF_SOFFSET_ZERO | ((srsrc / 4ul) << SI_MUBUF_SRSRC_SHIFT) |
              (vdata << SI_MUBUF_VDATA_SHIFT) | vaddr;
 }
@@ -97,4 +109,51 @@ v9x_status v9x_si_shader_tl_vs(v9x_u32 *out, v9x_u32 *count)
     }
     *count = at;
     return at == V9X_SI_TL_VS_DWORDS ? V9X_STATUS_OK : V9X_STATUS_UNSUPPORTED;
+}
+
+/* The wide vertex: v0 is VertexID, the seven quads load into v1-v28 in
+ * order, so quad q is v[1 + 4q]. The loads are SI words; the wait and
+ * the exports a GCN 3 tail rewritten, as the TL VS's are. */
+#define SI_WIDE_QUADS               7ul
+#define SI_WIDE_FIRST_VGPR          1ul
+
+v9x_status v9x_si_shader_wide_vs(v9x_u32 *out, v9x_u32 *count)
+{
+    v9x_u32 tail[2ul * V9X_SI_WIDE_PARAMS + 4ul];
+    v9x_u32 tail_count = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 quad;
+    v9x_u32 v;
+
+    if (out == 0 || count == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (quad = 0ul; quad < SI_WIDE_QUADS; ++quad) {
+        si_buffer_load_dwordx4_idxen(SI_WIDE_FIRST_VGPR + 4ul * quad, 0ul,
+                                     SI_TL_RESOURCE_SGPR, 16ul * quad,
+                                     out + at);
+        at += 2ul;
+    }
+
+    tail[tail_count++] = v9x_vi_s_waitcnt(V9X_VI_WAITCNT_ALL);
+    for (quad = 1ul; quad < SI_WIDE_QUADS; ++quad) {
+        v = SI_WIDE_FIRST_VGPR + 4ul * quad;
+        tail_count += v9x_vi_exp(V9X_VI_EXP_PARAM0 + quad - 1ul, 0, 0, v,
+                                 v + 1ul, v + 2ul, v + 3ul,
+                                 tail + tail_count);
+    }
+    tail_count += v9x_vi_exp(V9X_VI_EXP_POS0, 1, 0, SI_WIDE_FIRST_VGPR,
+                             SI_WIDE_FIRST_VGPR + 1ul,
+                             SI_WIDE_FIRST_VGPR + 2ul,
+                             SI_WIDE_FIRST_VGPR + 3ul, tail + tail_count);
+    tail[tail_count++] = V9X_VI_S_ENDPGM;
+    if (v9x_si_shader_from_vi(tail, tail_count, 0) != V9X_STATUS_OK) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    for (v = 0ul; v < tail_count; ++v) {
+        out[at++] = tail[v];
+    }
+    *count = at;
+    return at == V9X_SI_WIDE_VS_DWORDS ? V9X_STATUS_OK
+                                       : V9X_STATUS_UNSUPPORTED;
 }

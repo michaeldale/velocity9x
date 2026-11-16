@@ -100,7 +100,10 @@ $publishers = @(
                  'src\chipsets\ati\vi\vi_3d.c',
                  'src\chipsets\ati\vi\vi_clear_state.c',
                  'src\chipsets\ati\vi\vi_shader.c',
-                 'src\chipsets\ati\cik\cik_shader.c') }
+                 'src\chipsets\ati\cik\cik_shader.c',
+                 'src\chipsets\ati\vi\vi_ps11.c',
+                 'src\display32\d3d\d3d_ps11.c',
+                 'src\display32\d3d\d3d_ps11_ref.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

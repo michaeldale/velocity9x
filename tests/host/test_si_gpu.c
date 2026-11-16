@@ -359,6 +359,137 @@ static void test_gfx6_tl_draw(void)
     CHECK(resource);
 }
 
+/* The wide-vertex VS: seven IDXEN loads, then the GCN 3 tail rewritten.
+ * IDXEN is MUBUF bit 13 beside OFFEN's 12 (BUFInstructions.td's
+ * MUBUF_Real_gfx6_gfx7; the TL VS's "offen" load is E0381000h). */
+static void test_gfx6_wide_vs(void)
+{
+    v9x_u32 words[64];
+    v9x_u32 count = 0ul;
+    v9x_u32 index;
+    int flat = 0;
+    int exports = 0;
+
+    CHECK(v9x_si_shader_wide_vs(words, &count) == V9X_STATUS_OK);
+    CHECK(count == V9X_SI_WIDE_VS_DWORDS);
+    CHECK(words[0] == 0xe0382000ul && words[1] == 0x80000100ul);
+    CHECK(words[2] == 0xe0382010ul && words[3] == 0x80000500ul);
+    CHECK(words[12] == 0xe0382060ul && words[13] == 0x80001900ul);
+    /* SI's s_waitcnt, then six parameter exports and POS0 with done, in
+     * SI's EXP encoding (F8000000h). */
+    CHECK(words[14] == v9x_vi_s_waitcnt(V9X_VI_WAITCNT_ALL));
+    for (index = 15ul; index + 1ul < count; index += 2ul) {
+        if ((words[index] & 0xfc000000ul) == 0xf8000000ul) {
+            ++exports;
+        }
+    }
+    CHECK(exports == 7);
+    CHECK(((words[15] >> 4) & 0x3ful) == 32ul &&
+          words[16] == 0x08070605ul);                 /* PARAM0, v5-v8 */
+    CHECK(((words[27] >> 4) & 0x3ful) == 12ul &&
+          (words[27] & 0x800ul) != 0ul &&
+          words[28] == 0x04030201ul);                 /* POS0 done */
+    CHECK(words[29] == V9X_VI_S_ENDPGM);
+    for (index = 0ul; index < count; ++index) {
+        if ((words[index] & 0xfc000000ul) == 0xdc000000ul) {
+            flat = 1;
+        }
+    }
+    CHECK(!flat);
+    CHECK(v9x_si_shader_wide_vs(0, &count) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* A pixel shader 1.x draw on GFX6: the strided V#, six parameters, the
+ * table as two PS user SGPRs, the PS's SGPRs in RSRC1, and COMP_SWAP. */
+static void test_gfx6_wide_draw(void)
+{
+    static v9x_u32 stream_dwords[2048];
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at = 0ul;
+    int resource = 0;
+    int table = 0;
+    int rsrc = 0;
+    int swap = 0;
+    int inputs = 0;
+
+    memset(&draw, 0, sizeof(draw));
+    draw.target_low = 0x0f80b000ul;
+    draw.target_high = 0xf4ul;
+    draw.pitch_pixels = 64ul;
+    draw.height = 48ul;
+    draw.format = V9X_VI_CB_FORMAT_8_8_8_8;
+    draw.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.vs_low = 0x0f804000ul;
+    draw.ps_low = 0x0f804100ul;
+    draw.shader_high = 0xf4ul;
+    draw.vertex_low = 0x0f808400ul;
+    draw.vertex_high = 0xf4ul;
+    draw.vertex_count = 6ul;
+    draw.fence_low = 0x0f808100ul;
+    draw.fence_high = 0xf4ul;
+    draw.fence_value = 1ul;
+    draw.params = V9X_SI_WIDE_PARAMS;
+    draw.vertex_stride = V9X_SI_WIDE_VERTEX_BYTES;
+    draw.vs_vgprs = V9X_SI_WIDE_VS_VGPRS;
+    draw.ps_vgprs = 72ul;
+    draw.ps_sgprs = 96ul;
+    draw.ps_table_low = 0x0f808200ul;
+    draw.ps_table_high = 0xf4ul;
+    draw.target_swap = V9X_VI_CB_SWAP_ALT;
+    draw.ps_kill = 1ul;
+
+    /* A strided V# is GFX6's, and a table cannot go with a texture. */
+    v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_low = 0x0f80e000ul;
+    v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.texture_low = 0ul;
+    v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+
+    while (at < stream.count) {
+        v9x_u32 header = stream_dwords[at];
+        v9x_u32 op = (header >> 8) & 0xfful;
+        v9x_u32 n = (header >> 16) & 0x3ffful;
+        v9x_u32 reg = stream_dwords[at + 1ul];
+
+        if (op == V9X_VI_P3_SET_SH_REG && reg == 0x4cul && n == 4ul) {
+            resource = stream_dwords[at + 2ul] == 0x0f808400ul &&
+                       stream_dwords[at + 3ul] == (0xf4ul | (112ul << 16)) &&
+                       stream_dwords[at + 4ul] == 6ul;
+        }
+        if (op == V9X_VI_P3_SET_SH_REG && reg == 0x0cul && n == 2ul) {
+            table = stream_dwords[at + 2ul] == 0x0f808200ul &&
+                    stream_dwords[at + 3ul] == 0xf4ul;
+        }
+        /* SPI_SHADER_PGM_LO_PS (2C08h): VGPRS 17 (72), SGPRS 12 (98
+         * with VCC), FLOAT_MODE C0h; two user SGPRs. */
+        if (op == V9X_VI_P3_SET_SH_REG && reg == 0x08ul && n == 4ul) {
+            rsrc = stream_dwords[at + 4ul] == 0x000c0311ul &&
+                   stream_dwords[at + 5ul] == 4ul;
+        }
+        /* CB_COLOR0_INFO: COLOR_8_8_8_8, SWAP_ALT at 12:11. */
+        if (op == V9X_VI_P3_SET_CONTEXT_REG && reg == 0x31cul && n == 1ul &&
+            stream_dwords[at + 2ul] == 0x00000828ul) {
+            swap = 1;
+        }
+        /* SPI_PS_IN_CONTROL: six interpolants. */
+        if (op == V9X_VI_P3_SET_CONTEXT_REG && reg == 0x1b6ul && n == 1ul) {
+            inputs = stream_dwords[at + 2ul] == 6ul;
+        }
+        at += n + 2ul;
+    }
+    CHECK(resource);
+    CHECK(table);
+    CHECK(rsrc);
+    CHECK(swap);
+    CHECK(inputs);
+}
+
 unsigned int v9x_run_si_gpu_tests(void)
 {
     failures = 0u;
@@ -368,5 +499,7 @@ unsigned int v9x_run_si_gpu_tests(void)
     test_gfx6_shaders();
     test_gfx6_tl_vs();
     test_gfx6_tl_draw();
+    test_gfx6_wide_vs();
+    test_gfx6_wide_draw();
     return failures;
 }

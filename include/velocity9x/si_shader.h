@@ -27,4 +27,19 @@
 /* The V# itself is written by vi_3d.c's TL draw in its GFX6 mode. */
 v9x_status v9x_si_shader_tl_vs(v9x_u32 *out, v9x_u32 *count);
 
+/*
+ * The wide-vertex VS for pixel shader 1.x (docs\plans\ati-gcn-ps11.md):
+ * d3d_ps.h's wide vertex, 28 floats (sx sy sz rhw, diffuse, specular,
+ * stage 0-3's coordinates, four each), read by seven MUBUF
+ * buffer_load_dwordx4 IDXEN at VertexID through a strided V# in s0-s3
+ * (vi_3d.h's vertex_stride, 112), and passed on as loaded: the position
+ * to POS0, the six others to parameters 0-5, vi_ps11.h's order. The
+ * exports are GCN 3 words rewritten by v9x_si_shader_from_vi.
+ */
+#define V9X_SI_WIDE_VS_DWORDS     30ul
+#define V9X_SI_WIDE_VS_VGPRS      32ul
+#define V9X_SI_WIDE_VERTEX_BYTES  112ul
+#define V9X_SI_WIDE_PARAMS        6ul
+v9x_status v9x_si_shader_wide_vs(v9x_u32 *out, v9x_u32 *count);
+
 #endif

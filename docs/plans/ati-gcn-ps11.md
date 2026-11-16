@@ -1,11 +1,15 @@
 # GCN: pixel shader 1.1 and DDI 8, after the HD 4600 and the GT218
 
-Date: 2026-11-16. Status: steps 1 and 2 done (host only), recorded in
+Date: 2026-11-16. Status: steps 1, 2 and 3 done, recorded in
 [`2026-11-17-gcn-ps11-translator.md`](../decisions/2026-11-17-gcn-ps11-translator.md).
 Step 2's `v9x_vi_ps11_build` (`vi_ps11.c`) runs 19 programs in the GCN
 model, each matching the interpreter, and each translates for GCN 2 and
-1. The model now refuses a second SGPR read (the constant bus). Next:
-step 3, on the Oland.
+1. Step 3, `V9XSICP /ps11:0-5`, ran six programs on the Oland at 32
+and 16 bpp: every judged pixel was within tolerance, the CP was idle
+afterwards, and all of it passed on the first build. The draw used
+radeonsi's channel convention: T# swizzle Z Y X W, and COMP_SWAP ALT
+for 8888 or STD_REV for 565. Step 5 must carry that convention into the
+HAL. Next: step 4.
 
 Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to

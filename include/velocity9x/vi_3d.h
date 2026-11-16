@@ -201,7 +201,21 @@ struct v9x_vi_tl_draw {
     v9x_u32 scissor_top;
     v9x_u32 scissor_right;
     v9x_u32 scissor_bottom;
+    /* APPENDED for pixel shader 1.x (docs\plans\ati-gcn-ps11.md); zero
+     * keeps the meaning above. */
+    v9x_u32 params;             /* VS parameters / PS inputs; 0 for 3 */
+    v9x_u32 vertex_stride;      /* GFX6 only: a strided V# (bytes) for */
+                                /* an IDXEN VS, si_shader.h's wide VS  */
+    v9x_u32 vs_vgprs;           /* 0 for V9X_VI_TL_VS_VGPRS            */
+    v9x_u32 ps_table_low;       /* the PS's two user SGPRs: a vi_ps11.h */
+    v9x_u32 ps_table_high;      /* table's address; not with a texture  */
+    v9x_u32 ps_sgprs;           /* the PS's SGPRs; 0 for 24             */
+    v9x_u32 target_swap;        /* CB_COLOR0_INFO COMP_SWAP: 0 STD,     */
+                                /* 1 ALT (BGRA), 2 STD_REV (B5G6R5)     */
 };
+#define V9X_VI_CB_SWAP_STD          0ul
+#define V9X_VI_CB_SWAP_ALT          1ul
+#define V9X_VI_CB_SWAP_STD_REV      2ul
 
 /* The S#'s MIP_FILTER (SQ_TEX_MIP_FILTER_*). */
 #define V9X_VI_MIP_FILTER_NONE      0ul
