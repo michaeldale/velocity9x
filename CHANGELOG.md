@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.54.0 - not yet released
+
 ## 0.53.1 - 2026-11-16
 
 - **`nvidia` package, GeForce 210: page flips.** Every Flip used to be
