@@ -1,0 +1,17 @@
+{
+    "Name":  "gm965",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  62,
+    "BootAfter":  63,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.18.0",
+    "Boot":  62,
+    "Desktop":  true,
+    "AnswerSeconds":  3,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
