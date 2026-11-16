@@ -8,9 +8,8 @@ commit's tree (`28c632e4-dirty`), and its DRV, VXD, HAL and SETP were
 put in place by WININIT rename and hash-checked after `reset`. This is
 step 4 of [ati-gcn-ps11.md](../plans/ati-gcn-ps11.md). Carrizo and
 Mullins still claim one stage. DDI 8 is still not published (step 5).
-V9XD32's gate passes. 3DMark 2000 faulted in two of three runs; the
-fault is the program's own read past an array, which the build's memory
-layout exposes (below).
+V9XD32's gate passes. 3DMark 2000 faulted in two of three runs, the
+known fault in its own code (below).
 
 Evidence: [`../probe/oland-two-stages-w9qi0dad-2026-11-17/`](../probe/oland-two-stages-w9qi0dad-2026-11-17/).
 
@@ -92,14 +91,14 @@ runs show. `EngineIdleTimeouts` stayed 0.
 time. One stage with 3DMark forced onto DDI 6, which two stages also
 imply, completed (3671).
 
-The exception context, which the HAL's fault filter writes to
-`V9XTRACE.INI`, shows the cause, read against 3DMark's disassembly. The
-program evaluates an animation track and reads one 40-byte key past the
-end of a two-key array. That array ended 16 bytes before an unmapped
-page, so the read faulted. The driver's two-stage build changes the
-process's memory layout, not what the program receives. So the fault is
-3DMark's, and the gate's question, whether the two stages break
-3DMark 2000, is answered no by this evidence. The record:
+The fault is the known one: 3DMark's keyframe evaluator reads one 28h
+key past its vector's end, and faults when that lands on uncommitted
+memory. It was traced on 2026-11-15 on this machine's GeForce 210
+([2026-11-14-gt218-3d-d3d-builders.md](2026-11-14-gt218-3d-d3d-builders.md))
+and was seen on the GMA 950 at 0.35.0. The registers here fit the same
+path. This step traced it again before that record was found. The two
+completed one-stage runs do not show that two stages raise the rate:
+the GT218 and the GMA 950 faulted on one-stage builds too. The record:
 [`../issues/2026-11-17-oland-3dmark2000-faults-with-two-stages.md`](../issues/2026-11-17-oland-3dmark2000-faults-with-two-stages.md).
 
 During the runs the one-stage DDI 6 build ran at boot 55. Boot 56 was

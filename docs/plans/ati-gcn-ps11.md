@@ -16,8 +16,8 @@ Step 4 is done on the Oland alone
 A per-draw two-unit PS loads both units' descriptors from a table, and
 the TL2 VS reads unit 1's coordinates from a second stream. V9XD32 T12
 and T13's two-unit form pass at 32 and 16 bpp, with nothing else changed.
-3DMark 2000 scored once and faulted twice. The fault is the program's
-own read past an array, exposed by the build's memory layout
+3DMark 2000 scored once and faulted twice, the known fault at 004E23D1
+in 3DMark's own keyframe code
 ([issue](../issues/2026-11-17-oland-3dmark2000-faults-with-two-stages.md)).
 Carrizo and Mullins still draw one stage. Next: step 5.
 
