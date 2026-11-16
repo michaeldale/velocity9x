@@ -149,6 +149,8 @@ $sources = @(
     "src\chipsets\nvidia\gt218\nv50_ps11.c",
     # The GT218's row blocks: where tiled Z and colour shadows may go.
     "src\chipsets\nvidia\gt218\nv50_rblock.c",
+    # The GT218's display start (CR0C/CR0D/CR35/CR34), for flips.
+    "src\chipsets\nvidia\gt218\nv50_crtc.c",
     "src\display32\d3d\d3d_nv50_map.c",
     "src\display32\d3d\d3d_nv50.c",
     # The RS690 2D engine: fill and copy through the host-tested builder;

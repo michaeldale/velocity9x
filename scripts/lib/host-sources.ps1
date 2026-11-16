@@ -142,6 +142,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\gt218\gt218_reserve.c',
         # GT218 row blocks and tiled Z/colour placement, no I/O.
         'src\chipsets\nvidia\gt218\nv50_rblock.c',
+        # GT218 display start through the VGA CRTC emulation, no I/O.
+        'src\chipsets\nvidia\gt218\nv50_crtc.c',
         # Rage 128 2D engine: init, fill and copy register values, no I/O.
         'src\chipsets\ati\rage128\r128_2d.c',
         # Rage 128 3D: CCE state and primitive packet streams, no I/O.

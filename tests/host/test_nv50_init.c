@@ -4,6 +4,7 @@
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/gt218_reserve.h"
 #include "velocity9x/nv50_rblock.h"
+#include "velocity9x/nv50_crtc.h"
 
 /*
  * The GT218 bring-up list (src\chipsets\nvidia\gt218\nv50_init.c)
@@ -277,9 +278,48 @@ static void test_rblock(void)
     CHECK(v9x_nv50_rblock_span(0ul, 0x1000ul, 1ul, 1ul) == 0ul);
 }
 
+/* nv50_crtc.c: the start address in the layout W9QI0DAD's VBIOS writes
+ * and the /startmove and /starthigh probes confirmed. */
+static void test_crtc_start(void)
+{
+    struct v9x_nv50_crtc_start start;
+
+    /* The /startmove value: 2000h dwords is 32 KiB. */
+    CHECK(v9x_nv50_build_crtc_start(0x8000ul, 0x20000000ul, &start) ==
+          V9X_STATUS_OK);
+    CHECK(start.cr0c == 0x20u && start.cr0d == 0x00u &&
+          start.cr35 == 0x00u && start.cr34 == 0x00u);
+
+    /* The /starthigh value: 10000h dwords, CR35 bit 0. */
+    CHECK(v9x_nv50_build_crtc_start(0x40000ul, 0x20000000ul, &start) ==
+          V9X_STATUS_OK);
+    CHECK(start.cr0c == 0u && start.cr0d == 0u && start.cr35 == 0x01u &&
+          start.cr34 == 0u);
+
+    /* A 1024x768x16 back buffer behind the primary: 180000h bytes. */
+    CHECK(v9x_nv50_build_crtc_start(0x180000ul, 0x20000000ul, &start) ==
+          V9X_STATUS_OK);
+    CHECK(start.cr0c == 0x00u && start.cr0d == 0x00u &&
+          start.cr35 == 0x06u && start.cr34 == 0u);
+
+    /* Every field at once: 1FFFFFFCh bytes is 07FFFFFFh dwords. */
+    CHECK(v9x_nv50_build_crtc_start(0x1ffffffcul, 0x20000000ul, &start) ==
+          V9X_STATUS_OK);
+    CHECK(start.cr0c == 0xffu && start.cr0d == 0xffu &&
+          start.cr35 == 0xffu && start.cr34 == 0x07u);
+
+    /* Refused: not a dword, past the memory, no output. */
+    CHECK(v9x_nv50_build_crtc_start(0x8002ul, 0x20000000ul, &start) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_nv50_build_crtc_start(0x20000000ul, 0x20000000ul, &start) !=
+          V9X_STATUS_OK);
+    CHECK(v9x_nv50_build_crtc_start(0ul, 0x20000000ul, 0) != V9X_STATUS_OK);
+}
+
 unsigned int v9x_run_nv50_init_tests(void)
 {
     failures = 0u;
+    test_crtc_start();
     test_reserve();
     test_rblock();
     test_fifo();

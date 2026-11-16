@@ -123,6 +123,8 @@ $required = @(
     "src\chipsets\nvidia\gt218\gt218_reserve.c",
     "include\velocity9x\nv50_rblock.h",
     "src\chipsets\nvidia\gt218\nv50_rblock.c",
+    "include\velocity9x\nv50_crtc.h",
+    "src\chipsets\nvidia\gt218\nv50_crtc.c",
     "src\chipsets\nvidia\nv3_2d.c",
     "src\display32\engines\eng_nv3.c",
     "tests\host\test_nv3_2d.c",

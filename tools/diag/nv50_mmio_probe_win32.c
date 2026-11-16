@@ -27,9 +27,16 @@
  *          framebuffer, BAR3 + 0, BAR1 + 16 MiB and BAR1 + 0, compared;
  *   /crtc  C:\V9XDIAG\V9XN5CR.INI: the VGA CRTC as the VBE left it;
  *   /fbwrite  C:\V9XDIAG\V9XN5FW.INI: the BAR1 linearity write test
- *          (docs\decisions\2026-11-11-gt218-bar-windows.md, "Next").
+ *          (docs\decisions\2026-11-11-gt218-bar-windows.md, "Next");
+ *   /startmove  C:\V9XDIAG\V9XN5SM.INI: the VGA start address written,
+ *          held 15 s and restored, to see whether the scanout follows it.
  *
- * No register is ever written. Video memory is written only by /fbwrite,
+ * /vga reads PDISPLAY's VGA block (619E00h-619FFFh, 6194E8h); /rom copies
+ * the shadowed VBIOS at C0000h to C:\V9XDIAG\V9XN5ROM.BIN. No MMIO
+ * register is ever written. /startmove and /starthigh write VGA CRTC
+ * registers (CR0C/CR0D; CR3F, CR35), hold 15 s and restore them as read
+ * (docs\decisions\2026-11-16-gt218-flips-through-vga-crtc.md). Video
+ * memory is written only by /fbwrite,
  * 16 dwords at each of five BAR1 offsets past 14 MiB, and restored; /crtc
  * writes only the VGA CRTC index port, and puts it back. Every offset and field is from
  * nouveau (nvkm, Linux master, kept in build\external\nv50\nouveau), not
@@ -48,6 +55,8 @@
 #define V9X_N5MM_PATH        V9X_DIAG_PATH("V9XN5MM.INI")
 #define V9X_N5FB_PATH        V9X_DIAG_PATH("V9XN5FB.INI")
 #define V9X_N5CR_PATH        V9X_DIAG_PATH("V9XN5CR.INI")
+#define V9X_N5SM_PATH        V9X_DIAG_PATH("V9XN5SM.INI")
+#define V9X_N5VG_PATH        V9X_DIAG_PATH("V9XN5VG.INI")
 #define V9X_N5MM_VXD         "\\\\.\\N5MM.VXD"
 #define V9X_N5MM_MAGIC       0x4d4d354eul
 #define V9X_N5MM_CAPTURE     1u
@@ -870,6 +879,144 @@ static void v9x_crtc_probe(void)
     v9x_text("Crtc", "Result", "taken");
 }
 
+/*
+ * /startmove: does this head still scan out from the VGA start address in
+ * the mode the VBE set? CR0C/CR0D are written to V9X_START_MOVE_WORDS, held
+ * for V9X_START_MOVE_HOLD_MS so the picture can be captured (OBS, from the
+ * host), then put back as found. The probe's only register write; standard
+ * VGA, no extended index touched. A picture that shifts says the flip can
+ * be a start-address write; one that does not says the scanout belongs to
+ * the EVO head (docs\plans\nvidia-gt218.md, Phase 5).
+ */
+#define V9X_START_MOVE_WORDS   0x2000u
+#define V9X_START_MOVE_HOLD_MS 15000ul
+
+static void v9x_start_move(void)
+{
+    BYTE misc;
+    BYTE saved_index;
+    BYTE high;
+    BYTE low;
+
+    misc = v9x_inpb(V9X_VGA_MISC_READ);
+    v9x_key("Start", "Misc", misc);
+    if ((misc & 0x01u) == 0u) {
+        v9x_text("Start", "Result", "mono-crtc-not-written");
+        return;
+    }
+    saved_index = v9x_inpb(V9X_VGA_CRTC_INDEX);
+    high = v9x_crtc_read(0x0cu);
+    low = v9x_crtc_read(0x0du);
+    v9x_key("Start", "Before", ((DWORD)high << 8) | (DWORD)low);
+    v9x_key("Start", "Written", (DWORD)V9X_START_MOVE_WORDS);
+    v9x_text("Start", "Result", "holding");
+    WritePrivateProfileStringA(0, 0, 0, v9x_path);
+
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0cu);
+    v9x_outpb(V9X_VGA_CRTC_DATA, (BYTE)(V9X_START_MOVE_WORDS >> 8));
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0du);
+    v9x_outpb(V9X_VGA_CRTC_DATA, (BYTE)(V9X_START_MOVE_WORDS & 0xffu));
+    v9x_key("Start", "ReadBack",
+            ((DWORD)v9x_crtc_read(0x0cu) << 8) | (DWORD)v9x_crtc_read(0x0du));
+    WritePrivateProfileStringA(0, 0, 0, v9x_path);
+    Sleep(V9X_START_MOVE_HOLD_MS);
+
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0cu);
+    v9x_outpb(V9X_VGA_CRTC_DATA, high);
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0du);
+    v9x_outpb(V9X_VGA_CRTC_DATA, low);
+    v9x_key("Start", "Restored",
+            ((DWORD)v9x_crtc_read(0x0cu) << 8) | (DWORD)v9x_crtc_read(0x0du));
+    v9x_outpb(V9X_VGA_CRTC_INDEX, saved_index);
+    v9x_text("Start", "Result", "restored");
+}
+
+/*
+ * /starthigh: the start address past CR0C/CR0D's 64 Ki dwords. /startmove
+ * (boot 43) moved the picture 16 rows for 2000h, so the unit is a dword
+ * and the head follows the VGA start. Riva/NV4's CR19 (behind lock CR1F)
+ * read 0 and moved nothing on this card. The card's own VBIOS (VBE 4F07,
+ * BL=02h, at C000:6ACE, writer at C000:5326) puts dword bits 15:0 in
+ * CR0C/CR0D, 23:16 in CR35 and 29:24 in CR34 (masked 3Fh), with the int 10h
+ * entry unlocking by CR3F = 57h and writing the old value back on exit.
+ * This writes start = 10000h dwords (256 KiB, 128 rows at a 2048-byte
+ * pitch) as CR0C/CR0D = 0 and CR35 = 01h, holds, and restores CR35,
+ * CR0C/CR0D and CR3F as found. Also counts 3DAh bit 3 rising edges over
+ * V9X_VBLANK_SAMPLE_MS, the retrace the flip state machine waits on.
+ */
+#define V9X_VGA_INPUT_STATUS_1 ((WORD)0x03dau)
+#define V9X_VGA_VRETRACE       0x08u
+#define V9X_NV50_CR_LOCK       0x3fu
+#define V9X_NV50_CR_START_HI   0x34u
+#define V9X_NV50_CR_START_MID  0x35u
+#define V9X_NV50_UNLOCK        0x57u
+#define V9X_VBLANK_SAMPLE_MS   500ul
+
+static void v9x_start_high(void)
+{
+    DWORD edges = 0ul;
+    DWORD started;
+    BYTE saved_index;
+    BYTE lock;
+    BYTE high;
+    BYTE low;
+    BYTE mid;
+    BYTE top;
+    BYTE was = 0u;
+    BYTE now;
+
+    if ((v9x_inpb(V9X_VGA_MISC_READ) & 0x01u) == 0u) {
+        v9x_text("Start", "Result", "mono-crtc-not-written");
+        return;
+    }
+    started = GetTickCount();
+    while (GetTickCount() - started < V9X_VBLANK_SAMPLE_MS) {
+        now = (BYTE)(v9x_inpb(V9X_VGA_INPUT_STATUS_1) & V9X_VGA_VRETRACE);
+        if (now != 0u && was == 0u) {
+            ++edges;
+        }
+        was = now;
+    }
+    v9x_number("Start", "RetraceEdges500ms", edges);
+
+    saved_index = v9x_inpb(V9X_VGA_CRTC_INDEX);
+    lock = v9x_crtc_read(V9X_NV50_CR_LOCK);
+    v9x_key("Start", "LockBefore", lock);
+    v9x_outpb(V9X_VGA_CRTC_DATA, V9X_NV50_UNLOCK);
+    v9x_key("Start", "LockUnlocked", v9x_crtc_read(V9X_NV50_CR_LOCK));
+    high = v9x_crtc_read(0x0cu);
+    low = v9x_crtc_read(0x0du);
+    mid = v9x_crtc_read(V9X_NV50_CR_START_MID);
+    top = v9x_crtc_read(V9X_NV50_CR_START_HI);
+    v9x_key("Start", "Before", ((DWORD)top << 24) | ((DWORD)mid << 16) |
+                               ((DWORD)high << 8) | (DWORD)low);
+    v9x_text("Start", "Result", "holding");
+    WritePrivateProfileStringA(0, 0, 0, v9x_path);
+
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0cu);
+    v9x_outpb(V9X_VGA_CRTC_DATA, 0u);
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0du);
+    v9x_outpb(V9X_VGA_CRTC_DATA, 0u);
+    v9x_outpb(V9X_VGA_CRTC_INDEX, V9X_NV50_CR_START_MID);
+    v9x_outpb(V9X_VGA_CRTC_DATA, 0x01u);
+    v9x_key("Start", "MidWritten", v9x_crtc_read(V9X_NV50_CR_START_MID));
+    WritePrivateProfileStringA(0, 0, 0, v9x_path);
+    Sleep(V9X_START_MOVE_HOLD_MS);
+
+    v9x_outpb(V9X_VGA_CRTC_INDEX, V9X_NV50_CR_START_MID);
+    v9x_outpb(V9X_VGA_CRTC_DATA, mid);
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0cu);
+    v9x_outpb(V9X_VGA_CRTC_DATA, high);
+    v9x_outpb(V9X_VGA_CRTC_INDEX, 0x0du);
+    v9x_outpb(V9X_VGA_CRTC_DATA, low);
+    v9x_key("Start", "MidRestored", v9x_crtc_read(V9X_NV50_CR_START_MID));
+    v9x_outpb(V9X_VGA_CRTC_INDEX, V9X_NV50_CR_LOCK);
+    v9x_outpb(V9X_VGA_CRTC_DATA, lock);
+    v9x_key("Start", "LockAfter", v9x_crtc_read(V9X_NV50_CR_LOCK));
+    v9x_outpb(V9X_VGA_CRTC_INDEX, saved_index);
+    v9x_text("Start", "Result", "restored");
+}
+
 void __stdcall V9xNv50MmioEntry(void)
 {
     DWORD config;
@@ -879,11 +1026,91 @@ void __stdcall V9xNv50MmioEntry(void)
     int fb;
     int crtc;
     int fbwrite;
+    int startmove;
 
     /* /fbwrite first: the switch scan matches prefixes, and "/fb" is one. */
     fbwrite = v9x_switch_given("/fbwrite");
     fb = !fbwrite && v9x_switch_given("/fb");
     crtc = v9x_switch_given("/crtc");
+    startmove = v9x_switch_given("/startmove");
+    /* /rom: the shadowed video BIOS at C0000h, 64 KiB, copied to
+     * C:\V9XDIAG\V9XN5ROM.BIN for disassembly on the host (its VBE 4F07
+     * handler says how the BIOS reaches start offsets past 256 KiB).
+     * Win9x maps the system VM's first megabyte at linear 0; the read is
+     * checked first and nothing is written but the file. */
+    if (v9x_switch_given("/rom")) {
+        const BYTE *rom = (const BYTE *)0x000c0000ul;
+        HANDLE file;
+        DWORD written = 0ul;
+
+        v9x_path = V9X_N5VG_PATH;
+        CreateDirectoryA(V9X_DIAG_DIR, 0);
+        DeleteFileA(v9x_path);
+        v9x_text("Report", "Tool", "V9XN5MM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_text("Report", "Access", "rom-shadow-read");
+        if (IsBadReadPtr(rom, 0x10000u)) {
+            v9x_finish("ROM-NOT-READABLE", 2u);
+        }
+        file = CreateFileA(V9X_DIAG_PATH("V9XN5ROM.BIN"), GENERIC_WRITE, 0,
+                           0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (file == INVALID_HANDLE_VALUE) {
+            v9x_finish("ROM-FILE-FAILED", 2u);
+        }
+        WriteFile(file, rom, 0x10000ul, &written, 0);
+        CloseHandle(file);
+        v9x_key("Report", "Signature",
+                (DWORD)rom[0] | ((DWORD)rom[1] << 8) | ((DWORD)rom[2] << 16));
+        v9x_number("Report", "Written", written);
+        v9x_finish("COMPLETE", 0u);
+    }
+    if (v9x_switch_given("/vga")) {
+        DWORD offset;
+
+        v9x_path = V9X_N5VG_PATH;
+        CreateDirectoryA(V9X_DIAG_DIR, 0);
+        DeleteFileA(v9x_path);
+        v9x_text("Report", "Tool", "V9XN5MM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_text("Report", "Access", "mmio-read-only");
+        config = v9x_find_gt218();
+        if (config == 0ul) {
+            v9x_finish("NO-GT218", 1u);
+        }
+        v9x_request.config = config;
+        v9x_request.count = 0ul;
+        v9x_request_add(0x6194e8ul);
+        for (offset = 0x619e00ul; offset < 0x61a000ul; offset += 4ul) {
+            v9x_request_add(offset);
+        }
+        if (!v9x_capture()) {
+            v9x_key("Report", "Status", v9x_result.status);
+            v9x_key("Report", "RefusedOffset", v9x_result.refused_offset);
+            v9x_finish("VGA-CAPTURE-FAILED", 2u);
+        }
+        v9x_publish_mmio();
+        v9x_finish("COMPLETE", 0u);
+    }
+    if (v9x_switch_given("/starthigh")) {
+        v9x_path = V9X_N5SM_PATH;
+        CreateDirectoryA(V9X_DIAG_DIR, 0);
+        DeleteFileA(v9x_path);
+        v9x_text("Report", "Tool", "V9XN5MM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_text("Report", "Access", "nv-start-high-write-restored");
+        v9x_start_high();
+        v9x_finish("COMPLETE", 0u);
+    }
+    if (startmove) {
+        v9x_path = V9X_N5SM_PATH;
+        CreateDirectoryA(V9X_DIAG_DIR, 0);
+        DeleteFileA(v9x_path);
+        v9x_text("Report", "Tool", "V9XN5MM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_text("Report", "Access", "vga-start-write-restored");
+        v9x_start_move();
+        v9x_finish("COMPLETE", 0u);
+    }
     if (fbwrite) {
         v9x_path = V9X_N5FW_PATH;
     } else if (fb) {

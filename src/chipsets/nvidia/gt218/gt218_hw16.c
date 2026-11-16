@@ -129,9 +129,12 @@ static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
      * builders the channel probe drew right on M-BXMFA8. DDI 8 over DDI
      * 6: pixel shaders on the translator V9XN5CH /3d:ps11 drew right, two
      * stages first as Michael chose (step 4 of docs\plans\
-     * nvidia-gt218-ps11.md). */
+     * nvidia-gt218-ps11.md). FLIP: the HAL writes the start address
+     * through the VGA CRTC emulation (eng_nv50.c, nv50_crtc.h), measured
+     * on W9QI0DAD; no BAR0 register is involved. */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_D3D |
                    V9X_DD_ENGINE_CAP_D3D_DDI8;
 }

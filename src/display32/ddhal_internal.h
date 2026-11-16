@@ -555,6 +555,11 @@ int v9x_mga_set_display_start(DWORD byte_offset);
  * V9X_DD_ENGINE_CAP_FLIP. */
 int v9x_nv3_scanout_active(void);
 int v9x_nv3_set_display_start(DWORD byte_offset);
+/* The GT218's start address through its VGA CRTC emulation (CR0D, CR0C,
+ * CR35, CR34<5:0> behind CR3F), in engines/eng_nv50.c: active only for
+ * NV50 stamped with V9X_DD_ENGINE_CAP_FLIP. */
+int v9x_nv50_scanout_active(void);
+int v9x_nv50_set_display_start(DWORD byte_offset);
 /* For the RIVA 128's D3D engine (d3d\d3d_nv3.c), in engines/eng_nv3.c:
  * the engine brought up at any depth, with the D3D object, and idle; and
  * an idle wait that is real at 16 bpp, where the 2D side's returns at

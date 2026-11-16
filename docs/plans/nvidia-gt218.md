@@ -134,6 +134,13 @@ rather than VBE. V9XDDP and V9XD32 at 16 and 32 bpp.
 
 ### Phase 5 — flips through EVO
 
+Answered without EVO for the modes the VBE sets (2026-11-16): the head
+scans out through the VGA CRTC emulation, and flips write CR0C/CR0D/CR35/
+CR34 behind CR3F as the VBIOS's VBE 4F07 does
+([record](../decisions/2026-11-16-gt218-flips-through-vga-crtc.md)).
+Hard part 4 above was the sources' view of nouveau's mode, not this one.
+An EVO channel stays the route only for modes the VBE does not offer.
+
 ### Phase 6 — Direct3D (its own plan)
 
 [nvidia-gt218-3d.md](nvidia-gt218-3d.md): class 8597h on the existing

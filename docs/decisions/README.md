@@ -379,6 +379,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-05 W9QI2F4F now carries a Quadro FX 550 (NV43): PEG link at x8, the BIOS disables the IGD, and the 4 bpp screenshot garbage is not the IGD's](2026-11-05-w9qi2f4f-quadro-fx550-audit.md)
 - [2026-11-05 Tier-0 `vbe` on the Quadro FX 550 (NV43): enable-ok, GDI passes at 8 and 32 bpp, no EDID](2026-11-05-w9qi2f4f-quadro-fx550-tier0-vbe.md)
 - [2026-11-16 GT218: tiled Z and colour shadows need whole row blocks; 64 KiB pages were not enough](2026-11-16-gt218-tiled-row-blocks.md)
+- [2026-11-16 GT218: page flips through the VGA CRTC emulation (CR0C/CR0D/CR35/CR34 behind CR3F, the VBIOS's VBE 4F07 layout), not EVO; RIVA's CR19 dead](2026-11-16-gt218-flips-through-vga-crtc.md)
 - [2026-10-26 VIA VX855 Chrome9 HCM from a DOS survey: framebuffer BAR0, engine BAR1, VBE 3.0 to 1920x1200, and the M1 2D engine Linux already drives](2026-10-26-via-vx855-chrome9-hcm-from-a-survey.md)
 - [2026-10-26 Tier-0 `vbe` on a Radeon HD 5450 (Cedar, 1002:68F9): enable-ok, every mode and GDI test passes](2026-10-26-m-bxmfa8-radeon-68f9-first-look.md)
 - [2026-10-26 Radeon HD 5450 registers, read: 1 GiB at GPU address 0, the DMA engine idle and out of reset](2026-10-26-cedar-register-probe.md)

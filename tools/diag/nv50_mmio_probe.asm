@@ -150,8 +150,11 @@ N5Windows label dword
     dd 610200h, 610204h ; PDISP core channel control
     dd 610a00h, 610c00h ; PDISP core state mirrors, head 0 and outputs
     dd 610f40h, 611140h ; PDISP core state mirrors, head 1
+    dd 6194e8h, 6194ech ; PDISP VGA ownership (nouveau nv50_disp_init)
+    dd 619e00h, 61a000h ; PDISPLAY.VGA block (envytools g80 vga-stack,
+                        ; vga-mutex; workspace base guessed at 619F04h)
     dd 700000h, 800000h ; PRAMIN window
-N5_WINDOW_COUNT         equ 30
+N5_WINDOW_COUNT         equ 32
 
 N5Result label dword
     dd N5_MAGIC                 ; 00 magic

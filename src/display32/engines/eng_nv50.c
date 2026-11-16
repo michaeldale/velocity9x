@@ -41,6 +41,7 @@
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/gt218_reserve.h"
 #include "velocity9x/nv50_rblock.h"
+#include "velocity9x/nv50_crtc.h"
 #include "velocity9x/diagpaths.h"
 
 /* Bounded busy-wait. The probe's waits ended on the first or second
@@ -704,6 +705,52 @@ int v9x_nv50_3d_submit(DWORD count)
 static int v9x_nv50_can_blt(void)
 {
     return v9x_nv50_wait_idle(0);
+}
+
+/*
+ * The display start, for page flips. In the modes the VBE sets the head
+ * scans out through the VGA CRTC emulation, not an EVO channel, so a flip
+ * is a CRTC write (nv50_crtc.h has the measurement and the VBIOS routine
+ * the layout comes from). Until this, every Flip on this row was declined
+ * and DirectDraw's fallback left 3DMark 2001 SE's clears on screen
+ * (docs\issues\2026-11-16-gt218-3dmark2001se-car-chase-cleared-frames-
+ * on-screen.md).
+ *
+ * The extended registers are opened with CR3F = 57h and CR3F is written
+ * back as it read, as the VBIOS's int 10h entry does. Low byte first, as
+ * the RIVA path writes it. The retrace is the VGA status port's (3DAh
+ * bit 3, 60 Hz on W9QI0DAD), which the core's default timing uses; whether
+ * the emulation latches the start at the retrace, as VGA does, or applies
+ * it at once is not measured, and under the second this tears.
+ */
+int v9x_nv50_scanout_active(void)
+{
+    if (v9x_hal == 0 ||
+        (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
+        v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_NV50) {
+        return 0;
+    }
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
+}
+
+int v9x_nv50_set_display_start(DWORD byte_offset)
+{
+    struct v9x_nv50_crtc_start start;
+    unsigned char lock;
+
+    if ((v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        v9x_nv50_build_crtc_start(byte_offset, v9x_hal->fb.vram_bytes,
+                                  &start) != V9X_STATUS_OK) {
+        return 0;
+    }
+    lock = v9x_read_crtc(V9X_NV50_CR_LOCK);
+    v9x_write_crtc(V9X_NV50_CR_LOCK, V9X_NV50_CR_UNLOCK);
+    v9x_write_crtc(V9X_NV50_CR_START_LOW, start.cr0d);
+    v9x_write_crtc(V9X_NV50_CR_START_HIGH, start.cr0c);
+    v9x_write_crtc(V9X_NV50_CR_START_MID, start.cr35);
+    v9x_write_crtc(V9X_NV50_CR_START_TOP, start.cr34);
+    v9x_write_crtc(V9X_NV50_CR_LOCK, lock);
+    return 1;
 }
 
 const V9X_ENGINE32_OPS v9x_engine32_nv50 = {
