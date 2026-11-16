@@ -40,6 +40,7 @@
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/gt218_reserve.h"
+#include "velocity9x/nv50_rblock.h"
 #include "velocity9x/diagpaths.h"
 
 /* Bounded busy-wait. The probe's waits ended on the first or second
@@ -121,6 +122,22 @@ static DWORD v9x_nv50_read32(DWORD offset)
 static void v9x_nv50_write32(DWORD offset, DWORD value)
 {
     *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset) = value;
+}
+
+/* ddhal_internal.h. The memory configuration is the VBIOS's, fixed from
+ * POST, so the unit is read once, from the registers nouveau's
+ * nv50_fb_vram_rblock reads. */
+DWORD v9x_nv50_rblock_unit_now(void)
+{
+    static DWORD unit = 0ul;
+
+    if (unit == 0ul && v9x_nv50_ready()) {
+        unit = v9x_nv50_rblock_unit(v9x_nv50_rblock_bytes(
+            v9x_nv50_read32(V9X_NV50_RBLOCK_UNITS_REG),
+            v9x_nv50_read32(V9X_NV50_RBLOCK_CFG1_REG),
+            v9x_nv50_read32(V9X_NV50_RBLOCK_TRIPLE_REG)));
+    }
+    return unit;
 }
 
 /* The region, where the framebuffer mapping shows it. */

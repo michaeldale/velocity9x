@@ -1,0 +1,245 @@
+diff --git a/src/display32/d3d/d3d_nv50.c b/src/display32/d3d/d3d_nv50.c
+index 892092d4..6477fd1e 100644
+--- a/src/display32/d3d/d3d_nv50.c
++++ b/src/display32/d3d/d3d_nv50.c
+@@ -24,6 +24,58 @@
+ #include "d3d_nv50_map.h"
+ #include "velocity9x/nv50_d3d.h"
+ #include "velocity9x/nv50_ps11.h"
++#include "velocity9x/diagpaths.h"
++
++/* MEASUREMENT ONLY (not for commit): every placement, shadow load and new
++ * draw target to C:\V9XDIAG\V9XN50P.TXT, to find what the 800x600x32
++ * Quake 3 colour shadow's first tile row shares memory with. */
++#define V9X_NV50_PLOG_MAX 6000ul
++static DWORD v9x_nv50_plog_lines = 0ul;
++static DWORD v9x_nv50_plog_targets[32];
++static DWORD v9x_nv50_plog_target_count = 0ul;
++
++static void v9x_nv50_plog(char tag, DWORD a, DWORD b, DWORD c, DWORD d,
++                          DWORD e)
++{
++    static const char digits[] = "0123456789ABCDEF";
++    char line[64];
++    DWORD values[5];
++    DWORD length = 0ul;
++    DWORD index;
++    DWORD nibble;
++    DWORD written;
++    HANDLE file;
++
++    if (v9x_nv50_plog_lines >= V9X_NV50_PLOG_MAX) {
++        return;
++    }
++    ++v9x_nv50_plog_lines;
++    values[0] = a;
++    values[1] = b;
++    values[2] = c;
++    values[3] = d;
++    values[4] = e;
++    line[length++] = tag;
++    for (index = 0ul; index < 5ul; ++index) {
++        line[length++] = ' ';
++        for (nibble = 0ul; nibble < 8ul; ++nibble) {
++            line[length++] =
++                digits[(values[index] >> ((7ul - nibble) * 4ul)) & 0xful];
++        }
++    }
++    line[length++] = '\r';
++    line[length++] = '\n';
++    CreateDirectoryA(V9X_DIAG_DIR, 0);
++    file = CreateFileA(V9X_DIAG_PATH("V9XN50P.TXT"), GENERIC_WRITE,
++                       FILE_SHARE_READ, 0, OPEN_ALWAYS,
++                       FILE_ATTRIBUTE_NORMAL, 0);
++    if (file == INVALID_HANDLE_VALUE) {
++        return;
++    }
++    (void)SetFilePointer(file, 0, 0, FILE_END);
++    (void)WriteFile(file, line, length, &written, 0);
++    CloseHandle(file);
++}
+ 
+ /* Triangles one batch takes: at the widest vertex (18 words) 2,048 fill
+  * 110,592 of the push area's 196,608 words, with room for the setup and
+@@ -543,6 +595,86 @@ static int v9x_d3d_nv50_shadow_copy(const V9X_D3D_NV50_SHADOW *shadow,
+     return v9x_nv50_3d_submit(push.count);
+ }
+ 
++/* MEASUREMENT ONLY: on the 800th and 2000th idle wait with a clean,
++ * owned shadow, the raw bytes around it to C:\V9XDIAG\V9XN50Mn.BIN:
++ * a header of DWORDs, the Z's last 64 KiB, the colour's first 64 KiB,
++ * the colour's last 64 KiB, and the owner's first and last 8 rows. */
++static DWORD v9x_nv50_plog_waits = 0ul;
++
++static void v9x_nv50_plog_write(HANDLE file, DWORD offset, DWORD bytes)
++{
++    DWORD written;
++
++    (void)WriteFile(file,
++                    (const void *)(v9x_hal->fb.linear_base + offset), bytes,
++                    &written, 0);
++}
++
++void v9x_d3d_nv50_plog_dump(void)
++{
++    V9X_D3D_NV50_SHADOW *shadow = 0;
++    DWORD header[16];
++    DWORD index;
++    DWORD written;
++    DWORD colour_end;
++    DWORD owner_rows;
++    HANDLE file;
++    char path[] = V9X_DIAG_PATH("V9XN50M0.BIN");
++
++    for (index = 0ul; index < V9X_D3D_NV50_SHADOWS_MAX; ++index) {
++        if (v9x_d3d_nv50_shadows[index].used != 0ul &&
++            v9x_d3d_nv50_shadows[index].owner != V9X_D3D_NV50_NONE &&
++            v9x_d3d_nv50_shadows[index].dirty == 0ul) {
++            shadow = &v9x_d3d_nv50_shadows[index];
++            break;
++        }
++    }
++    if (shadow == 0) {
++        return;
++    }
++    ++v9x_nv50_plog_waits;
++    if (v9x_nv50_plog_waits != 800ul && v9x_nv50_plog_waits != 2000ul) {
++        return;
++    }
++    path[sizeof(path) - 6] = v9x_nv50_plog_waits == 800ul ? '1' : '2';
++    colour_end = shadow->colour_offset +
++                 ((shadow->width * 4ul + 63ul) & ~63ul) *
++                     ((shadow->height + 7ul) & ~7ul);
++    owner_rows = shadow->owner_pitch * 8ul;
++    for (index = 0ul; index < 16ul; ++index) {
++        header[index] = 0ul;
++    }
++    header[0] = 0x4d303556ul;
++    header[1] = shadow->z_offset;
++    header[2] = shadow->colour_offset;
++    header[3] = shadow->width;
++    header[4] = shadow->height;
++    header[5] = shadow->owner;
++    header[6] = shadow->owner_pitch;
++    header[7] = shadow->owner_width;
++    header[8] = shadow->owner_height;
++    header[9] = shadow->owner_bytes;
++    header[10] = colour_end;
++    header[11] = v9x_nv50_plog_waits;
++    file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0,
++                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
++    if (file == INVALID_HANDLE_VALUE) {
++        return;
++    }
++    (void)WriteFile(file, header, sizeof(header), &written, 0);
++    v9x_nv50_plog_write(file, shadow->colour_offset - 0x10000ul, 0x10000ul);
++    v9x_nv50_plog_write(file, shadow->colour_offset, 0x10000ul);
++    v9x_nv50_plog_write(file, (colour_end - 0x10000ul) & ~0xfffful,
++                        0x20000ul);
++    v9x_nv50_plog_write(file, shadow->owner, owner_rows);
++    v9x_nv50_plog_write(file,
++                        shadow->owner + shadow->owner_pitch *
++                                            (shadow->owner_height - 8ul),
++                        owner_rows);
++    v9x_nv50_plog_write(file, shadow->z_offset - 0x10000ul, 0x20000ul);
++    CloseHandle(file);
++}
++
+ /* A dirty shadow back to its linear target; it then still holds it. */
+ static int v9x_d3d_nv50_shadow_flush(V9X_D3D_NV50_SHADOW *shadow)
+ {
+@@ -638,6 +770,9 @@ static int v9x_d3d_nv50_shadow_take(V9X_D3D_NV50_SHADOW *shadow,
+     shadow->owner_bytes =
+         draw->target.format == V9X_R3D_FORMAT_XRGB8888 ? 4ul : 2ul;
+     shadow->dirty = 0ul;
++    v9x_nv50_plog('S', shadow->owner, shadow->owner_pitch,
++                  shadow->owner_width | (shadow->owner_height << 16),
++                  shadow->owner_bytes, shadow->colour_offset);
+     v9x_d3d_nv50_resolving = 1;
+     if (!v9x_d3d_nv50_shadow_copy(shadow, 0)) {
+         v9x_d3d_nv50_resolving = 0;
+@@ -857,6 +992,18 @@ static int v9x_d3d_nv50_draw(const V9X_R3D_DRAW *draw,
+         return 0;
+     }
+     started = V9X_TIME_BEGIN();
++    for (index = 0ul; index < v9x_nv50_plog_target_count; ++index) {
++        if (v9x_nv50_plog_targets[index] == draw->target.offset) {
++            break;
++        }
++    }
++    if (index == v9x_nv50_plog_target_count && index < 32ul) {
++        v9x_nv50_plog_targets[v9x_nv50_plog_target_count++] =
++            draw->target.offset;
++        v9x_nv50_plog('G', draw->target.offset, draw->target.pitch,
++                      draw->target.width | (draw->target.height << 16),
++                      draw->target.format, draw->depth.offset);
++    }
+     shadow = v9x_d3d_nv50_shadow_for(draw, &view);
+     reason = v9x_d3d_nv50_map(draw, shadow != 0 ? &view : 0, &state, tic,
+                               tsc, &with_specular);
+@@ -1449,6 +1596,10 @@ static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
+     shadow->colour_offset = offset + z_bytes;
+     shadow->owner = V9X_D3D_NV50_NONE;
+     shadow->dirty = 0ul;
++    v9x_nv50_plog('Z', surface->lpGbl->dwReserved1 - v9x_hal->fb.linear_base,
++                  base, offset, z_bytes, colour_bytes);
++    v9x_nv50_plog('z', width | (height << 16), z_pitch, colour_pitch, rows,
++                  shadow->colour_offset);
+     ++v9x_hal->d3d_diagnostics.texture_placed;
+     data->ddRVal = V9X_DD_OK;
+     return V9X_DDHAL_DRIVER_HANDLED;
+@@ -1539,6 +1690,17 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
+                            rows) != 0ul) {
+         return V9X_DDHAL_DRIVER_NOTHANDLED;
+     }
++    for (level = 0ul; level < data->dwSCnt; ++level) {
++        const V9X_DD_SURFACE_LCL *member = list[level];
++
++        v9x_nv50_plog((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul ?
++                          'T' : 'R',
++                      v9x_surface_offset(member), pitches[level],
++                      rows[level],
++                      (DWORD)member->lpGbl->wWidth |
++                          ((DWORD)member->lpGbl->wHeight << 16),
++                      member->lpGbl->dwReserved1 - v9x_hal->fb.linear_base);
++    }
+     ++v9x_hal->d3d_diagnostics.texture_placed;
+     data->ddRVal = V9X_DD_OK;
+     return V9X_DDHAL_DRIVER_HANDLED;
+@@ -1559,6 +1721,10 @@ static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
+     if (surface != 0 && surface->lpGbl != 0 &&
+         surface->lpGbl->fpVidMem != 0ul) {
+         offset = v9x_surface_offset(surface);
++        v9x_nv50_plog('D', offset, (DWORD)surface->lpGbl->lPitch,
++                      (DWORD)surface->lpGbl->wWidth |
++                          ((DWORD)surface->lpGbl->wHeight << 16),
++                      surface->ddsCaps, surface->lpGbl->dwReserved1);
+         if (offset != 0xfffffffful) {
+             v9x_d3d_nv50_release_target(offset, 0);
+             shadow = v9x_d3d_nv50_shadow_of_z(offset);
+diff --git a/src/display32/engines/eng_nv50.c b/src/display32/engines/eng_nv50.c
+index 78d835f1..a4d1307c 100644
+--- a/src/display32/engines/eng_nv50.c
++++ b/src/display32/engines/eng_nv50.c
+@@ -509,12 +509,20 @@ static int v9x_nv50_drain(int wait)
+  * (d3d_nv50.c), so nothing reads or writes a target the shadow has
+  * newer drawing for. Direct3D's own batches drain without it.
+  */
++extern void v9x_d3d_nv50_plog_dump(void); /* MEASUREMENT ONLY */
++
+ static int v9x_nv50_wait_idle(int wait)
+ {
++    int ok;
++
+     if (v9x_nv50_validate() && v9x_nv50_format() != 0ul) {
+         (void)v9x_d3d_nv50_resolve();
+     }
+-    return v9x_nv50_drain(wait);
++    ok = v9x_nv50_drain(wait);
++    if (ok) {
++        v9x_d3d_nv50_plog_dump();
++    }
++    return ok;
+ }
+ 
+ static int v9x_nv50_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,

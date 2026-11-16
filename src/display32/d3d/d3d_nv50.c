@@ -24,6 +24,7 @@
 #include "d3d_nv50_map.h"
 #include "velocity9x/nv50_d3d.h"
 #include "velocity9x/nv50_ps11.h"
+#include "velocity9x/nv50_rblock.h"
 
 /* Triangles one batch takes: at the widest vertex (18 words) 2,048 fill
  * 110,592 of the push area's 196,608 words, with room for the setup and
@@ -92,13 +93,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
  */
 #define V9X_D3D_NV50_SHADOWS_MAX     8ul
 #define V9X_D3D_NV50_NONE            0xfffffffful
-/* Tiled blocks, and the Z and colour within them, on the kind windows'
- * 64 KiB pages, as the probe's tiled surfaces sat. On 4 KiB the Z's last
- * page held the colour's first rows and the colour's last page the next
- * surface: each kind lays out the whole page its own way, and Quake 3
- * drew garbage in its top rows and streaked textures (W9QI0DAD,
- * M-BXMFA8, 2026-11-16). */
-#define V9X_D3D_NV50_TILED_ALIGN     0x10000ul
+/* The Z and its colour shadow each fill whole row-block units of their
+ * own (nv50_rblock.h): a tiled kind spreads a surface over the row block
+ * it lies in, so on 64 KiB alone Quake 3's 800x600 Z put its top rows in
+ * the back buffer below it (W9QI0DAD, V9XN5CH /z:map, 2026-11-16). The
+ * heap block is asked on 4 KiB, its mapping's alignment. */
 #define V9X_D3D_NV50_HEAP_ALIGN      0x1000ul
 
 typedef struct v9x_d3d_nv50_shadow {
@@ -113,6 +112,9 @@ typedef struct v9x_d3d_nv50_shadow {
     DWORD owner_height;
     DWORD owner_bytes;
     DWORD dirty;
+    /* How far past its heap block the Z was moved, plus one: what
+     * v9x_d3d_place_release must allow to recognise the block. */
+    DWORD release_window;
 } V9X_D3D_NV50_SHADOW;
 
 static V9X_D3D_NV50_SHADOW v9x_d3d_nv50_shadows[V9X_D3D_NV50_SHADOWS_MAX];
@@ -1380,13 +1382,13 @@ int v9x_d3d_nv50_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 }
 
 /*
- * A Z16 buffer, tiled, and its colour shadow in one block on 64 KiB: the
- * Z first, its rows on 64 bytes and 8-row blocks
- * (v9x_d3d_nv50_tiled_layout), then on the next 64 KiB the colour at 4
- * bytes a pixel, which also holds a 16 bpp target. Declined, touching
- * nothing, when every
- * shadow is in use; DirectDraw then places it linear and its Z-tested
- * draws are refused.
+ * A Z16 buffer, tiled, and its colour shadow in one heap block: the Z,
+ * its rows on 64 bytes and 8-row blocks (v9x_d3d_nv50_tiled_layout),
+ * from a row-block unit boundary, then from the next unit boundary past
+ * it the colour at 4 bytes a pixel, which also holds a 16 bpp target
+ * (nv50_rblock.h). Declined, touching nothing, when every shadow is in
+ * use or the unit is not known; DirectDraw then places it linear and its
+ * Z-tested draws are refused.
  */
 static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
                                        V9X_DD_SURFACE_LCL *surface)
@@ -1396,16 +1398,19 @@ static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
     v9x_u32 z_pitch;
     v9x_u32 colour_pitch;
     v9x_u32 rows;
+    v9x_u32 z_offset;
+    v9x_u32 colour_offset;
     DWORD z_bytes;
     DWORD colour_bytes;
+    DWORD span;
+    DWORD unit = v9x_nv50_rblock_unit_now();
     DWORD base = 0ul;
     DWORD width = (DWORD)surface->lpGbl->wWidth;
     DWORD height = (DWORD)surface->lpGbl->wHeight;
     DWORD index;
-    DWORD offset;
 
     if (data->dwSCnt != 1ul ||
-        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
+        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul || unit == 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     for (index = 0ul; index < V9X_D3D_NV50_SHADOWS_MAX; ++index) {
@@ -1419,36 +1424,41 @@ static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
     }
     v9x_d3d_nv50_tiled_layout(width, height, 2ul, &z_pitch, &rows);
     v9x_d3d_nv50_tiled_layout(width, height, 4ul, &colour_pitch, &rows);
-    z_bytes = (z_pitch * rows + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
-              ~(V9X_D3D_NV50_TILED_ALIGN - 1ul);
-    colour_bytes = (colour_pitch * rows + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
-                   ~(V9X_D3D_NV50_TILED_ALIGN - 1ul);
+    z_bytes = z_pitch * rows;
+    colour_bytes = colour_pitch * rows;
+    span = v9x_nv50_rblock_span(unit, V9X_D3D_NV50_HEAP_ALIGN, z_bytes,
+                                colour_bytes);
+    if (span == 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
     offsets[0] = 0ul;
     /* The heap places on 4 KiB at most (its mapping's alignment: asked
      * for 64 KiB, every Z was declined and Quake 3's draws refused,
-     * W9QI0DAD boot 33), so the block is asked on 4 KiB with a page to
-     * spare, and the Z moved up to the next 64 KiB of video memory. The
-     * block's start stays in dwReserved1 for the release. */
+     * W9QI0DAD boot 33), and a row-block unit need not be a power of two
+     * (192 KiB on W9QI0DAD), so the block is asked on 4 KiB with a unit
+     * to spare and the Z moved up to the next unit boundary. The block's
+     * start stays in dwReserved1 for the release. */
     if (v9x_d3d_place_block(data, V9X_D3D_NV50_HEAP_ALIGN,
                             V9X_D3D_NV50_HEAP_ALIGN,
-                            (z_bytes + colour_bytes +
-                             V9X_D3D_NV50_TILED_ALIGN) /
-                                V9X_D3D_NV50_HEAP_ALIGN,
-                            offsets, &base) != 0ul) {
+                            span / V9X_D3D_NV50_HEAP_ALIGN, offsets,
+                            &base) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    surface->lpGbl->fpVidMem +=
-        ((base + V9X_D3D_NV50_TILED_ALIGN - 1ul) &
-         ~(V9X_D3D_NV50_TILED_ALIGN - 1ul)) - base;
+    /* A block of span bytes on 4 KiB always holds the pair (the span's
+     * own definition; test_nv50_init.c places the worst start). */
+    (void)v9x_nv50_rblock_place(base, span, unit, z_bytes, colour_bytes,
+                                &z_offset, &colour_offset);
+    surface->lpGbl->fpVidMem += z_offset - base;
     surface->lpGbl->lPitch = (LONG)z_pitch;
-    offset = v9x_surface_offset(surface);
     shadow->used = 1ul;
-    shadow->z_offset = offset;
+    shadow->z_offset = z_offset;
     shadow->width = width;
     shadow->height = height;
-    shadow->colour_offset = offset + z_bytes;
+    shadow->colour_offset = colour_offset;
     shadow->owner = V9X_D3D_NV50_NONE;
     shadow->dirty = 0ul;
+    shadow->release_window =
+        surface->lpGbl->fpVidMem - surface->lpGbl->dwReserved1 + 1ul;
     ++v9x_hal->d3d_diagnostics.texture_placed;
     data->ddRVal = V9X_DD_OK;
     return V9X_DDHAL_DRIVER_HANDLED;
@@ -1565,7 +1575,7 @@ static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
             if (shadow != 0) {
                 (void)v9x_d3d_nv50_shadow_flush(shadow);
                 shadow->used = 0ul;
-                (void)v9x_d3d_place_release(data, V9X_D3D_NV50_TILED_ALIGN);
+                (void)v9x_d3d_place_release(data, shadow->release_window);
                 return;
             }
         }

@@ -5195,6 +5195,329 @@ static int v9x_z_in(DWORD x, DWORD y, DWORD left, DWORD top)
            y < top + V9X_Z_RECT_H;
 }
 
+/*
+ * /z:tall: where a Z16 the height of a Quake 3 frame puts its depth. A
+ * 256-wide Z16 (the window holds no wider), tiled 10h, 600 rows (/zt:592 for 592), at ZT_BASE with
+ * marker words from 64 KiB below it to 384 KiB above; the hardware clear
+ * to 1.0, then a rectangle at depth 0.25 on rows 0-7 and one at 0.75 on
+ * the last 8 rows. Every word that is no longer the marker is classed
+ * (clear, top rectangle, bottom rectangle, other) and reported with its
+ * lowest and highest offset from ZT_BASE, signed. Quake 3 at 800x600 had
+ * its first tile row of Z never written and depth below the Z's base
+ * (W9QI0DAD boot 39, 2026-11-16).
+ */
+#define V9X_ZT_BASE          0x00140000ul
+#define V9X_ZT_BELOW         0x00010000ul
+#define V9X_ZT_ABOVE         0x00060000ul
+#define V9X_ZT_COLOUR        0x00250000ul
+#define V9X_ZT_WIDTH         256ul
+
+static int v9x_zt_half(DWORD half, DWORD centre)
+{
+    return half + 0x10ul >= centre && half <= centre + 0x10ul;
+}
+
+/*
+ * /z:map: which 8-row band of the Z each 512-byte block of memory holds.
+ * The Z as /z:tall's (/zt:592, and /zt:up64 to put it 64 KiB higher);
+ * cleared to 1.0, then band k (rows 8k to 8k+7, full width) drawn at
+ * depth (k+1)/128, so its Z16 is about (k+1)*512. Each block from 64 KiB
+ * below the Z to 384 KiB above is reported as two hex digits in MapNN
+ * keys, 32 blocks a key: the band, FF for the clear, EE for the marker,
+ * DD for anything else.
+ */
+#define V9X_ZM_BANDS_A_KICK  6ul
+#define V9X_ZM_PUSH          512ul
+
+static int v9x_stage_z_map(void)
+{
+    static const char section[] = "ZMap";
+    static const char digits[] = "0123456789ABCDEF";
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_surface t;
+    struct v9x_nv50_surface zeta;
+    struct v9x_nv50_push push;
+    DWORD vp[V9X_NV50_3D_GOURAUD_VP_MAX];
+    DWORD fp[V9X_NV50_3D_GOURAUD_FP_MAX];
+    DWORD height = v9x_switch_given("/zt:592") ? 592ul : 600ul;
+    DWORD base = V9X_ZT_BASE +
+                 (v9x_switch_given("/zt:up64") ? 0x10000ul : 0ul) +
+                 (v9x_switch_given("/zt:up128") ? 0x20000ul : 0ul) +
+                 (v9x_switch_given("/zt:up16") ? 0x4000ul : 0ul);
+    DWORD bands = height / 8ul;
+    DWORD words = (V9X_ZT_BELOW + V9X_ZT_ABOVE) / 4ul;
+    DWORD start = base - V9X_ZT_BELOW;
+    DWORD vp_count;
+    DWORD fp_count;
+    DWORD first;
+    DWORD band;
+    DWORD block;
+    DWORD index;
+    DWORD chunk = 0ul;
+    char line[80];
+    char key[16];
+
+    t.address = V9X_NV50_VM_TILED + V9X_WINDOW_VRAM + V9X_ZT_COLOUR;
+    t.pitch = 0ul;
+    t.width = V9X_ZT_WIDTH;
+    t.height = height;
+    t.tile_mode = V9X_Z_TILE_MODE;
+    t.tiled = 1ul;
+    zeta = t;
+    zeta.address = V9X_NV50_VM_Z16 + V9X_WINDOW_VRAM + base;
+
+    vp_count = v9x_nv50_3d_depth_vp(vp, V9X_NV50_3D_GOURAUD_VP_MAX);
+    fp_count = v9x_nv50_3d_gouraud_fp(fp, V9X_NV50_3D_GOURAUD_FP_MAX);
+    if (vp_count == 0ul || fp_count == 0ul) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    v9x_number(section, "Height", height);
+    v9x_key(section, "Base", base);
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, start, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_NV50_3D_DEPTH_VP_START,
+                  vp, vp_count);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+                      V9X_NV50_3D_GOURAUD_FP_START,
+                  fp, fp_count);
+    if (!v9x_run("z-map-prepare")) {
+        v9x_finish("Z-MAP-REFUSED", 14u);
+    }
+
+    /* One push slot, reused: each kick has finished before the next. */
+    first = v9x_push_next;
+    v9x_push_next += V9X_ZM_PUSH;
+    for (band = 0ul; band < bands; band += V9X_ZM_BANDS_A_KICK) {
+        DWORD last = band + V9X_ZM_BANDS_A_KICK;
+
+        v9x_ops_begin();
+        v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                           V9X_ZM_PUSH);
+        v9x_nv50_push_3d_target(&push, &t, V9X_NV50_3D_RT_BGRX8);
+        v9x_nv50_push_3d_zeta(&push, &zeta, V9X_NV50_3D_ZETA_Z16);
+        if (band == 0ul) {
+            v9x_nv50_push_3d_clear_depth(&push, V9X_FLOAT_ONE);
+        }
+        if (last > bands) {
+            last = bands;
+        }
+        for (index = band; index < last; ++index) {
+            float z = (float)(index + 1ul) / 128.0f;
+
+            v9x_nv50_push_3d_depth_rect(&push, 0ul, index * 8ul,
+                                        V9X_ZT_WIDTH, 8ul, *(DWORD *)&z,
+                                        V9X_FLOAT_ONE, 0ul, 0ul);
+        }
+        if (push.overflow != 0ul || !v9x_kick("ZMapDraw", &push, first)) {
+            v9x_prop_trap(section);
+            v9x_text(section, "Result", "DRAW-NOT-CLEAN");
+            return 0;
+        }
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, start + block * 4ul, count, 0ul);
+        if (!v9x_run("z-map-readback")) {
+            v9x_finish("Z-MAP-READBACK-REFUSED", 14u);
+        }
+        /* 128 words a 512-byte block; V9X_N5CH_BLOCK is a multiple. */
+        for (index = 0ul; index < count; index += 128ul) {
+            DWORD word = v9x_result.block[index];
+            DWORD code;
+            DWORD at = (chunk % 32ul) * 2ul;
+
+            if (word == V9X_FILL_PATTERN) {
+                code = 0xeeul;
+            } else if (word == 0xfffffffful) {
+                code = 0xfful;
+            } else {
+                DWORD z = word & 0xfffful;
+
+                code = (z + 256ul) / 512ul;
+                code = code >= 1ul && code <= bands + 1ul &&
+                               ((word >> 16) & 0xfffful) / 256ul ==
+                                   z / 256ul ?
+                           code - 1ul : 0xddul;
+            }
+            line[at] = digits[(code >> 4) & 0xful];
+            line[at + 1ul] = digits[code & 0xful];
+            ++chunk;
+            if (chunk % 32ul == 0ul) {
+                line[64] = '\0';
+                key[0] = 'M';
+                key[1] = 'a';
+                key[2] = 'p';
+                key[3] = (char)('0' + (chunk / 32ul - 1ul) / 10ul);
+                key[4] = (char)('0' + (chunk / 32ul - 1ul) % 10ul);
+                key[5] = '\0';
+                v9x_text(section, key, line);
+            }
+        }
+    }
+    v9x_flush();
+    v9x_text(section, "Result", "MAPPED");
+    return 1;
+}
+
+static int v9x_stage_z_tall(void)
+{
+    static const char section[] = "ZTall";
+    static const char *names[4] = { "Clear", "Top", "Bottom", "Other" };
+    struct v9x_nv50_3d_scratch scratch;
+    struct v9x_nv50_surface t;
+    struct v9x_nv50_surface zeta;
+    struct v9x_nv50_push push;
+    DWORD vp[V9X_NV50_3D_GOURAUD_VP_MAX];
+    DWORD fp[V9X_NV50_3D_GOURAUD_FP_MAX];
+    DWORD count_of[4];
+    DWORD low_of[4];
+    DWORD high_of[4];
+    DWORD below = 0ul;
+    DWORD above = 0ul;
+    DWORD height = v9x_switch_given("/zt:592") ? 592ul : 600ul;
+    DWORD z_bytes = (V9X_ZT_WIDTH * 2ul) * height;
+    DWORD words = (V9X_ZT_BELOW + V9X_ZT_ABOVE) / 4ul;
+    DWORD start = V9X_ZT_BASE - V9X_ZT_BELOW;
+    DWORD vp_count;
+    DWORD fp_count;
+    DWORD first;
+    DWORD block;
+    DWORD index;
+    DWORD kind;
+    char key[32];
+
+    for (kind = 0ul; kind < 4ul; ++kind) {
+        count_of[kind] = 0ul;
+        low_of[kind] = 0x7ffffffful;
+        high_of[kind] = 0x80000000ul;
+    }
+    t.address = V9X_NV50_VM_TILED + V9X_WINDOW_VRAM + V9X_ZT_COLOUR;
+    t.pitch = 0ul;
+    t.width = V9X_ZT_WIDTH;
+    t.height = height;
+    t.tile_mode = V9X_Z_TILE_MODE;
+    t.tiled = 1ul;
+    zeta = t;
+    zeta.address = V9X_NV50_VM_Z16 + V9X_WINDOW_VRAM + V9X_ZT_BASE;
+
+    vp_count = v9x_nv50_3d_depth_vp(vp, V9X_NV50_3D_GOURAUD_VP_MAX);
+    fp_count = v9x_nv50_3d_gouraud_fp(fp, V9X_NV50_3D_GOURAUD_FP_MAX);
+    if (vp_count == 0ul || fp_count == 0ul) {
+        v9x_text(section, "Result", "ENCODE-FAILED");
+        return 0;
+    }
+    v9x_nv50_3d_scratch_at(V9X_WINDOW_VRAM + V9X_3D_SCRATCH, &scratch);
+    v9x_number(section, "Height", height);
+    v9x_number(section, "ZBytes", z_bytes);
+
+    v9x_ops_begin();
+    v9x_op(V9X_OP_VRAM_FILL, start, words, V9X_FILL_PATTERN);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
+                      V9X_NV50_3D_DEPTH_VP_START,
+                  vp, vp_count);
+    v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+                      V9X_NV50_3D_GOURAUD_FP_START,
+                  fp, fp_count);
+    if (!v9x_run("z-tall-prepare")) {
+        v9x_finish("Z-TALL-REFUSED", 14u);
+    }
+
+    v9x_ops_begin();
+    first = v9x_push_next;
+    v9x_push_next += V9X_Z_DEPTH_PUSH;
+    v9x_nv50_push_init(&push, v9x_region + (V9X_NV50_PUSH / 4ul) + first,
+                       V9X_Z_DEPTH_PUSH);
+    v9x_nv50_push_3d_target(&push, &t, V9X_NV50_3D_RT_BGRX8);
+    v9x_nv50_push_3d_zeta(&push, &zeta, V9X_NV50_3D_ZETA_Z16);
+    v9x_nv50_push_3d_clear_depth(&push, V9X_FLOAT_ONE);
+    v9x_nv50_push_3d_depth_rect(&push, 0ul, 0ul, 64ul, 8ul,
+                                V9X_FLOAT_QUARTER, V9X_FLOAT_ONE, 0ul, 0ul);
+    v9x_nv50_push_3d_depth_rect(&push, 0ul, height - 8ul, 64ul, 8ul,
+                                V9X_FLOAT_THREE_QUARTERS, 0ul, V9X_FLOAT_ONE,
+                                0ul);
+    v9x_number(section, "DrawPushWords", push.count);
+    if (push.overflow != 0ul || !v9x_kick("ZTallDraw", &push, first)) {
+        v9x_prop_trap(section);
+        v9x_text(section, "Result", "DRAW-NOT-CLEAN");
+        return 0;
+    }
+
+    for (block = 0ul; block < words; block += V9X_N5CH_BLOCK) {
+        DWORD count = words - block;
+
+        if (count > V9X_N5CH_BLOCK) {
+            count = V9X_N5CH_BLOCK;
+        }
+        v9x_ops_begin();
+        v9x_op(V9X_OP_VRAM_BLOCK, start + block * 4ul, count, 0ul);
+        if (!v9x_run("z-tall-readback")) {
+            v9x_finish("Z-TALL-READBACK-REFUSED", 14u);
+        }
+        for (index = 0ul; index < count; ++index) {
+            DWORD word = v9x_result.block[index];
+            DWORD lowh = word & 0xfffful;
+            DWORD highh = word >> 16;
+            long rel = (long)((block + index) * 4ul) - (long)V9X_ZT_BELOW;
+
+            if (word == V9X_FILL_PATTERN) {
+                continue;
+            }
+            if (word == 0xfffffffful) {
+                kind = 0ul;
+            } else if (v9x_zt_half(lowh, 0x4000ul) ||
+                       v9x_zt_half(highh, 0x4000ul)) {
+                kind = 1ul;
+            } else if (v9x_zt_half(lowh, 0xc000ul) ||
+                       v9x_zt_half(highh, 0xc000ul)) {
+                kind = 2ul;
+            } else {
+                kind = 3ul;
+            }
+            ++count_of[kind];
+            if ((long)low_of[kind] > rel) {
+                low_of[kind] = (DWORD)rel;
+            }
+            if ((long)high_of[kind] < rel) {
+                high_of[kind] = (DWORD)rel;
+            }
+            if (rel < 0l) {
+                ++below;
+            } else if ((DWORD)rel >= z_bytes) {
+                ++above;
+            }
+        }
+    }
+    for (kind = 0ul; kind < 4ul; ++kind) {
+        lstrcpyA(key, names[kind]);
+        lstrcatA(key, "Words");
+        v9x_number(section, key, count_of[kind]);
+        if (count_of[kind] != 0ul) {
+            lstrcpyA(key, names[kind]);
+            lstrcatA(key, "Low");
+            v9x_key(section, key, low_of[kind]);
+            lstrcpyA(key, names[kind]);
+            lstrcatA(key, "High");
+            v9x_key(section, key, high_of[kind]);
+        }
+    }
+    v9x_number(section, "WrittenBelowBase", below);
+    v9x_number(section, "WrittenPastZ", above);
+    v9x_flush();
+    v9x_text(section, "Result", below == 0ul && above == 0ul ? "INSIDE"
+                                                             : "OUTSIDE");
+    return 1;
+}
+
 static int v9x_stage_z_depth(const char *section, DWORD window,
                              DWORD bytes_per_z, DWORD zformat)
 {
@@ -5534,6 +5857,16 @@ void __stdcall V9xNv50ChannelEntry(void)
         if (!v9x_stage_z_depth("ZDepth16", V9X_NV50_VM_Z16, 2ul,
                                V9X_NV50_3D_ZETA_Z16)) {
             v9x_finish("ZDEPTH16-FAILED", 14u);
+        }
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/z:map")) {
+        if (!v9x_stage_z_map()) {
+            v9x_finish("ZMAP-FAILED", 14u);
+        }
+    }
+    if (v9x_switch_given("/3d") && v9x_switch_given("/z:tall")) {
+        if (!v9x_stage_z_tall()) {
+            v9x_finish("ZTALL-FAILED", 14u);
         }
     }
     if (v9x_switch_given("/3d") && v9x_switch_given("/z:depth24")) {

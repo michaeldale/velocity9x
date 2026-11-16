@@ -3,6 +3,7 @@
 
 #include "velocity9x/nv50_init.h"
 #include "velocity9x/gt218_reserve.h"
+#include "velocity9x/nv50_rblock.h"
 
 /*
  * The GT218 bring-up list (src\chipsets\nvidia\gt218\nv50_init.c)
@@ -220,10 +221,67 @@ static void test_reserve(void)
     CHECK(v9x_gt218_reserve_start(0x20200000ul, 0ul) == 0ul);
 }
 
+/* nv50_rblock.c: the row block nouveau's nv50_fb_vram_rblock computes,
+ * and Z and colour shadows in whole units of their own. */
+static void test_rblock(void)
+{
+    v9x_u32 z = 0ul;
+    v9x_u32 colour = 0ul;
+    v9x_u32 span;
+
+    /* W9QI0DAD's GT210 as nouveau read it (bringupkit trace, 2026-11-13):
+     * 1540h F3010001 (one partition), 100204h 0166A020 (2^10 columns,
+     * 8 banks), 100250h 1 (three): 192 KiB, the size V9XN5CH /z:map's
+     * Z16 kept inside. */
+    CHECK(v9x_nv50_rblock_bytes(0xf3010001ul, 0x0166a020ul, 1ul) ==
+          0x30000ul);
+    CHECK(v9x_nv50_rblock_bytes(0xf3010001ul, 0x0166a020ul, 0ul) ==
+          0x10000ul);
+    /* Two partitions, 16 banks. */
+    CHECK(v9x_nv50_rblock_bytes(0x00030000ul, 0x0200a000ul, 0ul) ==
+          0x40000ul);
+    /* Not a configuration: no partition. */
+    CHECK(v9x_nv50_rblock_bytes(0x00000001ul, 0x0166a020ul, 1ul) == 0ul);
+
+    /* The unit is a whole number of row blocks and of 64 KiB pages. */
+    CHECK(v9x_nv50_rblock_unit(0x30000ul) == 0x30000ul);
+    CHECK(v9x_nv50_rblock_unit(0x10000ul) == 0x10000ul);
+    CHECK(v9x_nv50_rblock_unit(0x4000ul) == 0x10000ul);
+    CHECK(v9x_nv50_rblock_unit(0xc000ul) == 0x30000ul);
+    CHECK(v9x_nv50_rblock_unit(0ul) == 0ul);
+    CHECK(v9x_nv50_rblock_round(0xea600ul, 0x30000ul) == 0xf0000ul);
+    CHECK(v9x_nv50_rblock_round(0x30000ul, 0x30000ul) == 0x30000ul);
+
+    /* Quake 3 at 800x600 x 32 on W9QI0DAD (boot 39): the heap gave the
+     * block at 3AB000h (on 4 KiB), the Z16 is EA600h, its colour shadow
+     * 1D4C00h. The old 64 KiB placement put the Z at 3B0000h, 64 KiB
+     * into the row block that starts at 390000h, which the back buffer
+     * ends in. */
+    span = v9x_nv50_rblock_span(0x30000ul, 0x1000ul, 0xea600ul, 0x1d4c00ul);
+    CHECK(span == 0x2ff000ul);
+    CHECK(v9x_nv50_rblock_place(0x3ab000ul, span, 0x30000ul, 0xea600ul,
+                                0x1d4c00ul, &z, &colour) == 1);
+    CHECK(z == 0x3c0000ul);
+    CHECK(colour == 0x4b0000ul);
+    /* The worst start, one granule past a boundary, still fits the span;
+     * a byte less does not. */
+    CHECK(v9x_nv50_rblock_place(0x31000ul, span, 0x30000ul, 0xea600ul,
+                                0x1d4c00ul, &z, &colour) == 1);
+    CHECK(z == 0x60000ul);
+    CHECK(colour == 0x150000ul);
+    CHECK(v9x_nv50_rblock_place(0x31000ul, span - 1ul, 0x30000ul,
+                                0xea600ul, 0x1d4c00ul, &z, &colour) == 0);
+    /* No unit, no placement. */
+    CHECK(v9x_nv50_rblock_place(0x30000ul, span, 0ul, 0xea600ul, 0x1d4c00ul,
+                                &z, &colour) == 0);
+    CHECK(v9x_nv50_rblock_span(0ul, 0x1000ul, 1ul, 1ul) == 0ul);
+}
+
 unsigned int v9x_run_nv50_init_tests(void)
 {
     failures = 0u;
     test_reserve();
+    test_rblock();
     test_fifo();
     test_gr();
     test_bind();

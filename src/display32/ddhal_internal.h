@@ -673,6 +673,11 @@ int v9x_nv50_3d_begin(volatile DWORD **push, DWORD *push_words,
                       volatile DWORD **scratch, DWORD *scratch_gpu,
                       DWORD *generation);
 int v9x_nv50_3d_submit(DWORD count);
+/* The unit a tiled Z or colour shadow is placed in (nv50_rblock.h): the
+ * card's row block from its memory configuration, made a whole number of
+ * 64 KiB pages; 0 while the engine is not valid or the registers are not
+ * a configuration. */
+DWORD v9x_nv50_rblock_unit_now(void);
 /* d3d/d3d_nv50.c, for eng_nv50.c. resolve copies every Direct3D shadow
  * target with newer drawing back to its linear target (step 5b of
  * docs\plans\nvidia-gt218-3d-z.md); zero if a copy failed. depth_fill

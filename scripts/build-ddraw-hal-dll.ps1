@@ -147,6 +147,8 @@ $sources = @(
     "src\chipsets\nvidia\gt218\nv50_d3d.c",
     # The GT218's pixel shader 1.x translator (draw_shader).
     "src\chipsets\nvidia\gt218\nv50_ps11.c",
+    # The GT218's row blocks: where tiled Z and colour shadows may go.
+    "src\chipsets\nvidia\gt218\nv50_rblock.c",
     "src\display32\d3d\d3d_nv50_map.c",
     "src\display32\d3d\d3d_nv50.c",
     # The RS690 2D engine: fill and copy through the host-tested builder;
