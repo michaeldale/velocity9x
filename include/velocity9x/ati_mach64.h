@@ -57,6 +57,9 @@
 /* AMD Mullins (Radeon R3E, GCN 2), the GX-412HC's GPU: Carrizo's SDMA
  * engine with its own microcode; see mullins_hw16.c. */
 #define V9X_PCI_DEVICE_MULLINS_9854     ((v9x_u16)0x9854u)
+/* AMD Oland XT (GCN 1): SI's DMA engine through Carrizo's engine type; see
+ * oland_hw16.c. Read from W9QI0DAD's Dell board (subsystem 1028:2120). */
+#define V9X_PCI_DEVICE_OLAND_6610       ((v9x_u16)0x6610u)
 /* The Radeon X1200 IGP (RS690): the Radeon 2D engine behind DirectDraw;
  * see rs690_hw16.c. */
 #define V9X_PCI_DEVICE_RS690_791F       ((v9x_u16)0x791Fu)

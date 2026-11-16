@@ -641,6 +641,54 @@
             MapSymbols = @('v9x_cik_mullins_device')
         }
         @{
+            Id = 'oland'
+            Name = 'AMD Radeon Oland XT'
+            VendorId = '1002'
+            # Read from W9QI0DAD's Dell board (subsystem 1028:2120, 2 GiB,
+            # docs\decisions\2026-11-16-oland-first-survey.md). Other Oland
+            # ids (6613 for the retail R7 240) are not listed until a card
+            # with one is measured. No SubsystemId.
+            DeviceId = '6610'
+            DeviceDesc = 'Velocity9x AMD Radeon Oland XT'
+            Adapter = 'AMD Radeon Oland XT'
+            ClockDetector = 'ati-si-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # GCN 1. DirectDraw fill, copy and flips go to SI's async DMA
+            # engine through Carrizo's engine type, which oland_hw16.c's
+            # V9X_DD_ENGINE_CAP_VI_OLAND bit switches to SI's ring and
+            # si_dma.c's packets. None of it has run on a card; the engine
+            # is claimed only when its fence lands, else the CPU draws. The
+            # graphics CP is GFX6, not driven: Direct3D stays software.
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'not-advertised'
+            EngineType = 'ATI_VI'
+            # Flips through D1's surface address (eg_scanout.c): DCE 6's
+            # first controller sits at Evergreen's offsets.
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            # The family's mapping; the card has 1 to 4 GiB.
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c). This BIOS's modes are not known; the
+            # runtime scan hides any it does not list.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('oland_hw16', 'oland_engine16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_si_oland_device')
+        }
+        @{
             Id = 'rs690'
             Name = 'ATI Radeon X1200 (RS690)'
             VendorId = '1002'
@@ -913,6 +961,10 @@
             @{ Name = 'cedar_hw16'; Path = 'src\chipsets\ati\evergreen\cedar_hw16.c' }
             @{ Name = 'carrizo_hw16'; Path = 'src\chipsets\ati\vi\carrizo_hw16.c' }
             @{ Name = 'mullins_hw16'; Path = 'src\chipsets\ati\cik\mullins_hw16.c' }
+            @{ Name = 'oland_hw16'; Path = 'src\chipsets\ati\si\oland_hw16.c' }
+            # The Oland row's hook and diagnostics: _TEXT has no room
+            # (oland_engine16.c says why only these moved).
+            @{ Name = 'oland_engine16'; Path = 'src\chipsets\ati\si\oland_engine16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'rs690_hw16'; Path = 'src\chipsets\ati\rs690\rs690_hw16.c' }
             @{ Name = 'rv280_hw16'; Path = 'src\chipsets\ati\rv280\rv280_hw16.c' }
             @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
@@ -956,7 +1008,8 @@
                            'v9x_evergreen_redwood_device',
                            'v9x_evergreen_trinity_device',
                            'v9x_vi_carrizo_device',
-                           'v9x_cik_mullins_device')
+                           'v9x_cik_mullins_device',
+                           'v9x_si_oland_device')
     }
 
     Inf = @{
@@ -978,7 +1031,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -1058,6 +1111,10 @@
             }
             @{
                 ChipId = 'mullins'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'oland'
                 Emulator = 'none'
             }
             @{

@@ -43,6 +43,9 @@ void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_cik_mullins_device;
 /* mullins_hw16.c: the same, for the Mullins row. */
 void v9x_mullins_publish_diagnostics(v9x_hw16_write_fn write);
+extern const V9X_HW16_DEVICE v9x_si_oland_device;
+/* oland_hw16.c: the same, for the Oland row. */
+void v9x_oland_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
 extern const V9X_HW16_DEVICE v9x_mach64_vt4_device;
 extern const V9X_HW16_DEVICE v9x_ati_4754_device;
@@ -143,6 +146,8 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_vi_carrizo_device,
     /* GCN 2: the same SDMA engine with Mullins' microcode (mullins_hw16.c). */
     &v9x_cik_mullins_device,
+    /* GCN 1: SI's DMA engine through the same engine type (oland_hw16.c). */
+    &v9x_si_oland_device,
     /* RS690: the Radeon 2D engine behind DirectDraw (rs690_hw16.c). */
     &v9x_rs690_device,
     /* R6xx: the DMA engine behind DirectDraw, Evergreen's hook
@@ -294,6 +299,9 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
     if (device == &v9x_cik_mullins_device) {
         v9x_mullins_publish_diagnostics(write);
+    }
+    if (device == &v9x_si_oland_device) {
+        v9x_oland_publish_diagnostics(write);
     }
 }
 

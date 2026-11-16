@@ -3710,6 +3710,109 @@ V9xPciReadViBarsDone:
     retf    8
 V9XPCIREADVIBARS ENDP
 
+; WORD FAR PASCAL V9xPciReadSiBars(DWORD FAR *bar0, DWORD FAR *bar2)
+; AMD Oland (Southern Islands): BAR0, the VRAM aperture, as Carrizo's (a
+; 64-bit memory BAR whose high half at 14h must be zero, 256 MiB aligned);
+; and BAR2 (18h), the 256 KiB register window, which Linux radeon and amdgpu
+; map as rmmio for every SI part. BAR2 may be 32-bit or 64-bit; when 64-bit
+; its high half (1Ch) must be zero. 256 KiB aligned and at or above 16 MiB,
+; as BAR5 is on Carrizo. Not yet run on an Oland: the BAR types come from
+; Linux, not a measurement. A read-only config access; a refusal changes no
+; stage code.
+PUBLIC V9XPCIREADSIBARS
+V9XPCIREADSIBARS PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    ecx
+    push    edx
+    push    si
+    push    di
+    push    es
+    call    V9xFindPciDevice
+    or      ax, ax
+    jz      V9xPciReadSiBarsFailed
+
+    ; BAR0 high half, then low half.
+    mov     di, 0014h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadSiBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadSiBarsFailed
+    or      ecx, ecx
+    jnz     V9xPciReadSiBarsFailed
+    mov     di, 0010h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadSiBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadSiBarsFailed
+    mov     edx, ecx
+    and     edx, 00000007h
+    cmp     edx, 00000004h
+    jne     V9xPciReadSiBarsFailed
+    mov     edx, ecx
+    and     edx, 0fffffff0h
+    jz      V9xPciReadSiBarsFailed
+    test    edx, 0fffffffh
+    jnz     V9xPciReadSiBarsFailed
+
+    ; BAR2: memory (bit 0 clear), type 0 (32-bit) or 2 (64-bit, bits 2:1).
+    mov     di, 0018h
+    mov     ax, 0b10ah
+    int     1ah
+    jc      V9xPciReadSiBarsFailed
+    or      ah, ah
+    jnz     V9xPciReadSiBarsFailed
+    mov     eax, ecx
+    and     eax, 00000007h
+    jz      short V9xPciReadSiBarsBar2Low
+    cmp     eax, 00000004h
+    jne     V9xPciReadSiBarsFailed
+    ; 64-bit: BAR3, the high half, must be zero. ECX is BAR2 still; keep it.
+    push    ecx
+    mov     di, 001ch
+    mov     ax, 0b10ah
+    int     1ah
+    jc      short V9xPciReadSiBarsHighFailed
+    or      ah, ah
+    jnz     short V9xPciReadSiBarsHighFailed
+    or      ecx, ecx
+    jnz     short V9xPciReadSiBarsHighFailed
+    pop     ecx
+    jmp     short V9xPciReadSiBarsBar2Low
+V9xPciReadSiBarsHighFailed:
+    pop     ecx
+    jmp     short V9xPciReadSiBarsFailed
+V9xPciReadSiBarsBar2Low:
+    mov     eax, ecx
+    and     eax, 0fffffff0h
+    cmp     eax, 01000000h
+    jb      short V9xPciReadSiBarsFailed
+    test    eax, 0003ffffh
+    jnz     short V9xPciReadSiBarsFailed
+
+    ; PASCAL pushes left to right: bar2 is the nearest argument.
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], eax
+    les     bx, dword ptr [bp+10]
+    mov     es:[bx], edx
+    mov     ax, 1
+    jmp     short V9xPciReadSiBarsDone
+V9xPciReadSiBarsFailed:
+    xor     ax, ax
+V9xPciReadSiBarsDone:
+    pop     es
+    pop     di
+    pop     si
+    pop     edx
+    pop     ecx
+    pop     bx
+    pop     bp
+    retf    8
+V9XPCIREADSIBARS ENDP
+
 ; WORD FAR PASCAL V9xMiniViMap(DWORD bar5, DWORD bar0, DWORD FAR *mmio,
 ;                              DWORD FAR *ring, DWORD FAR *ring_bytes)
 ; V9XMINI_FN_VI_MAP: the mini-VDD maps the Carrizo register window and the
