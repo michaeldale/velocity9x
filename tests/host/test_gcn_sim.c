@@ -272,6 +272,30 @@ static void test_ps11_instructions(void)
     /* Past the table: the model refuses. */
     CHECK(v9x_vi_s_load(8ul, 8ul, 0ul, 16ul, code) == 2ul);
     CHECK(!v9x_gcn_sim_run(&sim, code, 4ul));
+
+    /* The constant bus: v_mad_f32 reading s8 twice runs; s8 and s9 is
+     * refused, as is v_cndmask_b32 (VOP2, VCC) with an SGPR src0 and
+     * VOP3 v_cndmask_b32 reading an SGPR beside its VCC. */
+    v9x_gcn_sim_reset(&sim);
+    sim.s[8] = bits(2.0f);
+    sim.s[9] = bits(3.0f);
+    v9x_vi_vop3(V9X_VI_VOP3_MAD_F32, 5ul, 8ul, 8ul, V9X_VI_VGPR(1), 0ul,
+                code);
+    code[2] = V9X_VI_S_ENDPGM;
+    CHECK(run(&sim, code, 3ul));
+    v9x_vi_vop3(V9X_VI_VOP3_MAD_F32, 5ul, 8ul, 9ul, V9X_VI_VGPR(1), 0ul,
+                code);
+    CHECK(!v9x_gcn_sim_run(&sim, code, 3ul) &&
+          strcmp(sim.error, "constant bus") == 0);
+    v9x_gcn_sim_reset(&sim);
+    code[0] = v9x_vi_vop2(V9X_VI_VOP2_CNDMASK_B32, 5ul, 8ul, 1ul);
+    code[1] = V9X_VI_S_ENDPGM;
+    CHECK(!v9x_gcn_sim_run(&sim, code, 2ul));
+    v9x_gcn_sim_reset(&sim);
+    v9x_vi_vop3(V9X_VI_VOP3_FROM_VOP2(V9X_VI_VOP2_CNDMASK_B32), 5ul, 8ul,
+                V9X_VI_VGPR(1), V9X_VCC, 0ul, code);
+    code[2] = V9X_VI_S_ENDPGM;
+    CHECK(!v9x_gcn_sim_run(&sim, code, 3ul));
 }
 
 unsigned int v9x_run_gcn_sim_tests(void)

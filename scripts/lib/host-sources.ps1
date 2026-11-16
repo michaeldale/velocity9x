@@ -200,6 +200,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\cik\cik_3d.c',
         # Carrizo GCN 3 shader words and the bring-up shaders, no I/O.
         'src\chipsets\ati\vi\vi_shader.c',
+        # GCN pixel shader 1.x programs (docs\plans\ati-gcn-ps11.md), no I/O.
+        'src\chipsets\ati\vi\vi_ps11.c',
         # Carrizo PM4 streams: CP start with the clear state, a solid draw.
         'src\chipsets\ati\vi\vi_3d.c',
         # Carrizo clear-state registers (generated from Linux), data only.
@@ -470,6 +472,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_vi_3d.c',
         'tests\host\gcn_sim.c',
         'tests\host\test_gcn_sim.c',
+        'tests\host\test_vi_ps11.c',
         'tests\host\test_main.c'
     )
 

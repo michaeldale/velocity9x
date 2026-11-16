@@ -118,6 +118,12 @@ v9x_u32 v9x_vi_s_wqm_b64(v9x_u32 sdst, v9x_u32 ssrc);
  * multiples of 4. */
 v9x_u32 v9x_vi_image_sample(v9x_u32 vdata, v9x_u32 vaddr, v9x_u32 srsrc,
                             v9x_u32 ssamp, v9x_u32 dmask, v9x_u32 *out);
+/* MIMG's DA bit (14), ORed into an image_sample's first word: the address
+ * declares an array slice, as a cube's face is (LLVM sets it for every
+ * cube sample, SIInstrInfo's dim table). The same bit on GCN 1, 2 and 3:
+ * mimg.s "image_atomic_add v11, v7, s[8:15] dmask:0x1 da" is flags 41h
+ * in byte 1 under SICI and GFX89 alike. */
+#define V9X_VI_MIMG_DA          0x00004000ul
 /* v_interp_p1/p2_f32 vdst, vsrc, attr<attr>.<chan>. */
 v9x_u32 v9x_vi_vintrp(v9x_u32 op, v9x_u32 vdst, v9x_u32 vsrc, v9x_u32 attr,
                       v9x_u32 chan);

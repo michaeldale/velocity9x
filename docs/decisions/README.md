@@ -219,6 +219,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-16 Oland: Direct3D through the HAL (vi_cp.c's Oland mode), V9XD32 passing at 16 and 32 bpp; one stalled startup, unexplained](2026-11-16-oland-direct3d-hal.md)
 - [2026-11-16 Oland: 3DMark 2000 (3808) and 2001 SE (1486) run to a score through the HAL; DrawsIntoPresented 11 unexplained](2026-11-16-oland-3dmark.md)
 - [2026-11-16 Oland: V9XGLP and V9XGLIDP pass; Quake 3 (72.9 fps) and Quake 2 draw every batch on the chip, windowed at 16 bpp](2026-11-16-oland-opengl-glide-quake.md)
+- [2026-11-17 GCN: pixel shader 1.1 as GCN 3 code, 19 programs held to the interpreter in a host model (host only; OMOD shift, constant-bus spills, Mesa's cube coordinates unmeasured)](2026-11-17-gcn-ps11-translator.md)
 
 ## Matrox
 

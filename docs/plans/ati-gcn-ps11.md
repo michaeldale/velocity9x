@@ -1,6 +1,13 @@
 # GCN: pixel shader 1.1 and DDI 8, after the HD 4600 and the GT218
 
-Date: 2026-11-16. Status: step 1 done (host only). `vi_shader.c` gains
+Date: 2026-11-16. Status: steps 1 and 2 done (host only), recorded in
+[`2026-11-17-gcn-ps11-translator.md`](../decisions/2026-11-17-gcn-ps11-translator.md).
+Step 2's `v9x_vi_ps11_build` (`vi_ps11.c`) runs 19 programs in the GCN
+model, each matching the interpreter, and each translates for GCN 2 and
+1. The model now refuses a second SGPR read (the constant bus). Next:
+step 3, on the Oland.
+
+Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to
 LLVM's GFX8 bytes in `test_vi_3d.c`. The CI/SI rewrite maps them, plus
 VOP3's promoted VOP1/VOP2/VOPC ranges and SMEM to SMRD + `s_nop`.
@@ -9,8 +16,7 @@ has them, and against Mesa's ACO tables and emitter where it does not.
 The one-pixel GCN 3 model is in `tests\host\gcn_sim.c`. It runs the
 Direct3D pixel shaders that already draw correctly on the cards
 (Gouraud, replace, modulate with specular, fog, alpha test, colour key)
-and agrees with their results computed in C (`test_gcn_sim.c`). Next:
-step 2.
+and agrees with their results computed in C (`test_gcn_sim.c`).
 
 Asked for (Michael, 2026-11-16): pixel shader support on the Oland, as the
 HD 4600 ([`haswell-ddi8-pixel-shaders.md`](haswell-ddi8-pixel-shaders.md))

@@ -430,6 +430,10 @@ unsigned int v9x_run_vi_3d_tests(void);
  * shader 1.1 instruction alone. */
 unsigned int v9x_run_gcn_sim_tests(void);
 
+/* tests\host\test_vi_ps11.c: pixel shader 1.x programs for GCN, run in the
+ * GCN model against the reference interpreter. */
+unsigned int v9x_run_vi_ps11_tests(void);
+
 /* tests\host\test_eg_shader.c: Evergreen shader words, held to Linux 3.9's
  * blit shaders bit for bit, and the Gouraud shaders' fields. */
 unsigned int v9x_run_eg_shader_tests(void);
@@ -1646,6 +1650,7 @@ int main(int argc, char **argv)
     failures += v9x_run_cik_gpu_tests();
     failures += v9x_run_vi_3d_tests();
     failures += v9x_run_gcn_sim_tests();
+    failures += v9x_run_vi_ps11_tests();
     failures += v9x_run_eg_shader_tests();
     failures += v9x_run_cm_shader_tests();
     failures += v9x_run_cm_3d_tests();

@@ -176,6 +176,53 @@ static int sim_write32(struct v9x_gcn_sim *sim, v9x_u32 dst, v9x_u32 value)
     return 0;
 }
 
+/*
+ * The constant bus (GCN 3 ISA, "VALU instruction operands"): a VALU
+ * instruction reads at most one SGPR, VCC, M0, EXEC or literal; the same
+ * SGPR read twice counts once. The model refuses a word that reads more,
+ * which the hardware would run with garbage in one of them.
+ */
+static int sim_scalar(v9x_u32 field)
+{
+    return field < V9X_GCN_SIM_SGPRS || field == SIM_SRC_VCC_LO ||
+           field == SIM_SRC_VCC_HI || field == SIM_SRC_M0 ||
+           field == SIM_SRC_EXEC_LO || field == SIM_SRC_EXEC_HI ||
+           field == SIM_SRC_LITERAL;
+}
+
+/* How many of VOP3's three source fields op reads: v_cndmask_b32 and
+ * v_addc_u32 read src2 as their condition pair. */
+static v9x_u32 sim_vop3_sources(v9x_u32 op)
+{
+    if (op == 0x100ul || op == 0x11cul) {
+        return 3ul;
+    }
+    if (op >= 0x140ul && op < 0x1c0ul) {
+        return 1ul;
+    }
+    if (op >= 0x1c0ul && op < 0x200ul) {
+        return 3ul;
+    }
+    return 2ul;
+}
+
+static int sim_bus_ok(const v9x_u32 *fields, v9x_u32 count)
+{
+    v9x_u32 seen = 0xfffffffful;
+    v9x_u32 n;
+
+    for (n = 0ul; n < count; ++n) {
+        if (!sim_scalar(fields[n]) || fields[n] == seen) {
+            continue;
+        }
+        if (seen != 0xfffffffful) {
+            return 0;
+        }
+        seen = fields[n];
+    }
+    return 1;
+}
+
 static int sim_lane_on(const struct v9x_gcn_sim *sim)
 {
     return (sim->exec[0] & 1ul) != 0ul;
@@ -481,6 +528,9 @@ int v9x_gcn_sim_run(struct v9x_gcn_sim *sim, const v9x_u32 *code,
         }
         if ((word & 0x80000000ul) == 0ul) {
             op = (word >> 25) & 0x3ful;
+            if ((op == 0x00ul || op == 0x1cul) && sim_scalar(word & 0x1fful)) {
+                return sim_fail(sim, pc, "constant bus");   /* and VCC */
+            }
             if (!sim_read(sim, word & 0x1fful, next, has_next, &src[0], &literal_used)) {
                 return sim_fail(sim, pc, "VOP2 source");
             }
@@ -640,8 +690,15 @@ int v9x_gcn_sim_run(struct v9x_gcn_sim *sim, const v9x_u32 *code,
         }
         case 0xd0000000ul: {    /* VOP3 */
             v9x_u32 n;
+            v9x_u32 fields[3];
 
             op = (word >> 16) & 0x3fful;
+            for (n = 0ul; n < 3ul; ++n) {
+                fields[n] = (next >> (9u * (unsigned)n)) & 0x1fful;
+            }
+            if (!sim_bus_ok(fields, sim_vop3_sources(op))) {
+                return sim_fail(sim, pc, "constant bus");
+            }
             for (n = 0ul; n < 3ul; ++n) {
                 v9x_u32 field = (next >> (9u * (unsigned)n)) & 0x1fful;
 
@@ -681,6 +738,7 @@ int v9x_gcn_sim_run(struct v9x_gcn_sim *sim, const v9x_u32 *code,
                 for (chan = 0ul; chan < 4ul; ++chan) {
                     address[chan] = sim_f(sim->v[vaddr + chan]);
                 }
+                sim->mimg_word = word;
                 sim->sample(&sim->s[srsrc], &sim->s[ssamp], address, dmask,
                             rgba);
                 for (chan = 0ul; chan < 4ul; ++chan) {

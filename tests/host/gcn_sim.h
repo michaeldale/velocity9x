@@ -39,6 +39,9 @@ struct v9x_gcn_sim {
     v9x_u32 memory_high;
     v9x_u32 memory_dwords;
     v9x_gcn_sim_sample_fn sample;
+    /* The first word of the image_sample being run, while sample runs:
+     * its flags (DA, bit 14) for the callback to check. */
+    v9x_u32 mimg_word;
     /* Results. */
     float mrt0[4];
     int exported;           /* MRT0 was exported */
