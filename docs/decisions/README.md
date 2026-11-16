@@ -217,6 +217,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-16 Oland: vertices through MUBUF and a V# in place of FLAT, and the Gouraud ramp exact (one probe bug found and fixed on the way)](2026-11-16-oland-gouraud-mubuf-fetch.md)
 - [2026-11-16 Oland: textures, modulate and Z16 depth exact on the first run (GFX6's tile-index-only DB setup, 1D depth tile mode 4)](2026-11-16-oland-texture-depth.md)
 - [2026-11-16 Oland: Direct3D through the HAL (vi_cp.c's Oland mode), V9XD32 passing at 16 and 32 bpp; one stalled startup, unexplained](2026-11-16-oland-direct3d-hal.md)
+- [2026-11-16 Oland: 3DMark 2000 (3808) and 2001 SE (1486) run to a score through the HAL; DrawsIntoPresented 11 unexplained](2026-11-16-oland-3dmark.md)
 
 ## Matrox
 

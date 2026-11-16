@@ -21,7 +21,10 @@ step 2 is done, and with it step 3 for every instruction these programs
 use. Step 4 done: the HAL brings the CP up in an Oland mode and V9XD32
 passes at 16 and 32 bpp
 ([`2026-11-16-oland-direct3d-hal.md`](../decisions/2026-11-16-oland-direct3d-hal.md)).
-Next: step 5, programs (3DMark, Quake through the ICD, Glide).
+Step 5 started: 3DMark 2000 (3808) and 2001 SE (1486) run to a score,
+rendering correctly, with no timeouts or new refusals
+([`2026-11-16-oland-3dmark.md`](../decisions/2026-11-16-oland-3dmark.md)).
+Next: Quake through the ICD, and Glide.
 
 Phase 6 of [`ati-oland-gfx6.md`](ati-oland-gfx6.md): the graphics
 command processor and Direct3D on W9QI0DAD's Oland XT (`1002:6610`,
