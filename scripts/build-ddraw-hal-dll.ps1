@@ -229,6 +229,15 @@ $sources = @(
     "src\chipsets\ati\cik\cik_clear_state.c",
     "src\chipsets\ati\cik\cik_3d.c",
     "src\chipsets\ati\cik\cik_shader.c",
+    # Oland (GCN 1) on the same engine: its graphics microcode (licence in
+    # NOTICES.TXT), gpu_init's list, the SI clear state and start of
+    # stream, and the MUBUF TL vertex shader.
+    "src\chipsets\ati\si\si_gfx_microcode.c",
+    "src\chipsets\ati\si\si_gpu_init.c",
+    "src\chipsets\ati\si\si_gpu_init_tables.c",
+    "src\chipsets\ati\si\si_clear_state.c",
+    "src\chipsets\ati\si\si_3d.c",
+    "src\chipsets\ati\si\si_shader.c",
     # The Haswell blitter: fill and copy on the BCS ring through the
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",

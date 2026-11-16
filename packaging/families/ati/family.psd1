@@ -656,9 +656,9 @@
             # GCN 1. DirectDraw fill, copy and flips go to SI's async DMA
             # engine through Carrizo's engine type, which oland_hw16.c's
             # V9X_DD_ENGINE_CAP_VI_OLAND bit switches to SI's ring and
-            # si_dma.c's packets. None of it has run on a card; the engine
-            # is claimed only when its fence lands, else the CPU draws. The
-            # graphics CP is GFX6, not driven: Direct3D stays software.
+            # si_dma.c's packets, measured byte-exact on W9QI0DAD. Direct3D
+            # runs on the GFX6 CP (vi_cp.c's Oland mode) when the hook
+            # stamps the D3D cap at runtime, as Mullins' row does.
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'ATI_VI'

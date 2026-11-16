@@ -281,7 +281,8 @@ void v9x_vi_pm4_pad(struct v9x_vi_pm4 *stream)
 {
     while ((stream->count % V9X_VI_RING_ALIGN_DWORDS) != 0ul &&
            stream->overflow == 0ul) {
-        v9x_vi_pm4_put(stream, V9X_VI_RING_NOP);
+        v9x_vi_pm4_put(stream, stream->gfx6 ? V9X_VI_RING_NOP_GFX6
+                                            : V9X_VI_RING_NOP);
     }
 }
 

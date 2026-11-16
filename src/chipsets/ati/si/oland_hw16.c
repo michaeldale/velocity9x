@@ -20,8 +20,8 @@
  * start of VRAM, as Linux sets it); the register probe is to confirm it.
  * Its display is DCE 6, whose first controller is at Evergreen's offsets
  * (GRPH_PRIMARY_SURFACE_ADDRESS 6810h in dce_6_0_d.h), so eg_scanout.c's
- * flips apply. Its graphics CP is GFX6, not driven: the row never stamps
- * V9X_DD_ENGINE_CAP_D3D.
+ * flips apply. Its graphics CP is GFX6, driven by vi_cp.c's Oland mode:
+ * the hook stamps V9X_DD_ENGINE_CAP_D3D when the whole window is mapped.
  *
  * The hook and the diagnostics are in oland_engine16.c, in LEAFCODE: the
  * family's _TEXT has no room for them. What stays here is the device table

@@ -41,6 +41,10 @@
 #include "velocity9x/cik_gfx_microcode.h"
 #include "velocity9x/cik_gpu_init.h"
 #include "velocity9x/cik_shader.h"
+#include "velocity9x/si_3d.h"
+#include "velocity9x/si_gfx_microcode.h"
+#include "velocity9x/si_gpu_init.h"
+#include "velocity9x/si_shader.h"
 
 /* The window's layout, from its start (vi_sdma.h: SDMA's ring and slots
  * take the first 33 KiB). The ring is the probe's 16 KiB; the shader slots
@@ -160,6 +164,9 @@ struct v9x_vi_cp_chip {
     const v9x_u32 *me_version;
     v9x_u32 (*gpu_init_ops)(struct v9x_vi_reg_seq *ops, v9x_u32 capacity);
     void (*start)(struct v9x_vi_pm4 *stream);
+    /* Oland (GFX6): the steps differ, not only the offsets; see
+     * v9x_vi_cp_oland. Zero for the others. */
+    int gfx6;
 };
 
 static const struct v9x_vi_cp_chip v9x_vi_cp_carrizo = {
@@ -206,6 +213,74 @@ static const struct v9x_vi_cp_chip v9x_vi_cp_mullins = {
     v9x_cik_3d_start
 };
 
+/* Oland (V9X_DD_ENGINE_CAP_VI_OLAND, GFX6), as V9XSICP brought it up on
+ * W9QI0DAD (docs\decisions\2026-11-16-oland-cp-ring-test.md, -gpu-init.md
+ * and the draws after them), after amdgpu gfx_v6_0.c. Offsets are radeon
+ * sid.h's. What the table cannot say, the gfx6 flag switches:
+ * - rlc_resume: RLC_CNTL 0 and the SERDES pair (C464h, C468h) idle, the
+ *   RLC reset, Linux's RL/LB/MC/UCODE_CNTL values, the microcode through
+ *   SI's indexed port (RLC_UCODE_ADDR written before every dword), start;
+ *   coarse-grain clock gating and power gating left as gpu_init's golden
+ *   list sets them, as gfx_v6_0 leaves them;
+ * - each CP image's address register back to 0 after its load, not the
+ *   version;
+ * - cp_gfx_resume's ring 0 writes (semaphore timers, CP_DEBUG,
+ *   SCRATCH_ADDR, SCRATCH_UMSK, CP_RB0_RPTR) and none of CI's
+ *   CP_RB0_BASE_HI, CP_MAX_CONTEXT, CP_ENDIAN_SWAP or CP_DEVICE_ID, which
+ *   SI's ME_INITIALIZE packet carries instead, sent first after the
+ *   unhalt with the CE partitions at C000h and E000h;
+ * - SCRATCH_REG0 at 8500h, written by SET_CONFIG_REG;
+ * - the ring padded with type-2 NOPs, every stream built with the
+ *   builders' GFX6 mode;
+ * - the TL VS from si_shader.c (MUBUF, not FLAT), the pixel shaders
+ *   through v9x_si_shader_from_vi. */
+static const struct v9x_vi_cp_chip v9x_vi_cp_oland = {
+    0x0c300ul, 0x0c35cul, 0x0c404ul, 0x0c464ul, 0x0c468ul,
+    0x0c150ul, 0x0c154ul,
+    0x0c15cul, 0x0c160ul,
+    0x0c168ul, 0x0c16cul,
+    0x0c32cul, 0x0c330ul,
+    0x00180000ul, 0xfffffffful, V9X_VI_CP_RING_LOG2_QWORDS | (9ul << 8),
+    0, 0,
+    v9x_si_rlc_microcode, V9X_SI_RLC_MICROCODE_DWORDS,
+    &v9x_si_rlc_microcode_version,
+    v9x_si_pfp_microcode, V9X_SI_PFP_MICROCODE_DWORDS,
+    &v9x_si_pfp_microcode_version,
+    v9x_si_ce_microcode, V9X_SI_CE_MICROCODE_DWORDS,
+    &v9x_si_ce_microcode_version,
+    v9x_si_me_microcode, V9X_SI_ME_MICROCODE_DWORDS,
+    &v9x_si_me_microcode_version,
+    v9x_si_gpu_init_ops,
+    v9x_si_3d_start,
+    1
+};
+
+/* GFX6 registers and values (radeon sid.h, gfx_v6_0.c). */
+#define V9X_VI_CP_SI_SCRATCH_REG0      0x08500ul
+#define V9X_VI_CP_SI_SCRATCH_UMSK      0x08540ul
+#define V9X_VI_CP_SI_SCRATCH_ADDR      0x08544ul
+#define V9X_VI_CP_SI_SEM_WAIT_TIMER    0x085bcul
+#define V9X_VI_CP_SI_SEM_INCOMPLETE    0x085c8ul
+#define V9X_VI_CP_SI_CP_DEBUG          0x0c1fcul
+#define V9X_VI_CP_SI_ME_RAM_RADDR      0x0c158ul
+#define V9X_VI_CP_SI_RLC_RL_BASE       0x0c304ul
+#define V9X_VI_CP_SI_RLC_RL_SIZE       0x0c308ul
+#define V9X_VI_CP_SI_RLC_LB_CNTL       0x0c30cul
+#define V9X_VI_CP_SI_RLC_LB_CNTR_MAX   0x0c314ul
+#define V9X_VI_CP_SI_RLC_LB_CNTR_INIT  0x0c318ul
+#define V9X_VI_CP_SI_RLC_MC_CNTL       0x0c344ul
+#define V9X_VI_CP_SI_RLC_UCODE_CNTL    0x0c348ul
+#define V9X_VI_CP_SI_RLC_LB_INIT_CU    0x0c41cul
+/* mmSCRATCH_REG0's dword index, which SET_CONFIG_REG names. */
+#define V9X_VI_CP_SI_SCRATCH_INDEX     0x2140ul
+/* SET_BASE CE_PARTITION_BASE, its two partitions; ME_INITIALIZE's
+ * contexts less one (max_hw_contexts 8) and device id 1 (bits 31:16). */
+#define V9X_VI_CP_SI_P3_SET_BASE       0x11ul
+#define V9X_VI_CP_SI_P3_ME_INITIALIZE  0x44ul
+#define V9X_VI_CP_SI_CE_PARTITION_BASE 3ul
+#define V9X_VI_CP_SI_MAX_CONTEXT       7ul
+#define V9X_VI_CP_SI_DEVICE_ID_1       0x00010000ul
+
 /* The ring test's values, as V9XCZ3D's. */
 #define V9X_VI_CP_SCRATCH_SEED  0xcafedeadul
 #define V9X_VI_CP_SCRATCH_TEST  0xdeadbeeful
@@ -238,6 +313,8 @@ static DWORD v9x_vi_cp_vertex_at;
 static DWORD v9x_vi_cp_sequence;
 static int v9x_vi_cp_dirty;
 static v9x_u32 v9x_vi_cp_stream[V9X_VI_START_DWORDS + 64ul];
+
+static DWORD v9x_vi_cp_scratch_reg(void);
 
 static DWORD v9x_vi_cp_read32(DWORD offset)
 {
@@ -350,7 +427,7 @@ static void v9x_vi_cp_write_record(DWORD tag)
     v9x_vi_cp_log_hex(file, "RLC_CNTL=",
                       v9x_vi_cp_read32(v9x_vi_cp_chip->rlc_cntl));
     v9x_vi_cp_log_hex(file, "SCRATCH_REG0=",
-                      v9x_vi_cp_read32(V9X_VI_CP_SCRATCH_REG0));
+                      v9x_vi_cp_read32(v9x_vi_cp_scratch_reg()));
     v9x_vi_cp_log_text(file, "[Ring]\r\n");
     for (index = 0ul; index < V9X_VI_CP_RING_DWORDS; ++index) {
         v9x_vi_cp_log_hex(file, "",
@@ -434,7 +511,8 @@ static int v9x_vi_cp_put(const v9x_u32 *dwords, DWORD count)
     }
     if (v9x_vi_cp_wptr + count > V9X_VI_CP_RING_DWORDS) {
         while (v9x_vi_cp_wptr < V9X_VI_CP_RING_DWORDS) {
-            ring[v9x_vi_cp_wptr++] = V9X_VI_RING_NOP;
+            ring[v9x_vi_cp_wptr++] = v9x_vi_cp_chip->gfx6 ?
+                                     V9X_VI_RING_NOP_GFX6 : V9X_VI_RING_NOP;
         }
         v9x_vi_cp_wptr = 0ul;
     }
@@ -459,14 +537,34 @@ static int v9x_vi_cp_poll_fence(DWORD reads)
     return 0;
 }
 
+/* SCRATCH_REG0's byte offset: a uconfig register on CI and VI, a config
+ * one at 8500h on SI. */
+static DWORD v9x_vi_cp_scratch_reg(void)
+{
+    return v9x_vi_cp_chip->gfx6 ? V9X_VI_CP_SI_SCRATCH_REG0
+                                : V9X_VI_CP_SCRATCH_REG0;
+}
+
+/* A stream for the ring, in the builders' GFX6 mode on Oland. */
+static void v9x_vi_cp_stream_init(struct v9x_vi_pm4 *stream)
+{
+    v9x_vi_pm4_init(stream, v9x_vi_cp_stream,
+                    sizeof(v9x_vi_cp_stream) / sizeof(v9x_vi_cp_stream[0]));
+    stream->gfx6 = v9x_vi_cp_chip->gfx6 ? 1ul : 0ul;
+}
+
 /* A stream padded and through the ring, then SCRATCH_REG0 waited for. */
 static int v9x_vi_cp_run_scratch(struct v9x_vi_pm4 *stream, DWORD value)
 {
-    v9x_vi_pm4_set_uconfig(stream, V9X_VI_CP_SCRATCH_INDEX, value);
+    if (v9x_vi_cp_chip->gfx6) {
+        v9x_vi_pm4_set_config(stream, V9X_VI_CP_SI_SCRATCH_INDEX, value);
+    } else {
+        v9x_vi_pm4_set_uconfig(stream, V9X_VI_CP_SCRATCH_INDEX, value);
+    }
     v9x_vi_pm4_pad(stream);
     return stream->overflow == 0ul &&
            v9x_vi_cp_put(stream->dwords, stream->count) &&
-           v9x_vi_cp_wait(V9X_VI_CP_SCRATCH_REG0, 0xfffffffful, value);
+           v9x_vi_cp_wait(v9x_vi_cp_scratch_reg(), 0xfffffffful, value);
 }
 
 /* The golden registers and gpu_init's writes (vi_gpu_init.c), as
@@ -494,7 +592,8 @@ static void v9x_vi_cp_gpu_init(void)
 }
 
 /* An image through its port: address 0, the data, then the version in the
- * address register, as Linux does for each. */
+ * address register, as Linux does for each. GFX6 puts 0 back instead, as
+ * gfx_v6_0_cp_gfx_load_microcode does. */
 static void v9x_vi_cp_load(DWORD address, DWORD data, const v9x_u32 *image,
                            DWORD dwords, DWORD version)
 {
@@ -504,7 +603,114 @@ static void v9x_vi_cp_load(DWORD address, DWORD data, const v9x_u32 *image,
     for (index = 0ul; index < dwords; ++index) {
         v9x_vi_cp_write32(data, image[index]);
     }
-    v9x_vi_cp_write32(address, version);
+    v9x_vi_cp_write32(address, v9x_vi_cp_chip->gfx6 ? 0ul : version);
+}
+
+/* GFX6's rlc_resume (gfx_v6_0.c), as V9XSICP ran it: stop, the GUI-idle
+ * interrupts off, the SERDES pair idle, reset, Linux's RL/LB/MC/UCODE
+ * values, the microcode through the indexed port, start. Load balancing
+ * stays off. Linux's wait for RLC_STAT to settle before the reset is not
+ * made: on W9QI0DAD its busy bit stays set from a previous run until the
+ * reset, and Linux carries on after the timeout anyway
+ * (docs\decisions\2026-11-16-oland-gpu-init.md). */
+static int v9x_vi_cp_rlc_resume_gfx6(void)
+{
+    DWORD index;
+
+    v9x_vi_cp_write32(v9x_vi_cp_chip->rlc_cntl, 0ul);
+    v9x_vi_cp_modify32(V9X_VI_CP_INT_CNTL_RING0,
+                       v9x_vi_cp_chip->gui_idle_ints, 0ul);
+    if (!v9x_vi_cp_wait(v9x_vi_cp_chip->serdes_cu, 0xfffffffful, 0ul) ||
+        !v9x_vi_cp_wait(v9x_vi_cp_chip->serdes_noncu, 0xfffffffful, 0ul)) {
+        return 0;
+    }
+    v9x_vi_cp_write32(V9X_VI_CP_GRBM_SOFT_RESET, V9X_VI_CP_SOFT_RESET_RLC);
+    v9x_vi_cp_delay();
+    v9x_vi_cp_write32(V9X_VI_CP_GRBM_SOFT_RESET, 0ul);
+    v9x_vi_cp_delay();
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_RL_BASE, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_RL_SIZE, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_LB_CNTL, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_LB_CNTR_MAX, 0xfffffffful);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_LB_CNTR_INIT, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_LB_INIT_CU, 0xfffffffful);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_MC_CNTL, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_RLC_UCODE_CNTL, 0ul);
+    for (index = 0ul; index < v9x_vi_cp_chip->rlc_dwords; ++index) {
+        v9x_vi_cp_write32(v9x_vi_cp_chip->rlc_addr, index);
+        v9x_vi_cp_write32(v9x_vi_cp_chip->rlc_data,
+                          v9x_vi_cp_chip->rlc[index]);
+    }
+    v9x_vi_cp_write32(v9x_vi_cp_chip->rlc_addr, 0ul);
+    v9x_vi_cp_write32(v9x_vi_cp_chip->rlc_cntl, V9X_VI_CP_RLC_ENABLE);
+    v9x_vi_cp_delay();
+    return 1;
+}
+
+/* GFX6's cp_gfx_load_microcode and cp_gfx_resume for ring 0, then the
+ * unhalt; cp_gfx_start's ME_INITIALIZE follows from v9x_vi_cp_start. */
+static void v9x_vi_cp_ring_resume_gfx6(void)
+{
+    DWORD ring_low = v9x_vi_cp_window_low + V9X_VI_CP_WINDOW_RING;
+
+    v9x_vi_cp_write32(V9X_VI_CP_ME_CNTL, V9X_VI_CP_HALTS);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_SCRATCH_UMSK, 0ul);
+    v9x_vi_cp_delay();
+    v9x_vi_cp_load(v9x_vi_cp_chip->pfp_addr, v9x_vi_cp_chip->pfp_data,
+                   v9x_vi_cp_chip->pfp, v9x_vi_cp_chip->pfp_dwords, 0ul);
+    v9x_vi_cp_load(v9x_vi_cp_chip->ce_addr, v9x_vi_cp_chip->ce_data,
+                   v9x_vi_cp_chip->ce, v9x_vi_cp_chip->ce_dwords, 0ul);
+    v9x_vi_cp_load(v9x_vi_cp_chip->me_addr, v9x_vi_cp_chip->me_data,
+                   v9x_vi_cp_chip->me, v9x_vi_cp_chip->me_dwords, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_ME_RAM_RADDR, 0ul);
+
+    v9x_vi_cp_write32(V9X_VI_CP_SI_SEM_WAIT_TIMER, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_SEM_INCOMPLETE, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_RB_WPTR_DELAY, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_CP_DEBUG, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_SCRATCH_ADDR, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL, v9x_vi_cp_chip->rb_cntl);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL,
+                      v9x_vi_cp_chip->rb_cntl | V9X_VI_CP_RB_RPTR_WR_ENA);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_WPTR, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_RPTR, 0ul);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_RPTR_ADDR,
+                      v9x_vi_cp_window_low + V9X_VI_CP_WINDOW_WRITEBACK);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_RPTR_ADDR_HI, v9x_vi_cp_high & 0xfful);
+    v9x_vi_cp_write32(V9X_VI_CP_SI_SCRATCH_UMSK, 0ul);
+    v9x_vi_cp_delay();
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_CNTL, v9x_vi_cp_chip->rb_cntl);
+    v9x_vi_cp_write32(V9X_VI_CP_RB0_BASE,
+                      (ring_low >> 8) | ((v9x_vi_cp_high & 0xfful) << 24));
+    v9x_vi_cp_write32(V9X_VI_CP_HDP_MEM_FLUSH, 1ul);
+    v9x_vi_cp_write32(V9X_VI_CP_ME_CNTL, 0ul);
+    v9x_vi_cp_delay();
+    v9x_vi_cp_wptr = 0ul;
+}
+
+/* cp_gfx_start's first submission on GFX6: ME_INITIALIZE, then the CE
+ * partitions. Non-zero once it is through the ring; the ring test that
+ * follows is what shows the ME took it. */
+static int v9x_vi_cp_me_initialize(void)
+{
+    struct v9x_vi_pm4 stream;
+
+    v9x_vi_cp_stream_init(&stream);
+    v9x_vi_pm4_put(&stream,
+                   V9X_VI_PACKET3(V9X_VI_CP_SI_P3_ME_INITIALIZE, 5ul));
+    v9x_vi_pm4_put(&stream, 1ul);
+    v9x_vi_pm4_put(&stream, 0ul);
+    v9x_vi_pm4_put(&stream, V9X_VI_CP_SI_MAX_CONTEXT);
+    v9x_vi_pm4_put(&stream, V9X_VI_CP_SI_DEVICE_ID_1);
+    v9x_vi_pm4_put(&stream, 0ul);
+    v9x_vi_pm4_put(&stream, 0ul);
+    v9x_vi_pm4_put(&stream, V9X_VI_PACKET3(V9X_VI_CP_SI_P3_SET_BASE, 2ul));
+    v9x_vi_pm4_put(&stream, V9X_VI_CP_SI_CE_PARTITION_BASE);
+    v9x_vi_pm4_put(&stream, 0xc000ul);
+    v9x_vi_pm4_put(&stream, 0xe000ul);
+    v9x_vi_pm4_pad(&stream);
+    return stream.overflow == 0ul &&
+           v9x_vi_cp_put(stream.dwords, stream.count);
 }
 
 /* rlc_resume: rlc_stop, CG off, PG off, rlc_reset, the microcode,
@@ -592,7 +798,13 @@ static int v9x_vi_cp_upload_shaders(void)
     DWORD index;
 
     for (which = 0ul; which < V9X_VI_CP_SLOT_COUNT; ++which) {
-        if (which == V9X_VI_CP_SLOT_VS) {
+        /* GFX6's TL VS is si_shader.c's (MUBUF, SI words already). */
+        if (which == V9X_VI_CP_SLOT_VS && v9x_vi_cp_chip->gfx6) {
+            if (V9X_SI_TL_VS_DWORDS > V9X_VI_CP_SHADER_BYTES / 4ul ||
+                v9x_si_shader_tl_vs(words, &count) != V9X_STATUS_OK) {
+                return 0;
+            }
+        } else if (which == V9X_VI_CP_SLOT_VS) {
             count = v9x_vi_shader_tl_vs(words);
         } else if (which < V9X_VI_CP_SLOT_PS_SPECULAR_FIRST) {
             count = v9x_vi_shader_d3d_ps(which - V9X_VI_CP_SLOT_PS_FIRST, 0,
@@ -603,6 +815,10 @@ static int v9x_vi_cp_upload_shaders(void)
         }
         if (v9x_vi_cp_chip->gcn2_shaders &&
             v9x_cik_shader_from_vi(words, count, 0) != V9X_STATUS_OK) {
+            return 0;
+        }
+        if (v9x_vi_cp_chip->gfx6 && which != V9X_VI_CP_SLOT_VS &&
+            v9x_si_shader_from_vi(words, count, 0) != V9X_STATUS_OK) {
             return 0;
         }
         slot = v9x_vi_cp_window(V9X_VI_CP_WINDOW_SHADERS +
@@ -628,9 +844,14 @@ static int v9x_vi_cp_start(void)
         return 0;
     }
     v9x_vi_cp_state = V9X_VI_CP_FAILED;
-    v9x_vi_cp_chip = (v9x_hal->engine.engine_caps &
-                      V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul ?
-                     &v9x_vi_cp_mullins : &v9x_vi_cp_carrizo;
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_VI_OLAND) != 0ul) {
+        v9x_vi_cp_chip = &v9x_vi_cp_oland;
+    } else if ((v9x_hal->engine.engine_caps &
+                V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul) {
+        v9x_vi_cp_chip = &v9x_vi_cp_mullins;
+    } else {
+        v9x_vi_cp_chip = &v9x_vi_cp_carrizo;
+    }
 
     /* The fence starts at a value no batch writes, so a fence the CP never
      * writes cannot read as landed. */
@@ -639,25 +860,35 @@ static int v9x_vi_cp_start(void)
     if (!v9x_vi_cp_upload_shaders()) {
         return 0;
     }
-    v9x_vi_cp_write32(V9X_VI_CP_SCRATCH_REG0, V9X_VI_CP_SCRATCH_SEED);
+    v9x_vi_cp_write32(v9x_vi_cp_scratch_reg(), V9X_VI_CP_SCRATCH_SEED);
 
     v9x_vi_cp_gpu_init();
-    if (!v9x_vi_cp_rlc_resume()) {
-        v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
-        return 0;
+    if (v9x_vi_cp_chip->gfx6) {
+        if (!v9x_vi_cp_rlc_resume_gfx6()) {
+            v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
+            return 0;
+        }
+        v9x_vi_cp_ring_resume_gfx6();
+        if (!v9x_vi_cp_me_initialize()) {
+            v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
+            return 0;
+        }
+    } else {
+        if (!v9x_vi_cp_rlc_resume()) {
+            v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
+            return 0;
+        }
+        v9x_vi_cp_ring_resume();
     }
-    v9x_vi_cp_ring_resume();
 
     /* Linux's ring test, then cp_gfx_start's whole stream with a second
      * scratch write behind it. */
-    v9x_vi_pm4_init(&stream, v9x_vi_cp_stream,
-                    sizeof(v9x_vi_cp_stream) / sizeof(v9x_vi_cp_stream[0]));
+    v9x_vi_cp_stream_init(&stream);
     if (!v9x_vi_cp_run_scratch(&stream, V9X_VI_CP_SCRATCH_TEST)) {
         v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
         return 0;
     }
-    v9x_vi_pm4_init(&stream, v9x_vi_cp_stream,
-                    sizeof(v9x_vi_cp_stream) / sizeof(v9x_vi_cp_stream[0]));
+    v9x_vi_cp_stream_init(&stream);
     v9x_vi_cp_chip->start(&stream);
     if (!v9x_vi_cp_run_scratch(&stream, V9X_VI_CP_SCRATCH_START)) {
         v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);

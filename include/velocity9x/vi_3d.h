@@ -38,6 +38,10 @@
 /* v4.9's gfx ring NOP, PACKET3(NOP, 3FFFh): one dword. */
 #define V9X_VI_RING_NOP             V9X_VI_PACKET3(V9X_VI_P3_NOP, 0x3ffful)
 #define V9X_VI_RING_ALIGN_DWORDS    16ul
+/* GFX6's ring NOP: a type-2 packet, which radeon's si.c pads the gfx ring
+ * with (RADEON_CP_PACKET2). PACKET3(NOP, 3FFFh) is CI's and VI's one-dword
+ * NOP; on SI it would read as a NOP with a 16K-dword body. */
+#define V9X_VI_RING_NOP_GFX6        0x80000000ul
 
 /* gfx_v8_0_get_csb_size for vi_cs_data, plus cp_gfx_start's CE partitions:
  * the start stream's length. */
@@ -53,7 +57,9 @@
  * - VGT_PRIMITIVE_TYPE is a config register (2256h), set by
  *   SET_CONFIG_REG, which GFX6 has in place of SET_UCONFIG_REG;
  * - SURFACE_SYNC has no TC write-back bit, and EVENT_WRITE_EOP's event
- *   dword carries only the event and its index (gfx_v6_0_ring_emit_fence).
+ *   dword carries only the event and its index (gfx_v6_0_ring_emit_fence);
+ * - padding is type-2 NOPs (V9X_VI_RING_NOP_GFX6);
+ * - the TL VS takes a V# (si_shader.h), depth is tile-index only.
  * v9x_vi_pm4_init clears it; a caller sets it after init.
  */
 struct v9x_vi_pm4 {

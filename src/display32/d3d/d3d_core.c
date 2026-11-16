@@ -10265,6 +10265,9 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         if ((v9x_hal->engine.engine_caps &
              V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul) {
             name = "Velocity9x Radeon R3E";
+        } else if ((v9x_hal->engine.engine_caps &
+                    V9X_DD_ENGINE_CAP_VI_OLAND) != 0ul) {
+            name = "Velocity9x Radeon Oland";
         } else {
             name = "Velocity9x Radeon R7E";
         }

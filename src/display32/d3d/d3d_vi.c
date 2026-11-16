@@ -311,6 +311,19 @@ static int v9x_d3d_vi_ready(void)
     return v9x_vi_cp_ready();
 }
 
+/* Oland (GFX6): every stream in the builders' GFX6 mode, and the built
+ * pixel shaders rewritten for SI (vi_3d.h, cik_shader.h). */
+static int v9x_d3d_vi_gfx6(void)
+{
+    return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_VI_OLAND) != 0ul;
+}
+
+static void v9x_d3d_vi_stream_init(struct v9x_vi_pm4 *stream)
+{
+    v9x_vi_pm4_init(stream, v9x_d3d_vi_stream, V9X_D3D_VI_STREAM_DWORDS);
+    stream->gfx6 = v9x_d3d_vi_gfx6() ? 1ul : 0ul;
+}
+
 /*
  * A mip chain's levels, counted as far as each sits where
  * v9x_vi_3d_mip_layout puts it - create_surface placed it there in one
@@ -541,6 +554,13 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
             V9X_TIME_END(V9X_TIME_DECODE, started);
             return 0;
         }
+        /* Oland runs GCN 1: the same, with FLAT refused. */
+        if (v9x_d3d_vi_gfx6() &&
+            v9x_si_shader_from_vi(v9x_d3d_vi_built_ps, ps_dwords, 0) !=
+                V9X_STATUS_OK) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
     } else {
         state.ps_low = v9x_vi_cp_shader_low(v9x_d3d_vi_ps_slot[ps]);
     }
@@ -575,7 +595,7 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
         state.fence_low = v9x_vi_cp_fence_low();
         state.fence_value = v9x_vi_cp_fence_next();
 
-        v9x_vi_pm4_init(&stream, v9x_d3d_vi_stream, V9X_D3D_VI_STREAM_DWORDS);
+        v9x_d3d_vi_stream_init(&stream);
         if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
             /* The target the builder would not take, in the trace's
              * DrawsTargetLast, DrawsPitchLast and DrawsExtentLast. */
@@ -709,7 +729,7 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     state.fence_low = v9x_vi_cp_fence_low();
     state.fence_value = v9x_vi_cp_fence_next();
 
-    v9x_vi_pm4_init(&stream, v9x_d3d_vi_stream, V9X_D3D_VI_STREAM_DWORDS);
+    v9x_d3d_vi_stream_init(&stream);
     if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }

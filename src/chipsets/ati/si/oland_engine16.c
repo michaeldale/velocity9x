@@ -24,6 +24,9 @@ extern unsigned short __far __pascal V9xMiniViMap(
 
 /* V9X_SI_MMIO_BYTES in si_dma.h and the mini-VDD: the register BAR. */
 #define V9X_OLAND_MMIO_BYTES 0x00040000ul
+/* V9X_VI_RING_WINDOW_BYTES in vi_sdma.h: the whole window the HAL's CP
+ * uses beside the DMA ring (vi_cp.c). */
+#define V9X_OLAND_RING_WINDOW_BYTES 0x00400000ul
 
 /* The diagnostics: how far the hook got, then four hex values. */
 #define V9X_OLAND_DIAGNOSTIC_COUNT 5u
@@ -85,6 +88,14 @@ void V9X_LEAF_FAR v9x_oland_fill_engine_leaf(
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
                    V9X_DD_ENGINE_CAP_FLIP |
                    V9X_DD_ENGINE_CAP_VI_OLAND;
+    /* Direct3D through the GFX6 CP, which engines\vi_cp.c brings up as
+     * V9XSICP did on W9QI0DAD, with SI's microcode, gpu_init, start of
+     * stream and shaders (docs\decisions\2026-11-16-oland-texture-depth.md
+     * and the records before it): only when the mini-VDD mapped the whole
+     * window, as on Carrizo and Mullins. */
+    if (bytes >= V9X_OLAND_RING_WINDOW_BYTES) {
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+    }
     *ring_linear_base = ring;
     *ring_bytes = bytes;
 }

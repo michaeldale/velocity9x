@@ -430,10 +430,11 @@
  * GCN 1, Linux's Southern Islands), not Carrizo. Its 2D engine is SI's
  * async DMA engine, Evergreen's at Evergreen's registers with no
  * microcode, so eng_vi.c starts that ring and emits si_dma.c's packets in
- * place of SDMA's. Its graphics CP is GFX6, which vi_cp.c does not drive,
- * so the row never stamps V9X_DD_ENGINE_CAP_D3D beside it. A chip identity
- * bit, stamped by oland_hw16.c only. Not yet run on a card
- * (docs\plans\ati-oland-gfx6.md).
+ * place of SDMA's. Its graphics CP is GFX6, which vi_cp.c drives in its
+ * own mode (v9x_vi_cp_oland), the builders in their GFX6 mode, with
+ * V9X_DD_ENGINE_CAP_D3D stamped beside it when the whole window is mapped.
+ * A chip identity bit, stamped by oland_engine16.c only
+ * (docs\plans\ati-oland-gfx6.md, ati-oland-gfx6-3d.md).
  */
 #define V9X_DD_ENGINE_CAP_VI_OLAND      0x40000000ul
 

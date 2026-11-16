@@ -18,7 +18,10 @@ Textures, modulate and Z16 depth (GFX6's tile-index-only DB setup, Oland
 1D depth index 4) pass on the first run
 ([`2026-11-16-oland-texture-depth.md`](../decisions/2026-11-16-oland-texture-depth.md)):
 step 2 is done, and with it step 3 for every instruction these programs
-use. Next: step 4, the Direct3D HAL.
+use. Step 4 done: the HAL brings the CP up in an Oland mode and V9XD32
+passes at 16 and 32 bpp
+([`2026-11-16-oland-direct3d-hal.md`](../decisions/2026-11-16-oland-direct3d-hal.md)).
+Next: step 5, programs (3DMark, Quake through the ICD, Glide).
 
 Phase 6 of [`ati-oland-gfx6.md`](ati-oland-gfx6.md): the graphics
 command processor and Direct3D on W9QI0DAD's Oland XT (`1002:6610`,
