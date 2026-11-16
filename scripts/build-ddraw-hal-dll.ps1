@@ -205,6 +205,9 @@ $sources = @(
     "src\chipsets\ati\vi\vi_sdma_microcode.c",
     # Mullins (GCN 2) runs the same engine with its own SDMA microcode.
     "src\chipsets\ati\cik\cik_sdma_microcode.c",
+    # Oland (GCN 1) runs the same engine type on SI's DMA engine: the plans
+    # as SI DMA packets through the host-tested builder, no microcode.
+    "src\chipsets\ati\si\si_dma.c",
     # The Carrizo 3D engine: the graphics CP and its microcode (licence in
     # NOTICES.TXT), gpu_init's list, the clear state, the PM4 streams and
     # shaders, the neutral draw to them, and the engine that submits them.

@@ -177,6 +177,11 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\vi\vi_sdma_microcode.c',
         # Mullins SDMA microcode (generated from linux-firmware), data only.
         'src\chipsets\ati\cik\cik_sdma_microcode.c',
+        # Oland (SI): Evergreen's DMA plans as SI DMA packets, no I/O.
+        'src\chipsets\ati\si\si_dma.c',
+        # Oland graphics microcode (generated from linux-firmware), data
+        # only.
+        'src\chipsets\ati\si\si_gfx_microcode.c',
         # Mullins: GCN 3 shader words rewritten as GCN 2, no I/O.
         'src\chipsets\ati\cik\cik_shader.c',
         # Mullins: gpu_init's list and the CI clear state, data and no I/O.
@@ -449,6 +454,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_cm_shader.c',
         'tests\host\test_cm_3d.c',
         'tests\host\test_vi_sdma.c',
+        'tests\host\test_si_dma.c',
         'tests\host\test_cik_shader.c',
         'tests\host\test_cik_gpu.c',
         'tests\host\test_vi_3d.c',
