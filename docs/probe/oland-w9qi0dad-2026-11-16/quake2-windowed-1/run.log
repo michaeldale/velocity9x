@@ -1,0 +1,4 @@
+22:58:37 quake2.exe +set vid_ref gl +set vid_fullscreen 0 +set gl_mode 3 +set s_initsound 0 +set logfile 2 +bind F10 timerefresh +map demo1
+22:59:04 timerefresh 1 sent
+22:59:12 timerefresh 2 sent
+22:59:17 done

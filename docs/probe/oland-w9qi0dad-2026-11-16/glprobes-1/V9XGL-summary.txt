@@ -1,0 +1,15 @@
+798 pid=FFFA5FFD DrvSetContext hdc=0000077E context=1 -> 1
+810 pid=FFFA5FFD DrvReleaseContext context=1 -> 1
+811 pid=FFFA5FFD DrvSetContext hdc=0000077E context=1 -> 1
+813 pid=FFFA5FFD DrvReleaseContext context=1 -> 1
+814 pid=FFFA5FFD DrvSetContext hdc=0000077E context=1 -> 1
+816 pid=FFFA5FFD DrvReleaseContext context=1 -> 1
+817 pid=FFFA5FFD DrvSetContext hdc=0000077E context=1 -> 1
+819 pid=FFFA5FFD DrvReleaseContext context=1 -> 1
+820 pid=FFFA5FFD paths batches/triangles untextured=23/152 hw=1174/2312 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+821 pid=FFFA5FFD counters hwtex lost=0
+822 pid=FFFA5FFD counters tnl batches=0 triangles=0 refused=0 failed=0
+823 pid=FFFA5FFD counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+824 pid=FFFA5FFD counters hwtex live=0 creates=123 create-failed=0 evictions=0 uploads=126 partial=2 upload-kb=2238 squared=0 alpha-dropped=0 fog-dropped=0 stubs=1 failed r4=0 r7=0 r8=0 other=0
+825 pid=FFFA5FFD counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+826 pid=FFFA5FFD DrvDeleteContext context=1 -> 1

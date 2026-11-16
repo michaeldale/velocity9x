@@ -1,0 +1,15 @@
+122 pid=FFFB00C9 paths batches/triangles untextured=88/176 hw=105944/3910387 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+123 pid=FFFB00C9 counters hwtex lost=0
+124 pid=FFFB00C9 counters tnl batches=0 triangles=0 refused=0 failed=0
+125 pid=FFFB00C9 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+126 pid=FFFB00C9 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+127 pid=FFFB00C9 counters hwtex live=66 creates=66 create-failed=0 evictions=0 uploads=2721 partial=2655 upload-kb=2144 squared=0 alpha-dropped=177 fog-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+128 pid=FFFB00C9 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+132 pid=FFFB00C9 hwno hwtex-ms=46 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+135 pid=FFFB00C9 paths batches/triangles untextured=88/176 hw=171732/6273861 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+136 pid=FFFB00C9 counters hwtex lost=0
+137 pid=FFFB00C9 counters tnl batches=0 triangles=0 refused=0 failed=0
+138 pid=FFFB00C9 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+139 pid=FFFB00C9 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+140 pid=FFFB00C9 counters hwtex live=66 creates=66 create-failed=0 evictions=0 uploads=4316 partial=4250 upload-kb=2144 squared=0 alpha-dropped=177 fog-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+141 pid=FFFB00C9 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0

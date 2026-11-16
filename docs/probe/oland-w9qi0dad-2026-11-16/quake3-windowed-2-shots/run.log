@@ -1,0 +1,8 @@
+22:57:36 quake3.exe +set logfile 2 +set s_initsound 0 +set r_fullscreen 0 +set r_mode 3 +set nextdemo quit +timedemo 1 +demo demo001
+22:57:51 screen1
+22:57:54 screen2
+22:57:57 screen3
+22:58:00 screen4
+22:58:02 screen5
+22:58:02 quake3 exited
+22:58:04 done

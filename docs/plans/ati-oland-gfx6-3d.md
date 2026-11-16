@@ -24,7 +24,10 @@ passes at 16 and 32 bpp
 Step 5 started: 3DMark 2000 (3808) and 2001 SE (1486) run to a score,
 rendering correctly, with no timeouts or new refusals
 ([`2026-11-16-oland-3dmark.md`](../decisions/2026-11-16-oland-3dmark.md)).
-Next: Quake through the ICD, and Glide.
+V9XGLP and V9XGLIDP pass, and Quake 3 (72.9 fps) and Quake 2 draw every
+batch on the chip, windowed at 16 bpp
+([`2026-11-16-oland-opengl-glide-quake.md`](../decisions/2026-11-16-oland-opengl-glide-quake.md)).
+Step 5 is done except fullscreen and 32 bpp GL runs and a Glide game.
 
 Phase 6 of [`ati-oland-gfx6.md`](ati-oland-gfx6.md): the graphics
 command processor and Direct3D on W9QI0DAD's Oland XT (`1002:6610`,

@@ -1,0 +1,15 @@
+156 pid=FFFB00C9 paths batches/triangles untextured=0/0 hw=185610/4418333 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+157 pid=FFFB00C9 counters hwtex lost=0
+158 pid=FFFB00C9 counters tnl batches=0 triangles=0 refused=0 failed=0
+159 pid=FFFB00C9 counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+160 pid=FFFB00C9 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+161 pid=FFFB00C9 counters hwtex live=354 creates=354 create-failed=0 evictions=0 uploads=354 partial=0 upload-kb=6284 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+162 pid=FFFB00C9 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+163 pid=FFFB00C9 DrvReleaseContext context=1 -> 1
+164 pid=FFFB00C9 paths batches/triangles untextured=0/0 hw=206146/4877849 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+165 pid=FFFB00C9 counters hwtex lost=0
+166 pid=FFFB00C9 counters tnl batches=0 triangles=0 refused=0 failed=0
+167 pid=FFFB00C9 counters tnl-hold flush-for-screen=0 new-segment=0 flush-for-frame=0 joined=0 flush-segments-full=0
+168 pid=FFFB00C9 counters hwtex live=0 creates=354 create-failed=0 evictions=0 uploads=354 partial=0 upload-kb=6284 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+169 pid=FFFB00C9 counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+170 pid=FFFB00C9 DrvDeleteContext context=1 -> 1
