@@ -68,6 +68,43 @@ static void test_encodings(void)
     expect2(0xf0800f00ul, 0x00020100ul, 0xf0800f00ul, 0x00020100ul);
 }
 
+/* Pixel shader 1.1's instructions (docs\plans\ati-gcn-ps11.md step 1):
+ * LLVM's SICI line against its VI line where vop1.s/vop3.s have one,
+ * else Mesa's aco_opcodes.py columns. */
+static void test_ps11_encodings(void)
+{
+    v9x_u32 smem[2];
+
+    /* vop1.s: v_rcp_f32_e32 v1, v2. */
+    expect1(0x7e024502ul, 0x7e025502ul);
+    /* aco_opcodes.py: v_min_f32 VI 0Ah / SI 0Fh, v_max_f32 0Bh / 10h. */
+    expect1(v9x_vi_vop2(V9X_VI_VOP2_MIN_F32, 5ul, V9X_VI_VGPR(1), 2ul),
+            0x1e0a0501ul);
+    expect1(v9x_vi_vop2(V9X_VI_VOP2_MAX_F32, 5ul, V9X_VI_VGPR(1), 2ul),
+            0x200a0501ul);
+    /* vop3.s: v_sub_f32_e64 v1, v3, s5. */
+    expect2(0xd1020001ul, 0x00000b03ul, 0xd2080001ul, 0x00000b03ul);
+    /* vop3.s: v_mad_f32 v9, 0.5, v5, -v8 (neg survives). */
+    expect2(0xd1c10009ul, 0x84220af0ul, 0xd2820009ul, 0x84220af0ul);
+    /* vop3.s: v_cubeid_f32 v0, |-1|, |-1.0|, |1.0| (abs survives). */
+    expect2(0xd1c40700ul, 0x03c9e6c1ul, 0xd2880700ul, 0x03c9e6c1ul);
+    /* vop3.s: v_fract_f32_e64 v1, v2 clamp div:2: a promoted VOP1 at
+     * 180h + 20h, clamp moved to bit 11, omod kept. */
+    expect2(0xd15b8001ul, 0x18000102ul, 0xd3400801ul, 0x18000102ul);
+    /* vop3.s: v_mac_f32_e64 v0, v1, v2 mul:2. */
+    expect2(0xd1160000ul, 0x08020501ul, 0xd23e0000ul, 0x08020501ul);
+    /* vop3.s: v_cmp_lt_f32_e64 s[2:3], v4, -v6 (VOPC in VOP3). */
+    expect2(0xd0410002ul, 0x40020d04ul, 0xd0020002ul, 0x40020d04ul);
+    /* vop3.s: v_cndmask_b32_e64 v1, v3, v5, s[4:5]. */
+    expect2(0xd1000001ul, 0x00120b03ul, 0xd2000001ul, 0x00120b03ul);
+    /* aco_assembler.cpp's SMRD: s_load_dwordx4 s[20:23], s[2:3], 16 is
+     * C0h | op 2 << 22 | 20 << 15 | 1 << 9 | imm | 4, then the s_nop. */
+    CHECK(v9x_vi_s_load(4ul, 20ul, 2ul, 16ul, smem) == 2ul);
+    expect2(smem[0], smem[1], 0xc08a0304ul, 0xbf800000ul);
+    CHECK(v9x_vi_s_load(8ul, 8ul, 0ul, 0x3fcul, smem) == 2ul);
+    expect2(smem[0], smem[1], 0xc0c401fful, 0xbf800000ul);
+}
+
 static void test_opcode_maps(void)
 {
     /* The encoder's own words, through its constants. */
@@ -103,9 +140,9 @@ static void test_refusals(void)
     v9x_u32 words[4];
     v9x_u32 at = 0ul;
 
-    /* VOP2 op 2 (VI v_sub_f32) is not mapped: refused at word 1. */
+    /* VOP2 op 4 (VI v_mul_legacy_f32) is not mapped: refused at word 1. */
     words[0] = V9X_VI_S_ENDPGM;
-    words[1] = v9x_vi_vop2(2ul, 1ul, 0x102ul, 3ul);
+    words[1] = v9x_vi_vop2(4ul, 1ul, 0x102ul, 3ul);
     CHECK(v9x_cik_shader_from_vi(words, 2ul, &at) == V9X_STATUS_UNSUPPORTED);
     CHECK(at == 1ul);
     /* SMEM (C0h prefix) is not translated. */
@@ -113,6 +150,17 @@ static void test_refusals(void)
     words[1] = 0ul;
     CHECK(v9x_cik_shader_from_vi(words, 2ul, &at) == V9X_STATUS_UNSUPPORTED);
     CHECK(at == 0ul);
+    /* SMEM with an offset SMRD cannot hold, or with GLC. */
+    words[0] = 0xc00a0501ul;
+    words[1] = 0x400ul;
+    CHECK(v9x_cik_shader_from_vi(words, 2ul, &at) == V9X_STATUS_UNSUPPORTED);
+    words[0] = 0xc00a0501ul | 0x10000ul;
+    words[1] = 0x10ul;
+    CHECK(v9x_cik_shader_from_vi(words, 2ul, &at) == V9X_STATUS_UNSUPPORTED);
+    /* A VOP3-only opcode with no row (VI v_fma_f32, 1CBh). */
+    words[0] = 0xd1cb0005ul;
+    words[1] = 0x040e0501ul;
+    CHECK(v9x_cik_shader_from_vi(words, 2ul, &at) == V9X_STATUS_UNSUPPORTED);
     /* A two-dword instruction cut off by the count. */
     words[0] = 0xc4000800ul;
     CHECK(v9x_cik_shader_from_vi(words, 1ul, &at) == V9X_STATUS_UNSUPPORTED);
@@ -196,6 +244,7 @@ unsigned int v9x_run_cik_shader_tests(void)
 {
     failures = 0u;
     test_encodings();
+    test_ps11_encodings();
     test_opcode_maps();
     test_literal();
     test_refusals();

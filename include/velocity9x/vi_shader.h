@@ -123,6 +123,61 @@ v9x_u32 v9x_vi_vintrp(v9x_u32 op, v9x_u32 vdst, v9x_u32 vsrc, v9x_u32 attr,
                       v9x_u32 chan);
 
 /*
+ * For pixel shader 1.1 (docs\plans\ati-gcn-ps11.md step 1).
+ *
+ * VOP1/VOP2/VOPC opcodes beside the ones above (gfx8_asm_vop1.s,
+ * gfx8_vop3.txt; Mesa's aco_opcodes.py GFX8 column). VOPC 40h-4Fh are the
+ * v_cmp_*_f32 that write VCC (or an SGPR pair in VOP3), in the same order
+ * as the v_cmpx_* run at 50h.
+ */
+#define V9X_VI_VOP1_RCP_F32     0x22ul
+#define V9X_VI_VOP2_SUB_F32     0x02ul
+#define V9X_VI_VOP2_MIN_F32     0x0aul
+#define V9X_VI_VOP2_MAX_F32     0x0bul
+#define V9X_VI_VOPC_CMP_LT_F32  0x41ul
+#define V9X_VI_VOPC_CMP_GT_F32  0x44ul
+#define V9X_VI_VOPC_CMP_GE_F32  0x46ul
+#define V9X_VCC                 106ul
+
+/*
+ * VOP3 (GFX8): 110100 op[25:16] clamp[15] abs[10:8] vdst[7:0], then
+ * neg[31:29] omod[28:27] src2[26:18] src1[17:9] src0[8:0]. A VOP2 opcode
+ * is VOP3 100h + op, a VOP1 opcode 140h + op, a VOPC opcode itself (vdst
+ * then the SGPR pair written). The VOP3-only ones used here are v_mad_f32
+ * 1C1h and v_cube* 1C4h-1C7h (gfx8_vop3.txt).
+ */
+#define V9X_VI_VOP3_FROM_VOP2(op) (0x100ul + (v9x_u32)(op))
+#define V9X_VI_VOP3_FROM_VOP1(op) (0x140ul + (v9x_u32)(op))
+#define V9X_VI_VOP3_MAD_F32     0x1c1ul
+#define V9X_VI_VOP3_CUBEID_F32  0x1c4ul
+#define V9X_VI_VOP3_CUBESC_F32  0x1c5ul
+#define V9X_VI_VOP3_CUBETC_F32  0x1c6ul
+#define V9X_VI_VOP3_CUBEMA_F32  0x1c7ul
+/* mods for v9x_vi_vop3: |src n| and -src n (n 0-2), the result clamped
+ * to [0, 1], and the output modifier (OMOD 1 x2, 2 x4, 3 /2), applied
+ * before the clamp. */
+#define V9X_VI_ABS(n)           (1ul << (n))
+#define V9X_VI_NEG(n)           (8ul << (n))
+#define V9X_VI_CLAMP            0x40ul
+#define V9X_VI_OMOD_X2          0x100ul
+#define V9X_VI_OMOD_X4          0x200ul
+#define V9X_VI_OMOD_D2          0x300ul
+/* Three sources; an unused one 0. Two dwords to out. */
+v9x_u32 v9x_vi_vop3(v9x_u32 op, v9x_u32 vdst, v9x_u32 src0, v9x_u32 src1,
+                    v9x_u32 src2, v9x_u32 mods, v9x_u32 *out);
+
+/*
+ * s_load_dwordx<n> s[sdst..], s[sbase:sbase+1], offset (SMEM, GFX8:
+ * 110000 op[25:18] imm[17] glc[16] sdata[12:6] sbase/2[5:0], then the
+ * byte offset; gfx8_asm_smem.s). dwords is 2, 4 or 8 (op 1, 2, 3); the
+ * offset a multiple of 4 below 1024, so it translates to GCN 1 and 2's
+ * SMRD (cik_shader.h). Two dwords to out; 0 for an argument out of
+ * range.
+ */
+v9x_u32 v9x_vi_s_load(v9x_u32 dwords, v9x_u32 sdst, v9x_u32 sbase,
+                      v9x_u32 offset, v9x_u32 *out);
+
+/*
  * The solid-rectangle vertex shader, for a RECTLIST: user SGPRs s0-s3 are
  * x1, y1, x2, y2 as float bits in screen pixels; v0 is VertexID. Vertex 0
  * is (x1, y1), 1 is (x2, y1), 2 is (x1, y2), the three corners a RECTLIST

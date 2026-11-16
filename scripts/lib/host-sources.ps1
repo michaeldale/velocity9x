@@ -468,6 +468,8 @@ function Get-V9xHostSourceNames {
         'tests\host\test_cik_shader.c',
         'tests\host\test_cik_gpu.c',
         'tests\host\test_vi_3d.c',
+        'tests\host\gcn_sim.c',
+        'tests\host\test_gcn_sim.c',
         'tests\host\test_main.c'
     )
 

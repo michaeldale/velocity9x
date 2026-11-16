@@ -170,6 +170,48 @@ v9x_u32 v9x_vi_vintrp(v9x_u32 op, v9x_u32 vdst, v9x_u32 vsrc, v9x_u32 attr,
            ((chan & 3ul) << 8) | (vsrc & 0xfful);
 }
 
+v9x_u32 v9x_vi_vop3(v9x_u32 op, v9x_u32 vdst, v9x_u32 src0, v9x_u32 src1,
+                    v9x_u32 src2, v9x_u32 mods, v9x_u32 *out)
+{
+    out[0] = V9X_VI_VOP3_PREFIX | ((op & 0x3fful) << 16) |
+             ((mods & V9X_VI_CLAMP) != 0ul ? 0x8000ul : 0ul) |
+             ((mods & 7ul) << 8) | (vdst & 0xfful);
+    out[1] = (src0 & 0x1fful) | ((src1 & 0x1fful) << 9) |
+             ((src2 & 0x1fful) << 18) | (((mods >> 8) & 3ul) << 27) |
+             (((mods >> 3) & 7ul) << 29);
+    return 2ul;
+}
+
+/* SMEM's prefix and its immediate-offset bit. */
+#define V9X_VI_SMEM_PREFIX      0xc0000000ul
+#define V9X_VI_SMEM_IMM         0x00020000ul
+/* The largest offset SMRD's 8-bit dword field holds. */
+#define V9X_VI_SMEM_OFFSET_MAX  1020ul
+
+v9x_u32 v9x_vi_s_load(v9x_u32 dwords, v9x_u32 sdst, v9x_u32 sbase,
+                      v9x_u32 offset, v9x_u32 *out)
+{
+    v9x_u32 op;
+
+    if (dwords == 2ul) {
+        op = 1ul;
+    } else if (dwords == 4ul) {
+        op = 2ul;
+    } else if (dwords == 8ul) {
+        op = 3ul;
+    } else {
+        return 0ul;
+    }
+    if ((offset & 3ul) != 0ul || offset > V9X_VI_SMEM_OFFSET_MAX ||
+        (sbase & 1ul) != 0ul || sdst > 101ul) {
+        return 0ul;
+    }
+    out[0] = V9X_VI_SMEM_PREFIX | (op << 18) | V9X_VI_SMEM_IMM |
+             ((sdst & 0x7ful) << 6) | ((sbase >> 1) & 0x3ful);
+    out[1] = offset;
+    return 2ul;
+}
+
 /* Vertex 1 takes x2 and vertex 2 takes y2: v_cndmask picks its second
  * operand where VCC is set, its first elsewhere. Both operands are VGPRs:
  * VCC is v_cndmask's one constant-bus read, and an SGPR operand as well

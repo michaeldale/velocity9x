@@ -124,6 +124,91 @@ static void test_encodings(void)
     CHECK(v9x_vi_s_waitcnt(0x3141ul) == 0xbf8c3141ul);
 }
 
+/* The pixel shader 1.1 instructions (docs\plans\ati-gcn-ps11.md step 1),
+ * each against LLVM's GFX8 bytes read as little-endian dwords. */
+static void test_ps11_encodings(void)
+{
+    v9x_u32 out[2];
+
+    /* gfx8_asm_vop2.s: v_sub_f32_e32 v5, v1, v2 [01 05 0a 04];
+     * v_min_f32_e32 [.. 14]; v_max_f32_e32 [.. 16]. */
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_SUB_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x040a0501ul);
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_MIN_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x140a0501ul);
+    CHECK(v9x_vi_vop2(V9X_VI_VOP2_MAX_F32, 5ul, V9X_VI_VGPR(1), 2ul) ==
+          0x160a0501ul);
+    /* vop1.s VI: v_rcp_f32_e32 v1, v2 [02 45 02 7e]. */
+    CHECK(v9x_vi_vop1(V9X_VI_VOP1_RCP_F32, 1ul, V9X_VI_VGPR(2)) ==
+          0x7e024502ul);
+
+    /* gfx8_vop3.txt: v_mad_f32 v5, v1, v2, v3 [05 00 c1 d1 01 05 0e 04]. */
+    CHECK(v9x_vi_vop3(V9X_VI_VOP3_MAD_F32, 5ul, V9X_VI_VGPR(1),
+                      V9X_VI_VGPR(2), V9X_VI_VGPR(3), 0ul, out) == 2ul);
+    CHECK(out[0] == 0xd1c10005ul && out[1] == 0x040e0501ul);
+    /* vop3.s VI: v_mad_f32 v9, 0.5, v5, -v8 [09 00 c1 d1 f0 0a 22 84]. */
+    v9x_vi_vop3(V9X_VI_VOP3_MAD_F32, 9ul, 0xf0ul, V9X_VI_VGPR(5),
+                V9X_VI_VGPR(8), V9X_VI_NEG(2), out);
+    CHECK(out[0] == 0xd1c10009ul && out[1] == 0x84220af0ul);
+    /* vop3.s VI: v_cubeid_f32 v0, |-1|, |-1.0|, |1.0|
+     * [00 07 c4 d1 c1 e6 c9 03]. */
+    v9x_vi_vop3(V9X_VI_VOP3_CUBEID_F32, 0ul, 0xc1ul, 0xf3ul, 0xf2ul,
+                V9X_VI_ABS(0) | V9X_VI_ABS(1) | V9X_VI_ABS(2), out);
+    CHECK(out[0] == 0xd1c40700ul && out[1] == 0x03c9e6c1ul);
+    /* gfx8_vop3.txt: v_cubesc/tc/ma_f32 v5, v1, v2, v3 [05 00 c5|c6|c7
+     * d1 01 05 0e 04]. */
+    v9x_vi_vop3(V9X_VI_VOP3_CUBESC_F32, 5ul, V9X_VI_VGPR(1), V9X_VI_VGPR(2),
+                V9X_VI_VGPR(3), 0ul, out);
+    CHECK(out[0] == 0xd1c50005ul && out[1] == 0x040e0501ul);
+    v9x_vi_vop3(V9X_VI_VOP3_CUBETC_F32, 5ul, V9X_VI_VGPR(1), V9X_VI_VGPR(2),
+                V9X_VI_VGPR(3), 0ul, out);
+    CHECK(out[0] == 0xd1c60005ul);
+    v9x_vi_vop3(V9X_VI_VOP3_CUBEMA_F32, 5ul, V9X_VI_VGPR(1), V9X_VI_VGPR(2),
+                V9X_VI_VGPR(3), 0ul, out);
+    CHECK(out[0] == 0xd1c70005ul);
+    /* gfx8_vop3.txt: v_min_f32_e64 v5, v1, v2 [05 00 0a d1 01 05 02 00];
+     * v_rcp_f32_e64 v5, v1 [05 00 62 d1 01 01 00 00]. */
+    v9x_vi_vop3(V9X_VI_VOP3_FROM_VOP2(V9X_VI_VOP2_MIN_F32), 5ul,
+                V9X_VI_VGPR(1), V9X_VI_VGPR(2), 0ul, 0ul, out);
+    CHECK(out[0] == 0xd10a0005ul && out[1] == 0x00020501ul);
+    v9x_vi_vop3(V9X_VI_VOP3_FROM_VOP1(V9X_VI_VOP1_RCP_F32), 5ul,
+                V9X_VI_VGPR(1), 0ul, 0ul, 0ul, out);
+    CHECK(out[0] == 0xd1620005ul && out[1] == 0x00000101ul);
+    /* vop3.s VI: v_fract_f32_e64 v1, v2 clamp div:2
+     * [01 80 5b d1 02 01 00 18]; v_mac_f32_e64 v0, v1, v2 mul:2
+     * [00 00 16 d1 01 05 02 08]. fract is VOP1 1Bh. */
+    v9x_vi_vop3(V9X_VI_VOP3_FROM_VOP1(0x1bul), 1ul, V9X_VI_VGPR(2), 0ul, 0ul,
+                V9X_VI_CLAMP | V9X_VI_OMOD_D2, out);
+    CHECK(out[0] == 0xd15b8001ul && out[1] == 0x18000102ul);
+    v9x_vi_vop3(V9X_VI_VOP3_FROM_VOP2(V9X_VI_VOP2_MAC_F32), 0ul,
+                V9X_VI_VGPR(1), V9X_VI_VGPR(2), 0ul, V9X_VI_OMOD_X2, out);
+    CHECK(out[0] == 0xd1160000ul && out[1] == 0x08020501ul);
+    /* vop3.s VI: v_cmp_lt_f32_e64 s[2:3], v4, -v6
+     * [02 00 41 d0 04 0d 02 40]. */
+    v9x_vi_vop3(V9X_VI_VOPC_CMP_LT_F32, 2ul, V9X_VI_VGPR(4), V9X_VI_VGPR(6),
+                0ul, V9X_VI_NEG(1), out);
+    CHECK(out[0] == 0xd0410002ul && out[1] == 0x40020d04ul);
+    /* gfx8_vop3.txt: v_cndmask_b32_e64 v5, v1, v2, s[6:7]
+     * [05 00 00 d1 01 05 1a 00]. */
+    v9x_vi_vop3(V9X_VI_VOP3_FROM_VOP2(V9X_VI_VOP2_CNDMASK_B32), 5ul,
+                V9X_VI_VGPR(1), V9X_VI_VGPR(2), 6ul, 0ul, out);
+    CHECK(out[0] == 0xd1000005ul && out[1] == 0x001a0501ul);
+
+    /* gfx8_asm_smem.s: s_load_dwordx4 s[20:23], s[2:3], 0x7ffff
+     * [01 05 0a c0 ff ff 07 00], x8 [.. 0e c0 ..]: the first dword is
+     * checked with an offset SMRD can hold; 7FFFFh itself is refused. */
+    CHECK(v9x_vi_s_load(4ul, 20ul, 2ul, 0x10ul, out) == 2ul);
+    CHECK(out[0] == 0xc00a0501ul && out[1] == 0x10ul);
+    CHECK(v9x_vi_s_load(8ul, 20ul, 2ul, 0ul, out) == 2ul);
+    CHECK(out[0] == 0xc00e0501ul && out[1] == 0ul);
+    CHECK(v9x_vi_s_load(2ul, 20ul, 2ul, 0ul, out) == 2ul);
+    CHECK(out[0] == 0xc0060501ul);
+    CHECK(v9x_vi_s_load(4ul, 20ul, 2ul, 0x7fffful, out) == 0ul);
+    CHECK(v9x_vi_s_load(4ul, 20ul, 2ul, 0x402ul, out) == 0ul);
+    CHECK(v9x_vi_s_load(4ul, 20ul, 3ul, 0ul, out) == 0ul);
+    CHECK(v9x_vi_s_load(16ul, 20ul, 2ul, 0ul, out) == 0ul);
+}
+
 /* The two shaders word for word, as assembled by hand from those rules. */
 static void test_shaders(void)
 {
@@ -1416,6 +1501,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     failures = 0u;
     test_gpu_init();
     test_encodings();
+    test_ps11_encodings();
     test_shaders();
     test_clear_state();
     test_start();

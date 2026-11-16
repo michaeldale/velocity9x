@@ -425,6 +425,11 @@ unsigned int v9x_run_cik_gpu_tests(void);
  * and solid-rectangle streams. */
 unsigned int v9x_run_vi_3d_tests(void);
 
+/* tests\host\test_gcn_sim.c: the GCN 3 one-pixel model against the
+ * Direct3D pixel shaders that draw right on the cards, and each pixel
+ * shader 1.1 instruction alone. */
+unsigned int v9x_run_gcn_sim_tests(void);
+
 /* tests\host\test_eg_shader.c: Evergreen shader words, held to Linux 3.9's
  * blit shaders bit for bit, and the Gouraud shaders' fields. */
 unsigned int v9x_run_eg_shader_tests(void);
@@ -1640,6 +1645,7 @@ int main(int argc, char **argv)
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();
     failures += v9x_run_vi_3d_tests();
+    failures += v9x_run_gcn_sim_tests();
     failures += v9x_run_eg_shader_tests();
     failures += v9x_run_cm_shader_tests();
     failures += v9x_run_cm_3d_tests();

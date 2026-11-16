@@ -16,10 +16,16 @@
  *   VOP2    opcodes renumbered (bits 30:25).
  *   VOPC    opcodes renumbered (bits 24:17).
  *   VOP3    opcode in 25:17 (9 bits) rather than 25:16, clamp at 11 rather
- *           than 15; abs, vdst and the second dword unchanged.
+ *           than 15; abs, vdst and the second dword (neg, omod, sources)
+ *           unchanged. A promoted VOP1 opcode sits at 180h + op rather
+ *           than 140h + op; VOPC and VOP2 ones keep their bases.
+ *   VOP1    v_fract_f32 and v_rcp_f32 renumbered (bits 16:9).
  *   SOP1    s_mov_b32, s_mov_b64 and s_wqm_b64 renumbered (bits 15:8).
  *   FLAT    flat_load_dwordx4 is 0Eh, not 17h (bits 24:18).
- *   VOP1, SOPP and MIMG's image_sample: unchanged.
+ *   SMEM    s_load_dwordx2/x4/x8, two dwords, becomes the one-dword SMRD
+ *           (byte offset to dwords) and an s_nop, so lengths still hold.
+ *           An offset SMRD cannot hold, or GLC, is refused.
+ *   SOPP and MIMG's image_sample: unchanged.
  *
  * Only the opcodes the shaders use are mapped. Anything else, and any
  * other format, refuses the whole program, so a shader can never reach
