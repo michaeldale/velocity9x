@@ -93,7 +93,13 @@ $publishers = @(
     @{ Source = 'si_cp_win32.c'; Name = 'v9xsicp'; Entry = '_V9xOlandCpEntry@0'
        Description = 'Velocity9x Oland CP bring-up probe'
        Extra = @('src\chipsets\ati\si\si_gpu_init.c',
-                 'src\chipsets\ati\si\si_gpu_init_tables.c') }
+                 'src\chipsets\ati\si\si_gpu_init_tables.c',
+                 'src\chipsets\ati\si\si_clear_state.c',
+                 'src\chipsets\ati\si\si_3d.c',
+                 'src\chipsets\ati\vi\vi_3d.c',
+                 'src\chipsets\ati\vi\vi_clear_state.c',
+                 'src\chipsets\ati\vi\vi_shader.c',
+                 'src\chipsets\ati\cik\cik_shader.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

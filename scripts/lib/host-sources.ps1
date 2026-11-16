@@ -186,6 +186,9 @@ function Get-V9xHostSourceNames {
         # and no I/O.
         'src\chipsets\ati\si\si_gpu_init.c',
         'src\chipsets\ati\si\si_gpu_init_tables.c',
+        # Oland: the SI clear state and the start of the 3D stream.
+        'src\chipsets\ati\si\si_clear_state.c',
+        'src\chipsets\ati\si\si_3d.c',
         # Mullins: GCN 3 shader words rewritten as GCN 2, no I/O.
         'src\chipsets\ati\cik\cik_shader.c',
         # Mullins: gpu_init's list and the CI clear state, data and no I/O.

@@ -7,7 +7,12 @@ test). Step 2's first half done: Oland's gpu_init list runs and reads
 back, except `GB_ADDR_CONFIG` and `DMA0_TILING_CONFIG`, which read back
 partly
 ([`2026-11-16-oland-gpu-init.md`](../decisions/2026-11-16-oland-gpu-init.md)).
-Next: the clear state and the first draws, with step 3's shaders.
+The first draw is done: SI's clear state, vi_3d.c's builder in a GFX6
+mode and the CI shader words (FLAT refused) drew a solid rectangle
+exactly on the first run
+([`2026-11-16-oland-first-rectangle.md`](../decisions/2026-11-16-oland-first-rectangle.md)).
+Next: a FLAT-free vertex fetch for the TL vertex shader, then Gouraud,
+texture and depth draws.
 
 Phase 6 of [`ati-oland-gfx6.md`](ati-oland-gfx6.md): the graphics
 command processor and Direct3D on W9QI0DAD's Oland XT (`1002:6610`,

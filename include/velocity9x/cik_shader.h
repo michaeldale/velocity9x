@@ -40,4 +40,13 @@
 v9x_status v9x_cik_shader_from_vi(v9x_u32 *words, v9x_u32 count,
                                   v9x_u32 *failed_at);
 
+/*
+ * The same translation for Oland (GFX6, Southern Islands). Every encoding
+ * and opcode above is LLVM's shared gfx6_gfx7 one, so SI takes CI's words,
+ * with one exception: FLAT is CI's, and SI has no such format. A program
+ * with a FLAT instruction is refused (V9X_STATUS_UNSUPPORTED at its index).
+ */
+v9x_status v9x_si_shader_from_vi(v9x_u32 *words, v9x_u32 count,
+                                 v9x_u32 *failed_at);
+
 #endif

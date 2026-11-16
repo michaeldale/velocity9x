@@ -213,6 +213,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-16 Oland XT (1002:6610) on W9QI0DAD: a read-only survey, the ati row bound, and SI's DMA engine drawing fills, copies and flips, byte-exact at 16 and 32 bpp](2026-11-16-oland-first-survey.md)
 - [2026-11-16 Oland: the graphics CP runs and passes Linux's ring test, first try (RLC through SI's indexed port, ME_INITIALIZE, clear-state preamble)](2026-11-16-oland-cp-ring-test.md)
 - [2026-11-16 Oland: Linux's gpu_init runs and reads back (32 tile modes exact), except GB_ADDR_CONFIG and DMA0_TILING_CONFIG, which read back partly](2026-11-16-oland-gpu-init.md)
+- [2026-11-16 Oland: the first 3D draw, a solid rectangle exact on the first run (SI clear state, vi_3d.c in a GFX6 mode, CI shader words without FLAT)](2026-11-16-oland-first-rectangle.md)
 
 ## Matrox
 

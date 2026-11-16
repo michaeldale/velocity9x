@@ -118,7 +118,7 @@ static v9x_u32 cik_map(const struct cik_op_map *table, v9x_u32 entries,
  * included), or 0 if it cannot be translated. remaining is how many
  * words are left from at.
  */
-static v9x_u32 cik_one(v9x_u32 *words, v9x_u32 remaining)
+static v9x_u32 cik_one(v9x_u32 *words, v9x_u32 remaining, int gfx6)
 {
     v9x_u32 word = words[0];
     v9x_u32 op;
@@ -210,7 +210,12 @@ static v9x_u32 cik_one(v9x_u32 *words, v9x_u32 remaining)
         return 2ul;
     }
 
+    /* FLAT is CI's: GFX6 has no such encoding, so a program using it is
+     * refused for SI rather than sent as something else. */
     if ((word & CIK_FORMAT6_MASK) == CIK_FLAT_PREFIX) {
+        if (gfx6) {
+            return 0ul;
+        }
         op = (word >> CIK_FLAT_OP_SHIFT) & CIK_FLAT_OP_MASK;
         ci = cik_map(cik_flat, CIK_COUNT(cik_flat), op);
         if (ci == 0xfffffffful) {
@@ -231,8 +236,8 @@ static v9x_u32 cik_one(v9x_u32 *words, v9x_u32 remaining)
     return 0ul;
 }
 
-v9x_status v9x_cik_shader_from_vi(v9x_u32 *words, v9x_u32 count,
-                                  v9x_u32 *failed_at)
+static v9x_status cik_translate(v9x_u32 *words, v9x_u32 count,
+                                v9x_u32 *failed_at, int gfx6)
 {
     v9x_u32 at = 0ul;
     v9x_u32 length;
@@ -241,7 +246,7 @@ v9x_status v9x_cik_shader_from_vi(v9x_u32 *words, v9x_u32 count,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     while (at < count) {
-        length = cik_one(words + at, count - at);
+        length = cik_one(words + at, count - at, gfx6);
         if (length == 0ul || length > count - at) {
             if (failed_at != 0) {
                 *failed_at = at;
@@ -251,4 +256,16 @@ v9x_status v9x_cik_shader_from_vi(v9x_u32 *words, v9x_u32 count,
         at += length;
     }
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_cik_shader_from_vi(v9x_u32 *words, v9x_u32 count,
+                                  v9x_u32 *failed_at)
+{
+    return cik_translate(words, count, failed_at, 0);
+}
+
+v9x_status v9x_si_shader_from_vi(v9x_u32 *words, v9x_u32 count,
+                                 v9x_u32 *failed_at)
+{
+    return cik_translate(words, count, failed_at, 1);
 }

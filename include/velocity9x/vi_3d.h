@@ -30,6 +30,9 @@
 #define V9X_VI_P3_SET_UCONFIG_REG   0x79ul
 #define V9X_VI_CONTEXT_REG_START    0xa000ul
 #define V9X_VI_SH_REG_START         0x2c00ul
+/* GFX6's SET_CONFIG_REG (sid.h): opcode 68h, config space from 2000h. */
+#define V9X_VI_P3_SET_CONFIG_REG    0x68ul
+#define V9X_VI_CONFIG_REG_START     0x2000ul
 #define V9X_VI_UCONFIG_REG_START    0xc000ul
 
 /* v4.9's gfx ring NOP, PACKET3(NOP, 3FFFh): one dword. */
@@ -41,11 +44,24 @@
 #define V9X_VI_START_DWORDS         (2ul + 3ul + 7ul * 2ul + 885ul + 4ul + \
                                      2ul + 2ul + 4ul)
 
+/*
+ * gfx6 non-zero builds Southern Islands (Oland) streams with the same
+ * builders. Every context register the builders write has the same index
+ * on GFX6 (gfx_6_0_d.h); what differs is switched on this flag:
+ * - no SPI_SHADER_PGM_RSRC3_* or SPI_SHADER_LATE_ALLOC_VS, so a stage's
+ *   SH run starts at its PGM_LO;
+ * - VGT_PRIMITIVE_TYPE is a config register (2256h), set by
+ *   SET_CONFIG_REG, which GFX6 has in place of SET_UCONFIG_REG;
+ * - SURFACE_SYNC has no TC write-back bit, and EVENT_WRITE_EOP's event
+ *   dword carries only the event and its index (gfx_v6_0_ring_emit_fence).
+ * v9x_vi_pm4_init clears it; a caller sets it after init.
+ */
 struct v9x_vi_pm4 {
     v9x_u32 *dwords;
     v9x_u32 count;
     v9x_u32 capacity;
     v9x_u32 overflow;
+    v9x_u32 gfx6;
 };
 
 void v9x_vi_pm4_init(struct v9x_vi_pm4 *stream, v9x_u32 *dwords,
@@ -58,6 +74,9 @@ void v9x_vi_pm4_set_sh(struct v9x_vi_pm4 *stream, v9x_u32 reg,
                        const v9x_u32 *values, v9x_u32 count);
 void v9x_vi_pm4_set_uconfig(struct v9x_vi_pm4 *stream, v9x_u32 reg,
                             v9x_u32 value);
+/* SET_CONFIG_REG (GFX6), reg a dword index from 2000h. */
+void v9x_vi_pm4_set_config(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                           v9x_u32 value);
 /* NOPs to the ring's 16-dword boundary. */
 void v9x_vi_pm4_pad(struct v9x_vi_pm4 *stream);
 

@@ -44,6 +44,18 @@
  * decide whether setup_tcc (left out of the list) would write anything.
  * Without /gpuinit nothing of this runs.
  *
+ * /rect (which implies /gpuinit) is the first draw, V9XCK3D's rectangle
+ * for SI: the second submission is the whole of cp_gfx_start's second
+ * half with si_cs_data (si_3d.c) instead of the bare preamble, and a third
+ * draws a solid rectangle (8,4)-(40,12) into a 64x16 linear-aligned 32 bpp
+ * target (COLOR_8_8_8_8, tile index 8) with vi_3d.c's builder in its GFX6
+ * mode and vi_shader.c's solid shaders rewritten for SI by
+ * v9x_si_shader_from_vi, then SI's fence. The probe waits for the fence,
+ * reads the target back and checks every pixel: one value inside the
+ * rectangle, the guard everywhere else. Colour R 1.0, G 0.5, B 0.25,
+ * A 0.75, four different bytes, so the order shows. No probe markers:
+ * those shaders store through FLAT, which SI does not have.
+ *
  * SICP.VXD executes the op lists built here and refuses anything outside
  * its allow-lists. Writes C:\V9XDIAG\V9XSICP.INI. The microcode is
  * PFP.BIN, CE.BIN, ME.BIN and RLC.BIN in the working directory,
@@ -78,6 +90,10 @@
 
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/si_gpu_init.h"
+#include "velocity9x/si_3d.h"
+#include "velocity9x/vi_3d.h"
+#include "velocity9x/vi_shader.h"
+#include "velocity9x/cik_shader.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -108,6 +124,7 @@
 #define V9X_OP_MMIO_RMW     13ul
 #define V9X_OP_UCODE        14ul
 #define V9X_OP_VRAM_DATA    15ul
+#define V9X_OP_WAIT_VRAM    7ul
 #define V9X_OP_MMIO_TABLE   16ul
 
 /* v9x_si_gpu_init_ops's list, and what /gpuinit reads back afterwards. */
@@ -240,7 +257,23 @@
 #define V9X_RING                0x0000ul
 #define V9X_RING_LOG2_QWORDS    11ul
 #define V9X_RING_ALIGN_DWORDS   256ul
-#define V9X_RING_MAX_DWORDS     1024ul
+#define V9X_RING_MAX_DWORDS     4096ul
+/* /rect's layout, V9XCK3D's: shaders, fence and target in the window. */
+#define V9X_VS                  0x4000ul
+#define V9X_PS                  0x4100ul
+#define V9X_FENCE               0x8100ul
+#define V9X_TARGET              0x9000ul
+#define V9X_TARGET_PITCH        64ul
+#define V9X_TARGET_HEIGHT       16ul
+#define V9X_TARGET_DWORDS       (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT)
+#define V9X_RECT_LEFT           8ul
+#define V9X_RECT_TOP            4ul
+#define V9X_RECT_RIGHT          40ul
+#define V9X_RECT_BOTTOM         12ul
+#define V9X_GUARD_VALUE         0x5a5a5a5aul
+#define V9X_FENCE_VALUE         0x3d3d3d3dul
+#define V9X_FENCE_WAIT_LIMIT    20000000ul
+#define V9X_SHADER_MAX          128ul
 #define V9X_WRITEBACK           0x8000ul
 #define V9X_CANARY              0xc000ul
 #define V9X_CANARY_DWORDS       16ul
@@ -359,6 +392,16 @@ static DWORD v9x_at_check;
 static DWORD v9x_at_early_addr;
 static DWORD v9x_at_reset_stat;
 static DWORD v9x_at_rlc_addr;
+static DWORD v9x_at_wait_3;
+static DWORD v9x_at_rptr_3;
+static DWORD v9x_at_grbm_3;
+static DWORD v9x_rect_status;
+static DWORD v9x_shader_status;
+
+/* R 1.0, G 0.5, B 0.25, A 0.75, as V9XCK3D. */
+static const DWORD v9x_colour[4] = {
+    0x3f800000ul, 0x3f000000ul, 0x3e800000ul, 0x3f400000ul
+};
 
 /* The four images, in the order the data array holds them. */
 struct v9x_sicp_image {
@@ -683,22 +726,110 @@ static DWORD v9x_expected(DWORD offset, int *known)
 }
 
 /* Call 3's op list. lo/hi are the scratch window's GPU address. */
-static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init)
+/* A builder's packets on the end of the ring buffer. */
+static void v9x_ring_stream_begin(struct v9x_vi_pm4 *stream)
 {
+    v9x_vi_pm4_init(stream, v9x_ring + v9x_ring_count,
+                    V9X_RING_MAX_DWORDS - v9x_ring_count);
+    stream->gfx6 = 1ul;
+}
+
+static void v9x_ring_stream_end(const struct v9x_vi_pm4 *stream)
+{
+    v9x_ring_count += stream->count;
+    if (stream->overflow) {
+        v9x_ring_count = V9X_RING_MAX_DWORDS + 1ul;
+    }
+}
+
+/* The solid rectangle's submission: vi_3d.c in its GFX6 mode. */
+static void v9x_ring_rect(DWORD lo, DWORD hi)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_solid_rect rect;
+    BYTE *bytes = (BYTE *)&rect;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(rect); ++index) {
+        bytes[index] = 0u;
+    }
+    for (index = 0ul; index < 4ul; ++index) {
+        rect.color[index] = v9x_colour[index];
+    }
+    rect.target_low = lo + V9X_TARGET;
+    rect.target_high = hi;
+    rect.pitch_pixels = V9X_TARGET_PITCH;
+    rect.height = V9X_TARGET_HEIGHT;
+    rect.format = V9X_VI_CB_FORMAT_8_8_8_8;
+    rect.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    rect.vs_low = lo + V9X_VS;
+    rect.ps_low = lo + V9X_PS;
+    rect.shader_high = hi;
+    rect.left = V9X_RECT_LEFT;
+    rect.top = V9X_RECT_TOP;
+    rect.right = V9X_RECT_RIGHT;
+    rect.bottom = V9X_RECT_BOTTOM;
+    rect.fence_low = lo + V9X_FENCE;
+    rect.fence_high = hi;
+    rect.fence_value = V9X_FENCE_VALUE;
+    v9x_ring_stream_begin(&stream);
+    v9x_rect_status = (DWORD)v9x_vi_3d_solid_rect(&stream, &rect);
+    v9x_ring_stream_end(&stream);
+}
+
+/* A vi_shader.c program, rewritten for SI, into the data array; returns
+ * its first data dword, its length in *count. */
+static DWORD v9x_shader_data(DWORD (*build)(DWORD *), DWORD *count)
+{
+    DWORD words[V9X_SHADER_MAX];
+    DWORD first = v9x_data_dwords;
+    DWORD failed = 0ul;
+    DWORD index;
+
+    *count = build(words);
+    if ((DWORD)v9x_si_shader_from_vi(words, *count, &failed) != 0ul) {
+        v9x_shader_status = 0x80000000ul | failed;
+    }
+    for (index = 0ul; index < *count &&
+                      v9x_data_dwords < V9X_SICP_DATA_MAX; ++index) {
+        v9x_data[v9x_data_dwords++] = words[index];
+    }
+    return first;
+}
+
+static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init,
+                          int with_rect)
+{
+    struct v9x_vi_pm4 stream;
     DWORD wptr_0;
     DWORD wptr_1;
     DWORD wptr_2;
+    DWORD wptr_3 = 0ul;
     DWORD rb_cntl;
     DWORD index;
+    DWORD vs_first = 0ul;
+    DWORD vs_count = 0ul;
+    DWORD ps_first = 0ul;
+    DWORD ps_count = 0ul;
 
     v9x_ring_count = 0ul;
     v9x_ring_start();
     wptr_0 = v9x_ring_close();
     v9x_ring_scratch(V9X_SCRATCH_TEST);
     wptr_1 = v9x_ring_close();
-    v9x_ring_preamble();
+    if (with_rect) {
+        v9x_ring_stream_begin(&stream);
+        v9x_si_3d_start(&stream);
+        v9x_ring_stream_end(&stream);
+    } else {
+        v9x_ring_preamble();
+    }
     v9x_ring_scratch(V9X_SCRATCH_PREAMBLE);
     wptr_2 = v9x_ring_close();
+    if (with_rect) {
+        v9x_ring_rect(lo, hi);
+        wptr_3 = v9x_ring_close();
+    }
 
     /* gfx_v6_0_cp_gfx_resume's CP_RB0_CNTL for a 16 KiB ring: RB_BUFSZ, and
      * RB_BLKSZ log2 of a 4 KiB GPU page in quadwords (9). */
@@ -715,6 +846,16 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init)
         for (index = 0ul; index < v9x_ring_count; ++index) {
             v9x_data[v9x_data_dwords++] = v9x_ring[index];
         }
+    }
+    /* The shaders, and the target filled with the guard; the fence is
+     * the window's 0. */
+    if (with_rect) {
+        vs_first = v9x_shader_data(v9x_vi_shader_solid_vs, &vs_count);
+        ps_first = v9x_shader_data(v9x_vi_shader_solid_ps, &ps_count);
+        v9x_op(V9X_OP_VRAM_DATA, V9X_VS, vs_first, vs_count);
+        v9x_op(V9X_OP_VRAM_DATA, V9X_PS, ps_first, ps_count);
+        v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS,
+               V9X_GUARD_VALUE);
     }
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_SCRATCH_REG0, V9X_SCRATCH_BEFORE, 0ul);
 
@@ -837,6 +978,19 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init)
     v9x_at_grbm_2 = v9x_op(V9X_OP_MMIO_READ, V9X_SI_GRBM_STATUS, 0ul, 0ul);
     v9x_at_scratch_2 = v9x_op(V9X_OP_MMIO_READ, V9X_SI_SCRATCH_REG0, 0ul, 0ul);
 
+    /* The rectangle, then its fence; HDP's read cache is invalidated
+     * before the CPU polls what the GPU writes. */
+    if (with_rect) {
+        v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_CP_RB0_WPTR, wptr_3, 0ul);
+        v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_HDP_DEBUG0, 1ul, 0ul);
+        v9x_at_wait_3 = v9x_op(V9X_OP_WAIT_VRAM, V9X_FENCE, V9X_FENCE_VALUE,
+                               V9X_FENCE_WAIT_LIMIT);
+        v9x_at_rptr_3 = v9x_op(V9X_OP_MMIO_READ, V9X_SI_CP_RB0_RPTR, 0ul,
+                               0ul);
+        v9x_at_grbm_3 = v9x_op(V9X_OP_MMIO_READ, V9X_SI_GRBM_STATUS, 0ul,
+                               0ul);
+    }
+
     /* What gpu_init left, read while the CP still runs. */
     v9x_at_check = v9x_request.count;
     if (with_gpu_init) {
@@ -866,6 +1020,10 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init)
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_HDP_MEM_FLUSH, 1ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_HDP_DEBUG0, 1ul, 0ul);
     v9x_op(V9X_OP_VRAM_BLOCK, V9X_WRITEBACK, 1ul, 0ul);
+    if (with_rect) {
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_FENCE, 1ul, 0ul);
+        v9x_op(V9X_OP_VRAM_BLOCK, V9X_TARGET, V9X_TARGET_DWORDS, 0ul);
+    }
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
     v9x_at_after_extra = v9x_request.count;
@@ -878,7 +1036,62 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init)
     v9x_key("Run", "Wptr0", wptr_0);
     v9x_key("Run", "Wptr1", wptr_1);
     v9x_key("Run", "Wptr2", wptr_2);
+    if (with_rect) {
+        v9x_key("Run", "Wptr3", wptr_3);
+        v9x_key("Run", "RectStatus", v9x_rect_status);
+        v9x_key("Run", "ShaderStatus", v9x_shader_status);
+        v9x_number("Run", "VsDwords", vs_count);
+        v9x_number("Run", "PsDwords", ps_count);
+    }
     v9x_key("Run", "RbCntl", rb_cntl);
+}
+
+/* The target, against the rectangle: every pixel inside one value, every
+ * pixel outside still the guard. The value inside is reported, not
+ * judged: which byte each channel lands in is what the run shows.
+ * V9XCK3D's check. */
+static void v9x_verify(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD inside_value;
+    DWORD inside_other = 0ul;
+    DWORD outside_changed = 0ul;
+    DWORD pixel;
+
+    inside_value = target[V9X_RECT_TOP * V9X_TARGET_PITCH + V9X_RECT_LEFT];
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            if (x >= V9X_RECT_LEFT && x < V9X_RECT_RIGHT &&
+                y >= V9X_RECT_TOP && y < V9X_RECT_BOTTOM) {
+                if (pixel != inside_value) {
+                    ++inside_other;
+                }
+            } else if (pixel != V9X_GUARD_VALUE) {
+                ++outside_changed;
+            }
+        }
+    }
+    v9x_key("Result", "InsidePixel", inside_value);
+    v9x_number("Result", "InsideOther", inside_other);
+    v9x_number("Result", "OutsideChanged", outside_changed);
+    v9x_pass("Drew", inside_value != V9X_GUARD_VALUE && inside_other == 0ul &&
+                     outside_changed == 0ul);
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        char key[16];
+        char text[V9X_TARGET_PITCH + 1u];
+
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            text[x] = pixel == V9X_GUARD_VALUE ? '.' :
+                      (pixel == inside_value ? '#' : '?');
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        v9x_text("Map", key, text);
+    }
 }
 
 static int v9x_switch_given(const char *switch_text)
@@ -914,6 +1127,7 @@ void __stdcall V9xOlandCpEntry(void)
     DWORD lo;
     DWORD hi;
     int with_gpu_init;
+    int with_rect;
     const DWORD *r;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
@@ -1005,7 +1219,8 @@ void __stdcall V9xOlandCpEntry(void)
     }
 
     /* Call 3: the run. */
-    with_gpu_init = v9x_switch_given("/gpuinit");
+    with_rect = v9x_switch_given("/rect");
+    with_gpu_init = with_rect || v9x_switch_given("/gpuinit");
     v9x_gpu_count = 0ul;
     if (with_gpu_init) {
         v9x_gpu_count = v9x_si_gpu_init_ops(v9x_gpu_ops, V9X_GPU_OPS_MAX);
@@ -1015,7 +1230,11 @@ void __stdcall V9xOlandCpEntry(void)
             v9x_finish("GPU-INIT-TOO-LONG", 8u);
         }
     }
-    v9x_build_run(lo, hi, with_gpu_init);
+    v9x_build_run(lo, hi, with_gpu_init, with_rect);
+    if (with_rect && (v9x_rect_status != 0ul || v9x_shader_status != 0ul)) {
+        CloseHandle(device);
+        v9x_finish("RECT-NOT-BUILT", 9u);
+    }
     if (v9x_ring_count > V9X_RING_MAX_DWORDS ||
         v9x_request.count > V9X_SICP_OP_MAX) {
         CloseHandle(device);
@@ -1091,6 +1310,14 @@ void __stdcall V9xOlandCpEntry(void)
         v9x_key("GpuInit", "RlcStartedGbAddrConfig", r[v9x_at_rlc_addr]);
         v9x_number("GpuInit", "Mismatches", mismatches);
         v9x_pass("GpuInit", mismatches == 0ul);
+    }
+    if (with_rect) {
+        v9x_key("During", "Wait3", r[v9x_at_wait_3]);
+        v9x_key("During", "Rptr3", r[v9x_at_rptr_3]);
+        v9x_key("During", "GrbmStatus3", r[v9x_at_grbm_3]);
+        v9x_key("Result", "Fence", v9x_result.block[1]);
+        v9x_pass("FenceLanded", r[v9x_at_wait_3] != V9X_SICP_TIMEOUT);
+        v9x_verify(v9x_result.block + 2);
     }
     v9x_key("Result", "WritebackRptr", v9x_result.block[0]);
     v9x_pass("RingTest", r[v9x_at_wait_1] != V9X_SICP_TIMEOUT);

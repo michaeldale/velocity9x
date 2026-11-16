@@ -124,6 +124,15 @@
  * SH_ICACHE_ACTION_ENA (29); the whole address range, vid.h's poll
  * interval. */
 #define VI_COHER_SHADER_CACHES      0x28c40000ul
+/* GFX6 (gfx_v6_0_ring_emit_fence): the same less TC_WB, which SI lacks. */
+#define VI_COHER_SHADER_CACHES_GFX6 0x28c00000ul
+/* GFX6's EVENT_WRITE_EOP event dword: CACHE_FLUSH_AND_INV_TS_EVENT (14h),
+ * EVENT_INDEX 5, no action bits; the caches go by SURFACE_SYNC first. */
+#define VI_EOP_FLUSH_EVENT_GFX6     0x00000514ul
+/* GFX6 VGT_PRIMITIVE_TYPE, a config register (gfx_6_0_d.h). */
+#define VI_VGT_PRIMITIVE_TYPE_GFX6  0x2256ul
+/* GFX6 CP_COHER_CNTL2 (sid.h 85E8h), a config register. */
+#define VI_CP_COHER_CNTL2_GFX6      0x217aul
 #define VI_COHER_SIZE_ALL           0xfffffffful
 #define VI_COHER_POLL_INTERVAL      0x0000000aul
 
@@ -196,6 +205,7 @@ void v9x_vi_pm4_init(struct v9x_vi_pm4 *stream, v9x_u32 *dwords,
     stream->count = 0ul;
     stream->capacity = capacity;
     stream->overflow = 0ul;
+    stream->gfx6 = 0ul;
 }
 
 void v9x_vi_pm4_put(struct v9x_vi_pm4 *stream, v9x_u32 value)
@@ -239,6 +249,13 @@ void v9x_vi_pm4_set_uconfig(struct v9x_vi_pm4 *stream, v9x_u32 reg,
 {
     v9x_vi_pm4_set(stream, V9X_VI_P3_SET_UCONFIG_REG,
                    V9X_VI_UCONFIG_REG_START, reg, &value, 1ul);
+}
+
+void v9x_vi_pm4_set_config(struct v9x_vi_pm4 *stream, v9x_u32 reg,
+                           v9x_u32 value)
+{
+    v9x_vi_pm4_set(stream, V9X_VI_P3_SET_CONFIG_REG,
+                   V9X_VI_CONFIG_REG_START, reg, &value, 1ul);
 }
 
 void v9x_vi_pm4_pad(struct v9x_vi_pm4 *stream)
@@ -338,8 +355,14 @@ static v9x_u32 v9x_vi_address_256(v9x_u32 low, v9x_u32 high)
  * earlier run's shaders. */
 static void v9x_vi_3d_cache_sync(struct v9x_vi_pm4 *stream)
 {
+    /* GFX6 clears CP_COHER_CNTL2 first, as gfx_v6_0_ring_emit_fence
+     * does ("flush read cache over gart"). */
+    if (stream->gfx6) {
+        v9x_vi_pm4_set_config(stream, VI_CP_COHER_CNTL2_GFX6, 0ul);
+    }
     v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
-    v9x_vi_pm4_put(stream, VI_COHER_SHADER_CACHES);
+    v9x_vi_pm4_put(stream, stream->gfx6 ? VI_COHER_SHADER_CACHES_GFX6 :
+                                          VI_COHER_SHADER_CACHES);
     v9x_vi_pm4_put(stream, VI_COHER_SIZE_ALL);
     v9x_vi_pm4_put(stream, 0ul);
     v9x_vi_pm4_put(stream, VI_COHER_POLL_INTERVAL);
@@ -472,7 +495,9 @@ static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
 
 /* A stage's program registers from RSRC3 on: PGM_LO is the address >> 8,
  * PGM_HI what is above bit 39, nothing. The VS has LATE_ALLOC between
- * RSRC3 and PGM_LO. */
+ * RSRC3 and PGM_LO. GFX6 has neither, so its run starts at PGM_LO, the
+ * register after them; CU enables there are SPI_STATIC_THREAD_MGMT's,
+ * which gpu_init leaves on. */
 static void v9x_vi_3d_program(struct v9x_vi_pm4 *stream, v9x_u32 rsrc3_reg,
                               int vs, v9x_u32 low, v9x_u32 high,
                               v9x_u32 vgprs, v9x_u32 user_sgprs)
@@ -480,9 +505,13 @@ static void v9x_vi_3d_program(struct v9x_vi_pm4 *stream, v9x_u32 rsrc3_reg,
     v9x_u32 values[6];
     v9x_u32 count = 0ul;
 
-    values[count++] = VI_RSRC3_ALL_CUS;
-    if (vs) {
-        values[count++] = 0ul;
+    if (stream->gfx6) {
+        rsrc3_reg += vs ? 2ul : 1ul;
+    } else {
+        values[count++] = VI_RSRC3_ALL_CUS;
+        if (vs) {
+            values[count++] = 0ul;
+        }
     }
     values[count++] = v9x_vi_address_256(low, high);
     values[count++] = 0ul;
@@ -509,15 +538,25 @@ static void v9x_vi_3d_draw_and_fence(struct v9x_vi_pm4 *stream, v9x_u32 prim,
     values[2] = 0ul;
     v9x_vi_pm4_set_context(stream, VI_VGT_MAX_VTX_INDX, values, 3ul);
 
-    v9x_vi_pm4_set_uconfig(stream, VI_VGT_PRIMITIVE_TYPE, prim);
+    if (stream->gfx6) {
+        v9x_vi_pm4_set_config(stream, VI_VGT_PRIMITIVE_TYPE_GFX6, prim);
+    } else {
+        v9x_vi_pm4_set_uconfig(stream, VI_VGT_PRIMITIVE_TYPE, prim);
+    }
     v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_NUM_INSTANCES, 0ul));
     v9x_vi_pm4_put(stream, 1ul);
     v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
     v9x_vi_pm4_put(stream, count);
     v9x_vi_pm4_put(stream, VI_DI_SRC_SEL_AUTO_INDEX);
 
+    /* GFX6's fence, gfx_v6_0_ring_emit_fence: the caches by SURFACE_SYNC,
+     * then an event with no action bits of its own. */
+    if (stream->gfx6) {
+        v9x_vi_3d_cache_sync(stream);
+    }
     v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
-    v9x_vi_pm4_put(stream, VI_EOP_FLUSH_EVENT);
+    v9x_vi_pm4_put(stream, stream->gfx6 ? VI_EOP_FLUSH_EVENT_GFX6 :
+                                          VI_EOP_FLUSH_EVENT);
     v9x_vi_pm4_put(stream, fence_low & ~3ul);
     v9x_vi_pm4_put(stream, (fence_high & 0xfffful) | VI_EOP_DATA_SEL_32);
     v9x_vi_pm4_put(stream, fence_value);
