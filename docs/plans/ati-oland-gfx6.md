@@ -10,8 +10,9 @@ drew V9XDDP's fills and copies and the chip took every flip, with no
 timeouts, including after 32 VBE mode round trips. Phase 3's question
 is settled through the driver rather than a ring probe: V9XBLTX compared
 every byte after 1,053 fills and copies at each of 16 and 32 bpp (1,380
-on the engine), none wrong, so SI's copy counts bytes. Open: Phase 6.
-Record:
+on the engine), none wrong, so SI's copy counts bytes. Phase 6 has its
+own plan, [`ati-oland-gfx6-3d.md`](ati-oland-gfx6-3d.md); its first step
+(the CP's ring test) passed the same day. Record:
 [`2026-11-16-oland-first-survey.md`](../decisions/2026-11-16-oland-first-survey.md).
 
 Earlier (2026-11-12): desk work on branch `ati-oland` with no card.

@@ -211,6 +211,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-23 0.28.0 release checks: Rage 128 games, and the GMA 950 against 0.24.0's set](2026-10-23-0.28.0-release-checks-a8u4i5-netbook.md)
 - [2026-11-15 The Radeon HD 2400 Pro (RV610) joins the ati family: DirectDraw on its DMA engine, Direct3D and OpenGL through its CP, every probe passing](2026-11-15-rv610-hd2400pro-bring-up.md)
 - [2026-11-16 Oland XT (1002:6610) on W9QI0DAD: a read-only survey, the ati row bound, and SI's DMA engine drawing fills, copies and flips, byte-exact at 16 and 32 bpp](2026-11-16-oland-first-survey.md)
+- [2026-11-16 Oland: the graphics CP runs and passes Linux's ring test, first try (RLC through SI's indexed port, ME_INITIALIZE, clear-state preamble)](2026-11-16-oland-cp-ring-test.md)
 
 ## Matrox
 
