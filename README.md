@@ -35,12 +35,18 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.53.0
+## Current version: 0.53.1
 
-[Download](releases/0.53.0/README.md) ·
+[Download](releases/0.53.1/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 0.53.1:
+- **NVIDIA GeForce 210:** page flips. Before, frames were shown while
+  still being drawn (3DMark 2001 SE's Car Chase was mostly black or
+  half-drawn); on one card 16 of 16 sampled frames are now whole
+  ([record](docs/decisions/2026-11-16-gt218-flips-through-vga-crtc.md)).
 
 New in 0.53.0:
 - **ATI Radeon 9250 (RV280), `ati` package:** Direct3D, OpenGL and Glide
@@ -91,8 +97,12 @@ New in 0.53.0:
   command processor on a boot, the depth buffer can hold one constant
   value, so 3D draws in the wrong order until the next restart
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
-- **GeForce 210:** the screen cannot be flipped, so each Direct3D frame
-  is presented by a copy, whose cost is not measured. Not yet working: a
+- **GeForce 210:** page flips from 0.53.1; whether they tear has not been
+  checked. In 3DMark 2000's helicopter test trees pop in and out
+  ([issue](docs/issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md)),
+  not rerun since the flips, and in Quake 3 a wall texture can turn
+  into streaks ([issue](docs/issues/2026-11-16-gt218-quake3-wall-texture-streaks.md)).
+  Not yet working: a
   Lock of a depth buffer, 24-bit depth with stencil, cube maps, `texm3x3`
   shaders and some texture formats (3DMark 2001 SE leaves parts of its
   frames undrawn), and textured Glide draws (the Glide 2 probe's texture
@@ -267,7 +277,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
-| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only), GDI copies on the engine from logon from 0.53.0; no page flips, frames presented by a copy. 3DMark 2000. From 0.53.0, pixel shader 1.1 through the DirectX 8 interface and two texture stages in one pass (3DMark 2001 SE completes with parts of its frames not drawn), and OpenGL games (Quake 3). One tester's card through remote help; modes from the VBE. The Glide 2 probe's texture checks fail; 3DCIF not run |
+| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only), GDI copies on the engine from logon from 0.53.0; page flips from 0.53.1 (before, frames were presented by DirectDraw's fallback). 3DMark 2000. From 0.53.0, pixel shader 1.1 through the DirectX 8 interface and two texture stages in one pass (3DMark 2001 SE completes with parts of its frames not drawn), and OpenGL games (Quake 3). One tester's card through remote help; modes from the VBE. The Glide 2 probe's texture checks fail; 3DCIF not run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
 
@@ -347,7 +357,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Glide 2 probe only | Not run |
-| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI | Yes | Yes, with pixel shader 1.1 (0.53.0) | Yes (0.53.0) | No | Glide 2 probe fails textured draws | Not run |
+| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI, flips (0.53.1) | Yes | Yes, with pixel shader 1.1 (0.53.0) | Yes (0.53.0) | No | Glide 2 probe fails textured draws | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |

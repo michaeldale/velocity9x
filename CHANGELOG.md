@@ -4,7 +4,23 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.54.0 - not yet released
+## 0.53.1 - 2026-11-16
+
+- **`nvidia` package, GeForce 210: page flips.** Every Flip used to be
+  declined, and DirectDraw's fallback left frames on screen while they
+  were still being cleared and drawn: in 3DMark 2001 SE's Car Chase,
+  246 of 295 recorded frames were black or half-drawn
+  ([issue](docs/issues/2026-11-16-gt218-3dmark2001se-car-chase-cleared-frames-on-screen.md)).
+  The card scans out through its VGA emulation in the modes the VESA
+  BIOS sets, so a flip now writes the start address the way the card's
+  own BIOS does (CR0C, CR0D, CR35 and CR34, unlocked through CR3F),
+  measured on the card with the picture captured
+  ([record](docs/decisions/2026-11-16-gt218-flips-through-vga-crtc.md)).
+  On one card a 3DMark 2001 SE run flipped 9,336 times with none
+  declined, and 16 of 16 sampled Car Chase frames were whole. Not
+  measured: tearing, flips at 16 bpp, and whether the 3DMark 2000 tree
+  popping ([issue](docs/issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md))
+  had the same cause.
 
 ## 0.53.0 - 2026-11-16
 
