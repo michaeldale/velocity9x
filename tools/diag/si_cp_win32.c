@@ -289,6 +289,38 @@
 #define V9X_FLOAT_HALF          0x3f000000ul
 #define V9X_FLOAT_16            0x41800000ul
 #define V9X_FLOAT_64            0x42800000ul
+#define V9X_FLOAT_32            0x42000000ul
+#define V9X_FLOAT_QUARTER       0x3e800000ul
+#define V9X_FLOAT_THREE_QUARTERS 0x3f400000ul
+/* /depth, V9XCK3D's: a Z16 buffer the target's size cleared to 1.0, then
+ * three rectangles in one draw, LESS with writes: red over the whole
+ * target at z 0.5, green over the left half at 0.75 (behind it), blue
+ * over the right half at 0.25 (in front). Red left, blue right; the Z
+ * buffer 8000h in the left half's tiles, 4000h in the right's. The
+ * buffer is GFX6's 1D depth tile mode (4 on Oland): 8x8 tiles of 128
+ * bytes in rows, so whole tiles are checked and the order inside one
+ * does not matter. */
+#define V9X_DEPTH               0xd000ul
+#define V9X_DEPTH_DWORDS        (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT / 2ul)
+#define V9X_DEPTH_CLEAR         0xfffffffful
+#define V9X_DEPTH_VERTICES      18ul
+#define V9X_DEPTH_RED           0xffff0000ul
+#define V9X_DEPTH_GREEN         0xff00ff00ul
+#define V9X_DEPTH_BLUE          0xff0000fful
+#define V9X_Z16_HALF            0x8000ul
+#define V9X_Z16_QUARTER         0x4000ul
+#define V9X_Z16_TILE_DWORDS     32ul
+/* /texture and /modulate, V9XCK3D's: a 64x16 A8R8G8B8 texture, linear
+ * aligned (tile index 8, linear-aligned on Oland too), the VxD's pattern
+ * (texel n = seed + n x 9E3779B9h), mapped 1:1 onto the target with point
+ * sampling. /texture exports the texel; /modulate multiplies it by a
+ * D3DCOLOR of R FFh, G 80h, B 40h, A FFh. */
+#define V9X_TEXTURE             0xe000ul
+#define V9X_TEXTURE_DWORDS      (V9X_TARGET_PITCH * V9X_TARGET_HEIGHT)
+#define V9X_SEED_TEXTURE        0x7e57ab1eul
+#define V9X_WHITE               0xfffffffful
+#define V9X_MODULATE_COLOUR     0xffff8040ul
+#define V9X_TL_MAX_VERTICES     18ul
 #define V9X_WRITEBACK           0x8000ul
 #define V9X_CANARY              0xc000ul
 #define V9X_CANARY_DWORDS       16ul
@@ -413,6 +445,11 @@ static DWORD v9x_at_grbm_3;
 static DWORD v9x_rect_status;
 static DWORD v9x_shader_status;
 static int v9x_gouraud;
+static int v9x_texture;
+static int v9x_modulate;
+static int v9x_depth;
+static DWORD v9x_vertex_count;
+static DWORD v9x_vertices[V9X_TL_MAX_VERTICES * V9X_TL_DWORDS];
 
 /* R 1.0, G 0.5, B 0.25, A 0.75, as V9XCK3D. */
 static const DWORD v9x_colour[4] = {
@@ -808,20 +845,47 @@ static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD z,
 
 /* The target as two triangles, V9XCK3D's order: top-left, top-right,
  * bottom-left, then top-right, bottom-right, bottom-left. */
-static void v9x_gouraud_vertices(DWORD *out)
+/* A rectangle as two triangles; the left vertices take left, the right
+ * ones right; (u, v) runs (0, 0) to (1, 1) corner to corner. */
+static void v9x_tl_rect(DWORD *out, DWORD x0, DWORD y0, DWORD x1, DWORD y1,
+                        DWORD z, DWORD left, DWORD right)
 {
-    v9x_tl_vertex(out + 0, 0ul, 0ul, V9X_FLOAT_HALF, V9X_GOURAUD_LEFT,
-                  0ul, 0ul);
-    v9x_tl_vertex(out + 8, V9X_FLOAT_64, 0ul, V9X_FLOAT_HALF,
-                  V9X_GOURAUD_RIGHT, V9X_FLOAT_ONE, 0ul);
-    v9x_tl_vertex(out + 16, 0ul, V9X_FLOAT_16, V9X_FLOAT_HALF,
-                  V9X_GOURAUD_LEFT, 0ul, V9X_FLOAT_ONE);
-    v9x_tl_vertex(out + 24, V9X_FLOAT_64, 0ul, V9X_FLOAT_HALF,
-                  V9X_GOURAUD_RIGHT, V9X_FLOAT_ONE, 0ul);
-    v9x_tl_vertex(out + 32, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
-                  V9X_GOURAUD_RIGHT, V9X_FLOAT_ONE, V9X_FLOAT_ONE);
-    v9x_tl_vertex(out + 40, 0ul, V9X_FLOAT_16, V9X_FLOAT_HALF,
-                  V9X_GOURAUD_LEFT, 0ul, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 0, x0, y0, z, left, 0ul, 0ul);
+    v9x_tl_vertex(out + 8, x1, y0, z, right, V9X_FLOAT_ONE, 0ul);
+    v9x_tl_vertex(out + 16, x0, y1, z, left, 0ul, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 24, x1, y0, z, right, V9X_FLOAT_ONE, 0ul);
+    v9x_tl_vertex(out + 32, x1, y1, z, right, V9X_FLOAT_ONE, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 40, x0, y1, z, left, 0ul, V9X_FLOAT_ONE);
+}
+
+/* The TL draws' vertices, V9XCK3D's; sets v9x_vertex_count. */
+static void v9x_tl_vertices(DWORD *out)
+{
+    DWORD rect = V9X_GOURAUD_VERTICES * V9X_TL_DWORDS;
+    DWORD colour;
+
+    if (v9x_depth) {
+        v9x_tl_rect(out, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16,
+                    V9X_FLOAT_HALF, V9X_DEPTH_RED, V9X_DEPTH_RED);
+        v9x_tl_rect(out + rect, 0ul, 0ul, V9X_FLOAT_32, V9X_FLOAT_16,
+                    V9X_FLOAT_THREE_QUARTERS, V9X_DEPTH_GREEN,
+                    V9X_DEPTH_GREEN);
+        v9x_tl_rect(out + 2ul * rect, V9X_FLOAT_32, 0ul, V9X_FLOAT_64,
+                    V9X_FLOAT_16, V9X_FLOAT_QUARTER, V9X_DEPTH_BLUE,
+                    V9X_DEPTH_BLUE);
+        v9x_vertex_count = V9X_DEPTH_VERTICES;
+        return;
+    }
+    if (v9x_texture) {
+        colour = v9x_modulate ? V9X_MODULATE_COLOUR : V9X_WHITE;
+        v9x_tl_rect(out, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16,
+                    V9X_FLOAT_HALF, colour, colour);
+        v9x_vertex_count = V9X_GOURAUD_VERTICES;
+        return;
+    }
+    v9x_tl_rect(out, 0ul, 0ul, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                V9X_GOURAUD_LEFT, V9X_GOURAUD_RIGHT);
+    v9x_vertex_count = V9X_GOURAUD_VERTICES;
 }
 
 /* The Gouraud submission: vi_3d.c's TL draw in its GFX6 mode, whose VS
@@ -845,12 +909,30 @@ static void v9x_ring_gouraud(DWORD lo, DWORD hi)
     draw.vs_low = lo + V9X_VS;
     draw.ps_low = lo + V9X_PS;
     draw.shader_high = hi;
+    v9x_tl_vertices(v9x_vertices);
     draw.vertex_low = lo + V9X_VERTICES;
     draw.vertex_high = hi;
-    draw.vertex_count = V9X_GOURAUD_VERTICES;
+    draw.vertex_count = v9x_vertex_count;
     draw.fence_low = lo + V9X_FENCE;
     draw.fence_high = hi;
     draw.fence_value = V9X_FENCE_VALUE;
+    /* /depth: Z16 in GFX6's 1D depth tile mode, LESS with writes. */
+    draw.depth_low = v9x_depth ? lo + V9X_DEPTH : 0ul;
+    draw.depth_high = hi;
+    draw.depth_func = V9X_VI_ZFUNC_LESS;
+    draw.depth_write = 1ul;
+    /* /texture, /modulate: the pattern texture 1:1, point-sampled. */
+    draw.texture_low = v9x_texture ? lo + V9X_TEXTURE : 0ul;
+    draw.texture_high = hi;
+    draw.texture_width = V9X_TARGET_PITCH;
+    draw.texture_height = V9X_TARGET_HEIGHT;
+    draw.texture_pitch = V9X_TARGET_PITCH;
+    draw.texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.texture_bilinear = 0ul;
+    if (v9x_texture) {
+        draw.ps_vgprs = v9x_modulate ? V9X_VI_MODULATE_PS_VGPRS :
+                                       V9X_VI_TEXTURE_PS_VGPRS;
+    }
     v9x_ring_stream_begin(&stream);
     v9x_rect_status = (DWORD)v9x_vi_3d_tl_draw(&stream, &draw);
     v9x_ring_stream_end(&stream);
@@ -952,20 +1034,33 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init,
     /* The shaders, and the target filled with the guard; the fence is
      * the window's 0. */
     if (with_rect && v9x_gouraud) {
-        DWORD vertices[V9X_GOURAUD_VERTICES * V9X_TL_DWORDS];
         DWORD first;
+        DWORD vertex_dwords = v9x_vertex_count * V9X_TL_DWORDS;
 
         vs_first = v9x_tl_vs_data(&vs_count);
-        ps_first = v9x_shader_data(v9x_vi_shader_gouraud_ps, &ps_count);
-        v9x_gouraud_vertices(vertices);
-        /* The vertices start after both shaders in the data array. */
-        first = v9x_data_dwords;
-        for (index = 0ul; index < V9X_GOURAUD_VERTICES * V9X_TL_DWORDS &&
-                          v9x_data_dwords < V9X_SICP_DATA_MAX; ++index) {
-            v9x_data[v9x_data_dwords++] = vertices[index];
+        if (v9x_modulate) {
+            ps_first = v9x_shader_data(v9x_vi_shader_modulate_ps, &ps_count);
+        } else if (v9x_texture) {
+            ps_first = v9x_shader_data(v9x_vi_shader_texture_ps, &ps_count);
+        } else {
+            ps_first = v9x_shader_data(v9x_vi_shader_gouraud_ps, &ps_count);
         }
-        v9x_op(V9X_OP_VRAM_DATA, V9X_VERTICES, first,
-               V9X_GOURAUD_VERTICES * V9X_TL_DWORDS);
+        /* The vertices (built with the ring) start after both shaders in
+         * the data array. */
+        first = v9x_data_dwords;
+        for (index = 0ul; index < vertex_dwords &&
+                          v9x_data_dwords < V9X_SICP_DATA_MAX; ++index) {
+            v9x_data[v9x_data_dwords++] = v9x_vertices[index];
+        }
+        v9x_op(V9X_OP_VRAM_DATA, V9X_VERTICES, first, vertex_dwords);
+        if (v9x_depth) {
+            v9x_op(V9X_OP_VRAM_FILL, V9X_DEPTH, V9X_DEPTH_DWORDS,
+                   V9X_DEPTH_CLEAR);
+        }
+        if (v9x_texture) {
+            v9x_op(V9X_OP_VRAM_PATTERN, V9X_TEXTURE, V9X_TEXTURE_DWORDS,
+                   V9X_SEED_TEXTURE);
+        }
     } else if (with_rect) {
         vs_first = v9x_shader_data(v9x_vi_shader_solid_vs, &vs_count);
         ps_first = v9x_shader_data(v9x_vi_shader_solid_ps, &ps_count);
@@ -1142,6 +1237,9 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init,
     if (with_rect) {
         v9x_op(V9X_OP_VRAM_BLOCK, V9X_FENCE, 1ul, 0ul);
         v9x_op(V9X_OP_VRAM_BLOCK, V9X_TARGET, V9X_TARGET_DWORDS, 0ul);
+        if (v9x_depth) {
+            v9x_op(V9X_OP_VRAM_BLOCK, V9X_DEPTH, V9X_DEPTH_DWORDS, 0ul);
+        }
     }
     v9x_op(V9X_OP_RESTORE, 0ul, 0ul, 0ul);
 
@@ -1269,6 +1367,142 @@ static void v9x_verify_gouraud(const DWORD *target)
     v9x_pass("Gouraud", bad == 0ul);
 }
 
+/* /depth's two halves, V9XCK3D's check: red left of x 32, blue right of
+ * it, within +-2; then the Z16 buffer a tile at a time, every sample 8000h
+ * in the left half's tiles and 4000h in the right's. */
+static void v9x_verify_depth(const DWORD *target, const DWORD *depth)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD want;
+    DWORD tile;
+    DWORD index;
+    DWORD sample;
+    DWORD colour_bad = 0ul;
+    DWORD depth_bad = 0ul;
+    DWORD tiles_across = V9X_TARGET_PITCH / 8ul;
+    DWORD tiles = V9X_DEPTH_DWORDS / V9X_Z16_TILE_DWORDS;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            want = x < V9X_TARGET_PITCH / 2ul ? V9X_DEPTH_RED : V9X_DEPTH_BLUE;
+            if (v9x_near(pixel & 0xfful, want & 0xfful) &&
+                v9x_near((pixel >> 8) & 0xfful, (want >> 8) & 0xfful) &&
+                v9x_near((pixel >> 16) & 0xfful, (want >> 16) & 0xfful) &&
+                v9x_near(pixel >> 24, want >> 24)) {
+                text[x] = x < V9X_TARGET_PITCH / 2ul ? 'R' : 'B';
+            } else {
+                text[x] = pixel == V9X_GUARD_VALUE ? '.' :
+                          (pixel == V9X_DEPTH_GREEN ? 'G' : '?');
+                ++colour_bad;
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    for (tile = 0ul; tile < tiles; ++tile) {
+        want = (tile % tiles_across) < tiles_across / 2ul ? V9X_Z16_HALF :
+                                                            V9X_Z16_QUARTER;
+        for (index = 0ul; index < V9X_Z16_TILE_DWORDS; ++index) {
+            sample = depth[tile * V9X_Z16_TILE_DWORDS + index];
+            if ((sample & 0xfffful) != want || (sample >> 16) != want) {
+                ++depth_bad;
+            }
+        }
+        lstrcpyA(key, "Tile");
+        v9x_decimal(key + 4, tile);
+        v9x_key("Depth", key, depth[tile * V9X_Z16_TILE_DWORDS]);
+    }
+    v9x_number("Result", "ColourBad", colour_bad);
+    v9x_number("Result", "DepthBadDwords", depth_bad);
+    v9x_pass("DepthColour", colour_bad == 0ul);
+    v9x_pass("DepthBuffer", depth_bad == 0ul);
+}
+
+/* round(a x b / 255) for bytes, the modulate the CB should store. */
+static DWORD v9x_scale(DWORD a, DWORD b)
+{
+    return (a * b + 127ul) / 255ul;
+}
+
+/* /texture: every pixel the texel under it, byte for byte (the colour path
+ * keeps memory order), exact. /modulate: each byte times the diffuse's
+ * byte in the same place, within +-2. V9XCK3D's check. */
+static void v9x_verify_texture(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD index;
+    DWORD texel;
+    DWORD pixel;
+    DWORD want[4];
+    DWORD got[4];
+    DWORD chan;
+    DWORD bad = 0ul;
+    DWORD exact = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    int ok;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            index = y * V9X_TARGET_PITCH + x;
+            texel = v9x_pattern(V9X_SEED_TEXTURE, index);
+            pixel = target[index];
+            for (chan = 0ul; chan < 4ul; ++chan) {
+                want[chan] = (texel >> (chan * 8ul)) & 0xfful;
+                if (v9x_modulate) {
+                    want[chan] = v9x_scale(want[chan],
+                                           (V9X_MODULATE_COLOUR >>
+                                            (chan * 8ul)) & 0xfful);
+                }
+            }
+            ok = 1;
+            for (chan = 0ul; chan < 4ul; ++chan) {
+                got[chan] = (pixel >> (chan * 8ul)) & 0xfful;
+                if (v9x_modulate ? !v9x_near(got[chan], want[chan]) :
+                                   got[chan] != want[chan]) {
+                    ok = 0;
+                }
+            }
+            if (got[0] == want[0] && got[1] == want[1] &&
+                got[2] == want[2] && got[3] == want[3]) {
+                ++exact;
+            }
+            text[x] = ok ? '#' : (pixel == V9X_GUARD_VALUE ? '.' : '?');
+            if (!ok && bad++ == 0ul) {
+                first_bad = index;
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    for (index = 0ul; index < 4ul; ++index) {
+        lstrcpyA(key, "Texel");
+        v9x_decimal(key + 5, index);
+        v9x_key("Texture", key, v9x_pattern(V9X_SEED_TEXTURE, index));
+        lstrcpyA(key, "Pixel");
+        v9x_decimal(key + 5, index);
+        v9x_key("Texture", key, target[index]);
+    }
+    v9x_number("Result", "TextureBad", bad);
+    v9x_number("Result", "TextureExact", exact);
+    if (bad != 0ul) {
+        v9x_number("Result", "TextureFirstBadIndex", first_bad);
+        v9x_key("Result", "TextureFirstBad", target[first_bad]);
+    }
+    v9x_pass(v9x_modulate ? "Modulate" : "Texture", bad == 0ul);
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -1394,7 +1628,10 @@ void __stdcall V9xOlandCpEntry(void)
     }
 
     /* Call 3: the run. */
-    v9x_gouraud = v9x_switch_given("/gouraud");
+    v9x_modulate = v9x_switch_given("/modulate");
+    v9x_texture = v9x_modulate || v9x_switch_given("/texture");
+    v9x_depth = v9x_switch_given("/depth");
+    v9x_gouraud = v9x_texture || v9x_depth || v9x_switch_given("/gouraud");
     with_rect = v9x_gouraud || v9x_switch_given("/rect");
     with_gpu_init = with_rect || v9x_switch_given("/gpuinit");
     v9x_gpu_count = 0ul;
@@ -1494,7 +1731,14 @@ void __stdcall V9xOlandCpEntry(void)
         v9x_key("Result", "Fence", v9x_result.block[1]);
         v9x_pass("FenceLanded", r[v9x_at_wait_3] != V9X_SICP_TIMEOUT);
         if (v9x_gouraud) {
-            v9x_verify_gouraud(v9x_result.block + 2);
+            if (v9x_depth) {
+                v9x_verify_depth(v9x_result.block + 2,
+                                 v9x_result.block + 2 + V9X_TARGET_DWORDS);
+            } else if (v9x_texture) {
+                v9x_verify_texture(v9x_result.block + 2);
+            } else {
+                v9x_verify_gouraud(v9x_result.block + 2);
+            }
         } else {
             v9x_verify(v9x_result.block + 2);
         }

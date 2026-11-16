@@ -311,9 +311,38 @@ static void test_gfx6_tl_draw(void)
     draw.fence_high = 0xf4ul;
     draw.fence_value = 1ul;
 
+    /* Depth on GFX6: DB_DEPTH_INFO (A00Fh) ADDR5_SWIZZLE_MASK alone, then
+     * DB_Z_INFO Z16 with Oland's 1D depth tile index 4; a linear Z buffer
+     * is refused. */
+    draw.depth_low = 0x0f80d000ul;
+    draw.depth_high = 0xf4ul;
+    draw.depth_func = V9X_VI_ZFUNC_LESS;
+    draw.depth_write = 1ul;
+    draw.depth_linear = 1ul;
+    v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    draw.depth_linear = 0ul;
     v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
     stream.gfx6 = 1ul;
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    {
+        int depth_ok = 0;
+
+        at = 0ul;
+        while (at < stream.count) {
+            v9x_u32 header = stream_dwords[at];
+
+            if (((header >> 8) & 0xfful) == V9X_VI_P3_SET_CONTEXT_REG &&
+                stream_dwords[at + 1ul] == 0x00ful) {
+                depth_ok = stream_dwords[at + 2ul] == 1ul &&
+                           stream_dwords[at + 3ul] == 0x00400001ul;
+            }
+            at += ((header >> 16) & 0x3ffful) + 2ul;
+        }
+        CHECK(depth_ok);
+    }
+    at = 0ul;
     while (at < stream.count) {
         v9x_u32 header = stream_dwords[at];
 

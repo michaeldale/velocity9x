@@ -161,6 +161,15 @@
  * split. */
 #define VI_Z_INFO_Z16_LINEAR        (1ul | (V9X_VI_TILE_DEPTH_LINEAR << 20))
 #define VI_DEPTH_INFO_LINEAR_P2     (1ul | (1ul << 4))
+/* GFX6 (radeonsi si_init_depth_surface for GFX6): the DB takes the array
+ * mode, pipe configuration and banks from the tile index alone, so
+ * DB_DEPTH_INFO carries only ADDR5_SWIZZLE_MASK and DB_Z_INFO the index.
+ * Oland's 1D-tiled depth mode is GB_TILE_MODE4 (gfx_v6_0.c's CHIP_OLAND
+ * table: depth micro tiling, 1D_TILED_THIN1, P4_8x16); its mode 5 is 2D.
+ * No linear depth on GFX6 here: that path was measured on Mullins only. */
+#define VI_GFX6_TILE_DEPTH_1D       4ul
+#define VI_DEPTH_INFO_GFX6          1ul
+#define VI_Z_INFO_Z16_GFX6          (1ul | (VI_GFX6_TILE_DEPTH_1D << 20))
 #define VI_RENDER_OVERRIDE_NO_HI    0x0000002aul
 #define VI_RENDER_CONTROL_NO_COMPRESS 0x00000060ul
 #define VI_DEPTH_CONTROL_Z_ENABLE   0x00000002ul
@@ -480,8 +489,15 @@ static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
     v9x_u32 values[9];
     v9x_u32 base = v9x_vi_address_256(low, high);
 
-    values[0] = linear != 0ul ? VI_DEPTH_INFO_LINEAR_P2 : VI_DEPTH_INFO_1D_P2;
-    values[1] = linear != 0ul ? VI_Z_INFO_Z16_LINEAR : VI_Z_INFO_Z16_TILE5;
+    if (stream->gfx6) {
+        values[0] = VI_DEPTH_INFO_GFX6;
+        values[1] = VI_Z_INFO_Z16_GFX6;
+    } else {
+        values[0] = linear != 0ul ? VI_DEPTH_INFO_LINEAR_P2
+                                  : VI_DEPTH_INFO_1D_P2;
+        values[1] = linear != 0ul ? VI_Z_INFO_Z16_LINEAR
+                                  : VI_Z_INFO_Z16_TILE5;
+    }
     values[2] = 0ul;
     values[3] = base;
     values[4] = base;
@@ -799,6 +815,7 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
         draw->vertex_count == 0ul || (draw->vertex_count % 3ul) != 0ul ||
         (draw->depth_low & VI_SHADER_ALIGN) != 0ul ||
         draw->depth_func > V9X_VI_ZFUNC_ALWAYS ||
+        (stream->gfx6 && draw->depth_low != 0ul && draw->depth_linear != 0ul) ||
         (draw->depth_low != 0ul &&
          (depth_pitch == 0ul || (depth_pitch % 8ul) != 0ul ||
           depth_height == 0ul || (depth_height % 8ul) != 0ul)) ||
