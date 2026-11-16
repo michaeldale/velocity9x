@@ -399,6 +399,34 @@ static void test_gfx6_wide_vs(void)
     CHECK(v9x_si_shader_wide_vs(0, &count) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* The TL2 VS: the TL VS with a third load (s4-s7, IDXEN on v0) after its
+ * two and parameter 3's export ahead of POS0's. */
+static void test_gfx6_tl2_vs(void)
+{
+    v9x_u32 tl[V9X_SI_TL_VS_MAX];
+    v9x_u32 words[V9X_SI_TL_VS_MAX];
+    v9x_u32 tl_count = 0ul;
+    v9x_u32 count = 0ul;
+    v9x_u32 index;
+
+    CHECK(v9x_si_shader_tl_vs(tl, &tl_count) == V9X_STATUS_OK);
+    CHECK(v9x_si_shader_tl2_vs(words, &count) == V9X_STATUS_OK);
+    CHECK(count == V9X_SI_TL2_VS_DWORDS && count <= 64ul);
+    for (index = 0ul; index < 5ul; ++index) {
+        CHECK(words[index] == tl[index]);
+    }
+    CHECK(words[5] == 0xe0382000ul && words[6] == 0x80011100ul);
+    for (index = 5ul; index < tl_count - 3ul; ++index) {
+        CHECK(words[index + 2ul] == tl[index]);
+    }
+    /* PARAM3 (target 35) of v17-v20, then POS0 done and s_endpgm. */
+    CHECK((words[count - 5ul] & 0xfc000000ul) == 0xf8000000ul &&
+          ((words[count - 5ul] >> 4) & 0x3ful) == 35ul &&
+          words[count - 4ul] == 0x14131211ul);
+    CHECK(words[count - 3ul] == tl[tl_count - 3ul] &&
+          words[count - 1ul] == tl[tl_count - 1ul]);
+}
+
 /* A pixel shader 1.x draw on GFX6: the strided V#, six parameters, the
  * table as two PS user SGPRs, the PS's SGPRs in RSRC1, and COMP_SWAP. */
 static void test_gfx6_wide_draw(void)
@@ -500,6 +528,7 @@ unsigned int v9x_run_si_gpu_tests(void)
     test_gfx6_tl_vs();
     test_gfx6_tl_draw();
     test_gfx6_wide_vs();
+    test_gfx6_tl2_vs();
     test_gfx6_wide_draw();
     return failures;
 }

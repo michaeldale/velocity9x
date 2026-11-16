@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../../src/display32/d3d/d3d_vi_map.h"
+#include "velocity9x/r3d_abi.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -62,8 +63,8 @@ static v9x_u32 map(const V9X_R3D_DRAW *draw,
                    const V9X_D3D_VI_TEXTURE *texture, v9x_u32 depth_bytes,
                    struct v9x_vi_tl_draw *out, v9x_u32 *ps)
 {
-    return v9x_d3d_vi_map_draw(draw, texture, HEAP_HIGH, HEAP_LOW,
-                               depth_bytes, out, ps, &built);
+    return v9x_d3d_vi_map_draw(draw, texture, 0, HEAP_HIGH, HEAP_LOW,
+                               depth_bytes, out, 0, ps, &built);
 }
 
 static v9x_u32 float_bits(float value)
@@ -517,6 +518,72 @@ static void test_decal_alpha_and_opaque(void)
     CHECK(out.texture_opaque == 0ul);
 }
 
+/* Two units (step 4 of docs\plans\ati-gcn-ps11.md): both textures mapped,
+ * each combine translated; refused without unit1 (a one-unit engine),
+ * with an op the PS lacks, or with a keyed texture. */
+static void test_two_units(void)
+{
+    static const float pairs[6] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f };
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    V9X_D3D_VI_TEXTURE texture1;
+    struct v9x_vi_tl_draw out;
+    struct v9x_vi_tl_draw unit1;
+    v9x_u32 ps;
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    texture1 = texture;
+    texture1.format = V9X_VI_IMG_FORMAT_5_6_5;
+    texture1.has_alpha = 0ul;
+    texture1.offset = 0x00300000ul;
+    draw.texture.color_op = V9X_R3D_ABI_COLOROP_MODULATE;
+    draw.texture.alpha_op = V9X_R3D_ABI_ALPHAOP_REPLACE;
+    draw.texture1 = draw.texture;
+    draw.texture1.color_op = V9X_R3D_COLOROP_ADD;
+    draw.texture1.alpha_op = V9X_R3D_ABI_ALPHAOP_FRAGMENT;
+    draw.texture1.min_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture1.mag_filter = V9X_R3D_FILTER_NEAREST;
+    draw.texture1.address = V9X_R3D_ADDRESS_CLAMP;
+    draw.texcoords1 = pairs;
+    draw.specular_enable = 1ul;
+
+    /* An engine that draws one unit passes no unit1. */
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_EXPLICIT);
+
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, &texture1, HEAP_HIGH, HEAP_LOW,
+                              0ul, &out, &unit1, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT && built.two_units == 1ul);
+    CHECK(built.color_op[0] == V9X_VI_COMBINE_COLOR_MODULATE &&
+          built.alpha_op[0] == V9X_VI_COMBINE_ALPHA_REPLACE &&
+          built.color_op[1] == V9X_VI_COMBINE_COLOR_ADD &&
+          built.alpha_op[1] == V9X_VI_COMBINE_ALPHA_FRAGMENT);
+    CHECK(built.specular == 1ul && out.ps_vgprs == V9X_VI_TWO_UNIT_PS_VGPRS);
+    CHECK(out.texture_low == HEAP_LOW + 0x00200000ul &&
+          out.texture_format == V9X_VI_IMG_FORMAT_8_8_8_8 &&
+          out.texture_bilinear == 1ul &&
+          out.texture_address == V9X_VI_TEX_ADDRESS_WRAP);
+    CHECK(unit1.texture_low == HEAP_LOW + 0x00300000ul &&
+          unit1.texture_format == V9X_VI_IMG_FORMAT_5_6_5 &&
+          unit1.texture_bilinear == 0ul &&
+          unit1.texture_address == V9X_VI_TEX_ADDRESS_CLAMP);
+
+    /* BLEND is not one the PS draws. */
+    draw.texture1.color_op = V9X_R3D_ABI_COLOROP_BLEND;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, &texture1, HEAP_HIGH, HEAP_LOW,
+                              0ul, &out, &unit1, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_TEXTURE_OP);
+    draw.texture1.color_op = V9X_R3D_COLOROP_ADD;
+
+    /* A keyed texture under the colour key. */
+    draw.color_key_enable = 1ul;
+    texture1.has_key = 1ul;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, &texture1, HEAP_HIGH, HEAP_LOW,
+                              0ul, &out, &unit1, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_COLOR_KEY);
+}
+
 unsigned int v9x_run_d3d_vi_map_tests(void)
 {
     failures = 0u;
@@ -529,5 +596,6 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_built();
     test_decal_alpha_and_opaque();
     test_explicit();
+    test_two_units();
     return failures;
 }

@@ -100,13 +100,22 @@ typedef struct v9x_d3d_vi_texture {
  * bound depth surface's bytes per pixel, 0 when none is bound. Fills out
  * and *ps (V9X_D3D_VI_PS_*), and *built when *ps is V9X_D3D_VI_PS_BUILT;
  * returns a V9X_D3D_VI_REFUSE_* reason.
+ *
+ * A two-unit draw (texcoords1 set; step 4 of docs\plans\ati-gcn-ps11.md)
+ * takes texture1 and unit1, null from an engine that draws one unit, which
+ * then refuses it. Unit 0's texture fields go in out and unit 1's in
+ * unit1, for the engine to turn into the two-unit PS's table
+ * (v9x_vi_3d_texture_sharps); *built then has two_units and both
+ * combines, and *ps is V9X_D3D_VI_PS_BUILT.
  */
 v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             const V9X_D3D_VI_TEXTURE *texture,
+                            const V9X_D3D_VI_TEXTURE *texture1,
                             v9x_u32 heap_high,
                             v9x_u32 heap_low,
                             v9x_u32 depth_bytes,
                             struct v9x_vi_tl_draw *out,
+                            struct v9x_vi_tl_draw *unit1,
                             v9x_u32 *ps,
                             struct v9x_vi_d3d_ps *built);
 

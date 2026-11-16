@@ -50,6 +50,9 @@
 #define V9X_D3D_SELECT_NV50      19ul
 /* The Radeon 9250's R200 3D engine, by register writes (d3d_rv280.c). */
 #define V9X_D3D_SELECT_RV280     20ul
+/* The Oland on the GCN engine: its two-stage limits (d3d_vi.c, step 4 of
+ * docs\plans\ati-gcn-ps11.md), named by its identity bit. */
+#define V9X_D3D_SELECT_VI_OLAND  21ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

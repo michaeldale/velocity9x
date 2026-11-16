@@ -798,6 +798,22 @@ static int v9x_vi_cp_upload_shaders(void)
     DWORD index;
 
     for (which = 0ul; which < V9X_VI_CP_SLOT_COUNT; ++which) {
+        /* The TL2 VS is SI's (two units, the Oland's limits alone). */
+        if (which == V9X_VI_CP_SLOT_VS2) {
+            if (!v9x_vi_cp_chip->gfx6) {
+                continue;
+            }
+            if (V9X_SI_TL2_VS_DWORDS > V9X_VI_CP_SHADER_BYTES / 4ul ||
+                v9x_si_shader_tl2_vs(words, &count) != V9X_STATUS_OK) {
+                return 0;
+            }
+            slot = v9x_vi_cp_window(V9X_VI_CP_WINDOW_SHADERS +
+                                    which * V9X_VI_CP_SHADER_BYTES);
+            for (index = 0ul; index < count; ++index) {
+                slot[index] = words[index];
+            }
+            continue;
+        }
         /* GFX6's TL VS is si_shader.c's (MUBUF, SI words already). */
         if (which == V9X_VI_CP_SLOT_VS && v9x_vi_cp_chip->gfx6) {
             if (V9X_SI_TL_VS_DWORDS > V9X_VI_CP_SHADER_BYTES / 4ul ||

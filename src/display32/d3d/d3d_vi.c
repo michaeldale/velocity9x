@@ -25,11 +25,17 @@
 #include "velocity9x/vi_3d.h"
 #include "velocity9x/vi_shader.h"
 #include "velocity9x/cik_shader.h"
+#include "velocity9x/si_shader.h"
 
 /* Triangles a batch takes from one call: the arena holds 2 MiB, this is
  * 48 KiB of vertices. */
 #define V9X_D3D_VI_CHUNK_TRIANGLES 512ul
 #define V9X_D3D_VI_VERTEX_DWORDS   (V9X_VI_TL_VERTEX_BYTES / 4ul)
+
+/* A two-unit draw's VS parameters: colour, unit 0's (u, v), specular,
+ * unit 1's (u, v) (si_shader.h's TL2 VS). */
+#define V9X_D3D_VI_TWO_UNIT_PARAMS 4ul
+#define V9X_D3D_VI_FLOAT_ONE       0x3f800000ul
 
 /* A batch's stream: the TL draw (about 200 dwords), padding to 16. */
 #define V9X_D3D_VI_STREAM_DWORDS 512ul
@@ -74,6 +80,37 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     0ul,            /* depth32_bits: Z16 only for now */
     0ul,            /* centre_in_engine */
     1ul,            /* texture_stages */
+    1ul             /* guard_band_ddi6 */
+};
+
+/*
+ * The Oland's: the same, with two texture stages in one pass, the
+ * two-unit PS and si_shader.h's TL2 VS (step 4 of docs\plans\
+ * ati-gcn-ps11.md). Carrizo and Mullins keep one until their machines run
+ * the step's gate: the TL2 VS is SI's alone so far. The core's two-stage
+ * conditions hold for all three: clip_in_core 0, and no pixel-centre move
+ * to make (pixel_centre_half 0).
+ */
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_oland_limits = {
+    16ul,           /* target_bits_per_pixel */
+    32752ul,        /* target_pitch_max */
+    V9X_D3D_VI_ROW_ALIGN, /* target_pitch_align: linear-aligned rows */
+    8192ul,         /* target_dimension_max */
+    1ul,            /* texture_size_min */
+    V9X_D3D_VI_TEXTURE_SIDE_MAX, /* texture_size_max */
+    8192.0f,        /* coordinate_limit */
+    16ul,           /* depth_bits_per_pixel */
+    V9X_D3D_VI_SURFACE_ALIGN, /* texture_align */
+    0ul,            /* clip_in_core: the PA's guard band */
+    1ul,            /* depth_pitch_own: DB_DEPTH_SIZE takes the pitch */
+    0ul,            /* depth_fill_shift */
+    1ul,            /* texture_units */
+    0ul,            /* pixel_centre_half: the PA samples D3D's centres */
+    1ul,            /* depth_tiled: Z16 is 1D tiled */
+    65504ul,        /* target_pitch_max_xrgb8888 */
+    0ul,            /* depth32_bits: Z16 only for now */
+    0ul,            /* centre_in_engine */
+    2ul,            /* texture_stages */
     1ul             /* guard_band_ddi6 */
 };
 
@@ -463,13 +500,19 @@ static void v9x_d3d_vi_count_refusal(const V9X_R3D_DRAW *draw, v9x_u32 reason)
     }
 }
 
+/* The draw's mapping. unit1 takes a two-unit draw's second unit on the
+ * Oland, the one chip whose limits claim two stages; elsewhere it is not
+ * passed and such a draw is refused. */
 static v9x_u32 v9x_d3d_vi_map(const V9X_R3D_DRAW *draw,
-                              struct v9x_vi_tl_draw *out, v9x_u32 *ps,
+                              struct v9x_vi_tl_draw *out,
+                              struct v9x_vi_tl_draw *unit1, v9x_u32 *ps,
                               struct v9x_vi_d3d_ps *built)
 {
     V9X_D3D_VI_TEXTURE texture;
+    V9X_D3D_VI_TEXTURE texture1;
     DWORD high;
     DWORD heap_low;
+    int two = v9x_d3d_vi_gfx6();
 
     /* Every address in the batch is the heap's or the window's: without
      * them located the batch would point at the wrong memory. */
@@ -478,16 +521,23 @@ static v9x_u32 v9x_d3d_vi_map(const V9X_R3D_DRAW *draw,
     }
     texture.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
     texture.levels = 1ul;
+    texture1.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
+    texture1.levels = 1ul;
     if (draw->texture.object != 0) {
         v9x_d3d_vi_resolve_texture(&draw->texture, &texture);
     }
-    return v9x_d3d_vi_map_draw(draw, &texture, high, heap_low,
-                               v9x_d3d_vi_depth_bytes(draw), out, ps, built);
+    if (two && draw->texture1.object != 0) {
+        v9x_d3d_vi_resolve_texture(&draw->texture1, &texture1);
+    }
+    return v9x_d3d_vi_map_draw(draw, &texture, two ? &texture1 : 0, high,
+                               heap_low, v9x_d3d_vi_depth_bytes(draw), out,
+                               two ? unit1 : 0, ps, built);
 }
 
 static int v9x_d3d_vi_accepts(const V9X_R3D_DRAW *draw)
 {
     struct v9x_vi_tl_draw out;
+    struct v9x_vi_tl_draw unit1;
     struct v9x_vi_d3d_ps built;
     v9x_u32 ps;
     v9x_u32 reason;
@@ -495,7 +545,7 @@ static int v9x_d3d_vi_accepts(const V9X_R3D_DRAW *draw)
     if (draw == 0 || v9x_hal == 0) {
         return 0;
     }
-    reason = v9x_d3d_vi_map(draw, &out, &ps, &built);
+    reason = v9x_d3d_vi_map(draw, &out, &unit1, &ps, &built);
     if (reason != V9X_D3D_VI_REFUSE_NONE && reason < 20ul) {
         ++v9x_hal->d3d_diagnostics.m64_accept_policy[reason];
     }
@@ -518,16 +568,20 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
                            DWORD triangle_count)
 {
     struct v9x_vi_tl_draw state;
+    struct v9x_vi_tl_draw unit1;
     struct v9x_vi_d3d_ps built;
     struct v9x_vi_pm4 stream;
     volatile DWORD *linear;
     const DWORD *words;
+    const DWORD *pairs;
+    DWORD table[V9X_VI_TWO_UNIT_TABLE_DWORDS];
     DWORD gpu_low;
     DWORD chunk;
     DWORD dwords;
     DWORD index;
     DWORD started;
     DWORD ps_dwords = 0ul;
+    int two_units = 0;
     v9x_u32 ps;
     v9x_u32 reason;
 
@@ -535,8 +589,9 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
         !v9x_d3d_vi_ready()) {
         return 0;
     }
+    pairs = (const DWORD *)draw->texcoords1;
     started = V9X_TIME_BEGIN();
-    reason = v9x_d3d_vi_map(draw, &state, &ps, &built);
+    reason = v9x_d3d_vi_map(draw, &state, &unit1, &ps, &built);
     if (reason != V9X_D3D_VI_REFUSE_NONE) {
         v9x_d3d_vi_count_refusal(draw, reason);
         V9X_TIME_END(V9X_TIME_DECODE, started);
@@ -564,6 +619,20 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     } else {
         state.ps_low = v9x_vi_cp_shader_low(v9x_d3d_vi_ps_slot[ps]);
     }
+    /* Two units (Oland only, v9x_d3d_vi_map): both units' descriptors
+     * into the table the PS loads, which goes into the arena with each
+     * batch; the TL2 VS, and unit 1's pairs as a second stream. */
+    if (ps == V9X_D3D_VI_PS_BUILT && built.two_units != 0ul) {
+        two_units = 1;
+        v9x_vi_3d_texture_sharps(&state, table + V9X_VI_TWO_UNIT_T0);
+        v9x_vi_3d_texture_sharps(&unit1, table + V9X_VI_TWO_UNIT_T1);
+        state.texture_low = 0ul;
+        state.ps_sgprs = V9X_VI_TWO_UNIT_PS_SGPRS;
+        state.params = V9X_D3D_VI_TWO_UNIT_PARAMS;
+        state.vs_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_VS2);
+        state.vs_vgprs = V9X_SI_TL2_VS_VGPRS;
+        state.vertex1_stride = V9X_SI_TL2_STREAM_BYTES;
+    }
     state.shader_high = state.target_high;
     state.vertex_high = state.target_high;
     state.fence_high = state.target_high;
@@ -579,6 +648,18 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
             }
             state.ps_low = gpu_low;
         }
+        if (two_units) {
+            if (!v9x_vi_cp_vertex_space(V9X_VI_TWO_UNIT_TABLE_DWORDS * 4ul,
+                                        &linear, &gpu_low)) {
+                V9X_TIME_END(V9X_TIME_DECODE, started);
+                return 0;
+            }
+            for (index = 0ul; index < V9X_VI_TWO_UNIT_TABLE_DWORDS; ++index) {
+                linear[index] = table[index];
+            }
+            state.ps_table_low = gpu_low;
+            state.ps_table_high = state.target_high;
+        }
         chunk = triangle_count > V9X_D3D_VI_CHUNK_TRIANGLES ?
                 V9X_D3D_VI_CHUNK_TRIANGLES : triangle_count;
         dwords = chunk * 3ul * V9X_D3D_VI_VERTEX_DWORDS;
@@ -592,6 +673,24 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
         }
         state.vertex_low = gpu_low;
         state.vertex_count = chunk * 3ul;
+        /* Unit 1's (tu1, tv1), as the TL2 VS reads them: 0 and 1 after
+         * each pair, sixteen bytes a vertex. */
+        if (two_units) {
+            dwords = chunk * 3ul * (V9X_SI_TL2_STREAM_BYTES / 4ul);
+            if (!v9x_vi_cp_vertex_space(dwords * 4ul, &linear, &gpu_low)) {
+                V9X_TIME_END(V9X_TIME_DECODE, started);
+                return 0;
+            }
+            for (index = 0ul; index < chunk * 3ul; ++index) {
+                linear[4ul * index] = pairs[2ul * index];
+                linear[4ul * index + 1ul] = pairs[2ul * index + 1ul];
+                linear[4ul * index + 2ul] = 0ul;
+                linear[4ul * index + 3ul] = V9X_D3D_VI_FLOAT_ONE;
+            }
+            state.vertex1_low = gpu_low;
+            state.vertex1_high = state.target_high;
+            pairs += chunk * 3ul * 2ul;
+        }
         state.fence_low = v9x_vi_cp_fence_low();
         state.fence_value = v9x_vi_cp_fence_next();
 
@@ -1023,6 +1122,24 @@ static void v9x_d3d_vi_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi = {
     &v9x_d3d_vi_limits,
+    v9x_d3d_vi_texture_format,
+    v9x_d3d_vi_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_vi_ready,
+    v9x_d3d_vi_create_surface,
+    v9x_d3d_vi_destroy_surface,
+    v9x_d3d_vi_draw,
+    v9x_d3d_vi_accepts,
+    0,                                  /* draw_indexed */
+    0,                                  /* draw_tnl */
+    0,                                  /* tnl_available */
+    v9x_d3d_vi_lock_surface,
+    v9x_d3d_vi_unlock_surface
+};
+
+/* The Oland's: the same functions under its two-stage limits. */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi_oland = {
+    &v9x_d3d_vi_oland_limits,
     v9x_d3d_vi_texture_format,
     v9x_d3d_vi_describe_caps,
     0,                                  /* draw_triangles: draw serves */

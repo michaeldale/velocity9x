@@ -314,8 +314,37 @@ struct v9x_vi_d3d_ps {
     v9x_u32 alpha_test;
     v9x_u32 alpha_func;
     v9x_u32 alpha_ref;
+    /*
+     * Two texture units in one pass (docs\plans\ati-gcn-ps11.md step 4);
+     * op and key are then not read. Unit N combines its texel Ct, At with
+     * what came in, the diffuse for unit 0 and unit 0's result for unit 1,
+     * by V9X_VI_COMBINE_* (the Tesla programs' numbers, nv50_d3d.h). The
+     * descriptors come from a table, not user SGPRs: s0:s1 its address,
+     * so PRIM_MASK is s2; unit 0's T# and S# then unit 1's, at the
+     * V9X_VI_TWO_UNIT_* offsets, loaded with s_load. Unit 1's (u, v) is
+     * parameter 3's x and y (si_shader.h's TL2 VS).
+     */
+    v9x_u32 two_units;
+    v9x_u32 color_op[2];
+    v9x_u32 alpha_op[2];
 };
-#define V9X_VI_D3D_PS_DWORDS_MAX  96ul
+#define V9X_VI_COMBINE_COLOR_REPLACE  0ul  /* Ct                  */
+#define V9X_VI_COMBINE_COLOR_MODULATE 1ul  /* Cin Ct              */
+#define V9X_VI_COMBINE_COLOR_DECAL    2ul  /* Cin + At (Ct - Cin) */
+#define V9X_VI_COMBINE_COLOR_ADD      3ul  /* min(Cin + Ct, 1)    */
+#define V9X_VI_COMBINE_ALPHA_FRAGMENT 0ul  /* Ain                 */
+#define V9X_VI_COMBINE_ALPHA_REPLACE  1ul  /* At                  */
+#define V9X_VI_COMBINE_ALPHA_MODULATE 2ul  /* Ain At              */
+/* The two-unit table in dwords: T# 0, S# 0, T# 1, S# 1. */
+#define V9X_VI_TWO_UNIT_T0            0ul
+#define V9X_VI_TWO_UNIT_S0            8ul
+#define V9X_VI_TWO_UNIT_T1            12ul
+#define V9X_VI_TWO_UNIT_S1            20ul
+#define V9X_VI_TWO_UNIT_TABLE_DWORDS  24ul
+#define V9X_VI_TWO_UNIT_USER_SGPRS    2ul
+#define V9X_VI_TWO_UNIT_PS_SGPRS      30ul
+#define V9X_VI_TWO_UNIT_PS_VGPRS      24ul
+#define V9X_VI_D3D_PS_DWORDS_MAX  160ul
 #define V9X_VI_D3D_PS_BUILT_VGPRS 20ul
 v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
                                    v9x_u32 *out);

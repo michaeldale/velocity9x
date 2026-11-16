@@ -761,7 +761,9 @@ int v9x_vi_window_address(DWORD *high, DWORD *low);
  * same three with specular added, slot 4 + V9X_VI_PS_*. */
 #define V9X_VI_CP_SLOT_PS_FIRST  1ul
 #define V9X_VI_CP_SLOT_PS_SPECULAR_FIRST 4ul
-#define V9X_VI_CP_SLOT_COUNT     7ul
+/* GFX6 only: si_shader.h's TL2 VS, for a two-unit draw; empty elsewhere. */
+#define V9X_VI_CP_SLOT_VS2       7ul
+#define V9X_VI_CP_SLOT_COUNT     8ul
 int v9x_vi_cp_ready(void);
 int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence);
 int v9x_vi_cp_drain(int wait);

@@ -212,7 +212,22 @@ struct v9x_vi_tl_draw {
     v9x_u32 ps_sgprs;           /* the PS's SGPRs; 0 for 24             */
     v9x_u32 target_swap;        /* CB_COLOR0_INFO COMP_SWAP: 0 STD,     */
                                 /* 1 ALT (BGRA), 2 STD_REV (B5G6R5)     */
+    /* GFX6 only: a second vertex stream, si_shader.h's TL2 VS's, of
+     * vertex_count records of vertex1_stride bytes, its V# in VS user
+     * SGPRs 4-7; 0 for none. */
+    v9x_u32 vertex1_low;
+    v9x_u32 vertex1_high;
+    v9x_u32 vertex1_stride;
 };
+#define V9X_VI_TEXTURE_SHARP_DWORDS 12ul
+/*
+ * The T# (eight dwords) and S# (four) draw's texture_* fields describe,
+ * as the TL draw puts them in the PS's user SGPRs: for a table a PS loads
+ * instead (vi_shader.h's two-unit PS). A design change of 2026-11-17:
+ * the HAL needs both units' descriptors in memory.
+ */
+void v9x_vi_3d_texture_sharps(const struct v9x_vi_tl_draw *draw,
+                              v9x_u32 out[V9X_VI_TEXTURE_SHARP_DWORDS]);
 #define V9X_VI_CB_SWAP_STD          0ul
 #define V9X_VI_CB_SWAP_ALT          1ul
 #define V9X_VI_CB_SWAP_STD_REV      2ul

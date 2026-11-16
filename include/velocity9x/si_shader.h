@@ -28,6 +28,19 @@
 v9x_status v9x_si_shader_tl_vs(v9x_u32 *out, v9x_u32 *count);
 
 /*
+ * The TL VS for a two-unit draw (docs\plans\ati-gcn-ps11.md step 4): the
+ * TL VS's program with a third load, unit 1's coordinates from a second
+ * stream through a second V# in s4-s7, 16 bytes a vertex (tu1, tv1, 0,
+ * 1) read buffer_load_dwordx4 IDXEN at VertexID into v17-v20, and
+ * exported as parameter 3 ahead of the position. Eight user SGPRs.
+ */
+#define V9X_SI_TL2_VS_DWORDS     (V9X_SI_TL_VS_DWORDS + 4ul)
+#define V9X_SI_TL2_VS_VGPRS      24ul
+#define V9X_SI_TL2_VS_USER_SGPRS 8ul
+#define V9X_SI_TL2_STREAM_BYTES  16ul
+v9x_status v9x_si_shader_tl2_vs(v9x_u32 *out, v9x_u32 *count);
+
+/*
  * The wide-vertex VS for pixel shader 1.x (docs\plans\ati-gcn-ps11.md):
  * d3d_ps.h's wide vertex, 28 floats (sx sy sz rhw, diffuse, specular,
  * stage 0-3's coordinates, four each), read by seven MUBUF

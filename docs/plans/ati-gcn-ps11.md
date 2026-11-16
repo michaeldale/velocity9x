@@ -9,7 +9,17 @@ and 16 bpp: every judged pixel was within tolerance, the CP was idle
 afterwards, and all of it passed on the first build. The draw used
 radeonsi's channel convention: T# swizzle Z Y X W, and COMP_SWAP ALT
 for 8888 or STD_REV for 565. Step 5 must carry that convention into the
-HAL. Next: step 4.
+HAL.
+
+Step 4 is done on the Oland alone
+([2026-11-17-oland-two-texture-stages.md](../decisions/2026-11-17-oland-two-texture-stages.md)).
+A per-draw two-unit PS loads both units' descriptors from a table, and
+the TL2 VS reads unit 1's coordinates from a second stream. V9XD32 T12
+and T13's two-unit form pass at 32 and 16 bpp, with nothing else changed.
+3DMark 2000 scored once and faulted twice. The fault is the program's
+own read past an array, exposed by the build's memory layout
+([issue](../issues/2026-11-17-oland-3dmark2000-faults-with-two-stages.md)).
+Carrizo and Mullins still draw one stage. Next: step 5.
 
 Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to

@@ -111,6 +111,60 @@ v9x_status v9x_si_shader_tl_vs(v9x_u32 *out, v9x_u32 *count)
     return at == V9X_SI_TL_VS_DWORDS ? V9X_STATUS_OK : V9X_STATUS_UNSUPPORTED;
 }
 
+/* The TL2 VS: the TL VS's words, the third load after its two (before
+ * its s_waitcnt, so the wait covers it), parameter 3's export before its
+ * last export, POS0's. v0 is still VertexID there: the shift wrote v1. */
+#define SI_TL2_RESOURCE_SGPR        4ul
+#define SI_TL2_VGPR                 17ul
+#define SI_TL2_PARAM                3ul
+#define SI_TL_LOADS_END             5ul
+#define SI_EXP_PREFIX               0xf8000000ul
+
+v9x_status v9x_si_shader_tl2_vs(v9x_u32 *out, v9x_u32 *count)
+{
+    v9x_u32 tl[V9X_SI_TL_VS_MAX];
+    v9x_u32 exp[2];
+    v9x_u32 tl_count = 0ul;
+    v9x_u32 last_exp = 0ul;
+    v9x_u32 at = 0ul;
+    v9x_u32 index;
+
+    if (out == 0 || count == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (v9x_si_shader_tl_vs(tl, &tl_count) != V9X_STATUS_OK) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    /* The last export is two dwords before s_endpgm. */
+    if (tl_count < SI_TL_LOADS_END + 3ul ||
+        (tl[tl_count - 3ul] & SI_FORMAT6_MASK) != SI_EXP_PREFIX) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    last_exp = tl_count - 3ul;
+    v9x_vi_exp(V9X_VI_EXP_PARAM0 + SI_TL2_PARAM, 0, 0, SI_TL2_VGPR,
+               SI_TL2_VGPR + 1ul, SI_TL2_VGPR + 2ul, SI_TL2_VGPR + 3ul, exp);
+    if (v9x_si_shader_from_vi(exp, 2ul, 0) != V9X_STATUS_OK) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    for (index = 0ul; index < SI_TL_LOADS_END; ++index) {
+        out[at++] = tl[index];
+    }
+    si_buffer_load_dwordx4_idxen(SI_TL2_VGPR, 0ul, SI_TL2_RESOURCE_SGPR, 0ul,
+                                 out + at);
+    at += 2ul;
+    for (index = SI_TL_LOADS_END; index < last_exp; ++index) {
+        out[at++] = tl[index];
+    }
+    out[at++] = exp[0];
+    out[at++] = exp[1];
+    for (index = last_exp; index < tl_count; ++index) {
+        out[at++] = tl[index];
+    }
+    *count = at;
+    return at == V9X_SI_TL2_VS_DWORDS ? V9X_STATUS_OK
+                                      : V9X_STATUS_UNSUPPORTED;
+}
+
 /* The wide vertex: v0 is VertexID, the seven quads load into v1-v28 in
  * order, so quad q is v[1 + 4q]. The loads are SI words; the wait and
  * the exports a GCN 3 tail rewritten, as the TL VS's are. */

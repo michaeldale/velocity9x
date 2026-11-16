@@ -2,6 +2,7 @@
  * The neutral draw description to Carrizo batch state; see d3d_vi_map.h.
  */
 #include "d3d_vi_map.h"
+#include "velocity9x/r3d_abi.h"
 #include "velocity9x/vi_shader.h"
 
 /* The target's bytes per pixel and CB format; 0 for a format not drawn. */
@@ -245,13 +246,67 @@ static int v9x_d3d_vi_op(v9x_u32 op, v9x_u32 *ps)
     return 0;
 }
 
+/* A two-unit draw's unit combine (r3d_abi.h's colour and alpha ops, and
+ * r3d.h's ADD) as vi_shader.h numbers them; 0 for one the two-unit PS
+ * does not draw, MODULATE2X among them (the limits do not claim it). The
+ * Tesla map's table (d3d_nv50_map.c). */
+static int v9x_d3d_vi_combine_ops(v9x_u32 color_op, v9x_u32 alpha_op,
+                                  v9x_u32 *color, v9x_u32 *alpha)
+{
+    switch (color_op) {
+    case V9X_R3D_ABI_COLOROP_REPLACE:
+        *color = V9X_VI_COMBINE_COLOR_REPLACE;
+        break;
+    case V9X_R3D_ABI_COLOROP_MODULATE:
+        *color = V9X_VI_COMBINE_COLOR_MODULATE;
+        break;
+    case V9X_R3D_ABI_COLOROP_DECALALPHA:
+        *color = V9X_VI_COMBINE_COLOR_DECAL;
+        break;
+    case V9X_R3D_COLOROP_ADD:
+        *color = V9X_VI_COMBINE_COLOR_ADD;
+        break;
+    default:
+        return 0;
+    }
+    switch (alpha_op) {
+    case V9X_R3D_ABI_ALPHAOP_FRAGMENT:
+        *alpha = V9X_VI_COMBINE_ALPHA_FRAGMENT;
+        return 1;
+    case V9X_R3D_ABI_ALPHAOP_REPLACE:
+        *alpha = V9X_VI_COMBINE_ALPHA_REPLACE;
+        return 1;
+    case V9X_R3D_ABI_ALPHAOP_MODULATE:
+        *alpha = V9X_VI_COMBINE_ALPHA_MODULATE;
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* sampler's texture, resolved as texture, into out's texture fields. ps
+ * is the one-unit draw's PS from sampler's DX5 op, or null for a unit of
+ * a two-unit draw, whose combine is its color_op and alpha_op instead. */
+static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
+                                   const V9X_D3D_VI_TEXTURE *texture,
+                                   v9x_u32 heap_high, v9x_u32 heap_low,
+                                   struct v9x_vi_tl_draw *out, v9x_u32 *ps);
+
 static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
                                       const V9X_D3D_VI_TEXTURE *texture,
                                       v9x_u32 heap_high, v9x_u32 heap_low,
                                       struct v9x_vi_tl_draw *out,
                                       v9x_u32 *ps)
 {
-    const V9X_R3D_TEXTURE *sampler = &draw->texture;
+    return v9x_d3d_vi_map_unit(&draw->texture, texture, heap_high, heap_low,
+                               out, ps);
+}
+
+static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
+                                   const V9X_D3D_VI_TEXTURE *texture,
+                                   v9x_u32 heap_high, v9x_u32 heap_low,
+                                   struct v9x_vi_tl_draw *out, v9x_u32 *ps)
+{
     v9x_u32 bytes;
     v9x_u32 low;
     v9x_u32 mag;
@@ -280,7 +335,7 @@ static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
         !v9x_d3d_vi_address(heap_low, texture->offset, &low)) {
         return V9X_D3D_VI_REFUSE_TEXTURE_SHAPE;
     }
-    if (!v9x_d3d_vi_op(sampler->op, ps)) {
+    if (ps != 0 && !v9x_d3d_vi_op(sampler->op, ps)) {
         return V9X_D3D_VI_REFUSE_TEXTURE_OP;
     }
     /* The cylindrical WRAPU/WRAPV states have no sampler function. */
@@ -315,17 +370,22 @@ static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
     out->texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
     out->texture_bilinear = mag;
     out->texture_address = mode;
-    out->ps_vgprs = *ps == V9X_D3D_VI_PS_TEXTURE ? V9X_VI_TEXTURE_PS_VGPRS
-                                                : V9X_VI_MODULATE_PS_VGPRS;
+    if (ps != 0) {
+        out->ps_vgprs = *ps == V9X_D3D_VI_PS_TEXTURE
+                            ? V9X_VI_TEXTURE_PS_VGPRS
+                            : V9X_VI_MODULATE_PS_VGPRS;
+    }
     return V9X_D3D_VI_REFUSE_NONE;
 }
 
 v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             const V9X_D3D_VI_TEXTURE *texture,
+                            const V9X_D3D_VI_TEXTURE *texture1,
                             v9x_u32 heap_high,
                             v9x_u32 heap_low,
                             v9x_u32 depth_bytes,
                             struct v9x_vi_tl_draw *out,
+                            struct v9x_vi_tl_draw *unit1,
                             v9x_u32 *ps,
                             struct v9x_vi_d3d_ps *built)
 {
@@ -338,13 +398,22 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
     for (index = 0ul; index < sizeof(*out); ++index) {
         bytes[index] = 0u;
     }
+    if (unit1 != 0) {
+        for (index = 0ul; index < sizeof(*unit1); ++index) {
+            ((unsigned char *)unit1)[index] = 0u;
+        }
+    }
     *ps = V9X_D3D_VI_PS_GOURAUD;
     /* The render interface's explicit draws (OpenGL, Glide) are drawn with
      * their scissor and write mask (below), as Cedar's. Levels in CPU
-     * memory are not sampled, and there is one texture unit: the fallback
-     * draws those. */
-    if (draw->texture.levels != 0 || draw->texcoords1 != 0 ||
-        draw->texture1.object != 0) {
+     * memory are not sampled, and a second unit comes with its
+     * coordinates, on unit 0, to an engine that takes two (unit1 given),
+     * or not at all: the fallback draws those. */
+    if (draw->texture.levels != 0 || draw->texture1.levels != 0 ||
+        (draw->texcoords1 == 0 && draw->texture1.object != 0) ||
+        (draw->texcoords1 != 0 &&
+         (unit1 == 0 || texture1 == 0 || draw->texture.object == 0 ||
+          draw->texture1.object == 0))) {
         return V9X_D3D_VI_REFUSE_EXPLICIT;
     }
 
@@ -457,6 +526,40 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
             v9x_d3d_vi_unorm((draw->fog_color >> 8) & 0xfful, 255ul);
         built->fog_colour[2] =
             v9x_d3d_vi_unorm((draw->fog_color >> 16) & 0xfful, 255ul);
+    }
+
+    /* Two units: each unit's texture, unit 0's into out and unit 1's
+     * into unit1, which the engine turns into the PS's table, then each
+     * unit's combine (vi_shader.h). The colour key would need its test on
+     * one unit's texel, which the two-unit PS does not make. */
+    if (draw->texcoords1 != 0) {
+        if (draw->color_key_enable != 0ul &&
+            (texture->has_key != 0ul || texture1->has_key != 0ul)) {
+            return V9X_D3D_VI_REFUSE_COLOR_KEY;
+        }
+        for (index = 0ul; index < 2ul; ++index) {
+            const V9X_R3D_TEXTURE *sampler =
+                index == 0ul ? &draw->texture : &draw->texture1;
+
+            code = v9x_d3d_vi_map_unit(sampler,
+                                       index == 0ul ? texture : texture1,
+                                       heap_high, heap_low,
+                                       index == 0ul ? out : unit1, 0);
+            if (code != V9X_D3D_VI_REFUSE_NONE) {
+                return code;
+            }
+            if (!v9x_d3d_vi_combine_ops(sampler->color_op, sampler->alpha_op,
+                                        &built->color_op[index],
+                                        &built->alpha_op[index])) {
+                return V9X_D3D_VI_REFUSE_TEXTURE_OP;
+            }
+        }
+        built->two_units = 1ul;
+        built->specular = draw->specular_enable != 0ul ? 1ul : 0ul;
+        out->ps_vgprs = V9X_VI_TWO_UNIT_PS_VGPRS;
+        out->ps_kill = built->alpha_test;
+        *ps = V9X_D3D_VI_PS_BUILT;
+        return V9X_D3D_VI_REFUSE_NONE;
     }
 
     if (draw->texture.object != 0) {

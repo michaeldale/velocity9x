@@ -96,6 +96,9 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
         if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
             return V9X_D3D_SELECT_NONE;
         }
+        if ((engine_caps & V9X_DD_ENGINE_CAP_VI_OLAND) != 0ul) {
+            return V9X_D3D_SELECT_VI_OLAND;
+        }
         return V9X_D3D_SELECT_VI;
     case V9X_DD_ENGINE_TYPE_NV3:
         /* The RIVA 128: riva128_hw16.c stamps CAP_D3D beside the 2D

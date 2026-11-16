@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-17 Oland (W9QI0DAD), two texture stages: 3DMark 2000 faults in its own code (C0000005 at 004E23D1) in two of three runs; the registers show 3DMark reading one key past the end of an animation track's key array, which faults when the array ends at an unmapped page; the two-stage build only moves the layout](2026-11-17-oland-3dmark2000-faults-with-two-stages.md)
 - [2026-11-16 GT218 (W9QI0DAD), 3DMark 2001 SE Car Chase: 246 of 295 captured frames show a cleared (black) or half-drawn buffer; every Flip was declined on this row; fixed on branch gt218-flips by flips through the VGA CRTC emulation (CR0C/CR0D/CR35/CR34 behind CR3F, the VBIOS's own layout), measured on boot 44: 16 of 16 sampled Car Chase frames complete](2026-11-16-gt218-3dmark2001se-car-chase-cleared-frames-on-screen.md)
 - [2026-11-16 GT218 (W9QI0DAD), 3DMark 2000 helicopter: trees pop in at full opacity and fade in and out between frames; not compared against another driver; cause open](2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md)
 - [2026-11-16 GT218 (W9QI0DAD), Quake 3: a wall texture is drawn as horizontal one-colour streaks at some distances; not a mip level (level 0 only on this path); suspects the fallback rasteriser or software-clipped triangles; unmeasured](2026-11-16-gt218-quake3-wall-texture-streaks.md)

@@ -825,11 +825,18 @@ static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
               ((draw->texture_mip_filter & 3ul) << 26);
 }
 
+void v9x_vi_3d_texture_sharps(const struct v9x_vi_tl_draw *draw,
+                              v9x_u32 out[V9X_VI_TEXTURE_SHARP_DWORDS])
+{
+    v9x_vi_3d_texture_descriptors(draw, out);
+}
+
 v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                              const struct v9x_vi_tl_draw *draw)
 {
     v9x_u32 values[V9X_VI_TEXTURE_USER_SGPRS];
     v9x_u32 ps_sgprs;
+    v9x_u32 vs_sgprs;
     v9x_u32 params;
     v9x_u32 depth_pitch;
     v9x_u32 depth_height;
@@ -882,6 +889,10 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
          (!stream->gfx6 || (draw->vertex_stride & 3ul) != 0ul ||
           draw->vertex_stride > VI_GFX6_STRIDE_MAX)) ||
         ((draw->ps_table_low & 3ul) != 0ul) ||
+        (draw->vertex1_low != 0ul &&
+         (!stream->gfx6 || (draw->vertex1_low & 3ul) != 0ul ||
+          draw->vertex1_stride == 0ul || (draw->vertex1_stride & 3ul) != 0ul ||
+          draw->vertex1_stride > VI_GFX6_STRIDE_MAX)) ||
         (draw->ps_table_low != 0ul && draw->texture_low != 0ul)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
@@ -926,10 +937,12 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
      * FLAT: its TL VS (si_shader.h) loads through MUBUF, so its four user
      * SGPRs are a V# over the vertices. */
     if (stream->gfx6) {
+        vs_sgprs = draw->vertex1_low != 0ul ? 8ul : 4ul;
         v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
                           draw->shader_high,
                           draw->vs_vgprs != 0ul ? draw->vs_vgprs
-                                                : V9X_VI_TL_VS_VGPRS, 4ul);
+                                                : V9X_VI_TL_VS_VGPRS,
+                          vs_sgprs);
         values[0] = draw->vertex_low;
         values[1] = draw->vertex_high & VI_GFX6_RESOURCE_HIGH_MASK;
         values[2] = draw->vertex_count * V9X_VI_TL_VERTEX_BYTES;
@@ -940,7 +953,14 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
             values[1] |= draw->vertex_stride << 16;
             values[2] = draw->vertex_count;
         }
-        v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 4ul);
+        /* The second stream's V#, strided, records in vertices. */
+        values[4] = draw->vertex1_low;
+        values[5] = (draw->vertex1_high & VI_GFX6_RESOURCE_HIGH_MASK) |
+                    (draw->vertex1_stride << 16);
+        values[6] = draw->vertex_count;
+        values[7] = VI_GFX6_TL_RESOURCE_WORD3;
+        v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values,
+                          vs_sgprs);
     } else {
         v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
                           draw->shader_high, V9X_VI_TL_VS_VGPRS, 2ul);

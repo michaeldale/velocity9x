@@ -182,6 +182,155 @@ static void test_built_shaders(void)
     CHECK(!sim.killed && sim.exported);
 }
 
+/* Two units (step 4 of docs\plans\ati-gcn-ps11.md): each unit's texel
+ * told apart by its T#'s first dword, which the table holds. */
+static const float unit_texel[2][4] = {
+    { 0.5f, 0.25f, 0.875f, 0.75f },
+    { 0.375f, 0.625f, 0.5f, 0.25f }
+};
+static float unit_at[2][2];
+static int unit_wrong;
+
+static void unit_sample(const v9x_u32 *t_sharp, const v9x_u32 *s_sharp,
+                        const float *address, v9x_u32 dmask, float rgba[4])
+{
+    v9x_u32 unit = t_sharp[0] - 0x7000ul;
+    v9x_u32 chan;
+
+    if (unit > 1ul || s_sharp[0] != 0x5000ul + unit || dmask != 0xful) {
+        unit_wrong = 1;
+        unit = 0ul;
+    }
+    unit_at[unit][0] = address[0];
+    unit_at[unit][1] = address[1];
+    for (chan = 0ul; chan < 4ul; ++chan) {
+        rgba[chan] = unit_texel[unit][chan];
+    }
+}
+
+/* The combine in C, as nv50_d3d.c's model test states it. */
+static void combine_c(v9x_u32 color_op, v9x_u32 alpha_op, const float *t,
+                      float *c)
+{
+    v9x_u32 chan;
+    float in;
+
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        in = c[chan];
+        if (color_op == V9X_VI_COMBINE_COLOR_REPLACE) {
+            c[chan] = t[chan];
+        } else if (color_op == V9X_VI_COMBINE_COLOR_MODULATE) {
+            c[chan] = in * t[chan];
+        } else if (color_op == V9X_VI_COMBINE_COLOR_DECAL) {
+            c[chan] = in + t[3] * (t[chan] - in);
+        } else {
+            c[chan] = in + t[chan] > 1.0f ? 1.0f : in + t[chan];
+        }
+    }
+    if (alpha_op == V9X_VI_COMBINE_ALPHA_REPLACE) {
+        c[3] = t[3];
+    } else if (alpha_op == V9X_VI_COMBINE_ALPHA_MODULATE) {
+        c[3] *= t[3];
+    }
+}
+
+static void test_two_units(void)
+{
+    struct v9x_gcn_sim sim;
+    struct v9x_vi_d3d_ps ps;
+    v9x_u32 code[V9X_VI_D3D_PS_DWORDS_MAX];
+    v9x_u32 table[V9X_VI_TWO_UNIT_TABLE_DWORDS];
+    v9x_u32 count;
+    v9x_u32 largest = 0ul;
+    v9x_u32 combos = 0ul;
+    v9x_u32 key;
+    v9x_u32 chan;
+    int bad = 0;
+
+    memset(table, 0, sizeof(table));
+    table[V9X_VI_TWO_UNIT_T0] = 0x7000ul;
+    table[V9X_VI_TWO_UNIT_S0] = 0x5000ul;
+    table[V9X_VI_TWO_UNIT_T1] = 0x7001ul;
+    table[V9X_VI_TWO_UNIT_S1] = 0x5001ul;
+    /* Every colour and alpha op on both units, half of them with the
+     * specular added and every third fogged. */
+    for (key = 0ul; key < 144ul; ++key) {
+        float expect[4];
+        float f = key % 3ul == 0ul ? 0.375f : 1.0f;
+        const float fog_rgb[3] = { 0.25f, 0.5f, 1.0f };
+
+        memset(&ps, 0, sizeof(ps));
+        ps.two_units = 1ul;
+        ps.color_op[0] = key % 4ul;
+        ps.alpha_op[0] = (key / 4ul) % 3ul;
+        ps.color_op[1] = (key / 12ul) % 4ul;
+        ps.alpha_op[1] = (key / 48ul) % 3ul;
+        ps.specular = key & 1ul;
+        if (key % 3ul == 0ul) {
+            ps.fog = 1ul;
+            for (chan = 0ul; chan < 3ul; ++chan) {
+                ps.fog_colour[chan] = bits(fog_rgb[chan]);
+            }
+        }
+        count = v9x_vi_shader_d3d_ps_built(&ps, code);
+        if (count == 0ul || count > V9X_VI_D3D_PS_DWORDS_MAX) {
+            bad = 1;
+            continue;
+        }
+        if (count > largest) {
+            largest = count;
+        }
+        inputs(&sim, f);
+        sim.attr[3][0] = 0.3125f;
+        sim.attr[3][1] = 0.8125f;
+        sim.attr[3][2] = 0.0f;
+        sim.attr[3][3] = 1.0f;
+        sim.sample = unit_sample;
+        sim.memory = table;
+        sim.memory_dwords = V9X_VI_TWO_UNIT_TABLE_DWORDS;
+        sim.memory_low = 0x00400100ul;
+        sim.memory_high = 0x2ul;
+        sim.s[0] = 0x00400100ul;
+        sim.s[1] = 0x2ul;
+        unit_wrong = 0;
+        if (!run(&sim, code, count) || unit_wrong || !sim.exported ||
+            unit_at[0][0] != 0.125f || unit_at[0][1] != 0.625f ||
+            unit_at[1][0] != 0.3125f || unit_at[1][1] != 0.8125f ||
+            (sim.exec[0] & 0xful) != 1ul) {
+            bad = 1;
+            continue;
+        }
+        for (chan = 0ul; chan < 4ul; ++chan) {
+            expect[chan] = sim.attr[0][chan];
+        }
+        combine_c(ps.color_op[0], ps.alpha_op[0], unit_texel[0], expect);
+        combine_c(ps.color_op[1], ps.alpha_op[1], unit_texel[1], expect);
+        for (chan = 0ul; chan < 3ul; ++chan) {
+            if (ps.specular != 0ul) {
+                expect[chan] += sim.attr[2][chan];
+            }
+            if (ps.fog != 0ul) {
+                expect[chan] = fog_rgb[chan] + f * (expect[chan] -
+                                                   fog_rgb[chan]);
+            }
+        }
+        for (chan = 0ul; chan < 4ul; ++chan) {
+            if (!NEAR(sim.mrt0[chan], expect[chan])) {
+                printf("  two units %lu: channel %lu %f, want %f\n",
+                       (unsigned long)key, (unsigned long)chan,
+                       (double)sim.mrt0[chan], (double)expect[chan]);
+                bad = 1;
+            }
+        }
+        ++combos;
+    }
+    CHECK(!bad);
+    CHECK(combos == 144ul);
+    printf("INFO gcn_sim: %lu two-unit combinations held to their "
+           "arithmetic, the largest %lu words\n", (unsigned long)combos,
+           (unsigned long)largest);
+}
+
 /* One VOP3 instruction then s_endpgm; v1-v3 hold a, b, c. */
 static float one(v9x_u32 op, v9x_u32 mods, float a, float b, float c)
 {
@@ -304,5 +453,6 @@ unsigned int v9x_run_gcn_sim_tests(void)
     test_fixed_shaders();
     test_built_shaders();
     test_ps11_instructions();
+    test_two_units();
     return failures;
 }

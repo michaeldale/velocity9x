@@ -137,6 +137,10 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_VI, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_VI },
+        /* The Oland: its own limits, two stages. */
+        { 1, V9X_DD_ENGINE_TYPE_ATI_VI,
+          V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_VI_OLAND,
+          V9X_D3D_SELECT_VI_OLAND },
         { 0, V9X_DD_ENGINE_TYPE_ATI_VI, V9X_DD_ENGINE_CAP_D3D,
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_VI, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,

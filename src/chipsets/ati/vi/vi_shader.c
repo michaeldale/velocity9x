@@ -545,6 +545,126 @@ v9x_u32 v9x_vi_shader_d3d_ps(v9x_u32 op, int specular, v9x_u32 *out)
 }
 
 /*
+ * The two-unit body. SGPRs: s0:s1 the table, s2 PRIM_MASK, T# 0 s4-s11,
+ * S# 0 s12-s15, T# 1 s16-s23, S# 1 s24-s27 (s_load x8 and x4 want their
+ * first SGPR on a multiple of 4), the pixels' EXEC s28:s29. VGPRs: unit
+ * 0's (u, v) v2:v3 and texel v4-v7, the diffuse and then the result
+ * v8-v11, unit 1's texel v12-v15, the temporaries v16-v19, unit 1's
+ * (u, v) v20:v21, free again for the specular. Both samples go in
+ * whole-quad mode, as the one-unit PS's (v9x_vi_texture_ps_head).
+ */
+#define V9X_VI_TWO_T0_SGPR       4ul
+#define V9X_VI_TWO_S0_SGPR       12ul
+#define V9X_VI_TWO_T1_SGPR       16ul
+#define V9X_VI_TWO_S1_SGPR       24ul
+#define V9X_VI_TWO_EXEC_SGPR     28ul
+#define V9X_VI_TWO_TABLE_SGPR    0ul
+#define V9X_VI_TWO_PRIM_SGPR     2ul
+#define V9X_VI_TWO_TEXEL0        4ul
+#define V9X_VI_TWO_COLOUR        8ul
+#define V9X_VI_TWO_TEXEL1        12ul
+#define V9X_VI_TWO_UV1           20ul
+#define V9X_VI_TWO_SPARE         20ul
+#define V9X_VI_TWO_UV1_PARAM     3ul
+
+/* One unit's combine of the texel from t into the colour in v8-v11. */
+static v9x_u32 v9x_vi_two_unit_combine(v9x_u32 color_op, v9x_u32 alpha_op,
+                                       v9x_u32 t, v9x_u32 *out)
+{
+    v9x_u32 count = 0ul;
+    v9x_u32 c;
+    v9x_u32 in;
+
+    for (c = 0ul; c < 3ul; ++c) {
+        in = V9X_VI_TWO_COLOUR + c;
+        switch (color_op) {
+        case V9X_VI_COMBINE_COLOR_REPLACE:
+            out[count++] = v9x_vi_vop1(V9X_VI_VOP1_MOV_B32, in,
+                                       V9X_VI_VGPR(t + c));
+            break;
+        case V9X_VI_COMBINE_COLOR_MODULATE:
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MUL_F32, in,
+                                       V9X_VI_VGPR(t + c), in);
+            break;
+        case V9X_VI_COMBINE_COLOR_DECAL:
+            /* Cin += At (Ct - Cin): a v_subrev and a v_mac, as
+             * DECALALPHA's. */
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_SUBREV_F32, V9X_VI_PS_TEMP,
+                                       V9X_VI_VGPR(in), t + c);
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MAC_F32, in,
+                                       V9X_VI_VGPR(V9X_VI_PS_TEMP), t + 3ul);
+            break;
+        default:
+            /* ADD, saturated as Direct3D clamps a stage: the sum's
+             * minimum with the inline 1.0. */
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_ADD_F32, in,
+                                       V9X_VI_VGPR(t + c), in);
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MIN_F32, in,
+                                       V9X_VI_FLOAT_1, in);
+            break;
+        }
+    }
+    in = V9X_VI_TWO_COLOUR + 3ul;
+    if (alpha_op == V9X_VI_COMBINE_ALPHA_REPLACE) {
+        out[count++] = v9x_vi_vop1(V9X_VI_VOP1_MOV_B32, in,
+                                   V9X_VI_VGPR(t + 3ul));
+    } else if (alpha_op == V9X_VI_COMBINE_ALPHA_MODULATE) {
+        out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MUL_F32, in,
+                                   V9X_VI_VGPR(t + 3ul), in);
+    }
+    return count;
+}
+
+/* The table's descriptors, both units' coordinates and the diffuse, both
+ * samples, then both combines: the colour in v8-v11. */
+static v9x_u32 v9x_vi_two_unit_body(const struct v9x_vi_d3d_ps *ps,
+                                    v9x_u32 *out)
+{
+    v9x_u32 count = 0ul;
+    v9x_u32 chan;
+
+    out[count++] = v9x_vi_s_mov_b64(V9X_VI_TWO_EXEC_SGPR, V9X_VI_EXEC);
+    out[count++] = v9x_vi_s_wqm_b64(V9X_VI_EXEC, V9X_VI_EXEC);
+    out[count++] = v9x_vi_s_mov_m0(V9X_VI_TWO_PRIM_SGPR);
+    count += v9x_vi_s_load(8ul, V9X_VI_TWO_T0_SGPR, V9X_VI_TWO_TABLE_SGPR,
+                           V9X_VI_TWO_UNIT_T0 * 4ul, out + count);
+    count += v9x_vi_s_load(4ul, V9X_VI_TWO_S0_SGPR, V9X_VI_TWO_TABLE_SGPR,
+                           V9X_VI_TWO_UNIT_S0 * 4ul, out + count);
+    count += v9x_vi_s_load(8ul, V9X_VI_TWO_T1_SGPR, V9X_VI_TWO_TABLE_SGPR,
+                           V9X_VI_TWO_UNIT_T1 * 4ul, out + count);
+    count += v9x_vi_s_load(4ul, V9X_VI_TWO_S1_SGPR, V9X_VI_TWO_TABLE_SGPR,
+                           V9X_VI_TWO_UNIT_S1 * 4ul, out + count);
+    out[count++] = v9x_vi_s_nop(0ul);
+    for (chan = 0ul; chan < 2ul; ++chan) {
+        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32, 2ul + chan, 0ul,
+                                     1ul, chan);
+        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P2_F32, 2ul + chan, 1ul,
+                                     1ul, chan);
+        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P1_F32,
+                                     V9X_VI_TWO_UV1 + chan, 0ul,
+                                     V9X_VI_TWO_UV1_PARAM, chan);
+        out[count++] = v9x_vi_vintrp(V9X_VI_VINTRP_P2_F32,
+                                     V9X_VI_TWO_UV1 + chan, 1ul,
+                                     V9X_VI_TWO_UV1_PARAM, chan);
+    }
+    count += v9x_vi_interp(V9X_VI_TWO_COLOUR, 0ul, 4ul, out + count);
+    out[count++] = v9x_vi_s_waitcnt(V9X_VI_WAITCNT_ALL);
+    count += v9x_vi_image_sample(V9X_VI_TWO_TEXEL0, 2ul, V9X_VI_TWO_T0_SGPR,
+                                 V9X_VI_TWO_S0_SGPR, V9X_VI_DMASK_RGBA,
+                                 out + count);
+    count += v9x_vi_image_sample(V9X_VI_TWO_TEXEL1, V9X_VI_TWO_UV1,
+                                 V9X_VI_TWO_T1_SGPR, V9X_VI_TWO_S1_SGPR,
+                                 V9X_VI_DMASK_RGBA, out + count);
+    out[count++] = v9x_vi_s_waitcnt(V9X_VI_WAITCNT_ALL);
+    out[count++] = v9x_vi_s_mov_b64(V9X_VI_EXEC, V9X_VI_TWO_EXEC_SGPR);
+    count += v9x_vi_two_unit_combine(ps->color_op[0], ps->alpha_op[0],
+                                     V9X_VI_TWO_TEXEL0, out + count);
+    count += v9x_vi_two_unit_combine(ps->color_op[1], ps->alpha_op[1],
+                                     V9X_VI_TWO_TEXEL1, out + count);
+    return count;
+}
+
+/*
  * Each op's body leaves its colour in four VGPRs from colour, and the
  * first VGPR past what it uses is where the specular goes. Direct3D's
  * order: the key on the texel, the texture blend, the specular, the fog,
@@ -562,7 +682,11 @@ v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
     v9x_u32 chan;
     v9x_u32 index;
 
-    if (ps->op == V9X_VI_PS_COLOUR) {
+    if (ps->two_units != 0ul) {
+        count = v9x_vi_two_unit_body(ps, out);
+        colour = V9X_VI_TWO_COLOUR;
+        spare = V9X_VI_TWO_SPARE;
+    } else if (ps->op == V9X_VI_PS_COLOUR) {
         count = v9x_vi_gouraud_ps_body(out);
         colour = 2ul;
         spare = 6ul;
@@ -640,7 +764,7 @@ v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
     }
     /* The colour packed into two VGPRs free by now and exported
      * compressed (vi_shader.h). */
-    pack = ps->op == V9X_VI_PS_COLOUR ? 0ul : 2ul;
+    pack = ps->op == V9X_VI_PS_COLOUR && ps->two_units == 0ul ? 0ul : 2ul;
     count += v9x_vi_cvt_pkrtz(pack, V9X_VI_VGPR(colour),
                               V9X_VI_VGPR(colour + 1ul), out + count);
     count += v9x_vi_cvt_pkrtz(pack + 1ul, V9X_VI_VGPR(colour + 2ul),

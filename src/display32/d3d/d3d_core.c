@@ -549,6 +549,8 @@ static const V9X_D3D_ENGINE_OPS *v9x_d3d_selected_ops(v9x_u32 selection)
         return &v9x_d3d_engine_eg;
     case V9X_D3D_SELECT_VI:
         return &v9x_d3d_engine_vi;
+    case V9X_D3D_SELECT_VI_OLAND:
+        return &v9x_d3d_engine_vi_oland;
     case V9X_D3D_SELECT_NV3:
         return &v9x_d3d_engine_nv3;
     case V9X_D3D_SELECT_RS690:
@@ -10258,7 +10260,8 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         } else {
             name = "Velocity9x Radeon HD 5450";
         }
-    } else if (ops == &v9x_d3d_engine_vi) {
+    } else if (ops == &v9x_d3d_engine_vi ||
+               ops == &v9x_d3d_engine_vi_oland) {
         out->engine = V9X_R3D_ABI_ENGINE_VI;
         /* The same engine on Mullins, named by its identity bit; it read
          * "R7E" there until 2026-11-08 (V9XGLP on M-JJN1ZZ). */
@@ -10414,7 +10417,8 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         out->hw_texture_size_max = ops->limits->texture_size_max;
         out->hw_texture_size_min = ops->limits->texture_size_min;
         out->hw_texture_shape = V9X_R3D_ABI_HWTEX_POW2;
-    } else if (ops == &v9x_d3d_engine_vi) {
+    } else if (ops == &v9x_d3d_engine_vi ||
+               ops == &v9x_d3d_engine_vi_oland) {
         /* The R7E's, on Cedar's terms: video-memory textures in all three
          * formats, placed by v9x_d3d_vi_create_surface with 64-byte rows
          * (V9XDDP's texture checks, M-XP7053 boot 34). CPU levels are
