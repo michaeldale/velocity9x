@@ -16,8 +16,8 @@
 ;   status at C34Ch and its SERDES busy pair at C464h/C468h; there is no
 ;   CP_RB0_BASE_HI, CP_DEVICE_ID, CP_MAX_CONTEXT or CP_ENDIAN_SWAP (SI's
 ;   ME_INITIALIZE packet carries those), and no MEC.
-; - No gpu_init table windows yet: the table op refuses every offset until
-;   Oland's golden registers and gpu_init are listed (the next step).
+; - The gpu_init table windows (SCInitWindows) are the graphics block and
+;   the three address-configuration copies; see v9x_si_gpu_init_ops.
 ;
 ; Loaded dynamically by V9XSICP.EXE, which decides every access; this VxD
 ; only executes an op list against the chip and refuses anything outside
@@ -41,7 +41,7 @@
 ;   ucode          - dwords from the caller's data array to one of the four
 ;                    microcode data ports (PFP, ME, CE streamed; the RLC's
 ;                    indexed), the only ports this op writes.
-;   mmio table     - as cik_cp.asm's, against SCInitWindows (empty here).
+;   mmio table     - as cik_cp.asm's, against SCInitWindows (see below).
 ;   delay          - a count of SRBM_STATUS reads, at most SC_DELAY_MAX.
 ;   VRAM ops       - write, read, fill, pattern, read block, and a copy of a
 ;                    run of the caller's data array, all at aligned offsets
@@ -169,7 +169,14 @@ SCReadWindows label dword
     dd 8700h, 8708h     ; CP_RB0_RPTR, CP_RB_WPTR_DELAY
     dd 89bch, 89c4h     ; CC_ and GC_USER_SHADER_ARRAY_CONFIG
     dd 98f4h, 98fch     ; CC_RB_BACKEND_DISABLE, GB_ADDR_CONFIG
-    dd 9910h, 9978h     ; GB_TILE_MODE0-25
+    dd 9910h, 9990h     ; GB_TILE_MODE0-31
+    dd 8000h, 8004h     ; GRBM_CNTL
+    dd 8bcch, 8bd0h     ; PA_SC_FIFO_SIZE
+    dd 90e8h, 90ech     ; SPI_STATIC_THREAD_MGMT_3
+    dd 9148h, 9150h     ; CGTS_TCC_DISABLE, CGTS_USER_TCC_DISABLE
+    dd 2f48h, 2f4ch     ; HDP_ADDR_CONFIG
+    dd 0d0b8h, 0d0bch   ; DMA0_TILING_CONFIG
+    dd 28350h, 28354h   ; PA_SC_RASTER_CONFIG
     dd 0c100h, 0c118h   ; CP_RB0_BASE .. CP_RB0_WPTR
     dd 0c144h, 0c148h   ; CP_RB_VMID
     dd 0c150h, 0c154h   ; CP_PFP_UCODE_ADDR
@@ -184,7 +191,7 @@ SCReadWindows label dword
     dd 0c400h, 0c408h   ; RLC_CGTT_MGCG_OVERRIDE, RLC_CGCG_CGLS_CTRL
     dd 0c41ch, 0c420h   ; RLC_LB_INIT_CU_MASK
     dd 0c464h, 0c46ch   ; RLC_SERDES_MASTER_BUSY_0, _1
-SC_READ_WINDOW_COUNT    equ 31
+SC_READ_WINDOW_COUNT    equ 38
 
 ; Writes accepted: exact offsets. gfx_v6_0.c's rlc_resume, rlc_stop/start,
 ; cp_gfx_enable, cp_gfx_load_microcode and cp_gfx_resume (ring 0), and the
@@ -226,12 +233,22 @@ SCWriteOffsets label dword
     dd 0c41ch           ; RLC_LB_INIT_CU_MASK
 SC_WRITE_OFFSET_COUNT   equ 34
 
-; The table op's registers: start, limit (exclusive). Empty until Oland's
-; golden registers and gpu_init are listed: a dummy window no aligned
-; offset falls in, so every table op is refused.
+; The table op's registers: start, limit (exclusive). The graphics block,
+; which v9x_si_gpu_init_ops (si_gpu_init.c and its generated tables) stays
+; inside - tests\host\test_si_gpu.c checks every entry against this list -
+; and the three address-configuration copies constants_init writes outside
+; it. GRBM_SOFT_RESET (8020h) and the RLC's microcode port (C32Ch-C333h)
+; are left out, so no table can reset a block or reach the RLC's RAM.
 SCInitWindows label dword
-    dd 0ffffffffh, 0ffffffffh
-SC_INIT_WINDOW_COUNT    equ 1
+    dd 2f48h, 2f4ch     ; HDP_ADDR_CONFIG
+    dd 8000h, 8020h     ; GRBM_CNTL .. below GRBM_SOFT_RESET
+    dd 8024h, 0c000h    ; the rest of the graphics config space
+    dd 0c300h, 0c32ch   ; RLC, below its microcode port
+    dd 0c334h, 0c500h   ; RLC, above it (load balance, clock gating)
+    dd 0d0b8h, 0d0bch   ; DMA0_TILING_CONFIG
+    dd 0d8b8h, 0d8bch   ; DMA1_TILING_CONFIG
+    dd 28000h, 29000h   ; context registers (PA_SC_RASTER_CONFIG, _MODE_CNTL_1)
+SC_INIT_WINDOW_COUNT    equ 8
 SCResult label dword
     dd SC_MAGIC                 ; 00 magic
     dd 0                        ; 01 status

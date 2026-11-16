@@ -36,7 +36,7 @@ Microcode: linux-firmware `amdgpu/oland_*.bin`. PFP version 54h, CE
 ## Before (call 1, read-only)
 
 As the survey found: `CP_ME_CNTL` 15000000 (three engines halted),
-`RLC_CNTL` 0, `RLC_STAT` 6 (clock and power on, RLC idle),
+`RLC_CNTL` 0, `RLC_STAT` 6 (its bits are named two ways; see the correction in 2026-11-16-oland-gpu-init.md),
 `GRBM_SOFT_RESET` 0, `GB_ADDR_CONFIG` 0. New here: **the BIOS leaves
 coarse-grain clock gating on**, `RLC_CGCG_CGLS_CTRL` 3. gfx_v6_0 does not
 touch it, so neither did this run. `CP_RB0_BASE` reads FEDCBAEF, a
@@ -60,7 +60,7 @@ pattern read back through BAR0.
 
 Two readings left over afterwards, neither explained:
 
-- `RLC_STAT` stays at 7 after `RLC_CNTL` is cleared (bit 0, RLC_BUSY).
+- `RLC_STAT` stays at 7 after `RLC_CNTL` is cleared (bit 0). Later measured: it clears only on the RLC's soft reset (2026-11-16-oland-gpu-init.md).
 - `GRBM_STATUS2` reads 100h after the run, 0 before.
 
 The CP and RLC were put back halted and every register written was

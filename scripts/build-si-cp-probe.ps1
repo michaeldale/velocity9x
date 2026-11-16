@@ -91,7 +91,9 @@ if (-not [Text.Encoding]::ASCII.GetString($vxdBytes).Contains('SICP_DDB')) {
 # The publishers: the CP bring-up and the first draw.
 $publishers = @(
     @{ Source = 'si_cp_win32.c'; Name = 'v9xsicp'; Entry = '_V9xOlandCpEntry@0'
-       Description = 'Velocity9x Oland CP bring-up probe'; Extra = @() }
+       Description = 'Velocity9x Oland CP bring-up probe'
+       Extra = @('src\chipsets\ati\si\si_gpu_init.c',
+                 'src\chipsets\ati\si\si_gpu_init_tables.c') }
 )
 foreach ($publisher in $publishers) {
     $sources = @(Join-Path $repoRoot ('tools\diag\' + $publisher.Source))

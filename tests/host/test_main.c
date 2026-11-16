@@ -407,6 +407,10 @@ unsigned int v9x_run_vi_sdma_tests(void);
  * measured), and the generated Oland microcode's edges. */
 unsigned int v9x_run_si_dma_tests(void);
 
+/* tests\host\test_si_gpu.c: Oland's generated gpu_init list against the
+ * Linux values it comes from, and every entry inside SICP.VXD's windows. */
+unsigned int v9x_run_si_gpu_tests(void);
+
 /* tests\host\test_cik_shader.c: the GCN 3 to GCN 2 translation for
  * Mullins against LLVM's SI/CI and VI encodings, and every bring-up shader
  * translating whole. */
@@ -1632,6 +1636,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r6_3d_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_si_dma_tests();
+    failures += v9x_run_si_gpu_tests();
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();
     failures += v9x_run_vi_3d_tests();

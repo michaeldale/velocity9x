@@ -33,9 +33,16 @@
  *   then left off: nothing here takes an interrupt. Call 1's value goes
  *   back at the end.
  *
- * gfx_v6_0_constants_init (golden registers, tiling, GB_ADDR_CONFIG),
- * which Linux runs before rlc_resume, is not run: the ring test does not
- * draw. It is the next step.
+ * /gpuinit runs si_init_golden_registers and gfx_v6_0_constants_init for
+ * Oland first, as Linux runs them before rlc_resume: v9x_si_gpu_init_ops's
+ * list (si_gpu_init.c and its generated tables) as one table op, inside
+ * SICP.VXD's graphics windows. After the preamble the probe reads back
+ * GB_ADDR_CONFIG, the tile modes, the raster configuration and the other
+ * plain writes it can read, and counts those that differ from the list.
+ * Those registers are configuration, not state the driver holds, and are
+ * not put back. It also reports CGTS_TCC_DISABLE and its user copy, which
+ * decide whether setup_tcc (left out of the list) would write anything.
+ * Without /gpuinit nothing of this runs.
  *
  * SICP.VXD executes the op lists built here and refuses anything outside
  * its allow-lists. Writes C:\V9XDIAG\V9XSICP.INI. The microcode is
@@ -70,6 +77,7 @@
 #include <stddef.h>
 
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/si_gpu_init.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -100,6 +108,19 @@
 #define V9X_OP_MMIO_RMW     13ul
 #define V9X_OP_UCODE        14ul
 #define V9X_OP_VRAM_DATA    15ul
+#define V9X_OP_MMIO_TABLE   16ul
+
+/* v9x_si_gpu_init_ops's list, and what /gpuinit reads back afterwards. */
+#define V9X_GPU_OPS_MAX     256u
+#define V9X_SI_TILE_MODE0   0x09910ul
+#define V9X_SI_GRBM_CNTL    0x08000ul
+#define V9X_SI_HDP_ADDR_CONFIG      0x02f48ul
+#define V9X_SI_DMA0_TILING_CONFIG   0x0d0b8ul
+#define V9X_SI_PA_SC_RASTER_CONFIG  0x28350ul
+#define V9X_SI_PA_SC_FIFO_SIZE      0x08bccul
+#define V9X_SI_SPI_THREAD_MGMT_3    0x090e8ul
+#define V9X_SI_CGTS_TCC_DISABLE     0x09148ul
+#define V9X_SI_CGTS_USER_TCC        0x0914cul
 
 /* SICP.VXD's SC_PATTERN_STEP. */
 #define V9X_PATTERN_STEP    0x9e3779b9ul
@@ -164,9 +185,14 @@
 /* Fields: sid.h and gfx_6_0_sh_mask.h. CP_ME_CNTL CE_HALT bit 24,
  * PFP_HALT 26, ME_HALT 28. RLC_CNTL RLC_ENABLE_F32 bit 0.
  * GRBM_SOFT_RESET SOFT_RESET_RLC bit 2. CP_INT_CNTL_RING0 CNTX_BUSY and
- * CNTX_EMPTY, bits 19 and 20. RLC_STAT RLC_BUSY 0, GFX_POWER 1, GFX_CLOCK
- * 2, GFX_LS 3: enable_gui_idle_interrupt(false) waits for clock and power
- * alone. CP_RB0_CNTL RB_BUFSZ 5:0, RB_BLKSZ 13:8, RB_RPTR_WR_ENA 31. */
+ * CNTX_EMPTY, bits 19 and 20. RLC_STAT bits 0-3 as sid.h names them
+ * (RLC_BUSY, GFX_POWER, GFX_CLOCK, GFX_LS), which is what
+ * enable_gui_idle_interrupt(false) waits on: masked Fh, equal to 6.
+ * gfx_6_0_sh_mask.h names bits 1 and 2 RLC_GPM_BUSY and RLC_SPM_BUSY
+ * instead; which is right is not settled. Measured on W9QI0DAD: 6 after
+ * the RLC's reset, 7 once it runs, and 7 until the next reset, so the
+ * wait times out on every run after the first, harmlessly.
+ * CP_RB0_CNTL RB_BUFSZ 5:0, RB_BLKSZ 13:8, RB_RPTR_WR_ENA 31. */
 #define V9X_SI_CP_HALTS             0x15000000ul
 #define V9X_SI_RLC_ENABLE           0x00000001ul
 #define V9X_SI_SOFT_RESET_RLC       0x00000004ul
@@ -310,6 +336,29 @@ static const char * const v9x_extra_names[V9X_EXTRA_COUNT] = {
     "RLC_SERDES_MASTER_BUSY_0", "RLC_SERDES_MASTER_BUSY_1", "SRBM_STATUS",
     "MC_VM_FB_LOCATION", "GB_ADDR_CONFIG"
 };
+
+/* /gpuinit's read-back: the plain writes the probe can read, then the
+ * fuse registers setup_tcc would read. The tile modes follow these. */
+static const DWORD v9x_check_offsets[] = {
+    V9X_SI_GRBM_CNTL, V9X_SI_GB_ADDR_CONFIG, V9X_SI_HDP_ADDR_CONFIG,
+    V9X_SI_DMA0_TILING_CONFIG, V9X_SI_PA_SC_RASTER_CONFIG,
+    V9X_SI_PA_SC_FIFO_SIZE, V9X_SI_SPI_THREAD_MGMT_3,
+    V9X_SI_CGTS_TCC_DISABLE, V9X_SI_CGTS_USER_TCC
+};
+#define V9X_CHECK_COUNT (sizeof(v9x_check_offsets) / sizeof(v9x_check_offsets[0]))
+
+static const char * const v9x_check_names[V9X_CHECK_COUNT] = {
+    "GRBM_CNTL", "GB_ADDR_CONFIG", "HDP_ADDR_CONFIG", "DMA0_TILING_CONFIG",
+    "PA_SC_RASTER_CONFIG", "PA_SC_FIFO_SIZE", "SPI_STATIC_THREAD_MGMT_3",
+    "CGTS_TCC_DISABLE", "CGTS_USER_TCC_DISABLE"
+};
+
+static struct v9x_vi_reg_seq v9x_gpu_ops[V9X_GPU_OPS_MAX];
+static DWORD v9x_gpu_count;
+static DWORD v9x_at_check;
+static DWORD v9x_at_early_addr;
+static DWORD v9x_at_reset_stat;
+static DWORD v9x_at_rlc_addr;
 
 /* The four images, in the order the data array holds them. */
 struct v9x_sicp_image {
@@ -616,8 +665,25 @@ static DWORD v9x_pattern(DWORD seed, DWORD index)
     return seed + index * V9X_PATTERN_STEP;
 }
 
+/* The value the list leaves at offset if its last entry there is a plain
+ * write; 0 with *known clear otherwise. */
+static DWORD v9x_expected(DWORD offset, int *known)
+{
+    DWORD index;
+    DWORD value = 0ul;
+
+    *known = 0;
+    for (index = 0ul; index < v9x_gpu_count; ++index) {
+        if (v9x_gpu_ops[index].offset == offset) {
+            *known = v9x_gpu_ops[index].clear == 0xfffffffful;
+            value = v9x_gpu_ops[index].set;
+        }
+    }
+    return value;
+}
+
 /* Call 3's op list. lo/hi are the scratch window's GPU address. */
-static void v9x_build_run(DWORD lo, DWORD hi)
+static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init)
 {
     DWORD wptr_0;
     DWORD wptr_1;
@@ -652,6 +718,25 @@ static void v9x_build_run(DWORD lo, DWORD hi)
     }
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_SCRATCH_REG0, V9X_SCRATCH_BEFORE, 0ul);
 
+    /* si_init_golden_registers and constants_init, before rlc_resume as
+     * in Linux's hw_init order: one table op, refused whole by SICP.VXD if
+     * any entry falls outside its windows. */
+    if (with_gpu_init && v9x_gpu_count != 0ul &&
+        v9x_gpu_count * 3ul <= V9X_SICP_DATA_MAX - v9x_data_dwords) {
+        v9x_op(V9X_OP_MMIO_TABLE, v9x_data_dwords, v9x_gpu_count, 0ul);
+        for (index = 0ul; index < v9x_gpu_count; ++index) {
+            v9x_data[v9x_data_dwords++] = v9x_gpu_ops[index].offset;
+            v9x_data[v9x_data_dwords++] = v9x_gpu_ops[index].clear;
+            v9x_data[v9x_data_dwords++] = v9x_gpu_ops[index].set;
+        }
+        /* Read at once, before the RLC runs, so a later change is told
+         * apart from a write that never took. */
+        v9x_at_early_addr = v9x_op(V9X_OP_MMIO_READ, V9X_SI_GB_ADDR_CONFIG,
+                                   0ul, 0ul);
+        v9x_op(V9X_OP_MMIO_READ, V9X_SI_DMA0_TILING_CONFIG, 0ul, 0ul);
+        v9x_op(V9X_OP_MMIO_READ, V9X_SI_HDP_ADDR_CONFIG, 0ul, 0ul);
+    }
+
     /* rlc_resume: rlc_stop (RLC_CNTL 0, the GUI-idle interrupts off and
      * RLC_STAT down to clock and power, the SERDES idle), rlc_reset,
      * Linux's RL/LB/MC/UCODE_CNTL values, the microcode, rlc_start. */
@@ -669,6 +754,7 @@ static void v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_GRBM_SOFT_RESET, 0ul, 0ul);
     v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
+    v9x_at_reset_stat = v9x_op(V9X_OP_MMIO_READ, V9X_SI_RLC_STAT, 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_RLC_RL_BASE, 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_RLC_RL_SIZE, 0ul, 0ul);
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_RLC_LB_CNTL, 0ul, 0ul);
@@ -684,6 +770,8 @@ static void v9x_build_run(DWORD lo, DWORD hi)
     v9x_op(V9X_OP_DELAY, V9X_DELAY_READS, 0ul, 0ul);
     v9x_at_rlc_cntl = v9x_op(V9X_OP_MMIO_READ, V9X_SI_RLC_CNTL, 0ul, 0ul);
     v9x_at_rlc_stat = v9x_op(V9X_OP_MMIO_READ, V9X_SI_RLC_STAT, 0ul, 0ul);
+    v9x_at_rlc_addr = v9x_op(V9X_OP_MMIO_READ, V9X_SI_GB_ADDR_CONFIG, 0ul,
+                             0ul);
 
     /* cp_gfx_load_microcode: halt and SCRATCH_UMSK 0, then PFP, CE, ME,
      * and every address register back to 0. */
@@ -749,6 +837,18 @@ static void v9x_build_run(DWORD lo, DWORD hi)
     v9x_at_grbm_2 = v9x_op(V9X_OP_MMIO_READ, V9X_SI_GRBM_STATUS, 0ul, 0ul);
     v9x_at_scratch_2 = v9x_op(V9X_OP_MMIO_READ, V9X_SI_SCRATCH_REG0, 0ul, 0ul);
 
+    /* What gpu_init left, read while the CP still runs. */
+    v9x_at_check = v9x_request.count;
+    if (with_gpu_init) {
+        for (index = 0ul; index < V9X_CHECK_COUNT; ++index) {
+            v9x_op(V9X_OP_MMIO_READ, v9x_check_offsets[index], 0ul, 0ul);
+        }
+        for (index = 0ul; index < V9X_SI_TILE_MODES; ++index) {
+            v9x_op(V9X_OP_MMIO_READ, V9X_SI_TILE_MODE0 + index * 4ul, 0ul,
+                   0ul);
+        }
+    }
+
     /* Halt the CP and stop the RLC, then put back what call 1 read,
      * CP_ME_CNTL (halted) last. */
     v9x_op(V9X_OP_MMIO_WRITE, V9X_SI_CP_ME_CNTL, V9X_SI_CP_HALTS, 0ul);
@@ -813,6 +913,7 @@ void __stdcall V9xOlandCpEntry(void)
     DWORD fb;
     DWORD lo;
     DWORD hi;
+    int with_gpu_init;
     const DWORD *r;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
@@ -904,7 +1005,17 @@ void __stdcall V9xOlandCpEntry(void)
     }
 
     /* Call 3: the run. */
-    v9x_build_run(lo, hi);
+    with_gpu_init = v9x_switch_given("/gpuinit");
+    v9x_gpu_count = 0ul;
+    if (with_gpu_init) {
+        v9x_gpu_count = v9x_si_gpu_init_ops(v9x_gpu_ops, V9X_GPU_OPS_MAX);
+        v9x_number("GpuInit", "Entries", v9x_gpu_count);
+        if (v9x_gpu_count == 0ul) {
+            CloseHandle(device);
+            v9x_finish("GPU-INIT-TOO-LONG", 8u);
+        }
+    }
+    v9x_build_run(lo, hi, with_gpu_init);
     if (v9x_ring_count > V9X_RING_MAX_DWORDS ||
         v9x_request.count > V9X_SICP_OP_MAX) {
         CloseHandle(device);
@@ -921,6 +1032,7 @@ void __stdcall V9xOlandCpEntry(void)
     v9x_key("During", "RlcIdleWait", r[v9x_at_rlc_idle]);
     v9x_key("During", "Serdes0Wait", r[v9x_at_serdes_0]);
     v9x_key("During", "Serdes1Wait", r[v9x_at_serdes_1]);
+    v9x_key("During", "RlcStatAfterReset", r[v9x_at_reset_stat]);
     v9x_key("During", "RlcCntlStarted", r[v9x_at_rlc_cntl]);
     v9x_key("During", "RlcStat", r[v9x_at_rlc_stat]);
     v9x_key("During", "MeCntlHalted", r[v9x_at_me_cntl_halted]);
@@ -941,6 +1053,44 @@ void __stdcall V9xOlandCpEntry(void)
     for (index = 0ul; index < V9X_EXTRA_COUNT; ++index) {
         v9x_key("After", v9x_extra_names[index],
                 r[v9x_at_after_extra + index]);
+    }
+    if (with_gpu_init) {
+        DWORD mismatches = 0ul;
+        DWORD expected;
+        int known;
+        char key[24];
+
+        for (index = 0ul; index < V9X_CHECK_COUNT; ++index) {
+            DWORD got = r[v9x_at_check + index];
+
+            v9x_key("GpuInit", v9x_check_names[index], got);
+            expected = v9x_expected(v9x_check_offsets[index], &known);
+            if (known && got != expected) {
+                ++mismatches;
+                lstrcpyA(key, v9x_check_names[index]);
+                lstrcatA(key, "Want");
+                v9x_key("GpuInit", key, expected);
+            }
+        }
+        for (index = 0ul; index < V9X_SI_TILE_MODES; ++index) {
+            DWORD got = r[v9x_at_check + V9X_CHECK_COUNT + index];
+
+            lstrcpyA(key, "TileMode");
+            v9x_decimal(key + 8, index);
+            v9x_key("GpuInit", key, got);
+            expected = v9x_expected(V9X_SI_TILE_MODE0 + index * 4ul, &known);
+            if (known && got != expected) {
+                ++mismatches;
+                lstrcatA(key, "Want");
+                v9x_key("GpuInit", key, expected);
+            }
+        }
+        v9x_key("GpuInit", "EarlyGbAddrConfig", r[v9x_at_early_addr]);
+        v9x_key("GpuInit", "EarlyDma0Tiling", r[v9x_at_early_addr + 1ul]);
+        v9x_key("GpuInit", "EarlyHdpAddrConfig", r[v9x_at_early_addr + 2ul]);
+        v9x_key("GpuInit", "RlcStartedGbAddrConfig", r[v9x_at_rlc_addr]);
+        v9x_number("GpuInit", "Mismatches", mismatches);
+        v9x_pass("GpuInit", mismatches == 0ul);
     }
     v9x_key("Result", "WritebackRptr", v9x_result.block[0]);
     v9x_pass("RingTest", r[v9x_at_wait_1] != V9X_SICP_TIMEOUT);

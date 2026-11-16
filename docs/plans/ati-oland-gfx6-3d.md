@@ -3,7 +3,11 @@
 Date: 2026-11-16
 
 Status: Step 1 done on W9QI0DAD (the CP runs and passes Linux's ring
-test). Step 2 next.
+test). Step 2's first half done: Oland's gpu_init list runs and reads
+back, except `GB_ADDR_CONFIG` and `DMA0_TILING_CONFIG`, which read back
+partly
+([`2026-11-16-oland-gpu-init.md`](../decisions/2026-11-16-oland-gpu-init.md)).
+Next: the clear state and the first draws, with step 3's shaders.
 
 Phase 6 of [`ati-oland-gfx6.md`](ati-oland-gfx6.md): the graphics
 command processor and Direct3D on W9QI0DAD's Oland XT (`1002:6610`,

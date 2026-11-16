@@ -182,6 +182,10 @@ function Get-V9xHostSourceNames {
         # Oland graphics microcode (generated from linux-firmware), data
         # only.
         'src\chipsets\ati\si\si_gfx_microcode.c',
+        # Oland: gpu_init's list (generated golden and tile tables), data
+        # and no I/O.
+        'src\chipsets\ati\si\si_gpu_init.c',
+        'src\chipsets\ati\si\si_gpu_init_tables.c',
         # Mullins: GCN 3 shader words rewritten as GCN 2, no I/O.
         'src\chipsets\ati\cik\cik_shader.c',
         # Mullins: gpu_init's list and the CI clear state, data and no I/O.
@@ -455,6 +459,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_cm_3d.c',
         'tests\host\test_vi_sdma.c',
         'tests\host\test_si_dma.c',
+        'tests\host\test_si_gpu.c',
         'tests\host\test_cik_shader.c',
         'tests\host\test_cik_gpu.c',
         'tests\host\test_vi_3d.c',
