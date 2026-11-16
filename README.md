@@ -12,7 +12,7 @@ All of them draw through one shared render core. It runs these with
 hardware 3D:
 - **Intel:** GMA 900, GMA 950, GMA 3150, GMA X3100, HD Graphics
   (Ironlake), HD 4000 and HD 4600;
-- **AMD and ATI:** Radeon HD 2400 Pro, HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D, R3E
+- **AMD and ATI:** Radeon 9250, HD 2400 Pro, HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D, R3E
   (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
   Rage IIC;
 - **others:** S3 ViRGE and Trio3D, Matrox Millennium II and Mystique, SiS
@@ -35,24 +35,29 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.52.0
+## Current version: 0.53.0
 
-[Download](releases/0.52.0/README.md) ·
+[Download](releases/0.53.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.52.0:
-- **ATI Radeon HD 2400 Pro (RV610), `ati` package:** Direct3D and OpenGL
-  through its shader core, DirectDraw fills, copies and page flips on its
-  DMA engine. On one card every release probe passes and 3DMark 2000
-  completes (2989)
-  ([record](docs/decisions/2026-11-15-rv610-hd2400pro-bring-up.md)).
-- **NVIDIA GeForce 210 (GT218), `nvidia` package:** the first
-  Tesla-generation card. DirectDraw and GDI fills and copies on the 2D
-  engine, Direct3D on the 3D engine at 16 and 32 bpp with 16-bit depth.
-  3DMark 2000 completes on one card (2762, 3052, 2765)
-  ([record](docs/decisions/2026-11-14-gt218-3d-d3d-builders.md)).
+New in 0.53.0:
+- **ATI Radeon 9250 (RV280), `ati` package:** Direct3D, OpenGL and Glide
+  on the R200 3D engine, DirectDraw fills, copies and page flips on the
+  2D engine. On one card V9XD32 passes at 16 and 32 bpp, 3DMark 2000
+  completes (871) and the Quake 2 demo runs at 54.7 fps
+  ([record](docs/decisions/2026-11-15-rv280-3dmark2000-quake2.md)).
+- **NVIDIA GeForce 210:** OpenGL games draw (the Quake 3 demo, every draw
+  on the engine); DirectX 8 pixel shader 1.1 and two texture stages in
+  one pass (3DMark 2001 SE completes, 2855, with parts of its frames not
+  drawn); GDI copies and scrolls on the engine from logon
+  ([OpenGL](docs/decisions/2026-11-16-gt218-opengl-describe.md),
+  [shaders](docs/decisions/2026-11-15-gt218-draw-shader-ddi8.md)).
+- **Every package:** a second device bound to Velocity9x, such as a
+  card's second head, no longer puts the screen into VGA text mode when
+  the Settings tab is opened
+  ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
 
 ### Known issues
 
@@ -88,12 +93,16 @@ New in 0.52.0:
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
 - **GeForce 210:** the screen cannot be flipped, so each Direct3D frame
   is presented by a copy, whose cost is not measured. Not yet working: a
-  Lock of a depth buffer, 24-bit depth with stencil, X8R8G8B8 textures,
-  and textured Glide draws (the Glide 2 probe's five texture checks draw
-  nothing). The OpenGL probe passes; no OpenGL or Glide game and no 3DCIF
-  program has been run. 3DMark 2000 ended in a crash
-  in two runs of five, traced to 3DMark reading past one of its own
-  arrays.
+  Lock of a depth buffer, 24-bit depth with stencil, cube maps, `texm3x3`
+  shaders and some texture formats (3DMark 2001 SE leaves parts of its
+  frames undrawn), and textured Glide draws (the Glide 2 probe's texture
+  checks). No Glide game and no 3DCIF program has been run. 3DMark 2000
+  ended in a crash in two runs of five, traced to 3DMark reading past one
+  of its own arrays.
+- **Radeon 9250:** one OpenGL probe's depth-tested quad is wrong in a
+  narrow band ([issue](docs/issues/2026-11-15-rv280-gl-geomscan-band.md)).
+  The Radeon 9200SE (`1002:5964`) is listed as the same chip and has not
+  been run.
 - **S3 Trio64:** a second or two of cyan garbage at Windows shutdown,
   before the safe-to-turn-off screen; cosmetic
   ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
@@ -101,10 +110,6 @@ New in 0.52.0:
   terrain red ([issue](docs/issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)).
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts
   sometimes times out and is skipped; later frames draw.
-- **`vbe` package, Radeon 9250:** one reporter's screen breaks into
-  coloured blocks when Display Properties' Settings tab is opened; not
-  reproduced, cause unknown
-  ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
 - **RIVA 128ZX:** not finished. Most of 3DMark 2000 is refused and not
   drawn, and one Glide 2 probe check fails.
 - **Older, not rerun since:** on the HD 5450, trees vanish and reappear in
@@ -114,6 +119,8 @@ New in 0.52.0:
 
 ### Recent releases
 
+- **0.52.0:** the ATI Radeon HD 2400 Pro (RV610); the NVIDIA GeForce 210
+  (GT218), the first Tesla-generation card.
 - **0.51.0:** the HD 4600's core at its full 1150 MHz (3DMark 2001 SE
   2357 to 3159); environment and DOT3 bump mapping on the HD 4600 and GMA
   900 to 3150; 32 MiB of texture memory in system RAM on the GMA X3100.
@@ -228,6 +235,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | ATI Rage IIC and the Rage II class | `ati` | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
+| ATI Radeon 9250 (RV280, `1002:5960`), from 0.53.0 | `ati` | R200, by register writes, command processor off | Direct3D at 16 and 32 bpp with 16-bit Z; OpenGL; the Glide 2 probe; DirectDraw fills and copies on the 2D engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000 and Quake 2. One tester's card through remote help; modes from the VBE; the second head is not claimed. 3DCIF not run |
 | ATI Radeon X1200 IGP (RS690, `1002:791F`), from 0.37.0 | `ati` | R300-class, by register writes | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys and mipmaps; DirectDraw on the 2D engine and page flips. Rollcage and 3DMark 2000. From 0.38.0 OpenGL and Glide draw on the 3D engine: the OpenGL and Glide 2 probes pass; 3DCIF not run. One tester's Sempron machine through remote help; 16 MiB of the 128 MiB carve-out used; modes from the VBE |
 | AMD Radeon HD 2600 XT (RV630, `1002:9588`), from 0.49.0 | `ati` | R600, through AMD's RV630 CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, fog and colour keys; OpenGL; DirectDraw on the DMA engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000, 3DMark 2001 SE and Quake 3. One tester's Gigabyte card through remote help; 128 MiB of its 256 MiB used; modes from the VBE. Glide and 3DCIF not run; the screen is not write-combined |
 | ATI Radeon HD 2400 Pro (RV610, `1002:94C3`), from 0.52.0 | `ati` | R600, through AMD's RV610 CP microcode | As the HD 2600 XT: Direct3D, OpenGL, DirectDraw on the DMA engine and page flips. Every release probe passes and 3DMark 2000 completes. The same tester's Sapphire card through remote help; modes from the VBE; the screen is not write-combined |
@@ -259,7 +267,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 3D engine | Tested on hardware |
 |---|---|---|---|
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
-| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only); no page flips, frames presented by a copy. 3DMark 2000. One tester's card through remote help; modes from the VBE. The OpenGL probe passes; the Glide 2 probe's texture checks fail; 3DCIF not run |
+| NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only), GDI copies on the engine from logon from 0.53.0; no page flips, frames presented by a copy. 3DMark 2000. From 0.53.0, pixel shader 1.1 through the DirectX 8 interface and two texture stages in one pass (3DMark 2001 SE completes with parts of its frames not drawn), and OpenGL games (Quake 3). One tester's card through remote help; modes from the VBE. The Glide 2 probe's texture checks fail; 3DCIF not run |
 | SiS 6326 | `sis` | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
 
@@ -288,7 +296,7 @@ it sets modes itself: up to 1024x768 at 8 and 16 bpp on most cards, True
 Color and 1280x1024 on the S3 cards, 1024x576 on the GMA 950's panel, 1024x600 on the GMA 3150's, and from 0.48.0 1280x800 on the GMA X3100 laptop's.
 Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
 where the table says otherwise. On the `vbe` package (0.46.0) and the
-`ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0) and HD 2600 XT (0.49.0) it draws into a
+`ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0), HD 2600 XT (0.49.0) and Radeon 9250 (0.53.0) it draws into a
 copy of the desktop in system memory, so reading the screen does not
 cross the bus; `C:\V9XDIAG\NOSHADOW.TXT` turns that off. No card has a
 hardware cursor.
@@ -321,6 +329,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | ATI Rage XL, Rage Pro | No | Yes | Yes | Yes | Yes | Yes | Yes |
 | ATI Rage Mobility-M | No | Yes | Not run | Yes | Not run | Not run | Not run |
 | ATI Rage 128 Pro | DirectDraw, flips | Yes | Not run | Yes | No | Yes | Not run |
+| ATI Radeon 9250 (0.53.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe (0.38.0) | No | Glide 2 probe only (0.38.0) | Not run |
 | AMD Radeon HD 2600 XT (0.49.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | ATI Radeon HD 2400 Pro (0.52.0) | DirectDraw, flips | Yes | Not run | Probe | No | Glide 2 probe only | Not run |
@@ -338,7 +347,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Matrox Mystique | GDI, DirectDraw, flips | Yes | Not run | Yes | No | Probes | Not run |
 | Matrox Millennium II | GDI, DirectDraw | Yes | Not run | Yes | No | Probes | Not run |
 | NVIDIA RIVA 128ZX (0.35.0) | DirectDraw, GDI, flips (8 and 32 bpp) | Yes | Not run | Probe only | No | Glide 2 probe only | Not run |
-| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI | Yes | Not run | Probe | No | Glide 2 probe fails textured draws | Not run |
+| NVIDIA GeForce 210 (0.52.0) | DirectDraw, GDI | Yes | Yes, with pixel shader 1.1 (0.53.0) | Yes (0.53.0) | No | Glide 2 probe fails textured draws | Not run |
 | SiS 6326 | DirectDraw | Yes | Not run | Yes | No | Not run | Not run |
 | 3dfx Voodoo4 4500 | GDI | Yes | Not run | Yes | Not run | 3dfx's own | Not run |
 | VESA 2.0 BIOS (`vbe`) | No | CPU rasterizer, not timed | Not run | Not run | No | Not run | Not run |
@@ -347,7 +356,7 @@ Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600 and the Millennium II (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
-  HD 5770, HD 7660D, the R3E, the R7E, the X1200 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  HD 5770, HD 7660D, the R3E, the R7E, the X1200, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
@@ -380,6 +389,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 | AMD Radeon HD 5770 (Core 2 Duo E7500) | not run | not run; Quake 3 `demo001` 49.3 fps at 1024x768x32, 50.6 at 1280x1024x32 | 0.34.0 build |
 | AMD Radeon HD 7660D (A10-5700) | not run | not run; Quake 3 `demo001` 33.4 fps at 1280x1024x32 | 0.35.0 build |
 | AMD Radeon HD 2600 XT (i5-3570K) | not run | not run; Quake 3 `demo001` 65.9 fps at 640x480x16 | 0.49.0 build |
+| ATI Radeon 9250 | not run | 54.7 fps (demo, windowed, 16 bpp) | 0.53.0 build |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
