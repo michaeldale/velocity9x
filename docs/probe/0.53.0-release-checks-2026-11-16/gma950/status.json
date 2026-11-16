@@ -1,0 +1,17 @@
+{
+    "Name":  "gma950",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  353,
+    "BootAfter":  354,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.18.0",
+    "Boot":  353,
+    "Desktop":  true,
+    "AnswerSeconds":  1,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
