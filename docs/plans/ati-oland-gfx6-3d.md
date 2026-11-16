@@ -11,8 +11,10 @@ The first draw is done: SI's clear state, vi_3d.c's builder in a GFX6
 mode and the CI shader words (FLAT refused) drew a solid rectangle
 exactly on the first run
 ([`2026-11-16-oland-first-rectangle.md`](../decisions/2026-11-16-oland-first-rectangle.md)).
-Next: a FLAT-free vertex fetch for the TL vertex shader, then Gouraud,
-texture and depth draws.
+The TL vertex shader now fetches through MUBUF and a V# instead of FLAT,
+and the Gouraud ramp is exact
+([`2026-11-16-oland-gouraud-mubuf-fetch.md`](../decisions/2026-11-16-oland-gouraud-mubuf-fetch.md)).
+Next: textures and Z16 depth.
 
 Phase 6 of [`ati-oland-gfx6.md`](ati-oland-gfx6.md): the graphics
 command processor and Direct3D on W9QI0DAD's Oland XT (`1002:6610`,

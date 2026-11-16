@@ -189,6 +189,8 @@ function Get-V9xHostSourceNames {
         # Oland: the SI clear state and the start of the 3D stream.
         'src\chipsets\ati\si\si_clear_state.c',
         'src\chipsets\ati\si\si_3d.c',
+        # Oland: the TL vertex shader with MUBUF loads in place of FLAT.
+        'src\chipsets\ati\si\si_shader.c',
         # Mullins: GCN 3 shader words rewritten as GCN 2, no I/O.
         'src\chipsets\ati\cik\cik_shader.c',
         # Mullins: gpu_init's list and the CI clear state, data and no I/O.

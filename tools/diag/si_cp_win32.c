@@ -94,6 +94,7 @@
 #include "velocity9x/vi_3d.h"
 #include "velocity9x/vi_shader.h"
 #include "velocity9x/cik_shader.h"
+#include "velocity9x/si_shader.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -274,6 +275,20 @@
 #define V9X_FENCE_VALUE         0x3d3d3d3dul
 #define V9X_FENCE_WAIT_LIMIT    20000000ul
 #define V9X_SHADER_MAX          128ul
+/* /gouraud, V9XCK3D's: two triangles of TL vertices over the whole
+ * target, red 0 at the left edge to FFh at the right, green 80h, blue 40h,
+ * alpha FFh; every pixel within +-2 per channel of the ramp at its
+ * centre. */
+#define V9X_VERTICES            0xb000ul
+#define V9X_TL_DWORDS           8ul
+#define V9X_GOURAUD_VERTICES    6ul
+#define V9X_GOURAUD_LEFT        0xff008040ul
+#define V9X_GOURAUD_RIGHT       0xffff8040ul
+#define V9X_GOURAUD_TOLERANCE   2ul
+#define V9X_FLOAT_ONE           0x3f800000ul
+#define V9X_FLOAT_HALF          0x3f000000ul
+#define V9X_FLOAT_16            0x41800000ul
+#define V9X_FLOAT_64            0x42800000ul
 #define V9X_WRITEBACK           0x8000ul
 #define V9X_CANARY              0xc000ul
 #define V9X_CANARY_DWORDS       16ul
@@ -397,6 +412,7 @@ static DWORD v9x_at_rptr_3;
 static DWORD v9x_at_grbm_3;
 static DWORD v9x_rect_status;
 static DWORD v9x_shader_status;
+static int v9x_gouraud;
 
 /* R 1.0, G 0.5, B 0.25, A 0.75, as V9XCK3D. */
 static const DWORD v9x_colour[4] = {
@@ -777,6 +793,88 @@ static void v9x_ring_rect(DWORD lo, DWORD hi)
     v9x_ring_stream_end(&stream);
 }
 
+static void v9x_tl_vertex(DWORD *out, DWORD x, DWORD y, DWORD z,
+                          DWORD colour, DWORD u, DWORD v)
+{
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = V9X_FLOAT_ONE;
+    out[4] = colour;
+    out[5] = 0ul;
+    out[6] = u;
+    out[7] = v;
+}
+
+/* The target as two triangles, V9XCK3D's order: top-left, top-right,
+ * bottom-left, then top-right, bottom-right, bottom-left. */
+static void v9x_gouraud_vertices(DWORD *out)
+{
+    v9x_tl_vertex(out + 0, 0ul, 0ul, V9X_FLOAT_HALF, V9X_GOURAUD_LEFT,
+                  0ul, 0ul);
+    v9x_tl_vertex(out + 8, V9X_FLOAT_64, 0ul, V9X_FLOAT_HALF,
+                  V9X_GOURAUD_RIGHT, V9X_FLOAT_ONE, 0ul);
+    v9x_tl_vertex(out + 16, 0ul, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                  V9X_GOURAUD_LEFT, 0ul, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 24, V9X_FLOAT_64, 0ul, V9X_FLOAT_HALF,
+                  V9X_GOURAUD_RIGHT, V9X_FLOAT_ONE, 0ul);
+    v9x_tl_vertex(out + 32, V9X_FLOAT_64, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                  V9X_GOURAUD_RIGHT, V9X_FLOAT_ONE, V9X_FLOAT_ONE);
+    v9x_tl_vertex(out + 40, 0ul, V9X_FLOAT_16, V9X_FLOAT_HALF,
+                  V9X_GOURAUD_LEFT, 0ul, V9X_FLOAT_ONE);
+}
+
+/* The Gouraud submission: vi_3d.c's TL draw in its GFX6 mode, whose VS
+ * user SGPRs are a V# over the vertices. */
+static void v9x_ring_gouraud(DWORD lo, DWORD hi)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    BYTE *bytes = (BYTE *)&draw;
+    DWORD index;
+
+    for (index = 0ul; index < sizeof(draw); ++index) {
+        bytes[index] = 0u;
+    }
+    draw.target_low = lo + V9X_TARGET;
+    draw.target_high = hi;
+    draw.pitch_pixels = V9X_TARGET_PITCH;
+    draw.height = V9X_TARGET_HEIGHT;
+    draw.format = V9X_VI_CB_FORMAT_8_8_8_8;
+    draw.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.vs_low = lo + V9X_VS;
+    draw.ps_low = lo + V9X_PS;
+    draw.shader_high = hi;
+    draw.vertex_low = lo + V9X_VERTICES;
+    draw.vertex_high = hi;
+    draw.vertex_count = V9X_GOURAUD_VERTICES;
+    draw.fence_low = lo + V9X_FENCE;
+    draw.fence_high = hi;
+    draw.fence_value = V9X_FENCE_VALUE;
+    v9x_ring_stream_begin(&stream);
+    v9x_rect_status = (DWORD)v9x_vi_3d_tl_draw(&stream, &draw);
+    v9x_ring_stream_end(&stream);
+}
+
+/* SI's TL VS (si_shader.c) into the data array. */
+static DWORD v9x_tl_vs_data(DWORD *count)
+{
+    DWORD words[V9X_SI_TL_VS_MAX];
+    DWORD first = v9x_data_dwords;
+    DWORD index;
+
+    *count = 0ul;
+    if ((DWORD)v9x_si_shader_tl_vs(words, count) != 0ul) {
+        v9x_shader_status = 0x40000000ul;
+        *count = 0ul;
+    }
+    for (index = 0ul; index < *count &&
+                      v9x_data_dwords < V9X_SICP_DATA_MAX; ++index) {
+        v9x_data[v9x_data_dwords++] = words[index];
+    }
+    return first;
+}
+
 /* A vi_shader.c program, rewritten for SI, into the data array; returns
  * its first data dword, its length in *count. */
 static DWORD v9x_shader_data(DWORD (*build)(DWORD *), DWORD *count)
@@ -827,7 +925,11 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init,
     v9x_ring_scratch(V9X_SCRATCH_PREAMBLE);
     wptr_2 = v9x_ring_close();
     if (with_rect) {
-        v9x_ring_rect(lo, hi);
+        if (v9x_gouraud) {
+            v9x_ring_gouraud(lo, hi);
+        } else {
+            v9x_ring_rect(lo, hi);
+        }
         wptr_3 = v9x_ring_close();
     }
 
@@ -849,9 +951,26 @@ static void v9x_build_run(DWORD lo, DWORD hi, int with_gpu_init,
     }
     /* The shaders, and the target filled with the guard; the fence is
      * the window's 0. */
-    if (with_rect) {
+    if (with_rect && v9x_gouraud) {
+        DWORD vertices[V9X_GOURAUD_VERTICES * V9X_TL_DWORDS];
+        DWORD first;
+
+        vs_first = v9x_tl_vs_data(&vs_count);
+        ps_first = v9x_shader_data(v9x_vi_shader_gouraud_ps, &ps_count);
+        v9x_gouraud_vertices(vertices);
+        /* The vertices start after both shaders in the data array. */
+        first = v9x_data_dwords;
+        for (index = 0ul; index < V9X_GOURAUD_VERTICES * V9X_TL_DWORDS &&
+                          v9x_data_dwords < V9X_SICP_DATA_MAX; ++index) {
+            v9x_data[v9x_data_dwords++] = vertices[index];
+        }
+        v9x_op(V9X_OP_VRAM_DATA, V9X_VERTICES, first,
+               V9X_GOURAUD_VERTICES * V9X_TL_DWORDS);
+    } else if (with_rect) {
         vs_first = v9x_shader_data(v9x_vi_shader_solid_vs, &vs_count);
         ps_first = v9x_shader_data(v9x_vi_shader_solid_ps, &ps_count);
+    }
+    if (with_rect) {
         v9x_op(V9X_OP_VRAM_DATA, V9X_VS, vs_first, vs_count);
         v9x_op(V9X_OP_VRAM_DATA, V9X_PS, ps_first, ps_count);
         v9x_op(V9X_OP_VRAM_FILL, V9X_TARGET, V9X_TARGET_DWORDS,
@@ -1094,6 +1213,62 @@ static void v9x_verify(const DWORD *target)
     }
 }
 
+static int v9x_near(DWORD got, DWORD want)
+{
+    return (got > want ? got - want : want - got) <= V9X_GOURAUD_TOLERANCE;
+}
+
+/* The ramp, V9XCK3D's check: red round(255 (x + 0.5) / 64) at each pixel
+ * centre, green 80h, blue 40h, alpha FFh, in the D3DCOLOR's own bytes
+ * (blue the low one: the colour path keeps memory order). Within +-2 per
+ * channel. */
+static void v9x_verify_gouraud(const DWORD *target)
+{
+    DWORD x;
+    DWORD y;
+    DWORD pixel;
+    DWORD red;
+    DWORD bad = 0ul;
+    DWORD first_bad = 0xfffffffful;
+    char text[V9X_TARGET_PITCH + 1u];
+    char key[16];
+
+    for (y = 0ul; y < V9X_TARGET_HEIGHT; ++y) {
+        for (x = 0ul; x < V9X_TARGET_PITCH; ++x) {
+            pixel = target[y * V9X_TARGET_PITCH + x];
+            red = ((2ul * x + 1ul) * 255ul + V9X_TARGET_PITCH) /
+                  (2ul * V9X_TARGET_PITCH);
+            if (v9x_near((pixel >> 16) & 0xfful, red) &&
+                v9x_near((pixel >> 8) & 0xfful, 0x80ul) &&
+                v9x_near(pixel & 0xfful, 0x40ul) &&
+                v9x_near(pixel >> 24, 0xfful)) {
+                text[x] = '#';
+            } else {
+                text[x] = pixel == V9X_GUARD_VALUE ? '.' : '?';
+                if (bad++ == 0ul) {
+                    first_bad = y * V9X_TARGET_PITCH + x;
+                }
+            }
+        }
+        text[V9X_TARGET_PITCH] = '\0';
+        lstrcpyA(key, "Row");
+        v9x_decimal(key + 3, y);
+        v9x_text("Map", key, text);
+    }
+    for (x = 0ul; x < V9X_TARGET_PITCH; x += 8ul) {
+        lstrcpyA(key, "Row0X");
+        v9x_decimal(key + 5, x);
+        v9x_key("Gouraud", key, target[x]);
+    }
+    v9x_key("Gouraud", "Row0X63", target[V9X_TARGET_PITCH - 1ul]);
+    v9x_number("Result", "GouraudBad", bad);
+    if (bad != 0ul) {
+        v9x_number("Result", "GouraudFirstBadIndex", first_bad);
+        v9x_key("Result", "GouraudFirstBad", target[first_bad]);
+    }
+    v9x_pass("Gouraud", bad == 0ul);
+}
+
 static int v9x_switch_given(const char *switch_text)
 {
     const char *line;
@@ -1219,7 +1394,8 @@ void __stdcall V9xOlandCpEntry(void)
     }
 
     /* Call 3: the run. */
-    with_rect = v9x_switch_given("/rect");
+    v9x_gouraud = v9x_switch_given("/gouraud");
+    with_rect = v9x_gouraud || v9x_switch_given("/rect");
     with_gpu_init = with_rect || v9x_switch_given("/gpuinit");
     v9x_gpu_count = 0ul;
     if (with_gpu_init) {
@@ -1317,7 +1493,11 @@ void __stdcall V9xOlandCpEntry(void)
         v9x_key("During", "GrbmStatus3", r[v9x_at_grbm_3]);
         v9x_key("Result", "Fence", v9x_result.block[1]);
         v9x_pass("FenceLanded", r[v9x_at_wait_3] != V9X_SICP_TIMEOUT);
-        v9x_verify(v9x_result.block + 2);
+        if (v9x_gouraud) {
+            v9x_verify_gouraud(v9x_result.block + 2);
+        } else {
+            v9x_verify(v9x_result.block + 2);
+        }
     }
     v9x_key("Result", "WritebackRptr", v9x_result.block[0]);
     v9x_pass("RingTest", r[v9x_at_wait_1] != V9X_SICP_TIMEOUT);

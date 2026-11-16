@@ -133,6 +133,16 @@
 #define VI_VGT_PRIMITIVE_TYPE_GFX6  0x2256ul
 /* GFX6 CP_COHER_CNTL2 (sid.h 85E8h), a config register. */
 #define VI_CP_COHER_CNTL2_GFX6      0x217aul
+/* GFX6's TL vertex buffer resource (radeon sid.h SQ_BUF_RSRC_WORD1-3,
+ * radeonsi's raw buffer on GFX6): word 1 BASE_ADDRESS_HI 15:0 with STRIDE
+ * (29:16) 0, so the VS's OFFEN offsets are bytes; word 2 NUM_RECORDS, the
+ * buffer's bytes; word 3 DST_SEL X, Y, Z, W (4-7 at 2:0, 5:3, 8:6,
+ * 11:9), NUM_FORMAT FLOAT (7 at 14:12), DATA_FORMAT 32 (4 at 18:15), TYPE
+ * buffer (0 at 31:30). An untyped load ignores the format, but
+ * DATA_FORMAT 0 is invalid and reads 0. */
+#define VI_GFX6_RESOURCE_HIGH_MASK  0x0000fffful
+#define VI_GFX6_TL_RESOURCE_WORD3   ((4ul | (5ul << 3) | (6ul << 6) | \
+                                      (7ul << 9)) | (7ul << 12) | (4ul << 15))
 #define VI_COHER_SIZE_ALL           0xfffffffful
 #define VI_COHER_POLL_INTERVAL      0x0000000aul
 
@@ -843,12 +853,24 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     }
 
     /* The VS's two user SGPRs are the vertex buffer's address; the PS has
-     * the texture's descriptors or nothing (vi_shader.h). */
-    v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
-                      draw->shader_high, V9X_VI_TL_VS_VGPRS, 2ul);
-    values[0] = draw->vertex_low;
-    values[1] = draw->vertex_high;
-    v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 2ul);
+     * the texture's descriptors or nothing (vi_shader.h). GFX6 has no
+     * FLAT: its TL VS (si_shader.h) loads through MUBUF, so its four user
+     * SGPRs are a V# over the vertices. */
+    if (stream->gfx6) {
+        v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
+                          draw->shader_high, V9X_VI_TL_VS_VGPRS, 4ul);
+        values[0] = draw->vertex_low;
+        values[1] = draw->vertex_high & VI_GFX6_RESOURCE_HIGH_MASK;
+        values[2] = draw->vertex_count * V9X_VI_TL_VERTEX_BYTES;
+        values[3] = VI_GFX6_TL_RESOURCE_WORD3;
+        v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 4ul);
+    } else {
+        v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_VS, 1, draw->vs_low,
+                          draw->shader_high, V9X_VI_TL_VS_VGPRS, 2ul);
+        values[0] = draw->vertex_low;
+        values[1] = draw->vertex_high;
+        v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_VS, values, 2ul);
+    }
     ps_sgprs = draw->texture_low != 0ul ? V9X_VI_TEXTURE_USER_SGPRS : 0ul;
     v9x_vi_3d_program(stream, VI_SPI_SHADER_PGM_RSRC3_PS, 0, draw->ps_low,
                       draw->shader_high,

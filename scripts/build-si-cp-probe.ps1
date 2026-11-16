@@ -96,6 +96,7 @@ $publishers = @(
                  'src\chipsets\ati\si\si_gpu_init_tables.c',
                  'src\chipsets\ati\si\si_clear_state.c',
                  'src\chipsets\ati\si\si_3d.c',
+                 'src\chipsets\ati\si\si_shader.c',
                  'src\chipsets\ati\vi\vi_3d.c',
                  'src\chipsets\ati\vi\vi_clear_state.c',
                  'src\chipsets\ati\vi\vi_shader.c',

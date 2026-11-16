@@ -6,6 +6,7 @@
 #include "velocity9x/si_clear_state.h"
 #include "velocity9x/vi_shader.h"
 #include "velocity9x/cik_shader.h"
+#include "velocity9x/si_shader.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -250,6 +251,85 @@ static void test_gfx6_shaders(void)
     CHECK(v9x_cik_shader_from_vi(words, count, &failed) == V9X_STATUS_OK);
 }
 
+/* SI's TL VS: the shift, two MUBUF loads in place of the FLAT fetch, then
+ * the translated tail. LLVM's SI assembler test reads
+ * "buffer_load_dwordx4 v[1:4], v0, s[4:7], 0 offen" as E0381000h,
+ * 80010100h; these differ only in VADDR, VDATA and SRSRC. */
+static void test_gfx6_tl_vs(void)
+{
+    v9x_u32 words[V9X_SI_TL_VS_MAX];
+    v9x_u32 vi[64];
+    v9x_u32 count = 0ul;
+    v9x_u32 vi_count;
+    v9x_u32 index;
+    int flat = 0;
+
+    CHECK(v9x_si_shader_tl_vs(words, &count) == V9X_STATUS_OK);
+    CHECK(count == V9X_SI_TL_VS_DWORDS);
+    CHECK(words[1] == 0xe0381000ul && words[2] == 0x80000301ul);
+    CHECK(words[3] == 0xe0381010ul && words[4] == 0x80000901ul);
+    /* The shift is the GCN 3 program's first word translated: VOP2
+     * v_lshlrev_b32 is 12h on VI, 1Ah on SI. */
+    vi_count = v9x_vi_shader_tl_vs(vi);
+    CHECK(vi_count == V9X_VI_TL_VS_DWORDS);
+    CHECK((words[0] & 0x01fffffful) == (vi[0] & 0x01fffffful) &&
+          ((words[0] >> 25) & 0x3ful) == 0x1aul);
+    /* The tail is the GCN 3 program's from its s_waitcnt, same length. */
+    CHECK(count - 5ul == vi_count - 10ul);
+    CHECK(words[5] == vi[10]);
+    for (index = 0ul; index < count; ++index) {
+        if ((words[index] & 0xfc000000ul) == 0xdc000000ul) {
+            flat = 1;
+        }
+    }
+    CHECK(!flat);
+    CHECK(v9x_si_shader_tl_vs(0, &count) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* The TL draw in GFX6 mode hands the VS a four-dword V#. */
+static void test_gfx6_tl_draw(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at = 0ul;
+    int resource = 0;
+
+    memset(&draw, 0, sizeof(draw));
+    draw.target_low = 0x0f809000ul;
+    draw.target_high = 0xf4ul;
+    draw.pitch_pixels = 64ul;
+    draw.height = 16ul;
+    draw.format = V9X_VI_CB_FORMAT_8_8_8_8;
+    draw.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    draw.vs_low = 0x0f804000ul;
+    draw.ps_low = 0x0f804100ul;
+    draw.shader_high = 0xf4ul;
+    draw.vertex_low = 0x0f80b000ul;
+    draw.vertex_high = 0xf4ul;
+    draw.vertex_count = 6ul;
+    draw.fence_low = 0x0f808100ul;
+    draw.fence_high = 0xf4ul;
+    draw.fence_value = 1ul;
+
+    v9x_vi_pm4_init(&stream, stream_dwords, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    while (at < stream.count) {
+        v9x_u32 header = stream_dwords[at];
+
+        if (((header >> 8) & 0xfful) == V9X_VI_P3_SET_SH_REG &&
+            ((header >> 16) & 0x3ffful) == 4ul &&
+            stream_dwords[at + 1ul] == 0x4cul) {
+            resource = stream_dwords[at + 2ul] == 0x0f80b000ul &&
+                       stream_dwords[at + 3ul] == 0xf4ul &&
+                       stream_dwords[at + 4ul] == 6ul * 32ul &&
+                       stream_dwords[at + 5ul] == 0x00027facul;
+        }
+        at += ((header >> 16) & 0x3ffful) + 2ul;
+    }
+    CHECK(resource);
+}
+
 unsigned int v9x_run_si_gpu_tests(void)
 {
     failures = 0u;
@@ -257,5 +337,7 @@ unsigned int v9x_run_si_gpu_tests(void)
     test_start();
     test_gfx6_rect();
     test_gfx6_shaders();
+    test_gfx6_tl_vs();
+    test_gfx6_tl_draw();
     return failures;
 }
