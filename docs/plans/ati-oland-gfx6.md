@@ -7,8 +7,11 @@ branch `ati-oland-bringup`. W9QI0DAD has an Oland XT, `1002:6610`
 (Dell `1028:2120`, 2 GiB, 6 CUs). The row now targets 6610 and fits the
 ati `_TEXT` on main (57,205 of 57,344 bytes). On boot 49 SI's DMA engine
 drew V9XDDP's fills and copies and the chip took every flip, with no
-timeouts, including after 32 VBE mode round trips. Still open: Phase 3's
-byte-exact check (skipped), engine draws at 32 bpp, and Phase 6. Record:
+timeouts, including after 32 VBE mode round trips. Phase 3's question
+is settled through the driver rather than a ring probe: V9XBLTX compared
+every byte after 1,053 fills and copies at each of 16 and 32 bpp (1,380
+on the engine), none wrong, so SI's copy counts bytes. Open: Phase 6.
+Record:
 [`2026-11-16-oland-first-survey.md`](../decisions/2026-11-16-oland-first-survey.md).
 
 Earlier (2026-11-12): desk work on branch `ati-oland` with no card.

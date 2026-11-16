@@ -78,8 +78,8 @@ Boot 49:
 - **V9XDDP** (three runs: desktop at 16 bpp, desktop at 32 bpp, and after
   `/modestress`), each `Result=COMPLETE` with `BltFillPixelOk`,
   `SrcCopyPixelOk`, `KeySrcFillPixelOk` and all four `Overlap*PixelOk`
-  = 1. V9XDDP's exclusive tests set 640x480x16 each time, so **no engine
-  draw at 32 bpp has been tested.**
+  = 1. V9XDDP's exclusive tests set 640x480x16 each time, so these runs
+  drew nothing on the engine at 32 bpp (V9XBLTX below did).
 - **V9XTRACE** after the third run: `EngineType=12` (ATI_VI),
   `CountBltEngine` 9 of `CountBlt` 21, `EngineFifoTimeouts`,
   `EngineIdleTimeouts` and `EngineResets` all 0, builds agree.
@@ -96,18 +96,59 @@ Boot 49:
 - SI's DMA ring started from the BIOS state above without microcode, as
   Linux's `si_dma_start` order says, and its fences landed.
 - The byte-count copy (bit 26, `amdgpu si_dma_emit_copy_buffer`) drew
-  copies whose sampled pixels are right. V9XDDP samples pixels; it does
-  not compare whole surfaces byte for byte, so an overrun past a copy's
-  end is **not ruled out** by this run. The plan's Phase 3 byte-exact
-  write probe was skipped.
-- Nine engine blits is a small sample. No GDI on the engine (`GdiAcceleration=none`).
+  copies whose sampled pixels are right. V9XDDP samples pixels, so on
+  its own it does not rule out an overrun; the byte-exact check below
+  does, within the destination surface.
+- No GDI on the engine (`GdiAcceleration=none`).
 - Overlapping copies go to the CPU by design (no byte copy has been
   measured overlapping itself).
 
+## Byte-exact check, same boot (49)
+
+A standalone ring probe would have had to take DMA0 from the running
+driver, so the check goes through the driver's own blit path instead.
+`V9XBLTX.EXE` (`tools\diag\blt_exact_win32.c`, new) creates two 512x256
+off-screen video-memory surfaces, fills every byte of both with noise
+and keeps a system-memory model. After every DirectDraw fill or copy it
+locks the destination and compares **every byte** of the surface with
+the model, counting wrong bytes inside the rectangle and outside it (an
+overrun) separately. There are 53 fixed cases: edge and corner
+rectangles, every width from 1 to 9 pixels at an odd start, one-pixel
+shifts left and right, and same-surface copies, both side by side and
+overlapping. Random fills and copies follow (`/random:1000`).
+Engine use is V9XTRACE's `CountBltEngine` before and after.
+
+| Desktop | Pitch | Cases | Bad cases | Wrong bytes in / out | Engine blits | Timeouts, resets |
+|---|---|---|---|---|---|---|
+| 1024x768x32 | 2048 | 1053 | 0 | 0 / 0 | 843 | 0 |
+| 1024x768x16 | 1024 | 1053 | 0 | 0 / 0 | 537 | 0 |
+
+`bltx-32bpp/`, `bltx-16bpp/` in the probe folder. At 16 bpp more blits
+go to the CPU: fills that are not whole dwords (`si_dma.c` refuses them)
+and overlapping copies, as designed. These go to the CPU and match too.
+
+**The control:** `/selftest:1` changes the destination's last byte by
+CPU behind the model's back. The next case reported exactly one wrong
+byte, outside its rectangle, at row 255 byte 1023
+(`bltx-selftest-16bpp/`). The comparison catches what it claims to. The
+two PASS runs used the build just before `/selftest` was added, whose
+comparison code is the same.
+
+What this settles:
+
+- **Copy count in bytes.** The 1-to-9-pixel copies at 16 bpp are 2 to
+  18 bytes, most of them not whole dwords. They are exact with no byte
+  written past their rows. Read as dwords, the count would have written
+  four times too much. Linux's bit-26 byte copy is right for SI.
+- **No overrun** within the destination surface, at either depth,
+  including rectangles that end on the surface's last byte.
+
+Not covered: bytes past the destination surface's end (another
+allocation), and surfaces wider than 512 pixels. Both pitches here
+equal the row width, so there is no row padding to test.
+
 ## Not done
 
-- A byte-exact DMA fill/copy check (a probe or dispbench run), and
-  engine draws at 32 bpp.
 - Phase 6 (GFX6 CP and Direct3D): its own plan. Direct3D on this row is
   `none`.
 - The class key's `V9xFamily`, the INF install on this devnode, and
