@@ -1,6 +1,7 @@
 # GCN: pixel shader 1.1 and DDI 8, after the HD 4600 and the GT218
 
-Date: 2026-11-16. Status: steps 1 to 7 done on the Oland, step 8 (Nature) next; steps 1, 2 and 3 recorded in
+Date: 2026-11-16. Status: steps 1 to 8 done on the Oland (step 8 by frame grabs; the
+Image Quality frame needs 3DMark Pro); Carrizo and Mullins not started; steps 1, 2 and 3 recorded in
 [`2026-11-17-gcn-ps11-translator.md`](../decisions/2026-11-17-gcn-ps11-translator.md).
 Step 2's `v9x_vi_ps11_build` (`vi_ps11.c`) runs 19 programs in the GCN
 model, each matching the interpreter, and each translates for GCN 2 and
@@ -58,6 +59,14 @@ V9XD32 verdict at either desktop depth and no V9XDDP key
 
 Not yet run on the fix: Carrizo and Mullins, which share `vi_cp.c`.
 Not measured: non-square DXT chains and DXT cubes.
+
+Step 8 is done on the Oland
+([2026-11-17-oland-nature.md](../decisions/2026-11-17-oland-nature.md)).
+Nature, run alone, draws its lake (bump-mapped, reflecting) and textured
+distant terrain. Nothing was refused and the engine was never given up.
+The water that looked wrong at boot 63 was the 16 MiB heap's untiled
+uploads. This 3DMark is not Pro, so the frames are V9XTRACE grabs, not
+the Image Quality frame.
 
 Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to
