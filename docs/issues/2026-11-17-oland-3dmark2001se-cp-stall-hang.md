@@ -188,5 +188,56 @@ Evergreen rows').
   dialog, so its log's timeline is not the run's.
 
 Whether the reboot is this issue's stall, the larger heap, or neither
-is not known. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
+was not known then; the A/B runs below say it is not the heap.
+
+## 2026-11-17, evening: A/B runs, and a control that fails too
+
+Evidence: [`../probe/oland-cp-stall-w9qi0dad-2026-11-17/`](../probe/oland-cp-stall-w9qi0dad-2026-11-17/).
+
+Each build below was installed by WININIT rename and hash-checked:
+- **1, the instrumented build.** `vi_cp.c` keeps the last 64 batches
+  and dumps the ones around the last fence at a quarantine, or at the
+  first ring-space wait past 1/16 of its budget (`V9XCPSLW.TXT`,
+  flushed). With the 128 MiB heap, the machine reset about a minute into
+  3DMark. Neither record was written.
+- **2, the same with the 16 MiB heap.** Froze at FlipHandled 949, about
+  2 minutes in; the machine stopped answering ping. Michael
+  power-cycled it. No record.
+- **3, the same, 16 MiB, with DDI 8 off** (EngineCaps 40000017, step 4's
+  state: two stages, no pixel shaders, no DXT). Rebooted by itself about
+  3 minutes in (a new driver load at 17:19:13). Michael's recording
+  (`2026-11-17 17-17-27.mkv`) shows Car Chase High's loading screen held
+  a long time, then 1-13 fps with the clock held at 06:40.
+- **4, control: boot 59's step 5 package**, which completed 3DMark
+  2001 SE cleanly at 15:19 today. Crashing again by Michael's eye at
+  17:27, about 3 minutes in.
+
+So neither the heap nor DDI 8 makes the difference, and a package that
+passed this afternoon fails now. Through the day the failures came
+sooner whatever the build:
+- 09:52 hang after 2.4 min;
+- 15:19 clean;
+- 15:47 and 16:36 stalls survived;
+- then a reset or hang every run from 16:47, two or three minutes in.
+
+The card is not hot to the touch and its fan turns; Michael added a case
+fan before the control.
+
+What this points at, none of it measured:
+- the card, or the machine (power, slot, board), degrading or failing
+  under load;
+- a state that survives a reset and a power-cycle (the card's own, or
+  the BIOS's);
+- if the driver's, then in what every build here shares: steps 1-4,
+  the CP bring-up and the ring.
+
+The last three failures wrote no record. A CPU read of a GPU register
+that never completes would do that: the ring wait would never count a
+spin. That is a hypothesis.
+
+Next:
+- run what this card did before today, a build from before the
+  pixel-shader work, or another driver's 3D, to see whether the card
+  still runs;
+- if it fails too, swap the card or move it to another machine. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
 ended in, or survived, a stall or a stop.

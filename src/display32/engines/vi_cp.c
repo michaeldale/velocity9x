@@ -295,6 +295,14 @@ static const struct v9x_vi_cp_chip v9x_vi_cp_oland = {
 #define V9X_VI_CP_FAULT_PUT   0x56493350ul
 #define V9X_VI_CP_FAULT_DRAIN 0x56493344ul
 #define V9X_VI_CP_LOG_PATH V9X_DIAG_PATH("V9XCZCP.TXT")
+/* A ring-space wait past a sixteenth of V9X_VI_CP_SPINS that still got
+ * its space: written once a HAL life, flushed, in its own file, because
+ * the machine has reset outright after waits like it with no quarantine
+ * record (Michael's recording of boot 64: the game clock held for 1.5-2 s
+ * twice, then the signal went). "VI3" and W for wait. */
+#define V9X_VI_CP_SLOW_SPINS   (V9X_VI_CP_SPINS / 16ul)
+#define V9X_VI_CP_FAULT_SLOW   0x56493357ul
+#define V9X_VI_CP_SLOW_PATH    V9X_DIAG_PATH("V9XCPSLW.TXT")
 
 #define V9X_VI_CP_NOT_TRIED 0
 #define V9X_VI_CP_RUNNING   1
@@ -400,18 +408,135 @@ static void v9x_vi_cp_log_hex(HANDLE file, const char *key, DWORD value)
 }
 
 /* The CP's registers and the ring, once, at the first quarantine. */
-static void v9x_vi_cp_write_record(DWORD tag)
+/*
+ * The last batches submitted, for the fault record: a CP stall leaves the
+ * fence some batches behind the CP's read pointer, and by the time the
+ * ring is full the batch that stopped it has been overwritten (docs\issues\
+ * 2026-11-17-oland-3dmark2001se-cp-stall-hang.md, three records without
+ * it). Each copy keeps its fence, and the span of the vertex arena handed
+ * out since the batch before it (the vertices, table and built PS it
+ * reads), so the record can show the first batches whose fences never
+ * landed and what they read. HAL statics are shared by every process, as
+ * the ring is.
+ */
+#define V9X_VI_CP_HISTORY        64ul
+#define V9X_VI_CP_HISTORY_DWORDS 512ul
+/* Batches dumped in the record: the last two that completed, then the
+ * first that did not and the ones after it. */
+#define V9X_VI_CP_RECORD_DONE    2ul
+#define V9X_VI_CP_RECORD_PENDING 4ul
+/* The arena dumped for one batch, at most. */
+#define V9X_VI_CP_RECORD_ARENA_DWORDS 8192ul
+
+typedef struct v9x_vi_cp_submitted {
+    DWORD fence;                /* 0: an empty slot */
+    DWORD count;
+    DWORD arena_from;           /* arena offsets, bytes */
+    DWORD arena_to;
+    v9x_u32 dwords[V9X_VI_CP_HISTORY_DWORDS];
+} V9X_VI_CP_SUBMITTED;
+
+static V9X_VI_CP_SUBMITTED v9x_vi_cp_history[V9X_VI_CP_HISTORY];
+static DWORD v9x_vi_cp_history_next;
+static DWORD v9x_vi_cp_arena_mark;
+static int v9x_vi_cp_slow_written;
+
+static void v9x_vi_cp_remember(const v9x_u32 *dwords, DWORD count,
+                               DWORD fence, DWORD arena_at)
+{
+    V9X_VI_CP_SUBMITTED *slot =
+        &v9x_vi_cp_history[v9x_vi_cp_history_next % V9X_VI_CP_HISTORY];
+    DWORD index;
+
+    ++v9x_vi_cp_history_next;
+    slot->fence = fence;
+    slot->count = count;
+    /* An arena that wrapped since the last batch restarted at 0. */
+    slot->arena_from = arena_at >= v9x_vi_cp_arena_mark
+                           ? v9x_vi_cp_arena_mark : 0ul;
+    slot->arena_to = arena_at;
+    v9x_vi_cp_arena_mark = arena_at;
+    for (index = 0ul; index < count && index < V9X_VI_CP_HISTORY_DWORDS;
+         ++index) {
+        slot->dwords[index] = dwords[index];
+    }
+}
+
+static void v9x_vi_cp_log_batch(HANDLE file,
+                                const V9X_VI_CP_SUBMITTED *slot)
+{
+    volatile DWORD *arena = v9x_vi_cp_window(V9X_VI_CP_WINDOW_VERTICES);
+    DWORD from = slot->arena_from / 4ul;
+    DWORD to = slot->arena_to / 4ul;
+    DWORD index;
+
+    v9x_vi_cp_log_text(file, "[Batch]\r\n");
+    v9x_vi_cp_log_hex(file, "Fence=", slot->fence);
+    v9x_vi_cp_log_hex(file, "Count=", slot->count);
+    v9x_vi_cp_log_hex(file, "ArenaFrom=", slot->arena_from);
+    v9x_vi_cp_log_hex(file, "ArenaTo=", slot->arena_to);
+    for (index = 0ul; index < slot->count &&
+                      index < V9X_VI_CP_HISTORY_DWORDS; ++index) {
+        v9x_vi_cp_log_hex(file, "", slot->dwords[index]);
+    }
+    v9x_vi_cp_log_text(file, "[Arena]\r\n");
+    if (to > from + V9X_VI_CP_RECORD_ARENA_DWORDS) {
+        to = from + V9X_VI_CP_RECORD_ARENA_DWORDS;
+    }
+    for (index = from; index < to; ++index) {
+        v9x_vi_cp_log_hex(file, "", arena[index]);
+    }
+}
+
+/* The batches around the stall, oldest first: the last
+ * V9X_VI_CP_RECORD_DONE whose fences landed and the first
+ * V9X_VI_CP_RECORD_PENDING that did not. */
+static void v9x_vi_cp_log_history(HANDLE file, DWORD completed)
+{
+    DWORD start = v9x_vi_cp_history_next > V9X_VI_CP_HISTORY
+                      ? v9x_vi_cp_history_next - V9X_VI_CP_HISTORY : 0ul;
+    DWORD first_pending = v9x_vi_cp_history_next;
+    DWORD n;
+
+    for (n = start; n < v9x_vi_cp_history_next; ++n) {
+        const V9X_VI_CP_SUBMITTED *slot =
+            &v9x_vi_cp_history[n % V9X_VI_CP_HISTORY];
+
+        /* Pending: its fence after the last one written, allowing for
+         * the counter's wrap. */
+        if (slot->fence != 0ul &&
+            (long)(slot->fence - completed) > 0l) {
+            first_pending = n;
+            break;
+        }
+    }
+    v9x_vi_cp_log_hex(file, "HistoryBatches=", v9x_vi_cp_history_next);
+    for (n = first_pending >= start + V9X_VI_CP_RECORD_DONE
+                 ? first_pending - V9X_VI_CP_RECORD_DONE : start;
+         n < v9x_vi_cp_history_next &&
+         n < first_pending + V9X_VI_CP_RECORD_PENDING;
+         ++n) {
+        v9x_vi_cp_log_batch(file, &v9x_vi_cp_history[n % V9X_VI_CP_HISTORY]);
+    }
+}
+
+/* The record, to path: the CP's state, the batches around the last fence
+ * written (v9x_vi_cp_log_history), and the ring. spins is the wait that
+ * prompted it, 0 for none. Flushed, so a reset after it keeps it. */
+static void v9x_vi_cp_write_record(DWORD tag, const char *path, DWORD spins)
 {
     HANDLE file;
     DWORD index;
+    DWORD completed = v9x_vi_cp_window(V9X_VI_CP_WINDOW_FENCE)[0];
 
-    file = CreateFileA(V9X_VI_CP_LOG_PATH, GENERIC_WRITE, FILE_SHARE_READ, 0,
+    file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0,
                        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
     v9x_vi_cp_log_text(file, "[CarrizoCp]\r\n");
     v9x_vi_cp_log_hex(file, "Tag=", tag);
+    v9x_vi_cp_log_hex(file, "Spins=", spins);
     v9x_vi_cp_log_hex(file, "Wptr=", v9x_vi_cp_wptr);
     v9x_vi_cp_log_hex(file, "Sequence=", v9x_vi_cp_sequence);
     v9x_vi_cp_log_hex(file, "Fence=",
@@ -428,11 +553,13 @@ static void v9x_vi_cp_write_record(DWORD tag)
                       v9x_vi_cp_read32(v9x_vi_cp_chip->rlc_cntl));
     v9x_vi_cp_log_hex(file, "SCRATCH_REG0=",
                       v9x_vi_cp_read32(v9x_vi_cp_scratch_reg()));
+    v9x_vi_cp_log_history(file, completed);
     v9x_vi_cp_log_text(file, "[Ring]\r\n");
     for (index = 0ul; index < V9X_VI_CP_RING_DWORDS; ++index) {
         v9x_vi_cp_log_hex(file, "",
                           v9x_vi_cp_window(V9X_VI_CP_WINDOW_RING)[index]);
     }
+    (void)FlushFileBuffers(file);
     CloseHandle(file);
 }
 
@@ -453,7 +580,7 @@ static void v9x_vi_cp_quarantine(DWORD tag)
                     (v9x_vi_cp_wptr & 0xfffful);
 
     if (v9x_hal->engine.idle_timeouts == 0ul) {
-        v9x_vi_cp_write_record(tag);
+        v9x_vi_cp_write_record(tag, V9X_VI_CP_LOG_PATH, 0ul);
     }
     v9x_vi_cp_halt();
     if (v9x_hal->engine.idle_timeouts++ == 0ul) {
@@ -508,6 +635,11 @@ static int v9x_vi_cp_put(const v9x_u32 *dwords, DWORD count)
     }
     if (spins == V9X_VI_CP_SPINS) {
         return 0;
+    }
+    if (spins >= V9X_VI_CP_SLOW_SPINS && !v9x_vi_cp_slow_written) {
+        v9x_vi_cp_slow_written = 1;
+        v9x_vi_cp_write_record(V9X_VI_CP_FAULT_SLOW, V9X_VI_CP_SLOW_PATH,
+                               spins);
     }
     if (v9x_vi_cp_wptr + count > V9X_VI_CP_RING_DWORDS) {
         while (v9x_vi_cp_wptr < V9X_VI_CP_RING_DWORDS) {
@@ -940,6 +1072,7 @@ int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence)
         v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_PUT);
         return 0;
     }
+    v9x_vi_cp_remember(dwords, count, fence, v9x_vi_cp_vertex_at);
     v9x_vi_cp_sequence = fence;
     v9x_vi_cp_dirty = 1;
     return 1;
