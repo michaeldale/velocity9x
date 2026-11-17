@@ -1,0 +1,125 @@
+Samples 377565 of 377565 in [0, 2147483647) ms
+
+By module:
+  48.8%    184071  V9XHAL.DLL
+  19.1%     72014  KERNEL32.DLL
+   9.8%     36945  D3D8.DLL
+   9.1%     34222  3DMARK2001SE.EXE
+   4.0%     14959  MSVCRT.DLL
+   2.0%      7616  RLMFC.DLL
+   1.9%      6999  WINMM.DLL
+   1.8%      6702  E2MFC.DLL
+   1.7%      6510  GRPHMFC.DLL
+   0.6%      2329  16-bit cs=003B base=FFFFFFFF
+   0.4%      1534  DDRAW.DLL
+   0.3%      1100  unknown
+   0.1%       518  16-bit cs=0427 base=81C8A5C0
+   0.1%       492  16-bit cs=032F base=81C56000
+   0.1%       446  16-bit cs=014F base=000177A0
+   0.1%       242  16-bit cs=0157 base=0008E200
+   0.1%       240  16-bit cs=0387 base=81C6D000
+   0.0%       172  16-bit cs=043F base=81C90000
+   0.0%       101  MSSIP32.DLL
+   0.0%        62  MFC42.DLL
+   0.0%        32  ADVAPI32.DLL
+   0.0%        27  16-bit cs=17C7 base=0005F9A0
+   0.0%        25  16-bit cs=045F base=000808E0
+   0.0%        22  16-bit cs=174F base=81C42C60
+   0.0%        19  16-bit cs=0397 base=81C74000
+   0.0%        17  16-bit cs=015F base=81DA6120
+   0.0%        13  16-bit cs=17D7 base=81CB2000
+   0.0%        12  DINPUT8.DLL
+   0.0%        11  16-bit cs=038F base=81C72000
+   0.0%        10  16-bit cs=17EF base=81C9C000
+   0.0%        10  16-bit cs=1707 base=81CB9000
+   0.0%         9  16-bit cs=0567 base=00070EC0
+   0.0%         9  MSVCP60.DLL
+   0.0%         8  16-bit cs=30CF base=81C2D520
+   0.0%         8  16-bit cs=033F base=81C67000
+   0.0%         7  16-bit cs=1767 base=81C4DD80
+   0.0%         7  16-bit cs=0477 base=0007AF20
+   0.0%         5  16-bit cs=17DF base=81CA0000
+   0.0%         5  16-bit cs=03BF base=81C3D560
+   0.0%         5  16-bit cs=30EF base=830368E0
+
+V9XHAL.DLL by object (share of all samples):
+  16.4%     62082  si_dma
+   8.4%     31610  d3d_vi_map
+   6.0%     22741  eg_scanout
+   4.9%     18633  d3d_core
+   4.1%     15506  r3d_records
+   2.9%     10779  d3d_dp2
+   2.0%      7598  vi_3d
+   1.4%      5350  r3d_clip
+   0.8%      3119  r3d_cull
+   0.7%      2579  d3d_fog
+   0.3%      1255  d3d_eg
+   0.2%       728  ddhal_core
+   0.1%       331  vi_ps11
+   0.1%       303  vi_shader
+   0.1%       265  vi_cp
+   0.1%       190  trace_fold
+   0.0%       144  d3d_select
+   0.0%       142  d3d_vi
+   0.0%       132  i9xx_scanout
+   0.0%       128  r128_scanout
+   0.0%       100  g4_eu
+   0.0%        97  hsw_scanout
+   0.0%        65  d3d_state
+   0.0%        51  eng_vi
+   0.0%        33  m64_scanout
+   0.0%        25  win16lock
+   0.0%        22  d3d_place
+   0.0%        17  drawnote
+   0.0%        16  d3d_g4
+   0.0%         7  d3d_dp2_ring
+   0.0%         6  eg_dma
+   0.0%         4  vi_sdma
+   0.0%         4  eng_eg
+   0.0%         4  ddhal_watch
+   0.0%         2  eng_s3_virge
+   0.0%         1  eng_sis6326
+   0.0%         1  eng_mga
+   0.0%         1  eng_nv50
+
+V9XHAL.DLL by nearest public symbol:
+  16.4%     62082  si_dma!v9x_si_dma_plan_row_
+   8.4%     31610  d3d_vi_map!v9x_d3d_vi_map_draw_
+   4.5%     17094  eg_scanout!v9x_eg_scanout_live_
+   2.8%     10718  r3d_records!v9x_r3d_records_flush_
+   2.1%      7785  d3d_core!_V9xD3dDrawOneIndexedPrimitive@4
+   2.0%      7365  d3d_core!v9x_d3d_textures_forget_surface_
+   1.9%      7028  d3d_dp2!v9x_dp2_fvf_convert_set_
+   1.2%      4516  vi_3d!v9x_vi_pm4_put_
+   1.2%      4458  r3d_records!v9x_r3d_records_append_list_uv1_
+   1.1%      4130  eg_scanout!v9x_eg_flip_pending_
+   0.8%      3109  r3d_cull!v9x_r3d_cull_triangle_
+   0.8%      2955  r3d_clip!v9x_r3d_triangle_on_target_
+   0.7%      2576  d3d_fog!v9x_d3d_fog_table_apply_
+   0.6%      2395  r3d_clip!v9x_r3d_draw_list_
+   0.5%      1830  d3d_dp2!v9x_dp2_walk_
+   0.4%      1454  d3d_dp2!v9x_dp2_fvf_project_
+   0.3%      1281  eg_scanout!v9x_eg_in_vblank_
+   0.3%      1255  d3d_eg!v9x_d3d_eg_depth_fill_
+   0.3%      1105  d3d_core!v9x_d3d_context_texture_surface_
+   0.3%      1069  vi_3d!v9x_vi_3d_start_
+   0.2%       908  d3d_core!v9x_d3d_color_key_forget_
+   0.1%       530  vi_3d!v9x_vi_3d_tl_draw_
+   0.1%       455  vi_3d!v9x_vi_3d_mip_layout_
+   0.1%       446  d3d_dp2!v9x_dp2_negative_base_
+   0.1%       430  d3d_core!v9x_d3d_depth_fill_value_
+   0.1%       331  vi_ps11!v9x_vi_ps11_build_
+   0.1%       326  r3d_records!v9x_r3d_records_append_list_
+   0.1%       280  vi_3d!v9x_vi_pm4_pad_
+   0.1%       264  vi_3d!v9x_vi_pm4_set_context_
+   0.1%       252  d3d_core!v9x_d3d_color_key_find_
+   0.1%       233  eg_scanout!v9x_eg_scanout_active_
+   0.1%       194  d3d_core!v9x_d3d_dp2_forget_probes_
+   0.0%       179  vi_3d!v9x_vi_pm4_init_
+   0.0%       154  ddhal_core!v9x_surface_offset_
+   0.0%       144  d3d_select!v9x_d3d_select_engine_
+   0.0%       142  vi_3d!v9x_vi_3d_texture_sharps_
+   0.0%       142  d3d_vi!v9x_d3d_vi_depth_fill_
+   0.0%       127  ddhal_core!v9x_trace_push_
+   0.0%       119  d3d_core!_V9xD3dDrawOnePrimitive@4
+   0.0%       108  d3d_core!_V9xD3dDrawPrimitives2@4

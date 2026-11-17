@@ -4,6 +4,9 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-18 GCN (SI/VI): the CPU waits for the GPU to go idle at every flip, lock and DMA fill, so the two never overlap; the fence spin is 7.1 % of a 3DMark 2001 SE run on the R7E](2026-11-18-vi-cp-full-drain-serialises-cpu-and-gpu.md)
+- [2026-11-18 GCN (SI/VI): the ring and vertex copies are dword loops into the GPU window, about 7 % of a 3DMark 2001 SE run each on the R7E](2026-11-18-vi-dword-copies-into-gpu-window.md)
+- [2026-11-18 Carrizo: flip waits poll the display controller, re-reading CRTC and graphics enable on every poll; 6 % of a 3DMark 2001 SE run; how much is the wait itself not separated](2026-11-18-carrizo-flip-waits-poll-scanout.md)
 - [2026-11-17 Riva 128 (M-7V636C): V9XD32 T22's A8R8G8B8 and X8R8G8B8 textures are created and drawn without error but every judged pixel is black; first T22 run on this card; cause open](2026-11-17-riva128-t22-32bit-textures-draw-black.md)
 - [2026-11-17 Oland, 3DMark 2001 SE Nature: foreground tree leaves drawn in about one frame in three and missing in the rest (complete frames, a fixed camera); no refusal counted; fixed on the Oland: DX5 MODULATE multiplied the leaves' vertex alpha in; the GeForce 210, Evergreen and R600-class maps fold MODULATE the same way, unchanged](2026-11-17-oland-nature-tree-leaves-missing-most-frames.md)
 - [2026-11-17 V9XD32 T19 FfSpecFog mismatches on the Oland (3 pixels at R5G6B5, 17 at X8R8G8B8) and the GeForce 210 (3 at R5G6B5), the same pixel too green on both; passes on the HD 4600 and GMA 950 within tolerance; not traced](2026-11-17-t19-ffspecfog-mismatch-oland-gt218.md)
