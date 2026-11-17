@@ -12,8 +12,8 @@ All of them draw through one shared render core. It runs these with
 hardware 3D:
 - **Intel:** GMA 900, GMA 950, GMA 3150, GMA X3100, HD Graphics
   (Ironlake), HD 4000 and HD 4600;
-- **AMD and ATI:** Radeon 9250, HD 2400 Pro, HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D, R3E
-  (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
+- **AMD and ATI:** Radeon 9250, HD 2400 Pro, HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D,
+  Oland XT, R3E (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
   Rage IIC;
 - **others:** S3 ViRGE and Trio3D, Matrox Millennium II and Mystique, SiS
   6326, NVIDIA RIVA 128ZX and GeForce 210, and 3dfx Voodoo4.
@@ -35,35 +35,30 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.53.1
+## Current version: 0.54.0
 
-[Download](releases/0.53.1/README.md) ·
+[Download](releases/0.54.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.53.1:
-- **NVIDIA GeForce 210:** page flips. Before, frames were shown while
-  still being drawn (3DMark 2001 SE's Car Chase was mostly black or
-  half-drawn); on one card 16 of 16 sampled frames are now whole
-  ([record](docs/decisions/2026-11-16-gt218-flips-through-vga-crtc.md)).
-
-New in 0.53.0:
-- **ATI Radeon 9250 (RV280), `ati` package:** Direct3D, OpenGL and Glide
-  on the R200 3D engine, DirectDraw fills, copies and page flips on the
-  2D engine. On one card V9XD32 passes at 16 and 32 bpp, 3DMark 2000
-  completes (871) and the Quake 2 demo runs at 54.7 fps
-  ([record](docs/decisions/2026-11-15-rv280-3dmark2000-quake2.md)).
-- **NVIDIA GeForce 210:** OpenGL games draw (the Quake 3 demo, every draw
-  on the engine); DirectX 8 pixel shader 1.1 and two texture stages in
-  one pass (3DMark 2001 SE completes, 2855, with parts of its frames not
-  drawn); GDI copies and scrolls on the engine from logon
-  ([OpenGL](docs/decisions/2026-11-16-gt218-opengl-describe.md),
-  [shaders](docs/decisions/2026-11-15-gt218-draw-shader-ddi8.md)).
-- **Every package:** a second device bound to Velocity9x, such as a
-  card's second head, no longer puts the screen into VGA text mode when
-  the Settings tab is opened
-  ([issue](docs/issues/2026-11-13-vbe-radeon-9200-sixteen-thumbnails.md)).
+New in 0.54.0:
+- **AMD Oland XT (GCN 1, `1002:6610`), `ati` package:** DirectDraw on
+  the DMA engine with page flips; Direct3D through the command processor
+  with DirectX 8 pixel shader 1.1, two texture stages, cube maps, signed
+  bump formats and DXT1-3; OpenGL and Glide on the chip. 3DMark 2001 SE
+  completes with compressed textures and Nature draws its lake, on one
+  card ([record](docs/decisions/2026-11-17-oland-nature.md)).
+- **Tree leaves that vanished:** with DX5's MODULATE on a texture with
+  alpha, several back ends multiplied in the vertex's alpha, so
+  alpha-tested leaves disappeared whenever it dipped (3DMark 2001 SE's
+  Nature, in most frames). Fixed and measured on the Oland, the GeForce
+  210 and the HD 2400 Pro; changed but not run on the other Radeons
+  ([record](docs/decisions/2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md)).
+- **GCN Radeons:** the command processor's read pointer is read from
+  memory, which ended a 3DMark 2001 SE stall on the Oland
+  ([issue](docs/issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
+  The R3E and R7E share this code and have not run it.
 
 ### Known issues
 
@@ -99,8 +94,10 @@ New in 0.53.0:
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
 - **GeForce 210:** page flips from 0.53.1; whether they tear has not been
   checked. In 3DMark 2000's helicopter test trees pop in and out
-  ([issue](docs/issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md)),
-  not rerun since the flips, and in Quake 3 a wall texture can turn
+  ([issue](docs/issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md));
+  0.54.0's MODULATE alpha fix is the likely cure but that test has not
+  been rerun. 3DMark 2001 SE's Nature draws its lake flat grey-blue. In
+  Quake 3 a wall texture can turn
   into streaks ([issue](docs/issues/2026-11-16-gt218-quake3-wall-texture-streaks.md)).
   Not yet working: a
   Lock of a depth buffer, 24-bit depth with stencil, cube maps, `texm3x3`
@@ -122,13 +119,25 @@ New in 0.53.0:
   sometimes times out and is skipped; later frames draw.
 - **RIVA 128ZX:** not finished. Most of 3DMark 2000 is refused and not
   drawn, and one Glide 2 probe check fails.
+- **Oland XT:** V9XD32's specular-with-fog check is a few pixels too
+  green, as on the GeForce 210, cause not traced
+  ([issue](docs/issues/2026-11-17-t19-ffspecfog-mismatch-oland-gt218.md));
+  3DMark 2000 can crash in its own code (one run in three on any card
+  here). Texture shapes the probes do not cover yet: non-square DXT
+  chains, DXT cube maps
+  ([issue](docs/issues/2026-11-17-oland-texture-shapes-unmeasured.md)).
 - **Older, not rerun since:** on the HD 5450, trees vanish and reappear in
-  3DMark 2000's Helicopter test (0.33.0); on the Rage 128, 3DMark 2000
+  3DMark 2000's Helicopter test (0.33.0; 0.54.0's MODULATE alpha fix is
+  the likely cure, unmeasured); on the Rage 128, 3DMark 2000
   hung once in two runs, and on the Ironlake one early frame draws a piece
   of hillside over the helicopter (0.32.0).
 
 ### Recent releases
 
+- **0.53.1:** page flips on the NVIDIA GeForce 210.
+- **0.53.0:** the ATI Radeon 9250 (RV280); OpenGL games, pixel shader
+  1.1 and two texture stages on the GeForce 210; a card's second head no
+  longer puts the screen into text mode.
 - **0.52.0:** the ATI Radeon HD 2400 Pro (RV610); the NVIDIA GeForce 210
   (GT218), the first Tesla-generation card.
 - **0.51.0:** the HD 4600's core at its full 1150 MHz (3DMark 2001 SE
@@ -254,6 +263,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
 | AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. The Glide 2 probe passes (0.41.0) |
+| AMD Radeon Oland XT (GCN 1, `1002:6610`), from 0.54.0 | `ati` | GCN 1 (SI), through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, two texture stages, specular, fog and colour keys, and through the DirectX 8 interface pixel shader 1.1, cube maps, Q8W8V8U8 and V8U8, and DXT1-3; OpenGL and the Glide probes on the engine; DirectDraw fills, copies and page flips on the DMA engine. 3DMark 2000 and 2001 SE (with compressed textures), Quake 2 and Quake 3. One Dell 2 GiB card; the driver maps 128 MiB of it (the VESA BIOS reports 16 MiB); modes from the VBE. 3DCIF not run |
 | AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU, from 0.47.0 into a copy of the desktop, with the screen write-combined (scrolling 30 to 1,170 MB/s). OpenGL and the Glide 2 probe on the engine. 3DMark 2000 (0.42.0); no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. |
 | AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips; from 0.47.0 the screen write-combined and GDI drawn into a copy of the desktop (scrolling 8 to 630 MB/s). 3DMark 2000 and Quake 3 (windowed too, 18.7 fps). The Glide 2 probe passes (0.47.0). One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only |
 
@@ -348,6 +358,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | AMD Radeon HD 5450 | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7470 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 7660D (0.35.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
+| AMD Radeon Oland XT (0.54.0) | DirectDraw, flips | Yes | Yes, with pixel shader 1.1 | Yes | Yes | Probes only, no game | Not run |
 | AMD Radeon R3E (Mullins, 0.41.0) | DirectDraw, flips | Yes | Not run | Probe | No | Glide 2 probe only | Not run |
 | AMD Radeon R7E (Carrizo) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | S3 Trio32/64 | GDI, DirectDraw | No | No | No | No | No | No |
@@ -366,7 +377,7 @@ Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600 and the Millennium II (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
-  HD 5770, HD 7660D, the R3E, the R7E, the X1200, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  HD 5770, HD 7660D, the Oland XT, the R3E, the R7E, the X1200, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
@@ -400,6 +411,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 | AMD Radeon HD 7660D (A10-5700) | not run | not run; Quake 3 `demo001` 33.4 fps at 1280x1024x32 | 0.35.0 build |
 | AMD Radeon HD 2600 XT (i5-3570K) | not run | not run; Quake 3 `demo001` 65.9 fps at 640x480x16 | 0.49.0 build |
 | ATI Radeon 9250 | not run | 54.7 fps (demo, windowed, 16 bpp) | 0.53.0 build |
+| AMD Radeon Oland XT (FX-6300) | not run | 246 fps (`demo1` `timerefresh`, windowed, 16 bpp); Quake 3 `demo001` 72.9 fps (windowed) | 0.54.0 build |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |
 | 3dfx Voodoo4 4500 (P3) | 25.7 fps | 20.7 fps (`timerefresh`) | 0.17.0 |
