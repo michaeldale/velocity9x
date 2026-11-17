@@ -218,6 +218,9 @@ struct v9x_vi_tl_draw {
     v9x_u32 vertex1_low;
     v9x_u32 vertex1_high;
     v9x_u32 vertex1_stride;
+    /* Nonzero: the T# (v9x_vi_3d_texture_sharps) reads red into x, for a
+     * pixel shader whose channels have names; 0 keeps memory order. */
+    v9x_u32 texture_rgba;
 };
 #define V9X_VI_TEXTURE_SHARP_DWORDS 12ul
 /*

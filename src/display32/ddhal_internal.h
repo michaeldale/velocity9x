@@ -763,7 +763,9 @@ int v9x_vi_window_address(DWORD *high, DWORD *low);
 #define V9X_VI_CP_SLOT_PS_SPECULAR_FIRST 4ul
 /* GFX6 only: si_shader.h's TL2 VS, for a two-unit draw; empty elsewhere. */
 #define V9X_VI_CP_SLOT_VS2       7ul
-#define V9X_VI_CP_SLOT_COUNT     8ul
+/* GFX6 only: si_shader.h's wide VS, for a pixel shader draw. */
+#define V9X_VI_CP_SLOT_VS_WIDE   8ul
+#define V9X_VI_CP_SLOT_COUNT     9ul
 int v9x_vi_cp_ready(void);
 int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence);
 int v9x_vi_cp_drain(int wait);

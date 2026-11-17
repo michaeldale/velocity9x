@@ -1,6 +1,6 @@
 # GCN: pixel shader 1.1 and DDI 8, after the HD 4600 and the GT218
 
-Date: 2026-11-16. Status: steps 1, 2 and 3 done, recorded in
+Date: 2026-11-16. Status: steps 1 to 5 done on the Oland (4 and 5 below); steps 1, 2 and 3 recorded in
 [`2026-11-17-gcn-ps11-translator.md`](../decisions/2026-11-17-gcn-ps11-translator.md).
 Step 2's `v9x_vi_ps11_build` (`vi_ps11.c`) runs 19 programs in the GCN
 model, each matching the interpreter, and each translates for GCN 2 and
@@ -19,7 +19,17 @@ and T13's two-unit form pass at 32 and 16 bpp, with nothing else changed.
 3DMark 2000 scored once and faulted twice, the known fault at 004E23D1
 in 3DMark's own keyframe code
 ([issue](../issues/2026-11-17-oland-3dmark2000-faults-with-two-stages.md)).
-Carrizo and Mullins still draw one stage. Next: step 5.
+Carrizo and Mullins still draw one stage.
+
+Step 5 is done on the Oland alone
+([2026-11-17-oland-draw-shader-ddi8.md](../decisions/2026-11-17-oland-draw-shader-ddi8.md)).
+The HAL draws pixel shaders and publishes DDI 8. V9XD32 T19 runs, with
+the GT218's verdicts at the same step: Cube and Normal wait for step 6,
+and FfSpecFog's 3 pixels are untraced on both. 3DMark 2001 SE completed
+once (1915) and hung the machine once in Car Chase High, with the CP
+stalled
+([issue](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
+Next: that hang's rate, then step 6.
 
 Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to

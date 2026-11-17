@@ -119,6 +119,17 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             v9x_u32 *ps,
                             struct v9x_vi_d3d_ps *built);
 
+/*
+ * A pixel shader stage's texture (step 5 of docs\plans\ati-gcn-ps11.md):
+ * sampler resolved as texture into out's texture fields by the one-unit
+ * rules, with texture_rgba set, for v9x_vi_3d_texture_sharps to write the
+ * stage's T# and S# into a vi_ps11.h table. A V9X_D3D_VI_REFUSE_* reason.
+ */
+v9x_u32 v9x_d3d_vi_map_shader_unit(const V9X_R3D_TEXTURE *sampler,
+                                   const V9X_D3D_VI_TEXTURE *texture,
+                                   v9x_u32 heap_high, v9x_u32 heap_low,
+                                   struct v9x_vi_tl_draw *out);
+
 /* Placement d3d_vi.c gives what it binds: every surface on 256 bytes;
  * colour targets and textures in rows of whole 64 bytes (linear aligned,
  * tile index 8); a Z16's rows whole 64 bytes as well, which the core's

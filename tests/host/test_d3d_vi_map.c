@@ -584,6 +584,46 @@ static void test_two_units(void)
           V9X_D3D_VI_REFUSE_COLOR_KEY);
 }
 
+/* A pixel shader stage (step 5 of docs\plans\ati-gcn-ps11.md): mapped by
+ * the one-unit rules with texture_rgba, so its T# reads red into x: DST_SEL
+ * Z Y X W at word 3's low twelve bits, Z Y X 1 for RGB565. */
+static void test_shader_unit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw unit;
+    v9x_u32 sharps[V9X_VI_TEXTURE_SHARP_DWORDS];
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.texture.op = 0ul;      /* a shader stage has no DX5 op */
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    CHECK(unit.texture_rgba == 1ul &&
+          unit.texture_low == HEAP_LOW + 0x00200000ul);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK((sharps[3] & 0xffful) == (6ul | (5ul << 3) | (4ul << 6) | (7ul << 9)));
+    /* The same texture in memory order, as the fixed-function T#. */
+    unit.texture_rgba = 0ul;
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK((sharps[3] & 0xffful) == (4ul | (5ul << 3) | (6ul << 6) | (7ul << 9)));
+
+    texture.format = V9X_VI_IMG_FORMAT_5_6_5;
+    texture.has_alpha = 0ul;
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK((sharps[3] & 0xffful) == (6ul | (5ul << 3) | (4ul << 6) | (1ul << 9)));
+
+    /* A texture the sampler does not read is refused, as for one unit. */
+    texture.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_TEXTURE_FORMAT);
+}
+
 unsigned int v9x_run_d3d_vi_map_tests(void)
 {
     failures = 0u;
@@ -597,5 +637,6 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_decal_alpha_and_opaque();
     test_explicit();
     test_two_units();
+    test_shader_unit();
     return failures;
 }

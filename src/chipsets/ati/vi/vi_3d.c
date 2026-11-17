@@ -205,6 +205,12 @@
 #define VI_MIP_LEVEL_ALIGN          256ul
 /* X, Y, Z and SQ_SEL_1 for W. */
 #define VI_IMG_SWIZZLE_OPAQUE       (4ul | (5ul << 3) | (6ul << 6) | (1ul << 9))
+/* Z, Y, X, W and Z, Y, X, 1: red in x for a format with blue in its low
+ * field, every Direct3D format here, as radeonsi samples BGRA. A pixel
+ * shader names its channels, so its textures read so (V9XSICP /ps11, the
+ * Oland, 2026-11-17). */
+#define VI_IMG_SWIZZLE_RGBA         (6ul | (5ul << 3) | (4ul << 6) | (7ul << 9))
+#define VI_IMG_SWIZZLE_RGBA_OPAQUE  (6ul | (5ul << 3) | (4ul << 6) | (1ul << 9))
 #define VI_IMG_TYPE_2D              9ul
 #define VI_IMG_MAX_SIZE             16384ul
 #define VI_SQ_TEX_WRAP              0ul
@@ -809,9 +815,13 @@ static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
      * MODULATE under SRCALPHA would draw nothing. It takes the constant 1,
      * Cedar's fix (docs\decisions\2026-10-27-cedar-texture-pitch-and-565-
      * alpha.md). */
-    out[3] = (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
-              draw->texture_opaque != 0ul ?
-              VI_IMG_SWIZZLE_OPAQUE : VI_IMG_SWIZZLE_IDENTITY) |
+    out[3] = (draw->texture_rgba != 0ul ?
+              (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
+               draw->texture_opaque != 0ul ?
+               VI_IMG_SWIZZLE_RGBA_OPAQUE : VI_IMG_SWIZZLE_RGBA) :
+              (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
+               draw->texture_opaque != 0ul ?
+               VI_IMG_SWIZZLE_OPAQUE : VI_IMG_SWIZZLE_IDENTITY)) |
              ((draw->texture_base_level & 0xful) << 12) |
              ((draw->texture_last_level & 0xful) << 16) |
              ((draw->texture_tile_mode_index & 0x1ful) << 20) |

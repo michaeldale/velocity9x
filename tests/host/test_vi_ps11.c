@@ -99,6 +99,10 @@ static v9x_u32 most_sgprs;
 /* Fog after the shader for the next cases, and its colour. */
 static v9x_u32 fog_on;
 static float fog_rgb[3];
+/* The alpha test for the next cases: its v_cmpx and reference. */
+static v9x_u32 alpha_on;
+static v9x_u32 alpha_func;
+static float alpha_ref;
 /* The run the sampler is called from, and what it found wrong. */
 static struct v9x_gcn_sim *current;
 static const char *sampler_wrong;
@@ -258,7 +262,7 @@ static void fill_table(const V9X_PS11_PROGRAM *program,
     for (i = 0ul; i < 3ul; ++i) {
         table[V9X_VI_PS11_FOG + i] = as_bits(fog_rgb[i]);
     }
-    table[V9X_VI_PS11_FOG + 3ul] = 0ul;
+    table[V9X_VI_PS11_ALPHA_REF] = as_bits(alpha_ref);
 }
 
 static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
@@ -271,6 +275,7 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
     v9x_u32 a;
     v9x_u32 c;
     v9x_u32 killed = 0ul;
+    v9x_u32 alpha_killed = 0ul;
     v9x_u32 failed_at = 0ul;
     v9x_status status;
     int bad = 0;
@@ -279,6 +284,8 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
     desc.projected = env->projected;
     desc.unbound = env->unbound;
     desc.fog = fog_on;
+    desc.alpha_test = alpha_on;
+    desc.alpha_func = alpha_func;
     status = v9x_vi_ps11_build(program_words, PROGRAM_DWORDS, program, &desc,
                                &info);
     if (status != V9X_STATUS_OK) {
@@ -295,7 +302,8 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
     if (info.sgprs > most_sgprs) {
         most_sgprs = info.sgprs;
     }
-    CHECK((info.kills != 0ul) == (program->has_kill != 0ul));
+    CHECK((info.kills != 0ul) ==
+          (program->has_kill != 0ul || alpha_on != 0ul));
 
     /* GCN 2 and GCN 1 take every word. */
     memcpy(rewritten, program_words, info.words * sizeof(v9x_u32));
@@ -369,6 +377,18 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
                 out[c] = (out[c] - fog_rgb[c]) * f + fog_rgb[c];
             }
         }
+        /* The alpha test on r0.a clamped: GE or LT, the two cases use. */
+        if (alpha_on && kept) {
+            float a = out[3] < 0.0f ? 0.0f : out[3] > 1.0f ? 1.0f : out[3];
+            int pass = alpha_func == V9X_VI_VOPC_CMPX_GE_F32 ? a >= alpha_ref
+                                                             : a < alpha_ref;
+
+            if (!pass) {
+                kept = 0;
+                ++killed;
+                ++alpha_killed;
+            }
+        }
         current = &sim;
         sampler_wrong = 0;
         if (!v9x_gcn_sim_run(&sim, program_words, info.words)) {
@@ -413,6 +433,12 @@ static void check_program(const char *name, const V9X_PS11_PROGRAM *program,
                 bad = 1;
             }
         }
+    }
+    if (alpha_on && (alpha_killed == 0ul || alpha_killed == PIXELS)) {
+        printf("FAIL %s: the alpha test killed %lu of %lu; the test needs "
+               "some of each\n", name, (unsigned long)alpha_killed,
+               (unsigned long)PIXELS);
+        bad = 1;
     }
     if (expect_killed_some && (killed == 0ul || killed == PIXELS)) {
         printf("FAIL %s: the inputs killed %lu of %lu; the test needs some "
@@ -638,7 +664,23 @@ static void cases(void)
     put(OP_MOV); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 0, XYZW, 0));
     put(END);
     check_case("texkill fog", &env, 1ul);
+
+    /* The alpha test after fog, and beside texkill: the texel's alpha
+     * against a reference either way. */
+    alpha_on = 1ul;
+    alpha_func = V9X_VI_VOPC_CMPX_GE_F32;
+    alpha_ref = 0.87f;     /* the texel alpha runs 0.80 to 0.92 */
+    check_case("texkill fog alpha GE", &env, 0ul);
     fog_on = 0ul;
+    alpha_func = V9X_VI_VOPC_CMPX_LT_F32;
+    used = 0ul;
+    put(VER(1ul, 0ul));
+    put(OP_TEX); put(DST(T, 0, ALL, 0, 0));
+    put(OP_MOV); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 0, XYZW, 0));
+    put(END);
+    check_case("alpha LT", &env, 0ul);
+    alpha_on = 0ul;
+    alpha_ref = 0.0f;
 
     /* An unbound stage reads (0, 0, 0, 1); texkill still kills. */
     zero_env(&env);
@@ -680,6 +722,8 @@ static void refusals(void)
     desc.projected = 0ul;
     desc.unbound = 0ul;
     desc.fog = 0ul;
+    desc.alpha_test = 0ul;
+    desc.alpha_func = 0ul;
 
     used = 0ul;
     put(VER(1ul, 1ul));

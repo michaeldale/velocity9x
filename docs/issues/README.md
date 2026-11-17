@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-17 Oland (W9QI0DAD), step 5 build: 3DMark 2001 SE hung the machine once in Car Chase High; the CP stalled on a full ring with fences 38 behind and the 3D pipeline idle; one 16-bit Enable 67 s earlier never finished; the rerun completed; cause open](2026-11-17-oland-3dmark2001se-cp-stall-hang.md)
 - [2026-11-17 3DMark 2000 C0000005 at 004E23D1 (GMA 950, GT218, Oland): KNOWN, not a driver defect; 3DMark's keyframe evaluator reads one 28h key past its vector's end and faults when that lands on uncommitted memory, in about one run of three on any driver build here; traced first 2026-11-15 in the GT218 builders record](2026-11-17-oland-3dmark2000-faults-with-two-stages.md)
 - [2026-11-16 GT218 (W9QI0DAD), 3DMark 2001 SE Car Chase: 246 of 295 captured frames show a cleared (black) or half-drawn buffer; every Flip was declined on this row; fixed on branch gt218-flips by flips through the VGA CRTC emulation (CR0C/CR0D/CR35/CR34 behind CR3F, the VBIOS's own layout), measured on boot 44: 16 of 16 sampled Car Chase frames complete](2026-11-16-gt218-3dmark2001se-car-chase-cleared-frames-on-screen.md)
 - [2026-11-16 GT218 (W9QI0DAD), 3DMark 2000 helicopter: trees pop in at full opacity and fade in and out between frames; not compared against another driver; cause open](2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md)

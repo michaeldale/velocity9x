@@ -798,13 +798,20 @@ static int v9x_vi_cp_upload_shaders(void)
     DWORD index;
 
     for (which = 0ul; which < V9X_VI_CP_SLOT_COUNT; ++which) {
-        /* The TL2 VS is SI's (two units, the Oland's limits alone). */
-        if (which == V9X_VI_CP_SLOT_VS2) {
+        /* The TL2 and wide VSs are SI's (two units and pixel shaders,
+         * the Oland's engine table alone). */
+        if (which == V9X_VI_CP_SLOT_VS2 || which == V9X_VI_CP_SLOT_VS_WIDE) {
             if (!v9x_vi_cp_chip->gfx6) {
                 continue;
             }
-            if (V9X_SI_TL2_VS_DWORDS > V9X_VI_CP_SHADER_BYTES / 4ul ||
-                v9x_si_shader_tl2_vs(words, &count) != V9X_STATUS_OK) {
+            if (which == V9X_VI_CP_SLOT_VS2 &&
+                (V9X_SI_TL2_VS_DWORDS > V9X_VI_CP_SHADER_BYTES / 4ul ||
+                 v9x_si_shader_tl2_vs(words, &count) != V9X_STATUS_OK)) {
+                return 0;
+            }
+            if (which == V9X_VI_CP_SLOT_VS_WIDE &&
+                (V9X_SI_WIDE_VS_DWORDS > V9X_VI_CP_SHADER_BYTES / 4ul ||
+                 v9x_si_shader_wide_vs(words, &count) != V9X_STATUS_OK)) {
                 return 0;
             }
             slot = v9x_vi_cp_window(V9X_VI_CP_WINDOW_SHADERS +

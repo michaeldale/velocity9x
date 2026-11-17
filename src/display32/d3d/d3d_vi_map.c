@@ -378,6 +378,23 @@ static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
     return V9X_D3D_VI_REFUSE_NONE;
 }
 
+v9x_u32 v9x_d3d_vi_map_shader_unit(const V9X_R3D_TEXTURE *sampler,
+                                   const V9X_D3D_VI_TEXTURE *texture,
+                                   v9x_u32 heap_high, v9x_u32 heap_low,
+                                   struct v9x_vi_tl_draw *out)
+{
+    v9x_u32 index;
+    v9x_u32 reason;
+
+    for (index = 0ul; index < sizeof(*out); ++index) {
+        ((unsigned char *)out)[index] = 0u;
+    }
+    reason = v9x_d3d_vi_map_unit(sampler, texture, heap_high, heap_low, out,
+                                 0);
+    out->texture_rgba = 1ul;
+    return reason;
+}
+
 v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
                             const V9X_D3D_VI_TEXTURE *texture,
                             const V9X_D3D_VI_TEXTURE *texture1,

@@ -62,7 +62,8 @@
  *                     application's, clamped to [-1, 1]
  *   BUMP + 4 N        stage N's bump matrix m00 m01 m10 m11
  *   LUMINANCE + 2 N   stage N's luminance scale and offset
- *   FOG               the fog colour r g b, then a pad dword
+ *   FOG               the fog colour r g b, then the alpha test's
+ *                     reference (a float on [0, 1]); both the caller's
  */
 #define V9X_VI_PS11_T_SHARP      0ul
 #define V9X_VI_PS11_S_SHARP      32ul
@@ -70,6 +71,7 @@
 #define V9X_VI_PS11_BUMP         80ul
 #define V9X_VI_PS11_LUMINANCE    96ul
 #define V9X_VI_PS11_FOG          104ul
+#define V9X_VI_PS11_ALPHA_REF    107ul
 #define V9X_VI_PS11_TABLE_DWORDS 108ul
 
 /* VGPRs every program allocates (SPI_SHADER_PGM_RSRC1 VGPRS). */
@@ -81,6 +83,11 @@ struct v9x_vi_ps11_desc {
     v9x_u32 unbound;        /* bit N: stage N has no texture: its     */
                             /* lookups read (0, 0, 0, 1), unsampled   */
     v9x_u32 fog;            /* fog after the shader                   */
+    /* The alpha test after it, which GCN has no fixed function for: the
+     * pixel kept where clamp(r0.a) FUNC ref holds, alpha_func a
+     * V9X_VI_VOPC_CMPX_* (vi_shader.h), ref the table's ALPHA_REF. */
+    v9x_u32 alpha_test;
+    v9x_u32 alpha_func;
 };
 
 /* What a built program needs from the draw beside its code. */

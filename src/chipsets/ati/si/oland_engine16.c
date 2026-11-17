@@ -92,9 +92,11 @@ void V9X_LEAF_FAR v9x_oland_fill_engine_leaf(
      * V9XSICP did on W9QI0DAD, with SI's microcode, gpu_init, start of
      * stream and shaders (docs\decisions\2026-11-16-oland-texture-depth.md
      * and the records before it): only when the mini-VDD mapped the whole
-     * window, as on Carrizo and Mullins. */
+     * window, as on Carrizo and Mullins. DDI 8 with it: pixel shaders on
+     * the translator V9XSICP /ps11 drew right (step 5 of docs\plans\
+     * ati-gcn-ps11.md). */
     if (bytes >= V9X_OLAND_RING_WINDOW_BYTES) {
-        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_D3D_DDI8;
     }
     *ring_linear_base = ring;
     *ring_bytes = bytes;

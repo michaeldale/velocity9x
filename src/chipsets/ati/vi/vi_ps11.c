@@ -846,6 +846,7 @@ v9x_status v9x_vi_ps11_build(v9x_u32 *words, v9x_u32 capacity,
     V9X_VI_PS11_SCAN scan;
     v9x_u32 w[2];
     v9x_u32 branch = V9X_VI_PS11_NONE;
+    v9x_u32 alpha_branch = V9X_VI_PS11_NONE;
     v9x_u32 stage;
     v9x_u32 i;
     v9x_u32 c;
@@ -908,7 +909,7 @@ v9x_status v9x_vi_ps11_build(v9x_u32 *words, v9x_u32 capacity,
                 &gen, 2ul, V9X_VI_PS11_LUMINANCE + 2ul * stage);
         }
     }
-    if (desc->fog != 0ul) {
+    if (desc->fog != 0ul || desc->alpha_test != 0ul) {
         gen.s_fog = v9x_vi_ps11_load(&gen, 4ul, V9X_VI_PS11_FOG);
     }
     /* GCN 3 wants one wait state between a SALU write of M0 and a
@@ -1018,6 +1019,29 @@ v9x_status v9x_vi_ps11_build(v9x_u32 *words, v9x_u32 capacity,
         }
     }
 
+    /* The alpha test, which GCN has no fixed function for: r0.a as the
+     * target takes it, clamped to [0, 1], against the reference in the
+     * table's fog block, "alpha FUNC ref" as vi_shader.c's built PS
+     * tests it. A wave left with no pixel branches to the null export. */
+    if (desc->alpha_test != 0ul) {
+        v9x_vi_ps11_put1(&gen, v9x_vi_vop2(V9X_VI_VOP2_MAX_F32,
+                                           V9X_VI_PS11_R_WORK,
+                                           V9X_VI_PS11_ZERO,
+                                           V9X_VI_PS11_R_R + 3ul));
+        v9x_vi_ps11_put1(&gen, v9x_vi_vop2(V9X_VI_VOP2_MIN_F32,
+                                           V9X_VI_PS11_R_WORK,
+                                           V9X_VI_PS11_ONE,
+                                           V9X_VI_PS11_R_WORK));
+        v9x_vi_ps11_put1(&gen, v9x_vi_vop1(V9X_VI_VOP1_MOV_B32,
+                                           V9X_VI_PS11_R_WORK2,
+                                           gen.s_fog + 3ul));
+        v9x_vi_ps11_put1(&gen, v9x_vi_vopc(desc->alpha_func,
+                                           V9X_VI_VGPR(V9X_VI_PS11_R_WORK),
+                                           V9X_VI_PS11_R_WORK2));
+        alpha_branch = gen.count;
+        v9x_vi_ps11_put1(&gen, v9x_vi_s_cbranch_execz(0ul));
+    }
+
     /* r0 packed into v0:v1 and exported compressed (vi_shader.h). */
     v9x_vi_cvt_pkrtz(0ul, V9X_VI_VGPR(V9X_VI_PS11_R_R),
                      V9X_VI_VGPR(V9X_VI_PS11_R_R + 1ul), w);
@@ -1028,10 +1052,14 @@ v9x_status v9x_vi_ps11_build(v9x_u32 *words, v9x_u32 capacity,
     v9x_vi_exp_compr(V9X_VI_EXP_MRT0, 1, 1, 0ul, 1ul, w);
     v9x_vi_ps11_put(&gen, w, 2ul);
     v9x_vi_ps11_put1(&gen, V9X_VI_S_ENDPGM);
-    if (branch != V9X_VI_PS11_NONE) {
-        if (branch < gen.capacity) {
+    if (branch != V9X_VI_PS11_NONE || alpha_branch != V9X_VI_PS11_NONE) {
+        if (branch != V9X_VI_PS11_NONE && branch < gen.capacity) {
             gen.words[branch] =
                 v9x_vi_s_cbranch_execz(gen.count - branch - 1ul);
+        }
+        if (alpha_branch != V9X_VI_PS11_NONE && alpha_branch < gen.capacity) {
+            gen.words[alpha_branch] =
+                v9x_vi_s_cbranch_execz(gen.count - alpha_branch - 1ul);
         }
         v9x_vi_exp_null_done(w);
         v9x_vi_ps11_put(&gen, w, 2ul);
@@ -1047,7 +1075,8 @@ v9x_status v9x_vi_ps11_build(v9x_u32 *words, v9x_u32 capacity,
     info->words = gen.count;
     info->vgprs = V9X_VI_PS11_VGPRS;
     info->sgprs = gen.s_next;
-    info->kills = gen.kill_stages != 0ul ? 1ul : 0ul;
+    info->kills = gen.kill_stages != 0ul || desc->alpha_test != 0ul ? 1ul
+                                                                   : 0ul;
     info->coords = scan.coords;
     return V9X_STATUS_OK;
 }

@@ -218,6 +218,7 @@ $sources = @(
     "src\chipsets\ati\vi\vi_clear_state.c",
     "src\chipsets\ati\vi\vi_3d.c",
     "src\chipsets\ati\vi\vi_shader.c",
+    "src\chipsets\ati\vi\vi_ps11.c",
     "src\display32\d3d\d3d_vi_map.c",
     "src\display32\d3d\d3d_vi.c",
     # Mullins (GCN 2) on the same engine: its graphics microcode (licence

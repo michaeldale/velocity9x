@@ -26,6 +26,7 @@
 #include "velocity9x/vi_shader.h"
 #include "velocity9x/cik_shader.h"
 #include "velocity9x/si_shader.h"
+#include "velocity9x/vi_ps11.h"
 
 /* Triangles a batch takes from one call: the arena holds 2 MiB, this is
  * 48 KiB of vertices. */
@@ -726,6 +727,306 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
+/*
+ * PIXEL SHADERS, step 5 of docs\plans\ati-gcn-ps11.md, the Oland alone: a
+ * list of triangles under a DirectX 8 pixel shader (d3d_internal.h,
+ * draw_shader). The program is v9x_vi_ps11_build's, rewritten for SI, as
+ * V9XSICP /ps11 drew it right on the card (2026-11-17). Translated
+ * programs are kept by shader and what of the draw they depend on, CPU
+ * side, and each batch's copy goes into the vertex arena with its table
+ * and wide vertices, as the built fixed-function PS goes: nothing on the
+ * GPU is rewritten while it may be read.
+ *
+ * The target, depth and blend are the fixed-function map's, and so are
+ * the alpha test's function and reference and the fog colour, which the
+ * program applies. Channels are in their PS 1.1 places: the T#s read red
+ * into x (texture_rgba) and the CB swaps x back to red's byte (SWAP_ALT
+ * for XRGB8888, SWAP_STD_REV for RGB565), the convention V9XSICP /ps11
+ * measured. The wide vertices come unclipped and go to the PA's guard
+ * band, as the TL vertices do. Not drawn yet: cube maps and the texm3x3
+ * lookups (step 6), refused and counted by the core as dropped.
+ */
+#define V9X_D3D_VI_PS_CODE_MAX   512ul
+#define V9X_D3D_VI_PS_ENTRIES    8ul
+#define V9X_D3D_VI_PS_CHUNK      256ul
+#define V9X_D3D_VI_WIDE_DWORDS   (V9X_R3D_SHADER_FLOATS)
+
+typedef struct v9x_d3d_vi_ps_entry {
+    const V9X_PS11_PROGRAM *program;    /* null: an empty entry */
+    DWORD serial;
+    DWORD projected;
+    DWORD unbound;
+    DWORD fog;
+    DWORD alpha_test;
+    DWORD alpha_func;
+    DWORD words;
+    DWORD sgprs;
+    DWORD kills;
+    v9x_u32 code[V9X_D3D_VI_PS_CODE_MAX];
+} V9X_D3D_VI_PS_ENTRY;
+
+static V9X_D3D_VI_PS_ENTRY v9x_d3d_vi_ps_cache[V9X_D3D_VI_PS_ENTRIES];
+static DWORD v9x_d3d_vi_ps_next = 0ul;
+static v9x_u32 v9x_d3d_vi_ps_table[V9X_VI_PS11_TABLE_DWORDS];
+/* The draw with its textures, specular and key taken off, for the map:
+ * static, as HAL stacks are small. */
+static V9X_R3D_DRAW v9x_d3d_vi_ps_plain;
+
+/* The entry for this shader and draw: found, or the next one taken and
+ * its program translated for SI. Null when it does not translate. */
+static V9X_D3D_VI_PS_ENTRY *v9x_d3d_vi_ps_entry(const V9X_R3D_SHADER *shader,
+                                                DWORD unbound, DWORD fog,
+                                                DWORD alpha_test,
+                                                DWORD alpha_func)
+{
+    struct v9x_vi_ps11_desc desc;
+    struct v9x_vi_ps11_info info;
+    V9X_D3D_VI_PS_ENTRY *entry;
+    DWORD n;
+
+    for (n = 0ul; n < V9X_D3D_VI_PS_ENTRIES; ++n) {
+        entry = &v9x_d3d_vi_ps_cache[n];
+        if (entry->program == shader->program &&
+            entry->serial == shader->serial &&
+            entry->projected == shader->env.projected &&
+            entry->unbound == unbound && entry->fog == fog &&
+            entry->alpha_test == alpha_test &&
+            entry->alpha_func == alpha_func) {
+            return entry;
+        }
+    }
+    n = v9x_d3d_vi_ps_next;
+    v9x_d3d_vi_ps_next = (n + 1ul) % V9X_D3D_VI_PS_ENTRIES;
+    entry = &v9x_d3d_vi_ps_cache[n];
+    entry->program = 0;
+    desc.cube = 0ul;
+    desc.projected = shader->env.projected;
+    desc.unbound = unbound;
+    desc.fog = fog;
+    desc.alpha_test = alpha_test;
+    desc.alpha_func = alpha_func;
+    if (v9x_vi_ps11_build(entry->code, V9X_D3D_VI_PS_CODE_MAX,
+                          shader->program, &desc, &info) != V9X_STATUS_OK ||
+        v9x_si_shader_from_vi(entry->code, info.words, 0) != V9X_STATUS_OK) {
+        return 0;
+    }
+    entry->program = shader->program;
+    entry->serial = shader->serial;
+    entry->projected = shader->env.projected;
+    entry->unbound = unbound;
+    entry->fog = fog;
+    entry->alpha_test = alpha_test;
+    entry->alpha_func = alpha_func;
+    entry->words = info.words;
+    entry->sgprs = info.sgprs;
+    entry->kills = info.kills;
+    return entry;
+}
+
+/* count dwords from words into the arena; its GPU low half, or 0. */
+static DWORD v9x_d3d_vi_arena_copy(const v9x_u32 *words, DWORD count)
+{
+    volatile DWORD *linear;
+    DWORD gpu_low;
+    DWORD index;
+
+    if (!v9x_vi_cp_vertex_space(count * 4ul, &linear, &gpu_low)) {
+        return 0ul;
+    }
+    for (index = 0ul; index < count; ++index) {
+        linear[index] = words[index];
+    }
+    return gpu_low;
+}
+
+static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
+                                  const V9X_R3D_SHADER *shader,
+                                  const float *vertices,
+                                  DWORD triangle_count)
+{
+    struct v9x_vi_tl_draw state;
+    struct v9x_vi_tl_draw unit;
+    struct v9x_vi_d3d_ps built;
+    struct v9x_vi_pm4 stream;
+    V9X_D3D_VI_TEXTURE none;
+    V9X_D3D_VI_TEXTURE resolved;
+    V9X_D3D_VI_PS_ENTRY *entry;
+    v9x_u32 sharps[V9X_VI_TEXTURE_SHARP_DWORDS];
+    v9x_u32 ps;
+    v9x_u32 reason;
+    DWORD high;
+    DWORD heap_low;
+    DWORD sampled;
+    DWORD bound = 0ul;
+    DWORD stage;
+    DWORD index;
+    DWORD chunk;
+    DWORD started;
+    DWORD ps_low;
+    DWORD table_low;
+    DWORD gpu_low;
+
+    if (draw == 0 || shader == 0 || shader->program == 0 || vertices == 0 ||
+        triangle_count == 0ul || !v9x_d3d_vi_ready() || !v9x_d3d_vi_gfx6() ||
+        !v9x_vi_cp_addresses(&high, &heap_low)) {
+        return 0;
+    }
+    started = V9X_TIME_BEGIN();
+
+    /* No cube maps and no texm3x3 lookups yet (step 6). */
+    for (index = 0ul; index < shader->program->count; ++index) {
+        DWORD op = shader->program->inst[index].op;
+
+        if (op == V9X_PS11_TEXM3X3TEX || op == V9X_PS11_TEXM3X3SPEC ||
+            op == V9X_PS11_TEXM3X3VSPEC) {
+            v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_TEXTURE_SHAPE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+    }
+
+    /* The fixed-function map for target, depth, blend, and the alpha
+     * test's and fog's terms: a draw with no texture, specular or key. */
+    v9x_d3d_vi_ps_plain = *draw;
+    v9x_d3d_vi_ps_plain.texture.object = 0;
+    v9x_d3d_vi_ps_plain.texture.levels = 0;
+    v9x_d3d_vi_ps_plain.texture1.object = 0;
+    v9x_d3d_vi_ps_plain.texture1.levels = 0;
+    v9x_d3d_vi_ps_plain.texcoords1 = 0;
+    v9x_d3d_vi_ps_plain.specular_enable = 0ul;
+    v9x_d3d_vi_ps_plain.color_key_enable = 0ul;
+    none.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
+    none.levels = 1ul;
+    reason = v9x_d3d_vi_map_draw(&v9x_d3d_vi_ps_plain, &none, 0, high,
+                                 heap_low, v9x_d3d_vi_depth_bytes(draw),
+                                 &state, 0, &ps, &built);
+    if (reason != V9X_D3D_VI_REFUSE_NONE) {
+        v9x_d3d_vi_count_refusal(draw, reason);
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+
+    /* Each sampled stage's T# and S#, or (0, 0, 0, 1) for none bound. */
+    for (index = 0ul; index < V9X_VI_PS11_TABLE_DWORDS; ++index) {
+        v9x_d3d_vi_ps_table[index] = 0ul;
+    }
+    sampled = shader->program->samples;
+    for (stage = 0ul; stage < V9X_R3D_SHADER_STAGES; ++stage) {
+        if ((sampled & (1ul << stage)) == 0ul ||
+            shader->texture[stage].object == 0) {
+            continue;
+        }
+        if ((shader->env.cube & (1ul << stage)) != 0ul) {
+            v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_TEXTURE_SHAPE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        resolved.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
+        resolved.levels = 1ul;
+        v9x_d3d_vi_resolve_texture(&shader->texture[stage], &resolved);
+        reason = v9x_d3d_vi_map_shader_unit(&shader->texture[stage],
+                                            &resolved, high, heap_low, &unit);
+        if (reason != V9X_D3D_VI_REFUSE_NONE) {
+            v9x_d3d_vi_count_refusal(draw, reason);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        v9x_vi_3d_texture_sharps(&unit, sharps);
+        for (index = 0ul; index < 8ul; ++index) {
+            v9x_d3d_vi_ps_table[V9X_VI_PS11_T_SHARP + 8ul * stage + index] =
+                sharps[index];
+        }
+        for (index = 0ul; index < 4ul; ++index) {
+            v9x_d3d_vi_ps_table[V9X_VI_PS11_S_SHARP + 4ul * stage + index] =
+                sharps[8ul + index];
+        }
+        bound |= 1ul << stage;
+    }
+    v9x_vi_ps11_constants(shader->program, &shader->env,
+                          v9x_d3d_vi_ps_table);
+    /* The map's fog colour is B, G, R in memory order; the table's R, G,
+     * B. Its alpha reference is a float on [0, 1]. */
+    v9x_d3d_vi_ps_table[V9X_VI_PS11_FOG] = built.fog_colour[2];
+    v9x_d3d_vi_ps_table[V9X_VI_PS11_FOG + 1ul] = built.fog_colour[1];
+    v9x_d3d_vi_ps_table[V9X_VI_PS11_FOG + 2ul] = built.fog_colour[0];
+    v9x_d3d_vi_ps_table[V9X_VI_PS11_ALPHA_REF] = built.alpha_ref;
+
+    entry = v9x_d3d_vi_ps_entry(shader, sampled & ~bound,
+                                built.fog != 0ul ? 1ul : 0ul,
+                                built.alpha_test != 0ul ? 1ul : 0ul,
+                                built.alpha_test != 0ul ? built.alpha_func
+                                                        : 0ul);
+    if (entry == 0) {
+        v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_STATE);
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+
+    state.texture_low = 0ul;
+    state.target_swap = draw->target.format == V9X_R3D_FORMAT_RGB565
+                            ? V9X_VI_CB_SWAP_STD_REV : V9X_VI_CB_SWAP_ALT;
+    state.vs_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_VS_WIDE);
+    state.vs_vgprs = V9X_SI_WIDE_VS_VGPRS;
+    state.vertex_stride = V9X_SI_WIDE_VERTEX_BYTES;
+    state.params = V9X_SI_WIDE_PARAMS;
+    state.ps_vgprs = V9X_VI_PS11_VGPRS;
+    state.ps_sgprs = entry->sgprs;
+    state.ps_kill = entry->kills;
+    state.shader_high = state.target_high;
+    state.vertex_high = state.target_high;
+    state.fence_high = state.target_high;
+    state.ps_table_high = state.target_high;
+
+    while (triangle_count != 0ul) {
+        chunk = triangle_count > V9X_D3D_VI_PS_CHUNK ? V9X_D3D_VI_PS_CHUNK
+                                                     : triangle_count;
+        ps_low = v9x_d3d_vi_arena_copy(entry->code, entry->words);
+        table_low = ps_low != 0ul
+                        ? v9x_d3d_vi_arena_copy(v9x_d3d_vi_ps_table,
+                                                V9X_VI_PS11_TABLE_DWORDS)
+                        : 0ul;
+        gpu_low = table_low != 0ul
+                      ? v9x_d3d_vi_arena_copy(
+                            (const v9x_u32 *)vertices,
+                            chunk * 3ul * V9X_D3D_VI_WIDE_DWORDS)
+                      : 0ul;
+        if (gpu_low == 0ul) {
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        state.ps_low = ps_low;
+        state.ps_table_low = table_low;
+        state.vertex_low = gpu_low;
+        state.vertex_count = chunk * 3ul;
+        state.fence_low = v9x_vi_cp_fence_low();
+        state.fence_value = v9x_vi_cp_fence_next();
+
+        v9x_d3d_vi_stream_init(&stream);
+        if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
+            v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_STATE);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        v9x_vi_pm4_pad(&stream);
+        if (stream.overflow != 0ul) {
+            v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_OVERFLOW);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        if (!v9x_vi_cp_submit(stream.dwords, stream.count,
+                              state.fence_value)) {
+            return 0;
+        }
+        v9x_present_note_submission();
+        started = V9X_TIME_BEGIN();
+        vertices += chunk * 3ul * V9X_D3D_VI_WIDE_DWORDS;
+        triangle_count -= chunk;
+    }
+    V9X_TIME_END(V9X_TIME_DECODE, started);
+    return 1;
+}
+
 /* One corner of a depth fill's rectangle: no colour, no texture. */
 static void v9x_d3d_vi_fill_vertex(V9X_R3D_VERTEX *vertex, LONG x, LONG y,
                                    float z)
@@ -1137,7 +1438,8 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi = {
     v9x_d3d_vi_unlock_surface
 };
 
-/* The Oland's: the same functions under its two-stage limits. */
+/* The Oland's: the same functions under its two-stage limits, and pixel
+ * shaders (step 5 of docs\plans\ati-gcn-ps11.md). */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi_oland = {
     &v9x_d3d_vi_oland_limits,
     v9x_d3d_vi_texture_format,
@@ -1152,5 +1454,6 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_vi_oland = {
     0,                                  /* draw_tnl */
     0,                                  /* tnl_available */
     v9x_d3d_vi_lock_surface,
-    v9x_d3d_vi_unlock_surface
+    v9x_d3d_vi_unlock_surface,
+    v9x_d3d_vi_draw_shader              /* draw_shader: step 5 */
 };

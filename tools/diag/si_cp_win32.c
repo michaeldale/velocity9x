@@ -1328,6 +1328,8 @@ static void v9x_ps11_prepare(DWORD lo, DWORD hi)
     desc.projected = 0ul;
     desc.unbound = 0ul;
     desc.fog = v9x_ps11_variant == V9X_PS11_FOG_PROGRAM ? 1ul : 0ul;
+    desc.alpha_test = 0ul;
+    desc.alpha_func = 0ul;
     status = v9x_vi_ps11_build(v9x_ps11_code, V9X_PS11_CODE_MAX,
                                &v9x_ps11_program, &desc, &v9x_ps11_info);
     if (status != V9X_STATUS_OK) {
