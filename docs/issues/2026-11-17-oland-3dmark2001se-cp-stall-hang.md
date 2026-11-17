@@ -271,7 +271,27 @@ Where the runs die:
 
 Not known: whether the mode set at a test change is involved, whether
 the card is failing, or whether this was always latent and the
-afternoon's clean runs were luck. Nothing idles the CP or the DMA engine
+afternoon's clean runs were luck.
+
+## 2026-11-17, 18:10: the GeForce 210 in the same machine completes
+
+Michael pulled 8 GB of the machine's RAM (it had also crashed on a boot)
+and put the GeForce 210 (10DE:0A65) back in W9QI0DAD.
+- The nvidia package was built from origin/main e5dbf0ba in its own
+  worktree, put in place by WININIT rename, hash-checked.
+- On the first boot Windows stayed on vga.drv: the ati driver's failure
+  at 17:50 (`fail-hardware-present`, no Oland) had left the profile at
+  640x480x4, and the INF hands 4 bpp to vga.drv. Setting
+  `HKLM\Config\0001\Display\Settings` back to 32 bpp, 1024,768 and a
+  reset loaded the driver: GeForce 210, hardware Direct3D, DDI 8.
+- 3DMark 2001 SE (`3dmark2001se-6-gt210-control`) completed:
+  - score 1996 in 7.5 minutes;
+  - `EngineIdleTimeouts` 0 before and after;
+  - 120,700 RenderPrimitive calls, one boot throughout.
+
+Two things changed before this run, the card and the RAM, so it does not
+separate them. Next: the Oland back in with the RAM still out. A clean
+run then points at the RAM; failures at the Oland card. Nothing idles the CP or the DMA engine
 before the 16-bit side sets a mode through the VBE. Nothing measured
 says that matters. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
 ended in, or survived, a stall or a stop.
