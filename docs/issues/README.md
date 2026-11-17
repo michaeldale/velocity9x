@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-17 Riva 128 (M-7V636C): V9XD32 T22's A8R8G8B8 and X8R8G8B8 textures are created and drawn without error but every judged pixel is black; first T22 run on this card; cause open](2026-11-17-riva128-t22-32bit-textures-draw-black.md)
 - [2026-11-17 Oland, 3DMark 2001 SE Nature: foreground tree leaves drawn in about one frame in three and missing in the rest (complete frames, a fixed camera); no refusal counted; fixed on the Oland: DX5 MODULATE multiplied the leaves' vertex alpha in; the GeForce 210, Evergreen and R600-class maps fold MODULATE the same way, unchanged](2026-11-17-oland-nature-tree-leaves-missing-most-frames.md)
 - [2026-11-17 V9XD32 T19 FfSpecFog mismatches on the Oland (3 pixels at R5G6B5, 17 at X8R8G8B8) and the GeForce 210 (3 at R5G6B5), the same pixel too green on both; passes on the HD 4600 and GMA 950 within tolerance; not traced](2026-11-17-t19-ffspecfog-mismatch-oland-gt218.md)
 - [2026-11-17 Oland: texture shapes placed but never judged in a pixel check: non-square DXT chains, DXT cubes, a cube's smaller levels, V8U8; coverage gap, no defect seen](2026-11-17-oland-texture-shapes-unmeasured.md)
