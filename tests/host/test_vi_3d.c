@@ -1256,6 +1256,67 @@ static void test_cube_layout(void)
                                  &total));
 }
 
+/* BC blocks in 1D-thin tiles, against V9XSICP BcMap's measurements on
+ * W9QI0DAD (tile index 13): within a tile x0 8, y0 16, x1 32, y1 64,
+ * x2 128, y2 256 bytes for BC1; the next tile across 512, the next tile
+ * row 1024 at a pitch of 16 blocks and 2048 at 32. */
+static void test_bc_block_offset(void)
+{
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 0ul, 0ul) == 0ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 1ul, 0ul) == 8ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 0ul, 1ul) == 16ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 2ul, 0ul) == 32ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 0ul, 2ul) == 64ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 4ul, 0ul) == 128ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 0ul, 4ul) == 256ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 7ul, 7ul) == 504ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 8ul, 0ul) == 512ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 16ul, 0ul, 8ul) == 1024ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 32ul, 0ul, 8ul) == 2048ul);
+    CHECK(v9x_vi_3d_bc_block_offset(8ul, 32ul, 9ul, 9ul) == 2048ul + 512ul +
+                                                            24ul);
+    /* BC2/3: the same order at 16 bytes a block. */
+    CHECK(v9x_vi_3d_bc_block_offset(16ul, 16ul, 1ul, 1ul) == 48ul);
+    CHECK(v9x_vi_3d_bc_block_offset(16ul, 16ul, 8ul, 8ul) == 3072ul);
+}
+
+/* A BC chain against BcMap /bcl1-6 on W9QI0DAD: a 64x64 BC1's levels at
+ * 0, 2048, 2560, 3072, 3584, (4096), 4608, each past level 0 one tile. */
+static void test_bc_layout(void)
+{
+    v9x_u32 offsets[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 sizes[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 total;
+
+    CHECK(v9x_vi_3d_bc_layout(8ul, 64ul, 64ul, 7ul, offsets, sizes, pitches,
+                              &total));
+    CHECK(offsets[0] == 0ul && sizes[0] == 2048ul && pitches[0] == 16ul);
+    CHECK(offsets[1] == 2048ul && sizes[1] == 512ul && pitches[1] == 8ul);
+    CHECK(offsets[2] == 2560ul && offsets[3] == 3072ul &&
+          offsets[4] == 3584ul && offsets[5] == 4096ul &&
+          offsets[6] == 4608ul);
+    CHECK(pitches[6] == 8ul && total == 5120ul);
+
+    /* BC3, 16 bytes a block: a tile is 1 KB. 256x64: 64x16 blocks. */
+    CHECK(v9x_vi_3d_bc_layout(16ul, 256ul, 64ul, 3ul, offsets, sizes, pitches,
+                              &total));
+    CHECK(pitches[0] == 64ul && sizes[0] == 64ul * 16ul * 16ul);
+    CHECK(offsets[1] == sizes[0] && pitches[1] == 32ul &&
+          sizes[1] == 32ul * 8ul * 16ul);
+    CHECK(offsets[2] == offsets[1] + sizes[1] && pitches[2] == 16ul &&
+          sizes[2] == 16ul * 8ul * 16ul);
+
+    /* Refused: a block size the formats do not have, not a power of two,
+     * more levels than the sides allow. */
+    CHECK(!v9x_vi_3d_bc_layout(4ul, 64ul, 64ul, 1ul, offsets, sizes, pitches,
+                               &total));
+    CHECK(!v9x_vi_3d_bc_layout(8ul, 48ul, 64ul, 1ul, offsets, sizes, pitches,
+                               &total));
+    CHECK(!v9x_vi_3d_bc_layout(8ul, 64ul, 64ul, 8ul, offsets, sizes, pitches,
+                               &total));
+}
+
 /* The Direct3D options: D3D pixel centres (PA_SU_VTX_CNTL PIX_CENTER 0), a
  * target mask without alpha for an XRGB target, and a depth buffer whose
  * pitch and height are its own, not the target's. */
@@ -1552,6 +1613,8 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_mips();
     test_mip_layout();
     test_cube_layout();
+    test_bc_block_offset();
+    test_bc_layout();
     test_z16_tiles();
     test_tl_scissor();
     return failures;

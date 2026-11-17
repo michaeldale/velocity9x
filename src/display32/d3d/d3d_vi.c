@@ -41,6 +41,11 @@
 /* A batch's stream: the TL draw (about 200 dwords), padding to 16. */
 #define V9X_D3D_VI_STREAM_DWORDS 512ul
 
+/* The DXT FourCCs a surface carries ('DXT1', 'DXT3', 'DXT5'). */
+#define V9X_D3D_VI_FOURCC_DXT1 0x31545844ul
+#define V9X_D3D_VI_FOURCC_DXT3 0x33545844ul
+#define V9X_D3D_VI_FOURCC_DXT5 0x35545844ul
+
 static v9x_u32 v9x_d3d_vi_stream[V9X_D3D_VI_STREAM_DWORDS];
 
 /* The PS slot of each V9X_D3D_VI_PS_* (vi_cp.c). */
@@ -112,7 +117,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_oland_limits = {
     0ul,            /* depth32_bits: Z16 only for now */
     0ul,            /* centre_in_engine */
     2ul,            /* texture_stages */
-    1ul             /* guard_band_ddi6 */
+    1ul,            /* guard_band_ddi6 */
+    /* DXT1/3/5 as BC1-3 in 1D-thin tiles, which the sampler reads
+     * (V9XSICP /ps11:6-8) and linear-aligned BC it does not (step 7 of
+     * docs\plans\ati-gcn-ps11.md). */
+    1ul             /* dxt_textures */
 };
 
 /* The T# data format of a texture format the sampler reads, or UNKNOWN. */
@@ -132,6 +141,20 @@ static DWORD v9x_d3d_vi_format_of(const V9X_DD_SURFACE_LCL *surface,
         format = &surface->lpGbl->ddpfSurface;
     } else {
         format = &v9x_hal->info.vmiData.ddpfDisplay;
+    }
+    /* DXT1, DXT3 and DXT5 as BC1-3 (step 7), bytes a 4 x 4 block's: the
+     * core publishes them where the engine says it places and samples
+     * them (dxt_textures). */
+    if ((format->dwFlags & V9X_DDPF_FOURCC) != 0ul &&
+        (format->dwFourCC == V9X_D3D_VI_FOURCC_DXT1 ||
+         format->dwFourCC == V9X_D3D_VI_FOURCC_DXT3 ||
+         format->dwFourCC == V9X_D3D_VI_FOURCC_DXT5)) {
+        *bytes_out = format->dwFourCC == V9X_D3D_VI_FOURCC_DXT1 ? 8ul : 16ul;
+        *has_alpha = 1ul;
+        return format->dwFourCC == V9X_D3D_VI_FOURCC_DXT1
+                   ? V9X_VI_IMG_FORMAT_BC1
+                   : format->dwFourCC == V9X_D3D_VI_FOURCC_DXT3
+                         ? V9X_VI_IMG_FORMAT_BC2 : V9X_VI_IMG_FORMAT_BC3;
     }
     /* Q8W8V8U8 and V8U8, which the core publishes where pixel shaders run
      * and only a shader stage reads (step 6). */
@@ -380,8 +403,47 @@ static void v9x_d3d_vi_stream_init(struct v9x_vi_pm4 *stream)
 }
 
 /*
+ * A chain's levels as the sampler finds them from the base, for a texture
+ * of format (V9X_VI_IMG_FORMAT_*) and bytes (a texel's, or a BC block's):
+ * v9x_vi_3d_mip_layout's linear-aligned levels, or for DXT
+ * v9x_vi_3d_bc_layout's 1D-thin ones. Offsets and each level's lPitch in
+ * bytes (a BC level's is its blocks across times the block's bytes);
+ * nonzero on success.
+ */
+static int v9x_d3d_vi_chain_layout(DWORD format, DWORD bytes, DWORD width,
+                                   DWORD height, DWORD levels,
+                                   v9x_u32 *offsets, v9x_u32 *pitch_bytes,
+                                   v9x_u32 *total)
+{
+    v9x_u32 sizes[V9X_VI_MIP_LEVELS_MAX];
+    DWORD level;
+
+    if (V9X_VI_IMG_FORMAT_IS_BC(format)) {
+        if (!v9x_vi_3d_bc_layout(bytes, width, height, levels, offsets, sizes,
+                                 pitch_bytes, total)) {
+            return 0;
+        }
+    } else if (!v9x_vi_3d_mip_layout(bytes, width, height, levels, offsets,
+                                     pitch_bytes, total)) {
+        return 0;
+    }
+    for (level = 0ul; level < levels; ++level) {
+        pitch_bytes[level] *= bytes;
+    }
+    return 1;
+}
+
+/* A level's pitch in texels from its lPitch: a BC level's lPitch is its
+ * blocks across times the block's bytes. */
+static DWORD v9x_d3d_vi_pitch_texels(DWORD format, DWORD bytes, LONG pitch)
+{
+    return V9X_VI_IMG_FORMAT_IS_BC(format) ? (DWORD)pitch / bytes * 4ul
+                                           : (DWORD)pitch / bytes;
+}
+
+/*
  * A mip chain's levels, counted as far as each sits where
- * v9x_vi_3d_mip_layout puts it - create_surface placed it there in one
+ * v9x_d3d_vi_chain_layout puts it - create_surface placed it there in one
  * block - with level 0's pitch the layout's, as Cedar's are. The first
  * attached level that is not ends the chain; a chain of one is no chain.
  */
@@ -402,9 +464,12 @@ static void v9x_d3d_vi_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
         longest >>= 1;
         ++possible;
     }
-    if (!v9x_vi_3d_mip_layout(bytes, texture->width, texture->height,
-                              possible, offsets, pitches, &total) ||
-        texture->pitch_texels != pitches[0]) {
+    if (!v9x_d3d_vi_chain_layout(texture->format, bytes, texture->width,
+                                 texture->height, possible, offsets, pitches,
+                                 &total) ||
+        texture->pitch_texels !=
+            v9x_d3d_vi_pitch_texels(texture->format, bytes,
+                                    (LONG)pitches[0])) {
         return;
     }
     while (found < possible) {
@@ -422,7 +487,7 @@ static void v9x_d3d_vi_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
         }
         if (next == 0 || next->lpGbl == 0 ||
             v9x_surface_offset(next) != texture->offset + offsets[found] ||
-            (DWORD)next->lpGbl->lPitch != pitches[found] * bytes) {
+            (DWORD)next->lpGbl->lPitch != pitches[found]) {
             /* Where the level was and where the layout wanted it, and its
              * pitch beside the layout's (MipGapExpected, MipGapActual,
              * D3dMipChainDelta in V9XTRACE). */
@@ -435,7 +500,7 @@ static void v9x_d3d_vi_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
                 v9x_hal->d3d_diagnostics.mip_chain_delta =
                     (next->lpGbl != 0 ?
                      ((DWORD)next->lpGbl->lPitch << 16) : 0ul) |
-                    ((pitches[found] * bytes) & 0xfffful);
+                    (pitches[found] & 0xfffful);
             }
             break;
         }
@@ -545,11 +610,20 @@ static void v9x_d3d_vi_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     if (texture->format == V9X_D3D_VI_TEXTURE_UNKNOWN) {
         return;
     }
+    /* A DXT surface DirectDraw placed (its heap named: the engine's
+     * placements leave lpVidMemHeap, dwBlockSizeX, null) is linear, not in
+     * the tiles the sampler reads, and its lPitch a linear size. */
+    if (V9X_VI_IMG_FORMAT_IS_BC(texture->format) &&
+        surface->lpGbl->dwBlockSizeX != 0ul) {
+        texture->format = V9X_D3D_VI_TEXTURE_UNKNOWN;
+        return;
+    }
     texture->snorm = snorm;
     texture->has_alpha = has_alpha;
     texture->width = (DWORD)surface->lpGbl->wWidth;
     texture->height = (DWORD)surface->lpGbl->wHeight;
-    texture->pitch_texels = (DWORD)surface->lpGbl->lPitch / bytes;
+    texture->pitch_texels = v9x_d3d_vi_pitch_texels(texture->format, bytes,
+                                                    surface->lpGbl->lPitch);
     texture->offset = offset;
     texture->levels = 1ul;
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
@@ -1241,10 +1315,12 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
  * note above v9x_d3d_vi_cubes): six square faces of equal levels, +X's top
  * first, and a free slot to remember it by. Declined, for DirectDraw to
  * place, when any of that does not hold; a cube DirectDraw places is
- * sampled as nothing usable, as on the HD 4600 before its step 5c.
+ * sampled as nothing usable, as on the HD 4600 before its step 5c. A DXT
+ * cube takes the same level-major order with each face a 1D-thin level
+ * (v9x_vi_3d_bc_layout); that combination is unmeasured.
  */
 static DWORD v9x_d3d_vi_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
-                                    DWORD bytes)
+                                    DWORD format, DWORD bytes)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     v9x_u32 level_offsets[V9X_VI_MIP_LEVELS_MAX];
@@ -1265,9 +1341,24 @@ static DWORD v9x_d3d_vi_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
     if (data->dwSCnt % V9X_VI_CUBE_FACES != 0ul || levels == 0ul ||
         levels > V9X_VI_MIP_LEVELS_MAX ||
         side != (DWORD)list[0]->lpGbl->wHeight ||
-        side > v9x_d3d_vi_limits.texture_size_max ||
-        !v9x_vi_3d_cube_layout(bytes, side, levels, level_offsets, slices,
-                               level_pitches, &total)) {
+        side > v9x_d3d_vi_limits.texture_size_max) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    if (V9X_VI_IMG_FORMAT_IS_BC(format)) {
+        /* One face's 1D-thin chain gives each level's slice and pitch in
+         * blocks; the six faces of a level go together, as for a linear
+         * cube. */
+        if (!v9x_vi_3d_bc_layout(bytes, side, side, levels, level_offsets,
+                                 slices, level_pitches, &total)) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        total = 0ul;
+        for (level = 0ul; level < levels; ++level) {
+            level_offsets[level] = total;
+            total += slices[level] * V9X_VI_CUBE_FACES;
+        }
+    } else if (!v9x_vi_3d_cube_layout(bytes, side, levels, level_offsets,
+                                      slices, level_pitches, &total)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
     for (index = 0ul; index < V9X_D3D_VI_CUBES; ++index) {
@@ -1349,6 +1440,7 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
     DWORD snorm = 0ul;
+    DWORD format;
     DWORD width;
     DWORD height;
     DWORD level;
@@ -1401,16 +1493,32 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     } else {
         if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
             width > v9x_d3d_vi_limits.texture_size_max ||
-            height > v9x_d3d_vi_limits.texture_size_max ||
-            v9x_d3d_vi_format_of(surface, &bytes, &has_alpha, &snorm) ==
-                V9X_D3D_VI_TEXTURE_UNKNOWN) {
+            height > v9x_d3d_vi_limits.texture_size_max) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        format = v9x_d3d_vi_format_of(surface, &bytes, &has_alpha, &snorm);
+        if (format == V9X_D3D_VI_TEXTURE_UNKNOWN) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         if ((v9x_d3d_vi_caps2(surface) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
-            return v9x_d3d_vi_create_cube(data, bytes);
+            return v9x_d3d_vi_create_cube(data, format, bytes);
+        }
+        /* DXT, one level or a chain, in 1D-thin tiles: rows of blocks
+         * rounded to whole tiles, which DirectDraw cannot size. */
+        if (V9X_VI_IMG_FORMAT_IS_BC(format) && data->dwSCnt == 1ul) {
+            if (!v9x_d3d_vi_chain_layout(format, bytes, width, height, 1ul,
+                                         offsets, pitches, &total) ||
+                v9x_d3d_place_chain(data, V9X_D3D_VI_SURFACE_ALIGN, total,
+                                    offsets, pitches, &base) != 0ul) {
+                return V9X_DDHAL_DRIVER_NOTHANDLED;
+            }
+            ++v9x_hal->d3d_diagnostics.texture_placed;
+            v9x_hal->d3d_diagnostics.texture_placed_bytes += total;
+            data->ddRVal = V9X_DD_OK;
+            return V9X_DDHAL_DRIVER_HANDLED;
         }
         if (data->dwSCnt > 1ul) {
-            /* Each level half the last, as v9x_vi_3d_mip_layout lays
+            /* Each level half the last, as v9x_d3d_vi_chain_layout lays
              * them out, and in video memory with the top. */
             for (level = 0ul; level < data->dwSCnt; ++level) {
                 const V9X_DD_SURFACE_LCL *member = list[level];
@@ -1424,14 +1532,12 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 width = width > 1ul ? width >> 1 : 1ul;
                 height = height > 1ul ? height >> 1 : 1ul;
             }
-            if (!v9x_vi_3d_mip_layout(bytes, (DWORD)surface->lpGbl->wWidth,
-                                      (DWORD)surface->lpGbl->wHeight,
-                                      data->dwSCnt, offsets, pitches,
-                                      &total)) {
+            if (!v9x_d3d_vi_chain_layout(format, bytes,
+                                         (DWORD)surface->lpGbl->wWidth,
+                                         (DWORD)surface->lpGbl->wHeight,
+                                         data->dwSCnt, offsets, pitches,
+                                         &total)) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
-            }
-            for (level = 0ul; level < data->dwSCnt; ++level) {
-                pitches[level] *= bytes;
             }
             if (v9x_d3d_place_chain(data, V9X_D3D_VI_SURFACE_ALIGN, total,
                                     offsets, pitches, &base) != 0ul) {
@@ -1556,10 +1662,170 @@ static int v9x_d3d_vi_convert_depth(const V9X_DD_SURFACE_LCL *surface,
     return 1;
 }
 
+/*
+ * DXT levels and the CPU, as the HD 4600's (d3d_hsw.c). DirectDraw keeps a
+ * DXT surface's lPitch as a linear size, and whatever writes one - the
+ * Direct3D 8 runtime uploading a managed texture, or DirectDraw's own Blt -
+ * writes its rows of blocks back to back from the address Lock hands out.
+ * The engine keeps the level in 1D-thin tiles (v9x_vi_3d_bc_block_offset),
+ * so Lock points the level, for the lock's length, at a linear copy in the
+ * locking process's memory, filled from the tiles block by block; Unlock
+ * writes it back the same way and points the level at the tiles again.
+ * Locks come and go under the Win16 lock, a few at a time. HAL statics
+ * are shared by every process; the copy is the locking process's own.
+ */
+#define V9X_D3D_VI_BC_LOCKS 8ul
+
+typedef struct v9x_d3d_vi_bc_lock {
+    const V9X_DD_SURFACE_LCL *surface;
+    DWORD process;
+    DWORD tiled;
+    BYTE *linear;
+} V9X_D3D_VI_BC_LOCK;
+
+static V9X_D3D_VI_BC_LOCK v9x_d3d_vi_bc_locks[V9X_D3D_VI_BC_LOCKS];
+
+/* An engine-placed DXT level: its blocks across and down, a block's bytes
+ * and its pitch in blocks; 0 for any other surface. */
+static int v9x_d3d_vi_bc_level(const V9X_DD_SURFACE_LCL *surface,
+                               DWORD *across, DWORD *down, DWORD *block,
+                               DWORD *pitch_blocks)
+{
+    DWORD has_alpha = 0ul;
+    DWORD snorm = 0ul;
+    DWORD format;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->fpVidMem == 0ul ||
+        surface->lpGbl->dwBlockSizeX != 0ul ||
+        surface->lpGbl->lPitch <= 0l) {
+        return 0;
+    }
+    format = v9x_d3d_vi_format_of(surface, block, &has_alpha, &snorm);
+    if (!V9X_VI_IMG_FORMAT_IS_BC(format)) {
+        return 0;
+    }
+    *across = ((DWORD)surface->lpGbl->wWidth + 3ul) / 4ul;
+    *down = ((DWORD)surface->lpGbl->wHeight + 3ul) / 4ul;
+    *pitch_blocks = (DWORD)surface->lpGbl->lPitch / *block;
+    return *across != 0ul && *down != 0ul && *across <= *pitch_blocks &&
+           (*pitch_blocks % V9X_VI_BC_TILE_BLOCKS) == 0ul;
+}
+
+/* Every block between the tiles at tiled and the packed rows at linear,
+ * to_linear the direction. */
+static void v9x_d3d_vi_bc_copy(BYTE *tiled, BYTE *linear, DWORD across,
+                               DWORD down, DWORD block, DWORD pitch_blocks,
+                               int to_linear)
+{
+    DWORD bx;
+    DWORD by;
+    DWORD i;
+
+    for (by = 0ul; by < down; ++by) {
+        for (bx = 0ul; bx < across; ++bx) {
+            BYTE *t = tiled + v9x_vi_3d_bc_block_offset(block, pitch_blocks,
+                                                        bx, by);
+            BYTE *l = linear + (by * across + bx) * block;
+
+            for (i = 0ul; i < block; ++i) {
+                if (to_linear) {
+                    l[i] = t[i];
+                } else {
+                    t[i] = l[i];
+                }
+            }
+        }
+    }
+}
+
+/* Nonzero when surface is a DXT level, whether or not it could be pointed
+ * at a copy. */
+static int v9x_d3d_vi_bc_lock(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_VI_BC_LOCK *slot = 0;
+    DWORD across;
+    DWORD down;
+    DWORD block;
+    DWORD pitch_blocks;
+    DWORD n;
+
+    if (!v9x_d3d_vi_bc_level(surface, &across, &down, &block,
+                             &pitch_blocks)) {
+        return 0;
+    }
+    for (n = 0ul; n < V9X_D3D_VI_BC_LOCKS; ++n) {
+        if (v9x_d3d_vi_bc_locks[n].surface == surface) {
+            return 1;   /* already pointed at its linear copy */
+        }
+        if (slot == 0 && v9x_d3d_vi_bc_locks[n].surface == 0) {
+            slot = &v9x_d3d_vi_bc_locks[n];
+        }
+    }
+    if (slot == 0) {
+        return 1;
+    }
+    slot->linear = (BYTE *)VirtualAlloc(0, across * down * block,
+                                        MEM_COMMIT | MEM_RESERVE,
+                                        PAGE_READWRITE);
+    if (slot->linear == 0) {
+        return 1;
+    }
+    v9x_d3d_vi_bc_copy((BYTE *)surface->lpGbl->fpVidMem, slot->linear,
+                       across, down, block, pitch_blocks, 1);
+    slot->surface = surface;
+    slot->process = GetCurrentProcessId();
+    slot->tiled = surface->lpGbl->fpVidMem;
+    surface->lpGbl->fpVidMem = (DWORD)slot->linear;
+    return 1;
+}
+
+/* Puts a locked DXT level back in its tiles; nonzero when it was one. */
+static int v9x_d3d_vi_bc_unlock(const V9X_DD_SURFACE_LCL *surface,
+                                int write_back)
+{
+    V9X_D3D_VI_BC_LOCK *slot = 0;
+    DWORD across;
+    DWORD down;
+    DWORD block;
+    DWORD pitch_blocks;
+    DWORD n;
+
+    for (n = 0ul; n < V9X_D3D_VI_BC_LOCKS; ++n) {
+        if (surface != 0 && v9x_d3d_vi_bc_locks[n].surface == surface) {
+            slot = &v9x_d3d_vi_bc_locks[n];
+            break;
+        }
+    }
+    if (slot == 0) {
+        return 0;
+    }
+    surface->lpGbl->fpVidMem = slot->tiled;
+    /* The copy lives in the process that locked; from another one only
+     * the address can be put back. */
+    if (slot->process == GetCurrentProcessId()) {
+        if (write_back &&
+            v9x_d3d_vi_bc_level(surface, &across, &down, &block,
+                                &pitch_blocks)) {
+            v9x_d3d_vi_bc_copy((BYTE *)slot->tiled, slot->linear, across,
+                               down, block, pitch_blocks, 0);
+        }
+        (void)VirtualFree(slot->linear, 0ul, MEM_RELEASE);
+    }
+    slot->surface = 0;
+    slot->linear = 0;
+    return 1;
+}
+
 static void v9x_d3d_vi_lock_surface(const V9X_DD_SURFACE_LCL *surface)
 {
     DWORD slot;
 
+    if (v9x_d3d_vi_bc_lock(surface)) {
+        return;
+    }
     if (!v9x_d3d_vi_tiled_depth(surface) ||
         v9x_d3d_vi_locked_slot(surface->lpGbl->fpVidMem) !=
             V9X_D3D_VI_LOCKED_MAX) {
@@ -1582,6 +1848,9 @@ static void v9x_d3d_vi_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
         surface->lpGbl->fpVidMem == 0ul) {
         return;
     }
+    if (v9x_d3d_vi_bc_unlock(surface, 1)) {
+        return;
+    }
     slot = v9x_d3d_vi_locked_slot(surface->lpGbl->fpVidMem);
     if (slot == V9X_D3D_VI_LOCKED_MAX) {
         return;
@@ -1600,7 +1869,10 @@ static void v9x_d3d_vi_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     DWORD offset;
     DWORD n;
 
-    /* Destroyed while locked: its memory is no longer a lock to undo. */
+    /* Destroyed while locked: its memory is no longer a lock to undo. A
+     * DXT level is pointed back at its tiles first, so the release below
+     * finds the block it placed. */
+    (void)v9x_d3d_vi_bc_unlock(surface, 0);
     if (surface != 0 && surface->lpGbl != 0 &&
         surface->lpGbl->fpVidMem != 0ul) {
         slot = v9x_d3d_vi_locked_slot(surface->lpGbl->fpVidMem);

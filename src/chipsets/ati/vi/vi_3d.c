@@ -747,6 +747,62 @@ int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
     return 1;
 }
 
+v9x_u32 v9x_vi_3d_bc_block_offset(v9x_u32 block_bytes, v9x_u32 pitch_blocks,
+                                  v9x_u32 bx, v9x_u32 by)
+{
+    v9x_u32 tile = (by / V9X_VI_BC_TILE_BLOCKS) *
+                       (pitch_blocks / V9X_VI_BC_TILE_BLOCKS) +
+                   bx / V9X_VI_BC_TILE_BLOCKS;
+    v9x_u32 x = bx % V9X_VI_BC_TILE_BLOCKS;
+    v9x_u32 y = by % V9X_VI_BC_TILE_BLOCKS;
+    /* Morton order inside the tile: x0 y0 x1 y1 x2 y2 from bit 0. */
+    v9x_u32 inside = (x & 1ul) | ((y & 1ul) << 1) | ((x & 2ul) << 1) |
+                     ((y & 2ul) << 2) | ((x & 4ul) << 2) | ((y & 4ul) << 3);
+
+    return (tile * V9X_VI_BC_TILE_BLOCKS * V9X_VI_BC_TILE_BLOCKS + inside) *
+           block_bytes;
+}
+
+int v9x_vi_3d_bc_layout(v9x_u32 block_bytes, v9x_u32 width, v9x_u32 height,
+                        v9x_u32 levels, v9x_u32 *offsets, v9x_u32 *sizes,
+                        v9x_u32 *pitches, v9x_u32 *total_bytes)
+{
+    v9x_u32 offset = 0ul;
+    v9x_u32 longest = width > height ? width : height;
+    v9x_u32 possible = 1ul;
+    v9x_u32 level;
+    v9x_u32 w = width;
+    v9x_u32 h = height;
+    v9x_u32 rows;
+
+    if ((block_bytes != 8ul && block_bytes != 16ul) ||
+        !v9x_vi_3d_power_of_two(width) || !v9x_vi_3d_power_of_two(height) ||
+        levels == 0ul || levels > V9X_VI_MIP_LEVELS_MAX) {
+        return 0;
+    }
+    while (longest > 1ul) {
+        longest >>= 1;
+        ++possible;
+    }
+    if (levels > possible) {
+        return 0;
+    }
+    for (level = 0ul; level < levels; ++level) {
+        /* Blocks across and down, each rounded up to whole tiles. */
+        pitches[level] = ((w + 3ul) / 4ul + V9X_VI_BC_TILE_BLOCKS - 1ul) &
+                         ~(V9X_VI_BC_TILE_BLOCKS - 1ul);
+        rows = ((h + 3ul) / 4ul + V9X_VI_BC_TILE_BLOCKS - 1ul) &
+               ~(V9X_VI_BC_TILE_BLOCKS - 1ul);
+        offsets[level] = offset;
+        sizes[level] = pitches[level] * rows * block_bytes;
+        offset += sizes[level];
+        w = w > 1ul ? w >> 1 : 1ul;
+        h = h > 1ul ? h >> 1 : 1ul;
+    }
+    *total_bytes = offset;
+    return 1;
+}
+
 int v9x_vi_3d_cube_layout(v9x_u32 bytes_per_texel, v9x_u32 side,
                           v9x_u32 levels, v9x_u32 *offsets, v9x_u32 *slices,
                           v9x_u32 *pitches, v9x_u32 *total_bytes)
@@ -847,7 +903,13 @@ static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
      * MODULATE under SRCALPHA would draw nothing. It takes the constant 1,
      * Cedar's fix (docs\decisions\2026-10-27-cedar-texture-pitch-and-565-
      * alpha.md). A signed texture names its channels in memory order. */
-    if (draw->texture_signed != 0ul) {
+    /* BC decodes red into x (V9XSICP /ps11:6-8): unswizzled for a pixel
+     * shader stage, x and z swapped for the fixed-function path's blue in
+     * x. */
+    if (V9X_VI_IMG_FORMAT_IS_BC(v9x_vi_3d_texture_format(draw))) {
+        swizzle = draw->texture_rgba != 0ul ? VI_IMG_SWIZZLE_IDENTITY
+                                            : VI_IMG_SWIZZLE_RGBA;
+    } else if (draw->texture_signed != 0ul) {
         swizzle = v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_8_8
                       ? VI_IMG_SWIZZLE_8_8 : VI_IMG_SWIZZLE_IDENTITY;
     } else if (draw->texture_rgba != 0ul) {
@@ -927,6 +989,7 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
           format != V9X_VI_IMG_FORMAT_5_6_5 &&
           format != V9X_VI_IMG_FORMAT_1_5_5_5 &&
           format != V9X_VI_IMG_FORMAT_4_4_4_4 &&
+          !V9X_VI_IMG_FORMAT_IS_BC(format) &&
           (format != V9X_VI_IMG_FORMAT_8_8 ||
            draw->texture_signed == 0ul))) ||
         (draw->texture_low != 0ul &&

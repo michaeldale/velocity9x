@@ -1013,17 +1013,19 @@ static DWORD v9x_shader_data(DWORD (*build)(DWORD *), DWORD *count)
  * the guard.
  */
 #define V9X_PS11_VARIANTS     10ul
-/* Program 9, BcMap: Bc1's draw over 8 KB of BC1 blocks that each name
- * their own offset (colour 0 = 8000h | offset / 8, colour 1 = 0, every
- * index 0), so each drawn texel says which bytes the sampler decoded. */
+/* Program 9, BcMap: Bc1's draw over 10 KB whose halfwords each name their
+ * own offset (below), so each drawn texel says which bytes the sampler
+ * decoded its colours from. */
 #define V9X_PS11_BC_MAP       9ul
-#define V9X_PS11_BC_MAP_BYTES 0x2000ul
+#define V9X_PS11_BC_MAP_BYTES 0x2800ul
 /* Programs 6-8 (step 7 of docs\plans\ati-gcn-ps11.md): stage 0 holds an
- * 8x8 BC1, BC2 or BC3 texture, 2x2 blocks, each block row at a pitch of
- * max(8 blocks, 64 bytes) - addrlib's linear-aligned pitch alignment
- * (EgBasedLib::ComputeSurfaceAlignmentsLinear), 64 bytes for BC1 and 128
- * for BC2/3 - the hypothesis under test. IMG_DATA_FORMAT_BC1-3 are 23h-25h
- * (Mesa's sid.h); the T#'s PITCH is in texels, blocks x 4 (radeonsi). */
+ * 8x8 BC1, BC2 or BC3 texture, 2x2 blocks, at a pitch of 8 blocks (32
+ * texels), laid out by v9x_vi_3d_bc_block_offset under tile index 13 (1D
+ * tiled thin), the layout BcMap measured. Linear-aligned BC, addrlib's
+ * rule (rows of max(8 blocks, 64 bytes)), drew wrong: /bcti8 and the
+ * old placement are in docs\decisions\2026-11-17-oland-bc-linear-probe.md.
+ * IMG_DATA_FORMAT_BC1-3 are 23h-25h (Mesa's gfx6.json); the T#'s PITCH is
+ * in texels, blocks x 4 (radv). */
 #define V9X_PS11_BC_FIRST     6ul
 #define V9X_PS11_BC_BLOCKS    2ul
 #define V9X_PS11_BC_ROW_BLOCKS 8ul
@@ -1336,17 +1338,35 @@ static DWORD v9x_ps11_build_status;
 
 static int v9x_switch_given(const char *switch_text);
 
+/* The decimal after a switch such as "/bcw", or fallback without it. */
+static DWORD v9x_switch_number(const char *prefix, DWORD fallback)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(prefix);
+    DWORD value;
+
+    while (*line != '\0') {
+        if (CompareStringA(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, line,
+                           length, prefix, length) == CSTR_EQUAL) {
+            line += length;
+            value = 0ul;
+            while (*line >= '0' && *line <= '9') {
+                value = value * 10ul + (DWORD)(*line - '0');
+                ++line;
+            }
+            return value != 0ul ? value : fallback;
+        }
+        ++line;
+    }
+    return fallback;
+}
+
 static int v9x_ps11_is_bc(void)
 {
     return v9x_ps11_variant >= V9X_PS11_BC_FIRST &&
            v9x_ps11_variant <= V9X_PS11_BC_MAP;
 }
 
-/* A BC texture's block row pitch in bytes (the hypothesis above). */
-static DWORD v9x_ps11_bc_pitch(void)
-{
-    return v9x_ps11_variant == V9X_PS11_BC_FIRST ? 64ul : 128ul;
-}
 
 /* The target in dwords: 64x48 at two or four bytes a pixel. */
 static DWORD v9x_ps11_target_dwords(void)
@@ -1537,15 +1557,45 @@ static void v9x_ps11_prepare(DWORD lo, DWORD hi)
             t[3] = 4ul | (5ul << 3) | (6ul << 6) | (7ul << 9) |
                    (8ul << 20) | (9ul << 28);
             t[4] = (V9X_PS11_BC_ROW_BLOCKS * 4ul - 1ul) << 13;
-            /* BcMap's other shapes, to find what moves the rows it reads:
-             * /bcp64 a pitch of 64 texels, /bcw16 a 16x16 texture. */
+            /* BcMap's other shapes, to find what moves the words it
+             * reads: /bcp64 a pitch of 64 texels; /bcw16 a 16x16 texture;
+             * /bcwN and /bchN any width and height (and /bcpN any
+             * pitch), in texels. */
+            /* /bctiN: TILING_INDEX N instead of 13 (8 linear aligned, 26
+             * LINEAR_GENERAL
+             * on the Oland; GB_TILE_MODE0-25 are in the report). */
+            t[3] = (t[3] & ~(0x1ful << 20)) |
+                   ((v9x_switch_number("/bcti", V9X_VI_TILE_BC) & 0x1ful) << 20);
+            /* /bclN: sample level N alone (BASE_LEVEL = LAST_LEVEL = N,
+             * POW2_PAD as for any chain), to find where level N sits. */
+            if (v9x_switch_given("/bcl")) {
+                DWORD level = v9x_switch_number("/bcl", 0ul) & 0xful;
+
+                t[3] = (t[3] & ~(0xfful << 12)) | (level << 12) |
+                       (level << 16) | 0x02000000ul;
+            }
+            /* /bcblk: WIDTH, HEIGHT and PITCH in blocks, not texels. */
+            if (v9x_switch_given("/bcblk")) {
+                t[2] = (V9X_PS11_SIDE / 4ul - 1ul) |
+                       ((V9X_PS11_SIDE / 4ul - 1ul) << 14);
+                t[4] = (V9X_PS11_BC_ROW_BLOCKS - 1ul) << 13;
+            }
             if (v9x_ps11_variant == V9X_PS11_BC_MAP) {
+                DWORD w = V9X_PS11_SIDE;
+                DWORD h = V9X_PS11_SIDE;
+
                 if (v9x_switch_given("/bcp64")) {
                     t[4] = (64ul - 1ul) << 13;
                 }
                 if (v9x_switch_given("/bcw16")) {
-                    t[2] = (16ul - 1ul) | ((16ul - 1ul) << 14);
+                    w = 16ul;
+                    h = 16ul;
                 }
+                w = v9x_switch_number("/bcw", w);
+                h = v9x_switch_number("/bch", h);
+                t[2] = (w - 1ul) | ((h - 1ul) << 14);
+                t[4] = (v9x_switch_number("/bcp", (t[4] >> 13) + 1ul) - 1ul)
+                       << 13;
             }
         }
         v9x_ps11_table[V9X_VI_PS11_S_SHARP + 4ul * stage] =
@@ -1669,11 +1719,14 @@ static void v9x_ps11_data_ops(DWORD *vs_first, DWORD *vs_count,
 
         /* The map covers stage 1-3's places, which this program does not
          * sample, so they are not written. */
-        /* Dword k: both colours 8000h | k (3-colour mode, so indices 0-2
-         * draw it). A texel drawn names the dword its colours came from;
-         * a transparent one had index 3 from wherever its indices came. */
+        /* Halfword h (byte 2h) holds FFFFh - h: a falling sequence, so
+         * any two adjacent halfwords, at any 2-byte alignment, are a
+         * 4-colour pair (colour 0 > colour 1) and every index draws a
+         * colour within a step of colour 0. Each drawn pixel names the
+         * halfword its colour 0 came from, to within one, whatever its
+         * indices were. */
         for (n = 0ul; n < V9X_PS11_BC_MAP_BYTES / 4ul; ++n) {
-            map[n] = (0x8000ul | n) | ((0x8000ul | n) << 16);
+            map[n] = (0xfffful - 2ul * n) | ((0xfffful - 2ul * n - 1ul) << 16);
         }
         first = v9x_put_data(map, V9X_PS11_BC_MAP_BYTES / 4ul);
         v9x_op(V9X_OP_VRAM_DATA, V9X_PS11_TEXTURES, first,
@@ -1688,8 +1741,8 @@ static void v9x_ps11_data_ops(DWORD *vs_first, DWORD *vs_count,
             DWORD bx;
             DWORD by;
 
-            /* Block rows at the hypothesis's pitch; the padding between
-             * them is never written, as a placed texture's is not. */
+            /* Each block where the 1D-thin tile puts it; the rest of the
+             * tile is never written, as a placed texture's is not. */
             for (by = 0ul; by < V9X_PS11_BC_BLOCKS; ++by) {
                 for (bx = 0ul; bx < V9X_PS11_BC_BLOCKS; ++bx) {
                     DWORD words = v9x_bc_block(v9x_ps11_variant,
@@ -1698,8 +1751,9 @@ static void v9x_ps11_data_ops(DWORD *vs_first, DWORD *vs_count,
 
                     first = v9x_put_data(block, words);
                     v9x_op(V9X_OP_VRAM_DATA,
-                           V9X_PS11_TEXTURES + by * v9x_ps11_bc_pitch() +
-                               bx * words * 4ul,
+                           V9X_PS11_TEXTURES +
+                               v9x_vi_3d_bc_block_offset(
+                                   words * 4ul, V9X_PS11_BC_ROW_BLOCKS, bx, by),
                            first, words);
                 }
             }

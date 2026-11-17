@@ -1,6 +1,6 @@
 # GCN: pixel shader 1.1 and DDI 8, after the HD 4600 and the GT218
 
-Date: 2026-11-16. Status: steps 1 to 6 done on the Oland (4 and 5 below); steps 1, 2 and 3 recorded in
+Date: 2026-11-16. Status: steps 1 to 6 done on the Oland, step 7 in progress (4 and 5 below); steps 1, 2 and 3 recorded in
 [`2026-11-17-gcn-ps11-translator.md`](../decisions/2026-11-17-gcn-ps11-translator.md).
 Step 2's `v9x_vi_ps11_build` (`vi_ps11.c`) runs 19 programs in the GCN
 model, each matching the interpreter, and each translates for GCN 2 and
@@ -35,7 +35,16 @@ Cubes are placed whole and sampled through a cube T#, and Q8W8V8U8 and
 V8U8 are read as SNORM. V9XD32 T19 Cube and Normal pass with no bad pixel
 at R5G6B5 and X8R8G8B8. 3DMark 2001 SE completed (3101) with no shader
 draw refused. A cube's smaller levels and V8U8 are not yet read in a
-judged draw. Next: step 7 (DXT); the hang's rate is still open.
+judged draw. That run stalled the CP too, found afterwards (the issue).
+
+Step 7 is done on the Oland in its sampling
+([2026-11-17-oland-bc-1d-tiled.md](../decisions/2026-11-17-oland-bc-1d-tiled.md)).
+Linear-aligned BC does not sample by addrlib's rule; 1D-thin tiles under
+index 13 do, and the HAL places, locks and samples DXT in them. V9XD32
+T19 Dxt1 and Dxt3 pass at both depths. Its 3DMark gate is not met:
+the heap is the VBE's 16 MiB and 3DMark's DXT sets thrash it. Next:
+the Evergreen rows' 128 MiB heap for the Oland, then 3DMark 2001 SE
+again. The CP stall (three in four runs) is still open.
 
 Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to

@@ -731,6 +731,60 @@ static void test_shader_unit_cube_signed(void)
                                     &bytes));
 }
 
+/*
+ * Step 7: a DXT (BC) texture. Its T# names BC1-3, tile index 13 (1D thin,
+ * V9X_VI_TILE_BC) and a pitch in texels; a shader stage reads it
+ * unswizzled (BC decodes red into x, V9XSICP /ps11:6-8), the
+ * fixed-function path with x and z swapped, as its memory-order formats.
+ */
+static void test_bc_unit(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw unit;
+    v9x_u32 sharps[V9X_VI_TEXTURE_SHARP_DWORDS];
+    v9x_u32 ps;
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.texture.op = 0ul;
+    texture.format = V9X_VI_IMG_FORMAT_BC1;
+    texture.width = 8ul;
+    texture.height = 8ul;
+    texture.pitch_texels = 32ul;    /* 8 blocks, one tile */
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    CHECK(unit.texture_tile_mode_index == V9X_VI_TILE_BC);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK(((sharps[1] >> 20) & 0x3ful) == 0x23ul);
+    CHECK(((sharps[1] >> 26) & 0xful) == 0ul);
+    CHECK((sharps[3] & 0xffful) == (4ul | (5ul << 3) | (6ul << 6) | (7ul << 9)));
+    CHECK(((sharps[3] >> 20) & 0x1ful) == 13ul);
+    CHECK(((sharps[4] >> 13) & 0x3ffful) == 31ul);
+
+    /* The fixed-function path: blue in x, as its other formats. */
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, 0, HEAP_HIGH, HEAP_LOW, 0ul,
+                              &unit, 0, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK((sharps[3] & 0xffful) == (6ul | (5ul << 3) | (4ul << 6) | (7ul << 9)));
+    CHECK(((sharps[3] >> 20) & 0x1ful) == 13ul);
+
+    /* A pitch that is not whole tiles, and a colour key, are refused. */
+    texture.pitch_texels = 16ul;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, 0, HEAP_HIGH, HEAP_LOW, 0ul,
+                              &unit, 0, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_TEXTURE_SHAPE);
+    texture.pitch_texels = 32ul;
+    texture.has_key = 1ul;
+    draw.color_key_enable = 1ul;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, 0, HEAP_HIGH, HEAP_LOW, 0ul,
+                              &unit, 0, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_COLOR_KEY);
+}
+
 unsigned int v9x_run_d3d_vi_map_tests(void)
 {
     failures = 0u;
@@ -746,5 +800,6 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_two_units();
     test_shader_unit();
     test_shader_unit_cube_signed();
+    test_bc_unit();
     return failures;
 }

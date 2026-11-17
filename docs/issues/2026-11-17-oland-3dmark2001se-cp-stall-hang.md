@@ -98,3 +98,68 @@ Boot 60, step 6's build (cubes and signed formats), 32 bpp desktop:
 ([2026-11-17-oland-cubes-signed-formats.md](../decisions/2026-11-17-oland-cubes-signed-formats.md)).
 Count so far: one hang in three runs, across two builds that share the
 two-unit path.
+
+## 2026-11-17, later: that run stalled too
+
+The paragraph above is wrong. Step 6's run did stall:
+- `EngineIdleTimeouts` was 0 in its before-snapshot and 1 in its after.
+- `V9XTRACE.INI` and `V9XCZCP.TXT`, found on the guest after the next
+  boots, carry its HAL build (`402c2d92-dirty`) and the `VI3P` tag.
+- Copies are in
+  [`3dmark2001se-boot60/`](../probe/oland-cubes-signed-w9qi0dad-2026-11-17/3dmark2001se-boot60/).
+
+The record matches this issue's first one:
+- CP_STAT 84038243h and GRBM_STATUS A0003028h, as before;
+- a full ring (read pointer F68h, ours EB0h);
+- `Sequence=000E35B4`, `Fence=000E35A0`: 20 behind;
+- the ring holds 18 draws in 14 one-stream batches and 4 two-unit ones,
+  and no pixel shader batch.
+
+This time the machine stayed up. The HAL quarantined the CP, and 3DMark
+ran on to its score window.
+
+Every earlier run's snapshots were checked for the same counter:
+- the DDI 6 one-stage run of 2026-11-16 and step 5's second run: 0
+  before and after;
+- every 3DMark 2000 run: 0 before and after.
+
+So in 3DMark 2001 SE on the DDI 8 builds it is two stalls in three
+runs: one hung the machine, one was survived.
+
+Both stalls came after DDI 8 was published (step 5). Step 4's two-stage
+build never ran 3DMark 2001 SE. A run with two stages and DDI 6, or one
+stage and DDI 8, would separate the two.
+
+Today's freeze just after the desktop on step 7's first boot left no
+record of its own: this one was the last, written by the step 6 build.
+That freeze is not counted here.
+
+Every later run's after-snapshot is to be checked for
+`EngineIdleTimeouts`, not only for a score.
+
+## 2026-11-17, step 7 build: a third stall
+
+Boot 63, step 7's build (DXT published), 32 bpp desktop. `EngineIdleTimeouts` went
+from 0 to 1 during 3DMark 2001 SE. The record
+([`3dmark2001se-boot63/V9XCZCP.TXT`](../probe/oland-dxt-w9qi0dad-2026-11-17/3dmark2001se-boot63/))
+is not the same as the first two:
+- a full ring (read pointer 8E0h, ours 8C0h);
+- `Sequence=00119F42`, `Fence=00119F1C`: 38 behind;
+- GRBM_STATUS A00C10A0h: GUI_ACTIVE, CP_BUSY, **IA_BUSY and
+  IA_BUSY_NO_DMA**, ME0PIPE0_CF_RQ_PENDING, SRBM_RQ_PENDING, DB_CLEAN.
+  The input assembler is busy here, where the first two had the 3D
+  pipeline idle (A0003028h: GUI_ACTIVE, CP_BUSY, SRBM_RQ_PENDING,
+  DB_CLEAN, CB_CLEAN);
+- CP_STAT 84838243h: as before plus RCIU_BUSY.
+
+Field names are from Mesa's `registers/gfx6.json`. That also corrects
+this issue's first entry. GFX6 names CP_STAT 84038243h's set fields
+ROQ_RING_BUSY, PFP_BUSY, MEQ_BUSY, ME_BUSY, CE_BUSY and CP_BUSY. It names
+no field at bits 0 and 1, so "MIU read and write requests busy" (from
+the CIK headers) has no support, and neither has the hypothesis built on
+it.
+
+The run was also starved of video memory (a 16 MiB heap, textures
+thrashing; see
+[the step 7 record](../decisions/2026-11-17-oland-bc-1d-tiled.md)).
+Three stalls in four 3DMark 2001 SE runs on DDI 8 builds.

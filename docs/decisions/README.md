@@ -224,6 +224,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-17 Oland: draw_shader in the HAL and DDI 8; V9XD32 T19 runs with the GT218's verdicts (Cube, Normal wait for step 6; FfSpecFog 3 pixels untraced); 3DMark 2001 SE scored 1915 once and hung once](2026-11-17-oland-draw-shader-ddi8.md)
 - [2026-11-17 Oland: cube maps placed whole and sampled through a cube T#, Q8W8V8U8 and V8U8 read as SNORM; V9XD32 T19 Cube and Normal pass at R5G6B5 and X8R8G8B8; 3DMark 2001 SE 3101 with no shader draw refused](2026-11-17-oland-cubes-signed-formats.md)
 - [2026-11-17 Oland: a linear-aligned BC1 texture does not sample by addrlib's rule (V9XSICP BcMap: colours from 4-byte-interleaved words, block rows 1024 bytes apart whatever the T# pitch, index halves not beside them); the rule it follows is unknown](2026-11-17-oland-bc-linear-probe.md)
+- [2026-11-17 Oland: DXT as BC1-3 in 1D-thin tiles (tile index 13, Morton 8x8-block tiles, levels tile-rounded), found with V9XSICP BcMap; Bc1-3 probes and V9XD32 T19 Dxt1/Dxt3 pass at both depths; 3DMark 2001 SE starved by the 16 MiB heap, CP stalled again](2026-11-17-oland-bc-1d-tiled.md)
 
 ## Matrox
 

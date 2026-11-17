@@ -276,6 +276,43 @@ int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
  * on success.
  */
 #define V9X_VI_CUBE_FACES 6ul
+
+/*
+ * Where block (bx, by) of a BC1-3 (DXT) texture sits as the Oland's sampler
+ * reads it through tile index V9X_VI_TILE_BC (1D tiled thin, THIN micro
+ * tiling): the image cut into micro tiles of 8 x 8 blocks, tiles row by row
+ * at pitch_blocks / 8 to a row, the blocks of a tile in Morton order (x0 y0
+ * x1 y1 x2 y2), block_bytes (8 for BC1, 16 for BC2/3) each. Measured with
+ * V9XSICP BcMap on W9QI0DAD (docs\decisions\2026-11-17-oland-bc-1d-tiled.md);
+ * linear-aligned BC does not sample by addrlib's rule there. pitch_blocks
+ * is a multiple of 8.
+ */
+#define V9X_VI_BC_TILE_BLOCKS 8ul
+#define V9X_VI_TILE_BC        13ul
+v9x_u32 v9x_vi_3d_bc_block_offset(v9x_u32 block_bytes, v9x_u32 pitch_blocks,
+                                  v9x_u32 bx, v9x_u32 by);
+
+/*
+ * A BC chain's levels in those tiles, as the sampler reads them (V9XSICP
+ * BcMap /bclN on a 64x64 BC1: levels at 0, 2048, 2560, 3072, 3584, 4096,
+ * 4608): each level's pitch and rows of blocks rounded up to whole tiles,
+ * so a level smaller than a tile still takes one, the levels end to end
+ * from offset 0. Per level, offsets[] and sizes[] in bytes and pitches[]
+ * in blocks; nonzero on success. Power-of-two sides only, as the rest of
+ * the chain code; the measured chain was square.
+ */
+int v9x_vi_3d_bc_layout(v9x_u32 block_bytes, v9x_u32 width, v9x_u32 height,
+                        v9x_u32 levels, v9x_u32 *offsets, v9x_u32 *sizes,
+                        v9x_u32 *pitches, v9x_u32 *total_bytes);
+
+/* The T# data formats for DXT1, DXT3 and DXT5 (gfx6.json's
+ * IMG_DATA_FORMAT_BC1-3). Decoded red in x, so a pixel shader stage reads
+ * them unswizzled and the fixed-function path swaps x and z. */
+#define V9X_VI_IMG_FORMAT_BC1       0x23ul
+#define V9X_VI_IMG_FORMAT_BC2       0x24ul
+#define V9X_VI_IMG_FORMAT_BC3       0x25ul
+#define V9X_VI_IMG_FORMAT_IS_BC(f) \
+    ((f) >= V9X_VI_IMG_FORMAT_BC1 && (f) <= V9X_VI_IMG_FORMAT_BC3)
 int v9x_vi_3d_cube_layout(v9x_u32 bytes_per_texel, v9x_u32 side,
                           v9x_u32 levels, v9x_u32 *offsets, v9x_u32 *slices,
                           v9x_u32 *pitches, v9x_u32 *total_bytes);

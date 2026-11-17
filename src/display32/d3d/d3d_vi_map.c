@@ -333,6 +333,10 @@ static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
                (texture->format == V9X_VI_IMG_FORMAT_8_8 &&
                 texture->snorm != 0ul)) {
         bytes = 2ul;
+    } else if (V9X_VI_IMG_FORMAT_IS_BC(texture->format)) {
+        /* In 1D-thin tiles of 8 x 8 blocks, so its pitch (in texels) is
+         * whole tiles rather than whole 64 bytes. */
+        bytes = 0ul;
     } else {
         return V9X_D3D_VI_REFUSE_TEXTURE_FORMAT;
     }
@@ -340,7 +344,10 @@ static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
         texture->width > V9X_D3D_VI_TEXTURE_SIDE_MAX ||
         texture->height > V9X_D3D_VI_TEXTURE_SIDE_MAX ||
         texture->pitch_texels < texture->width ||
-        ((texture->pitch_texels * bytes) % V9X_D3D_VI_ROW_ALIGN) != 0ul ||
+        (bytes != 0ul &&
+         ((texture->pitch_texels * bytes) % V9X_D3D_VI_ROW_ALIGN) != 0ul) ||
+        (bytes == 0ul &&
+         (texture->pitch_texels % (V9X_VI_BC_TILE_BLOCKS * 4ul)) != 0ul) ||
         !v9x_d3d_vi_address(heap_low, texture->offset, &low)) {
         return V9X_D3D_VI_REFUSE_TEXTURE_SHAPE;
     }
@@ -376,7 +383,8 @@ static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
     out->texture_opaque =
         texture->format == V9X_VI_IMG_FORMAT_8_8_8_8 && texture->has_alpha == 0ul
         ? 1ul : 0ul;
-    out->texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    out->texture_tile_mode_index = bytes == 0ul ? V9X_VI_TILE_BC
+                                                : V9X_VI_TILE_LINEAR_ALIGNED;
     out->texture_bilinear = mag;
     out->texture_address = mode;
     out->texture_signed = texture->snorm != 0ul ? 1ul : 0ul;
@@ -630,6 +638,10 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
             return code;
         }
         if (draw->color_key_enable != 0ul && texture->has_key != 0ul) {
+            /* A key is a texel value; a DXT block has none to compare. */
+            if (V9X_VI_IMG_FORMAT_IS_BC(texture->format)) {
+                return V9X_D3D_VI_REFUSE_COLOR_KEY;
+            }
             v9x_d3d_vi_key(texture->format, texture->key, built);
         }
     } else {

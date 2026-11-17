@@ -99,8 +99,18 @@ T19 reports FAIL, from FfSpecFog alone.
 3DMark 2001 SE, default benchmark (17 tests), with the 32 bpp desktop:
 
 - It completed in 7.1 minutes with 3DMark score 3101. Step 5's
-  completed run scored 1915 (recorded, not compared). No hang this time
-  ([issue](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md) open).
+  completed run scored 1915 (recorded, not compared).
+- Correction (step 7, same day): the CP stalled during this run.
+  `EngineIdleTimeouts` was 0 in the snapshot before it and 1 after. The
+  CP record it left (`3dmark2001se-boot60/V9XCZCP.TXT`) has the hang's
+  signature: CP_STAT 84038243h, GRBM_STATUS A0003028h, a full ring,
+  fences 20 behind. The HAL gave the CP up and the run went on to its
+  score window with no 3D engine for some part of it.
+  - So the score is not a measure of this build. 
+  - "No hang", as first written here, was wrong: the machine stayed up,
+    but the stall happened. See the
+    [issue](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md).
+  - When in the run it happened is not known.
 - `V9XPS.LOG` keeps its lines across boots. Step 5's file is a prefix of
   this one, so the 6,000 lines after it are boot 60's (V9XD32's three
   runs, then 3DMark):
