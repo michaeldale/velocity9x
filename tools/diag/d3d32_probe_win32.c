@@ -157,6 +157,7 @@
 #define D3DRENDERSTATE_ALPHABLENDENABLE 27ul
 #define D3DFILTER_NEAREST 1ul
 #define D3DTBLEND_DECAL 1ul
+#define D3DTBLEND_MODULATE 2ul
 #define D3DTBLEND_DECALALPHA 3ul
 #define D3DTBLEND_ADD 8ul
 #define D3DRENDERSTATE_FOGENABLE 28ul
@@ -1594,6 +1595,13 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
  *                   halved (404040h), the right ones red and green halved.
  *                   The combination hung the GM965 and was refused on
  *                   Gen4 until 0.48.0, which draws it in two passes.
+ *   ModAlpha x 344: DecalAlpha's texture MODULATE over white with vertex
+ *                   alpha 40h, alpha test GREATER 80h, over grey at 0.75:
+ *                   DX5 MODULATE takes the texel's alpha, so the right
+ *                   quadrants draw red and green and the left stay grey.
+ *                   Published as T20ModAlphaOk (1 = right), not in T20's
+ *                   verdict: it was added on 2026-11-17 for a fault several
+ *                   back ends still have.
  *
  * A device that refuses one of these draws leaves the band's clear colour
  * there, which fails.
@@ -1601,6 +1609,7 @@ static DWORD d32_texture(D32_OBJECT *ddraw, D32_OBJECT *device,
 #define D32_T20_TOP 96.0f
 #define D32_T20_SIZE 48.0f
 #define D32_T20_ALPHA_X 288.0f
+#define D32_T20_MODALPHA_X 344.0f
 
 typedef HRESULT (WINAPI *d32_set_color_key_fn)(D32_OBJECT *, DWORD,
                                                DWORD *);
@@ -1736,6 +1745,31 @@ static void d32_t20_draw(D32_OBJECT *ddraw, D32_OBJECT *device,
         d32_state(device, D3DRENDERSTATE_ZFUNC, D3DCMP_LESS);
         d32_state(device, D3DRENDERSTATE_ZWRITEENABLE, 1ul);
     }
+
+    /* MODULATE keeps the texel's alpha: grey behind at 0.75, then the
+     * DecalAlpha texture MODULATE over white with vertex alpha 40h and
+     * the alpha test GREATER 80h at 0.5. Direct3D takes the texel's
+     * alpha, so the right (alpha 1) quadrants draw and the left stay
+     * grey; a driver that multiplies the vertex's alpha in kills both
+     * (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+     * frames.md). */
+    d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
+    d32_t20_quad(v, D32_T20_MODALPHA_X, 0xff808080ul, 0ul);
+    for (index = 0ul; index < 6ul; ++index) {
+        v[index].sz = 0.75f;
+    }
+    d32_hx("T20ModAlphaBackHr", (DWORD)d32_draw(device, v, 6ul));
+    if (decal_handle != 0ul) {
+        d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, decal_handle);
+        d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND,
+                  D3DTBLEND_MODULATE);
+        d32_state(device, D3DRENDERSTATE_ALPHATESTENABLE, 1ul);
+        d32_state(device, D3DRENDERSTATE_ALPHAREF, 0x80ul);
+        d32_state(device, D3DRENDERSTATE_ALPHAFUNC, D3DCMP_GREATER);
+        d32_t20_quad(v, D32_T20_MODALPHA_X, 0x40fffffful, 0ul);
+        d32_hx("T20ModAlphaHr", (DWORD)d32_draw(device, v, 6ul));
+        d32_state(device, D3DRENDERSTATE_ALPHATESTENABLE, 0ul);
+    }
     d32_state(device, D3DRENDERSTATE_TEXTUREHANDLE, 0ul);
     d32_state(device, D3DRENDERSTATE_TEXTUREMAPBLEND, D3DTBLEND_DECAL);
 }
@@ -1798,6 +1832,14 @@ static DWORD d32_t20_judge(const D32_SURFACE_DESC *desc)
         expected |= 0xf000ul;
     }
     d32_hx("T20Expected", expected);
+
+    /* ModAlpha, outside the verdict (see the block comment). */
+    d32_hx("T20ModAlphaOk",
+           d32_t20_point(desc, "ModAlphaHole", 356ul, 108ul, 0x00808080ul) &
+               d32_t20_point(desc, "ModAlphaRed", 380ul, 108ul,
+                             0x00ff0000ul) &
+               d32_t20_point(desc, "ModAlphaGreen", 380ul, 132ul,
+                             0x0000ff00ul));
     return (ok & expected) != expected ? 1ul : 0ul;
 }
 

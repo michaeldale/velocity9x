@@ -42,6 +42,13 @@ build identifier so exact guest-tested binaries remain traceable.
   ([record](docs/decisions/2026-11-17-gt218-dx5-modulate-keeps-texel-alpha.md)).
   3DMark 2000's helicopter tree popping is probably the same fault, but
   that test has not been re-run.
+- **`ati` package, Evergreen, Trinity and the R600 class: the same
+  fix.** Measured on a Radeon HD 2400 Pro: V9XD32's new MODULATE-alpha
+  check fails before the fix and passes after, with every other check
+  unchanged. Evergreen and Trinity are tested on the host only
+  ([record](docs/decisions/2026-11-17-r6-eg-dx5-modulate-keeps-texel-alpha.md)).
+- **V9XD32: a check for this fault** (`T20ModAlphaOk`), published apart
+  from T20's verdict, since other back ends may still have the fault.
 
 ## 0.53.1 - 2026-11-16
 
