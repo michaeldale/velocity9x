@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-17 Oland, 3DMark 2001 SE Nature: foreground tree leaves drawn in about one frame in three and missing in the rest (complete frames, a fixed camera); no refusal counted; the GT218's 3DMark 2000 tree popping may be the same; cause open](2026-11-17-oland-nature-tree-leaves-missing-most-frames.md)
 - [2026-11-17 V9XD32 T19 FfSpecFog mismatches on the Oland (3 pixels at R5G6B5, 17 at X8R8G8B8) and the GeForce 210 (3 at R5G6B5), the same pixel too green on both; passes on the HD 4600 and GMA 950 within tolerance; not traced](2026-11-17-t19-ffspecfog-mismatch-oland-gt218.md)
 - [2026-11-17 Oland: texture shapes placed but never judged in a pixel check: non-square DXT chains, DXT cubes, a cube's smaller levels, V8U8; coverage gap, no defect seen](2026-11-17-oland-texture-shapes-unmeasured.md)
 - [2026-11-17 Oland: CP_RB0_RPTR read 480h against wptr 410h and writeback 400h at the stall; avoided since 1101edcb, cause unknown](2026-11-17-oland-cp-rb0-rptr-reads-past-wptr.md)
