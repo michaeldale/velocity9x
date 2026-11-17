@@ -230,6 +230,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-17 Oland: Nature's leaves vanished because DX5 MODULATE multiplied the vertex's alpha (a draw log showed identical state and swinging vertex alpha); the built PS now keeps the texel's alpha; seven of seven cottage grabs in leaf](2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md)
 - [2026-11-17 GT218: the same fix as a fourth fragment op at code 4000h; on M-BXMFA8 Nature's later scenes go from bare trees to trees in leaf; the lake is flat grey-blue before and after](2026-11-17-gt218-dx5-modulate-keeps-texel-alpha.md)
 - [2026-11-17 Evergreen and R600 class: the same fix in the lit PS only; new V9XD32 T20ModAlphaOk goes 0 to 1 on M-NZHWBR's HD 2400 Pro, every other verdict unchanged; Evergreen and Trinity unmeasured](2026-11-17-r6-eg-dx5-modulate-keeps-texel-alpha.md)
+- [2026-11-17 Carrizo R7E on the released 0.54.0: T20ModAlphaOk 0 to 1 at both depths, every other V9XD32 verdict unchanged; 3DMark 2001 SE completes with no engine timeout on the writeback read pointer](2026-11-17-carrizo-0.54.0-modulate-alpha-and-ring.md)
 
 ## Matrox
 

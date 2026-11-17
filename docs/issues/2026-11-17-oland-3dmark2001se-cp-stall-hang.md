@@ -7,8 +7,9 @@ the step 5 build of [ati-gcn-ps11.md](../plans/ati-gcn-ps11.md)
 (`V9XHAL build=1c631c63-dirty`: DDI 8, `draw_shader`, two texture
 stages). Status: fixed on the Oland by 1101edcb (read pointer from
 writeback; see the last sections), three clean runs since. The register's
-bad value is avoided, not explained. Carrizo and Mullins, which share
-the code, are not yet run on the fix.
+bad value is avoided, not explained. Carrizo, which shares the code,
+ran 3DMark 2001 SE clean on the released 0.54.0 (see the last section);
+Mullins is not yet run on the fix.
 
 Evidence: [`../probe/oland-ddi8-w9qi0dad-2026-11-17/3dmark2001se-1/`](../probe/oland-ddi8-w9qi0dad-2026-11-17/3dmark2001se-1/).
 
@@ -379,3 +380,11 @@ two runs. Still open:
 - whether the pulled RAM also caused the spontaneous resets: put it back
   and repeat on this build;
 - why CP_RB0_RPTR reads past wptr at all (not explained, only avoided).
+
+## 2026-11-17, 23:30: Carrizo on the released 0.54.0
+
+M-XP7053's R7E (GCN 3), on the released 0.54.0 `ati` files (boot 72):
+3DMark 2001 SE's default benchmark ran to its score in 6.1 minutes,
+with `EngineIdleTimeouts` 0 before and after and nothing refused
+([record](../decisions/2026-11-17-carrizo-0.54.0-modulate-alpha-and-ring.md)).
+One run. Mullins (GCN 2) still owed.
