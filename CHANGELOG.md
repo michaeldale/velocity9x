@@ -37,6 +37,11 @@ build identifier so exact guest-tested binaries remain traceable.
   ([record](docs/decisions/2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md)).
   Measured on the Oland. Carrizo and Mullins share the code and have not
   run it.
+- **`nvidia` package, GeForce 210: the same fix.** In Nature's later
+  scenes the trees were bare; now they have their leaves, on one card
+  ([record](docs/decisions/2026-11-17-gt218-dx5-modulate-keeps-texel-alpha.md)).
+  3DMark 2000's helicopter tree popping is probably the same fault, but
+  that test has not been re-run.
 
 ## 0.53.1 - 2026-11-16
 

@@ -227,6 +227,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-17 Oland: DXT as BC1-3 in 1D-thin tiles (tile index 13, Morton 8x8-block tiles, levels tile-rounded), found with V9XSICP BcMap; Bc1-3 probes and V9XD32 T19 Dxt1/Dxt3 pass at both depths; 3DMark 2001 SE starved by the 16 MiB heap, CP stalled again](2026-11-17-oland-bc-1d-tiled.md)
 - [2026-11-17 Oland: 3DMark 2001 SE Nature run alone draws its lake (bump-mapped, reflecting) and textured distant terrain, nothing refused, on the 128 MiB heap and the writeback read pointer; the Image Quality frame needs 3DMark Pro](2026-11-17-oland-nature.md)
 - [2026-11-17 Oland: Nature's leaves vanished because DX5 MODULATE multiplied the vertex's alpha (a draw log showed identical state and swinging vertex alpha); the built PS now keeps the texel's alpha; seven of seven cottage grabs in leaf](2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md)
+- [2026-11-17 GT218: the same fix as a fourth fragment op at code 4000h; on M-BXMFA8 Nature's later scenes go from bare trees to trees in leaf; the lake is flat grey-blue before and after](2026-11-17-gt218-dx5-modulate-keeps-texel-alpha.md)
 
 ## Matrox
 

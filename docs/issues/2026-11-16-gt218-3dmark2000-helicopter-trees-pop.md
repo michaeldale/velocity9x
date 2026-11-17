@@ -50,3 +50,17 @@ on another card under Velocity9x, or on the GT218 under a native driver.
 Evidence: `build/driver-results/w9qi0dad-obs-2026-11-16/c2_lefttree.png`,
 `c2_righttree.png` (16 consecutive full-resolution crops each),
 `c2_trees.png`, `sheet2.png`.
+
+## 2026-11-17: a likely cause, fixed; this test not re-run
+
+On the Oland, 3DMark 2001 SE Nature's alpha-tested leaves vanished
+because DX5 MODULATE multiplied in the vertex's alpha, which Direct3D
+ignores on a texture with alpha. The GT218's map did the same.
+448e2f2d keeps the texel's alpha. On M-BXMFA8's GeForce 210, Nature's
+later scenes went from bare trees to trees in leaf
+([record](../decisions/2026-11-17-gt218-dx5-modulate-keeps-texel-alpha.md)).
+
+Daniel reported the same helicopter popping on his HD 5450 in October,
+only under 3DMark's "Pentium III" CPU optimisation. That fits vertex
+alpha as the variable. This helicopter test has not been re-run on the
+fix, so the issue stays open until it is.
