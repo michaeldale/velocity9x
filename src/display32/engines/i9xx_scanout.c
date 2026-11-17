@@ -1648,6 +1648,9 @@ int v9x_set_display_start_now(DWORD byte_offset)
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_set_display_start(byte_offset, 0);
     }
+    if (v9x_eg_scanout_active()) {
+        return v9x_eg_set_display_start_now(byte_offset);
+    }
     return v9x_set_display_start(byte_offset);
 }
 
@@ -1806,7 +1809,17 @@ int v9x_scanout_flip_queued(void)
     if (v9x_r128_scanout_active()) {
         return v9x_r128_flip_queues();
     }
+    if (v9x_eg_scanout_active()) {
+        return v9x_eg_flip_queues();
+    }
     return 0;
+}
+
+void v9x_scanout_flip_advance(void)
+{
+    if (v9x_eg_scanout_active()) {
+        v9x_eg_flip_advance();
+    }
 }
 
 /*
@@ -1822,7 +1835,11 @@ int v9x_scanout_flip_queued(void)
  */
 int v9x_scanout_unsynced_base_latches(void)
 {
-    return v9x_i9xx_scanout_active();
+    /* A GCN flip queued behind its frame is pending until it is written,
+     * unsynced or not (eg_scanout.c): holding it is what stops a second
+     * Flip, or a draw into the buffer on the panel, overtaking the frame
+     * the GPU has yet to finish. Written, an unsynced one is done. */
+    return v9x_i9xx_scanout_active() || v9x_eg_flip_queues();
 }
 
 int v9x_scanout_hw_flip(void)

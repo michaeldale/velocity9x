@@ -59,6 +59,10 @@
 #define V9X_VI_CP_SHADER_BYTES      0x00000100ul
 #define V9X_VI_CP_WINDOW_VERTICES   0x00200000ul
 #define V9X_VI_CP_VERTEX_BYTES      0x00200000ul
+/* The arena reused a quarter at a time (v9x_vi_cp_vertex_space). */
+#define V9X_VI_CP_VERTEX_PARTS      4ul
+#define V9X_VI_CP_VERTEX_PART_BYTES \
+    (V9X_VI_CP_VERTEX_BYTES / V9X_VI_CP_VERTEX_PARTS)
 
 /* Bounded waits, as eng_vi.c's: the probe's fences landed within a few
  * dozen polls. */
@@ -339,8 +343,47 @@ static DWORD v9x_vi_cp_vertex_at;
 static DWORD v9x_vi_cp_sequence;
 static int v9x_vi_cp_dirty;
 static v9x_u32 v9x_vi_cp_stream[V9X_VI_START_DWORDS + 64ul];
+/* The arena's quarters (v9x_vi_cp_vertex_space): the one being written,
+ * the fence each was left with, and those left since the last submission,
+ * which takes their fence. */
+static DWORD v9x_vi_cp_part_current;
+static DWORD v9x_vi_cp_part_fence[V9X_VI_CP_VERTEX_PARTS];
+static int v9x_vi_cp_part_fenced[V9X_VI_CP_VERTEX_PARTS];
+static DWORD v9x_vi_cp_parts_closing;
+/* Puts, for sampling the write pointer's readback (v9x_vi_cp_put). */
+#define V9X_VI_CP_WPTR_CHECK_EVERY 16ul
+static DWORD v9x_vi_cp_puts;
 
 static DWORD v9x_vi_cp_scratch_reg(void);
+
+static void v9x_vi_cp_parts_reset(void)
+{
+    DWORD part;
+
+    v9x_vi_cp_part_current = 0ul;
+    v9x_vi_cp_parts_closing = 0ul;
+    for (part = 0ul; part < V9X_VI_CP_VERTEX_PARTS; ++part) {
+        v9x_vi_cp_part_fenced[part] = 0;
+    }
+}
+
+/* The parts left since the last submission are free once this batch,
+ * submitted after every batch that read them, has passed. */
+static void v9x_vi_cp_close_parts(DWORD fence)
+{
+    DWORD part;
+
+    if (v9x_vi_cp_parts_closing == 0ul) {
+        return;
+    }
+    for (part = 0ul; part < V9X_VI_CP_VERTEX_PARTS; ++part) {
+        if ((v9x_vi_cp_parts_closing & (1ul << part)) != 0ul) {
+            v9x_vi_cp_part_fence[part] = fence;
+            v9x_vi_cp_part_fenced[part] = 1;
+        }
+    }
+    v9x_vi_cp_parts_closing = 0ul;
+}
 
 static DWORD v9x_vi_cp_read32(DWORD offset)
 {
@@ -678,7 +721,13 @@ static int v9x_vi_cp_put(const v9x_u32 *dwords, DWORD count)
         (count % V9X_VI_RING_ALIGN_DWORDS) != 0ul) {
         return 0;
     }
+    /* The write pointer read back, against ours: a record the first time
+     * they differ. One put in V9X_VI_CP_WPTR_CHECK_EVERY: it is an
+     * uncached register read, 0.8 % of the Oland's 3DMark 2000 samples
+     * when every batch paid it; the Oland has no V9XCPWPT.TXT, so it has
+     * not fired there. */
     if (!v9x_vi_cp_wptr_written &&
+        (++v9x_vi_cp_puts % V9X_VI_CP_WPTR_CHECK_EVERY) == 0ul &&
         (v9x_vi_cp_read32(V9X_VI_CP_RB0_WPTR) &
          (V9X_VI_CP_RING_DWORDS - 1ul)) != v9x_vi_cp_wptr) {
         v9x_vi_cp_wptr_written = 1;
@@ -1110,6 +1159,7 @@ static int v9x_vi_cp_start(void)
         return 0;
     }
     v9x_vi_cp_vertex_at = 0ul;
+    v9x_vi_cp_parts_reset();
     v9x_vi_cp_dirty = 0;
     v9x_vi_cp_state = V9X_VI_CP_RUNNING;
     return 1;
@@ -1135,6 +1185,7 @@ int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence)
     v9x_vi_cp_remember(dwords, count, fence, v9x_vi_cp_vertex_at);
     v9x_vi_cp_sequence = fence;
     v9x_vi_cp_dirty = 1;
+    v9x_vi_cp_close_parts(fence);
     return 1;
 }
 
@@ -1157,23 +1208,108 @@ int v9x_vi_cp_drain(int wait)
     return 1;
 }
 
+/* The fence the last batch submitted carries: what a flip queued behind
+ * this frame waits for (eng_vi.c, v9x_vi_frame_mark). */
+DWORD v9x_vi_cp_last_fence(void)
+{
+    return v9x_vi_cp_sequence;
+}
+
+/*
+ * Non-zero once the CP has written fence, or a later one, with one read of
+ * the fence dword and no wait. A CP that is not running, or has nothing
+ * outstanding since its last drain, has passed every fence; so has one
+ * given up, whose work was dropped with it. Fences are written end of
+ * pipe in submission order, so the dword only moves forward; the compare
+ * allows for the counter's wrap.
+ */
+int v9x_vi_cp_fence_passed(DWORD fence)
+{
+    if (v9x_vi_cp_state != V9X_VI_CP_RUNNING || !v9x_vi_cp_dirty ||
+        !v9x_vi_cp_mapped()) {
+        return 1;
+    }
+    return (long)(v9x_vi_cp_window(V9X_VI_CP_WINDOW_FENCE)[0] - fence) >= 0l;
+}
+
+/* Waits, within the drain's budget, for the CP to pass fence; a CP that
+ * does not is given up, as a drain that runs out is. */
+static int v9x_vi_cp_wait_fence(DWORD fence)
+{
+    DWORD spins;
+
+    for (spins = 0ul; spins < V9X_VI_CP_SPINS; ++spins) {
+        if (v9x_vi_cp_fence_passed(fence)) {
+            return 1;
+        }
+    }
+    v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_DRAIN);
+    return 0;
+}
+
+/*
+ * The arena's part about to be written again is free: the batch that last
+ * read it has passed its fence. A part whose closing fence is still to be
+ * assigned (no batch submitted since it was left) is drained instead, as
+ * every wrap used to be.
+ */
+static int v9x_vi_cp_part_free(DWORD part)
+{
+    if ((v9x_vi_cp_parts_closing & (1ul << part)) != 0ul) {
+        if (!v9x_vi_cp_drain(1)) {
+            return 0;
+        }
+        v9x_vi_cp_parts_closing &= ~(1ul << part);
+        v9x_vi_cp_part_fenced[part] = 0;
+        return 1;
+    }
+    if (!v9x_vi_cp_part_fenced[part]) {
+        return 1;
+    }
+    if (!v9x_vi_cp_wait_fence(v9x_vi_cp_part_fence[part])) {
+        return 0;
+    }
+    v9x_vi_cp_part_fenced[part] = 0;
+    return 1;
+}
+
 int v9x_vi_cp_vertex_space(DWORD bytes, volatile DWORD **linear,
                            DWORD *gpu_low)
 {
     DWORD rounded = (bytes + 0xfful) & ~0xfful;
+    DWORD at;
+    DWORD last;
 
-    if (bytes == 0ul || rounded > V9X_VI_CP_VERTEX_BYTES ||
+    if (bytes == 0ul || rounded > V9X_VI_CP_VERTEX_PART_BYTES ||
         !v9x_vi_cp_start()) {
         return 0;
     }
-    /* At the arena's end, everything queued is drained before its start
-     * is written again. */
-    if (v9x_vi_cp_vertex_at + rounded > V9X_VI_CP_VERTEX_BYTES) {
-        if (!v9x_vi_cp_drain(1)) {
+    /*
+     * The arena is used in order and wraps at its end. It used to drain
+     * the whole CP at every wrap: the CPU waited for everything queued, on
+     * the Oland 7.5 % of 3DMark 2000's samples with flips queued (docs\
+     * decisions\2026-11-17-oland-queued-flips.md). Now each quarter keeps
+     * the fence of the first batch submitted after it was left, which is
+     * at or after every batch that read it, and writing into a quarter
+     * again waits only for that fence: three quarters of the arena ago.
+     * An allocation is at most a quarter, so it touches at most the part
+     * it starts in and the next.
+     */
+    at = v9x_vi_cp_vertex_at;
+    if (at + rounded > V9X_VI_CP_VERTEX_BYTES) {
+        at = 0ul;
+    }
+    last = (at + rounded - 1ul) / V9X_VI_CP_VERTEX_PART_BYTES;
+    while (v9x_vi_cp_part_current != last) {
+        DWORD next = (v9x_vi_cp_part_current + 1ul) % V9X_VI_CP_VERTEX_PARTS;
+
+        if (!v9x_vi_cp_part_free(next)) {
             return 0;
         }
-        v9x_vi_cp_vertex_at = 0ul;
+        v9x_vi_cp_parts_closing |= 1ul << v9x_vi_cp_part_current;
+        v9x_vi_cp_part_current = next;
     }
+    v9x_vi_cp_vertex_at = at;
     *linear = v9x_vi_cp_window(V9X_VI_CP_WINDOW_VERTICES + v9x_vi_cp_vertex_at);
     *gpu_low = v9x_vi_cp_window_low + V9X_VI_CP_WINDOW_VERTICES +
                v9x_vi_cp_vertex_at;

@@ -575,6 +575,31 @@ int v9x_vi_dma_settle(void)
     return v9x_vi_dma_idle(1);
 }
 
+/*
+ * A frame's end, for a flip queued behind it (eg_scanout.c): the fence of
+ * the graphics CP's last batch and the sequence of SDMA's last fill or
+ * copy, as submitted so far. v9x_vi_frame_done answers, with a read of
+ * each fence and no wait, whether both engines have passed them. Each
+ * engine's fences only move forward, so later work queued behind the mark
+ * does not hold it, which v9x_vi_wait_idle's "nothing outstanding" would.
+ * An engine that is not running, idle since its last wait, or given up
+ * has passed every mark.
+ */
+void v9x_vi_frame_mark(DWORD *cp_fence, DWORD *dma_sequence)
+{
+    *cp_fence = v9x_vi_cp_last_fence();
+    *dma_sequence = v9x_vi_sequence;
+}
+
+int v9x_vi_frame_done(DWORD cp_fence, DWORD dma_sequence)
+{
+    if (v9x_vi_validated() && v9x_vi_dirty &&
+        (long)(v9x_vi_fence_dword() - dma_sequence) < 0l) {
+        return 0;
+    }
+    return v9x_vi_cp_fence_passed(cp_fence);
+}
+
 /* The heap's GPU address, once the engine is validated, for the scanout
  * controller (eg_scanout.c): the carve-out's high half and the heap's low
  * half. */

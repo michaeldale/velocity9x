@@ -105,32 +105,147 @@ static int v9x_eg_scanout_heap(DWORD *high, DWORD *low)
            v9x_eg_dma_settle();
 }
 
-int v9x_eg_set_display_start(DWORD byte_offset)
+static void v9x_eg_scanout_write(DWORD heap_high, v9x_u32 address)
 {
-    DWORD heap_high;
-    DWORD heap_low;
-    v9x_u32 address;
-
-    if (!v9x_eg_scanout_live() || !v9x_eg_scanout_heap(&heap_high, &heap_low) ||
-        v9x_eg_scanout_address(heap_low, byte_offset,
-                               v9x_hal->fb.vram_bytes, &address) !=
-            V9X_STATUS_OK) {
-        return 0;
-    }
     *v9x_eg_scanout_reg(V9X_EG_GRPH_FLIP_CONTROL) = V9X_EG_FLIP_AT_VBLANK;
     *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS_HI) = heap_high;
     *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS) = address;
     /* Posts the write, as Linux does. */
     (void)*v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS);
+}
+
+/*
+ * QUEUED FLIPS on the GCN parts (engine type VI: Carrizo, Mullins, Oland).
+ *
+ * Before these, every Flip waited for the GPU to finish the frame, then
+ * DirectDraw spun on Flip until the scanout took it: the CPU built nothing
+ * while the GPU drew, and the GPU drew nothing while the CPU waited. On
+ * the Oland's 3DMark 2000 run (boot 95) 22 % of the program's samples
+ * were the flip-pending reads and 9 % and 5 % the SDMA and CP fence waits
+ * (docs\decisions\2026-11-17-oland-queued-flips.md).
+ *
+ * Now the flip notes the frame's end - the CP's last fence and SDMA's
+ * last sequence (v9x_vi_frame_mark) - and returns. The address is written
+ * by the first poll that finds both engines past the mark: the flip state
+ * machine's (Flip, GetFlipStatus, a draw or fill waiting on the buffer
+ * still shown) or a submission's (v9x_eg_flip_advance). The register
+ * sequence is the one that was measured, unchanged: GRPH_FLIP_CONTROL
+ * clear, taken at the next vertical blank. Until the write the flip is
+ * pending, so a second Flip, and anything drawn into the buffer on the
+ * panel, waits as it did for the latch: the CPU runs one frame ahead and
+ * no further. An unsynced flip is written at the same point and is done
+ * once written (v9x_eg_set_display_start_now).
+ *
+ * Evergreen's own CP is not queued: it keeps the drain and the immediate
+ * write.
+ */
+static int v9x_eg_deferred = 0;
+static int v9x_eg_deferred_now = 0;
+static DWORD v9x_eg_deferred_high;
+static v9x_u32 v9x_eg_deferred_address;
+static DWORD v9x_eg_deferred_cp;
+static DWORD v9x_eg_deferred_dma;
+static int v9x_eg_written_now = 0;
+
+static int v9x_eg_queues(void)
+{
+    return v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_VI;
+}
+
+int v9x_eg_flip_queues(void)
+{
+    return v9x_eg_scanout_active() && v9x_eg_queues();
+}
+
+/* The deferred address, once its frame is finished; non-zero when nothing
+ * is left deferred. A scanout that went away drops it. */
+static int v9x_eg_flip_release(void)
+{
+    if (!v9x_eg_deferred) {
+        return 1;
+    }
+    if (!v9x_vi_frame_done(v9x_eg_deferred_cp, v9x_eg_deferred_dma)) {
+        return 0;
+    }
+    v9x_eg_deferred = 0;
+    if (v9x_eg_scanout_live()) {
+        v9x_eg_scanout_write(v9x_eg_deferred_high, v9x_eg_deferred_address);
+    }
+    v9x_eg_written_now = v9x_eg_deferred_now;
+    return 1;
+}
+
+void v9x_eg_flip_advance(void)
+{
+    if (v9x_eg_deferred) {
+        (void)v9x_eg_flip_release();
+    }
+}
+
+static int v9x_eg_display_start(DWORD byte_offset, int now)
+{
+    DWORD heap_high;
+    DWORD heap_low;
+    v9x_u32 address;
+
+    if (!v9x_eg_scanout_live()) {
+        return 0;
+    }
+    if (v9x_eg_queues()) {
+        if (!v9x_vi_heap_address(&heap_high, &heap_low) ||
+            v9x_eg_scanout_address(heap_low, byte_offset,
+                                   v9x_hal->fb.vram_bytes, &address) !=
+                V9X_STATUS_OK) {
+            return 0;
+        }
+        /* A newer start replaces one still deferred: the core only gets
+         * here once the last flip is done, so that is the GDI return
+         * (FlipToGDISurface, SetExclusiveMode), which drained first. */
+        v9x_eg_deferred_high = heap_high;
+        v9x_eg_deferred_address = address;
+        v9x_eg_deferred_now = now;
+        v9x_vi_frame_mark(&v9x_eg_deferred_cp, &v9x_eg_deferred_dma);
+        v9x_eg_deferred = 1;
+        v9x_eg_written_now = 0;
+        v9x_eg_scanout_pending = 1;
+        (void)v9x_eg_flip_release();
+        return 1;
+    }
+    if (!v9x_eg_scanout_heap(&heap_high, &heap_low) ||
+        v9x_eg_scanout_address(heap_low, byte_offset,
+                               v9x_hal->fb.vram_bytes, &address) !=
+            V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_eg_scanout_write(heap_high, address);
     v9x_eg_scanout_pending = 1;
     return 1;
 }
 
-/* Pending while the controller has the address but has not yet taken it
- * at a vertical blank. */
+int v9x_eg_set_display_start(DWORD byte_offset)
+{
+    return v9x_eg_display_start(byte_offset, 0);
+}
+
+/* Unsynced: the same write, taken at the blank as before (nothing else was
+ * measured); queued, the flip is done once it is written. */
+int v9x_eg_set_display_start_now(DWORD byte_offset)
+{
+    return v9x_eg_display_start(byte_offset, 1);
+}
+
+/* Pending while a queued flip's frame is unfinished, then (synced) while
+ * the controller has the address but has not yet taken it at a vertical
+ * blank. */
 int v9x_eg_flip_pending(void)
 {
-    if (!v9x_eg_scanout_pending || !v9x_eg_scanout_live()) {
+    if (!v9x_eg_scanout_pending) {
+        return 0;
+    }
+    if (!v9x_eg_flip_release()) {
+        return 1;
+    }
+    if (v9x_eg_written_now || !v9x_eg_scanout_live()) {
         return 0;
     }
     return (*v9x_eg_scanout_reg(V9X_EG_GRPH_UPDATE) &
@@ -158,4 +273,6 @@ void v9x_eg_note_flip_done(void)
 void v9x_eg_scanout_reset(void)
 {
     v9x_eg_scanout_pending = 0;
+    v9x_eg_deferred = 0;
+    v9x_eg_written_now = 0;
 }

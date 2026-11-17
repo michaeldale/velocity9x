@@ -501,9 +501,10 @@ if ($Worker) {
             for ($try = 0; $try -lt 6 -and -not $started3d; ++$try) {
                 $null = Invoke-Ctl input @{ Sequence = $entry.ThreeDMark }
                 for ($look = 0; $look -lt 3 -and -not $started3d; ++$look) {
-                    # A 2-second agent-side wait for the benchmark's own
-                    # window, which also paces the welcome-dialog check.
-                    $null = Invoke-Ctl wait-window @{ Title = '3DMark - Display Window'; WaitSeconds = 2 } 30
+                    # A 5-second agent-side wait for the benchmark's own
+                    # window, which also paces the welcome-dialog check
+                    # (5 is v9xctl's least WaitSeconds; 2 is refused).
+                    $null = Invoke-Ctl wait-window @{ Title = '3DMark - Display Window'; WaitSeconds = 5 } 30
                     $windows = Get-GuestWindows
                     $started3d = ($windows -ne $null -and
                         -not @($windows | Where-Object { $_.Class -eq '#32770' -and $_.Title -clike '3DMark2000*' }))

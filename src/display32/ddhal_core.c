@@ -648,9 +648,21 @@ static struct v9x_draw_note v9x_present_draw_note;
  */
 static DWORD v9x_present_submit_count = 0ul;
 
+/* Submissions between looks at a queued flip: each look is a read of
+ * video memory while one is outstanding, and a batch is tens of
+ * microseconds of drawing, so every eighth costs little and writes the
+ * flip well inside a frame of its finish. */
+#define V9X_PRESENT_FLIP_ADVANCE_EVERY 8ul
+
 void v9x_present_note_submission(void)
 {
     ++v9x_present_submit_count;
+    /* A flip queued behind an earlier frame is written once that frame is
+     * done, by whichever poll gets there first; the application drawing
+     * the next frame is the one that comes most often. */
+    if ((v9x_present_submit_count % V9X_PRESENT_FLIP_ADVANCE_EVERY) == 0ul) {
+        v9x_scanout_flip_advance();
+    }
 }
 
 DWORD v9x_present_sequence(void)

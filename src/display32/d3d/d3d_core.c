@@ -1244,6 +1244,10 @@ static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
     return 1;
 }
 
+/* Batches between samples of the retrace source's duty cycle. */
+#define V9X_D3D_VBLANK_SAMPLE_EVERY 16ul
+static DWORD v9x_d3d_vblank_batches;
+
 static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
                               V9X_D3D_CONTEXT *context,
                               const V9X_D3DTLVERTEX *vertices,
@@ -1253,10 +1257,16 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
      * real vertical blank is a few per cent of a frame; a ratio near 1 is
      * a source that always says yes, which would release every buffer
      * before its latch. Sampling is about when this code ran, so it is
-     * taken whether or not the batch goes on to be submitted. */
-    ++v9x_hal->d3d_diagnostics.vblank_samples;
-    if (v9x_in_vblank()) {
-        ++v9x_hal->d3d_diagnostics.vblank_in_blank;
+     * taken whether or not the batch goes on to be submitted. One batch in
+     * V9X_D3D_VBLANK_SAMPLE_EVERY: the read is an uncached register read,
+     * on the Oland 1.2 % of 3DMark 2000's samples when every batch paid
+     * it, and the ratio needs no more (docs\decisions\2026-11-17-oland-
+     * queued-flips.md). */
+    if ((++v9x_d3d_vblank_batches % V9X_D3D_VBLANK_SAMPLE_EVERY) == 0ul) {
+        ++v9x_hal->d3d_diagnostics.vblank_samples;
+        if (v9x_in_vblank()) {
+            ++v9x_hal->d3d_diagnostics.vblank_in_blank;
+        }
     }
     /*
      * Everything that claims a draw HAPPENED is recorded after the backend

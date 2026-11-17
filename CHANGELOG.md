@@ -6,6 +6,19 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.55.0 - not yet released
 
+- **`ati` package, GCN (Oland, Carrizo, Mullins): Flip no longer waits
+  for the GPU.** A flip is queued behind the frame's last command-processor
+  and SDMA fences and written once both have passed, so the CPU builds
+  the next frame while the GPU finishes this one, one frame ahead at
+  most. The vertex arena is reused a quarter at a time, behind a fence,
+  instead of draining the GPU every 2 MiB. On the Oland, 3DMark 2000 with
+  vsync off went from 8157 to 8579; with the game's vsync it stays at
+  the refresh (3959, 3985). Carrizo and Mullins have not run it
+  ([record](docs/decisions/2026-11-17-oland-queued-flips.md)).
+- **Every package: two diagnostic register reads are sampled one draw
+  in 16**, the retrace duty cycle and (GCN) the ring's write pointer.
+  On the Oland they were 2 % of 3DMark 2000's CPU time.
+
 ## 0.54.0 - 2026-11-17
 
 - **`ati` package: AMD Oland XT (1002:6610, GCN 1), new.** Measured on

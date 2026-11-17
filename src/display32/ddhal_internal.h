@@ -600,6 +600,12 @@ int v9x_eg_scanout_live(void);
 int v9x_eg_in_vblank(void);
 int v9x_eg_set_display_start(DWORD byte_offset);
 int v9x_eg_flip_pending(void);
+/* The GCN parts queue flips behind the frame (eg_scanout.c): flip_queues
+ * says so, set_display_start_now is the unsynced flip, done once written,
+ * and flip_advance writes a queued flip whose frame has finished. */
+int v9x_eg_flip_queues(void);
+int v9x_eg_set_display_start_now(DWORD byte_offset);
+void v9x_eg_flip_advance(void);
 void v9x_eg_note_flip_done(void);
 void v9x_eg_scanout_reset(void);
 /* The Radeon X1200 IGP's (RS690) AVIVO controller D1, in
@@ -748,6 +754,11 @@ int v9x_d3d_r6_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
  * bits 39:32 and 31:0, zero until the engine is validated. */
 int v9x_vi_dma_settle(void);
 int v9x_vi_heap_address(DWORD *high, DWORD *low);
+/* engines/eng_vi.c, for eg_scanout.c's queued flips: the CP fence and SDMA
+ * sequence submitted so far, and whether both engines have passed them
+ * (one read each, no wait). */
+void v9x_vi_frame_mark(DWORD *cp_fence, DWORD *dma_sequence);
+int v9x_vi_frame_done(DWORD cp_fence, DWORD dma_sequence);
 /* engines/eng_vi.c: the 4 MiB window's GPU address, as heap_address. */
 int v9x_vi_window_address(DWORD *high, DWORD *low);
 /* The Carrizo graphics CP, in engines/vi_cp.c, as Evergreen's above:
@@ -775,6 +786,10 @@ int v9x_vi_cp_addresses(DWORD *high, DWORD *heap_low);
 DWORD v9x_vi_cp_shader_low(DWORD which);
 DWORD v9x_vi_cp_fence_low(void);
 DWORD v9x_vi_cp_fence_next(void);
+/* The last batch's fence, and whether the CP has written it or a later
+ * one (non-zero also when nothing is outstanding); no wait. */
+DWORD v9x_vi_cp_last_fence(void);
+int v9x_vi_cp_fence_passed(DWORD fence);
 /* The two the core calls, in engines/i9xx_scanout.c: the Intel pipe
  * controls on a boot that armed the Intel flip, the Rage IIC's CRTC on
  * that chip, the SiS start address on the 6326, the VGA ones otherwise. */
@@ -877,8 +892,11 @@ int v9x_scanout_hw_flip(void);
 int v9x_scanout_hw_flip_pending(void);
 /* Non-zero when the active scanout's flip is queued in the engine's
  * command stream behind the frame, so Flip need not wait for the drawing
- * (only the Rage 128 on its CCE ring, today). */
+ * (the Rage 128 on its CCE ring, and the GCN parts behind their fences). */
 int v9x_scanout_flip_queued(void);
+/* A submission has gone to the GPU: a flip queued behind an earlier frame
+ * that has now finished is written (the GCN parts; a no-op elsewhere). */
+void v9x_scanout_flip_advance(void);
 /* Non-zero when the active scanout takes a new base only at the vertical
  * blank even when it is written unsynced, so an unsynced flip is pending
  * until then (v9x_vsync_flip_stays_pending). Gen3 to Gen5's plane today. */

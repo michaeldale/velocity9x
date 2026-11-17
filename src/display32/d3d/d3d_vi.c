@@ -736,6 +736,29 @@ static v9x_u32 v9x_d3d_vi_built_ps[V9X_VI_D3D_PS_DWORDS_MAX];
  * are in its code, and the arena is the only space not reused before the
  * GPU has read it.
  */
+/*
+ * A draw into the buffer the last flip is taking off the screen, while
+ * that flip is pending, waits for it on the CPU: flips are queued behind
+ * their frame (eg_scanout.c), so the panel may still be showing this
+ * buffer while the frame after it is being built. A triple-buffered
+ * application never draws there; a double-buffered one waits here as it
+ * used to wait in Flip. A wait that runs out goes ahead, as elsewhere.
+ */
+static void v9x_d3d_vi_flip_guard(const V9X_R3D_DRAW *draw)
+{
+    int waited;
+
+    if (draw->target.offset != v9x_present_retiring_offset() ||
+        !v9x_flip_pending()) {
+        return;
+    }
+    waited = v9x_flip_wait_done();
+    ++v9x_hal->d3d_diagnostics.draws_flip_waited;
+    if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+        ++v9x_hal->d3d_diagnostics.draws_flip_wait_timeouts;
+    }
+}
+
 static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
                            const V9X_R3D_VERTEX *vertices,
                            DWORD triangle_count)
@@ -762,6 +785,7 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
         !v9x_d3d_vi_ready()) {
         return 0;
     }
+    v9x_d3d_vi_flip_guard(draw);
     pairs = (const DWORD *)draw->texcoords1;
     started = V9X_TIME_BEGIN();
     reason = v9x_d3d_vi_map(draw, &state, &unit1, &ps, &built);
@@ -1050,6 +1074,7 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
         !v9x_vi_cp_addresses(&high, &heap_low)) {
         return 0;
     }
+    v9x_d3d_vi_flip_guard(draw);
     started = V9X_TIME_BEGIN();
 
     /* The fixed-function map for target, depth, blend, and the alpha
