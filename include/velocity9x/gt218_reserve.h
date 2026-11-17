@@ -25,6 +25,9 @@
  * start.
  */
 #define V9X_GT218_RESERVE_3D_SCRATCH    0x000e0000ul
+/* The scratch ends at E5000h. The one-unit fragment variants past the
+ * scratch's twelve (nv50_d3d.h V9X_NV50_D3D_FP_RGB_FIRST, 4000h past the
+ * code base) take E5000h to E5400h of the gap after it. */
 /* Direct3D's two-unit fragment programs, built on demand (nv50_d3d.h
  * V9X_NV50_D3D_FP2_*): 64 slots of 200h from 7000h past the scratch's
  * code base (its FP area at +1000h), so E8000h to F0000h, inside the

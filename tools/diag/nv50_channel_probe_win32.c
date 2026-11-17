@@ -3256,7 +3256,7 @@ static int v9x_stage_3d_d3d(void)
     v9x_vram_data(V9X_3D_SCRATCH + V9X_NV50_3D_SCRATCH_VP +
                       V9X_NV50_D3D_VP_START,
                   vp, vp_count);
-    for (variant = 0ul; variant < V9X_NV50_D3D_FP_VARIANTS; ++variant) {
+    for (variant = 0ul; variant < V9X_NV50_D3D_FP_SCRATCH_VARIANTS; ++variant) {
         count = v9x_nv50_d3d_fp(variant, fp, V9X_NV50_D3D_FP_WORDS_MAX,
                                 &fp_registers[variant]);
         if (count == 0ul) {

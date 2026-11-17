@@ -408,6 +408,20 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
             return reason;
         }
         state->textured = 1ul;
+        /* DX5 MODULATE on a texture with alpha takes the texel's alpha
+         * alone, unless the core says the stage's alpha is the
+         * diffuse's; the MODULATE variant multiplies all four, which is
+         * MODULATEALPHA. The Oland's leaves vanished so in Nature
+         * (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+         * frames.md). Only the alpha test or a blend reads the alpha. */
+        if (draw->texture.op == V9X_R3D_TEXOP_MODULATE &&
+            draw->texture.alpha_diffuse == 0ul &&
+            (texture->format == V9X_NV50_D3D_TEX_B5G5R5A1 ||
+             texture->format == V9X_NV50_D3D_TEX_B4G4R4A4 ||
+             texture->format == V9X_NV50_D3D_TEX_B8G8R8A8) &&
+            (draw->alpha_test_enable != 0ul || draw->blend_enable != 0ul)) {
+            program_op = V9X_NV50_D3D_OP_MODULATE_RGB;
+        }
     }
 
     /* Specular and fog, vertex or table: the core leaves the fog factor

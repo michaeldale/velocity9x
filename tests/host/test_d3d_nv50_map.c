@@ -20,7 +20,8 @@ static int depth_object;
 static int texture_object;
 
 static v9x_u32 registers[V9X_NV50_D3D_FP_VARIANTS] = {
-    5ul, 16ul, 15ul, 16ul, 12ul, 16ul, 15ul, 16ul, 12ul, 16ul, 15ul, 16ul
+    5ul, 16ul, 15ul, 16ul, 12ul, 16ul, 15ul, 16ul, 12ul, 16ul, 15ul, 16ul,
+    12ul, 16ul, 15ul, 16ul
 };
 
 static v9x_u32 float_bits(float value)
@@ -368,6 +369,57 @@ static void test_texture(void)
     draw.texture.op = V9X_R3D_TEXOP_ADD;
     CHECK(map(&draw, &texture, &state, &specular) ==
           V9X_D3D_NV50_REFUSE_TEXTURE_OP);
+
+    /* DX5 MODULATE on a texture with alpha keeps the texel's alpha
+     * (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+     * frames.md) where the alpha test or a blend reads it. */
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    draw.alpha_test_enable = 1ul;
+    draw.alpha_func = V9X_R3D_CMP_GREATEREQUAL;
+    draw.alpha_ref = 0x7ful;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE_RGB, 0ul,
+                                      0ul));
+    CHECK(state.fp_registers == registers[state.fp_variant]);
+    draw.alpha_test_enable = 0ul;
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE_RGB, 0ul,
+                                      0ul));
+    /* MODULATEALPHA, the core's diffuse-alpha stage and a texture
+     * without alpha multiply all four. */
+    draw.texture.op = V9X_R3D_TEXOP_MODULATEALPHA;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 0ul, 0ul));
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    draw.texture.alpha_diffuse = 1ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 0ul, 0ul));
+    draw.texture.alpha_diffuse = 0ul;
+    texture.format = V9X_NV50_D3D_TEX_B8G8R8X8;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 0ul, 0ul));
+    /* Neither the test nor a blend: the alpha reaches nothing. */
+    texture.format = V9X_NV50_D3D_TEX_B8G8R8A8;
+    draw.blend_enable = 0ul;
+    draw.src_blend = V9X_R3D_BLEND_ONE;
+    draw.dst_blend = V9X_R3D_BLEND_ZERO;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          state.fp_variant ==
+              v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 0ul, 0ul));
 
     /* Address modes; cylindrical wrap is refused. */
     base_texture(&draw, &texture);

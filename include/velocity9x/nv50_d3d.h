@@ -38,8 +38,18 @@
 #define V9X_NV50_D3D_OP_NONE         0ul
 #define V9X_NV50_D3D_OP_REPLACE      1ul
 #define V9X_NV50_D3D_OP_MODULATE     2ul
-#define V9X_NV50_D3D_OPS             3ul
-#define V9X_NV50_D3D_FP_VARIANTS     12ul
+/* B, G and R modulated, alpha the texel's: DX5 MODULATE on a texture with
+ * alpha (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+ * frames.md). Its variants are past the first twelve's room, at
+ * FP_RGB_FIRST (gt218_reserve.h's gap before the two-unit slots). */
+#define V9X_NV50_D3D_OP_MODULATE_RGB 3ul
+#define V9X_NV50_D3D_OPS             4ul
+#define V9X_NV50_D3D_FP_VARIANTS     16ul
+/* The variants the scratch's FP area holds; the rest start at
+ * FP_RGB_FIRST. A caller with only the scratch (the channel probe)
+ * places these. */
+#define V9X_NV50_D3D_FP_SCRATCH_VARIANTS 12ul
+#define V9X_NV50_D3D_FP_RGB_FIRST    0x4000ul
 v9x_u32 v9x_nv50_d3d_fp_variant(v9x_u32 op, v9x_u32 specular, v9x_u32 fog);
 v9x_u32 v9x_nv50_d3d_fp_start(v9x_u32 variant);
 

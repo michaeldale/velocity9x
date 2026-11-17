@@ -228,6 +228,34 @@ static void test_fp(void)
     check_program(v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE, 1ul, 1ul),
                   &sh, 16ul);
 
+    /* MODULATE keeping the texel's alpha (DX5 MODULATE on a texture with
+     * alpha, docs\issues\2026-11-17-oland-nature-tree-leaves-missing-
+     * most-frames.md): B, G and R multiplied, alpha the texel's. Its four
+     * variants sit at 4000h of the code space, past the scratch and
+     * before the two-unit slots (gt218_reserve.h). */
+    v9x_nv50_sh_init(&sh, expect_words, V9X_NV50_D3D_FP_WORDS_MAX);
+    expect_prologue(&sh);
+    v9x_nv50_sh_interp(&sh, R(8), V(0x24ul), R(4));
+    v9x_nv50_sh_interp(&sh, R(9), V(0x28ul), R(4));
+    v9x_nv50_sh_tex(&sh, R(8), 0ul, 0ul, 0xful, 0ul);
+    for (index = 0ul; index < 3ul; ++index) {
+        v9x_nv50_sh_fmul(&sh, SHORT, R(index), R(index), R(8ul + index));
+    }
+    v9x_nv50_sh_mov(&sh, SHORT, R(3), R(11));
+    v9x_nv50_sh_mov(&sh, LONG, R(3), R(3));
+    v9x_nv50_sh_exit(&sh);
+    CHECK(v9x_nv50_d3d_fp_variant(V9X_NV50_D3D_OP_MODULATE_RGB, 0ul, 0ul) ==
+          12ul);
+    check_program(12ul, &sh, 12ul);
+    CHECK(v9x_nv50_d3d_fp_start(12ul) == 0x4000ul);
+    CHECK(v9x_nv50_d3d_fp_start(15ul) + V9X_NV50_D3D_FP_STRIDE <=
+          V9X_NV50_D3D_FP2_FIRST);
+    CHECK(V9X_NV50_3D_SCRATCH_FP + v9x_nv50_d3d_fp_start(12ul) >=
+          V9X_NV50_3D_SCRATCH_BYTES);
+    CHECK(V9X_GT218_RESERVE_3D_SCRATCH + V9X_NV50_3D_SCRATCH_FP +
+              v9x_nv50_d3d_fp_start(15ul) + V9X_NV50_D3D_FP_STRIDE <=
+          V9X_GT218_RESERVE_3D_FP2);
+
     /* Every variant fits its slot. */
     for (variant = 0ul; variant < V9X_NV50_D3D_FP_VARIANTS; ++variant) {
         v9x_u32 count = v9x_nv50_d3d_fp(variant, words,

@@ -151,6 +151,11 @@ v9x_u32 v9x_nv50_d3d_fp_variant(v9x_u32 op, v9x_u32 specular, v9x_u32 fog)
 
 v9x_u32 v9x_nv50_d3d_fp_start(v9x_u32 variant)
 {
+    if (variant >= V9X_NV50_D3D_FP_SCRATCH_VARIANTS) {
+        return V9X_NV50_D3D_FP_RGB_FIRST +
+               (variant - V9X_NV50_D3D_FP_SCRATCH_VARIANTS) *
+                   V9X_NV50_D3D_FP_STRIDE;
+    }
     return V9X_NV50_D3D_FP_FIRST + variant * V9X_NV50_D3D_FP_STRIDE;
 }
 
@@ -304,7 +309,10 @@ v9x_u32 v9x_nv50_d3d_fp(v9x_u32 variant, v9x_u32 *words, v9x_u32 max,
         for (index = 0ul; index < 4ul; ++index) {
             v9x_u32 texel = V9X_NV50_SH_R(V9X_NV50_D3D_R_TEXEL + index);
 
-            if (op == V9X_NV50_D3D_OP_REPLACE) {
+            /* MODULATE_RGB leaves the alpha the texel's: DX5 MODULATE
+             * on a texture with alpha. */
+            if (op == V9X_NV50_D3D_OP_REPLACE ||
+                (op == V9X_NV50_D3D_OP_MODULATE_RGB && index == 3ul)) {
                 v9x_nv50_sh_mov(&sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(index),
                                 texel);
             } else {
