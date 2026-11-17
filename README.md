@@ -96,8 +96,9 @@ New in 0.54.0:
   checked. In 3DMark 2000's helicopter test trees pop in and out
   ([issue](docs/issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md));
   0.54.0's MODULATE alpha fix is the likely cure but that test has not
-  been rerun. 3DMark 2001 SE's Nature draws its lake flat grey-blue. In
-  Quake 3 a wall texture can turn
+  been rerun. 3DMark 2001 SE's Nature draws its lake flat grey-blue. At
+  32 bpp ten of V9XD32's pixel shader checks draw wrong (older than
+  0.54.0; at 16 bpp three do). In Quake 3 a wall texture can turn
   into streaks ([issue](docs/issues/2026-11-16-gt218-quake3-wall-texture-streaks.md)).
   Not yet working: a
   Lock of a depth buffer, 24-bit depth with stencil, cube maps, `texm3x3`
