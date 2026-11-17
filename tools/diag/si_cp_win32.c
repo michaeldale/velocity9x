@@ -1012,7 +1012,21 @@ static DWORD v9x_shader_data(DWORD (*build)(DWORD *), DWORD *count)
  * unjudged; a killed pixel must still be the guard; outside the rectangle,
  * the guard.
  */
-#define V9X_PS11_VARIANTS     6ul
+#define V9X_PS11_VARIANTS     10ul
+/* Program 9, BcMap: Bc1's draw over 8 KB of BC1 blocks that each name
+ * their own offset (colour 0 = 8000h | offset / 8, colour 1 = 0, every
+ * index 0), so each drawn texel says which bytes the sampler decoded. */
+#define V9X_PS11_BC_MAP       9ul
+#define V9X_PS11_BC_MAP_BYTES 0x2000ul
+/* Programs 6-8 (step 7 of docs\plans\ati-gcn-ps11.md): stage 0 holds an
+ * 8x8 BC1, BC2 or BC3 texture, 2x2 blocks, each block row at a pitch of
+ * max(8 blocks, 64 bytes) - addrlib's linear-aligned pitch alignment
+ * (EgBasedLib::ComputeSurfaceAlignmentsLinear), 64 bytes for BC1 and 128
+ * for BC2/3 - the hypothesis under test. IMG_DATA_FORMAT_BC1-3 are 23h-25h
+ * (Mesa's sid.h); the T#'s PITCH is in texels, blocks x 4 (radeonsi). */
+#define V9X_PS11_BC_FIRST     6ul
+#define V9X_PS11_BC_BLOCKS    2ul
+#define V9X_PS11_BC_ROW_BLOCKS 8ul
 #define V9X_PS11_TABLE        0x8200ul
 #define V9X_PS11_VERTICES     0x8400ul
 #define V9X_PS11_TEXTURES     0x8800ul
@@ -1159,8 +1173,153 @@ static const struct v9x_ps11_probe_variant
         V9X_PT_OP_ADD, V9X_PT_TO_R(0ul, 0x7ul),
         V9X_PT_SRC_PLAIN(V9X_PT_R, 0ul),
         V9X_PT_SRC(V9X_PT_C, 5ul, V9X_PT_XYZW, 4ul),
+        V9X_PT_END } },
+    /* tex t0; mov r0, t0, stage 0 a BC1, BC2 or BC3 texture. */
+    { "Bc1", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul),
+        V9X_PT_END } },
+    { "Bc2", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul),
+        V9X_PT_END } },
+    { "Bc3", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul),
+        V9X_PT_END } },
+    { "BcMap", {
+        V9X_PT_VER(1ul),
+        V9X_PT_OP_TEX, V9X_PT_TO_T(0ul),
+        V9X_PT_OP_MOV, V9X_PT_TO_R(0ul, 0xful),
+        V9X_PT_SRC_PLAIN(V9X_PT_T, 0ul),
         V9X_PT_END } }
 };
+
+/*
+ * The BC textures' content, from which both the blocks and the judge's
+ * texels are made. Only exact values: each texel picks a block's colour
+ * 0 or 1 (no interpolated colour), every colour channel all 0 or all 1 in
+ * RGB565, and BC2's 4-bit alpha (x 17) or BC3's alpha 0 or 1 (no
+ * interpolated alpha). Each block b (bx + 2 by) has its own pair, so a
+ * block read from the wrong place, or red read as blue, shows.
+ */
+static const DWORD v9x_bc_colour0[4] = { 1ul, 2ul, 4ul, 7ul };
+static const DWORD v9x_bc_colour1[4] = { 6ul, 5ul, 3ul, 0ul };
+
+/* Palette entry k: red bit 0, green bit 1, blue bit 2. */
+static DWORD v9x_bc_565(DWORD k)
+{
+    return ((k & 1ul) != 0ul ? 0xf800ul : 0ul) |
+           ((k & 2ul) != 0ul ? 0x07e0ul : 0ul) |
+           ((k & 4ul) != 0ul ? 0x001ful : 0ul);
+}
+
+static DWORD v9x_bc_rgb(DWORD k)
+{
+    return ((k & 1ul) != 0ul ? 0x00ff0000ul : 0ul) |
+           ((k & 2ul) != 0ul ? 0x0000ff00ul : 0ul) |
+           ((k & 4ul) != 0ul ? 0x000000fful : 0ul);
+}
+
+/* Texel (x, y) of block b, x and y inside the block: which colour, and
+ * its alpha for the variant. */
+static DWORD v9x_bc_colour_index(DWORD b, DWORD x, DWORD y)
+{
+    return ((x * 3ul + y * 5ul + b) >> 1) & 1ul;
+}
+
+static DWORD v9x_bc_alpha(DWORD variant, DWORD b, DWORD x, DWORD y)
+{
+    if (variant == V9X_PS11_BC_FIRST + 1ul) {
+        return ((x + 4ul * y + 3ul * b) & 15ul) * 17ul;
+    }
+    if (variant == V9X_PS11_BC_FIRST + 2ul) {
+        return ((x + y + b) & 1ul) != 0ul ? 0x18ul + 0x10ul * b
+                                          : 0xe0ul - 0x20ul * b;
+    }
+    return 0xfful;
+}
+
+/* Stage 0's texel (x, y) of a BC program, A8R8G8B8. */
+static DWORD v9x_bc_texel(DWORD variant, DWORD x, DWORD y)
+{
+    DWORD b = x / 4ul + 2ul * (y / 4ul);
+    DWORD k = v9x_bc_colour_index(b, x & 3ul, y & 3ul) != 0ul
+                  ? v9x_bc_colour1[b] : v9x_bc_colour0[b];
+
+    return (v9x_bc_alpha(variant, b, x & 3ul, y & 3ul) << 24) | v9x_bc_rgb(k);
+}
+
+/* Block b of the variant: 8 bytes (BC1) or 16 (BC2/3) to out, dwords
+ * in memory order. */
+static DWORD v9x_bc_block(DWORD variant, DWORD b, DWORD *out)
+{
+    DWORD colour[2];
+    DWORD indices = 0ul;
+    DWORD alpha_low = 0ul;
+    DWORD alpha_high = 0ul;
+    DWORD x;
+    DWORD y;
+    DWORD i;
+    DWORD words = 0ul;
+
+    colour[0] = v9x_bc_565(v9x_bc_colour0[b]) |
+                (v9x_bc_565(v9x_bc_colour1[b]) << 16);
+    for (y = 0ul; y < 4ul; ++y) {
+        for (x = 0ul; x < 4ul; ++x) {
+            i = y * 4ul + x;
+            indices |= v9x_bc_colour_index(b, x, y) << (2ul * i);
+        }
+    }
+    colour[1] = indices;
+    if (variant == V9X_PS11_BC_FIRST + 1ul) {
+        /* 4 bits a texel, texel i at bit 4i of the first 64. */
+        for (i = 0ul; i < 16ul; ++i) {
+            DWORD a = v9x_bc_alpha(variant, b, i & 3ul, i >> 2) / 17ul;
+
+            if (i < 8ul) {
+                alpha_low |= a << (4ul * i);
+            } else {
+                alpha_high |= a << (4ul * (i - 8ul));
+            }
+        }
+        out[words++] = alpha_low;
+        out[words++] = alpha_high;
+    } else if (variant == V9X_PS11_BC_FIRST + 2ul) {
+        /* Alpha 0 and 1, then 3 bits a texel from bit 16: index 0 for
+         * alpha 0, 1 for alpha 1. */
+        DWORD a0 = 0xe0ul - 0x20ul * b;
+        DWORD a1 = 0x18ul + 0x10ul * b;
+        DWORD bits_low = a0 | (a1 << 8);
+        DWORD bits_high = 0ul;
+
+        for (i = 0ul; i < 16ul; ++i) {
+            DWORD pick = v9x_bc_alpha(variant, b, i & 3ul, i >> 2) == a1
+                             ? 1ul : 0ul;
+            DWORD bit = 16ul + 3ul * i;
+
+            if (bit < 32ul) {
+                bits_low |= pick << bit;
+                if (bit + 3ul > 32ul) {
+                    bits_high |= pick >> (32ul - bit);
+                }
+            } else {
+                bits_high |= pick << (bit - 32ul);
+            }
+        }
+        out[words++] = bits_low;
+        out[words++] = bits_high;
+    }
+    out[words++] = colour[0];
+    out[words++] = colour[1];
+    return words;
+}
 
 /* The fog colour r g b for program 5. */
 static const float v9x_ps11_fog_rgb[3] = { 0.25f, 0.5f, 1.0f };
@@ -1174,6 +1333,20 @@ static DWORD v9x_ps11_code[V9X_PS11_CODE_MAX];
 static DWORD v9x_ps11_table[V9X_VI_PS11_TABLE_DWORDS];
 static DWORD v9x_ps11_vertices[V9X_PS11_VERTEX_COUNT * V9X_PS11_VERTEX_FLOATS];
 static DWORD v9x_ps11_build_status;
+
+static int v9x_switch_given(const char *switch_text);
+
+static int v9x_ps11_is_bc(void)
+{
+    return v9x_ps11_variant >= V9X_PS11_BC_FIRST &&
+           v9x_ps11_variant <= V9X_PS11_BC_MAP;
+}
+
+/* A BC texture's block row pitch in bytes (the hypothesis above). */
+static DWORD v9x_ps11_bc_pitch(void)
+{
+    return v9x_ps11_variant == V9X_PS11_BC_FIRST ? 64ul : 128ul;
+}
 
 /* The target in dwords: 64x48 at two or four bytes a pixel. */
 static DWORD v9x_ps11_target_dwords(void)
@@ -1355,6 +1528,26 @@ static void v9x_ps11_prepare(DWORD lo, DWORD hi)
         t[2] = (V9X_PS11_SIDE - 1ul) | ((V9X_PS11_SIDE - 1ul) << 14);
         t[3] = V9X_PS11_T3_BGRA;
         t[4] = (V9X_PS11_TEX_PITCH - 1ul) << 13;
+        /* BC: the block's own channel order is R G B A, x red, so no
+         * swap; PITCH in texels, 8 blocks of 4. */
+        if (stage == 0ul && v9x_ps11_is_bc()) {
+            t[1] = ((hi >> 8) & 0xfful) |
+                   ((0x23ul + (v9x_ps11_variant == V9X_PS11_BC_MAP ? 0ul :
+                               v9x_ps11_variant - V9X_PS11_BC_FIRST)) << 20);
+            t[3] = 4ul | (5ul << 3) | (6ul << 6) | (7ul << 9) |
+                   (8ul << 20) | (9ul << 28);
+            t[4] = (V9X_PS11_BC_ROW_BLOCKS * 4ul - 1ul) << 13;
+            /* BcMap's other shapes, to find what moves the rows it reads:
+             * /bcp64 a pitch of 64 texels, /bcw16 a 16x16 texture. */
+            if (v9x_ps11_variant == V9X_PS11_BC_MAP) {
+                if (v9x_switch_given("/bcp64")) {
+                    t[4] = (64ul - 1ul) << 13;
+                }
+                if (v9x_switch_given("/bcw16")) {
+                    t[2] = (16ul - 1ul) | ((16ul - 1ul) << 14);
+                }
+            }
+        }
         v9x_ps11_table[V9X_VI_PS11_S_SHARP + 4ul * stage] =
             V9X_PS11_S0_CLAMP;
     }
@@ -1470,7 +1663,48 @@ static void v9x_ps11_data_ops(DWORD *vs_first, DWORD *vs_count,
            V9X_PS11_VERTEX_COUNT * V9X_PS11_VERTEX_FLOATS);
     first = v9x_put_data(v9x_ps11_table, V9X_VI_PS11_TABLE_DWORDS);
     v9x_op(V9X_OP_VRAM_DATA, V9X_PS11_TABLE, first, V9X_VI_PS11_TABLE_DWORDS);
+    if (v9x_ps11_variant == V9X_PS11_BC_MAP) {
+        static DWORD map[V9X_PS11_BC_MAP_BYTES / 4ul];
+        DWORD n;
+
+        /* The map covers stage 1-3's places, which this program does not
+         * sample, so they are not written. */
+        /* Dword k: both colours 8000h | k (3-colour mode, so indices 0-2
+         * draw it). A texel drawn names the dword its colours came from;
+         * a transparent one had index 3 from wherever its indices came. */
+        for (n = 0ul; n < V9X_PS11_BC_MAP_BYTES / 4ul; ++n) {
+            map[n] = (0x8000ul | n) | ((0x8000ul | n) << 16);
+        }
+        first = v9x_put_data(map, V9X_PS11_BC_MAP_BYTES / 4ul);
+        v9x_op(V9X_OP_VRAM_DATA, V9X_PS11_TEXTURES, first,
+               V9X_PS11_BC_MAP_BYTES / 4ul);
+        v9x_op(V9X_OP_VRAM_FILL, V9X_PS11_TARGET, v9x_ps11_target_dwords(),
+               V9X_GUARD_VALUE);
+        return;
+    }
     for (stage = 0ul; stage < V9X_PS11_STAGES; ++stage) {
+        if (stage == 0ul && v9x_ps11_is_bc()) {
+            DWORD block[4];
+            DWORD bx;
+            DWORD by;
+
+            /* Block rows at the hypothesis's pitch; the padding between
+             * them is never written, as a placed texture's is not. */
+            for (by = 0ul; by < V9X_PS11_BC_BLOCKS; ++by) {
+                for (bx = 0ul; bx < V9X_PS11_BC_BLOCKS; ++bx) {
+                    DWORD words = v9x_bc_block(v9x_ps11_variant,
+                                               bx + V9X_PS11_BC_BLOCKS * by,
+                                               block);
+
+                    first = v9x_put_data(block, words);
+                    v9x_op(V9X_OP_VRAM_DATA,
+                           V9X_PS11_TEXTURES + by * v9x_ps11_bc_pitch() +
+                               bx * words * 4ul,
+                           first, words);
+                }
+            }
+            continue;
+        }
         for (y = 0ul; y < V9X_PS11_SIDE; ++y) {
             for (x = 0ul; x < V9X_PS11_SIDE; ++x) {
                 row[x] = v9x_ps11_texel(stage, x, y);
@@ -2069,10 +2303,15 @@ static void v9x_ps11_sample(void *user, v9x_u32 stage, v9x_u32 count,
     struct v9x_ps11_lookup *lookup = (struct v9x_ps11_lookup *)user;
     DWORD texel;
 
+    DWORD x;
+    DWORD y;
+
     (void)count;
-    texel = v9x_ps11_texel(stage,
-                           v9x_ps11_index(coords[0], &lookup->unjudged),
-                           v9x_ps11_index(coords[1], &lookup->unjudged));
+    x = v9x_ps11_index(coords[0], &lookup->unjudged);
+    y = v9x_ps11_index(coords[1], &lookup->unjudged);
+    texel = stage == 0ul && v9x_ps11_is_bc()
+                ? v9x_bc_texel(v9x_ps11_variant, x, y)
+                : v9x_ps11_texel(stage, x, y);
     rgba[0] = (float)(long)((texel >> 16) & 0xfful) / 255.0f;
     rgba[1] = (float)(long)((texel >> 8) & 0xfful) / 255.0f;
     rgba[2] = (float)(long)(texel & 0xfful) / 255.0f;
@@ -2108,10 +2347,16 @@ static void v9x_verify_ps11(const DWORD *target)
     DWORD guard = v9x_ps11_bpp16 ? V9X_PS11_GUARD16 : V9X_GUARD_VALUE;
     long slack = v9x_ps11_bpp16 ? 1l : 2l;
     long max_diff = 0l;
+    static DWORD bc_got[V9X_PS11_SIDE * V9X_PS11_SIDE];
+    static unsigned char bc_seen[V9X_PS11_SIDE * V9X_PS11_SIDE];
     DWORD x;
     DWORD y;
     DWORD i;
 
+    for (i = 0ul; i < V9X_PS11_SIDE * V9X_PS11_SIDE; ++i) {
+        bc_seen[i] = 0u;
+        bc_got[i] = 0ul;
+    }
     for (i = 0ul; i < v9x_ps11_program.count; ++i) {
         if (v9x_ps11_program.inst[i].op == V9X_PS11_TEXKILL) {
             kills |= 1ul << v9x_ps11_program.inst[i].dst_reg;
@@ -2169,6 +2414,17 @@ static void v9x_verify_ps11(const DWORD *target)
             if (lookup.unjudged) {
                 ++unjudged;
                 continue;
+            }
+            /* A BC program: the first judged pixel of each texel. */
+            if (v9x_ps11_is_bc()) {
+                int ignored = 0;
+                DWORD tx = v9x_ps11_index(inputs.tc[0][0], &ignored);
+                DWORD ty = v9x_ps11_index(inputs.tc[0][1], &ignored);
+
+                if (bc_seen[ty * V9X_PS11_SIDE + tx] == 0u) {
+                    bc_seen[ty * V9X_PS11_SIDE + tx] = 1u;
+                    bc_got[ty * V9X_PS11_SIDE + tx] = pixel;
+                }
             }
             if (!kept) {
                 if (pixel == guard) {
@@ -2256,6 +2512,36 @@ static void v9x_verify_ps11(const DWORD *target)
         v9x_number("Ps11", "FirstBadY", first_bad / V9X_PS11_PITCH);
         v9x_key("Ps11", "FirstBadPixel", first_bad_pixel);
         v9x_key("Ps11", "FirstBadExpected", first_bad_expected);
+    }
+    /* BcMap: every pixel of the rectangle, a row a key (Ryy, hex). */
+    if (v9x_ps11_variant == V9X_PS11_BC_MAP && !v9x_ps11_bpp16) {
+        static char line[(V9X_PS11_X1 - V9X_PS11_X0) * 8ul + 1ul];
+        char key[8];
+
+        for (y = V9X_PS11_Y0; y < V9X_PS11_Y1; ++y) {
+            for (x = V9X_PS11_X0; x < V9X_PS11_X1; ++x) {
+                v9x_hex(line + (x - V9X_PS11_X0) * 8ul,
+                        target[y * V9X_PS11_PITCH + x], 8);
+            }
+            line[(V9X_PS11_X1 - V9X_PS11_X0) * 8ul] = '\0';
+            key[0] = 'R';
+            key[1] = (char)('0' + y / 10ul);
+            key[2] = (char)('0' + y % 10ul);
+            key[3] = '\0';
+            v9x_text("BcMap", key, line);
+        }
+    }
+    /* Texel (x, y) as drawn, keys Ty x (FFFFFFFF where none was judged). */
+    if (v9x_ps11_is_bc()) {
+        char key[8];
+
+        for (i = 0ul; i < V9X_PS11_SIDE * V9X_PS11_SIDE; ++i) {
+            key[0] = 'T';
+            key[1] = (char)('0' + i / V9X_PS11_SIDE);
+            key[2] = (char)('0' + i % V9X_PS11_SIDE);
+            key[3] = '\0';
+            v9x_key("Bc", key, bc_seen[i] != 0u ? bc_got[i] : 0xfffffffful);
+        }
     }
     v9x_pass("Ps11", bad == 0ul && outside_bad == 0ul && ok != 0ul);
 }
