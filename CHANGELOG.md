@@ -29,6 +29,14 @@ build identifier so exact guest-tested binaries remain traceable.
   ([issue](docs/issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
   Three runs since, with no stall. Carrizo and Mullins share this code
   and have not run it yet.
+- **`ati` package, GCN: DX5 MODULATE keeps the texture's alpha.** On a
+  texture with alpha, MODULATE multiplied in the vertex's alpha too. In
+  3DMark 2001 SE's Nature that made the alpha test discard the tree
+  leaves in most frames. Direct3D takes the texture's alpha alone, and
+  now so does the driver, when an alpha test or a blend reads it
+  ([record](docs/decisions/2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md)).
+  Measured on the Oland. Carrizo and Mullins share the code and have not
+  run it.
 
 ## 0.53.1 - 2026-11-16
 
