@@ -58,6 +58,12 @@ shown as a byte offset:
   third row, as if the sampler took the 8x8 as 16 high.
 - PITCH 64 instead of 32 (`/bcp64`) changed nothing.
 
+The files in `sicp-bc-boot61` named `ps11-9-*` used an earlier marker:
+8-byte blocks, dword 0 naming the block (8000h | n) and dword 1 naming
+it differently (4000h | n). They show the same offsets, read as blocks;
+`/bcp64` was run only with that marker. The word-numbered runs are in
+`sicp-bcmap-dwords`.
+
 ## Hypotheses killed
 
 - **addrlib's linear-aligned layout for BC1**, with the T# as radv
