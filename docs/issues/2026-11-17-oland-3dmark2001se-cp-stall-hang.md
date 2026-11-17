@@ -168,10 +168,18 @@ Three stalls in four 3DMark 2001 SE runs on DDI 8 builds.
 
 Boot 64: step 7's build with the Oland's heap mapped at 128 MiB (as the
 Evergreen rows').
-- The frame grabs (`3dmark2001se-heap128-boot64/grabs-sheet.jpg`) show
-  Car Chase and then Dragothic fully textured at 20-38 fps. On the
-  16 MiB heap it had run at 0-2 fps with black buildings.
-- Then, by Michael's eye, it froze, and Windows rebooted by itself.
+- Michael's OBS recording of it (`Y:\MWD\videos\obs\2026-11-17
+  16-49-13.mkv`, on the host):
+  - Car Chase Low with the game clock holding for about 1.5 s at 08:57
+    and about 2 s at 11:50, at a few fps between;
+  - then the capture card's colour bars, the signal gone, at about 13:07
+    game time. The machine reset in the first test.
+- Correction: this entry first said its frame grabs showed Dragothic
+  textured at 20-38 fps on this build. The grab files persist on the
+  guest across boots. The run never left Car Chase, so the Dragothic
+  grabs (5-8 of `3dmark2001se-heap128-boot64/grabs-sheet.jpg`) are boot
+  63's. Which of grabs 0-4 are boot 64's is not known. What the 128 MiB
+  heap does to 3DMark's textures is not measured.
 - No new fault record: `V9XTRACE.INI` and `V9XCZCP.TXT` on the guest
   are still boot 63's (the same sequence, fence and status words). So
   the HAL did not reach its quarantine; this stop was harder than the

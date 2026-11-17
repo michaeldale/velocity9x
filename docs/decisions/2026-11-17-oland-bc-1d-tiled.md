@@ -144,9 +144,11 @@ slow to go on. His OBS recordings are on the host, not in the tree:
     `ati_hw16.c`'s measure hook).
   - At boot 64, V9XD32's available texture memory went from 0x00D00000
     to 0x07D00000, and T19 still passed.
-  - 3DMark 2001 SE's grabs show Dragothic textured at 20-38 fps. The run
-    then froze and Windows rebooted by itself, with no fault record (the
+  - 3DMark 2001 SE stuttered in Car Chase Low and the machine reset
+    there, with no fault record (Michael's recording; the
     [issue](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
+    The Dragothic grabs first cited here as this build's were left over
+    from boot 63. What the larger heap does to 3DMark is not measured.
   - 3DMark 2001 SE's texture tests, this step's gate, have still not run
     to the end.
 
