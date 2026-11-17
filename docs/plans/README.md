@@ -1,6 +1,7 @@
 # Plans
 
 - [Rendering service boundaries and workload replay](render-core-services-and-replay.md) - Proposed 2026-11-15; explicit services around the Direct3D processing core, complete workload capture/replay, and integration regression checks. Nothing implemented.
+- [Settings page: live health, temperature and better reporting](settings-page-live-health.md) - Proposed 2026-11-17; a refreshed Health group (GPU temperature now and peak, 3D engine running or given up, fault records present, texture memory free, published Direct3D features) and the same rows in the clipboard report. Starts with the Oland's measured sensor (CG_MULT_THERMAL_STATUS); nothing coded.
 
 Index reviewed against the plan files, the changelog and the README's card
 tables on 2026-11-10. Where a line says a plan's own status is behind, the
