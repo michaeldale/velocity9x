@@ -6,6 +6,30 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.54.0 - not yet released
 
+- **`ati` package: AMD Oland XT (1002:6610, GCN 1), new.** Measured on
+  one card, in W9QI0DAD.
+  - DirectDraw fills, copies and flips run on SI's DMA engine.
+  - Direct3D runs through the graphics command processor, with DDI 8 and
+    pixel shader 1.1: GCN code translated from the shader tokens. Also
+    two texture stages, cube maps, the signed formats Q8W8V8U8 and V8U8,
+    and DXT1-3 (sampled in 1D-thin tiles, which the measurements found;
+    the linear layout does not sample by the documented rule).
+  - OpenGL and Glide draw on the chip.
+  - The VESA BIOS reports 16 MiB on a 2 GiB card, so the driver maps
+    128 MiB of it, as the Evergreen rows do.
+  - 3DMark 2001 SE completes with compressed textures, and Nature draws
+    its lake ([record](docs/decisions/2026-11-17-oland-nature.md)). V9XD32
+    T19 fails only on FfSpecFog, by 3 pixels at 16 bpp and 17 at 32 bpp.
+    The GeForce 210 fails the same row, and neither is traced.
+- **`ati` package, GCN: the ring's read pointer is read from memory.**
+  On the Oland, the CP_RB0_RPTR register read past the write pointer.
+  The driver then thought the ring was full and polled until 3DMark
+  2001 SE's 3D engine stalled. The driver now reads the copy the
+  command processor writes back to memory, as Linux does
+  ([issue](docs/issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
+  Three runs since, with no stall. Carrizo and Mullins share this code
+  and have not run it yet.
+
 ## 0.53.1 - 2026-11-16
 
 - **`nvidia` package, GeForce 210: page flips.** Every Flip used to be
