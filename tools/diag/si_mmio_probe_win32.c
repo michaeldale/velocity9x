@@ -67,6 +67,11 @@ static const DWORD v9x_oland_ids[] = {
 /* Register offsets the decode reads back: Linux amdgpu's SI headers in
  * build\external\carrizo\linux\, dword indices times four. */
 #define V9X_SI_SRBM_SOFT_RESET     0x0e60ul
+/* Linux radeon sid.h: CG_MULT_THERMAL_STATUS and its CTF_TEMP field. */
+#define V9X_SI_CG_MULT_THERMAL_STATUS 0x0714ul
+#define V9X_SI_CTF_TEMP_SHIFT      9u
+#define V9X_SI_CTF_TEMP_MASK       0x1fful
+#define V9X_SI_CTF_TEMP_OVER       0x200ul
 #define V9X_SI_VM_L2_CNTL          0x1400ul
 #define V9X_SI_VM_CONTEXT0_CNTL    0x1410ul
 #define V9X_SI_VM_CONTEXT1_CNTL    0x1414ul
@@ -174,6 +179,7 @@ static const struct v9x_simm_register v9x_global[] = {
     { 0x00328ul, "VGA_HDP_CONTROL" },
     { 0x00330ul, "D1VGA_CONTROL" },
     { 0x00338ul, "D2VGA_CONTROL" },
+    { 0x00714ul, "CG_MULT_THERMAL_STATUS" },
     { 0x00e4cul, "SRBM_STATUS2" },
     { 0x00e50ul, "SRBM_STATUS" },
     { 0x00e60ul, "SRBM_SOFT_RESET" },
@@ -664,6 +670,15 @@ static void v9x_decode_global(void)
 
     v9x_decode_dma("Dma0", 0ul, V9X_SI_SOFT_RESET_DMA0);
     v9x_decode_dma("Dma1", V9X_SI_DMA1_OFFSET, V9X_SI_SOFT_RESET_DMA1);
+
+    /* The die temperature, as Linux radeon's si_get_temp reads it:
+     * CG_MULT_THERMAL_STATUS CTF_TEMP, bits 17:9, whole degrees C; bit 9
+     * of the field set means over range, which Linux reports as 255. */
+    value = (v9x_value(V9X_SI_CG_MULT_THERMAL_STATUS) >>
+             V9X_SI_CTF_TEMP_SHIFT) & V9X_SI_CTF_TEMP_MASK;
+    v9x_number("Decode", "TemperatureC",
+               (value & V9X_SI_CTF_TEMP_OVER) != 0ul ? 255ul
+                                                     : value & 0x1fful);
 }
 
 /* Each display controller's scanout. LfbOffset is the primary surface

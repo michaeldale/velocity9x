@@ -239,5 +239,39 @@ Next:
 - run what this card did before today, a build from before the
   pixel-shader work, or another driver's 3D, to see whether the card
   still runs;
-- if it fails too, swap the card or move it to another machine. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
+- if it fails too, swap the card or move it to another machine.
+
+## 2026-11-17, evening: not heat; the failures sit at the first test change
+
+- The control run ended with the machine wedged after Michael closed
+  3DMark (ping answered, the agent did not), at 5.6 min and 5,846 flips.
+  It needed a power-cycle.
+- V9XSIMM now reads the die temperature as Linux's `si_get_temp` does
+  (CG_MULT_THERMAL_STATUS 714h, CTF_TEMP bits 17:9). Its VxD gained the
+  4-byte window for that one register.
+  - Idle after the power-cycle: 33 C (R00714=00004221h).
+- Run 5 (`3dmark2001se-5-temperature`, the step 5 control package) read
+  the temperature at every poll: 33, 33, 34, 34, 34 C. The machine then
+  rebooted itself about two minutes in (a new driver load at 17:42:53),
+  at 1,423 flips.
+- So it is not heat. The card is cool to the touch, its fan turns, and
+  a case fan was added.
+
+Where the runs die:
+- 1,423 flips is the end of Car Chase Low, and several runs died near
+  there: boot 58 after 1,721 (Car Chase High), runs 2 and 3 at 949 and
+  2,558-3,680.
+- This issue's first record had a 16-bit Enable (a mode set) that
+  started at Car Chase High's load and never logged its end.
+- Michael's 17:17 recording held on that loading screen a long time
+  before High Detail drew at 1-13 fps.
+- The trail of run 5 has no Enable between the boot and the reboot. If
+  the trail's writes reached the disk, it died before the first test
+  change's mode set had even logged its start.
+
+Not known: whether the mode set at a test change is involved, whether
+the card is failing, or whether this was always latent and the
+afternoon's clean runs were luck. Nothing idles the CP or the DMA engine
+before the 16-bit side sets a mode through the VBE. Nothing measured
+says that matters. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
 ended in, or survived, a stall or a stop.

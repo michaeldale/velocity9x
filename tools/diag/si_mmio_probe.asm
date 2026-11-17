@@ -97,6 +97,7 @@ SIWindows label dword
     dd 0300h, 0314h     ; VGA_RENDER_CONTROL .. VGA_MEMORY_BASE_ADDRESS
     dd 0318h, 031ch     ; VGA_DISPBUF1_SURFACE_ADDR
     dd 0320h, 0340h     ; VGA_DISPBUF2 .. VGA_HW_DEBUG
+    dd 0714h, 0718h     ; CG_MULT_THERMAL_STATUS (radeon sid.h si_get_temp)
     dd 0e4ch, 0e54h     ; SRBM_STATUS2, SRBM_STATUS
     dd 0e60h, 0e64h     ; SRBM_SOFT_RESET
     dd 1400h, 1404h     ; VM_L2_CNTL
@@ -167,7 +168,7 @@ SIWindows label dword
     dd 7a8ch, 7a9ch
     dd 7aa0h, 7aa4h
     dd 7ad4h, 7ad8h
-SI_WINDOW_COUNT         equ 71
+SI_WINDOW_COUNT         equ 72
 
 SIResult label dword
     dd SI_MAGIC                 ; 00 magic
