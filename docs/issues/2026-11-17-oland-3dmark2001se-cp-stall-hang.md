@@ -5,7 +5,10 @@ Date: 2026-11-17
 Machine: W9QI0DAD (Oland XT `1002:6610`, FX-6300, Win98 SE), boot 58,
 the step 5 build of [ati-gcn-ps11.md](../plans/ati-gcn-ps11.md)
 (`V9XHAL build=1c631c63-dirty`: DDI 8, `draw_shader`, two texture
-stages). Status: open, seen once in two runs; cause not known.
+stages). Status: fixed on the Oland by 1101edcb (read pointer from
+writeback; see the last sections), three clean runs since. The register's
+bad value is avoided, not explained. Carrizo and Mullins, which share
+the code, are not yet run on the fix.
 
 Evidence: [`../probe/oland-ddi8-w9qi0dad-2026-11-17/3dmark2001se-1/`](../probe/oland-ddi8-w9qi0dad-2026-11-17/3dmark2001se-1/).
 

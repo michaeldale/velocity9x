@@ -1,6 +1,6 @@
 # GCN: pixel shader 1.1 and DDI 8, after the HD 4600 and the GT218
 
-Date: 2026-11-16. Status: steps 1 to 6 done on the Oland, step 7 in progress (4 and 5 below); steps 1, 2 and 3 recorded in
+Date: 2026-11-16. Status: steps 1 to 7 done on the Oland, step 8 (Nature) next; steps 1, 2 and 3 recorded in
 [`2026-11-17-gcn-ps11-translator.md`](../decisions/2026-11-17-gcn-ps11-translator.md).
 Step 2's `v9x_vi_ps11_build` (`vi_ps11.c`) runs 19 programs in the GCN
 model, each matching the interpreter, and each translates for GCN 2 and
@@ -41,10 +41,23 @@ Step 7 is done on the Oland in its sampling
 ([2026-11-17-oland-bc-1d-tiled.md](../decisions/2026-11-17-oland-bc-1d-tiled.md)).
 Linear-aligned BC does not sample by addrlib's rule; 1D-thin tiles under
 index 13 do, and the HAL places, locks and samples DXT in them. V9XD32
-T19 Dxt1 and Dxt3 pass at both depths. Its 3DMark gate is not met:
-the heap is the VBE's 16 MiB and 3DMark's DXT sets thrash it. Next:
-the Evergreen rows' 128 MiB heap for the Oland, then 3DMark 2001 SE
-again. The CP stall (three in four runs) is still open.
+T19 Dxt1 and Dxt3 pass at both depths. The VBE's 16 MiB heap thrashed
+under 3DMark's DXT sets, so the Oland now maps 128 MiB, as the Evergreen
+rows do (34fe64e1).
+
+The 3DMark gate is met on 1101edcb, which reads the ring's read pointer
+from writeback instead of CP_RB0_RPTR. That register read past the
+write pointer and was the likely cause of the CP stalls
+([the issue](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
+3DMark 2001 SE completed three times on one boot with compressed
+textures (17 of 17 tests, scores 2601, 2603, 2616), and the HAL never
+gave up the engine. The fix changed no
+V9XD32 verdict at either desktop depth and no V9XDDP key
+(`../probe/oland-cp-stall-w9qi0dad-2026-11-17/d32-rptr-wb-*`,
+`ddp-rptr-wb`). The frame grabs cover Car Chase only.
+
+Not yet run on the fix: Carrizo and Mullins, which share `vi_cp.c`.
+Not measured: non-square DXT chains and DXT cubes.
 
 Step 1: `vi_shader.c` gains
 `v9x_vi_vop3` and `v9x_vi_s_load`, and every new word is pinned to
