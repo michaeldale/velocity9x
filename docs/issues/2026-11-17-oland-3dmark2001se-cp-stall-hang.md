@@ -291,7 +291,88 @@ and put the GeForce 210 (10DE:0A65) back in W9QI0DAD.
 
 Two things changed before this run, the card and the RAM, so it does not
 separate them. Next: the Oland back in with the RAM still out. A clean
-run then points at the RAM; failures at the Oland card. Nothing idles the CP or the DMA engine
+run then points at the RAM; failures at the Oland card.
+
+## 2026-11-17, 18:21: the Oland with the RAM still out completes
+
+The setup:
+- the Oland refitted, the 8 GB still out;
+- boot 59's step 5 package (the control that crashed at 17:27 and
+  17:41), WININIT rename, hash-checked;
+- the profile's 640x480x4 fallback undone as above.
+
+3DMark 2001 SE (`3dmark2001se-7-oland-ram-out`) completed:
+- score 1913 in 7.5 minutes (boot 59 scored 1915 on this package);
+- `EngineIdleTimeouts` 0 before and after;
+- 155,168 RenderPrimitive calls on one boot;
+- 33-35 C throughout.
+
+So far this points at the RAM that was pulled, not at the card or the
+driver. It is one run; more follow. Nothing idles the CP or the DMA engine
 before the 16-bit side sets a mode through the VBE. Nothing measured
 says that matters. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
 ended in, or survived, a stall or a stop.
+
+## 2026-11-17, 18:37: the RAM-out machine stalls on the second run
+
+The same setup, run again (`3dmark2001se-8-oland-ram-out-2`): the run
+reached a score (3025) but `EngineIdleTimeouts` went 0 to 1 and
+`V9XCZCP.TXT` was written. A quarantined run still scores, so the score
+is not evidence of health. The RAM is not the whole story.
+
+## 2026-11-17, 18:51: the evidence build; the ring read pointer lies
+
+`vi_cp.c` gained, for the record only: CP_STALLED_STAT1-3 (8674h, 8678h,
+8670h), CP_BUSY_STAT (867Ch), CP_COHER_STATUS (85FCh), the read pointer
+the CP writes back to memory, four more reads of CP_RB0_RPTR, and a check
+of the hardware WPTR against the HAL's copy before every put
+(`V9XCPWPT.TXT` on a mismatch). Run `3dmark2001se-9-evidence` stalled
+(`EngineIdleTimeouts` 0 to 1; it still scored 6010). The record:
+
+| Field | Value |
+|---|---|
+| HAL wptr | 410h |
+| CP_RB0_RPTR, five reads | 480h each |
+| read pointer written back to memory | 400h |
+| CP_STALLED_STAT1 | 04008000h |
+| CP_STALLED_STAT2 / STAT3 | 00010000h / 00000400h |
+| CP_COHER_STATUS | 0 |
+| `V9XCPWPT.TXT` | not written |
+
+- The register read pointer (480h) is past the write pointer (410h). The
+  HAL computes free space from it, finds the ring "full", and spins on
+  that MMIO register.
+- The writeback copy (400h) is consistent: 10h dwords pending, the CP
+  behind the HAL as expected.
+- CP_STALLED_STAT1 bits 15 and 26 are, by the SI register headers,
+  RCIU_STALLED_ON_ME_READ and ME_WAITING_ON_REG_READ_DATA: the ME waits
+  on a register read that does not return. The HAL's tight polling of
+  CP registers through the same register interface is the likely
+  reason. Not proven; the fix below is consistent with it.
+- No WPTR mismatch: the HAL and the hardware agree on what was
+  submitted, so this is not a lost write.
+- The HAL never overwrites unconsumed ring space, so the stalled batch
+  was still intact in the ring (an earlier note here said otherwise).
+
+## 2026-11-17, 18:52-19:20: read the pointer from writeback; three clean runs
+
+`v9x_vi_cp_pending()` now reads the read pointer from the writeback
+dword (window WRITEBACK) instead of CP_RB0_RPTR, as Linux radeon does on
+SI. RB_NO_UPDATE is already clear on every chip this engine drives, so
+the CP updates that dword. Waiting for space now polls memory, not an
+MMIO register.
+
+Three 3DMark 2001 SE runs back to back on one boot, RAM still out:
+
+| Run | Score | EngineIdleTimeouts | Stall records |
+|---|---|---|---|
+| `3dmark2001se-10-rptr-wb-1` | 2601 | 0 to 0 | none |
+| `3dmark2001se-10-rptr-wb-2` | 2603 | 0 to 0 | none |
+| `3dmark2001se-10-rptr-wb-3` | 2616 | 0 to 0 | none |
+
+GPU temperature 33-35 C throughout (V9XSIMM, 714h). Three runs are not
+proof, but every earlier DDI 8 build on this card stalled within one or
+two runs. Still open:
+- whether the pulled RAM also caused the spontaneous resets: put it back
+  and repeat on this build;
+- why CP_RB0_RPTR reads past wptr at all (not explained, only avoided).

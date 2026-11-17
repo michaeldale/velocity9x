@@ -78,6 +78,17 @@
 #define V9X_VI_CP_CP_STAT             0x08680ul
 #define V9X_VI_CP_ME_CNTL             0x086d8ul
 #define V9X_VI_CP_RB0_RPTR            0x08700ul
+/* What the PFP, ME and CE wait on, and the CP's coherency state, for the
+ * fault record (gfx_6_0_d.h / Mesa's gfx6.json; the same offsets on
+ * GFX8). Read only. */
+#define V9X_VI_CP_STALLED_STAT3       0x08670ul
+#define V9X_VI_CP_STALLED_STAT1       0x08674ul
+#define V9X_VI_CP_STALLED_STAT2       0x08678ul
+#define V9X_VI_CP_BUSY_STAT           0x0867cul
+#define V9X_VI_CP_COHER_STATUS        0x085fcul
+/* The read pointer read this many times in the record, to see whether it
+ * moves. */
+#define V9X_VI_CP_RECORD_RPTR_READS   4ul
 #define V9X_VI_CP_RB_WPTR_DELAY       0x08704ul
 #define V9X_VI_CP_RB0_BASE            0x0c100ul
 #define V9X_VI_CP_RB0_CNTL            0x0c104ul
@@ -303,6 +314,13 @@ static const struct v9x_vi_cp_chip v9x_vi_cp_oland = {
 #define V9X_VI_CP_SLOW_SPINS   (V9X_VI_CP_SPINS / 16ul)
 #define V9X_VI_CP_FAULT_SLOW   0x56493357ul
 #define V9X_VI_CP_SLOW_PATH    V9X_DIAG_PATH("V9XCPSLW.TXT")
+/* The hardware write pointer found different from the HAL's at a put:
+ * another writer, or a lost write. Written once a HAL life, flushed. In
+ * every stall record so far the read pointer stood ahead of the write
+ * pointer (by E0h, E0h, B8h and 20h), which a CP cannot do unless the
+ * write pointer once stood further on. "VI3" and X. */
+#define V9X_VI_CP_FAULT_WPTR   0x56493358ul
+#define V9X_VI_CP_WPTR_PATH    V9X_DIAG_PATH("V9XCPWPT.TXT")
 
 #define V9X_VI_CP_NOT_TRIED 0
 #define V9X_VI_CP_RUNNING   1
@@ -440,6 +458,7 @@ static V9X_VI_CP_SUBMITTED v9x_vi_cp_history[V9X_VI_CP_HISTORY];
 static DWORD v9x_vi_cp_history_next;
 static DWORD v9x_vi_cp_arena_mark;
 static int v9x_vi_cp_slow_written;
+static int v9x_vi_cp_wptr_written;
 
 static void v9x_vi_cp_remember(const v9x_u32 *dwords, DWORD count,
                                DWORD fence, DWORD arena_at)
@@ -553,6 +572,25 @@ static void v9x_vi_cp_write_record(DWORD tag, const char *path, DWORD spins)
                       v9x_vi_cp_read32(v9x_vi_cp_chip->rlc_cntl));
     v9x_vi_cp_log_hex(file, "SCRATCH_REG0=",
                       v9x_vi_cp_read32(v9x_vi_cp_scratch_reg()));
+    v9x_vi_cp_log_hex(file, "CP_STALLED_STAT1=",
+                      v9x_vi_cp_read32(V9X_VI_CP_STALLED_STAT1));
+    v9x_vi_cp_log_hex(file, "CP_STALLED_STAT2=",
+                      v9x_vi_cp_read32(V9X_VI_CP_STALLED_STAT2));
+    v9x_vi_cp_log_hex(file, "CP_STALLED_STAT3=",
+                      v9x_vi_cp_read32(V9X_VI_CP_STALLED_STAT3));
+    v9x_vi_cp_log_hex(file, "CP_BUSY_STAT=",
+                      v9x_vi_cp_read32(V9X_VI_CP_BUSY_STAT));
+    v9x_vi_cp_log_hex(file, "CP_COHER_STATUS=",
+                      v9x_vi_cp_read32(V9X_VI_CP_COHER_STATUS));
+    /* The read pointer the CP writes back to memory, beside the
+     * register; and the register again a few times, whether it moves. */
+    v9x_vi_cp_log_hex(file, "RptrWriteback=",
+                      v9x_vi_cp_window(V9X_VI_CP_WINDOW_WRITEBACK)[0]);
+    for (index = 0ul; index < V9X_VI_CP_RECORD_RPTR_READS; ++index) {
+        v9x_vi_cp_delay();
+        v9x_vi_cp_log_hex(file, "CP_RB0_RPTR_again=",
+                          v9x_vi_cp_read32(V9X_VI_CP_RB0_RPTR));
+    }
     v9x_vi_cp_log_history(file, completed);
     v9x_vi_cp_log_text(file, "[Ring]\r\n");
     for (index = 0ul; index < V9X_VI_CP_RING_DWORDS; ++index) {
@@ -599,10 +637,25 @@ static void v9x_vi_cp_kick(void)
     v9x_vi_cp_write32(V9X_VI_CP_RB0_WPTR, v9x_vi_cp_wptr);
 }
 
-/* Dwords the CP has not yet read, between its read pointer and ours. */
+/*
+ * Dwords the CP has not yet read, between its read pointer and ours.
+ *
+ * The read pointer is the one the CP writes back to memory (RB0_RPTR_ADDR,
+ * the window's WRITEBACK), as Linux radeon reads it on these chips, not
+ * the CP_RB0_RPTR register. On the Oland, in 3DMark 2001 SE, the register
+ * read 480h four times over while the write-back said 400h and our write
+ * pointer stood at 410h: a register value past the write pointer, which
+ * read as a ring 0F90h dwords full. The ring-space wait then spun its
+ * whole budget on that register, the ME stood waiting on a register read
+ * of its own (CP_STALLED_STAT1 ME_WAITING_ON_REG_READ_DATA,
+ * RCIU_STALLED_ON_ME_READ; GRBM_STATUS SRBM_RQ_PENDING), and the CP was
+ * given up (docs\issues\2026-11-17-oland-3dmark2001se-cp-stall-hang.md).
+ * Every earlier stall record had the register past the write pointer too.
+ * Polling memory also keeps this wait off the register bus.
+ */
 static DWORD v9x_vi_cp_pending(void)
 {
-    DWORD rptr = v9x_vi_cp_read32(V9X_VI_CP_RB0_RPTR) &
+    DWORD rptr = v9x_vi_cp_window(V9X_VI_CP_WINDOW_WRITEBACK)[0] &
                  (V9X_VI_CP_RING_DWORDS - 1ul);
 
     return (v9x_vi_cp_wptr - rptr) & (V9X_VI_CP_RING_DWORDS - 1ul);
@@ -624,6 +677,13 @@ static int v9x_vi_cp_put(const v9x_u32 *dwords, DWORD count)
     if (count == 0ul || count >= V9X_VI_CP_RING_DWORDS / 2ul ||
         (count % V9X_VI_RING_ALIGN_DWORDS) != 0ul) {
         return 0;
+    }
+    if (!v9x_vi_cp_wptr_written &&
+        (v9x_vi_cp_read32(V9X_VI_CP_RB0_WPTR) &
+         (V9X_VI_CP_RING_DWORDS - 1ul)) != v9x_vi_cp_wptr) {
+        v9x_vi_cp_wptr_written = 1;
+        v9x_vi_cp_write_record(V9X_VI_CP_FAULT_WPTR, V9X_VI_CP_WPTR_PATH,
+                               v9x_vi_cp_read32(V9X_VI_CP_RB0_WPTR));
     }
     if (v9x_vi_cp_wptr + count > V9X_VI_CP_RING_DWORDS) {
         needed += V9X_VI_CP_RING_DWORDS - v9x_vi_cp_wptr;
