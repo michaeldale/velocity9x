@@ -162,6 +162,28 @@ static void test_built_shaders(void)
     CHECK(run(&sim, code, count));
     CHECK(sim.killed && !sim.exported && sim.done);
 
+    /* DX5 MODULATE on a texture with alpha keeps the texel's alpha: the
+     * diffuse alpha, 0.3 here, does not enter it (docs\issues\2026-11-17-
+     * oland-nature-tree-leaves-missing-most-frames.md, Nature's leaves).
+     * Texel alpha 0.75 passes GE 0.5; multiplied it would be 0.225 and
+     * killed. */
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_VI_PS_MODULATE;
+    ps.alpha_texel = 1ul;
+    ps.alpha_test = 1ul;
+    ps.alpha_func = V9X_VI_VOPC_CMPX_GE_F32;
+    ps.alpha_ref = bits(0.5f);
+    count = v9x_vi_shader_d3d_ps_built(&ps, code);
+    CHECK(count != 0ul && count <= V9X_VI_D3D_PS_DWORDS_MAX);
+    inputs(&sim, 1.0f);
+    sim.attr[0][3] = 0.3f;
+    CHECK(run(&sim, code, count));
+    CHECK(!sim.killed && sim.exported);
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        CHECK(NEAR(sim.mrt0[chan], texel_value[chan] * sim.attr[0][chan]));
+    }
+    CHECK(NEAR(sim.mrt0[3], texel_value[3]));
+
     /* Colour key on the texel: the key equal to it kills, one far away
      * does not. */
     memset(&ps, 0, sizeof(ps));

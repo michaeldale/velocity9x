@@ -82,3 +82,17 @@ frame:
 
 Diff the two frames. A per-frame flip sequence number in the log lines
 lets the frames be paired with the recording.
+
+## 2026-11-17, 20:10-20:32: cause found and fixed on the Oland
+
+A draw-logging measurement build showed every frame handing the engine
+the same draws and state; only the leaf vertices' diffuse alpha changed.
+It fell below 7Fh in about five frames of eight. The Oland's map gave DX5
+MODULATE the MODULATEALPHA shader, which multiplies that alpha in;
+Direct3D takes the texel's alone. Fixed by keeping the texel's alpha in
+the built PS. On boot 93 all seven cottage and bridge grabs show the
+trees in leaf, with nothing refused. Record:
+[2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md](../decisions/2026-11-17-oland-dx5-modulate-keeps-texel-alpha.md).
+
+Status: fixed on the Oland. The GeForce 210, Evergreen and R600-class
+maps fold MODULATE the same way and are not changed or measured.

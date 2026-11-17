@@ -315,6 +315,13 @@ struct v9x_vi_d3d_ps {
     v9x_u32 alpha_func;
     v9x_u32 alpha_ref;
     /*
+     * With op V9X_VI_PS_MODULATE: 1 keeps the texel's alpha instead of
+     * multiplying it by the diffuse's, which is Direct3D's DX5 MODULATE on
+     * a texture that has alpha. 0 multiplies all four channels
+     * (MODULATEALPHA, or a texture without alpha, whose texel alpha is 1).
+     */
+    v9x_u32 alpha_texel;
+    /*
      * Two texture units in one pass (docs\plans\ati-gcn-ps11.md step 4);
      * op and key are then not read. Unit N combines its texel Ct, At with
      * what came in, the diffuse for unit 0 and unit 0's result for unit 1,

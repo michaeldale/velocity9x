@@ -701,8 +701,11 @@ v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
             count += v9x_vi_kill_branch(out, count, branches, &branch_count);
         }
         if (ps->op == V9X_VI_PS_MODULATE) {
-            /* Texel times diffuse, both multiply operands VGPRs. */
-            for (chan = 0ul; chan < 4ul; ++chan) {
+            /* Texel times diffuse, both multiply operands VGPRs. With
+             * alpha_texel the alpha stays the texel's (v7): DX5 MODULATE
+             * on a texture with alpha ignores the diffuse's. */
+            for (chan = 0ul; chan < (ps->alpha_texel != 0ul ? 3ul : 4ul);
+                 ++chan) {
                 out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MUL_F32, 4ul + chan,
                                            V9X_VI_VGPR(8ul + chan),
                                            4ul + chan);

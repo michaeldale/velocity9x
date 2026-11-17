@@ -520,6 +520,59 @@ static void test_decal_alpha_and_opaque(void)
     CHECK(out.texture_opaque == 0ul);
 }
 
+/* DX5 MODULATE on a texture with alpha keeps the texel's alpha
+ * (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+ * frames.md): built with alpha_texel when the alpha test or a blend reads
+ * it; MODULATEALPHA, a texture without alpha, or a stage whose alpha the
+ * core says is the diffuse's multiply as before. */
+static void test_modulate_texel_alpha(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw out;
+    v9x_u32 ps;
+
+    /* Nature's leaves: alpha test GE 7Fh, SRCALPHA blend. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.alpha_test_enable = 1ul;
+    draw.alpha_func = V9X_R3D_CMP_GREATEREQUAL;
+    draw.alpha_ref = 0x7ful;
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT);
+    CHECK(built.op == V9X_VI_PS_MODULATE && built.alpha_texel == 1ul);
+
+    /* A blend alone takes the built PS too. */
+    draw.alpha_test_enable = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_BUILT && built.alpha_texel == 1ul);
+    CHECK(out.ps_kill == 0ul);
+
+    /* Neither: the alpha reaches nothing, the slot PS serves. */
+    draw.blend_enable = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_MODULATE);
+
+    /* MODULATEALPHA multiplies: blended, it keeps the slot PS. */
+    draw.blend_enable = 1ul;
+    draw.texture.op = V9X_R3D_TEXOP_MODULATEALPHA;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_MODULATE && built.alpha_texel == 0ul);
+
+    /* The core's diffuse-alpha stage, and a texture without alpha. */
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    draw.texture.alpha_diffuse = 1ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_MODULATE && built.alpha_texel == 0ul);
+    draw.texture.alpha_diffuse = 0ul;
+    texture.has_alpha = 0ul;
+    CHECK(map(&draw, &texture, 0ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(ps == V9X_D3D_VI_PS_MODULATE && built.alpha_texel == 0ul);
+}
+
 /* Two units (step 4 of docs\plans\ati-gcn-ps11.md): both textures mapped,
  * each combine translated; refused without unit1 (a one-unit engine),
  * with an op the PS lacks, or with a keyed texture. */
@@ -796,6 +849,7 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_blend();
     test_built();
     test_decal_alpha_and_opaque();
+    test_modulate_texel_alpha();
     test_explicit();
     test_two_units();
     test_shader_unit();

@@ -644,14 +644,29 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
             }
             v9x_d3d_vi_key(texture->format, texture->key, built);
         }
+        /* DX5 MODULATE on a texture with alpha takes the texel's alpha
+         * alone, unless the core says the stage's alpha is the diffuse's.
+         * The modulate slot PS multiplies all four channels, which is
+         * MODULATEALPHA: Nature's leaves, whose diffuse alpha swings below
+         * the alpha test's reference, vanished in two frames of three
+         * (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+         * frames.md). The alpha only reaches the picture through the
+         * alpha test or a blend, so only those draws take the built PS. */
+        if (draw->texture.op == V9X_R3D_TEXOP_MODULATE &&
+            texture->has_alpha != 0ul &&
+            draw->texture.alpha_diffuse == 0ul) {
+            built->alpha_texel = 1ul;
+        }
     } else {
         out->ps_vgprs = 0ul;
     }
 
-    /* Any of the three, or DECALALPHA: the PS built for this draw, with the
-     * op and the specular as the slot shader would have had them. */
+    /* Any of the three, DECALALPHA, or a texel alpha that a blend reads:
+     * the PS built for this draw, with the op and the specular as the slot
+     * shader would have had them. */
     if (built->alpha_test != 0ul || built->fog != 0ul || built->key != 0ul ||
-        *ps == V9X_D3D_VI_PS_DECALALPHA) {
+        *ps == V9X_D3D_VI_PS_DECALALPHA ||
+        (built->alpha_texel != 0ul && draw->blend_enable != 0ul)) {
         built->op = *ps == V9X_D3D_VI_PS_TEXTURE ? V9X_VI_PS_TEXTURE :
                     *ps == V9X_D3D_VI_PS_MODULATE ? V9X_VI_PS_MODULATE :
                     *ps == V9X_D3D_VI_PS_DECALALPHA ? V9X_VI_PS_DECALALPHA :
