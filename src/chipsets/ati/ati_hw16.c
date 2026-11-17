@@ -305,9 +305,9 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     }
 }
 
-/* Only the Evergreen chips and the R6xx ones answer: every other chip of the
- * family keeps the VBE's figure, which a zero leaves in place
- * (enable16.c). */
+/* Only the Evergreen chips, the R6xx ones and the Oland answer, each with
+ * the 128 MiB its row maps: every other chip of the family keeps the
+ * VBE's figure, which a zero leaves in place (enable16.c). */
 static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
                                                   unsigned long reported_bytes)
 {
@@ -319,7 +319,8 @@ static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
         device == &v9x_evergreen_redwood_device ||
         device == &v9x_evergreen_trinity_device ||
         device == &v9x_r600_rv630_device ||
-        device == &v9x_r600_rv610_device) {
+        device == &v9x_r600_rv610_device ||
+        device == &v9x_si_oland_device) {
         return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
     }
     return 0ul;

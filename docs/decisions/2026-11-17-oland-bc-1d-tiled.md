@@ -139,9 +139,16 @@ slow to go on. His OBS recordings are on the host, not in the tree:
 
 - **The heap.** The Evergreen rows map 128 MiB of BAR0 for theirs
   (`cedar_hw16.c`, after Quake 3 and 3DMark 2000 ran out of room in
-  16 MiB). The Oland still has the family's 16 MiB. That is the next
-  change, and 3DMark 2001 SE's texture tests (this step's gate) wait for
-  it.
+  16 MiB). The Oland had the family's 16 MiB.
+  - The commit after this record maps 128 MiB (`oland_hw16.c`,
+    `ati_hw16.c`'s measure hook).
+  - At boot 64, V9XD32's available texture memory went from 0x00D00000
+    to 0x07D00000, and T19 still passed.
+  - 3DMark 2001 SE's grabs show Dragothic textured at 20-38 fps. The run
+    then froze and Windows rebooted by itself, with no fault record (the
+    [issue](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md)).
+  - 3DMark 2001 SE's texture tests, this step's gate, have still not run
+    to the end.
 
 - Non-square DXT chains, and DXT cubes, are unmeasured.
 - DXT5 is published and no judged draw reads it (T19 has Dxt1 and Dxt3).

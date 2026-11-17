@@ -163,3 +163,22 @@ The run was also starved of video memory (a 16 MiB heap, textures
 thrashing; see
 [the step 7 record](../decisions/2026-11-17-oland-bc-1d-tiled.md)).
 Three stalls in four 3DMark 2001 SE runs on DDI 8 builds.
+
+## 2026-11-17, the 128 MiB heap build: a spontaneous reboot
+
+Boot 64: step 7's build with the Oland's heap mapped at 128 MiB (as the
+Evergreen rows').
+- The frame grabs (`3dmark2001se-heap128-boot64/grabs-sheet.jpg`) show
+  Car Chase and then Dragothic fully textured at 20-38 fps. On the
+  16 MiB heap it had run at 0-2 fps with black buildings.
+- Then, by Michael's eye, it froze, and Windows rebooted by itself.
+- No new fault record: `V9XTRACE.INI` and `V9XCZCP.TXT` on the guest
+  are still boot 63's (the same sequence, fence and status words). So
+  the HAL did not reach its quarantine; this stop was harder than the
+  stalls above.
+- The run script lost the agent and then met the next boot's logon
+  dialog, so its log's timeline is not the run's.
+
+Whether the reboot is this issue's stall, the larger heap, or neither
+is not known. Four of five 3DMark 2001 SE runs on DDI 8 builds have now
+ended in, or survived, a stall or a stop.

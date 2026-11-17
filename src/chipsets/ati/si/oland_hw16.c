@@ -31,6 +31,20 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/leaf16.h"
 
+/*
+ * The DirectDraw heap's mapping: 128 MiB of BAR0, as the Evergreen rows'
+ * (cedar_hw16.c), not the family's 16 MiB. The VBE reports 16 MiB on this
+ * 2 GiB card (its field's cap), and with DXT published 3DMark 2001 SE's
+ * Dragothic High and Nature textures thrashed the 10 MB that left after a
+ * 1024x768x32 flip chain: 130,775 texture locks and 23,760 draws refused
+ * in one run (docs\decisions\2026-11-17-oland-bc-1d-tiled.md, boot 63).
+ * 128 MiB lies inside the 256 MiB BAR0 below the ring window at BAR0 +
+ * 240 MiB, and the card's 2 GiB is more than the mini-VDD's map requires.
+ * The family's measure_video_memory hook takes the whole mapping as the
+ * heap for this chip (ati_hw16.c).
+ */
+#define V9X_OLAND_MAP_BYTES 0x08000000ul
+
 /* oland_engine16.c, in LEAFCODE. */
 extern void V9X_LEAF_FAR v9x_oland_fill_engine_leaf(
     unsigned long *control_linear_base,
@@ -91,10 +105,10 @@ const V9X_HW16_DEVICE v9x_si_oland_device = {
     v9x_oland_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
-    0ul,                    /* map_bytes: the family's 16 MiB */
+    V9X_OLAND_MAP_BYTES,
     0,                      /* engine_reserve_offset */
     /* Write-combined as Mullins' and Carrizo's rows are: eng_vi.c drains
-     * the write-combining buffers before every kick, and the 16 MiB
+     * the write-combining buffers before every kick, and the 128 MiB
      * mapping lies inside BAR0 apart from the ring window at 240 MiB. Not
      * measured on this card. */
     V9X_HW16_WC_MAPPING,
