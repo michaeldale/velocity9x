@@ -55,6 +55,8 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_VI_TEXTURE *texture)
     texture->has_key = 0ul;
     texture->key = 0ul;
     texture->levels = 1ul;
+    texture->cube = 0ul;
+    texture->snorm = 0ul;
 }
 
 static struct v9x_vi_d3d_ps built;
@@ -624,6 +626,111 @@ static void test_shader_unit(void)
           V9X_D3D_VI_REFUSE_TEXTURE_FORMAT);
 }
 
+/*
+ * Step 6: a cube and the signed formats in a shader stage's T#, and the
+ * fixed-function map refusing both. T# word 1 DATA_FORMAT 25:20 and
+ * NUM_FORMAT 29:26 (SNORM 1); word 3 DST_SEL 11:0 and TYPE 31:28 (CUBE
+ * 11); word 5 LAST_ARRAY 25:13 (Mesa's sid.h, radeonsi's
+ * si_make_texture_descriptor: a cube's last array 5, its depth field 0).
+ */
+static void test_shader_unit_cube_signed(void)
+{
+    V9X_R3D_DRAW draw;
+    V9X_D3D_VI_TEXTURE texture;
+    struct v9x_vi_tl_draw unit;
+    v9x_u32 sharps[V9X_VI_TEXTURE_SHARP_DWORDS];
+    v9x_u32 ps;
+    v9x_u32 format;
+    v9x_u32 bytes;
+
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    draw.texture.op = 0ul;
+    texture.width = 8ul;
+    texture.height = 8ul;
+    texture.pitch_texels = 16ul;
+    texture.levels = 2ul;
+    texture.cube = 1ul;
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    CHECK(unit.texture_cube == 1ul && unit.texture_signed == 0ul);
+    /* Face coordinates are on [0, 1]: a cube clamps whatever the stage's
+     * address mode (wrap here). */
+    CHECK(unit.texture_address == V9X_VI_TEX_ADDRESS_CLAMP);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK((sharps[3] >> 28) == 11ul);
+    CHECK(((sharps[4]) & 0x1ffful) == 0ul);
+    CHECK(((sharps[5] >> 13) & 0x1ffful) == 5ul &&
+          (sharps[5] & 0x1ffful) == 0ul);
+    /* The fixed-function map does not sample a cube. */
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, 0, HEAP_HIGH, HEAP_LOW, 0ul,
+                              &unit, 0, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_TEXTURE_SHAPE);
+
+    /* Q8W8V8U8: 8_8_8_8 SNORM, U V W Q as X Y Z W, not swapped to RGBA. */
+    base_texture(&draw, &texture);
+    draw.texture.op = 0ul;
+    texture.snorm = 1ul;
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    CHECK(unit.texture_signed == 1ul && unit.texture_cube == 0ul);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK(((sharps[1] >> 20) & 0x3ful) == V9X_VI_IMG_FORMAT_8_8_8_8);
+    CHECK(((sharps[1] >> 26) & 0xful) == 1ul);
+    CHECK((sharps[3] & 0xffful) == (4ul | (5ul << 3) | (6ul << 6) | (7ul << 9)));
+    CHECK((sharps[3] >> 28) == 9ul && sharps[5] == 0ul);
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    CHECK(v9x_d3d_vi_map_draw(&draw, &texture, 0, HEAP_HIGH, HEAP_LOW, 0ul,
+                              &unit, 0, &ps, &built) ==
+          V9X_D3D_VI_REFUSE_TEXTURE_FORMAT);
+
+    /* V8U8: 8_8 SNORM, two bytes, X Y 0 1. */
+    base_texture(&draw, &texture);
+    draw.texture.op = 0ul;
+    texture.format = V9X_VI_IMG_FORMAT_8_8;
+    texture.has_alpha = 0ul;
+    texture.snorm = 1ul;
+    texture.pitch_texels = 64ul;    /* rows of 128 bytes */
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_NONE);
+    v9x_vi_3d_texture_sharps(&unit, sharps);
+    CHECK(((sharps[1] >> 20) & 0x3ful) == V9X_VI_IMG_FORMAT_8_8);
+    CHECK(((sharps[1] >> 26) & 0xful) == 1ul);
+    CHECK((sharps[3] & 0xffful) == (4ul | (5ul << 3) | (0ul << 6) | (1ul << 9)));
+    /* 8_8 unsigned is no format here. */
+    texture.snorm = 0ul;
+    CHECK(v9x_d3d_vi_map_shader_unit(&draw.texture, &texture, HEAP_HIGH,
+                                     HEAP_LOW, &unit) ==
+          V9X_D3D_VI_REFUSE_TEXTURE_FORMAT);
+
+    /* The formats by their pixel formats. */
+    CHECK(v9x_d3d_vi_signed_format(V9X_D3D_VI_DDPF_FOURCC,
+                                   V9X_D3D_VI_D3DFMT_Q8W8V8U8, 0ul, 0ul, 0ul,
+                                   0ul, &format, &bytes) &&
+          format == V9X_VI_IMG_FORMAT_8_8_8_8 && bytes == 4ul);
+    CHECK(v9x_d3d_vi_signed_format(V9X_D3D_VI_DDPF_D3DFORMAT,
+                                   V9X_D3D_VI_D3DFMT_V8U8, 0ul, 0ul, 0ul,
+                                   0ul, &format, &bytes) &&
+          format == V9X_VI_IMG_FORMAT_8_8 && bytes == 2ul);
+    CHECK(v9x_d3d_vi_signed_format(V9X_D3D_VI_DDPF_BUMPDUDV, 0ul, 16ul,
+                                   0x00fful, 0xff00ul, 0ul, &format,
+                                   &bytes) &&
+          format == V9X_VI_IMG_FORMAT_8_8 && bytes == 2ul);
+    /* Not these: X8L8V8U8 (no luminance read here), DXT1, plain RGB. */
+    CHECK(!v9x_d3d_vi_signed_format(V9X_D3D_VI_DDPF_BUMPDUDV, 0ul, 32ul,
+                                    0x00fful, 0xff00ul, 0x00ff0000ul,
+                                    &format, &bytes));
+    CHECK(!v9x_d3d_vi_signed_format(V9X_D3D_VI_DDPF_FOURCC, 0x31545844ul,
+                                    0ul, 0ul, 0ul, 0ul, &format, &bytes));
+    CHECK(!v9x_d3d_vi_signed_format(0x40ul, 0ul, 32ul, 0x00ff0000ul,
+                                    0x0000ff00ul, 0x000000fful, &format,
+                                    &bytes));
+}
+
 unsigned int v9x_run_d3d_vi_map_tests(void)
 {
     failures = 0u;
@@ -638,5 +745,6 @@ unsigned int v9x_run_d3d_vi_map_tests(void)
     test_explicit();
     test_two_units();
     test_shader_unit();
+    test_shader_unit_cube_signed();
     return failures;
 }

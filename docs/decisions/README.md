@@ -222,6 +222,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-17 Oland: two texture stages in one pass (a per-draw two-unit PS with a descriptor table, a TL2 VS), V9XD32 T12 and T13's two-unit form passing; 3DMark 2000 scored once and faulted twice, the known 004E23D1 over-read in its own code](2026-11-17-oland-two-texture-stages.md)
 - [2026-11-17 GCN: pixel shader 1.1 as GCN 3 code, 19 programs held to the interpreter in a host model, then six on the Oland at 32 and 16 bpp with no bad pixel (T# Z Y X W and COMP_SWAP put red in x; cubes unmeasured)](2026-11-17-gcn-ps11-translator.md)
 - [2026-11-17 Oland: draw_shader in the HAL and DDI 8; V9XD32 T19 runs with the GT218's verdicts (Cube, Normal wait for step 6; FfSpecFog 3 pixels untraced); 3DMark 2001 SE scored 1915 once and hung once](2026-11-17-oland-draw-shader-ddi8.md)
+- [2026-11-17 Oland: cube maps placed whole and sampled through a cube T#, Q8W8V8U8 and V8U8 read as SNORM; V9XD32 T19 Cube and Normal pass at R5G6B5 and X8R8G8B8; 3DMark 2001 SE 3101 with no shader draw refused](2026-11-17-oland-cubes-signed-formats.md)
 
 ## Matrox
 

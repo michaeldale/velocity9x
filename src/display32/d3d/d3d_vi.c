@@ -117,10 +117,14 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_oland_limits = {
 
 /* The T# data format of a texture format the sampler reads, or UNKNOWN. */
 static DWORD v9x_d3d_vi_format_of(const V9X_DD_SURFACE_LCL *surface,
-                                  DWORD *bytes_out, DWORD *has_alpha)
+                                  DWORD *bytes_out, DWORD *has_alpha,
+                                  DWORD *snorm)
 {
     const V9X_DDPIXELFORMAT *format;
+    v9x_u32 signed_format;
+    v9x_u32 signed_bytes;
 
+    *snorm = 0ul;
     if (surface == 0 || surface->lpGbl == 0) {
         return V9X_D3D_VI_TEXTURE_UNKNOWN;
     }
@@ -129,8 +133,20 @@ static DWORD v9x_d3d_vi_format_of(const V9X_DD_SURFACE_LCL *surface,
     } else {
         format = &v9x_hal->info.vmiData.ddpfDisplay;
     }
+    /* Q8W8V8U8 and V8U8, which the core publishes where pixel shaders run
+     * and only a shader stage reads (step 6). */
     if ((format->dwFlags & V9X_DDPF_RGB) == 0ul) {
-        return V9X_D3D_VI_TEXTURE_UNKNOWN;
+        if (!v9x_d3d_vi_signed_format(format->dwFlags, format->dwFourCC,
+                                      format->dwRGBBitCount,
+                                      format->dwRBitMask, format->dwGBitMask,
+                                      format->dwBBitMask, &signed_format,
+                                      &signed_bytes)) {
+            return V9X_D3D_VI_TEXTURE_UNKNOWN;
+        }
+        *bytes_out = signed_bytes;
+        *has_alpha = signed_bytes == 4ul ? 1ul : 0ul;
+        *snorm = 1ul;
+        return signed_format;
     }
     if (format->dwRGBBitCount == 16ul &&
         (format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
@@ -192,11 +208,12 @@ static int v9x_d3d_vi_texture_format(const V9X_DD_SURFACE_LCL *surface,
 {
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
+    DWORD snorm;
 
     if (format_out == 0) {
         return 0;
     }
-    *format_out = v9x_d3d_vi_format_of(surface, &bytes, &has_alpha);
+    *format_out = v9x_d3d_vi_format_of(surface, &bytes, &has_alpha, &snorm);
     return *format_out != V9X_D3D_VI_TEXTURE_UNKNOWN;
 }
 
@@ -429,19 +446,90 @@ static void v9x_d3d_vi_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
     texture->levels = found;
 }
 
+/*
+ * Cubes, step 6 of docs\plans\ati-gcn-ps11.md, as the HD 4600's step 5c
+ * (d3d_hsw.c). The Direct3D 8 runtime hands a video-memory cube to
+ * CreateSurface whole: six faces in D3DCUBEMAP_FACES order, each face's
+ * top and then its levels, each surface naming its face in DDSCAPS2 (the
+ * 4570, boot 131). The sampler reads a cube as one surface of six array
+ * slices, so create_surface places it as one block in
+ * v9x_vi_3d_cube_layout's order, each surface found by its face bit and its
+ * edge. The block starts with +X's top, which CreateSurfaceEx names and a
+ * texture record carries; the cube is remembered by that offset, and a
+ * texture there samples as a cube. HAL statics are shared by every
+ * process, as video memory is.
+ */
+#define V9X_D3D_VI_CUBES 64ul
+
+typedef struct v9x_d3d_vi_cube {
+    DWORD base;                 /* +X top's offset; 0 for a free slot */
+    DWORD side;
+    DWORD levels;
+} V9X_D3D_VI_CUBE;
+
+static V9X_D3D_VI_CUBE v9x_d3d_vi_cubes[V9X_D3D_VI_CUBES];
+
+/* The placed cube whose +X top is at offset, or null. */
+static const V9X_D3D_VI_CUBE *v9x_d3d_vi_cube_at(DWORD offset)
+{
+    DWORD n;
+
+    for (n = 0ul; offset != 0ul && n < V9X_D3D_VI_CUBES; ++n) {
+        if (v9x_d3d_vi_cubes[n].base == offset) {
+            return &v9x_d3d_vi_cubes[n];
+        }
+    }
+    return 0;
+}
+
+/* A surface's DDSCAPS2, from its DDRAWI_DDRAWSURFACE_MORE; the runtime's
+ * own halves are live while CreateSurface runs. */
+static DWORD v9x_d3d_vi_caps2(const V9X_DD_SURFACE_LCL *surface)
+{
+    const BYTE *more;
+
+    if (surface->lpSurfMore == 0ul) {
+        return 0ul;
+    }
+    more = (const BYTE *)surface->lpSurfMore;
+    if (IsBadReadPtr(more, V9X_DD_SURFACE_MORE_CAPS2 + 4ul)) {
+        return 0ul;
+    }
+    return *(const DWORD *)(more + V9X_DD_SURFACE_MORE_CAPS2);
+}
+
+/* The face a surface's DDSCAPS2 names, 0-5 from +X, or 6 for none or
+ * more than one. */
+static DWORD v9x_d3d_vi_cube_face(DWORD caps2)
+{
+    DWORD bits = caps2 & V9X_DDSCAPS2_CUBEMAP_ALLFACES;
+    DWORD face;
+
+    for (face = 0ul; face < V9X_VI_CUBE_FACES; ++face) {
+        if (bits == (0x400ul << face)) {
+            return face;
+        }
+    }
+    return V9X_VI_CUBE_FACES;
+}
+
 /* The bound texture's level 0 as the map takes it. */
 static void v9x_d3d_vi_resolve_texture(const V9X_R3D_TEXTURE *sampler,
                                        V9X_D3D_VI_TEXTURE *texture)
 {
     const V9X_DD_SURFACE_LCL *surface =
         (const V9X_DD_SURFACE_LCL *)sampler->object;
+    const V9X_D3D_VI_CUBE *cube;
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
+    DWORD snorm = 0ul;
     DWORD offset;
 
     texture->format = V9X_D3D_VI_TEXTURE_UNKNOWN;
     texture->has_key = 0ul;
     texture->key = 0ul;
+    texture->cube = 0ul;
+    texture->snorm = 0ul;
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
@@ -452,10 +540,12 @@ static void v9x_d3d_vi_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     if (offset == 0xfffffffful) {
         return;
     }
-    texture->format = v9x_d3d_vi_format_of(surface, &bytes, &has_alpha);
+    texture->format = v9x_d3d_vi_format_of(surface, &bytes, &has_alpha,
+                                           &snorm);
     if (texture->format == V9X_D3D_VI_TEXTURE_UNKNOWN) {
         return;
     }
+    texture->snorm = snorm;
     texture->has_alpha = has_alpha;
     texture->width = (DWORD)surface->lpGbl->wWidth;
     texture->height = (DWORD)surface->lpGbl->wHeight;
@@ -465,6 +555,14 @@ static void v9x_d3d_vi_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         texture->has_key = 1ul;
         texture->key = surface->ddckCKSrcBltLow;
+    }
+    /* A cube's other faces are attached to its +X top like levels, so its
+     * levels come from the placement, not a walk of the attachments. */
+    cube = v9x_d3d_vi_cube_at(offset);
+    if (cube != 0) {
+        texture->cube = 1ul;
+        texture->levels = cube->levels;
+        return;
     }
     if ((surface->ddsCaps & V9X_DDSCAPS_MIPMAP) != 0ul) {
         v9x_d3d_vi_resolve_chain(surface, bytes, texture);
@@ -743,8 +841,10 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
  * into x (texture_rgba) and the CB swaps x back to red's byte (SWAP_ALT
  * for XRGB8888, SWAP_STD_REV for RGB565), the convention V9XSICP /ps11
  * measured. The wide vertices come unclipped and go to the PA's guard
- * band, as the TL vertices do. Not drawn yet: cube maps and the texm3x3
- * lookups (step 6), refused and counted by the core as dropped.
+ * band, as the TL vertices do. A stage whose texture is a cube
+ * create_surface placed samples it as one (step 6), and so do texm3x3tex
+ * and texm3x3spec there; the translator refuses them on a 2D stage. A
+ * signed texture reads its channels in memory order (texture_signed).
  */
 #define V9X_D3D_VI_PS_CODE_MAX   512ul
 #define V9X_D3D_VI_PS_ENTRIES    8ul
@@ -756,6 +856,7 @@ typedef struct v9x_d3d_vi_ps_entry {
     DWORD serial;
     DWORD projected;
     DWORD unbound;
+    DWORD cubes;
     DWORD fog;
     DWORD alpha_test;
     DWORD alpha_func;
@@ -775,7 +876,8 @@ static V9X_R3D_DRAW v9x_d3d_vi_ps_plain;
 /* The entry for this shader and draw: found, or the next one taken and
  * its program translated for SI. Null when it does not translate. */
 static V9X_D3D_VI_PS_ENTRY *v9x_d3d_vi_ps_entry(const V9X_R3D_SHADER *shader,
-                                                DWORD unbound, DWORD fog,
+                                                DWORD unbound, DWORD cubes,
+                                                DWORD fog,
                                                 DWORD alpha_test,
                                                 DWORD alpha_func)
 {
@@ -789,7 +891,8 @@ static V9X_D3D_VI_PS_ENTRY *v9x_d3d_vi_ps_entry(const V9X_R3D_SHADER *shader,
         if (entry->program == shader->program &&
             entry->serial == shader->serial &&
             entry->projected == shader->env.projected &&
-            entry->unbound == unbound && entry->fog == fog &&
+            entry->unbound == unbound && entry->cubes == cubes &&
+            entry->fog == fog &&
             entry->alpha_test == alpha_test &&
             entry->alpha_func == alpha_func) {
             return entry;
@@ -799,7 +902,7 @@ static V9X_D3D_VI_PS_ENTRY *v9x_d3d_vi_ps_entry(const V9X_R3D_SHADER *shader,
     v9x_d3d_vi_ps_next = (n + 1ul) % V9X_D3D_VI_PS_ENTRIES;
     entry = &v9x_d3d_vi_ps_cache[n];
     entry->program = 0;
-    desc.cube = 0ul;
+    desc.cube = cubes;
     desc.projected = shader->env.projected;
     desc.unbound = unbound;
     desc.fog = fog;
@@ -814,6 +917,7 @@ static V9X_D3D_VI_PS_ENTRY *v9x_d3d_vi_ps_entry(const V9X_R3D_SHADER *shader,
     entry->serial = shader->serial;
     entry->projected = shader->env.projected;
     entry->unbound = unbound;
+    entry->cubes = cubes;
     entry->fog = fog;
     entry->alpha_test = alpha_test;
     entry->alpha_func = alpha_func;
@@ -858,6 +962,7 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     DWORD heap_low;
     DWORD sampled;
     DWORD bound = 0ul;
+    DWORD cubes = 0ul;
     DWORD stage;
     DWORD index;
     DWORD chunk;
@@ -873,18 +978,6 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     }
     started = V9X_TIME_BEGIN();
 
-    /* No cube maps and no texm3x3 lookups yet (step 6). */
-    for (index = 0ul; index < shader->program->count; ++index) {
-        DWORD op = shader->program->inst[index].op;
-
-        if (op == V9X_PS11_TEXM3X3TEX || op == V9X_PS11_TEXM3X3SPEC ||
-            op == V9X_PS11_TEXM3X3VSPEC) {
-            v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_TEXTURE_SHAPE);
-            V9X_TIME_END(V9X_TIME_DECODE, started);
-            return 0;
-        }
-    }
-
     /* The fixed-function map for target, depth, blend, and the alpha
      * test's and fog's terms: a draw with no texture, specular or key. */
     v9x_d3d_vi_ps_plain = *draw;
@@ -897,6 +990,8 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     v9x_d3d_vi_ps_plain.color_key_enable = 0ul;
     none.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
     none.levels = 1ul;
+    none.cube = 0ul;
+    none.snorm = 0ul;
     reason = v9x_d3d_vi_map_draw(&v9x_d3d_vi_ps_plain, &none, 0, high,
                                  heap_low, v9x_d3d_vi_depth_bytes(draw),
                                  &state, 0, &ps, &built);
@@ -915,11 +1010,6 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
         if ((sampled & (1ul << stage)) == 0ul ||
             shader->texture[stage].object == 0) {
             continue;
-        }
-        if ((shader->env.cube & (1ul << stage)) != 0ul) {
-            v9x_d3d_vi_count_refusal(draw, V9X_D3D_VI_REFUSE_TEXTURE_SHAPE);
-            V9X_TIME_END(V9X_TIME_DECODE, started);
-            return 0;
         }
         resolved.format = V9X_D3D_VI_TEXTURE_UNKNOWN;
         resolved.levels = 1ul;
@@ -941,6 +1031,11 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
                 sharps[8ul + index];
         }
         bound |= 1ul << stage;
+        /* The core marks no stage a cube (d3d_core.c): a stage is one
+         * where its texture is a cube create_surface placed. */
+        if (resolved.cube != 0ul) {
+            cubes |= 1ul << stage;
+        }
     }
     v9x_vi_ps11_constants(shader->program, &shader->env,
                           v9x_d3d_vi_ps_table);
@@ -951,7 +1046,7 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     v9x_d3d_vi_ps_table[V9X_VI_PS11_FOG + 2ul] = built.fog_colour[0];
     v9x_d3d_vi_ps_table[V9X_VI_PS11_ALPHA_REF] = built.alpha_ref;
 
-    entry = v9x_d3d_vi_ps_entry(shader, sampled & ~bound,
+    entry = v9x_d3d_vi_ps_entry(shader, sampled & ~bound, cubes,
                                 built.fog != 0ul ? 1ul : 0ul,
                                 built.alpha_test != 0ul ? 1ul : 0ul,
                                 built.alpha_test != 0ul ? built.alpha_func
@@ -1142,6 +1237,93 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 }
 
 /*
+ * A video-memory cube, placed whole in v9x_vi_3d_cube_layout's order (the
+ * note above v9x_d3d_vi_cubes): six square faces of equal levels, +X's top
+ * first, and a free slot to remember it by. Declined, for DirectDraw to
+ * place, when any of that does not hold; a cube DirectDraw places is
+ * sampled as nothing usable, as on the HD 4600 before its step 5c.
+ */
+static DWORD v9x_d3d_vi_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
+                                    DWORD bytes)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    v9x_u32 level_offsets[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 slices[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 level_pitches[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 offsets[V9X_VI_CUBE_FACES * V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_VI_CUBE_FACES * V9X_VI_MIP_LEVELS_MAX];
+    DWORD seen[V9X_VI_CUBE_FACES];
+    V9X_D3D_VI_CUBE *slot = 0;
+    v9x_u32 total;
+    DWORD side = (DWORD)list[0]->lpGbl->wWidth;
+    DWORD levels = data->dwSCnt / V9X_VI_CUBE_FACES;
+    DWORD index;
+    DWORD face;
+    DWORD level;
+    DWORD base;
+
+    if (data->dwSCnt % V9X_VI_CUBE_FACES != 0ul || levels == 0ul ||
+        levels > V9X_VI_MIP_LEVELS_MAX ||
+        side != (DWORD)list[0]->lpGbl->wHeight ||
+        side > v9x_d3d_vi_limits.texture_size_max ||
+        !v9x_vi_3d_cube_layout(bytes, side, levels, level_offsets, slices,
+                               level_pitches, &total)) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    for (index = 0ul; index < V9X_D3D_VI_CUBES; ++index) {
+        if (v9x_d3d_vi_cubes[index].base == 0ul) {
+            slot = &v9x_d3d_vi_cubes[index];
+            break;
+        }
+    }
+    if (slot == 0) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+
+    /* Each surface's face from its DDSCAPS2 and level from its edge, each
+     * pair once; +X's top must lead the list, the block's first byte. */
+    for (face = 0ul; face < V9X_VI_CUBE_FACES; ++face) {
+        seen[face] = 0ul;
+    }
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        const V9X_DD_SURFACE_LCL *surface = list[index];
+        DWORD edge;
+
+        if (surface == 0 || surface->lpGbl == 0 ||
+            (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        face = v9x_d3d_vi_cube_face(v9x_d3d_vi_caps2(surface));
+        edge = (DWORD)surface->lpGbl->wWidth;
+        for (level = 0ul; level < levels; ++level) {
+            if (edge == ((side >> level) != 0ul ? side >> level : 1ul)) {
+                break;
+            }
+        }
+        if (face >= V9X_VI_CUBE_FACES || level == levels ||
+            (DWORD)surface->lpGbl->wHeight != edge ||
+            (seen[face] & (1ul << level)) != 0ul ||
+            (index == 0ul && (face != 0ul || level != 0ul))) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        seen[face] |= 1ul << level;
+        offsets[index] = level_offsets[level] + face * slices[level];
+        pitches[index] = level_pitches[level] * bytes;
+    }
+    if (v9x_d3d_place_chain(data, V9X_D3D_VI_SURFACE_ALIGN, total, offsets,
+                            pitches, &base) != 0ul) {
+        return V9X_DDHAL_DRIVER_NOTHANDLED;
+    }
+    slot->base = base;
+    slot->side = side;
+    slot->levels = levels;
+    ++v9x_hal->d3d_diagnostics.texture_placed;
+    v9x_hal->d3d_diagnostics.texture_placed_bytes += total;
+    data->ddRVal = V9X_DD_OK;
+    return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/*
  * Placement, as Cedar's (d3d_eg.c), on GFX8's rules (d3d_vi_map.h). An
  * offscreen render target alone gets its rows whole 64 bytes and whole
  * 8-pixel tiles, 256-aligned. A Z16 buffer gets its rows whole 64 bytes
@@ -1151,7 +1333,10 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
  * 64 bytes, which a linear-aligned T# needs. A mip chain goes in one
  * block, each level where the sampler finds it from the base
  * (v9x_vi_3d_mip_layout); a chain that layout does not take is left to
- * DirectDraw, and only its level 0 is sampled.
+ * DirectDraw, and only its level 0 is sampled. A cube goes in one block
+ * too (v9x_d3d_vi_create_cube). A signed texture is placed here like any
+ * other: the runtime describes Q8W8V8U8 as a FourCC with no bit count,
+ * which DirectDraw cannot size (the HD 4600, boot 133).
  */
 static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 {
@@ -1163,6 +1348,7 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_u32 total;
     DWORD bytes = 0ul;
     DWORD has_alpha = 0ul;
+    DWORD snorm = 0ul;
     DWORD width;
     DWORD height;
     DWORD level;
@@ -1216,9 +1402,12 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
             width > v9x_d3d_vi_limits.texture_size_max ||
             height > v9x_d3d_vi_limits.texture_size_max ||
-            v9x_d3d_vi_format_of(surface, &bytes, &has_alpha) ==
+            v9x_d3d_vi_format_of(surface, &bytes, &has_alpha, &snorm) ==
                 V9X_D3D_VI_TEXTURE_UNKNOWN) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        if ((v9x_d3d_vi_caps2(surface) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
+            return v9x_d3d_vi_create_cube(data, bytes);
         }
         if (data->dwSCnt > 1ul) {
             /* Each level half the last, as v9x_vi_3d_mip_layout lays
@@ -1408,6 +1597,8 @@ static void v9x_d3d_vi_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     const V9X_DD_SURFACE_LCL *surface =
         data != 0 ? (const V9X_DD_SURFACE_LCL *)data->lpDDSurface : 0;
     DWORD slot;
+    DWORD offset;
+    DWORD n;
 
     /* Destroyed while locked: its memory is no longer a lock to undo. */
     if (surface != 0 && surface->lpGbl != 0 &&
@@ -1417,7 +1608,17 @@ static void v9x_d3d_vi_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
             v9x_d3d_vi_locked[slot] = 0ul;
         }
     }
-    (void)v9x_d3d_place_release(data, V9X_D3D_VI_SURFACE_ALIGN);
+    /* A cube's +X top frees the block; forget the cube that started there,
+     * by the offset it had before the release. */
+    offset = surface != 0 && surface->lpGbl != 0 ? v9x_surface_offset(surface)
+                                                 : 0xfffffffful;
+    if (v9x_d3d_place_release(data, V9X_D3D_VI_SURFACE_ALIGN)) {
+        for (n = 0ul; n < V9X_D3D_VI_CUBES; ++n) {
+            if (v9x_d3d_vi_cubes[n].base == offset) {
+                v9x_d3d_vi_cubes[n].base = 0ul;
+            }
+        }
+    }
 }
 
 /* Positional: V9X_D3D_ENGINE_OPS is append-only (d3d_internal.h). */

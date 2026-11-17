@@ -50,13 +50,19 @@ Evidence: [`../probe/oland-ddi8-w9qi0dad-2026-11-17/`](../probe/oland-ddi8-w9qi0
 
 ## Measured
 
-V9XD32, 32 bpp and 16 bpp (R5G6B5) at boot 58:
+V9XD32 at boot 58, run with and without `/bpp16`:
+
+Correction (step 6, same day): both runs had a 16 bpp desktop
+(`T19DisplayFormat=0x17`, R5G6B5, tolerance 9). T19 draws in the
+desktop's format, so at this step it was measured at R5G6B5 only, not at
+32 bpp as first written here. Step 6's runs include a 32 bpp desktop
+([2026-11-17-oland-cubes-signed-formats.md](2026-11-17-oland-cubes-signed-formats.md)).
 
 - T12, T13, T14, T15, T16: PASS, as at boot 54. T18: no T&L device, as
   before.
 - T17: the HAL reports pixel shader 1.1 (`FFFF0101`).
 - T19 used to skip with no pixel shader. It now runs, with the same
-  verdicts at both depths:
+  verdicts in both runs (both at R5G6B5, above):
   - pass: Push, FourTex, Kill, Bem, PushFog, KillFog, FfDot3, FfDot3F,
     FfBem, FfBem3, FfSpec, FfSpecU, FfSpec2, FfTwo.
   - mismatch: Cube and Normal. Both sample a cube map, refused until

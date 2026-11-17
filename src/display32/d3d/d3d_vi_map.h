@@ -55,7 +55,32 @@ typedef struct v9x_d3d_vi_texture {
     v9x_u32 offset;
     v9x_u32 has_key;
     v9x_u32 key;                /* the source key, in the texture's format */
+    /* Step 6: a cube the engine placed (its six faces at offset, laid out
+     * by v9x_vi_3d_cube_layout, levels each), and signed texels
+     * (v9x_d3d_vi_signed_format). Only a pixel shader stage samples
+     * either; the fixed-function map refuses both. */
+    v9x_u32 cube;
+    v9x_u32 snorm;
 } V9X_D3D_VI_TEXTURE;
+
+/*
+ * A signed (bump) texture format a pixel shader reads, from a surface's
+ * pixel format: Direct3D's Q8W8V8U8 (63) as 8_8_8_8 and V8U8 (60) as 8_8,
+ * both SNORM, bytes U V W Q from the lowest, by D3DFORMAT under
+ * DDPF_D3DFORMAT or DDPF_FOURCC (the runtime hands Q8W8V8U8 as FourCC 3Fh
+ * with no bit count, the HD 4600's boot 133), or V8U8 by DirectX 7's
+ * DDPF_BUMPDUDV, 16 bits, du FFh and dv FF00h. Fills *format
+ * (V9X_VI_IMG_FORMAT_*) and *bytes; nonzero for one of these.
+ */
+#define V9X_D3D_VI_DDPF_FOURCC     0x00000004ul
+#define V9X_D3D_VI_DDPF_BUMPDUDV   0x00080000ul
+#define V9X_D3D_VI_DDPF_D3DFORMAT  0x00200000ul
+#define V9X_D3D_VI_D3DFMT_V8U8     60ul
+#define V9X_D3D_VI_D3DFMT_Q8W8V8U8 63ul
+int v9x_d3d_vi_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
+                             v9x_u32 du_mask, v9x_u32 dv_mask,
+                             v9x_u32 third_mask, v9x_u32 *format,
+                             v9x_u32 *bytes);
 
 #define V9X_D3D_VI_REFUSE_NONE            0ul
 #define V9X_D3D_VI_REFUSE_TARGET          1ul  /* format, pitch or alignment */

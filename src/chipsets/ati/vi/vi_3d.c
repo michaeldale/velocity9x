@@ -212,6 +212,17 @@
 #define VI_IMG_SWIZZLE_RGBA         (6ul | (5ul << 3) | (4ul << 6) | (7ul << 9))
 #define VI_IMG_SWIZZLE_RGBA_OPAQUE  (6ul | (5ul << 3) | (4ul << 6) | (1ul << 9))
 #define VI_IMG_TYPE_2D              9ul
+/* A cube: SQ_RSRC_IMG_CUBE, its six faces array slices 0-5 (word 5
+ * LAST_ARRAY 25:13), DEPTH 0 for one cube (radeonsi's
+ * si_make_texture_descriptor). */
+#define VI_IMG_TYPE_CUBE            11ul
+#define VI_IMG_LAST_ARRAY_SHIFT     13u
+#define VI_IMG_NUM_FORMAT_SNORM     1ul
+/* A signed texture in memory order: U V W Q as X Y Z W, or U V as X Y
+ * with 0 and 1 for an 8_8's Z and W, as the HD 4600's R8G8_SNORM gives
+ * its missing channels (docs\decisions\2026-10-30-haswell-ps11-step5d-
+ * bump-formats.md; Direct3D's own choice not checked). */
+#define VI_IMG_SWIZZLE_8_8          (4ul | (5ul << 3) | (0ul << 6) | (1ul << 9))
 #define VI_IMG_MAX_SIZE             16384ul
 #define VI_SQ_TEX_WRAP              0ul
 #define VI_SQ_TEX_MIRROR            1ul
@@ -736,6 +747,32 @@ int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
     return 1;
 }
 
+int v9x_vi_3d_cube_layout(v9x_u32 bytes_per_texel, v9x_u32 side,
+                          v9x_u32 levels, v9x_u32 *offsets, v9x_u32 *slices,
+                          v9x_u32 *pitches, v9x_u32 *total_bytes)
+{
+    v9x_u32 face_offsets[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 face_total;
+    v9x_u32 offset = 0ul;
+    v9x_u32 level;
+    v9x_u32 edge = side;
+
+    /* One face's chain gives each level's pitch, and each level's slice
+     * is what its rows take, already whole 256-byte blocks. */
+    if (!v9x_vi_3d_mip_layout(bytes_per_texel, side, side, levels,
+                              face_offsets, pitches, &face_total)) {
+        return 0;
+    }
+    for (level = 0ul; level < levels; ++level) {
+        slices[level] = pitches[level] * bytes_per_texel * edge;
+        offsets[level] = offset;
+        offset += slices[level] * V9X_VI_CUBE_FACES;
+        edge = edge > 1ul ? edge >> 1 : 1ul;
+    }
+    *total_bytes = offset;
+    return 1;
+}
+
 /* Where (x, y) of a band, y below 8, sits in the band's tiled samples: its
  * tile's 64, then the bits of x and y interleaved, x first (vi_3d.h). */
 v9x_u32 v9x_vi_z16_tile_sample(v9x_u32 x, v9x_u32 y)
@@ -801,33 +838,45 @@ static void v9x_vi_3d_texture_descriptors(const struct v9x_vi_tl_draw *draw,
                                           v9x_u32 *out)
 {
     v9x_u32 index;
+    v9x_u32 swizzle;
 
     for (index = 0ul; index < V9X_VI_TEXTURE_USER_SGPRS; ++index) {
         out[index] = 0ul;
     }
-    out[0] = v9x_vi_address_256(draw->texture_low, draw->texture_high);
-    out[1] = ((draw->texture_high >> 8) & 0xfful) |
-             (v9x_vi_3d_texture_format(draw) << 20) |
-             (VI_IMG_NUM_FORMAT_UNORM << 26);
-    out[2] = (draw->texture_width - 1ul) |
-             ((draw->texture_height - 1ul) << 14);
     /* RGB565 has no fourth component, and a W asking for one reads 0:
      * MODULATE under SRCALPHA would draw nothing. It takes the constant 1,
      * Cedar's fix (docs\decisions\2026-10-27-cedar-texture-pitch-and-565-
-     * alpha.md). */
-    out[3] = (draw->texture_rgba != 0ul ?
-              (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
-               draw->texture_opaque != 0ul ?
-               VI_IMG_SWIZZLE_RGBA_OPAQUE : VI_IMG_SWIZZLE_RGBA) :
-              (v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
-               draw->texture_opaque != 0ul ?
-               VI_IMG_SWIZZLE_OPAQUE : VI_IMG_SWIZZLE_IDENTITY)) |
+     * alpha.md). A signed texture names its channels in memory order. */
+    if (draw->texture_signed != 0ul) {
+        swizzle = v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_8_8
+                      ? VI_IMG_SWIZZLE_8_8 : VI_IMG_SWIZZLE_IDENTITY;
+    } else if (draw->texture_rgba != 0ul) {
+        swizzle = v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
+                  draw->texture_opaque != 0ul
+                      ? VI_IMG_SWIZZLE_RGBA_OPAQUE : VI_IMG_SWIZZLE_RGBA;
+    } else {
+        swizzle = v9x_vi_3d_texture_format(draw) == V9X_VI_IMG_FORMAT_5_6_5 ||
+                  draw->texture_opaque != 0ul
+                      ? VI_IMG_SWIZZLE_OPAQUE : VI_IMG_SWIZZLE_IDENTITY;
+    }
+    out[0] = v9x_vi_address_256(draw->texture_low, draw->texture_high);
+    out[1] = ((draw->texture_high >> 8) & 0xfful) |
+             (v9x_vi_3d_texture_format(draw) << 20) |
+             ((draw->texture_signed != 0ul ? VI_IMG_NUM_FORMAT_SNORM
+                                           : VI_IMG_NUM_FORMAT_UNORM) << 26);
+    out[2] = (draw->texture_width - 1ul) |
+             ((draw->texture_height - 1ul) << 14);
+    out[3] = swizzle |
              ((draw->texture_base_level & 0xful) << 12) |
              ((draw->texture_last_level & 0xful) << 16) |
              ((draw->texture_tile_mode_index & 0x1ful) << 20) |
              (draw->texture_last_level != 0ul ? VI_IMG_POW2_PAD : 0ul) |
-             (VI_IMG_TYPE_2D << 28);
+             ((draw->texture_cube != 0ul ? VI_IMG_TYPE_CUBE
+                                         : VI_IMG_TYPE_2D) << 28);
     out[4] = (draw->texture_pitch - 1ul) << 13;
+    if (draw->texture_cube != 0ul) {
+        out[5] = (V9X_VI_CUBE_FACES - 1ul) << VI_IMG_LAST_ARRAY_SHIFT;
+    }
     out[8] = v9x_vi_3d_sampler_clamp(draw->texture_address);
     /* MAX_LOD in u4.8 at 23:12: the last level; MIN_LOD 0. */
     out[9] = (draw->texture_last_level & 0xful) << 20;
@@ -877,7 +926,9 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
          (format != V9X_VI_IMG_FORMAT_8_8_8_8 &&
           format != V9X_VI_IMG_FORMAT_5_6_5 &&
           format != V9X_VI_IMG_FORMAT_1_5_5_5 &&
-          format != V9X_VI_IMG_FORMAT_4_4_4_4)) ||
+          format != V9X_VI_IMG_FORMAT_4_4_4_4 &&
+          (format != V9X_VI_IMG_FORMAT_8_8 ||
+           draw->texture_signed == 0ul))) ||
         (draw->texture_low != 0ul &&
          (draw->texture_width == 0ul ||
           draw->texture_width > VI_IMG_MAX_SIZE ||

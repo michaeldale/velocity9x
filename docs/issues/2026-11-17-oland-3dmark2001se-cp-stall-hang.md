@@ -90,3 +90,11 @@ lines written after it at boot were kept.
 Run 3DMark 2001 SE again on this build until it hangs or completes
 three times. Log the trail's Enable lines next to the flip count. If it
 hangs again, compare the ring and the trail with this record.
+
+## 2026-11-17, step 6 build
+
+Boot 60, step 6's build (cubes and signed formats), 32 bpp desktop:
+3DMark 2001 SE completed (3101). No hang
+([2026-11-17-oland-cubes-signed-formats.md](../decisions/2026-11-17-oland-cubes-signed-formats.md)).
+Count so far: one hang in three runs, across two builds that share the
+two-unit path.

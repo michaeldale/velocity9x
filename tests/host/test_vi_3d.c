@@ -1224,6 +1224,38 @@ static void test_mip_layout(void)
                                 &total));
 }
 
+/* A cube as an array of six slices, level by level: T19's 8x8 A8R8G8B8
+ * cube of two levels, each level's slices whole 256-byte blocks. */
+static void test_cube_layout(void)
+{
+    v9x_u32 offsets[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 slices[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_VI_MIP_LEVELS_MAX];
+    v9x_u32 total;
+
+    CHECK(v9x_vi_3d_cube_layout(4ul, 8ul, 2ul, offsets, slices, pitches,
+                                &total));
+    CHECK(offsets[0] == 0ul && slices[0] == 512ul && pitches[0] == 16ul);
+    /* Level 1 after all six level-0 faces; face 5 of it at 4352. */
+    CHECK(offsets[1] == 3072ul && slices[1] == 256ul && pitches[1] == 16ul);
+    CHECK(offsets[1] + 5ul * slices[1] == 4352ul);
+    CHECK(total == 4608ul);
+
+    /* A 1x1 V8U8 face: rows widened to one 256-byte block. */
+    CHECK(v9x_vi_3d_cube_layout(2ul, 1ul, 1ul, offsets, slices, pitches,
+                                &total));
+    CHECK(slices[0] == 256ul && pitches[0] == 128ul && total == 1536ul);
+
+    /* Refused: not a power of two, more levels than the side allows, a
+     * texel size the layout does not take. */
+    CHECK(!v9x_vi_3d_cube_layout(4ul, 6ul, 1ul, offsets, slices, pitches,
+                                 &total));
+    CHECK(!v9x_vi_3d_cube_layout(4ul, 8ul, 5ul, offsets, slices, pitches,
+                                 &total));
+    CHECK(!v9x_vi_3d_cube_layout(3ul, 8ul, 1ul, offsets, slices, pitches,
+                                 &total));
+}
+
 /* The Direct3D options: D3D pixel centres (PA_SU_VTX_CNTL PIX_CENTER 0), a
  * target mask without alpha for an XRGB target, and a depth buffer whose
  * pitch and height are its own, not the target's. */
@@ -1519,6 +1551,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_blend_kill();
     test_tl_mips();
     test_mip_layout();
+    test_cube_layout();
     test_z16_tiles();
     test_tl_scissor();
     return failures;

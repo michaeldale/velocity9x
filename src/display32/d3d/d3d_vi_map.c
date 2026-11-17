@@ -286,11 +286,14 @@ static int v9x_d3d_vi_combine_ops(v9x_u32 color_op, v9x_u32 alpha_op,
 
 /* sampler's texture, resolved as texture, into out's texture fields. ps
  * is the one-unit draw's PS from sampler's DX5 op, or null for a unit of
- * a two-unit draw, whose combine is its color_op and alpha_op instead. */
+ * a two-unit draw, whose combine is its color_op and alpha_op instead.
+ * shader: a pixel shader stage, the only one that samples a cube or a
+ * signed format (step 6); the fixed-function PSs read neither. */
 static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
                                    const V9X_D3D_VI_TEXTURE *texture,
                                    v9x_u32 heap_high, v9x_u32 heap_low,
-                                   struct v9x_vi_tl_draw *out, v9x_u32 *ps);
+                                   struct v9x_vi_tl_draw *out, v9x_u32 *ps,
+                                   int shader);
 
 static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
                                       const V9X_D3D_VI_TEXTURE *texture,
@@ -299,13 +302,14 @@ static v9x_u32 v9x_d3d_vi_map_texture(const V9X_R3D_DRAW *draw,
                                       v9x_u32 *ps)
 {
     return v9x_d3d_vi_map_unit(&draw->texture, texture, heap_high, heap_low,
-                               out, ps);
+                               out, ps, 0);
 }
 
 static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
                                    const V9X_D3D_VI_TEXTURE *texture,
                                    v9x_u32 heap_high, v9x_u32 heap_low,
-                                   struct v9x_vi_tl_draw *out, v9x_u32 *ps)
+                                   struct v9x_vi_tl_draw *out, v9x_u32 *ps,
+                                   int shader)
 {
     v9x_u32 bytes;
     v9x_u32 low;
@@ -315,14 +319,19 @@ static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
     v9x_u32 mag_mip;
     v9x_u32 mip;
 
-    if (texture == 0) {
+    if (texture == 0 || (texture->snorm != 0ul && !shader)) {
         return V9X_D3D_VI_REFUSE_TEXTURE_FORMAT;
+    }
+    if (texture->cube != 0ul && !shader) {
+        return V9X_D3D_VI_REFUSE_TEXTURE_SHAPE;
     }
     if (texture->format == V9X_VI_IMG_FORMAT_8_8_8_8) {
         bytes = 4ul;
     } else if (texture->format == V9X_VI_IMG_FORMAT_5_6_5 ||
                texture->format == V9X_VI_IMG_FORMAT_1_5_5_5 ||
-               texture->format == V9X_VI_IMG_FORMAT_4_4_4_4) {
+               texture->format == V9X_VI_IMG_FORMAT_4_4_4_4 ||
+               (texture->format == V9X_VI_IMG_FORMAT_8_8 &&
+                texture->snorm != 0ul)) {
         bytes = 2ul;
     } else {
         return V9X_D3D_VI_REFUSE_TEXTURE_FORMAT;
@@ -370,12 +379,47 @@ static v9x_u32 v9x_d3d_vi_map_unit(const V9X_R3D_TEXTURE *sampler,
     out->texture_tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
     out->texture_bilinear = mag;
     out->texture_address = mode;
+    out->texture_signed = texture->snorm != 0ul ? 1ul : 0ul;
+    /* A cube's face coordinates are on [0, 1] (v_cube* in vi_ps11.c):
+     * clamped, so a texel at a face edge does not wrap to the other. */
+    if (texture->cube != 0ul) {
+        out->texture_cube = 1ul;
+        out->texture_address = V9X_VI_TEX_ADDRESS_CLAMP;
+    }
     if (ps != 0) {
         out->ps_vgprs = *ps == V9X_D3D_VI_PS_TEXTURE
                             ? V9X_VI_TEXTURE_PS_VGPRS
                             : V9X_VI_MODULATE_PS_VGPRS;
     }
     return V9X_D3D_VI_REFUSE_NONE;
+}
+
+int v9x_d3d_vi_signed_format(v9x_u32 flags, v9x_u32 fourcc, v9x_u32 bits,
+                             v9x_u32 du_mask, v9x_u32 dv_mask,
+                             v9x_u32 third_mask, v9x_u32 *format,
+                             v9x_u32 *bytes)
+{
+    v9x_u32 d3d = 0ul;
+
+    if ((flags & (V9X_D3D_VI_DDPF_D3DFORMAT | V9X_D3D_VI_DDPF_FOURCC)) !=
+        0ul) {
+        d3d = fourcc;
+    } else if ((flags & V9X_D3D_VI_DDPF_BUMPDUDV) != 0ul && bits == 16ul &&
+               du_mask == 0x00fful && dv_mask == 0xff00ul &&
+               third_mask == 0ul) {
+        d3d = V9X_D3D_VI_D3DFMT_V8U8;
+    }
+    if (d3d == V9X_D3D_VI_D3DFMT_Q8W8V8U8) {
+        *format = V9X_VI_IMG_FORMAT_8_8_8_8;
+        *bytes = 4ul;
+        return 1;
+    }
+    if (d3d == V9X_D3D_VI_D3DFMT_V8U8) {
+        *format = V9X_VI_IMG_FORMAT_8_8;
+        *bytes = 2ul;
+        return 1;
+    }
+    return 0;
 }
 
 v9x_u32 v9x_d3d_vi_map_shader_unit(const V9X_R3D_TEXTURE *sampler,
@@ -390,7 +434,7 @@ v9x_u32 v9x_d3d_vi_map_shader_unit(const V9X_R3D_TEXTURE *sampler,
         ((unsigned char *)out)[index] = 0u;
     }
     reason = v9x_d3d_vi_map_unit(sampler, texture, heap_high, heap_low, out,
-                                 0);
+                                 0, 1);
     out->texture_rgba = 1ul;
     return reason;
 }
@@ -561,7 +605,7 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
             code = v9x_d3d_vi_map_unit(sampler,
                                        index == 0ul ? texture : texture1,
                                        heap_high, heap_low,
-                                       index == 0ul ? out : unit1, 0);
+                                       index == 0ul ? out : unit1, 0, 0);
             if (code != V9X_D3D_VI_REFUSE_NONE) {
                 return code;
             }

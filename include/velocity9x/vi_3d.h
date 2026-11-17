@@ -221,6 +221,14 @@ struct v9x_vi_tl_draw {
     /* Nonzero: the T# (v9x_vi_3d_texture_sharps) reads red into x, for a
      * pixel shader whose channels have names; 0 keeps memory order. */
     v9x_u32 texture_rgba;
+    /* APPENDED for step 6 of docs\plans\ati-gcn-ps11.md; zero keeps the
+     * meaning above. Nonzero texture_cube: a cube, its faces where
+     * v9x_vi_3d_cube_layout puts them (T# TYPE CUBE, arrays 0-5).
+     * Nonzero texture_signed: the texels are signed (NUM_FORMAT SNORM)
+     * and read in memory order whatever texture_rgba says, X Y Z W, or
+     * X Y 0 1 for 8_8, Direct3D's U V W Q. */
+    v9x_u32 texture_cube;
+    v9x_u32 texture_signed;
 };
 #define V9X_VI_TEXTURE_SHARP_DWORDS 12ul
 /*
@@ -255,6 +263,22 @@ void v9x_vi_3d_texture_sharps(const struct v9x_vi_tl_draw *draw,
 int v9x_vi_3d_mip_layout(v9x_u32 bytes_per_texel, v9x_u32 width,
                          v9x_u32 height, v9x_u32 levels, v9x_u32 *offsets,
                          v9x_u32 *pitches, v9x_u32 *total_bytes);
+
+/*
+ * A linear-aligned cube of side x side and `levels` levels, as an array of
+ * six slices: each level as v9x_vi_3d_mip_layout lays it (its pitch, and
+ * its rows widened to whole 256-byte blocks), and level by level, all six
+ * faces of a level before the next level, face f of level n at
+ * offsets[n] + f * slices[n]. That is the order radeon's linear surface
+ * code gives an array (each level holds every slice); on the Oland only
+ * level 0's faces have been read (T19 Cube), not a smaller level. Per
+ * level: offsets[] and slices[] in bytes, pitches[] in texels; nonzero
+ * on success.
+ */
+#define V9X_VI_CUBE_FACES 6ul
+int v9x_vi_3d_cube_layout(v9x_u32 bytes_per_texel, v9x_u32 side,
+                          v9x_u32 levels, v9x_u32 *offsets, v9x_u32 *slices,
+                          v9x_u32 *pitches, v9x_u32 *total_bytes);
 
 /*
  * The Z16 buffer in tile mode V9X_VI_TILE_DEPTH_1D, as the DB writes it,
@@ -302,6 +326,8 @@ v9x_u32 v9x_vi_3d_blend(v9x_u32 source, v9x_u32 destination);
  * with x the low field, so X, Y, Z, W are B, G, R, A in memory order. */
 #define V9X_VI_IMG_FORMAT_1_5_5_5   0x11ul
 #define V9X_VI_IMG_FORMAT_4_4_4_4   0x13ul
+/* Two bytes, for V8U8 (signed only, texture_signed): X the low byte. */
+#define V9X_VI_IMG_FORMAT_8_8       0x03ul
 
 /* DB_DEPTH_CONTROL ZFUNC, gfx_8_0_enum.h's FRAG_*: Direct3D's D3DCMPFUNC
  * less one. */
