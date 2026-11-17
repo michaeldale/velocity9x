@@ -132,6 +132,11 @@ v9x_u32 v9x_eg_shader_modulate_ps(v9x_u32 *out);
 #define V9X_EG_D3D_OP_NONE      0ul
 #define V9X_EG_D3D_OP_REPLACE   1ul
 #define V9X_EG_D3D_OP_MODULATE  2ul
+/* B, G and R modulated, alpha the texel's: DX5 MODULATE on a texture with
+ * alpha (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+ * frames.md). The lit PS (v9x_eg_shader_d3d_ps_built) only: it has no
+ * slot. */
+#define V9X_EG_D3D_OP_MODULATE_RGB 3ul
 v9x_u32 v9x_eg_shader_d3d_vs(v9x_u32 textured, v9x_u32 *out);
 v9x_u32 v9x_eg_shader_d3d_ps(v9x_u32 op, v9x_u32 *out);
 

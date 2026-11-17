@@ -210,7 +210,20 @@ static void v9x_d3d_r6_map_lit(const V9X_R3D_DRAW *draw,
         v9x_d3d_r6_key(texture->format, texture->key, lit);
         state->kill = lit->color_key;
     }
-    if (lit->specular == 0ul && lit->fog == 0ul && lit->color_key == 0ul) {
+    /* DX5 MODULATE on a texture with alpha takes the texel's alpha alone
+     * (d3d_eg_map.c's rule and reason): ARGB1555, ARGB4444 and ARGB8888
+     * carry it, an XRGB8888 (opaque) and RGB565 do not. */
+    if (textured != 0ul && draw->texture.op == V9X_R3D_TEXOP_MODULATE &&
+        draw->texture.alpha_diffuse == 0ul &&
+        (texture->format == V9X_R6_COLOR_1_5_5_5 ||
+         texture->format == V9X_R6_COLOR_4_4_4_4 ||
+         (texture->format == V9X_R6_COLOR_8_8_8_8 &&
+          texture->opaque == 0ul)) &&
+        (draw->alpha_test_enable != 0ul || draw->blend_enable != 0ul)) {
+        lit->op = V9X_R6_D3D_OP_MODULATE_RGB;
+    }
+    if (lit->specular == 0ul && lit->fog == 0ul && lit->color_key == 0ul &&
+        lit->op != V9X_R6_D3D_OP_MODULATE_RGB) {
         return;
     }
     state->vs_gprs = V9X_R6_D3D_VS_LIT_GPRS;

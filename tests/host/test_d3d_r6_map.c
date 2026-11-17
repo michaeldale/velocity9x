@@ -344,6 +344,52 @@ static void test_lit(void)
     CHECK(v9x_d3d_r6_map_draw(&draw, 0, HEAP_GPU, 0ul, &state, &vs, &ps,
                               &lit) == V9X_D3D_EG_REFUSE_NONE &&
           vs == V9X_R6_SLOT_VS && ps == V9X_R6_SLOT_PS_FIRST);
+
+    /* DX5 MODULATE on a texture with alpha keeps the texel's alpha
+     * (docs\issues\2026-11-17-oland-nature-tree-leaves-missing-most-
+     * frames.md): the lit PS with MODULATE_RGB when the alpha test or a
+     * blend reads it. ARGB8888, then the alpha-less cases. */
+    base_draw(&draw);
+    base_texture(&draw, &texture);
+    texture.format = V9X_R6_COLOR_8_8_8_8;
+    draw.alpha_test_enable = 1ul;
+    draw.alpha_func = V9X_R3D_CMP_GREATEREQUAL;
+    draw.alpha_ref = 0x7ful;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE);
+    CHECK(vs == V9X_R6_SLOT_VS_LIT_TEXTURED && ps == V9X_D3D_R6_PS_LIT &&
+          lit.op == V9X_R6_D3D_OP_MODULATE_RGB && state.interpolants == 3ul);
+    draw.alpha_test_enable = 0ul;
+    draw.blend_enable = 1ul;
+    draw.src_blend = V9X_R3D_BLEND_SRCALPHA;
+    draw.dst_blend = V9X_R3D_BLEND_INVSRCALPHA;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          ps == V9X_D3D_R6_PS_LIT && lit.op == V9X_R6_D3D_OP_MODULATE_RGB);
+    texture.format = V9X_R6_COLOR_4_4_4_4;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          lit.op == V9X_R6_D3D_OP_MODULATE_RGB);
+    texture.format = V9X_R6_COLOR_8_8_8_8;
+    texture.opaque = 1ul;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          ps == V9X_R6_SLOT_PS_FIRST + V9X_R6_D3D_OP_MODULATE);
+    texture.opaque = 0ul;
+    texture.format = V9X_R6_COLOR_5_6_5;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          ps == V9X_R6_SLOT_PS_FIRST + V9X_R6_D3D_OP_MODULATE);
+    texture.format = V9X_R6_COLOR_8_8_8_8;
+    draw.texture.op = V9X_R3D_TEXOP_MODULATEALPHA;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          ps == V9X_R6_SLOT_PS_FIRST + V9X_R6_D3D_OP_MODULATE);
+    draw.texture.op = V9X_R3D_TEXOP_MODULATE;
+    draw.texture.alpha_diffuse = 1ul;
+    CHECK(v9x_d3d_r6_map_draw(&draw, &texture, HEAP_GPU, 0ul, &state, &vs,
+                              &ps, &lit) == V9X_D3D_EG_REFUSE_NONE &&
+          ps == V9X_R6_SLOT_PS_FIRST + V9X_R6_D3D_OP_MODULATE);
 }
 
 unsigned int v9x_run_d3d_r6_map_tests(void)

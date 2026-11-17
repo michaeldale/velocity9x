@@ -1606,6 +1606,48 @@ static void test_d3d_lit_ps(void)
  * The state words and registers. Each expected value is written with
  * Mesa r600d.h's field positions (S_0288xx_*), beside xf86's names.
  */
+/* MODULATE_RGB (DX5 MODULATE on a texture with alpha, docs\issues\
+ * 2026-11-17-oland-nature-tree-leaves-missing-most-frames.md): the
+ * MODULATE lit PS with its clamped MUL group ending at z, and alpha the
+ * texel's as MAX(R1.w, R1.w) into R0.w. Nothing else moves. */
+static void test_d3d_lit_modulate_rgb(void)
+{
+    struct v9x_r6_d3d_ps ps;
+    v9x_u32 modulate[V9X_R6_LIT_PS_DWORDS_MAX];
+    v9x_u32 rgb[V9X_R6_LIT_PS_DWORDS_MAX];
+    v9x_u32 count;
+    v9x_u32 at;
+    v9x_u32 w_at = 0ul;
+    v9x_u32 differ = 0ul;
+
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_R6_D3D_OP_MODULATE;
+    count = v9x_r6_shader_d3d_ps_lit(&ps, modulate);
+    ps.op = V9X_R6_D3D_OP_MODULATE_RGB;
+    CHECK(v9x_r6_shader_d3d_ps_lit(&ps, rgb) == count);
+    for (at = 0ul; at + 1ul < count; at += 2ul) {
+        if (modulate[at] == X_ALU_DWORD0(0, 0, 3, 0, 1, 0, 3, 0, 0, 0, 1) &&
+            modulate[at + 1ul] ==
+                X_R6XX_ALU_DWORD1_OP2(0, 0, 0, 0, 1, 0, 0,
+                                      X_SQ_OP2_INST_MUL, 0, 0, 0, 3, 1)) {
+            w_at = at;
+        }
+    }
+    CHECK(w_at >= 2ul);
+    CHECK(rgb[w_at - 2ul] == (modulate[w_at - 2ul] | 0x80000000ul) &&
+          rgb[w_at - 1ul] == modulate[w_at - 1ul]);
+    CHECK(rgb[w_at] == X_ALU_DWORD0(1, 0, 3, 0, 1, 0, 3, 0, 0, 0, 1) &&
+          rgb[w_at + 1ul] ==
+              X_R6XX_ALU_DWORD1_OP2(0, 0, 0, 0, 1, 0, 0, 0x03, 0, 0, 0, 3,
+                                    0));
+    for (at = 0ul; at < count; ++at) {
+        if (rgb[at] != modulate[at]) {
+            ++differ;
+        }
+    }
+    CHECK(differ == 3ul);
+}
+
 static void test_state_words(void)
 {
     /* S_028800_Z_ENABLE(1) | S_028800_Z_WRITE_ENABLE(1) |
@@ -2108,6 +2150,7 @@ unsigned int v9x_run_r6_3d_tests(void)
     test_interp_shaders();
     test_d3d_shaders();
     test_d3d_lit_ps();
+    test_d3d_lit_modulate_rgb();
     test_state_words();
     test_build_state();
     test_draw_flush();

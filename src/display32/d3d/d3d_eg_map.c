@@ -435,7 +435,19 @@ v9x_u32 v9x_d3d_eg_map_draw(const V9X_R3D_DRAW *draw,
         v9x_d3d_eg_key(texture->format, texture->key, lit);
         state->kill = 1ul;
     }
-    if (lit->specular != 0ul || lit->fog != 0ul || lit->color_key != 0ul) {
+    /* DX5 MODULATE on a texture with alpha takes the texel's alpha alone,
+     * unless the core says the stage's alpha is the diffuse's; the
+     * modulate slot multiplies all four, which is MODULATEALPHA (the
+     * Oland's Nature leaves vanished so, docs\issues\2026-11-17-oland-
+     * nature-tree-leaves-missing-most-frames.md). Only the alpha test or
+     * a blend reads the alpha, so only those draws take the lit PS. */
+    if (textured && draw->texture.op == V9X_R3D_TEXOP_MODULATE &&
+        draw->texture.alpha_diffuse == 0ul && texture->has_alpha != 0ul &&
+        (draw->alpha_test_enable != 0ul || draw->blend_enable != 0ul)) {
+        lit->op = V9X_EG_D3D_OP_MODULATE_RGB;
+    }
+    if (lit->specular != 0ul || lit->fog != 0ul || lit->color_key != 0ul ||
+        lit->op == V9X_EG_D3D_OP_MODULATE_RGB) {
         state->vs_gprs = 4ul;
         state->ps_gprs = V9X_EG_D3D_PS_GPRS(lit->color_key);
         state->interpolants = V9X_EG_D3D_INTERPOLANTS(textured);

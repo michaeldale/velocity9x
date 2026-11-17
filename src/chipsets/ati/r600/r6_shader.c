@@ -711,6 +711,18 @@ v9x_u32 v9x_r6_shader_d3d_ps_lit(const struct v9x_r6_d3d_ps *ps,
                                     out + at);
         }
     }
+    /* MODULATE_RGB: B, G and R multiplied, then alpha the texel's, a MAX
+     * of R1.w with itself standing in for a move. DX5 MODULATE on a
+     * texture with alpha ignores the diffuse's alpha. */
+    if (ps->op == V9X_R6_D3D_OP_MODULATE_RGB) {
+        for (chan = 0ul; chan < 3ul; ++chan) {
+            at += v9x_r6_shader_op2(R6_OP2_MUL, 0ul, chan, 1ul, chan,
+                                    R6_OP_CLAMP, 0ul, chan, chan == 2ul,
+                                    out + at);
+        }
+        at += v9x_r6_shader_op2(R6_OP2_MAX, 1ul, R6_SEL_W, 1ul, R6_SEL_W, 0ul,
+                                0ul, R6_SEL_W, 1ul, out + at);
+    }
     /* Specular adds to RGB and saturates; alpha is the op's. */
     if (ps->specular != 0ul) {
         for (chan = 0ul; chan < 3ul; ++chan) {

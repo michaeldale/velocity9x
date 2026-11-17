@@ -654,7 +654,18 @@ v9x_u32 v9x_eg_shader_d3d_ps_built(const struct v9x_eg_d3d_ps *ps,
                                  slot, slot == 3ul, out + at);
         }
     }
-    /* Specular adds to RGB and saturates; alpha is the diffuse's. */
+    /* MODULATE_RGB: B, G and R multiplied, then alpha the texel's, a
+     * MAX of R1.w with itself standing in for a move. DX5 MODULATE on a
+     * texture with alpha ignores the diffuse's alpha. */
+    if (op == V9X_EG_D3D_OP_MODULATE_RGB) {
+        for (slot = 0ul; slot < 3ul; ++slot) {
+            at += v9x_eg_alu_op2(V9X_EG_ALU_MUL, 0ul, slot, 1ul, slot, 0ul,
+                                 slot, slot == 2ul, out + at);
+        }
+        at += v9x_eg_alu_op2(V9X_EG_ALU_MAX, 1ul, 3ul, 1ul, 3ul, 0ul, 3ul,
+                             1ul, out + at);
+    }
+    /* Specular adds to RGB and saturates; alpha is the op's. */
     if (specular != 0ul) {
         for (slot = 0ul; slot < 3ul; ++slot) {
             at += v9x_eg_alu_op2_ex(V9X_EG_ALU_ADD, 0ul, slot, 2ul, slot,

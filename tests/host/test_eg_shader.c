@@ -427,6 +427,46 @@ static void test_d3d_color_key(void)
     }
 }
 
+/* MODULATE_RGB (DX5 MODULATE on a texture with alpha, docs\issues\
+ * 2026-11-17-oland-nature-tree-leaves-missing-most-frames.md): the
+ * MODULATE lit PS with its group ending at z, and alpha the texel's as
+ * MAX(R1.w, R1.w) into R0.w instead of the product. Nothing else moves. */
+static void test_d3d_modulate_rgb(void)
+{
+    v9x_u32 modulate[V9X_EG_SHADER_DWORDS_MAX];
+    v9x_u32 rgb[V9X_EG_SHADER_DWORDS_MAX];
+    v9x_u32 want[2];
+    v9x_u32 count;
+    v9x_u32 at;
+    v9x_u32 w_at = 0ul;
+    v9x_u32 differ = 0ul;
+
+    count = v9x_eg_shader_d3d_ps_lit(V9X_EG_D3D_OP_MODULATE, 0ul, 0ul, 0ul,
+                                     modulate);
+    CHECK(v9x_eg_shader_d3d_ps_lit(V9X_EG_D3D_OP_MODULATE_RGB, 0ul, 0ul,
+                                   0ul, rgb) == count);
+    (void)v9x_eg_alu_op2(V9X_EG_ALU_MUL, 0ul, 3ul, 1ul, 3ul, 0ul, 3ul, 1ul,
+                         want);
+    for (at = 0ul; at + 1ul < count; at += 2ul) {
+        if (modulate[at] == want[0] && modulate[at + 1ul] == want[1]) {
+            w_at = at;
+        }
+    }
+    CHECK(w_at >= 2ul);
+    (void)v9x_eg_alu_op2(V9X_EG_ALU_MUL, 0ul, 2ul, 1ul, 2ul, 0ul, 2ul, 1ul,
+                         want);
+    CHECK(rgb[w_at - 2ul] == want[0] && rgb[w_at - 1ul] == want[1]);
+    (void)v9x_eg_alu_op2(V9X_EG_ALU_MAX, 1ul, 3ul, 1ul, 3ul, 0ul, 3ul, 1ul,
+                         want);
+    CHECK(rgb[w_at] == want[0] && rgb[w_at + 1ul] == want[1]);
+    for (at = 0ul; at < count; ++at) {
+        if (rgb[at] != modulate[at]) {
+            ++differ;
+        }
+    }
+    CHECK(differ <= 4ul);
+}
+
 unsigned int v9x_run_eg_shader_tests(void)
 {
     failures = 0u;
@@ -438,5 +478,6 @@ unsigned int v9x_run_eg_shader_tests(void)
     test_d3d();
     test_d3d_lit();
     test_d3d_color_key();
+    test_d3d_modulate_rgb();
     return failures;
 }
