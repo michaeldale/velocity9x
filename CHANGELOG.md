@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.56.0 - not yet released
 
+- **`intel-gma` package, HD 4600 (and Ivy Bridge, not run): Direct3D
+  batches a slot long, and indexed calls drawn whole.** The shared core
+  cut every batch at 64 triangles where a slot holds 293. Indexed lists
+  too large for one slot went through the per-triangle copy; they now go
+  as pieces of a slot each, two texture stages included. On the i5-4570,
+  3DMark 2001 SE went from 3388 to 3888 with the game's vsync
+  ([record](docs/decisions/2026-11-18-haswell-batch-size-and-indexed-pieces.md)).
+
 ## 0.55.0 - 2026-11-18
 
 - **`ati` package, GCN (Oland, Carrizo, Mullins): Flip no longer waits

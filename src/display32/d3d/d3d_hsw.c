@@ -86,6 +86,16 @@
 /* And this many of 120, with unit 1's coordinates after each vertex (238). */
 #define V9X_D3D_HSW_MAX_TRIANGLES2 \
     (V9X_HSW_PIPE_VERTEX_BYTES / (3ul * V9X_HSW_TL2_VERTEX_BYTES))
+/*
+ * The core's batch bound (batch_triangles): one slot's piece of
+ * one-unit triangles, which stops while a whole fan still fits (293).
+ * With the core's default of 64, a batch's fixed cost - a full state
+ * write, its flushes and the slot wait - came at least every 64
+ * triangles. A two-unit draw of this many still goes as two
+ * pieces, as any draw past a slot always has.
+ */
+#define V9X_D3D_HSW_BATCH_TRIANGLES \
+    (V9X_D3D_HSW_MAX_TRIANGLES - V9X_R3D_MAX_FAN_TRIANGLES + 1ul)
 
 /* Ring submission: MI_BATCH_BUFFER_START and the sequence store. */
 #define V9X_D3D_HSW_SUBMIT_DWORDS 6ul
@@ -188,7 +198,12 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_hsw_limits = {
      * 261, FfBemL6); X8B8_UNORM_G8R8_SNORM came back wrong in every
      * pixel there and is not published. Ivy Bridge, below, has run
      * neither and publishes neither. */
-    V9X_D3D_BUMP_LUM_L6V5U5     /* bump_luminance */
+    V9X_D3D_BUMP_LUM_L6V5U5,    /* bump_luminance */
+    V9X_D3D_HSW_BATCH_TRIANGLES, /* batch_triangles: a slot's piece */
+    /* DrawPrimitives2 indexed lists whole, in pieces past a slot
+     * (v9x_d3d_hsw_draw_indexed), two units with their pairs. */
+    8192ul,                     /* indexed_pool_vertices: V9X_D3D_HSW_POOL_MAX */
+    1ul                         /* indexed_two_units */
 };
 
 /*
@@ -229,7 +244,13 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
      * (docs\issues\2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md).
      * So a doubled stage is drawn as in 0.49.0 until one has.
      */
-    0ul
+    0ul,
+    0ul,                        /* bump_luminance: none, as above */
+    /* The same draw code and slots as Haswell's; no Ivy Bridge has run
+     * these three. Its one stage never asks for indexed_two_units. */
+    V9X_D3D_HSW_BATCH_TRIANGLES, /* batch_triangles */
+    8192ul,                     /* indexed_pool_vertices */
+    1ul                         /* indexed_two_units */
 };
 
 /* One texture unit as the sampler reads it. */
@@ -2792,17 +2813,245 @@ static v9x_u8 v9x_d3d_hsw_cull_of(DWORD cull_mode)
  * indices rebased after them, one RANDOM 3DPRIMITIVE, and the back face
  * culled by 3DSTATE_SF rather than by the core.
  *
+ * A second unit's coordinates come one pair per pool vertex
+ * (indexed_two_units), after each vertex as the list path's TL2 vertex.
+ *
  * Declined (-1, nothing submitted) for anything the list path would treat
- * differently: a second unit's coordinates (which follow list order), flat
- * shading (the list path copies the provoking vertex's colours into the
- * other two, which a shared vertex cannot take), an index past the pool,
- * a vertex of the range that is not finite, and one past half the guard
- * band after the move: inside +/- 4096 no triangle of the call can span
- * 8K, so none needs the clip the list path would give it
- * (v9x_d3d_hsw_guard). A range or index count larger than one slot's
- * vertex area is declined too, and the list path splits it.
+ * differently: flat shading (the list path copies the provoking vertex's
+ * colours into the other two, which a shared vertex cannot take), an index
+ * past the pool, a vertex of the range that is not finite, and one past
+ * half the guard band after the move: inside +/- 4096 no triangle of the
+ * call can span 8K, so none needs the clip the list path would give it
+ * (v9x_d3d_hsw_guard).
+ *
+ * A call whose range and indices do not fit one slot's vertex area goes in
+ * pieces (v9x_d3d_hsw_piece), as the list path splits a long draw: each
+ * piece's vertices are only the ones its triangles name, renumbered, and a
+ * strip is unrolled into a list with the odd triangles turned back. Only a
+ * range past V9X_D3D_HSW_POOL_MAX is declined for its size. 3DMark 2001 SE
+ * on the 4570 declined 507 K calls for their size (boot 274), and their
+ * 269 M triangles went through the list path's per-triangle copy.
  */
 #define V9X_D3D_HSW_INDEXED_LIMIT (V9X_D3D_HSW_SPAN_LIMIT / 2.0f)
+
+/* The largest pool a call may go in pieces from: the core's
+ * (indexed_pool_vertices). */
+#define V9X_D3D_HSW_POOL_MAX 8192ul
+/* What a piece can hold: one-unit vertices, and indices, each alone. */
+#define V9X_D3D_HSW_PIECE_VERTICES \
+    (V9X_HSW_PIPE_VERTEX_BYTES / V9X_HSW_TL_VERTEX_BYTES)
+#define V9X_D3D_HSW_PIECE_INDICES (V9X_HSW_PIPE_VERTEX_BYTES / 2ul)
+
+/* Which piece last named each pool vertex, and its number in that piece:
+ * a piece is a new generation, so nothing is cleared between pieces. */
+static DWORD v9x_d3d_hsw_piece_named[V9X_D3D_HSW_POOL_MAX];
+static v9x_u16 v9x_d3d_hsw_piece_place[V9X_D3D_HSW_POOL_MAX];
+static DWORD v9x_d3d_hsw_piece_generation;
+/* The piece's vertices, as pool numbers in piece order, and its indices. */
+static v9x_u16 v9x_d3d_hsw_piece_order[V9X_D3D_HSW_PIECE_VERTICES];
+static v9x_u16 v9x_d3d_hsw_piece_indices[V9X_D3D_HSW_PIECE_INDICES];
+
+/* Bytes rounded up to the index buffer's cache line. */
+static DWORD v9x_d3d_hsw_index_lines(DWORD bytes)
+{
+    return (bytes + V9X_D3D_HSW_INDEX_LINE - 1ul) &
+           ~(V9X_D3D_HSW_INDEX_LINE - 1ul);
+}
+
+/*
+ * The next piece of a call, from triangle *next: as many whole triangles
+ * as fit one slot with their vertices of vertex_bytes each and the indices
+ * after them. Fills v9x_d3d_hsw_piece_order with *used pool vertices and
+ * v9x_d3d_hsw_piece_indices with the piece's list; returns its index
+ * count and moves *next past it. A triangle's new vertices are counted
+ * before they are known to be distinct, so a degenerate one may end a
+ * piece early; never wrongly late.
+ */
+static DWORD v9x_d3d_hsw_piece(const v9x_u16 *indices, DWORD triangles,
+                               int strip, DWORD vertex_bytes, DWORD *next,
+                               DWORD *used)
+{
+    DWORD count = 0ul;
+    DWORD placed = 0ul;
+    DWORD t;
+    DWORD k;
+    DWORD corner[3];
+
+    if (++v9x_d3d_hsw_piece_generation == 0ul) {
+        for (k = 0ul; k < V9X_D3D_HSW_POOL_MAX; ++k) {
+            v9x_d3d_hsw_piece_named[k] = 0ul;
+        }
+        v9x_d3d_hsw_piece_generation = 1ul;
+    }
+    for (t = *next; t < triangles; ++t) {
+        DWORD fresh = 0ul;
+
+        if (strip) {
+            /* An odd strip triangle winds the other way: its last two
+             * corners swap, as the core's strip unroll does. */
+            corner[0] = (DWORD)indices[t];
+            corner[1] = (DWORD)indices[t + ((t & 1ul) ? 2ul : 1ul)];
+            corner[2] = (DWORD)indices[t + ((t & 1ul) ? 1ul : 2ul)];
+        } else {
+            corner[0] = (DWORD)indices[t * 3ul];
+            corner[1] = (DWORD)indices[t * 3ul + 1ul];
+            corner[2] = (DWORD)indices[t * 3ul + 2ul];
+        }
+        for (k = 0ul; k < 3ul; ++k) {
+            if (v9x_d3d_hsw_piece_named[corner[k]] !=
+                v9x_d3d_hsw_piece_generation) {
+                ++fresh;
+            }
+        }
+        if (v9x_d3d_hsw_index_lines((placed + fresh) * vertex_bytes) +
+            v9x_d3d_hsw_index_lines((count + 3ul) * 2ul) >
+            V9X_HSW_PIPE_VERTEX_BYTES) {
+            break;
+        }
+        for (k = 0ul; k < 3ul; ++k) {
+            if (v9x_d3d_hsw_piece_named[corner[k]] !=
+                v9x_d3d_hsw_piece_generation) {
+                v9x_d3d_hsw_piece_named[corner[k]] =
+                    v9x_d3d_hsw_piece_generation;
+                v9x_d3d_hsw_piece_place[corner[k]] = (v9x_u16)placed;
+                v9x_d3d_hsw_piece_order[placed] = (v9x_u16)corner[k];
+                ++placed;
+            }
+            v9x_d3d_hsw_piece_indices[count++] =
+                v9x_d3d_hsw_piece_place[corner[k]];
+        }
+    }
+    *next = t;
+    *used = placed;
+    return count;
+}
+
+/* One pool vertex into a slot: x and y moved by the pixel centre, the rest
+ * as given, then unit 1's pair when the draw has one (the TL2 vertex). */
+static v9x_u32 *v9x_d3d_hsw_put_pool_vertex(v9x_u32 *target,
+                                            const V9X_R3D_DRAW *draw,
+                                            const V9X_R3D_VERTEX *pool,
+                                            DWORD index)
+{
+    const v9x_u32 *words = (const v9x_u32 *)&pool[index];
+    const v9x_u32 *pair;
+    DWORD word;
+    union {
+        float value;
+        v9x_u32 bits;
+    } moved;
+
+    moved.value = pool[index].sx + draw->centre_offset;
+    *target++ = moved.bits;
+    moved.value = pool[index].sy + draw->centre_offset;
+    *target++ = moved.bits;
+    for (word = 2ul; word < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++word) {
+        *target++ = words[word];
+    }
+    if (draw->texcoords1 != 0) {
+        pair = (const v9x_u32 *)(draw->texcoords1 + index * 2ul);
+        *target++ = pair[0];
+        *target++ = pair[1];
+    }
+    return target;
+}
+
+/*
+ * An indexed call too large for one slot, in pieces (v9x_d3d_hsw_piece),
+ * each a batch of its own with its state written to its slot, as the list
+ * path's pieces are (v9x_d3d_hsw_draw_batch). Every piece is a list, so a
+ * strip's winding is the piece builder's. 1 when every piece went; 0 when
+ * one was refused, possibly after others went, as the list path's.
+ */
+static int v9x_d3d_hsw_draw_pieces(const V9X_R3D_DRAW *draw,
+                                   const V9X_D3D_HSW_STATE *state,
+                                   const V9X_R3D_VERTEX *pool,
+                                   const v9x_u16 *indices, DWORD index_count,
+                                   int strip, DWORD cull_mode, int wait_after)
+{
+    struct v9x_hsw_pipe_slot slot;
+    struct v9x_hsw_batch batch;
+    struct v9x_hsw_draw d;
+    DWORD vertex_size = draw->texcoords1 != 0 ? V9X_HSW_TL2_VERTEX_BYTES
+                                              : V9X_HSW_TL_VERTEX_BYTES;
+    DWORD triangles = strip ? index_count - 2ul : index_count / 3ul;
+    DWORD next = 0ul;
+    DWORD used;
+    DWORD count;
+    DWORD vertex_bytes;
+    DWORD index_bytes;
+    DWORD kernel = 0ul;
+    DWORD reason;
+    DWORD index;
+    v9x_u32 *target;
+    volatile v9x_u16 *index_at;
+
+    while (next < triangles) {
+        int first_piece = next == 0ul;
+
+        count = v9x_d3d_hsw_piece(indices, triangles, strip, vertex_size,
+                                  &next, &used);
+        if (count == 0ul) {
+            /* One triangle always fits a slot; nothing to draw is a
+             * builder fault, not a reason to spin. */
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+            return 0;
+        }
+        if (!v9x_d3d_hsw_wait_slot(&slot)) {
+            v9x_d3d_hsw_count_refusal(first_piece ?
+                                      V9X_D3D_HSW_REFUSE_IDLE :
+                                      V9X_D3D_HSW_REFUSE_PIECE);
+            return 0;
+        }
+        reason = v9x_d3d_hsw_write_state(draw, state, &slot, &kernel);
+        if (reason != V9X_D3D_HSW_REFUSE_NONE) {
+            v9x_d3d_hsw_count_refusal(reason);
+            return 0;
+        }
+
+        /* The piece's vertices in its order, then its indices and the
+         * rest of their cache line zeroed. TAIL's drain publishes both. */
+        vertex_bytes = v9x_d3d_hsw_index_lines(used * vertex_size);
+        index_bytes = v9x_d3d_hsw_index_lines(count * 2ul);
+        target = v9x_d3d_hsw_reserve(slot.vertex_off);
+        for (index = 0ul; index < used; ++index) {
+            target = v9x_d3d_hsw_put_pool_vertex(
+                target, draw, pool, (DWORD)v9x_d3d_hsw_piece_order[index]);
+        }
+        index_at = (volatile v9x_u16 *)v9x_d3d_hsw_reserve(slot.vertex_off +
+                                                           vertex_bytes);
+        for (index = 0ul; index < count; ++index) {
+            index_at[index] = v9x_d3d_hsw_piece_indices[index];
+        }
+        for (index = count; index < index_bytes / 2ul; ++index) {
+            index_at[index] = 0u;
+        }
+
+        v9x_d3d_hsw_draw_desc(draw, state, &d);
+        d.kernel = kernel;
+        d.vertices = V9X_D3D_HSW_GFX(slot.vertex_off);
+        d.vertex_count = used;
+        d.indices = V9X_D3D_HSW_GFX(slot.vertex_off + vertex_bytes);
+        d.index_count = count;
+        d.strip = 0u;
+        d.cull = v9x_d3d_hsw_cull_of(cull_mode);
+        v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
+                                 slot.batch_bytes / 4ul);
+        if (v9x_intel_hsw_draw_workload(&batch,
+                                        V9X_D3D_HSW_GFX(slot.state_off),
+                                        slot.state_span, &d,
+                                        V9X_D3D_HSW_CRUMB_GFX,
+                                        next) != V9X_STATUS_OK) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
+            return 0;
+        }
+        if (!v9x_d3d_hsw_submit(&slot, wait_after)) {
+            v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_SUBMIT);
+            return 0;
+        }
+    }
+    return 1;
+}
 
 static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
                                     const V9X_R3D_VERTEX *pool,
@@ -2825,20 +3074,20 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
     DWORD reason;
     DWORD kernel = 0ul;
     DWORD index;
-    DWORD word;
+    DWORD vertex_size;
+    int two;
+    int pieces;
+    int drawn;
     int wait_after;
     v9x_u32 *target;
     volatile v9x_u16 *index_at;
-    union {
-        float value;
-        v9x_u32 bits;
-    } moved;
 
     if (draw == 0 || pool == 0 || indices == 0 || index_count < 3ul ||
-        draw->texcoords1 != 0 ||
         (!strip && index_count % 3ul != 0ul) || !v9x_d3d_hsw_ready()) {
         return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_SHAPE, started);
     }
+    two = draw->texcoords1 != 0 ? 1 : 0;
+    vertex_size = two ? V9X_HSW_TL2_VERTEX_BYTES : V9X_HSW_TL_VERTEX_BYTES;
     if (draw->shade_mode == V9X_R3D_SHADE_FLAT) {
         return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_STATE, started);
     }
@@ -2857,11 +3106,10 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
         }
     }
     count = last - first + 1ul;
-    vertex_bytes = (count * V9X_HSW_TL_VERTEX_BYTES + V9X_D3D_HSW_INDEX_LINE -
-                    1ul) & ~(V9X_D3D_HSW_INDEX_LINE - 1ul);
-    index_bytes = (index_count * 2ul + V9X_D3D_HSW_INDEX_LINE - 1ul) &
-                  ~(V9X_D3D_HSW_INDEX_LINE - 1ul);
-    if (vertex_bytes + index_bytes > V9X_HSW_PIPE_VERTEX_BYTES) {
+    vertex_bytes = v9x_d3d_hsw_index_lines(count * vertex_size);
+    index_bytes = v9x_d3d_hsw_index_lines(index_count * 2ul);
+    pieces = vertex_bytes + index_bytes > V9X_HSW_PIPE_VERTEX_BYTES ? 1 : 0;
+    if (pieces && last >= V9X_D3D_HSW_POOL_MAX) {
         if (count > v9x_hal->d3d_diagnostics.indexed_decline_range_max) {
             v9x_hal->d3d_diagnostics.indexed_decline_range_max = count;
         }
@@ -2885,8 +3133,11 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
                                        started);
         }
     }
+    /* Two units only with the pairs to draw them, and the pairs only with
+     * two units. */
     reason = v9x_d3d_hsw_map(draw, &state);
-    if (reason != V9X_D3D_HSW_REFUSE_NONE || state.textured == 2) {
+    if (reason != V9X_D3D_HSW_REFUSE_NONE ||
+        (state.textured == 2 ? 1 : 0) != two) {
         return v9x_d3d_hsw_decline(V9X_D3D_INDEXED_DECLINE_STATE, started);
     }
     if (state.scissor_empty) {
@@ -2913,6 +3164,19 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
         }
     }
     wait_after = v9x_d3d_hsw_draw_waits(draw);
+    if (count > v9x_hal->d3d_diagnostics.indexed_drawn_range_max) {
+        v9x_hal->d3d_diagnostics.indexed_drawn_range_max = count;
+    }
+    if (pieces) {
+        drawn = v9x_d3d_hsw_draw_pieces(draw, &state, pool, indices,
+                                        index_count, strip, cull_mode,
+                                        wait_after);
+        if (drawn) {
+            v9x_present_note_submission();
+        }
+        V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
+        return drawn;
+    }
     if (!v9x_d3d_hsw_wait_slot(&slot)) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_IDLE);
         V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
@@ -2924,24 +3188,13 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
         V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
         return 0;
     }
-    if (count > v9x_hal->d3d_diagnostics.indexed_drawn_range_max) {
-        v9x_hal->d3d_diagnostics.indexed_drawn_range_max = count;
-    }
 
-    /* The range's vertices, the pixel centre on x and y and the rest as
-     * given; then the indices rebased to the range and the rest of their
-     * cache line zeroed. TAIL's drain publishes both. */
+    /* The range's vertices (v9x_d3d_hsw_put_pool_vertex); then the indices
+     * rebased to the range and the rest of their cache line zeroed. TAIL's
+     * drain publishes both. */
     target = v9x_d3d_hsw_reserve(slot.vertex_off);
     for (index = first; index <= last; ++index) {
-        const v9x_u32 *words = (const v9x_u32 *)&pool[index];
-
-        moved.value = pool[index].sx + draw->centre_offset;
-        *target++ = moved.bits;
-        moved.value = pool[index].sy + draw->centre_offset;
-        *target++ = moved.bits;
-        for (word = 2ul; word < V9X_HSW_TL_VERTEX_BYTES / 4ul; ++word) {
-            *target++ = words[word];
-        }
+        target = v9x_d3d_hsw_put_pool_vertex(target, draw, pool, index);
     }
     index_at = (volatile v9x_u16 *)v9x_d3d_hsw_reserve(slot.vertex_off +
                                                        vertex_bytes);
