@@ -59,8 +59,8 @@ New in 0.56.0:
   compatible:** 256-colour palettes go through the BIOS, and the driver
   no longer resets the BIOS's line length. Found on a Matrox Millennium
   P650, whose 640x480 256-colour desktop came up scrambled and in the
-  wrong colours; the fix runs on that card but nobody has seen its screen
-  yet ([record](docs/decisions/2026-11-18-p650-vbe-palette-and-stride.md)).
+  wrong colours; its owner reports 640x480 to 1280x1024 at 8, 16 and
+  32 bpp now look right ([record](docs/decisions/2026-11-18-p650-vbe-palette-and-stride.md)).
 - **HD 4600 on a monitor connected after power-on:** when the BIOS
   leaves the panel fitter scaling a full-size picture, the driver sets the
   picture's size to the mode's. Games were drawn twice across once on the

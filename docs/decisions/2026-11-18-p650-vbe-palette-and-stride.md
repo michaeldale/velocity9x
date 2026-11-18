@@ -3,8 +3,8 @@
 Date: 2026-11-18. Machine: M-BXMFA8 (W9QI3632), Daniel's, where the
 GeForce 210 was until 2026-11-17. Card: Matrox Millennium P650, PCI
 102B:2538, VBE 3.0, BIOS "MATROX/P650/P750 VGA/VBE BIOS (V1.3) b11".
-Status: fix built (run-checks green) and running on the card; the screen
-itself not yet seen. The owner had switched the adapter back to
+Status: fix built (run-checks green), running on the card, and the screen
+confirmed by the owner (below). The owner had switched the adapter back to
 Microsoft's "Standard PCI Graphics Adapter (VGA)", so the package was
 reinstalled remotely by Have Disk from C:\V9XP650 (Display\0001) and the
 saved mode set to 640x480x8. Boot 170: `Stage=enable-ok`,
@@ -86,11 +86,19 @@ shear the glyphs; they are intact), and a 6/8-bit DAC width mismatch
 Both changes key on capabilities bit 1, which only the P650 reports among
 the recorded cards, so no other card's path changes.
 
+## Owner's check
+
+Daniel's eyes are the only check, since every readback the driver can make
+goes through the same remapped aperture. His reports on the remote-help
+chat, 2026-11-18 (UTC): at 14:32, "no corruption now in 640x480 256
+colours"; at 14:44, 640x480, 800x600, 1024x768 and 1280x1024 look fine at
+8, 16 and 32 bpp. No photo was sent; the record is his description. Only
+640x480x8 was reported broken. The palette route matters only at 8 bpp;
+the kept stride applies to every mode on this card, so the other modes
+show that skipping the 4F06h set did no harm there.
+
 ## Not known yet
 
-- Whether the screen is now right: Daniel's eyes are the only check, since
-  every readback the driver can make goes through the same remapped
-  aperture.
 - Whether a stride of 1024 drawn at 640x480x8 would also work; not tried.
 - The palette load in `ResetHiResMode` (return from a full-screen DOS box)
   now runs a nested BIOS call from inside that VDD callback on this card.

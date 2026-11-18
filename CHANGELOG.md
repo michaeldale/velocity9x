@@ -31,8 +31,9 @@ build identifier so exact guest-tested binaries remain traceable.
   driver's line-length correction also scrambled the picture. The palette
   now goes through VBE function 4F09h, and the line length is not reset.
   No other card on record reports itself this way. It runs on the P650
-  (palette loaded through the BIOS, line length kept); nobody has seen
-  that card's screen with it yet. A VGA-compatible card's path is
+  (palette loaded through the BIOS, line length kept), and its owner
+  reports 640x480 to 1280x1024 at 8, 16 and 32 bpp look right. A
+  VGA-compatible card's path is
   unchanged: on 86Box's Mach64 VT2, 640x480x8 kept the ports and drew
   correctly
   ([record](docs/decisions/2026-11-18-p650-vbe-palette-and-stride.md)).
