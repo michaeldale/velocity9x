@@ -1,6 +1,6 @@
 /*
  * V9XSIMM.EXE: AMD Oland (Radeon R7 240, GCN 1) read-only register
- * snapshot.
+ * snapshot, and (/seq only) a checked engine-clock write sequence.
  *
  * Phase 2 of docs\plans\ati-oland-gfx6.md, and kit 1 for an owner who is
  * not on remote help: it runs under the released vbe driver and writes
@@ -179,6 +179,69 @@ static const struct v9x_simm_register v9x_global[] = {
     { 0x00328ul, "VGA_HDP_CONTROL" },
     { 0x00330ul, "D1VGA_CONTROL" },
     { 0x00338ul, "D2VGA_CONTROL" },
+    /* The engine and memory clocks the BIOS left (radeon sid.h; SI's
+     * clock registers are plain MMIO, read by si_dpm.c with RREG32). */
+    { 0x00600ul, "CG_SPLL_FUNC_CNTL" },
+    { 0x00604ul, "CG_SPLL_FUNC_CNTL_2" },
+    { 0x00608ul, "CG_SPLL_FUNC_CNTL_3" },
+    { 0x0060cul, "CG_SPLL_FUNC_CNTL_4" },
+    /* Unnamed in the headers here; the VBIOS's SetEngineClock reads and
+     * writes it. */
+    { 0x00610ul, "CG_SPLL_0610" },
+    { 0x00614ul, "SPLL_STATUS" },
+    { 0x00618ul, "SPLL_CNTL_MODE" },
+    { 0x00620ul, "CG_SPLL_SPREAD_SPECTRUM" },
+    { 0x00624ul, "CG_SPLL_SPREAD_SPECTRUM_2" },
+    { 0x0065cul, "MPLL_BYPASSCLK_SEL" },
+    { 0x00660ul, "CG_CLKPIN_CNTL" },
+    { 0x00664ul, "CG_CLKPIN_CNTL_2" },
+    { 0x00780ul, "GENERAL_PWRMGT" },
+    { 0x00788ul, "SCLK_PWRMGT_CNTL" },
+    { 0x00798ul, "TARGET_AND_CURRENT_PROFILE_INDEX" },
+    /* The arbiter timings SetEngineClock recomputes for the engine clock
+     * (gmc_6_0_d.h), and an unnamed VM-block register its MC table reads. */
+    { 0x01734ul, "VM_1734" },
+    { 0x02774ul, "MC_ARB_DRAM_TIMING" },
+    { 0x02778ul, "MC_ARB_DRAM_TIMING2" },
+    { 0x027b0ul, "MC_ARB_RFSH_RATE" },
+    { 0x02808ul, "MC_ARB_BURST_TIME" },
+    { 0x027acul, "MC_ARB_RFSH_CNTL" },
+    /* What the VBIOS's SetMemoryClock reads (gmc_6_0_d.h). */
+    { 0x020acul, "MC_SHARED_BLACKOUT_CNTL" },
+    { 0x02888ul, "MC_SEQ_MPLL_OVERRIDE" },
+    { 0x02898ul, "MC_SEQ_DRAM" },
+    { 0x028a0ul, "MC_SEQ_RAS_TIMING" },
+    { 0x028a4ul, "MC_SEQ_CAS_TIMING" },
+    { 0x028a8ul, "MC_SEQ_MISC_TIMING" },
+    { 0x028acul, "MC_SEQ_MISC_TIMING2" },
+    { 0x028b0ul, "MC_SEQ_PMG_TIMING" },
+    { 0x028bcul, "MC_SEQ_WR_CTL_D0" },
+    { 0x028c0ul, "MC_SEQ_WR_CTL_D1" },
+    { 0x028c4ul, "MC_SEQ_CMD" },
+    { 0x0292cul, "MC_IO_TXCNTL_APHY_D0" },
+    { 0x02944ul, "MC_IO_TXCNTL_APHY_D1" },
+    { 0x0295cul, "MC_SEQ_FIFO_CTL" },
+    { 0x0297cul, "MC_SEQ_MISC8" },
+    { 0x02a04ul, "MC_SEQ_MISC1" },
+    { 0x02a08ul, "MC_SEQ_RESERVE_M" },
+    { 0x02a0cul, "MC_PMG_CMD_EMRS" },
+    { 0x02a24ul, "MC_SEQ_SUP_PGM_STAT" },
+    { 0x02a68ul, "MC_SEQ_CG" },
+    { 0x02aacul, "MC_PMG_CMD_MRS" },
+    { 0x02b44ul, "MC_PMG_CMD_MRS1" },
+    { 0x02b54ul, "MC_SEQ_WR_CTL_2" },
+    { 0x02ba4ul, "DLL_CNTL" },
+    { 0x02bc8ul, "MPLL_TIME" },
+    { 0x02bd4ul, "MPLL_CONTROL" },
+    { 0x02ba0ul, "MCLK_PWRMGT_CNTL" },
+    { 0x02bb0ul, "MPLL_CNTL_MODE" },
+    { 0x02bb4ul, "MPLL_FUNC_CNTL" },
+    { 0x02bb8ul, "MPLL_FUNC_CNTL_1" },
+    { 0x02bbcul, "MPLL_FUNC_CNTL_2" },
+    { 0x02bc0ul, "MPLL_AD_FUNC_CNTL" },
+    { 0x02bc4ul, "MPLL_DQ_FUNC_CNTL" },
+    { 0x02bccul, "MPLL_SS1" },
+    { 0x02bd0ul, "MPLL_SS2" },
     { 0x00714ul, "CG_MULT_THERMAL_STATUS" },
     { 0x00e4cul, "SRBM_STATUS2" },
     { 0x00e50ul, "SRBM_STATUS" },
@@ -734,12 +797,257 @@ static void v9x_decode_crtc(DWORD crtc)
                 V9X_SI_IN_VBLANK) != 0ul);
 }
 
+/*
+ * /rom: the video BIOS image the system BIOS shadowed at C0000h, copied to
+ * V9XROM.BIN for its AtomBIOS tables (FirmwareInfo, PowerPlay). Win98 maps
+ * the system VM's first megabyte at linear 0 in every Win32 process, so
+ * this reads memory and touches nothing on the card. The length is the
+ * option ROM header's (55h AAh, then the size in 512-byte blocks); a
+ * missing signature writes nothing.
+ */
+#define V9X_ROM_SHADOW   0x000c0000ul
+#define V9X_ROM_BLOCK    512ul
+#define V9X_ROM_PATH     V9X_DIAG_PATH("V9XROM.BIN")
+
+static void v9x_dump_rom(void)
+{
+    const BYTE *rom = (const BYTE *)V9X_ROM_SHADOW;
+    DWORD bytes;
+    DWORD written = 0ul;
+    HANDLE file;
+
+    if (rom[0] != 0x55u || rom[1] != 0xaau) {
+        v9x_text("Rom", "Result", "NO-SIGNATURE");
+        return;
+    }
+    bytes = (DWORD)rom[2] * V9X_ROM_BLOCK;
+    v9x_number("Rom", "Bytes", bytes);
+    file = CreateFileA(V9X_ROM_PATH, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        v9x_text("Rom", "Result", "CREATE-FAILED");
+        return;
+    }
+    WriteFile(file, rom, bytes, &written, 0);
+    CloseHandle(file);
+    v9x_number("Rom", "Written", written);
+    v9x_text("Rom", "Result", written == bytes ? "WRITTEN" : "SHORT");
+}
+
+/* Whether the command line holds `name` (a switch, case as given). */
+static int v9x_has_switch(const char *name)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(name);
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        int index = 0;
+
+        while (index < length && line[index] == name[index]) {
+            ++index;
+        }
+        if (index == length) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * /seq:FILE: the one write path (SIMM.VXD DIOC 2). FILE holds lines
+ * "W offset value" (a register write), "P offset mask" (read until a mask
+ * bit is set) and "D 0 microseconds", in hex; atom_seq.py writes them from
+ * a simulated run of the VBIOS's SetEngineClock or SetMemoryClock. The VxD
+ * refuses the whole list if any write is outside its allow-list (the engine
+ * and memory PLLs, the MC arbiter and sequencer registers those tables
+ * write) or any poll is not of SPLL_STATUS or MPLL_CNTL_MODE, runs it with
+ * interrupts off, and stops at a poll that runs out. [Seq] gets each op's
+ * read-back and poll count.
+ */
+#define V9X_SIMM_SEQUENCE   2u
+#define V9X_SEQ_MAX         160u
+#define V9X_SEQ_WRITE       1ul
+#define V9X_SEQ_POLL_SET    2ul
+#define V9X_SEQ_DELAY_US    3ul
+#define V9X_ST_SEQ_REFUSED  0x00000400ul
+#define V9X_ST_SEQ_TIMEOUT  0x00000800ul
+#define V9X_ST_SEQ_DONE     0x00001000ul
+
+struct v9x_seq_request {
+    DWORD config;
+    DWORD count;
+    DWORD ops[V9X_SEQ_MAX][3];
+};
+
+static struct v9x_seq_request v9x_seq;
+static char v9x_seq_text[8192];
+
+static int v9x_hex_digit(char c, DWORD *value)
+{
+    if (c >= '0' && c <= '9') {
+        *value = (*value << 4) | (DWORD)(c - '0');
+    } else if (c >= 'A' && c <= 'F') {
+        *value = (*value << 4) | (DWORD)(c - 'A' + 10);
+    } else if (c >= 'a' && c <= 'f') {
+        *value = (*value << 4) | (DWORD)(c - 'a' + 10);
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
+/* One hex field at *at, skipping spaces first. 0 when there is none. */
+static int v9x_hex_field(const char **at, DWORD *value)
+{
+    int digits = 0;
+
+    while (**at == ' ') {
+        ++*at;
+    }
+    *value = 0ul;
+    while (v9x_hex_digit(**at, value)) {
+        ++*at;
+        ++digits;
+    }
+    return digits != 0 && digits <= 8;
+}
+
+/* Reads FILE into v9x_seq; 0 on any line it does not understand. */
+static int v9x_seq_load(const char *path)
+{
+    HANDLE file;
+    DWORD got = 0ul;
+    const char *at;
+    DWORD op;
+    DWORD offset;
+    DWORD value;
+
+    file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+                       FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    ReadFile(file, v9x_seq_text, sizeof(v9x_seq_text) - 1u, &got, 0);
+    CloseHandle(file);
+    v9x_seq_text[got] = '\0';
+    v9x_seq.count = 0ul;
+    for (at = v9x_seq_text; *at != '\0';) {
+        if (*at == '\r' || *at == '\n' || *at == ' ') {
+            ++at;
+            continue;
+        }
+        if (*at == 'W') {
+            op = V9X_SEQ_WRITE;
+        } else if (*at == 'P') {
+            op = V9X_SEQ_POLL_SET;
+        } else if (*at == 'D') {
+            op = V9X_SEQ_DELAY_US;
+        } else {
+            return 0;
+        }
+        ++at;
+        if (v9x_seq.count == V9X_SEQ_MAX || !v9x_hex_field(&at, &offset) ||
+            !v9x_hex_field(&at, &value)) {
+            return 0;
+        }
+        v9x_seq.ops[v9x_seq.count][0] = op;
+        v9x_seq.ops[v9x_seq.count][1] = offset;
+        v9x_seq.ops[v9x_seq.count][2] = value;
+        ++v9x_seq.count;
+    }
+    return v9x_seq.count != 0ul;
+}
+
+/* The path after "/seq:" on the command line, up to a space. */
+static int v9x_seq_path(char *path, int size)
+{
+    const char *line = GetCommandLineA();
+    int length = 0;
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        if (line[0] == '/' && line[1] == 's' && line[2] == 'e' &&
+            line[3] == 'q' && line[4] == ':') {
+            line += 5;
+            while (line[length] != '\0' && line[length] != ' ' &&
+                   length < size - 1) {
+                path[length] = line[length];
+                ++length;
+            }
+            path[length] = '\0';
+            return length != 0;
+        }
+    }
+    return 0;
+}
+
+static void v9x_seq_run(DWORD config)
+{
+    char path[MAX_PATH];
+    char key[16];
+    char text[40];
+    HANDLE device;
+    DWORD returned = 0ul;
+    DWORD index;
+
+    if (!v9x_seq_path(path, (int)sizeof(path))) {
+        return;
+    }
+    v9x_text("Seq", "File", path);
+    if (!v9x_seq_load(path)) {
+        v9x_text("Seq", "Result", "BAD-FILE");
+        return;
+    }
+    v9x_number("Seq", "Ops", v9x_seq.count);
+    v9x_seq.config = config;
+    device = CreateFileA(V9X_SIMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        v9x_text("Seq", "Result", "VXD-LOAD-FAILED");
+        return;
+    }
+    if (!DeviceIoControl(device, V9X_SIMM_SEQUENCE, &v9x_seq,
+                         8ul + v9x_seq.count * 12ul, &v9x_result,
+                         sizeof(v9x_result), &returned, 0)) {
+        CloseHandle(device);
+        v9x_text("Seq", "Result", "DIOC-FAILED");
+        return;
+    }
+    CloseHandle(device);
+    v9x_key("Seq", "Status", v9x_result.status);
+    v9x_number("Seq", "Ran", v9x_result.accepted);
+    v9x_key("Seq", "RefusedOffset", v9x_result.refused_offset);
+    for (index = 0ul; index < v9x_result.accepted &&
+                      index < V9X_SEQ_MAX; ++index) {
+        lstrcpyA(key, "Op");
+        v9x_decimal(key + 2, index);
+        v9x_hex(text, v9x_result.offsets[index], 5);
+        text[5] = ',';
+        v9x_hex(text + 6, v9x_result.first[index], 8);
+        text[14] = ',';
+        v9x_decimal(text + 15, v9x_result.second[index]);
+        v9x_text("Seq", key, text);
+    }
+    v9x_text("Seq", "Result",
+             (v9x_result.status & V9X_ST_SEQ_REFUSED) != 0ul ? "REFUSED" :
+             (v9x_result.status & V9X_ST_SEQ_TIMEOUT) != 0ul ? "POLL-TIMEOUT" :
+             (v9x_result.status & V9X_ST_SEQ_DONE) != 0ul ? "DONE" :
+                                                            "NOT-RUN");
+}
+
 void __stdcall V9xOlandMmioEntry(void)
 {
     DWORD config;
     DWORD crtc;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
+    if (v9x_has_switch("/rom")) {
+        DeleteFileA(V9X_SIMM_PATH);
+        v9x_text("Report", "Tool", "V9XSIMM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_dump_rom();
+        WritePrivateProfileStringA(0, 0, 0, V9X_SIMM_PATH);
+        ExitProcess(0u);
+    }
     DeleteFileA(V9X_SIMM_PATH);
     v9x_text("Report", "Tool", "V9XSIMM");
     v9x_text("Report", "Build", V9X_BUILD_ID);
@@ -763,6 +1071,9 @@ void __stdcall V9xOlandMmioEntry(void)
     v9x_key("Report", "Bar5", v9x_config_read(config, 0x24ul));
     v9x_key("Report", "Subsystem", v9x_config_read(config, 0x2cul));
     v9x_key("Report", "RomBase", v9x_config_read(config, 0x30ul));
+
+    /* /seq runs before the snapshot, so the snapshot shows its result. */
+    v9x_seq_run(config);
 
     v9x_request.config = config;
     v9x_request_build();
