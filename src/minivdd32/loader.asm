@@ -3720,24 +3720,39 @@ V9xMini_Api_HswStolenReserved_Refused:
     mov     [ebp.Client_AX], 0
     ret
 
-; See V9XMINI_FN_HSW_RPS in V9XMAPI.INC. Haswell only: Ivy Bridge's request
-; field is not at 31:24 (i915's GEN6_FREQUENCY), and nothing was measured
-; there.
+; See V9XMINI_FN_HSW_RPS in V9XMAPI.INC. Haswell's request is at 31:24
+; (HSW_FREQUENCY) and its actual clock at 13:7 (HSW_CAGF); Ivy Bridge's at
+; 31:25 (GEN6_FREQUENCY) and 14:8 (GEN6_CAGF), i915's i915_reg.h for both.
 V9X_HSW_RPNSWREQ        equ 0000a008h
 V9X_HSW_RPSTAT1         equ 0000a01ch
 V9X_HSW_RP_STATE_CAP    equ 00145998h
 V9X_HSW_RPS_REQ_LOW     equ 00ffffffh
+V9X_HSW_RPS_REQ_SHIFT   equ 24
 V9X_HSW_RPS_CAGF_SHIFT  equ 7
+V9X_IVB_RPS_REQ_LOW     equ 01ffffffh
+V9X_IVB_RPS_REQ_SHIFT   equ 25
+V9X_IVB_RPS_CAGF_SHIFT  equ 8
 V9X_HSW_RPS_CAGF_MASK   equ 7fh
 V9xMini_Api_HswRps:
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     cmp     V9xHswOpen, 0
-    je      short V9xMini_Api_HswRps_Refused
+    je      V9xMini_Api_HswRps_Refused
+    ; The chip's fields: ESI the bits a request may not set, BL the
+    ; request's shift, BH the actual clock's.
+    mov     esi, V9X_HSW_RPS_REQ_LOW
+    mov     bl, V9X_HSW_RPS_REQ_SHIFT
+    mov     bh, V9X_HSW_RPS_CAGF_SHIFT
     cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
-    jne     short V9xMini_Api_HswRps_Refused
+    je      short V9xMini_Api_HswRps_Fields
+    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
+    jne     V9xMini_Api_HswRps_Refused
+    mov     esi, V9X_IVB_RPS_REQ_LOW
+    mov     bl, V9X_IVB_RPS_REQ_SHIFT
+    mov     bh, V9X_IVB_RPS_CAGF_SHIFT
+V9xMini_Api_HswRps_Fields:
     mov     eax, [ebp.Client_EBX]
-    test    eax, V9X_HSW_RPS_REQ_LOW
-    jnz     short V9xMini_Api_HswRps_Refused
+    test    eax, esi
+    jnz     V9xMini_Api_HswRps_Refused
     mov     edi, V9xHswMmioLinear
     mov     [ebp.Client_AX], 1
     test    eax, eax
@@ -3746,16 +3761,18 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     ; The PCU's answer took 106 reads on the i5-4570; the bound is the
     ; forcewake one, about a thousand times that.
     mov     edx, eax
-    shr     edx, 24
-    xor     ecx, ecx
+    mov     cl, bl
+    shr     edx, cl
+    mov     cl, bh
+    xor     esi, esi
 V9xMini_Api_HswRps_Poll:
     mov     eax, [edi+V9X_HSW_RPSTAT1]
-    shr     eax, V9X_HSW_RPS_CAGF_SHIFT
+    shr     eax, cl
     and     eax, V9X_HSW_RPS_CAGF_MASK
     cmp     eax, edx
     je      short V9xMini_Api_HswRps_Read
-    inc     ecx
-    cmp     ecx, V9X_HSW_FW_POLLS
+    inc     esi
+    cmp     esi, V9X_HSW_FW_POLLS
     jb      short V9xMini_Api_HswRps_Poll
     mov     [ebp.Client_AX], 2
 V9xMini_Api_HswRps_Read:

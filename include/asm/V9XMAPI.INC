@@ -523,15 +523,16 @@ V9XMINI_FN_HSW_STOLEN_RESERVED EQU 0022h
 
 ; Intel Haswell: the render clock request (docs\decisions\2026-11-14-
 ; haswell-render-clock-400mhz.md). Only while HSW_ENGINE_OPEN's engine is
-; open on a Haswell chip, so forcewake is held and the GT takes the write.
-; In: EBX = the RPNSWREQ value, bits 31:24 only, or 0 to read only. A
-; request is written to A008h, then RPSTAT1's actual clock (13:7) is polled,
-; bounded, until it equals the request (31:24). The value is the display
-; driver's to choose (intel_hsw.h); nothing here interprets the cap.
+; open on a Haswell or Ivy Bridge chip, so forcewake is held and the GT takes
+; the write. In: EBX = the RPNSWREQ value, bits 31:24 only (Ivy Bridge 31:25),
+; or 0 to read only. A request is written to A008h, then RPSTAT1's actual
+; clock (13:7; Ivy Bridge 14:8) is polled, bounded, until it equals the
+; request. The value is the display driver's to choose (intel_hsw.h);
+; nothing here interprets the cap.
 ; Out: AX=1 read, or written and granted; AX=2 written and not granted
 ; within the bound; EBX = RP_STATE_CAP (145998h), ECX = RPNSWREQ, EDX =
 ; RPSTAT1, each read after the write. AX=0, EBX=ECX=EDX=0: no engine open,
-; not Haswell, or low request bits set; nothing written. Addresses and
+; neither chip, or low request bits set; nothing written. Addresses and
 ; fields are i915's. Only the intel-gma family image implements it.
 V9XMINI_FN_HSW_RPS          EQU 0030h
 

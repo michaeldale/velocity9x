@@ -343,12 +343,20 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
  * Addresses and fields are i915's (GEN6_RP_STATE_CAP through the MCHBAR
  * mirror, GEN6_RPNSWREQ with HSW_FREQUENCY at 31:24, GEN6_RPSTAT1 with
  * HSW_CAGF at 13:7), 50 MHz a unit; the public PRM does not lay them out.
+ * Ivy Bridge has the same registers and cap layout with the request one
+ * bit higher, at 31:25 (GEN6_FREQUENCY), and the actual clock at 14:8
+ * (GEN6_CAGF); the mini-VDD applies the chip's fields when it polls.
  *
  * v9x_intel_hsw_rps_request: RPNSWREQ for RP0 from RP_STATE_CAP (RP0 7:0,
  * RP1 15:8, RPn 23:16). UNSUPPORTED, request 0, for a cap whose RPn is 0,
  * whose fields are out of order, or whose RP0 RPSTAT1's 7-bit field could
- * not report - an asleep GT reads 0, a gone one all ones.
+ * not report - an asleep GT reads 0, a gone one all ones. The chip is
+ * V9X_INTEL_HSW_RPS_CHIP_*, HSW_ENGINE_OPEN's values; any other is
+ * INVALID_ARGUMENT, request 0.
  */
+#define V9X_INTEL_HSW_RPS_CHIP_HASWELL   ((v9x_u32)0ul)
+#define V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE ((v9x_u32)1ul)
+#define V9X_INTEL_IVB_RPS_REQ_SHIFT      25
 #define V9X_INTEL_HSW_RP_STATE_CAP   ((v9x_u32)0x00145998ul)
 #define V9X_INTEL_HSW_RPNSWREQ       ((v9x_u32)0x0000a008ul)
 #define V9X_INTEL_HSW_RPSTAT1        ((v9x_u32)0x0000a01cul)
@@ -358,7 +366,8 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
 #define V9X_INTEL_HSW_RPS_CAGF_SHIFT 7
 #define V9X_INTEL_HSW_RPS_CAGF_MASK  ((v9x_u32)0x7ful)
 
-v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 rp_state_cap,
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 chip,
+                                                  v9x_u32 rp_state_cap,
                                                   v9x_u32 *request);
 v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_actual_mhz(v9x_u32 rpstat1);
 v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_request_mhz(v9x_u32 rpnswreq);

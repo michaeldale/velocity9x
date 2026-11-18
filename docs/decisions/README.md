@@ -339,6 +339,8 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-10-21 Ivy Bridge flips: plane A's base and PRI_LINOFF, measured with a sub-page back buffer](2026-10-21-ivybridge-flips.md)
 - [2026-10-21 Ivy Bridge Direct3D: Haswell's engine with Gen7's words and IVB's PIPE_CONTROLs passes V9XD32; 3DMark 2000 runs](2026-10-21-ivybridge-direct3d.md)
 - [2026-10-21 Ivy Bridge OpenGL and Glide: the HD 4600's results, and a renderer name fixed](2026-10-21-ivybridge-gl-glide.md)
+- [2026-11-19 Desktop HD 4000 (M-NZHWBR) on 0.56.0: every release probe passes, 3DMark 2000 3121 and 2001 SE 1743 run without a hang; render clock and screen not checked](2026-11-19-hd4000-desktop-on-0.56.0.md)
+- [2026-11-19 Ivy Bridge render clock: RP0 requested in RPNSWREQ 31:25, granted at once; the HD 4000 holds 1150 MHz idle and under load, 3DMark 2001 SE 1743 to 2555](2026-11-19-ivybridge-render-clock-rp0.md)
 - [2026-10-23 HD 4600: draws outside the GDI primary run on; Quake 3 at 1024x768 35.7 to 42.6 fps, and the GPU's cost per batch is now the limit](2026-10-23-haswell-gl-draws-run-on.md)
 - [2026-10-23 The G45 and Q45 (GMA X4500, GMA 4500) join intel-gma on two DOS surveys: the GM965's path with Ironlake's GTT offset and two G4x 3D encodings](2026-10-23-g4x-gma4500-from-surveys.md)
 - [2026-10-25 Write-combining the GMA 950's aperture: FbWrite 105 to 2,814 MB/s; the HD 4600's BIOS leaves no MTRR pair](2026-10-25-intel-gen3-write-combining.md)

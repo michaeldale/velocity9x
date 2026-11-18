@@ -151,15 +151,15 @@ static void v9x_hsw_format_hex(char *text, unsigned long value)
 /*
  * The render clock request at engine open (intel_hsw.h has why and what).
  * The last open's outcome and the three registers as read after it, for
- * V9XHW.INI. Haswell only: the mini-VDD refuses Ivy Bridge, whose request
- * field differs and was not measured.
+ * V9XHW.INI. Haswell and Ivy Bridge; the chip picks the request field
+ * (HSW_ENGINE_OPEN's chip values are V9X_INTEL_HSW_RPS_CHIP_*'s).
  */
 static const char *v9x_hsw_rps_status = "not-requested";
 static unsigned long v9x_hsw_rps_cap;
 static unsigned long v9x_hsw_rps_rpnswreq;
 static unsigned long v9x_hsw_rps_rpstat1;
 
-static void v9x_hsw_request_render_clock(void)
+static void v9x_hsw_request_render_clock(unsigned long chip)
 {
     unsigned long request = 0ul;
     unsigned short answer;
@@ -169,7 +169,7 @@ static void v9x_hsw_request_render_clock(void)
         v9x_hsw_rps_status = "unread";
         return;
     }
-    if (v9x_intel_hsw_rps_request(v9x_hsw_rps_cap, &request) !=
+    if (v9x_intel_hsw_rps_request(chip, v9x_hsw_rps_cap, &request) !=
         V9X_STATUS_OK) {
         v9x_hsw_rps_status = "cap-not-understood";
         return;
@@ -479,9 +479,10 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
          * d3d\d3d_hsw.c). */
         *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_D3D |
                         V9X_DD_ENGINE_CAP_GEN7_IVB;
+        v9x_hsw_request_render_clock(chip);
         return;
     }
-    v9x_hsw_request_render_clock();
+    v9x_hsw_request_render_clock(chip);
     v9x_hsw_fit_pipe_source();
 
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses

@@ -4,7 +4,16 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.57.0 - not yet released
+## 0.56.1 - not yet released
+
+- **`intel-gma` package, Ivy Bridge HD 4000: the render clock raised to
+  its top speed.** The driver asked for the GPU's highest clock (RP0)
+  on Haswell only; Ivy Bridge stayed where the BIOS left it. It now asks
+  on Ivy Bridge too, with that chip's register fields. On the desktop
+  i5-3570K the HD 4000 runs 1150 MHz idle and under load, and 3DMark
+  2001 SE at its saved settings went from 1743 to 2555. Not run on the
+  mobile HD 4000
+  ([record](docs/decisions/2026-11-19-ivybridge-render-clock-rp0.md)).
 
 ## 0.56.0 - 2026-11-18
 

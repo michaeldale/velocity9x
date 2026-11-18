@@ -299,7 +299,8 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
     return V9X_STATUS_OK;
 }
 
-v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 rp_state_cap,
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 chip,
+                                                  v9x_u32 rp_state_cap,
                                                   v9x_u32 *request)
 {
     v9x_u32 rp0;
@@ -310,6 +311,10 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 rp_state_cap,
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     *request = 0ul;
+    if (chip != V9X_INTEL_HSW_RPS_CHIP_HASWELL &&
+        chip != V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
 
     rp0 = rp_state_cap & 0xfful;
     rp1 = (rp_state_cap >> 8) & 0xfful;
@@ -317,6 +322,10 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 rp_state_cap,
     if (rpn == 0ul || rp1 < rpn || rp0 < rp1 ||
         rp0 > V9X_INTEL_HSW_RPS_CAGF_MASK) {
         return V9X_STATUS_UNSUPPORTED;
+    }
+    if (chip == V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE) {
+        *request = rp0 << V9X_INTEL_IVB_RPS_REQ_SHIFT;
+        return V9X_STATUS_OK;
     }
     *request = rp0 << V9X_INTEL_HSW_RPS_REQ_SHIFT;
     return V9X_STATUS_OK;
