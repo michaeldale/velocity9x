@@ -1,4 +1,4 @@
-# Ivy Bridge asks for RP0 too: the HD 4000 runs 1150 MHz, 3DMark 2001 SE 1743 to 2555
+# Ivy Bridge asks for RP0 too: the HD 4000 runs 1150 MHz; 3DMark 2001 SE 1743 to 2555, 2000 3121 to 4169
 
 Date: 2026-11-19. Machine: M-NZHWBR (W9QI54F0), i5-3570K, HD 4000
 (`8086:0162`), remote help. Follows
@@ -57,6 +57,15 @@ samples. The tool decodes with Haswell's fields, so its summary lines say
 Same machine, same saved settings, one run each. The 4.8-minute run
 (5.8 before) completed without a hang.
 
+| 3DMark 2000, default benchmark, 1024x768 16-bit, 16-bit Z, triple buffer | Score |
+|---|---|
+| 0.56.0, boot 53, clock left alone | 3121 |
+| This change, boot 54, RP0 requested | **4169** |
+
+Same settings shown in both score screens (`hd4000/3dmark2000/end.png`
+here, `../hd4000-nzhwbr-ivb-2026-11-19/hd4000/3dmark-score.png` before);
+one run each, 5.1 minutes, no hang.
+
 ## What argues against it
 
 - The idle desktop now also runs at 1150 MHz, as on the HD 4600; power and
@@ -64,4 +73,3 @@ Same machine, same saved settings, one run each. The 4.8-minute run
   matters more, and it has not run this.
 - The longest window sampled is about 30 s; package-power throttling over
   a long run was not looked for.
-- 3DMark 2000 was not rerun at the new clock.

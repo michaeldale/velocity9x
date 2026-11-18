@@ -11,8 +11,8 @@ build identifier so exact guest-tested binaries remain traceable.
   on Haswell only; Ivy Bridge stayed where the BIOS left it. It now asks
   on Ivy Bridge too, with that chip's register fields. On the desktop
   i5-3570K the HD 4000 runs 1150 MHz idle and under load, and 3DMark
-  2001 SE at its saved settings went from 1743 to 2555. Not run on the
-  mobile HD 4000
+  2001 SE at its saved settings went from 1743 to 2555, 3DMark 2000 from
+  3121 to 4169. Not run on the mobile HD 4000
   ([record](docs/decisions/2026-11-19-ivybridge-render-clock-rp0.md)).
 
 ## 0.56.0 - 2026-11-18
