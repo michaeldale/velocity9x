@@ -135,7 +135,11 @@ per batch, `TimeRenderDrain`. Quake 3 `demo001`, whose batches are about
 
 ## Not in scope
 
-- Flip queued behind fences, and colour clears drawn on the render engine
-  instead of the blitter after a drain: separate, smaller changes.
+- Flip queued behind fences: 9.7 s of a run, and two buffers make the
+  next frame wait for the flip anyway.
+- Clears on the render engine were measured alone and gave nothing
+  (boot 276, 3837 against 3888); they are parked on
+  `park/hsw-rcs-clears` for Phase 3, where a blitter fill would close the
+  open batch.
 - More than two slots: the slot wait is the GPU's time, not the CPU's
   (boot 274: half the batches, the same 72 s).

@@ -89,6 +89,30 @@ frames are whole, two-unit surfaces included.
   has run them.
 - The piece builder is static HAL code with no host test.
 
+## Tried and parked: clears on the render engine
+
+Every colour fill went to the blitter after the CPU waited for the render
+engine to go idle; every depth fill (a render-engine quad already) waited
+for both rings to go idle and then for its own batch. Boot 275's run made
+33 K colour and 14 K depth clears.
+
+Branch `park/hsw-rcs-clears` (`ade25330`): a 3D device's colour target in
+5:6:5 or 32 bpp filled by a render-engine quad of its colour (a 5:6:5
+value widened by repeating each field's top bits; 32 bpp as B8G8R8A8,
+all four bytes written), and depth fills queued like a draw.
+
+Boot 276, the whole intel-gma set: every release probe passes; V9XD32
+`ZClearFar16` 307,200 (every pixel far), `T4ClearedBad` 0. 3DMark 2001
+SE with grabs **3837**, against 3888; `TimeRenderDrain` 95.8 s against
+92.9 s; frames whole. No gain, as with the Oland's clears alone: the
+drains they made were time the CPU spent waiting for the GPU anyway.
+Parked for several draws to a batch, where a blitter fill would close
+the open batch.
+
+Flip waits for the render engine too, but `TimeFlip` was 9.7 s a run, and
+the next frame's first draw waits for the flip anyway with two buffers.
+Not changed.
+
 ## What is left
 
 The CPU waits about 93 s of the run for the GPU to free a slot. Every
