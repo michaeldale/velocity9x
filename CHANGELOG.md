@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.57.0 - not yet released
+
 ## 0.56.0 - 2026-11-18
 
 - **`intel-gma` package, HD 4600 (and Ivy Bridge, not run): Direct3D
