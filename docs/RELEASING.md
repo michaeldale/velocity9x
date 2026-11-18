@@ -215,6 +215,40 @@ Bump `include/velocity9x/build.h` (the string and the three numbers) and add
 `## <next> - not yet released` to `CHANGELOG.md`. Commit:
 `Bump the version to <next>, unreleased: ...`.
 
+## 9. Update the website (optional)
+
+[velocitydrivers.org](https://velocitydrivers.org) is built from the
+separate `velocity-drivers` repository (Astro, static). Its downloads page and
+release history read the GitHub releases at build time, so a rebuild alone
+shows the new version there. The rest is hand-edited and is worth updating
+after a release that adds a chip, changes what a chip runs, or records a new
+measurement. It does not block the release; skipping it leaves the site one
+version behind until the next update.
+
+In that repository:
+
+1. **Hardware** (`src/data/hardware.ts`): add a record for each chip the
+   release newly claims, and update the record of each chip whose support,
+   known issues or results changed. Use the README's **Supported cards**,
+   **What each card runs** and **Known issues** as the source, link each
+   claim to its record in `docs/`, and claim no more than they do.
+2. **Games and benchmarks** (`src/data/games.ts`): add each new measured
+   result with its machine, resolution, settings, driver version and a link
+   to the record it came from. Only recorded measurements; never a figure
+   from an intermediate build presented as the release's.
+3. **Docs**: the package table in `src/content/docs/supported-hardware.md`
+   when a family gains a chip, and the homepage's fallback version in
+   `src/pages/index.astro`.
+4. **Release post**: `src/content/blog/velocity9x-X-Y-Z.md`, summarising the
+   changelog entry, and a line in the site's own `CHANGELOG.md`.
+5. **Build and check**: `npm run build` (fetches the releases, validates the
+   data's cross-references, mirrors the downloads for period browsers), then
+   `npm run check:links`. Commit and push.
+6. **Deploy**: `scripts/deploy.sh --no-build` uploads `dist/` and keeps the
+   previous copy for rollback. It needs an SSH key the web server accepts
+   for the site's account; the site repository's README has the details.
+   Then check the homepage shows the new version and the new pages load.
+
 ## Things not to do
 
 - Never sign with the test key (`release-sign.ps1 -TestKey`,
