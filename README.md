@@ -35,12 +35,24 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.54.0
+## Current version: 0.55.0
 
-[Download](releases/0.54.0/README.md) ·
+[Download](releases/0.55.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 0.55.0:
+- **GCN Radeons, `ati` package: less driver work per frame.** Flips are
+  queued behind the GPU instead of waited for; the command window is
+  write-combined; Direct3D batches carry up to 512 triangles and share
+  their fences; indexed lists are drawn whole on the Oland; clears are
+  drawn on the command processor, whose ring is now 256 KiB. On the
+  Oland, 3DMark 2001 SE with the game's vsync went from 2601 to 4234.
+  The R3E and R7E pass the release checks; their speed was not measured
+  ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
+- **Evergreen Radeons:** the command window is write-combined too. Not
+  run on any Evergreen card.
 
 New in 0.54.0:
 - **AMD Oland XT (GCN 1, `1002:6610`), `ati` package:** DirectDraw on
@@ -264,7 +276,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
 | AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. The Glide 2 probe passes (0.41.0) |
-| AMD Radeon Oland XT (GCN 1, `1002:6610`), from 0.54.0 | `ati` | GCN 1 (SI), through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, two texture stages, specular, fog and colour keys, and through the DirectX 8 interface pixel shader 1.1, cube maps, Q8W8V8U8 and V8U8, and DXT1-3; OpenGL and the Glide probes on the engine; DirectDraw fills, copies and page flips on the DMA engine. 3DMark 2000 and 2001 SE (with compressed textures), Quake 2 and Quake 3. One Dell 2 GiB card; the driver maps 128 MiB of it (the VESA BIOS reports 16 MiB); modes from the VBE. 3DCIF not run |
+| AMD Radeon Oland XT (GCN 1, `1002:6610`), from 0.54.0 | `ati` | GCN 1 (SI), through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, two texture stages, specular, fog and colour keys, and through the DirectX 8 interface pixel shader 1.1, cube maps, Q8W8V8U8 and V8U8, and DXT1-3; OpenGL and the Glide probes on the engine; DirectDraw fills, copies and page flips on the DMA engine. 3DMark 2000 and 2001 SE (with compressed textures; 2001 SE 4234 with vsync from 0.55.0), Quake 2 and Quake 3. One Dell 2 GiB card; the driver maps 128 MiB of it (the VESA BIOS reports 16 MiB); modes from the VBE. 3DCIF not run |
 | AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU, from 0.47.0 into a copy of the desktop, with the screen write-combined (scrolling 30 to 1,170 MB/s). OpenGL and the Glide 2 probe on the engine. 3DMark 2000 (0.42.0); no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. |
 | AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips; from 0.47.0 the screen write-combined and GDI drawn into a copy of the desktop (scrolling 8 to 630 MB/s). 3DMark 2000 and Quake 3 (windowed too, 18.7 fps). The Glide 2 probe passes (0.47.0). One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only |
 

@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.55.0 - not yet released
+## 0.55.0 - 2026-11-18
 
 - **`ati` package, GCN (Oland, Carrizo, Mullins): Flip no longer waits
   for the GPU.** A flip is queued behind the frame's last command-processor
@@ -13,7 +13,8 @@ build identifier so exact guest-tested binaries remain traceable.
   most. The vertex arena is reused a quarter at a time, behind a fence,
   instead of draining the GPU every 2 MiB. On the Oland, 3DMark 2000 with
   vsync off went from 8157 to 8579; with the game's vsync it stays at
-  the refresh (3959, 3985). Carrizo and Mullins have not run it
+  the refresh (3959, 3985). Carrizo and Mullins pass the release checks;
+  their speed was not measured
   ([record](docs/decisions/2026-11-17-oland-queued-flips.md)).
 - **`ati` package, GCN and Evergreen: the command processor's window is
   write-combined, and Direct3D batches are larger and cheaper.** The
@@ -23,7 +24,8 @@ build identifier so exact guest-tested binaries remain traceable.
   of 64. They share one fence and cache flush per group, and the
   shader-cache sync runs only when arena memory is reused. On the Oland,
   3DMark 2001 SE went from 2601-2616 to 3670 with the game's vsync.
-  Carrizo, Mullins and the Evergreen cards have not run it
+  Carrizo and Mullins pass the release checks, their speed not
+  measured; the Evergreen cards have not run it
   ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
 - **`ati` package, Oland: indexed Direct3D lists are drawn whole.** Each
   call's vertices are converted and copied once, only the ones its
@@ -37,7 +39,7 @@ build identifier so exact guest-tested binaries remain traceable.
   wait for the GPU to drain before the DMA engine took it. The 16 KiB
   ring held about fifteen batches; the CPU then waited for room in it.
   On the Oland, 3DMark 2001 SE went from 3989 to 4234. Carrizo and
-  Mullins have not run it
+  Mullins pass the release checks, their speed not measured
   ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
 - **Every package: two diagnostic register reads are sampled one draw
   in 16**, the retrace duty cycle and (GCN) the ring's write pointer.
