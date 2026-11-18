@@ -155,6 +155,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-20 VBE mode inventory per target](2026-08-20-vbe-mode-inventory.md)
 - [2026-08-28 Pineview lists 36 VBE modes and describes 6](2026-08-28-pineview-vbe-mode-list.md)
 - [2026-11-07 Write-combining the vbe family's frame buffer: FbWrite 31.7 to 2,513 and 316 to 3,000 MB/s](2026-11-07-vbe-write-combining.md)
+- [2026-11-18 Matrox Millennium P650 on vbe at 640x480x8: its BIOS loads the palette into its own LUT, so the DAC ports left the BIOS's VGA colours, and a 4F06h stride "correction" broke the BIOS's 640-byte view of mode 101h; palette now through 4F09h, no stride set, on controllers that say they are not VGA compatible](2026-11-18-p650-vbe-palette-and-stride.md)
 
 ## S3 hardware baselines
 

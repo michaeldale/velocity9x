@@ -972,6 +972,9 @@
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
+            # The palette load (palette16.c), in LEAFCODE: _TEXT had about 30
+            # bytes left when the VBE 4F09h route went in (leaf16.h).
+            @{ Name = 'palette16'; Path = 'src\display16\palette16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
             @{ Name = 'sswitch16'; Path = 'src\display16\sswitch16.c'; CodeSegment = 'SSWCODE' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }

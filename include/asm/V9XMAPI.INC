@@ -553,6 +553,35 @@ V9XMINI_FN_HSW_RPS          EQU 0030h
 ; Addresses are i915's for PF_CTL_A; the pipe registers are the PRM's.
 V9XMINI_FN_HSW_PIPE_SOURCE  EQU 0033h
 
+; The palette through VBE 4F09h, for a controller whose 4F00h capabilities
+; say it is not VGA compatible (bit 1). VBE 3.0 sends palette loads for such
+; a controller through 4F09h; the VGA DAC ports need not reach the palette
+; the screen uses. Measured: the Matrox Millennium P650's BIOS loads its own
+; LUT registers in VBE modes and leaves ports 3C8h/3C9h on a table the
+; extended modes never scan (docs\decisions\2026-11-18-p650-vbe-palette-
+; and-stride.md).
+;
+; 4F09h takes its table in ES:DI, which only nested V86 execution can hand
+; the BIOS, so the entries are staged in the init-time V86 scratch first.
+; No caller pointer crosses: four entries travel in registers per call.
+;
+;   VBE_PAL_STAGE in:  CX = first scratch slot, at most
+;                           V9X_VBE_PAL_SLOTS - 4
+;                      EBX, EDX, ESI, EDI = four entries in 4F09h's
+;                           layout: blue, green, red, 0 from the low byte,
+;                           6 bits a channel
+;                 out: AX=1; AX=0 for a slot out of range or no scratch,
+;                      nothing written
+;   VBE_PAL_LOAD  in:  CX = entries to load from slot 0, 1 to
+;                           V9X_VBE_PAL_SLOTS; DX = first palette index
+;                 out: AX=1 when 4F09h answered 004Fh, AX=2 when it
+;                      answered anything else (EBX = the reply), AX=0 for
+;                      a bad count or no scratch, nothing called
+V9XMINI_FN_VBE_PAL_STAGE    EQU 0031h
+V9XMINI_FN_VBE_PAL_LOAD     EQU 0032h
+; The scratch is 512 bytes: 128 four-byte entries.
+V9X_VBE_PAL_SLOTS           EQU 128
+
 ; ATI Rage 128: map the 16 KiB register BAR (BAR2) and say where.
 ;
 ; In: EBX = BAR2's physical base, freshly read from PCI config by the display

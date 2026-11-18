@@ -28,6 +28,7 @@
  * guard here. */
 #include "dd16.h"
 #include "gdi_accel.h"
+#include "palette16.h"
 #ifdef V9X_SCREEN_SHADOW
 #include "shadow16.h"
 #endif
@@ -1135,25 +1136,16 @@ static void v9x_build_palette(RGBQUAD FAR *palette)
     v9x_set_color(&palette[255], 255u, 255u, 255u, V9X_COLOR_MAP_TO_WHITE);
 }
 
+/* The DAC ports or VBE 4F09h: palette16.c decides, at each Enable. */
 static void v9x_program_palette(WORD start, WORD count)
 {
-    RGBQUAD FAR *entry;
-
     if (v9x_color_table == 0 || start >= V9X_PALETTE_ENTRIES) {
         return;
     }
     if (count > V9X_PALETTE_ENTRIES - start) {
         count = V9X_PALETTE_ENTRIES - start;
     }
-
-    v9x_port_out(0x03c8u, (BYTE)start);
-    entry = &v9x_color_table[start];
-    while (count-- != 0u) {
-        v9x_port_out(0x03c9u, (BYTE)(entry->rgbRed >> 2));
-        v9x_port_out(0x03c9u, (BYTE)(entry->rgbGreen >> 2));
-        v9x_port_out(0x03c9u, (BYTE)(entry->rgbBlue >> 2));
-        ++entry;
-    }
+    v9x_palette16_load(v9x_color_table, start, count);
 }
 
 /*
@@ -1792,7 +1784,9 @@ static WORD v9x_build_pdevice(LPVOID device_info,
     v9x_trace_colour_layout();
     v9x_trace_vdd_reservation();
     if (v9x_palettized != 0u) {
+        v9x_palette16_choose();
         v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
+        v9x_palette16_trace();
     } else if (v9x_gamma_loaded != 0u && v9x_gamma_available()) {
         (void)v9x_program_gamma();
     }

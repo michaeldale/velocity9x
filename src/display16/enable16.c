@@ -963,6 +963,27 @@ static WORD v9x_vbe_default_pitch(void)
     }
 
     /*
+     * A controller that 4F00h says is not VGA compatible (capabilities bit
+     * 1) is left at the stride 4F01h describes, without a set.
+     *
+     * Measured on the Matrox Millennium P650 at 640x480x8 (docs\decisions\
+     * 2026-11-18-p650-vbe-palette-and-stride.md): its BIOS presents mode
+     * 101h at the 640 bytes 4F01h reports, over hardware it leaves at a
+     * 1024-byte pitch, through a remapping it sets up after the mode set.
+     * 4F06h's get reads the hardware pitch, 1024, and 4F06h's set rewrites
+     * that pitch to 640 under the remapping, which shreds the picture into
+     * displaced blocks while every readback still agrees. Trusting the get
+     * is the right default for a VGA-compatible CRTC and the wrong one for
+     * a controller whose BIOS sits between the two. Only the P650 has
+     * reported the bit so far, so no other card changes path.
+     */
+    if (V9xMiniVbeController() != 0u &&
+        (v9x_minivdd_capabilities & V9X_VBE_CAP_NOT_VGA_COMPAT) != 0ul) {
+        v9x_vbe_trace("pitch-bios-view");
+        return 1u;
+    }
+
+    /*
      * It disagrees. Ask for the table pitch in pixels: the geometry width for
      * a packed pitch, which is every family's case but one, and more for a
      * family that scans out at an unaliased stride (v9x_mode_pitch_unaliased,
