@@ -15,6 +15,16 @@ build identifier so exact guest-tested binaries remain traceable.
   vsync off went from 8157 to 8579; with the game's vsync it stays at
   the refresh (3959, 3985). Carrizo and Mullins have not run it
   ([record](docs/decisions/2026-11-17-oland-queued-flips.md)).
+- **`ati` package, GCN and Evergreen: the command processor's window is
+  write-combined, and Direct3D batches are larger and cheaper.** The
+  window holding the ring, the vertex arena and the shader copies lay
+  outside the write-combined range, so every vertex the CPU copied was
+  an uncached write. GCN batches now carry up to 512 triangles instead
+  of 64. They share one fence and cache flush per group, and the
+  shader-cache sync runs only when arena memory is reused. On the Oland,
+  3DMark 2001 SE went from 2601-2616 to 3670 with the game's vsync.
+  Carrizo, Mullins and the Evergreen cards have not run it
+  ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
 - **Every package: two diagnostic register reads are sampled one draw
   in 16**, the retrace duty cycle and (GCN) the ring's write pointer.
   On the Oland they were 2 % of 3DMark 2000's CPU time.

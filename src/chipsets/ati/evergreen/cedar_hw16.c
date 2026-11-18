@@ -391,8 +391,11 @@ const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
     0,                      /* engine_reserve_offset */
     /* Write-combined as Trinity's row is: the same engine code and its
      * drains, and the 128 MiB mapping inside BAR0. Measured on Trinity
-     * only (docs\decisions\2026-11-08-trinity-write-combining.md). */
-    V9X_HW16_WC_MAPPING,
+     * only (docs\decisions\2026-11-08-trinity-write-combining.md). Since
+     * 2026-11-18 the whole 256 MiB BAR0, so the CP's ring window at 240
+     * MiB is write-combined too, as the Oland's (V9X_HW16_WC_BAR256); not
+     * yet run on an Evergreen card. */
+    V9X_HW16_WC_BAR256,
     0,                      /* write_combine_fallback */
     /* GDI has no engine on any Evergreen chip and reads the screen at 8
      * MB/s on Trinity, so it draws into the shadow, as Carrizo's does
@@ -415,7 +418,7 @@ const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    V9X_HW16_WC_MAPPING,    /* as Cedar's */
+    V9X_HW16_WC_BAR256,     /* as Cedar's */
     0,                      /* write_combine_fallback */
     V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
@@ -435,7 +438,7 @@ const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    V9X_HW16_WC_MAPPING,    /* as Cedar's */
+    V9X_HW16_WC_BAR256,     /* as Cedar's */
     0,                      /* write_combine_fallback */
     V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
@@ -455,7 +458,7 @@ const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    V9X_HW16_WC_MAPPING,    /* as Cedar's */
+    V9X_HW16_WC_BAR256,     /* as Cedar's */
     0,                      /* write_combine_fallback */
     V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };
@@ -480,8 +483,10 @@ const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
      * 256 MiB window at C0000000 on M-D7TFW4). The DMA engine and the CP
      * already drain the CPU's write-combining buffers before each kick
      * (eng_eg.c, eg_cp.c), as the Rage 128's does. FbWrite 312 to 2,720
-     * MB/s (docs\decisions\2026-11-08-trinity-write-combining.md). */
-    V9X_HW16_WC_MAPPING,
+     * MB/s (docs\decisions\2026-11-08-trinity-write-combining.md). Since
+     * 2026-11-18 the whole 256 MiB BAR0, the CP's ring window at 240 MiB
+     * included, as the Oland's (V9X_HW16_WC_BAR256); not yet run here. */
+    V9X_HW16_WC_BAR256,
     0,                      /* write_combine_fallback */
     V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
 };

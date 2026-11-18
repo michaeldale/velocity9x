@@ -779,6 +779,19 @@ int v9x_vi_window_address(DWORD *high, DWORD *low);
 #define V9X_VI_CP_SLOT_COUNT     9ul
 int v9x_vi_cp_ready(void);
 int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence);
+/* Batches fenced as a group (vi_cp.c's note at v9x_vi_cp_open): one with
+ * no fence of its own, drawing into target and depth (GPU low halves, 0
+ * for none), synced when it begins with the shader-cache sync; the
+ * group's fence; closing the group before a batch samples low; and
+ * whether the next batch must carry the sync. */
+int v9x_vi_cp_submit_open(const v9x_u32 *dwords, DWORD count, DWORD target,
+                          DWORD depth, int synced);
+int v9x_vi_cp_close(void);
+int v9x_vi_cp_before_read(DWORD low);
+int v9x_vi_cp_sync_due(void);
+/* Bytes left unwritten after shader code in the arena, past the SQ's
+ * instruction prefetch (vi_cp.c, v9x_vi_cp_sync). */
+#define V9X_VI_CP_SHADER_PAD 256ul
 int v9x_vi_cp_drain(int wait);
 int v9x_vi_cp_vertex_space(DWORD bytes, volatile DWORD **linear,
                            DWORD *gpu_low);

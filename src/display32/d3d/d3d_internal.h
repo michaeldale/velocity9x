@@ -80,6 +80,17 @@
  */
 #define V9X_D3D_INDEXED_BATCH 64u
 
+/*
+ * The most triangles any engine may be handed at once: an engine whose
+ * limits name batch_triangles (up to this) gets DrawPrimitives2 runs, list
+ * staging and table-fog copies that long; every other engine keeps
+ * V9X_D3D_INDEXED_BATCH. The GCN CP takes 512 (d3d_vi.c's chunk), and at 64
+ * the Oland's 3DMark 2000 run went out in 2.65 M batches of about 50
+ * triangles, each with its own state, cache syncs and fence (docs\
+ * decisions\2026-11-18-gcn-batch-cost.md).
+ */
+#define V9X_D3D_BATCH_MAX 512u
+
 typedef struct v9x_d3d_context {
     DWORD active;
     DWORD pid;
@@ -556,6 +567,12 @@ typedef struct v9x_d3d_engine_limits {
      * leaves it zero.
      */
     DWORD bump_luminance;
+    /*
+     * The most triangles the engine takes in one draw, at most
+     * V9X_D3D_BATCH_MAX; zero for V9X_D3D_INDEXED_BATCH. Appended
+     * 2026-11-18; an initialiser that stops short leaves it zero.
+     */
+    DWORD batch_triangles;
     /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an

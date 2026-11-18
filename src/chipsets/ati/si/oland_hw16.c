@@ -107,11 +107,13 @@ const V9X_HW16_DEVICE v9x_si_oland_device = {
     0u,                     /* packed_pitch */
     V9X_OLAND_MAP_BYTES,
     0,                      /* engine_reserve_offset */
-    /* Write-combined as Mullins' and Carrizo's rows are: eng_vi.c drains
-     * the write-combining buffers before every kick, and the 128 MiB
-     * mapping lies inside BAR0 apart from the ring window at 240 MiB. Not
-     * measured on this card. */
-    V9X_HW16_WC_MAPPING,
+    /* Write-combined over the whole 256 MiB BAR0, the ring window at 240
+     * MiB included: eng_vi.c and vi_cp.c drain the write-combining buffers
+     * before every kick. Over the 128 MiB mapping alone the window stayed
+     * uncached (boot 101, MtrrWrite b=d0000001 m=f8000800), and the CPU
+     * copied vertices into it at about 400 MB/s (docs\decisions\
+     * 2026-11-18-gcn-batch-cost.md). */
+    V9X_HW16_WC_BAR256,
     0,                      /* write_combine_fallback */
     /* GDI has no engine here, as on the APUs; whether a discrete card's
      * BAR reads are as slow as the R3E's is not measured, so the shadow

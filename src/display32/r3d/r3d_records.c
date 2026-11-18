@@ -44,6 +44,9 @@ static int v9x_r3d_records_list(V9X_R3D_RECORDS *run,
 {
     v9x_u32 i;
     int ok = 1;
+    if (run->capacity > V9X_R3D_RECORDS_MAX) {
+        return 0;
+    }
     if (run->pending == 0ul) { run->record_count = 0ul; }
     if (triangles > run->capacity - run->pending) {
         ok = v9x_r3d_records_flush(run);
@@ -89,7 +92,8 @@ static int v9x_r3d_records_fan(V9X_R3D_RECORDS *run,
     v9x_u32 triangles;
     v9x_u32 at;
     int ok = 1;
-    if (count < 3ul || run->capacity == 0ul) {
+    if (count < 3ul || run->capacity == 0ul ||
+        run->capacity > V9X_R3D_RECORDS_MAX) {
         return 0;
     }
     triangles = count - 2ul;

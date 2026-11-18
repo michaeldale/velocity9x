@@ -86,7 +86,11 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     0ul,            /* depth32_bits: Z16 only for now */
     0ul,            /* centre_in_engine */
     1ul,            /* texture_stages */
-    1ul             /* guard_band_ddi6 */
+    1ul,            /* guard_band_ddi6 */
+    0ul,            /* dxt_textures */
+    0ul,            /* modulate2x */
+    0ul,            /* bump_luminance */
+    V9X_D3D_VI_CHUNK_TRIANGLES /* batch_triangles: the CP's chunk */
 };
 
 /*
@@ -121,7 +125,10 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_oland_limits = {
     /* DXT1/3/5 as BC1-3 in 1D-thin tiles, which the sampler reads
      * (V9XSICP /ps11:6-8) and linear-aligned BC it does not (step 7 of
      * docs\plans\ati-gcn-ps11.md). */
-    1ul             /* dxt_textures */
+    1ul,            /* dxt_textures */
+    0ul,            /* modulate2x */
+    0ul,            /* bump_luminance */
+    V9X_D3D_VI_CHUNK_TRIANGLES /* batch_triangles: the CP's chunk */
 };
 
 /* The T# data format of a texture format the sampler reads, or UNKNOWN. */
@@ -777,7 +784,9 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     DWORD index;
     DWORD started;
     DWORD ps_dwords = 0ul;
+    DWORD sampled0;
     int two_units = 0;
+    int synced;
     v9x_u32 ps;
     v9x_u32 reason;
 
@@ -816,6 +825,7 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     } else {
         state.ps_low = v9x_vi_cp_shader_low(v9x_d3d_vi_ps_slot[ps]);
     }
+    sampled0 = state.texture_low;
     /* Two units (Oland only, v9x_d3d_vi_map): both units' descriptors
      * into the table the PS loads, which goes into the arena with each
      * batch; the TL2 VS, and unit 1's pairs as a second stream. */
@@ -833,10 +843,23 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
     state.shader_high = state.target_high;
     state.vertex_high = state.target_high;
     state.fence_high = state.target_high;
+    /* Fenced as a group (vi_cp.c): a texture drawn into since the group's
+     * last fence is flushed to memory first. */
+    if (!v9x_vi_cp_before_read(sampled0) ||
+        (two_units &&
+         !v9x_vi_cp_before_read(unit1.texture_low))) {
+        V9X_TIME_END(V9X_TIME_DECODE, started);
+        return 0;
+    }
+    state.no_fence = 1ul;
 
     while (triangle_count != 0ul) {
         if (ps_dwords != 0ul) {
-            if (!v9x_vi_cp_vertex_space(ps_dwords * 4ul, &linear, &gpu_low)) {
+            /* The pad after the code (V9X_VI_CP_SHADER_PAD): the batch
+             * may skip the shader-cache sync. */
+            if (!v9x_vi_cp_vertex_space(ps_dwords * 4ul +
+                                            V9X_VI_CP_SHADER_PAD,
+                                        &linear, &gpu_low)) {
                 V9X_TIME_END(V9X_TIME_DECODE, started);
                 return 0;
             }
@@ -888,8 +911,9 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
             state.vertex1_high = state.target_high;
             pairs += chunk * 3ul * 2ul;
         }
-        state.fence_low = v9x_vi_cp_fence_low();
-        state.fence_value = v9x_vi_cp_fence_next();
+        /* After the arena space is taken, which can make the sync due. */
+        synced = v9x_vi_cp_sync_due();
+        state.no_cache_sync = synced ? 0ul : 1ul;
 
         v9x_d3d_vi_stream_init(&stream);
         if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
@@ -910,8 +934,9 @@ static int v9x_d3d_vi_draw(const V9X_R3D_DRAW *draw,
             return 0;
         }
         V9X_TIME_END(V9X_TIME_DECODE, started);
-        if (!v9x_vi_cp_submit(stream.dwords, stream.count,
-                              state.fence_value)) {
+        if (!v9x_vi_cp_submit_open(stream.dwords, stream.count,
+                                   state.target_low, state.depth_low,
+                                   synced)) {
             return 0;
         }
         v9x_present_note_submission();
@@ -1025,14 +1050,16 @@ static V9X_D3D_VI_PS_ENTRY *v9x_d3d_vi_ps_entry(const V9X_R3D_SHADER *shader,
     return entry;
 }
 
-/* count dwords from words into the arena; its GPU low half, or 0. */
-static DWORD v9x_d3d_vi_arena_copy(const v9x_u32 *words, DWORD count)
+/* count dwords from words into the arena, pad bytes after them left
+ * unwritten; its GPU low half, or 0. */
+static DWORD v9x_d3d_vi_arena_copy(const v9x_u32 *words, DWORD count,
+                                   DWORD pad)
 {
     volatile DWORD *linear;
     DWORD gpu_low;
     DWORD index;
 
-    if (!v9x_vi_cp_vertex_space(count * 4ul, &linear, &gpu_low)) {
+    if (!v9x_vi_cp_vertex_space(count * 4ul + pad, &linear, &gpu_low)) {
         return 0ul;
     }
     for (index = 0ul; index < count; ++index) {
@@ -1068,6 +1095,7 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     DWORD ps_low;
     DWORD table_low;
     DWORD gpu_low;
+    int synced;
 
     if (draw == 0 || shader == 0 || shader->program == 0 || vertices == 0 ||
         triangle_count == 0ul || !v9x_d3d_vi_ready() || !v9x_d3d_vi_gfx6() ||
@@ -1117,6 +1145,12 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
                                             &resolved, high, heap_low, &unit);
         if (reason != V9X_D3D_VI_REFUSE_NONE) {
             v9x_d3d_vi_count_refusal(draw, reason);
+            V9X_TIME_END(V9X_TIME_DECODE, started);
+            return 0;
+        }
+        /* Fenced as a group (vi_cp.c): a texture drawn into since the
+         * group's last fence is flushed to memory first. */
+        if (!v9x_vi_cp_before_read(unit.texture_low)) {
             V9X_TIME_END(V9X_TIME_DECODE, started);
             return 0;
         }
@@ -1174,15 +1208,16 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     while (triangle_count != 0ul) {
         chunk = triangle_count > V9X_D3D_VI_PS_CHUNK ? V9X_D3D_VI_PS_CHUNK
                                                      : triangle_count;
-        ps_low = v9x_d3d_vi_arena_copy(entry->code, entry->words);
+        ps_low = v9x_d3d_vi_arena_copy(entry->code, entry->words,
+                                       V9X_VI_CP_SHADER_PAD);
         table_low = ps_low != 0ul
                         ? v9x_d3d_vi_arena_copy(v9x_d3d_vi_ps_table,
-                                                V9X_VI_PS11_TABLE_DWORDS)
+                                                V9X_VI_PS11_TABLE_DWORDS, 0ul)
                         : 0ul;
         gpu_low = table_low != 0ul
                       ? v9x_d3d_vi_arena_copy(
                             (const v9x_u32 *)vertices,
-                            chunk * 3ul * V9X_D3D_VI_WIDE_DWORDS)
+                            chunk * 3ul * V9X_D3D_VI_WIDE_DWORDS, 0ul)
                       : 0ul;
         if (gpu_low == 0ul) {
             V9X_TIME_END(V9X_TIME_DECODE, started);
@@ -1192,8 +1227,9 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
         state.ps_table_low = table_low;
         state.vertex_low = gpu_low;
         state.vertex_count = chunk * 3ul;
-        state.fence_low = v9x_vi_cp_fence_low();
-        state.fence_value = v9x_vi_cp_fence_next();
+        state.no_fence = 1ul;
+        synced = v9x_vi_cp_sync_due();
+        state.no_cache_sync = synced ? 0ul : 1ul;
 
         v9x_d3d_vi_stream_init(&stream);
         if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
@@ -1208,8 +1244,9 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
             return 0;
         }
         V9X_TIME_END(V9X_TIME_DECODE, started);
-        if (!v9x_vi_cp_submit(stream.dwords, stream.count,
-                              state.fence_value)) {
+        if (!v9x_vi_cp_submit_open(stream.dwords, stream.count,
+                                   state.target_low, state.depth_low,
+                                   synced)) {
             return 0;
         }
         v9x_present_note_submission();

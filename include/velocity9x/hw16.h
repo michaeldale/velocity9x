@@ -255,6 +255,15 @@ typedef struct v9x_hw16_device {
 /* V9X_HW16_DEVICE.write_combine values; 0 is Stage A, nothing written. */
 #define V9X_HW16_WC_MAPPING     1u
 #define V9X_HW16_WC_VRAM        2u
+/* The 256 MiB from the mapping's base: for an ATI row whose BAR0 holds the
+ * command processor's window at 240 MiB, past the mapping. A window there
+ * makes BAR0 at least 256 MiB, so the range stays inside it; the window's
+ * ring, vertex arena and shader copies were uncached under
+ * V9X_HW16_WC_MAPPING, every CPU write to them a single uncached write
+ * (the Oland's MTRRs, boot 101: docs\decisions\
+ * 2026-11-18-gcn-batch-cost.md). */
+#define V9X_HW16_WC_BAR256      3u
+#define V9X_HW16_WC_BAR256_BYTES 0x10000000ul
 
 /* V9X_HW16_DEVICE.screen_shadow: this chip's GDI draws into the shadow. */
 #define V9X_HW16_SCREEN_SHADOW  1u

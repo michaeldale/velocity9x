@@ -115,6 +115,52 @@ static void test_texcoords1(void)
     }
 }
 
+/* A run as long as the GCN's batch: 200 one-triangle records, more than
+ * the 64 the record ends once held, are all kept, the run's other fields
+ * are untouched, and the flush draws them as one batch. */
+static V9X_R3D_VERTEX long_storage[512 * 3];
+static V9X_R3D_VERTEX long_input[200 * 3];
+static CAPTURE long_capture;
+
+static int long_sink(void *user, const V9X_R3D_VERTEX *vertices,
+                     v9x_u32 triangles)
+{
+    CAPTURE *c = (CAPTURE *)user;
+
+    (void)vertices;
+    if (c->calls < 8ul) {
+        c->sizes[c->calls] = triangles;
+    }
+    ++c->calls;
+    return 1;
+}
+
+static void test_long_run(void)
+{
+    V9X_R3D_RECORDS run;
+    float sentinel[2];
+    v9x_u32 i;
+
+    memset(long_input, 0, sizeof(long_input));
+    memset(&long_capture, 0, sizeof(long_capture));
+    run.vertices = long_storage;
+    run.texcoords1 = sentinel;
+    run.capacity = 512ul;
+    run.pending = 0ul;
+    run.record_count = 0ul;
+    run.batch = long_sink;
+    run.user = &long_capture;
+    for (i = 0ul; i < 200ul; ++i) {
+        CHECK(v9x_r3d_records_append_list(&run, long_input + i * 3ul, 1ul));
+    }
+    CHECK(run.record_count == 200ul);
+    CHECK(run.texcoords1 == sentinel);
+    CHECK(run.vertices == long_storage);
+    CHECK(run.pending == 200ul);
+    CHECK(v9x_r3d_records_flush(&run));
+    CHECK(long_capture.calls == 1ul && long_capture.sizes[0] == 200ul);
+}
+
 unsigned int v9x_run_r3d_records_tests(void)
 {
     V9X_R3D_VERTEX storage[192];
@@ -208,6 +254,7 @@ unsigned int v9x_run_r3d_records_tests(void)
     CHECK(v9x_r3d_records_append_list(&run, input, 1ul));
     CHECK(v9x_r3d_records_flush(&run)); CHECK(c.calls == 2ul);
     test_texcoords1();
+    test_long_run();
     if (failures == 0u) puts("PASS: DrawPrimitives record merging");
     return failures;
 }

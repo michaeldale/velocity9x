@@ -973,6 +973,72 @@ static void test_tl_draw(void)
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* An open draw (no_cache_sync, no_fence) carries neither the leading
+ * SURFACE_SYNC nor an end-of-pipe event: it ends at its DRAW_INDEX_AUTO.
+ * The group's fence on its own is the draw's tail: the EOP alone on GFX8,
+ * CP_COHER_CNTL2, the SURFACE_SYNC and the EOP on GFX6. */
+static void test_tl_open_and_fence(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+    v9x_u32 eop = 0ul;
+
+    base_tl(&draw);
+    draw.no_cache_sync = 1ul;
+    draw.no_fence = 1ul;
+    draw.fence_low = 0ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(walk(buffer, stream.count) != 0ul);
+    CHECK(buffer[0] != V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
+    CHECK(buffer[stream.count - 3ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
+    CHECK(buffer[stream.count - 2ul] == 6ul);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul) ||
+            buffer[at] == V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul)) {
+            ++eop;
+        }
+    }
+    CHECK(eop == 0ul);
+
+    /* The sync alone stays when only the fence is left out. */
+    base_tl(&draw);
+    draw.no_fence = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(buffer[0] == V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
+    CHECK(buffer[stream.count - 3ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
+
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_fence(&stream, 0x0f808100ul, 0xf4ul, 0x12345678ul) ==
+          V9X_STATUS_OK);
+    CHECK(stream.count == 6ul);
+    CHECK(buffer[0] == V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
+    CHECK(buffer[1] == 0x00038514ul);
+    CHECK(buffer[2] == 0x0f808100ul);
+    CHECK(buffer[3] == (0xf4ul | (1ul << 29)));
+    CHECK(buffer[4] == 0x12345678ul);
+    CHECK(buffer[5] == 0ul);
+
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_fence(&stream, 0x0f808100ul, 0xf4ul, 0x12345678ul) ==
+          V9X_STATUS_OK);
+    CHECK(stream.count == 3ul + 5ul + 6ul);
+    CHECK(buffer[3] == V9X_VI_PACKET3(V9X_VI_P3_SURFACE_SYNC, 3ul));
+    CHECK(buffer[4] == 0x28c00000ul);
+    CHECK(buffer[8] == V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
+    CHECK(buffer[9] == 0x00000514ul);
+
+    /* An unaligned fence address is refused. */
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_fence(&stream, 0x0f808102ul, 0xf4ul, 1ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* With a depth buffer: Z16 in Carrizo's 1D depth tile mode 5, the size of
  * the target, LESS with writes; HiZ, HiS and compression forced off. */
 static void test_tl_depth(void)
@@ -1603,6 +1669,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_probe_rect();
     test_tl_shaders();
     test_tl_draw();
+    test_tl_open_and_fence();
     test_tl_depth();
     test_texture_shaders();
     test_specular_shaders();

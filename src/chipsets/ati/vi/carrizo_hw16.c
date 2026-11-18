@@ -158,8 +158,10 @@ const V9X_HW16_DEVICE v9x_vi_carrizo_device = {
      * the write-combining buffers before every SDMA and CP kick, and the
      * 16 MiB mapping lies inside the 256 MiB BAR0 (the SDMA and CP windows
      * at 240 and 248 MiB are mapped apart from it). Stage A planned it with
-     * no refusal on M-XP7053 (V9XBOOT.INI Mtrr= r=0 s=4). */
-    V9X_HW16_WC_MAPPING,
+     * no refusal on M-XP7053 (V9XBOOT.INI Mtrr= r=0 s=4). Since 2026-11-18
+     * the whole BAR, so the windows are write-combined too, as the Oland's
+     * (V9X_HW16_WC_BAR256); not yet run here. */
+    V9X_HW16_WC_BAR256,
     0,                      /* write_combine_fallback */
     /* GDI has no engine here and read the screen at 8 MB/s write-combined:
      * screen-to-screen copies, ScrollDC and SRCAND all bound by it

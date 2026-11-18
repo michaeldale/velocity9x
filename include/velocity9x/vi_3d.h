@@ -229,7 +229,24 @@ struct v9x_vi_tl_draw {
      * X Y 0 1 for 8_8, Direct3D's U V W Q. */
     v9x_u32 texture_cube;
     v9x_u32 texture_signed;
+    /* APPENDED for batch cost (docs\decisions\2026-11-18-gcn-batch-cost.md);
+     * zero keeps the meaning above. Nonzero no_cache_sync: no leading
+     * SURFACE_SYNC, for a caller that has rewritten no memory a shader
+     * reads since the last one. Nonzero no_fence: no end-of-pipe event,
+     * fence_* unused, for a caller that fences a group of draws once with
+     * v9x_vi_3d_fence. */
+    v9x_u32 no_cache_sync;
+    v9x_u32 no_fence;
 };
+
+/*
+ * A fence on its own: what a TL draw ends with (on GFX6 the shader-cache
+ * SURFACE_SYNC, then on every chip the end-of-pipe event that flushes and
+ * invalidates the colour, depth and texture caches and writes fence_value
+ * to fence_low/high once everything before it is done).
+ */
+v9x_status v9x_vi_3d_fence(struct v9x_vi_pm4 *stream, v9x_u32 fence_low,
+                           v9x_u32 fence_high, v9x_u32 fence_value);
 #define V9X_VI_TEXTURE_SHARP_DWORDS 12ul
 /*
  * The T# (eight dwords) and S# (four) draw's texture_* fields describe,

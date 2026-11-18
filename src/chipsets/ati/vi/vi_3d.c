@@ -605,9 +605,39 @@ static void v9x_vi_3d_program_sgprs(struct v9x_vi_pm4 *stream,
  * indexed draws, where the clamp applies. Then count auto-indexed
  * vertices of prim, and the fence once the draw is out of the pipe and the
  * colour caches are flushed to memory. */
+static void v9x_vi_3d_fence_packets(struct v9x_vi_pm4 *stream,
+                                    v9x_u32 fence_low, v9x_u32 fence_high,
+                                    v9x_u32 fence_value)
+{
+    /* GFX6's fence, gfx_v6_0_ring_emit_fence: the caches by SURFACE_SYNC,
+     * then an event with no action bits of its own. */
+    if (stream->gfx6) {
+        v9x_vi_3d_cache_sync(stream);
+    }
+    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
+    v9x_vi_pm4_put(stream, stream->gfx6 ? VI_EOP_FLUSH_EVENT_GFX6 :
+                                          VI_EOP_FLUSH_EVENT);
+    v9x_vi_pm4_put(stream, fence_low & ~3ul);
+    v9x_vi_pm4_put(stream, (fence_high & 0xfffful) | VI_EOP_DATA_SEL_32);
+    v9x_vi_pm4_put(stream, fence_value);
+    v9x_vi_pm4_put(stream, 0ul);
+}
+
+v9x_status v9x_vi_3d_fence(struct v9x_vi_pm4 *stream, v9x_u32 fence_low,
+                           v9x_u32 fence_high, v9x_u32 fence_value)
+{
+    if (stream == 0 || (fence_low & 3ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_vi_3d_fence_packets(stream, fence_low, fence_high, fence_value);
+    return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
+}
+
+/* fenced zero: the draw alone, for a group the caller fences later. */
 static void v9x_vi_3d_draw_and_fence(struct v9x_vi_pm4 *stream, v9x_u32 prim,
-                                     v9x_u32 count, v9x_u32 fence_low,
-                                     v9x_u32 fence_high, v9x_u32 fence_value)
+                                     v9x_u32 count, int fenced,
+                                     v9x_u32 fence_low, v9x_u32 fence_high,
+                                     v9x_u32 fence_value)
 {
     v9x_u32 values[3];
 
@@ -627,18 +657,9 @@ static void v9x_vi_3d_draw_and_fence(struct v9x_vi_pm4 *stream, v9x_u32 prim,
     v9x_vi_pm4_put(stream, count);
     v9x_vi_pm4_put(stream, VI_DI_SRC_SEL_AUTO_INDEX);
 
-    /* GFX6's fence, gfx_v6_0_ring_emit_fence: the caches by SURFACE_SYNC,
-     * then an event with no action bits of its own. */
-    if (stream->gfx6) {
-        v9x_vi_3d_cache_sync(stream);
+    if (fenced) {
+        v9x_vi_3d_fence_packets(stream, fence_low, fence_high, fence_value);
     }
-    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_EVENT_WRITE_EOP, 4ul));
-    v9x_vi_pm4_put(stream, stream->gfx6 ? VI_EOP_FLUSH_EVENT_GFX6 :
-                                          VI_EOP_FLUSH_EVENT);
-    v9x_vi_pm4_put(stream, fence_low & ~3ul);
-    v9x_vi_pm4_put(stream, (fence_high & 0xfffful) | VI_EOP_DATA_SEL_32);
-    v9x_vi_pm4_put(stream, fence_value);
-    v9x_vi_pm4_put(stream, 0ul);
 }
 
 v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
@@ -689,8 +710,9 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, values, ps_sgprs);
 
     /* Three vertices of a RECTLIST. */
-    v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_RECTLIST, 3ul, rect->fence_low,
-                             rect->fence_high, rect->fence_value);
+    v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_RECTLIST, 3ul, 1,
+                             rect->fence_low, rect->fence_high,
+                             rect->fence_value);
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
 }
 
@@ -1022,7 +1044,9 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     }
     params = draw->params != 0ul ? draw->params : VI_TL_PARAMS;
 
-    v9x_vi_3d_cache_sync(stream);
+    if (draw->no_cache_sync == 0ul) {
+        v9x_vi_3d_cache_sync(stream);
+    }
     v9x_vi_3d_common_state(stream, draw->target_low, draw->target_high,
                            draw->pitch_pixels, draw->height, draw->format,
                            draw->tile_mode_index, params,
@@ -1114,7 +1138,7 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     }
 
     v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_TRILIST, draw->vertex_count,
-                             draw->fence_low, draw->fence_high,
-                             draw->fence_value);
+                             draw->no_fence == 0ul, draw->fence_low,
+                             draw->fence_high, draw->fence_value);
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
 }

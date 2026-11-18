@@ -292,7 +292,24 @@ static int v9x_d3d_ddi_for_object(void);
  * nothing in the HAL waits or yields inside one, and v9x_d3d_draw_list is
  * never re-entered: its sink goes to an engine, not back through here.
  */
-static V9X_R3D_VERTEX v9x_d3d_list_staging[V9X_D3D_INDEXED_BATCH * 3u];
+static V9X_R3D_VERTEX v9x_d3d_list_staging[V9X_D3D_BATCH_MAX * 3u];
+/* A DrawPrimitives2 run as long as the batch keeps a record end per
+ * triangle (r3d_records.h). */
+typedef char v9x_d3d_assert_records_max[
+    V9X_D3D_BATCH_MAX <= V9X_R3D_RECORDS_MAX ? 1 : -1];
+
+/* The engine's batch bound (V9X_D3D_ENGINE_LIMITS batch_triangles):
+ * V9X_D3D_INDEXED_BATCH unless it names one up to V9X_D3D_BATCH_MAX. */
+static DWORD v9x_d3d_batch_triangles(const V9X_D3D_ENGINE_OPS *ops)
+{
+    DWORD triangles = ops != 0 && ops->limits != 0
+                          ? ops->limits->batch_triangles : 0ul;
+
+    if (triangles == 0ul || triangles > (DWORD)V9X_D3D_BATCH_MAX) {
+        return (DWORD)V9X_D3D_INDEXED_BATCH;
+    }
+    return triangles;
+}
 
 /*
  * The triangles a draw callback gathers before handing them to
@@ -1189,7 +1206,7 @@ static int v9x_d3d_dispatch_engine(const V9X_D3D_ENGINE_OPS *ops,
  * go into a buffer of their own; the Win16 mutex serializes the callbacks
  * that reach here, as for those two.
  */
-static V9X_D3DTLVERTEX v9x_d3d_fog_scratch[V9X_D3D_INDEXED_BATCH * 3u];
+static V9X_D3DTLVERTEX v9x_d3d_fog_scratch[V9X_D3D_BATCH_MAX * 3u];
 
 static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
                                  V9X_D3D_CONTEXT *context,
@@ -1220,8 +1237,8 @@ static int v9x_d3d_dispatch_draw(const V9X_D3D_ENGINE_OPS *ops,
             context->fog_table.density;
     }
     while (triangle_count != 0ul) {
-        chunk = triangle_count > (DWORD)V9X_D3D_INDEXED_BATCH
-            ? (DWORD)V9X_D3D_INDEXED_BATCH : triangle_count;
+        chunk = triangle_count > v9x_d3d_batch_triangles(ops)
+            ? v9x_d3d_batch_triangles(ops) : triangle_count;
         /* The HAL links no runtime, so no memcpy. */
         for (index = 0ul; index < chunk * 3ul; ++index) {
             v9x_d3d_fog_scratch[index] = vertices[index];
@@ -1745,7 +1762,7 @@ DWORD __stdcall V9xD3dRenderPrimitive(
 typedef char v9x_d3d_assert_r3d_vertex[
     sizeof(V9X_R3D_VERTEX) == sizeof(V9X_D3DTLVERTEX) ? 1 : -1];
 typedef char v9x_d3d_assert_r3d_list_staging[
-    V9X_D3D_INDEXED_BATCH * 3u * sizeof(V9X_R3D_VERTEX) == 6144u ? 1 : -1];
+    V9X_D3D_BATCH_MAX * 3u * sizeof(V9X_R3D_VERTEX) == 49152u ? 1 : -1];
 typedef char v9x_d3d_assert_r3d_vertex_offsets[
     (offsetof(V9X_R3D_VERTEX, sx) == offsetof(V9X_D3DTLVERTEX, sx) &&
      offsetof(V9X_R3D_VERTEX, rhw) == offsetof(V9X_D3DTLVERTEX, rhw) &&
@@ -1866,7 +1883,7 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     list.culled = v9x_d3d_list_culled;
     list.user = &sink;
     list.staging = v9x_d3d_list_staging;
-    list.staging_triangles = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+    list.staging_triangles = (v9x_u32)v9x_d3d_batch_triangles(ops);
     list.stats = &stats;
     /* Onto the engine's pixel centres, in the staging (v9x_d3d_centre). */
     list.pixel_offset = v9x_d3d_centre_offset(ops);
@@ -3811,7 +3828,10 @@ static DWORD v9x_d3d_draw_one_primitive_body(
          */
         const V9X_R3D_VERTEX *vertices =
             (const V9X_R3D_VERTEX *)data->lpvVertices;
-        V9X_R3D_RECORDS run;
+        /* Static: its record ends (r3d_records.h) are 2 KiB, past the
+         * HAL's frame limit, and the Win16 mutex serializes the
+         * callbacks, as for v9x_d3d_gather. */
+        static V9X_R3D_RECORDS run;
         V9X_D3D_LIST_SINK sink;
         DWORD triangles = data->dwNumVertices - 2ul;
 
@@ -3896,11 +3916,12 @@ static DWORD v9x_d3d_draw_one_primitive_body(
  * vertex: back faces removed with their pairs, then drawn with the pairs
  * beside the vertices. Not the list builder, which would clip and stage
  * and part a vertex from its pair; an engine with two stages needs
- * neither (d3d_internal.h, texture_stages). At most V9X_D3D_INDEXED_BATCH
- * triangles: the run's capacity. The kept triangles go to the list
- * builder's staging, which this path does not otherwise use.
+ * neither (d3d_internal.h, texture_stages). At most the engine's batch
+ * bound (v9x_d3d_batch_triangles): the run's capacity. The kept triangles
+ * go to the list builder's staging, which this path does not otherwise
+ * use.
  */
-static float v9x_d3d_two_units_uv1[V9X_D3D_INDEXED_BATCH * 3u * 2u];
+static float v9x_d3d_two_units_uv1[V9X_D3D_BATCH_MAX * 3u * 2u];
 
 static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
                                   V9X_D3D_CONTEXT *context,
@@ -3921,7 +3942,7 @@ static int v9x_d3d_draw_two_units(const V9X_D3D_ENGINE_OPS *ops,
     DWORD word;
     int ok;
 
-    if (triangles > (v9x_u32)V9X_D3D_INDEXED_BATCH) {
+    if (triangles > (v9x_u32)v9x_d3d_batch_triangles(ops)) {
         return 0;
     }
     if (mode != V9X_R3D_CULL_NONE || offset != 0.0f) {
@@ -4053,7 +4074,9 @@ static DWORD v9x_d3d_draw_primitives_body(
     V9X_D3DHAL_DRAWPRIMCOUNTS *counts;
     BYTE *cursor;
     DWORD record;
-    V9X_R3D_RECORDS run;
+    /* Static: its record ends (r3d_records.h) are 2 KiB, past the HAL's
+     * frame limit, and the Win16 mutex serializes the callbacks. */
+    static V9X_R3D_RECORDS run;
     V9X_D3D_LIST_SINK sink;
     v9x_u32 record_run = 0ul;
     v9x_u32 record_run_noop = 0ul;
@@ -5859,9 +5882,9 @@ static int v9x_d3d_dp2_readable(DWORD slot, const BYTE *start, DWORD bytes)
  * Its own storage, not v9x_d3d_gather: the DX5 paths use that as scratch
  * within one call and would overwrite triangles held between calls.
  */
-static V9X_R3D_VERTEX v9x_d3d_dp2_storage[V9X_D3D_INDEXED_BATCH * 3u];
+static V9X_R3D_VERTEX v9x_d3d_dp2_storage[V9X_D3D_BATCH_MAX * 3u];
 /* Stage 1's pairs beside it, for an engine that draws two stages. */
-static float v9x_d3d_dp2_storage_uv1[V9X_D3D_INDEXED_BATCH * 3u * 2u];
+static float v9x_d3d_dp2_storage_uv1[V9X_D3D_BATCH_MAX * 3u * 2u];
 static V9X_D3D_LIST_SINK v9x_d3d_dp2_batch_sink;
 static V9X_R3D_RECORDS v9x_d3d_dp2_run;
 
@@ -7948,7 +7971,7 @@ static DWORD v9x_d3d_draw_primitives2_body(
     v9x_d3d_dp2_batch_sink.uv1 = v9x_d3d_dp2_storage_uv1;
     run->vertices = v9x_d3d_dp2_storage;
     run->texcoords1 = v9x_d3d_dp2_storage_uv1;
-    run->capacity = (v9x_u32)V9X_D3D_INDEXED_BATCH;
+    run->capacity = (v9x_u32)v9x_d3d_batch_triangles(ops);
     run->batch = v9x_d3d_records_batch;
     run->user = &v9x_d3d_dp2_batch_sink;
     if (run->pending == 0ul) {

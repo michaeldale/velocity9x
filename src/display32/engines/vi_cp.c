@@ -21,9 +21,10 @@
  * ring (eng_vi.c). The CPU writes all of them through BAR0, so HDP is
  * flushed before the write pointer moves, and once the CP has drawn, HDP is
  * flushed and its read cache invalidated before the CPU reads (SDMA's
- * rule). Every batch ends with v9x_vi_3d_tl_draw's end-of-pipe event,
- * which flushes the colour and depth caches and writes a sequence number
- * to the fence: idle is that number landing, as for SDMA.
+ * rule). A batch, or a group of open batches (v9x_vi_cp_submit_open), ends
+ * with v9x_vi_3d_tl_draw's or v9x_vi_3d_fence's end-of-pipe event, which
+ * flushes the colour and depth caches and writes a sequence number to the
+ * fence: idle is that number landing, as for SDMA.
  *
  * The two engines share VRAM and run independently, so each waits for the
  * other: a batch waits for queued SDMA work (v9x_vi_dma_settle), and
@@ -353,6 +354,39 @@ static DWORD v9x_vi_cp_parts_closing;
 /* Puts, for sampling the write pointer's readback (v9x_vi_cp_put). */
 #define V9X_VI_CP_WPTR_CHECK_EVERY 16ul
 static DWORD v9x_vi_cp_puts;
+/*
+ * Open batches (v9x_vi_cp_submit_open): submitted with no fence of their
+ * own, and fenced together by the next one written (v9x_vi_cp_close).
+ * Every batch used to end in an end-of-pipe event that flushed and
+ * invalidated the colour, depth and texture caches, and began with a
+ * shader-cache SURFACE_SYNC: on the Oland's 3DMark 2000 run 2.65 M of
+ * each, a batch of about 50 triangles apiece (docs\decisions\
+ * 2026-11-18-gcn-batch-cost.md). The CP and the caches give batches in
+ * between the same order and the same data without them; what needs the
+ * flush is whatever reads the memory afterwards from outside the pipe -
+ * the CPU, SDMA, scanout, or a later batch's texture unit - and each of
+ * those closes the group first: a drain (Lock, flips' and SDMA's waits),
+ * the frame mark, a batch sampling a surface drawn into since the last
+ * fence (v9x_vi_cp_before_read), and a quarter of the arena left, whose
+ * fence its next writer waits for. A group is also closed after
+ * V9X_VI_CP_OPEN_MAX batches, so a fence never stands far behind.
+ */
+#define V9X_VI_CP_OPEN_MAX      16ul
+#define V9X_VI_CP_OPEN_SURFACES 4ul
+static DWORD v9x_vi_cp_open;
+static DWORD v9x_vi_cp_open_surface[V9X_VI_CP_OPEN_SURFACES];
+static DWORD v9x_vi_cp_open_surfaces;
+/*
+ * The shader-cache SURFACE_SYNC a batch begins with is due (v9x_vi_cp_
+ * sync_due) only after the CP starts and when the arena enters another
+ * quarter: the SQ's instruction and constant caches, and TC, can hold
+ * only what was at an arena address on an earlier lap, and every address
+ * of the quarter is written before a batch reads it. Shader code in the
+ * arena is followed by V9X_VI_CP_SHADER_PAD bytes nothing writes until the
+ * next lap, so the SQ's prefetch past a program's end cannot cache a line
+ * a later program is then written into (d3d_vi.c).
+ */
+static int v9x_vi_cp_sync;
 
 static DWORD v9x_vi_cp_scratch_reg(void);
 
@@ -1160,6 +1194,9 @@ static int v9x_vi_cp_start(void)
     }
     v9x_vi_cp_vertex_at = 0ul;
     v9x_vi_cp_parts_reset();
+    v9x_vi_cp_open = 0ul;
+    v9x_vi_cp_open_surfaces = 0ul;
+    v9x_vi_cp_sync = 1;
     v9x_vi_cp_dirty = 0;
     v9x_vi_cp_state = V9X_VI_CP_RUNNING;
     return 1;
@@ -1186,7 +1223,135 @@ int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence)
     v9x_vi_cp_sequence = fence;
     v9x_vi_cp_dirty = 1;
     v9x_vi_cp_close_parts(fence);
+    /* Its stream began with the shader-cache sync (no caller of this sets
+     * no_cache_sync), and its fence covers the open batches before it. */
+    v9x_vi_cp_sync = 0;
+    v9x_vi_cp_open = 0ul;
+    v9x_vi_cp_open_surfaces = 0ul;
     return 1;
+}
+
+/* The open batches' fence, on its own (v9x_vi_3d_fence); none open, nothing
+ * to do. A fence that cannot be put gives the CP up, as a batch's would. */
+int v9x_vi_cp_close(void)
+{
+    struct v9x_vi_pm4 stream;
+    DWORD fence;
+
+    if (v9x_vi_cp_open == 0ul || v9x_vi_cp_state != V9X_VI_CP_RUNNING) {
+        return 1;
+    }
+    fence = v9x_vi_cp_fence_next();
+    v9x_vi_cp_stream_init(&stream);
+    if (v9x_vi_3d_fence(&stream, v9x_vi_cp_fence_low(), v9x_vi_cp_high,
+                        fence) != V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_vi_pm4_pad(&stream);
+    if (stream.overflow != 0ul) {
+        return 0;
+    }
+    if (!v9x_vi_cp_put(stream.dwords, stream.count)) {
+        v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_PUT);
+        return 0;
+    }
+    v9x_vi_cp_remember(stream.dwords, stream.count, fence,
+                       v9x_vi_cp_vertex_at);
+    v9x_vi_cp_sequence = fence;
+    v9x_vi_cp_close_parts(fence);
+    v9x_vi_cp_open = 0ul;
+    v9x_vi_cp_open_surfaces = 0ul;
+    return 1;
+}
+
+/*
+ * A batch with no fence of its own (vi_3d.h's no_fence), drawing into the
+ * colour target at target and the depth buffer at depth (0 for none), the
+ * GPU addresses' low halves. The group is closed at once when it is
+ * V9X_VI_CP_OPEN_MAX long, when an arena quarter was left since the last
+ * fence (its next writer waits for the fence), or when the surfaces it
+ * drew into no longer fit the list v9x_vi_cp_before_read checks. synced:
+ * the batch begins with the shader-cache sync (v9x_vi_cp_sync_due).
+ */
+int v9x_vi_cp_submit_open(const v9x_u32 *dwords, DWORD count, DWORD target,
+                          DWORD depth, int synced)
+{
+    DWORD drawn[2];
+    DWORD which;
+    DWORD index;
+    int close = 0;
+
+    if (dwords == 0 || !v9x_vi_cp_start()) {
+        return 0;
+    }
+    if (!v9x_vi_dma_settle()) {
+        return 0;
+    }
+    if (!v9x_vi_cp_put(dwords, count)) {
+        v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_PUT);
+        return 0;
+    }
+    /* Logged under the fence that will cover it. */
+    v9x_vi_cp_remember(dwords, count, v9x_vi_cp_fence_next(),
+                       v9x_vi_cp_vertex_at);
+    v9x_vi_cp_dirty = 1;
+    ++v9x_vi_cp_open;
+    if (synced) {
+        v9x_vi_cp_sync = 0;
+    }
+
+    drawn[0] = target;
+    drawn[1] = depth;
+    for (which = 0ul; which < 2ul; ++which) {
+        if (drawn[which] == 0ul) {
+            continue;
+        }
+        for (index = 0ul; index < v9x_vi_cp_open_surfaces; ++index) {
+            if (v9x_vi_cp_open_surface[index] == drawn[which]) {
+                break;
+            }
+        }
+        if (index < v9x_vi_cp_open_surfaces) {
+            continue;
+        }
+        if (v9x_vi_cp_open_surfaces == V9X_VI_CP_OPEN_SURFACES) {
+            close = 1;
+            continue;
+        }
+        v9x_vi_cp_open_surface[v9x_vi_cp_open_surfaces++] = drawn[which];
+    }
+    if (close || v9x_vi_cp_open >= V9X_VI_CP_OPEN_MAX ||
+        v9x_vi_cp_parts_closing != 0ul) {
+        return v9x_vi_cp_close();
+    }
+    return 1;
+}
+
+/* Closes the group when an open batch drew into the surface at low, which
+ * a batch about to be submitted samples: the end-of-pipe event is what
+ * flushes the colour and depth caches to memory and invalidates the
+ * texture caches that would read it. */
+int v9x_vi_cp_before_read(DWORD low)
+{
+    DWORD index;
+
+    if (low == 0ul) {
+        return 1;
+    }
+    for (index = 0ul; index < v9x_vi_cp_open_surfaces; ++index) {
+        if (v9x_vi_cp_open_surface[index] == low) {
+            return v9x_vi_cp_close();
+        }
+    }
+    return 1;
+}
+
+/* Non-zero: the next batch must begin with the shader-cache sync. Asked
+ * after the batch's arena space is taken, which is what can make it due;
+ * cleared by the submission of a batch that carries one. */
+int v9x_vi_cp_sync_due(void)
+{
+    return v9x_vi_cp_sync;
 }
 
 int v9x_vi_cp_drain(int wait)
@@ -1194,6 +1359,9 @@ int v9x_vi_cp_drain(int wait)
     if (v9x_vi_cp_state != V9X_VI_CP_RUNNING || !v9x_vi_cp_dirty ||
         !v9x_vi_cp_mapped()) {
         return 1;
+    }
+    if (!v9x_vi_cp_close()) {
+        return 0;
     }
     if (!v9x_vi_cp_poll_fence(wait ? V9X_VI_CP_SPINS
                                    : V9X_VI_CP_QUICK_READS)) {
@@ -1212,6 +1380,10 @@ int v9x_vi_cp_drain(int wait)
  * this frame waits for (eng_vi.c, v9x_vi_frame_mark). */
 DWORD v9x_vi_cp_last_fence(void)
 {
+    /* Open batches are fenced first: the mark must cover them. A close
+     * that fails has given the CP up, and every fence then reads as
+     * passed (v9x_vi_cp_fence_passed). */
+    (void)v9x_vi_cp_close();
     return v9x_vi_cp_sequence;
 }
 
@@ -1308,6 +1480,9 @@ int v9x_vi_cp_vertex_space(DWORD bytes, volatile DWORD **linear,
         }
         v9x_vi_cp_parts_closing |= 1ul << v9x_vi_cp_part_current;
         v9x_vi_cp_part_current = next;
+        /* A quarter written on an earlier lap: the next batch syncs the
+         * shader caches (v9x_vi_cp_sync). */
+        v9x_vi_cp_sync = 1;
     }
     v9x_vi_cp_vertex_at = at;
     *linear = v9x_vi_cp_window(V9X_VI_CP_WINDOW_VERTICES + v9x_vi_cp_vertex_at);

@@ -161,8 +161,10 @@ const V9X_HW16_DEVICE v9x_cik_mullins_device = {
      * windows at 240 and 248 MiB are mapped apart from it. Uncached, the
      * frame buffer took writes at 31.7 MB/s on M-JJN1ZZ, and with the
      * screen shadow every GDI call ran at about 30 MB/s
-     * (docs\decisions\2026-11-12-ati-screen-shadow.md). */
-    V9X_HW16_WC_MAPPING,
+     * (docs\decisions\2026-11-12-ati-screen-shadow.md). Since 2026-11-18
+     * the whole BAR, so the windows are write-combined too, as the Oland's
+     * (V9X_HW16_WC_BAR256); not yet run here. */
+    V9X_HW16_WC_BAR256,
     0,                      /* write_combine_fallback */
     /* GDI has no engine here, and the R3E read its screen at 5 MB/s under
      * vbe until the shadow (docs\decisions\2026-11-12-ati-screen-shadow.md). */

@@ -716,6 +716,9 @@ static DWORD v9x_mtrr_aperture_bytes(void)
     if (device != 0 && device->write_combine == V9X_HW16_WC_MAPPING) {
         return v9x_map_bytes();
     }
+    if (device != 0 && device->write_combine == V9X_HW16_WC_BAR256) {
+        return V9X_HW16_WC_BAR256_BYTES;
+    }
     return v9x_vbe_vram_bytes;
 }
 
