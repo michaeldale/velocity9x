@@ -1,0 +1,17 @@
+{
+    "Name":  "oland",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  110,
+    "BootAfter":  111,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.18.0",
+    "Boot":  110,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  "stopped at the 3-minute limit, last FlipHandled 10212",
+    "Counters":  "draws +1033281, into presented +0, refused batches +0, engine stalls +0, FilterMagSeen 0x6",
+    "CounterFlags":  ""
+}

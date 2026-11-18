@@ -1,0 +1,11 @@
+[+0:06] agent 0.18.0, boot 166, desktop True
+[+3:35] staged 8 files; resetting
+[+4:20] reset: boot 166 -> 167
+[+5:43] installed: 8 of 8
+[+8:29] probes in place: sent 7 of 7
+[+11:50] V9XD32 default exit=4294967293
+[+14:19] V9XGLP.EXE exit=
+[+17:01] V9XGLIDP.EXE exit=4294967293
+[+19:23] V9XR3DP.EXE exit=4294967293
+[+19:34] V9XWPRS.EXE exit=0
+[+19:48] V9XFBCMP.EXE exit=1

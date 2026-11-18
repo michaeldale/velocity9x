@@ -1,0 +1,7 @@
+[V9xD3d32]Build=332b5189-dirty
+CommandLine="C:\V9XREL\V9XD32.EXE"
+UnknownSwitches=0x00000000
+RequestBpp=0x00000020
+RequestZBits=0x00000010
+TraceReadable=0x00000000
+Stage=1-directdrawcreate
