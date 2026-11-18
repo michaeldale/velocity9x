@@ -786,6 +786,16 @@ int v9x_vi_window_address(DWORD *high, DWORD *low);
 #define V9X_VI_CP_SLOT_VS_WIDE   8ul
 #define V9X_VI_CP_SLOT_COUNT     9ul
 int v9x_vi_cp_ready(void);
+int v9x_vi_cp_running(void);
+/*
+ * Oland: the engine and memory clocks si_clocks.c's policy picks from the
+ * card's VBIOS, set by the VBIOS's own tables before the engines start
+ * (engines\si_clock_apply.c, docs\plans\ati-si-clocks-from-the-vbios.md).
+ * device is the PCI device id the ROM must name. 0 only when a table
+ * stopped part way; every other outcome, set or left, returns 1. The
+ * outcome goes to C:\V9XDIAG\V9XCLK.TXT.
+ */
+int v9x_si_clocks_apply(DWORD device);
 int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence);
 /* Batches fenced as a group (vi_cp.c's note at v9x_vi_cp_open): one with
  * no fence of its own, drawing into target and depth (GPU low halves, 0

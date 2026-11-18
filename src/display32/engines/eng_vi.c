@@ -65,6 +65,9 @@
 /* BAR0 is 256 MiB aligned: a physical address's offset into it. */
 #define V9X_VI_BAR0_OFFSET_MASK 0x0ffffffful
 
+/* The one Oland the ati package claims (oland_hw16.c). */
+#define V9X_VI_OLAND_DEVICE 0x6610ul
+
 /* CONFIG_MEMSIZE in MiB: the 16-bit side refused anything outside this. */
 #define V9X_VI_MEMSIZE_MIN_MIB 256ul
 #define V9X_VI_MEMSIZE_MAX_MIB 4096ul
@@ -408,6 +411,12 @@ static int v9x_vi_validate(void)
     v9x_vi_sequence = 0ul;
     v9x_vi_ring()[V9X_VI_SDMA_FENCE_OFFSET / 4ul] = 0xfffffffful;
     if (v9x_vi_oland()) {
+        /* The clocks the VBIOS allows, before any engine of this mode
+         * starts (si_clock_apply.c); a table that stopped part way leaves
+         * the engine unclaimed. */
+        if (!v9x_si_clocks_apply(V9X_VI_OLAND_DEVICE)) {
+            return 0;
+        }
         v9x_vi_si_start();
     } else {
         v9x_vi_start();

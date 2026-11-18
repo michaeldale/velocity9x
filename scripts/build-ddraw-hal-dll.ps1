@@ -208,6 +208,11 @@ $sources = @(
     # Oland (GCN 1) runs the same engine type on SI's DMA engine: the plans
     # as SI DMA packets through the host-tested builder, no microcode.
     "src\chipsets\ati\si\si_dma.c",
+    # Oland's clocks: the VBIOS's own tables run by the host-tested AtomBIOS
+    # interpreter, to the host-tested policy's targets.
+    "src\display32\engines\si_clock_apply.c",
+    "src\common\atombios.c",
+    "src\chipsets\ati\si\si_clocks.c",
     # The Carrizo 3D engine: the graphics CP and its microcode (licence in
     # NOTICES.TXT), gpu_init's list, the clear state, the PM4 streams and
     # shaders, the neutral draw to them, and the engine that submits them.

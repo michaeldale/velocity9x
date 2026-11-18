@@ -13,6 +13,14 @@ build identifier so exact guest-tested binaries remain traceable.
   as pieces of a slot each, two texture stages included. On the i5-4570,
   3DMark 2001 SE went from 3388 to 3888 with the game's vsync
   ([record](docs/decisions/2026-11-18-haswell-batch-size-and-indexed-pieces.md)).
+- **`ati` package, Oland: the clocks the card's VBIOS allows at its boot
+  voltage.** The BIOS left the R7 250 at 300 MHz engine and 300 MHz DDR3,
+  with no power management running. The driver now runs the VBIOS's own
+  SetEngineClock and SetMemoryClock before the engines start, to the
+  highest level its PowerPlay table lists at the boot voltage: 400 MHz and
+  1000 MHz on the measured card. 3DMark 2001 SE went from 4234 to 4797.
+  The outcome is in `C:\V9XDIAG\V9XCLK.TXT`
+  ([record](docs/decisions/2026-11-18-oland-clocks-left-by-the-bios.md)).
 
 ## 0.55.0 - 2026-11-18
 

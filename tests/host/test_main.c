@@ -407,6 +407,11 @@ unsigned int v9x_run_vi_sdma_tests(void);
  * measured), and the generated Oland microcode's edges. */
 unsigned int v9x_run_si_dma_tests(void);
 
+/* tests\host\test_atombios.c: the AtomBIOS interpreter on synthetic tables,
+ * the SI clock policy, and W9QI0DAD's own VBIOS when V9X_OLAND_ROM and
+ * V9X_OLAND_INI name it and a snapshot. */
+unsigned int v9x_run_atombios_tests(void);
+
 /* tests\host\test_si_gpu.c: Oland's generated gpu_init list against the
  * Linux values it comes from, and every entry inside SICP.VXD's windows. */
 unsigned int v9x_run_si_gpu_tests(void);
@@ -1645,6 +1650,7 @@ int main(int argc, char **argv)
     failures += v9x_run_r6_3d_tests();
     failures += v9x_run_vi_sdma_tests();
     failures += v9x_run_si_dma_tests();
+    failures += v9x_run_atombios_tests();
     failures += v9x_run_si_gpu_tests();
     failures += v9x_run_cik_shader_tests();
     failures += v9x_run_cik_gpu_tests();

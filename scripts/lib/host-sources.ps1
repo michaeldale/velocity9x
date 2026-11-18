@@ -25,6 +25,8 @@ function Get-V9xHostSourceNames {
         # The panel-mode slot patch for Intel video BIOSes.
         'src\common\vbios_panel.c',
         'src\common\mtrr.c',
+        # The AtomBIOS command-table interpreter (Oland clocks).
+        'src\common\atombios.c',
         # The PAT route to write-combining, where every MTRR pair is taken.
         'src\common\pat.c',
         # The vbe screen shadow's rectangle arithmetic.
@@ -179,6 +181,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\cik\cik_sdma_microcode.c',
         # Oland (SI): Evergreen's DMA plans as SI DMA packets, no I/O.
         'src\chipsets\ati\si\si_dma.c',
+        # Oland: the clock targets from the VBIOS's PowerPlay, no I/O.
+        'src\chipsets\ati\si\si_clocks.c',
         # Oland graphics microcode (generated from linux-firmware), data
         # only.
         'src\chipsets\ati\si\si_gfx_microcode.c',
@@ -466,6 +470,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_cm_3d.c',
         'tests\host\test_vi_sdma.c',
         'tests\host\test_si_dma.c',
+        'tests\host\test_atombios.c',
         'tests\host\test_si_gpu.c',
         'tests\host\test_cik_shader.c',
         'tests\host\test_cik_gpu.c',

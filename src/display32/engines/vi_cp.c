@@ -1222,6 +1222,13 @@ int v9x_vi_cp_ready(void)
     return v9x_vi_cp_mapped() && v9x_vi_cp_state != V9X_VI_CP_FAILED;
 }
 
+/* Whether the CP was brought up and runs: si_clock_apply.c sets no clock
+ * under it. */
+int v9x_vi_cp_running(void)
+{
+    return v9x_vi_cp_state == V9X_VI_CP_RUNNING;
+}
+
 /* The DMA engine was given work: the next batch syncs the shader and
  * texture caches, which may hold what it overwrites. */
 void v9x_vi_cp_note_dma(void)
