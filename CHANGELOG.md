@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.56.0 - not yet released
+## 0.56.0 - 2026-11-18
 
 - **`intel-gma` package, HD 4600 (and Ivy Bridge, not run): Direct3D
   batches a slot long, and indexed calls drawn whole.** The shared core
@@ -28,8 +28,21 @@ build identifier so exact guest-tested binaries remain traceable.
   VGA ports never reached the screen. At 640x480 in 256 colours the
   driver's line-length correction also scrambled the picture. The palette
   now goes through VBE function 4F09h, and the line length is not reset.
-  No other card on record reports itself this way
+  No other card on record reports itself this way. It runs on the P650
+  (palette loaded through the BIOS, line length kept); nobody has seen
+  that card's screen with it yet. A VGA-compatible card's path is
+  unchanged: on 86Box's Mach64 VT2, 640x480x8 kept the ports and drew
+  correctly
   ([record](docs/decisions/2026-11-18-p650-vbe-palette-and-stride.md)).
+- **`intel-gma` package, HD 4600: the picture's size set to the mode's
+  under the panel fitter.** Once, on the i5-4570's VGA port into a 1080p
+  capture after a boot with no display, the BIOS left 1920x1080 timing
+  with the fitter on and the source size at 1920x1080 under a 1024-pixel
+  surface, so games were drawn twice across. The driver now writes the
+  mode's size when the fitter is on and the size differs, as Linux's
+  i915 does. The state did not come back in three tries, so the write has
+  not yet run on hardware; `PipeSource=` in `V9XHW.INI` says what it did
+  ([issue](docs/issues/2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)).
 
 ## 0.55.0 - 2026-11-18
 
