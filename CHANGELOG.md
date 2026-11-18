@@ -31,6 +31,14 @@ build identifier so exact guest-tested binaries remain traceable.
   converted and copied every corner of every triangle. 3DMark 2001 SE
   went from 3670 to 3989
   ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
+- **`ati` package, GCN: clears are drawn on the command processor, and
+  its ring is 256 KiB.** A 3D device's colour fills and every Z16 fill
+  are queued behind the frame's draws, where each used to make the CPU
+  wait for the GPU to drain before the DMA engine took it. The 16 KiB
+  ring held about fifteen batches; the CPU then waited for room in it.
+  On the Oland, 3DMark 2001 SE went from 3989 to 4234. Carrizo and
+  Mullins have not run it
+  ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
 - **Every package: two diagnostic register reads are sampled one draw
   in 16**, the retrace duty cycle and (GCN) the ring's write pointer.
   On the Oland they were 2 % of 3DMark 2000's CPU time.

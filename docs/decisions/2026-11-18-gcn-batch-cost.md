@@ -5,7 +5,8 @@ Date: 2026-11-18
 Machine: W9QI0DAD (AMD FX-6300, Radeon Oland XT 1002:6610), 1024x768x32.
 Builds: e6266162's working tree, `-dirty`. Evidence:
 `build/driver-results/oland-batch-b100`, `oland-batch-b101`,
-`oland-wc-b103` (not in the tree).
+`oland-wc-b103`, and for the later passes `oland-compact-b108`,
+`oland-cpclear-b109`, `oland-ring-b110` (not in the tree).
 
 ## Where it started
 
@@ -84,6 +85,8 @@ buffer.
 | 102 | 1-3 | 3DMark 2000, V9XPROF | off (VSync=2) | 9802 | 8579 |
 | 104 | 1-4 | 3DMark 2001 SE, grabs | game's | **3670** | 2601, 2603, 2616 |
 | 108 | 1-4 + indexed (below) | 3DMark 2001 SE, grabs | game's | **3989** | 3670 |
+| 109 | + CP clears (below) | 3DMark 2001 SE, grabs | game's | 3944 | 3989 |
+| 110 | + 256 KiB ring (below) | 3DMark 2001 SE, grabs | game's | **4234** | 3989 |
 
 - 2001 SE's "before" runs are [the three clean runs after the
   read-pointer fix](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md):
@@ -151,6 +154,35 @@ one stage.
   are whole.
 - `DrawsIntoPresented` read 13 in both indexed runs, 0 on the list path
   before. Unexplained; the grabs show no damage.
+
+## Third pass: clears on the CP, and a deeper ring
+
+Boot 104's profile put `v9x_vi_cp_poll_fence` at 10.0 % of samples:
+mostly the CPU draining the CP before each clear went to the DMA
+engine. The run made 33,069 colour and 13,614 depth clears.
+
+- **Clears drawn on the CP** (`v9x_d3d_vi_color_fill`, and
+  `v9x_d3d_vi_depth_fill` now for the whole surface too). Two triangles
+  of the fill's colour, or of its depth with ZFUNC ALWAYS, as open
+  batches that join the frame's group. Only a 3D device's surface in
+  5:6:5 or 32 bpp; a 5:6:5 value is widened to eight bits a channel by
+  repeating its top bits, which the CB's conversion returns. Anything
+  else, and a surface the CB's linear-aligned rules refuse, still goes
+  to the DMA engine. V9XD32 (boot 109): unchanged verdicts;
+  `ZClearFar16` 307,200 (every pixel far), `T4ClearedBad` 0.
+  - 3DMark 2001 SE, grabs: **3944**, against 3989. No gain.
+  - A V9XPROF run (score 4278, no grabs) said why: `poll_fence` had
+    left the profile, and `v9x_vi_cp_pending`, the CPU waiting for room
+    in the ring, had gone from 3.2 % to 11.5 %.
+- **The ring 256 KiB** at window offset 1 MiB, unused space, from the
+  probe's 16 KiB at 64 KiB. 16 KiB is about fifteen batches; amdgpu's
+  GFX ring is 1 MiB. A hang record keeps the last 4,096 dwords before
+  the write pointer instead of the whole ring.
+  - Boot 110: V9XD32 unchanged. 3DMark 2001 SE, grabs: **4234**, against
+    3989 (+6 %); no engine timeout; the grabbed frames are whole, and
+    Car Chase Low runs at the refresh (57-61 fps on its counter).
+  - The two changes were not measured apart with the deep ring: the
+    clears alone, with the 16 KiB ring, did not pay.
 
 ## Not established
 

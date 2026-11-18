@@ -47,13 +47,22 @@
 #include "velocity9x/si_gpu_init.h"
 #include "velocity9x/si_shader.h"
 
-/* The window's layout, from its start (vi_sdma.h: SDMA's ring and slots
- * take the first 33 KiB). The ring is the probe's 16 KiB; the shader slots
- * 256 bytes each; the vertex arena the window's top 2 MiB. */
-#define V9X_VI_CP_WINDOW_RING       0x00010000ul
-#define V9X_VI_CP_RING_BYTES        0x00004000ul
+/*
+ * The window's layout, from its start (vi_sdma.h: SDMA's ring and slots
+ * take the first 33 KiB). The shader slots 256 bytes each; the vertex
+ * arena the window's top 2 MiB; the ring 256 KiB at 1 MiB, in space no
+ * one used. It was the probe's 16 KiB at 64 KiB: about fifteen batches,
+ * and with the clears on the CP the Oland's CPU spent 11.5 % of a
+ * 3DMark 2001 SE run waiting for room in it (docs\decisions\
+ * 2026-11-18-gcn-batch-cost.md). amdgpu's GFX ring is 1 MiB.
+ */
+#define V9X_VI_CP_WINDOW_RING       0x00100000ul
+#define V9X_VI_CP_RING_BYTES        0x00040000ul
 #define V9X_VI_CP_RING_DWORDS       (V9X_VI_CP_RING_BYTES / 4ul)
-#define V9X_VI_CP_RING_LOG2_QWORDS  11ul
+#define V9X_VI_CP_RING_LOG2_QWORDS  15ul
+/* The ring dwords a hang record keeps: those just before the write
+ * pointer. */
+#define V9X_VI_CP_RECORD_RING_DWORDS 4096ul
 #define V9X_VI_CP_WINDOW_WRITEBACK  0x00014000ul
 #define V9X_VI_CP_WINDOW_FENCE      0x00014100ul
 #define V9X_VI_CP_WINDOW_SHADERS    0x00015000ul
@@ -670,9 +679,15 @@ static void v9x_vi_cp_write_record(DWORD tag, const char *path, DWORD spins)
     }
     v9x_vi_cp_log_history(file, completed);
     v9x_vi_cp_log_text(file, "[Ring]\r\n");
-    for (index = 0ul; index < V9X_VI_CP_RING_DWORDS; ++index) {
+    v9x_vi_cp_log_hex(file, "RingFirst=",
+                      (v9x_vi_cp_wptr - V9X_VI_CP_RECORD_RING_DWORDS) &
+                      (V9X_VI_CP_RING_DWORDS - 1ul));
+    for (index = 0ul; index < V9X_VI_CP_RECORD_RING_DWORDS; ++index) {
         v9x_vi_cp_log_hex(file, "",
-                          v9x_vi_cp_window(V9X_VI_CP_WINDOW_RING)[index]);
+                          v9x_vi_cp_window(V9X_VI_CP_WINDOW_RING)[
+                              (v9x_vi_cp_wptr -
+                               V9X_VI_CP_RECORD_RING_DWORDS + index) &
+                              (V9X_VI_CP_RING_DWORDS - 1ul)]);
     }
     (void)FlushFileBuffers(file);
     CloseHandle(file);

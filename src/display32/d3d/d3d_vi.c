@@ -1392,42 +1392,83 @@ static int v9x_d3d_vi_draw_shader(const V9X_R3D_DRAW *draw,
     return 1;
 }
 
-/* One corner of a depth fill's rectangle: no colour, no texture. */
+/* One corner of a fill's rectangle: a flat colour, no texture. */
 static void v9x_d3d_vi_fill_vertex(V9X_R3D_VERTEX *vertex, LONG x, LONG y,
-                                   float z)
+                                   float z, DWORD color)
 {
     vertex->sx = (float)x;
     vertex->sy = (float)y;
     vertex->sz = z;
     vertex->rhw = 1.0f;
-    vertex->color = 0ul;
+    vertex->color = color;
     vertex->specular = 0ul;
     vertex->tu = 0.0f;
     vertex->tv = 0.0f;
 }
 
 /*
- * A rectangle of a Z16 at value, drawn on the CP: eng_vi.c's SDMA fill
- * hands over every depth fill short of the whole surface, which it cannot
- * write tiled (Cedar's d3d_eg.c the same way). Two triangles over it,
- * ZFUNC ALWAYS with writes on; the colour target is the Z buffer's own
- * memory named as RGB565, which only sizes the draw: no channel is
- * written. The core's centres are whole coordinates, so the rectangle's
- * edges cover pixels left to right - 1. The batch waits for queued SDMA
- * work itself (vi_cp.c).
+ * A fill's rectangle as two triangles under state (target, depth and
+ * shaders already set), into the arena and out as an open batch: no fence
+ * of its own, so a frame's clears join its draws' group (vi_cp.c), and
+ * the shader-cache sync only when due. The core's centres are whole
+ * coordinates, so the edges cover pixels left to right - 1.
+ */
+static int v9x_d3d_vi_rect_draw(struct v9x_vi_tl_draw *state,
+                                const LONG *rect, float z, DWORD color)
+{
+    struct v9x_vi_pm4 stream;
+    V9X_R3D_VERTEX vertices[6];
+    int synced;
+
+    v9x_d3d_vi_fill_vertex(&vertices[0], rect[0], rect[1], z, color);
+    v9x_d3d_vi_fill_vertex(&vertices[1], rect[2], rect[1], z, color);
+    v9x_d3d_vi_fill_vertex(&vertices[2], rect[0], rect[3], z, color);
+    v9x_d3d_vi_fill_vertex(&vertices[3], rect[2], rect[1], z, color);
+    v9x_d3d_vi_fill_vertex(&vertices[4], rect[2], rect[3], z, color);
+    v9x_d3d_vi_fill_vertex(&vertices[5], rect[0], rect[3], z, color);
+    state->vertex_low = v9x_d3d_vi_arena_copy(
+        (const v9x_u32 *)vertices, sizeof(vertices) / 4ul, 0ul);
+    if (state->vertex_low == 0ul) {
+        return 0;
+    }
+    state->vertex_count = 6ul;
+    state->no_fence = 1ul;
+
+    /* After the arena space is taken, which can make the sync due. */
+    synced = v9x_vi_cp_sync_due();
+    state->no_cache_sync = synced ? 0ul : 1ul;
+    v9x_d3d_vi_stream_init(&stream);
+    if (v9x_vi_3d_tl_draw(&stream, state) != V9X_STATUS_OK) {
+        return 0;
+    }
+    v9x_vi_pm4_pad(&stream);
+    if (stream.overflow != 0ul ||
+        !v9x_vi_cp_submit_open(stream.dwords, stream.count,
+                               state->target_low, state->depth_low,
+                               synced)) {
+        return 0;
+    }
+    v9x_present_note_submission();
+    return 1;
+}
+
+/*
+ * A rectangle of a Z16 at value, drawn on the CP: every depth fill, the
+ * whole surface's included (eng_vi.c). The SDMA engine cannot write part
+ * of one tiled (Cedar's d3d_eg.c the same way), and a fill of all of it
+ * there made the CPU wait for the CP first (docs\decisions\
+ * 2026-11-18-gcn-batch-cost.md). Two triangles over it, ZFUNC ALWAYS
+ * with writes on; the colour target is the Z buffer's own memory named
+ * as RGB565, which only sizes the draw: no channel is written. The batch
+ * waits for queued SDMA work itself (vi_cp.c).
  */
 int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                           DWORD value, int wait)
 {
     struct v9x_vi_tl_draw state;
-    struct v9x_vi_pm4 stream;
-    V9X_R3D_VERTEX vertices[6];
-    volatile DWORD *linear;
-    const DWORD *words;
     DWORD high;
     DWORD heap_low;
     DWORD offset;
-    DWORD gpu_low;
     DWORD rows;
     DWORD index;
     float z;
@@ -1476,31 +1517,115 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 
     /* On the 16-bit full scale. */
     z = (float)(long)(value & 0xfffful) / 65535.0f;
-    v9x_d3d_vi_fill_vertex(&vertices[0], rect[0], rect[1], z);
-    v9x_d3d_vi_fill_vertex(&vertices[1], rect[2], rect[1], z);
-    v9x_d3d_vi_fill_vertex(&vertices[2], rect[0], rect[3], z);
-    v9x_d3d_vi_fill_vertex(&vertices[3], rect[2], rect[1], z);
-    v9x_d3d_vi_fill_vertex(&vertices[4], rect[2], rect[3], z);
-    v9x_d3d_vi_fill_vertex(&vertices[5], rect[0], rect[3], z);
-    if (!v9x_vi_cp_vertex_space(sizeof(vertices), &linear, &gpu_low)) {
+    if (!v9x_d3d_vi_rect_draw(&state, rect, z, 0ul)) {
         return V9X_BLT_DECLINED;
     }
-    words = (const DWORD *)vertices;
-    for (index = 0ul; index < sizeof(vertices) / 4ul; ++index) {
-        linear[index] = words[index];
-    }
-    state.vertex_low = gpu_low;
-    state.vertex_count = 6ul;
-    state.fence_low = v9x_vi_cp_fence_low();
-    state.fence_value = v9x_vi_cp_fence_next();
+    return V9X_BLT_DONE;
+}
 
-    v9x_d3d_vi_stream_init(&stream);
-    if (v9x_vi_3d_tl_draw(&stream, &state) != V9X_STATUS_OK) {
+/*
+ * A 5:6:5 value's channels widened to a D3DCOLOR's eight bits, each
+ * field's top bits repeated below it: the CB's UNORM conversion of the
+ * result back to five and six bits returns the field it came from.
+ */
+static DWORD v9x_d3d_vi_rgb565_color(DWORD value)
+{
+    DWORD red = (value >> 11) & 0x1ful;
+    DWORD green = (value >> 5) & 0x3ful;
+    DWORD blue = value & 0x1ful;
+
+    red = (red << 3) | (red >> 2);
+    green = (green << 2) | (green >> 4);
+    blue = (blue << 3) | (blue >> 2);
+    return 0xff000000ul | (red << 16) | (green << 8) | blue;
+}
+
+/*
+ * A rectangle of a render target at value (in the surface's own format),
+ * drawn on the CP as d3d_core.c's Clear and DirectDraw's colour fills ask
+ * (eng_vi.c). On the SDMA engine each one made the CPU wait for the CP
+ * to drain first: 31,642 colour fills in one 3DMark 2001 SE run
+ * (docs\decisions\2026-11-18-gcn-batch-cost.md). Only a 3D device's
+ * surface, in the two layouts the CB draws here: 5:6:5 and 32 bpp, all
+ * four bytes written as value has them. Anything else, and any surface
+ * the CB's linear-aligned rules refuse, is declined to the SDMA fill.
+ */
+int v9x_d3d_vi_color_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value)
+{
+    struct v9x_vi_tl_draw state;
+    const V9X_DDPIXELFORMAT *format;
+    DWORD high;
+    DWORD heap_low;
+    DWORD offset;
+    DWORD pitch;
+    DWORD bytes;
+    DWORD color;
+    DWORD index;
+
+    if (surface == 0 || rect == 0 || surface->lpGbl == 0 ||
+        surface->lpGbl->lPitch <= 0l || !v9x_d3d_vi_ready() ||
+        (surface->ddsCaps & V9X_DDSCAPS_3DDEVICE) == 0ul ||
+        rect[0] < 0l || rect[1] < 0l || rect[2] <= rect[0] ||
+        rect[3] <= rect[1] ||
+        rect[2] > (LONG)surface->lpGbl->wWidth ||
+        rect[3] > (LONG)surface->lpGbl->wHeight ||
+        !v9x_vi_cp_addresses(&high, &heap_low)) {
         return V9X_BLT_DECLINED;
     }
-    v9x_vi_pm4_pad(&stream);
-    if (stream.overflow != 0ul ||
-        !v9x_vi_cp_submit(stream.dwords, stream.count, state.fence_value)) {
+
+    /* The surface's own format when it carries one, else the display's,
+     * as d3d_core.c classifies a render target. */
+    format = (surface->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul
+                 ? &surface->lpGbl->ddpfSurface
+                 : &v9x_hal->info.vmiData.ddpfDisplay;
+    if ((format->dwFlags & V9X_DDPF_RGB) == 0ul) {
+        return V9X_BLT_DECLINED;
+    }
+    for (index = 0ul; index < sizeof(state); ++index) {
+        ((unsigned char *)&state)[index] = 0u;
+    }
+    if (format->dwRGBBitCount == 32ul) {
+        bytes = 4ul;
+        state.format = V9X_VI_CB_FORMAT_8_8_8_8;
+        color = value;
+    } else if (format->dwRGBBitCount == 16ul &&
+               format->dwRBitMask == 0x0000f800ul &&
+               format->dwGBitMask == 0x000007e0ul &&
+               format->dwBBitMask == 0x0000001ful) {
+        bytes = 2ul;
+        state.format = V9X_VI_CB_FORMAT_5_6_5;
+        color = v9x_d3d_vi_rgb565_color(value);
+    } else {
+        return V9X_BLT_DECLINED;
+    }
+
+    /* d3d_vi_map.c's target rules: rows of whole 64 bytes and 8-pixel
+     * tiles, the slice whole 64-pixel tiles, the base on 256 bytes. */
+    pitch = (DWORD)surface->lpGbl->lPitch;
+    offset = v9x_surface_offset(surface);
+    if (offset == 0xfffffffful || heap_low + offset < heap_low ||
+        ((heap_low + offset) & (V9X_D3D_VI_SURFACE_ALIGN - 1ul)) != 0ul ||
+        (pitch % V9X_D3D_VI_ROW_ALIGN) != 0ul ||
+        (pitch % (8ul * bytes)) != 0ul ||
+        pitch / bytes < (DWORD)surface->lpGbl->wWidth ||
+        ((pitch / bytes) * (DWORD)surface->lpGbl->wHeight) % 64ul != 0ul) {
+        return V9X_BLT_DECLINED;
+    }
+
+    state.target_low = heap_low + offset;
+    state.target_high = high;
+    state.pitch_pixels = pitch / bytes;
+    state.height = (DWORD)surface->lpGbl->wHeight;
+    state.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
+    state.d3d_pixel_centres = 1ul;
+    state.vs_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_VS);
+    state.ps_low = v9x_vi_cp_shader_low(V9X_VI_CP_SLOT_PS_FIRST +
+                                        V9X_VI_PS_COLOUR);
+    state.shader_high = high;
+    state.vertex_high = high;
+    state.fence_high = high;
+    if (!v9x_d3d_vi_rect_draw(&state, rect, 0.0f, color)) {
         return V9X_BLT_DECLINED;
     }
     return V9X_BLT_DONE;

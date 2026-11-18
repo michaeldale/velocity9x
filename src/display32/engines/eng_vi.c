@@ -728,25 +728,39 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
     fill.width = (DWORD)(data->rDest[2] - data->rDest[0]);
     fill.height = (DWORD)(data->rDest[3] - data->rDest[1]);
     fill.color = data->bltFX.dwFillColor;
-    /* A Z16 is 1D tiled (d3d_vi.c places it, rows padded to the 8-row
-     * tile): a fill of all of it is a fill of its bytes, padding rows
-     * included, but one of part of it would land in the wrong samples, and
-     * so would the CPU's. d3d_vi.c draws those on the CP, as Cedar's
-     * d3d_eg.c does. All of it means every byte of every row too: a row
-     * past the surface's pixels (rows of whole 64 bytes) is tile memory,
-     * and a fill of only width x 2 bytes a row left the last 48 bytes of
-     * each 768 at their old values, dashes of failed depth tests down a
-     * 360-wide OpenGL window (V9XGLP's T&L frame, boot 38). */
+    /*
+     * A Z16 is 1D tiled (d3d_vi.c places it, rows padded to the 8-row
+     * tile): a fill of part of it here would land in the wrong samples,
+     * and so would the CPU's. d3d_vi.c draws every depth fill on the CP,
+     * and a 3D device's colour fills, so a frame's clears queue behind its
+     * draws: here each made the CPU wait for the CP (v9x_vi_after_cp).
+     * What it declines comes here.
+     *
+     * A fill of all of a Z16 here is a fill of its bytes, padding rows
+     * included. Every byte of every row too: a row past the surface's
+     * pixels (rows of whole 64 bytes) is tile memory, and a fill of only
+     * width x 2 bytes a row left the last 48 bytes of each 768 at their
+     * old values, dashes of failed depth tests down a 360-wide OpenGL
+     * window (V9XGLP's T&L frame, boot 38).
+     */
     if ((data->lpDDDestSurface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
-        if (fill.left != 0ul || fill.top != 0ul ||
+        int drawn = v9x_d3d_vi_depth_fill(data->lpDDDestSurface,
+                                          data->rDest,
+                                          data->bltFX.dwFillColor, wait);
+
+        if (drawn != V9X_BLT_DECLINED ||
+            fill.left != 0ul || fill.top != 0ul ||
             fill.width != (DWORD)data->lpDDDestSurface->lpGbl->wWidth ||
             fill.height != (DWORD)data->lpDDDestSurface->lpGbl->wHeight) {
-            return v9x_d3d_vi_depth_fill(data->lpDDDestSurface, data->rDest,
-                                         data->bltFX.dwFillColor, wait);
+            return drawn;
         }
         fill.width = fill.pitch_bytes / bytes_per_pixel;
         fill.height = (fill.height + V9X_VI_DEPTH_TILE_ROWS - 1ul) &
                       ~(V9X_VI_DEPTH_TILE_ROWS - 1ul);
+    } else if (v9x_d3d_vi_color_fill(data->lpDDDestSurface, data->rDest,
+                                     data->bltFX.dwFillColor) ==
+               V9X_BLT_DONE) {
+        return V9X_BLT_DONE;
     }
     if (v9x_eg_dma_plan_fill(&fill, &plan) != V9X_STATUS_OK ||
         v9x_vi_plan_check(&plan) != V9X_STATUS_OK) {

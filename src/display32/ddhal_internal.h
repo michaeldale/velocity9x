@@ -510,10 +510,15 @@ int v9x_d3d_g4_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
  * on the CP. Arguments and outcome as v9x_d3d_hsw_depth_fill, 16-bit only. */
 int v9x_d3d_eg_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                           DWORD value, int wait);
-/* Carrizo's the same way: eng_vi.c's SDMA fill takes a whole Z16 and
- * hands a smaller rectangle to d3d\d3d_vi.c, which draws it on the CP. */
+/* GCN's go to the CP whole or in part: eng_vi.c's fill hands every Z16
+ * fill to d3d\d3d_vi.c, which draws it, and the SDMA fill takes one only
+ * when the CP declines. */
 int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                           DWORD value, int wait);
+/* And a 3D device's colour fills the same way, value in the surface's
+ * own format; V9X_BLT_DONE or V9X_BLT_DECLINED for the SDMA fill. */
+int v9x_d3d_vi_color_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
+                          DWORD value);
 
 /* The Mach64 core eng_mach64.c owns, once the chip is validated, or null:
  * shared with d3d_mach64.c so 2D and 3D keep one FIFO account. */
