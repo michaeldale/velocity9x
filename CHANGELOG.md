@@ -21,6 +21,15 @@ build identifier so exact guest-tested binaries remain traceable.
   1000 MHz on the measured card. 3DMark 2001 SE went from 4234 to 4797.
   The outcome is in `C:\V9XDIAG\V9XCLK.TXT`
   ([record](docs/decisions/2026-11-18-oland-clocks-left-by-the-bios.md)).
+- **All packages, adapters whose VBE BIOS says they are not VGA
+  compatible (the Matrox Millennium P650): 256-colour palettes through
+  VBE, and the BIOS's line length left alone.** The P650's BIOS keeps the
+  palette in its own registers in VESA modes, so palettes written to the
+  VGA ports never reached the screen. At 640x480 in 256 colours the
+  driver's line-length correction also scrambled the picture. The palette
+  now goes through VBE function 4F09h, and the line length is not reset.
+  No other card on record reports itself this way
+  ([record](docs/decisions/2026-11-18-p650-vbe-palette-and-stride.md)).
 
 ## 0.55.0 - 2026-11-18
 

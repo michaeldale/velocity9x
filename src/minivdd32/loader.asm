@@ -2985,6 +2985,10 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_I9xxPoolChunk
     cmp     ax, V9XMINI_FN_I9XX_POOL_MAP
     je      V9xMini_Api_I9xxPoolMap
+    cmp     ax, V9XMINI_FN_VBE_PAL_STAGE
+    je      V9xMini_Api_VbePalStage
+    cmp     ax, V9XMINI_FN_VBE_PAL_LOAD
+    je      V9xMini_Api_VbePalLoad
 
     ; Unknown function.
     mov     [ebp.Client_AX], 0
@@ -4860,6 +4864,86 @@ V9xMini_Api_Status:
     pop     esi
     pop     edx
     pop     ecx
+    ret
+
+; VBE_PAL_STAGE: four 4F09h entries into the V86 scratch. See V9XMAPI.INC.
+;
+; The scratch is the init-time 4F00h/4F01h buffer. Those calls are long
+; finished by the time the display driver loads a palette, and nothing else
+; reads it afterwards, so it is free to reuse.
+V9xMini_Api_VbePalStage:
+    push    ecx
+    movzx   eax, [ebp.Client_CX]
+    cmp     eax, V9X_VBE_PAL_SLOTS - 4
+    ja      short V9xMini_Api_VbePalStage_Refuse
+    movzx   ecx, V9xVbeBufSeg
+    test    ecx, ecx
+    jz      short V9xMini_Api_VbePalStage_Refuse
+    shl     ecx, 4                      ; first megabyte: linear = seg << 4
+    lea     ecx, [ecx + eax * 4]
+    mov     eax, [ebp.Client_EBX]
+    mov     [ecx], eax
+    mov     eax, [ebp.Client_EDX]
+    mov     [ecx + 4], eax
+    mov     eax, [ebp.Client_ESI]
+    mov     [ecx + 8], eax
+    mov     eax, [ebp.Client_EDI]
+    mov     [ecx + 12], eax
+    mov     [ebp.Client_AX], 1
+    pop     ecx
+    ret
+V9xMini_Api_VbePalStage_Refuse:
+    mov     [ebp.Client_AX], 0
+    pop     ecx
+    ret
+
+; VBE_PAL_LOAD: 4F09h BL=00h over the staged entries. See V9XMAPI.INC.
+;
+; Nested V86 execution, as V9xMini_Vbe_Call does at init, but without its
+; serial lines: a palette load is a runtime call that palette animation
+; repeats many times a second. The client registers are the display
+; driver's own, borrowed for the interrupt and restored before the reply is
+; written into them.
+V9xMini_Api_VbePalLoad:
+    push    ebx
+    push    ecx
+    push    edx
+    movzx   ecx, [ebp.Client_CX]
+    movzx   edx, [ebp.Client_DX]
+    test    ecx, ecx
+    jz      V9xMini_Api_VbePalLoad_Refuse
+    cmp     ecx, V9X_VBE_PAL_SLOTS
+    ja      V9xMini_Api_VbePalLoad_Refuse
+    cmp     V9xVbeBufSeg, 0
+    je      V9xMini_Api_VbePalLoad_Refuse
+
+    Push_Client_State
+    VMMcall Begin_Nest_V86_Exec
+    mov     [ebp.Client_AX], 4F09h
+    mov     [ebp.Client_BX], 0          ; BL=00h: set, not during retrace
+    mov     [ebp.Client_CX], cx
+    mov     [ebp.Client_DX], dx
+    mov     ax, V9xVbeBufSeg
+    mov     [ebp.Client_ES], ax
+    mov     [ebp.Client_DI], 0
+    mov     eax, 10h
+    VMMcall Exec_Int
+    movzx   ebx, [ebp.Client_AX]        ; the reply, before the restore
+    VMMcall End_Nest_Exec
+    Pop_Client_State
+
+    mov     [ebp.Client_EBX], ebx
+    mov     [ebp.Client_AX], 1
+    cmp     ebx, 004Fh
+    je      short V9xMini_Api_VbePalLoad_Done
+    mov     [ebp.Client_AX], 2
+    jmp     short V9xMini_Api_VbePalLoad_Done
+V9xMini_Api_VbePalLoad_Refuse:
+    mov     [ebp.Client_AX], 0
+V9xMini_Api_VbePalLoad_Done:
+    pop     edx
+    pop     ecx
+    pop     ebx
     ret
 
 ; Out: AX=1, EBX=magic, ECX=contract version.

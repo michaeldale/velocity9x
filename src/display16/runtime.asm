@@ -3185,6 +3185,77 @@ V9xUnhookScreenSwitchDone:
     retf
 V9XUNHOOKSCREENSWITCH ENDP
 
+; WORD FAR PASCAL V9xMiniVbePalStage(WORD slot, DWORD e0, DWORD e1,
+;                                    DWORD e2, DWORD e3)
+; WORD FAR PASCAL V9xMiniVbePalLoad(WORD first, WORD count)
+;
+; The 4F09h palette route (V9XMAPI.INC, VBE_PAL_STAGE and VBE_PAL_LOAD),
+; for palette16.c. Each returns the mini-VDD's AX, or 0 when there is no
+; API. In SSWCODE for _TEXT's budget, so they cannot near-call
+; V9xMiniApiInitialize: they need the entry already found, which it is,
+; because palette16.c picks this route only after V9xMiniVbeController()
+; has answered.
+PUBLIC V9XMINIVBEPALSTAGE
+V9XMINIVBEPALSTAGE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    xor     ax, ax
+    cmp     dword ptr V9xMiniApiEntry, 0
+    je      short V9xMiniVbePalStageDone
+    movzx   ecx, word ptr [bp+22]       ; the first slot
+    mov     ebx, dword ptr [bp+18]      ; e0
+    mov     edx, dword ptr [bp+14]      ; e1
+    mov     esi, dword ptr [bp+10]      ; e2
+    mov     edi, dword ptr [bp+6]       ; e3
+    mov     eax, V9XMINI_FN_VBE_PAL_STAGE
+    call    dword ptr V9xMiniApiEntry
+V9xMiniVbePalStageDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    18
+V9XMINIVBEPALSTAGE ENDP
+
+PUBLIC V9XMINIVBEPALLOAD
+V9XMINIVBEPALLOAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+    push    esi
+    push    edi
+    push    es
+
+    xor     ax, ax
+    cmp     dword ptr V9xMiniApiEntry, 0
+    je      short V9xMiniVbePalLoadDone
+    movzx   edx, word ptr [bp+8]        ; the first palette index
+    movzx   ecx, word ptr [bp+6]        ; the entry count
+    mov     eax, V9XMINI_FN_VBE_PAL_LOAD
+    call    dword ptr V9xMiniApiEntry
+V9xMiniVbePalLoadDone:
+    pop     es
+    pop     edi
+    pop     esi
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    4
+V9XMINIVBEPALLOAD ENDP
+
 SSWCODE ENDS
 
 .code

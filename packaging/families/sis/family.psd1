@@ -97,6 +97,7 @@
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
             @{ Name = 'loader'; Path = 'src\display16\loader.c' }
+            @{ Name = 'palette16'; Path = 'src\display16\palette16.c' }
             @{ Name = 'ddi'; Path = 'src\display16\ddi.c' }
             @{ Name = 'sswitch16'; Path = 'src\display16\sswitch16.c'; CodeSegment = 'SSWCODE' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }

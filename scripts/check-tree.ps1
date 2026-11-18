@@ -252,6 +252,8 @@ $required = @(
     "tests\host\test_r128_ring.c",
     "src\display16\display_component.c",
     "src\display16\loader.c",
+    "src\display16\palette16.c",
+    "src\display16\palette16.h",
     "src\display16\ddi.c",
     "src\display16\dd16.c",
     "src\display16\dd16.h",
@@ -355,6 +357,9 @@ $allowedOsBoundaries = @(
     # is a genuine OS boundary and is listed as one rather than reaching
     # <windows.h> through a header that already is.
     (Join-Path $repoRoot "src\display16\gdi_accel.c"),
+    # palette16.c writes Palette= into V9XBOOT.INI with
+    # WritePrivateProfileString.
+    (Join-Path $repoRoot "src\display16\palette16.c"),
     # The runtime mode table writes the validated inventory file
     # (C:\V9XDIAG\V9XMODES.INI) through WritePrivateProfileString; the table logic
     # itself stays in src\common\vbe_modes.c, which remains OS-free.
