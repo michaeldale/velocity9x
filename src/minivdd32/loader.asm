@@ -2949,6 +2949,8 @@ BeginProc MiniVDD_PM_API
     je      V9xMini_Api_HswStolenReserved
     cmp     ax, V9XMINI_FN_HSW_RPS
     je      V9xMini_Api_HswRps
+    cmp     ax, V9XMINI_FN_HSW_PIPE_SOURCE
+    je      V9xMini_Api_HswPipeSource
     cmp     ax, V9XMINI_FN_ATI_MMIO_MAP
     je      V9xMini_Api_AtiMmioMap
     cmp     ax, V9XMINI_FN_SIS_MMIO_MAP
@@ -3762,6 +3764,72 @@ V9xMini_Api_HswRps_Read:
     ret
 ENDIF
 V9xMini_Api_HswRps_Refused:
+    mov     [ebp.Client_EBX], 0
+    mov     [ebp.Client_ECX], 0
+    mov     [ebp.Client_EDX], 0
+    mov     [ebp.Client_AX], 0
+    ret
+
+; See V9XMINI_FN_HSW_PIPE_SOURCE in V9XMAPI.INC.
+V9X_HSW_PIPE_HTOTAL_A   equ 00060000h
+V9X_HSW_PIPE_VTOTAL_A   equ 0006000ch
+V9X_HSW_PIPE_SRCSZ_A    equ 0006001ch
+V9X_HSW_PF_CTL_A        equ 00068080h
+V9X_HSW_PF_ENABLE       equ 80000000h
+V9X_HSW_ACTIVE_MASK     equ 00000fffh
+V9xMini_Api_HswPipeSource:
+IFDEF V9X_INTEL_MMIO_FINGERPRINT
+    cmp     V9xHswOpen, 0
+    je      V9xMini_Api_HswPipeSource_Refused
+    cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
+    jne     V9xMini_Api_HswPipeSource_Refused
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    mov     ebx, [ebp.Client_EBX]       ; the request, before EBX is reused
+    mov     edi, V9xHswMmioLinear
+    mov     esi, [edi+V9X_HSW_PIPE_SRCSZ_A]
+    mov     ecx, [edi+V9X_HSW_PF_CTL_A]
+    mov     edx, [edi+V9X_HSW_PIPE_HTOTAL_A]
+    mov     [ebp.Client_EBX], esi
+    mov     [ebp.Client_ECX], ecx
+    mov     [ebp.Client_EDX], edx
+    mov     [ebp.Client_AX], 2
+    test    ecx, V9X_HSW_PF_ENABLE
+    jz      short V9xMini_Api_HswPipeSource_Out
+    mov     [ebp.Client_AX], 3
+    cmp     esi, ebx
+    je      short V9xMini_Api_HswPipeSource_Out
+    ; Width less one (27:16) against HTOTAL's active width less one (11:0),
+    ; height less one (11:0) against VTOTAL's: a source larger than the
+    ; pipe is not a fitter's job.
+    mov     [ebp.Client_AX], 0
+    mov     eax, ebx
+    shr     eax, 16
+    and     edx, V9X_HSW_ACTIVE_MASK
+    cmp     eax, edx
+    ja      short V9xMini_Api_HswPipeSource_Out
+    mov     eax, ebx
+    and     eax, V9X_HSW_ACTIVE_MASK
+    mov     edx, [edi+V9X_HSW_PIPE_VTOTAL_A]
+    and     edx, V9X_HSW_ACTIVE_MASK
+    cmp     eax, edx
+    ja      short V9xMini_Api_HswPipeSource_Out
+    test    ebx, 0f000f000h             ; only the two 12-bit fields
+    jnz     short V9xMini_Api_HswPipeSource_Out
+    mov     [edi+V9X_HSW_PIPE_SRCSZ_A], ebx
+    mov     [ebp.Client_AX], 1
+V9xMini_Api_HswPipeSource_Out:
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    ret
+ENDIF
+V9xMini_Api_HswPipeSource_Refused:
     mov     [ebp.Client_EBX], 0
     mov     [ebp.Client_ECX], 0
     mov     [ebp.Client_EDX], 0

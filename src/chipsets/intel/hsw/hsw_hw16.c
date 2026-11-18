@@ -187,6 +187,45 @@ static void v9x_hsw_request_render_clock(void)
     }
 }
 
+/*
+ * Pipe A's source size to the mode just set, when the VBIOS left the panel
+ * fitter on over a full-size source (HSW_PIPE_SOURCE in V9XMAPI.INC;
+ * docs\issues\2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md).
+ * On every open, reused ones too, because a DirectDraw mode change reaches
+ * here through the same descriptor call.
+ */
+extern unsigned short __far __pascal V9xMiniHswPipeSource(
+    unsigned long srcsz, unsigned long __far *found);
+extern unsigned short v9x_selected_mode_geometry(unsigned short __far *width,
+                                                 unsigned short __far *height,
+                                                 unsigned short __far *bpp,
+                                                 unsigned short __far *pitch);
+
+static const char *v9x_hsw_pipe_status = "not-called";
+static unsigned long v9x_hsw_pipe_found;
+
+static void v9x_hsw_fit_pipe_source(void)
+{
+    static const char *const words[4] = {
+        "refused", "written", "fitter-off", "matches"
+    };
+    unsigned short width;
+    unsigned short height;
+    unsigned short bpp;
+    unsigned short pitch;
+    unsigned short answer;
+
+    if (v9x_selected_mode_geometry(&width, &height, &bpp, &pitch) == 0u ||
+        width == 0u || height == 0u) {
+        v9x_hsw_pipe_status = "no-mode";
+        return;
+    }
+    answer = V9xMiniHswPipeSource(
+        ((unsigned long)(width - 1u) << 16) | (unsigned long)(height - 1u),
+        &v9x_hsw_pipe_found);
+    v9x_hsw_pipe_status = words[answer < 4u ? answer : 0u];
+}
+
 /* The layout's keys for V9XHW.INI, so a field report says which heap a
  * machine got and why. */
 void v9x_hsw_publish_layout(v9x_hw16_write_fn write)
@@ -212,6 +251,9 @@ void v9x_hsw_publish_layout(v9x_hw16_write_fn write)
     write("Rpnswreq", number);
     v9x_hsw_format_hex(number, v9x_hsw_rps_rpstat1);
     write("Rpstat1", number);
+    write("PipeSource", v9x_hsw_pipe_status);
+    v9x_hsw_format_hex(number, v9x_hsw_pipe_found);
+    write("PipeSourceFound", number);
 }
 
 /*
@@ -440,6 +482,7 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
         return;
     }
     v9x_hsw_request_render_clock();
+    v9x_hsw_fit_pipe_source();
 
     /* HSW_ENGINE_OPEN opens the render ring with the blitter's and refuses
      * both together, so an open engine has both (Phase F2). FLIP: plane A's

@@ -535,6 +535,24 @@ V9XMINI_FN_HSW_STOLEN_RESERVED EQU 0022h
 ; fields are i915's. Only the intel-gma family image implements it.
 V9XMINI_FN_HSW_RPS          EQU 0030h
 
+; Intel Haswell: pipe A's source size to the mode's, when the VBIOS left the
+; panel fitter scaling a full-size source (docs\issues\2026-11-18-haswell-
+; vga-1080p-pipe-source-left-at-native.md). Measured on the i5-4570 after a
+; boot with no monitor: 1920x1080 timing, PF_CTL_A on, and PIPE_SRCSZ_A at
+; 1920x1080 under a 1024-pixel plane, so every line fetched one row and most
+; of the next. With the source at the mode's size the fitter scales it to
+; its window, which is how i915 drives a fitter (PIPESRC = the mode).
+; Only while HSW_ENGINE_OPEN's engine is open on a Haswell chip.
+; In:  EBX = the PIPE_SRCSZ word for the mode: (width - 1) << 16 |
+;      (height - 1).
+; Out: AX=1 written; AX=2 the fitter is off, nothing written; AX=3 the
+;      source already matched; AX=0 refused (no engine, not Haswell, or the
+;      request is larger than the pipe's active area), nothing written.
+;      EBX = PIPE_SRCSZ_A as found, ECX = PF_CTL_A, EDX = PIPE_HTOTAL_A,
+;      all read before any write (0 when refused for no engine).
+; Addresses are i915's for PF_CTL_A; the pipe registers are the PRM's.
+V9XMINI_FN_HSW_PIPE_SOURCE  EQU 0033h
+
 ; ATI Rage 128: map the 16 KiB register BAR (BAR2) and say where.
 ;
 ; In: EBX = BAR2's physical base, freshly read from PCI config by the display

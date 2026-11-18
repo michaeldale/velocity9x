@@ -2568,6 +2568,42 @@ V9xMiniHswRpsDone:
     pop     bp
     retf    16
 V9XMINIHSWRPS ENDP
+
+; WORD FAR PASCAL V9xMiniHswPipeSource(DWORD srcsz, DWORD FAR *found)
+;
+; HSW_PIPE_SOURCE (V9XMAPI.INC): the mode's PIPE_SRCSZ word in EBX;
+; PIPE_SRCSZ_A as found copied out. Returns the verb's AX, or 0 with no
+; mini-VDD API, *found then 0.
+PUBLIC V9XMINIHSWPIPESOURCE
+V9XMINIHSWPIPESOURCE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    ebx
+    push    ecx
+    push    edx
+    push    esi
+    push    edi
+    push    es
+    xor     esi, esi
+    call    V9xMiniApiInitialize
+    or      ax, ax
+    jz      short V9xMiniHswPipeSourceDone
+    mov     ebx, dword ptr [bp+10]
+    mov     eax, V9XMINI_FN_HSW_PIPE_SOURCE
+    call    dword ptr V9xMiniApiEntry
+    mov     esi, ebx
+V9xMiniHswPipeSourceDone:
+    les     bx, dword ptr [bp+6]
+    mov     es:[bx], esi
+    pop     es
+    pop     edi
+    pop     esi
+    pop     edx
+    pop     ecx
+    pop     ebx
+    pop     bp
+    retf    8
+V9XMINIHSWPIPESOURCE ENDP
 ENDIF
 
 IFDEF V9X_PAT_ROUTE

@@ -4,6 +4,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Open
 
+- [2026-11-18 HD 4600 on its VGA port into a 1080p capture: games drawn twice across and wrapping; the VBIOS leaves 1920x1080 timing with the panel fitter on and PIPE_SRCSZ at 1920x1080 under a 1024-pixel surface after a boot with no display connected; fix on branch hsw-panel-fit (source size written to the mode's), its write path not yet run on hardware](2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)
 - [2026-11-18 GCN (SI/VI): the CPU waits for the GPU to go idle at every flip, lock and DMA fill, so the two never overlap; the fence spin is 7.1 % of a 3DMark 2001 SE run on the R7E](2026-11-18-vi-cp-full-drain-serialises-cpu-and-gpu.md)
 - [2026-11-18 GCN (SI/VI): the ring and vertex copies are dword loops into the GPU window, about 7 % of a 3DMark 2001 SE run each on the R7E](2026-11-18-vi-dword-copies-into-gpu-window.md)
 - [2026-11-18 Carrizo: flip waits poll the display controller, re-reading CRTC and graphics enable on every poll; 6 % of a 3DMark 2001 SE run; how much is the wait itself not separated](2026-11-18-carrizo-flip-waits-poll-scanout.md)

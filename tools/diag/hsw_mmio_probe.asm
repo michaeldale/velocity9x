@@ -111,6 +111,7 @@ HswWindows label dword
     dd 041000h, 041004h   ; VGA_CONTROL
     dd 044000h, 046000h   ; DE interrupts, DE_RRMR, PWR_WELL_CTL1-4
     dd 060000h, 061000h   ; pipe A timings
+    dd 068000h, 069000h   ; panel fitter A (i915 PF_WIN_POS/SZ, PF_CTL)
     ; From 70008h, not 70000h: PIPE_SCANLINE_A and its compare register are
     ; the live counters, the class of register the 945 hung on when its
     ; pipe was off. Nothing here needs them.
@@ -121,7 +122,7 @@ HswWindows label dword
     ; mirror's GEN6_GT_PERF_STATUS and GEN6_RP_STATE_CAP. Narrow on purpose.
     dd 138100h, 138110h   ; RC6 residency counters
     dd 145940h, 1459a0h   ; GT_PERF_STATUS .. RP_STATE_CAP
-HSW_WINDOW_COUNT        equ 13
+HSW_WINDOW_COUNT        equ 14
 
 HswResult label dword
     dd HSW_MAGIC                ; 00 magic
