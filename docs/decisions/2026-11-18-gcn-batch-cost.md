@@ -83,6 +83,7 @@ buffer.
 | 101 | 1-3 | 3DMark 2000, V9XPROF | game's | 4104 | 3985 |
 | 102 | 1-3 | 3DMark 2000, V9XPROF | off (VSync=2) | 9802 | 8579 |
 | 104 | 1-4 | 3DMark 2001 SE, grabs | game's | **3670** | 2601, 2603, 2616 |
+| 108 | 1-4 + indexed (below) | 3DMark 2001 SE, grabs | game's | **3989** | 3670 |
 
 - 2001 SE's "before" runs are [the three clean runs after the
   read-pointer fix](../issues/2026-11-17-oland-3dmark2001se-cp-stall-hang.md):
@@ -95,6 +96,61 @@ buffer.
 - The grabbed 2001 SE frames are whole (`grabs-sheet.png` in the
   evidence). Car Chase Low runs at 30-60 fps there, so part of 2001 SE
   is held at the refresh too.
+
+## Second pass: where 2001 SE's CPU time went, and indexed draws
+
+A V9XPROF run of 3DMark 2001 SE on boot 104 (score 3930, no grabs)
+put the D3D runtime's software T&L at 5.7 % of samples, and the driver
+at 67.7 %. Split into 10-second windows, the driver's costs were:
+
+| cost | run | in the tests |
+|---|---:|---:|
+| waiting for vsync in Flip (`eg_scanout`; KERNEL32's 14.9 % beside it) | 21.8 % | 10-60 % |
+| the CPU waiting for the CP to go idle (`v9x_vi_cp_poll_fence`) | 10.0 % | up to 63 % |
+| the driver's own per-vertex work (DP2 walk, conversion, record copies, culling, staging) | 19.7 % | 25-56 % |
+| `v9x_d3d_vi_bc_copy`, a DXT level read back byte by byte on Lock | 8.1 % | about 0: loading screens |
+
+The run sent 463 M triangles in 5.7 M DrawPrimitives2 records, most as
+indexed lists, which the core expanded a triangle at a time: every
+corner converted, copied and culled again for each triangle sharing it.
+And each of the 45,208 clears went to the DMA engine after the CPU
+waited for the CP to drain.
+
+**Tried and dropped: waits on the GPU.** The DMA engine polled the CP's
+fence (SI DMA POLL_REG_MEM, as amdgpu's si_dma pipeline sync), and the
+CP waited on the DMA fence (WAIT_REG_MEM, as gfx_v6_0's), in place of
+the CPU's drains.
+- With Linux's equal compare the CP hung at boot 105: given up waiting
+  for ring space, stopped at a WAIT_REG_MEM for DMA fence 183h. The
+  score that run showed, 5364, was of a run whose CP was given up early,
+  and is not a result.
+- With greater-or-equal on both sides (boot 107) nothing hung, but 3DMark
+  2001 SE fell to **1464** from 3670. Why the GPU-side waits cost that
+  much was not established (the DMA poll's interval and retry semantics
+  are not documented here).
+- Reverted: the CPU drains again. The CP's next batch now syncs its
+  caches after any DMA operation (`v9x_vi_cp_note_dma`).
+
+**Indexed lists drawn whole on the Oland** (`v9x_d3d_vi_draw_indexed`).
+The TL draw takes an index buffer (`DRAW_INDEX_2` of 16-bit indices,
+`INDEX_TYPE` before it, radeonsi's packets; host-tested). Every GCN VS
+reads its vertex by VertexID, which an indexed draw sets to the index.
+The core hands an engine that opts in (`indexed_pool_vertices`,
+`indexed_two_units`) the call's vertices converted once each: only the
+ones its indices name, compacted, the indices rewritten to them
+(`v9x_d3d_dp2_compact`). Two-stage calls go too, their pairs per pool
+vertex. The engine culls on the CPU by the core's rule, unrolls strips
+with the core's winding swap, and copies the pool and the surviving
+indices to the arena once. Other engines keep the 192-vertex gather and
+one stage.
+- Boot 106, the first version (pools copied from the lowest index to the
+  highest), with the GPU waits: 1775.
+- Boot 108, compacted, CPU drains: **3989**, against 3670 (+8.7 %).
+  2,110,750 calls drawn whole, none declined; no engine timeout; V9XD32
+  T13's indexed draw now takes this path and passes; the grabbed frames
+  are whole.
+- `DrawsIntoPresented` read 13 in both indexed runs, 0 on the list path
+  before. Unexplained; the grabs show no damage.
 
 ## Not established
 

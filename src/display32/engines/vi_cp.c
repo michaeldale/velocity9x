@@ -1207,6 +1207,13 @@ int v9x_vi_cp_ready(void)
     return v9x_vi_cp_mapped() && v9x_vi_cp_state != V9X_VI_CP_FAILED;
 }
 
+/* The DMA engine was given work: the next batch syncs the shader and
+ * texture caches, which may hold what it overwrites. */
+void v9x_vi_cp_note_dma(void)
+{
+    v9x_vi_cp_sync = 1;
+}
+
 int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence)
 {
     if (dwords == 0 || !v9x_vi_cp_start()) {

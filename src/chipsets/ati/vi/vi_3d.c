@@ -633,11 +633,20 @@ v9x_status v9x_vi_3d_fence(struct v9x_vi_pm4 *stream, v9x_u32 fence_low,
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
 }
 
-/* fenced zero: the draw alone, for a group the caller fences later. */
+/* radeonsi's indexed draw: INDEX_TYPE 0 (16-bit), then DRAW_INDEX_2 with
+ * the buffer's size in indices, its address and the count, sourced by DMA
+ * (DI_SRC_SEL_DMA, 0). */
+#define VI_INDEX_TYPE_16       0ul
+#define VI_DI_SRC_SEL_DMA      0ul
+
+/* fenced zero: the draw alone, for a group the caller fences later. A
+ * nonzero index_count draws that many 16-bit indices at index_low/high
+ * in place of count auto-indexed vertices. */
 static void v9x_vi_3d_draw_and_fence(struct v9x_vi_pm4 *stream, v9x_u32 prim,
-                                     v9x_u32 count, int fenced,
-                                     v9x_u32 fence_low, v9x_u32 fence_high,
-                                     v9x_u32 fence_value)
+                                     v9x_u32 count, v9x_u32 index_low,
+                                     v9x_u32 index_high, v9x_u32 index_count,
+                                     int fenced, v9x_u32 fence_low,
+                                     v9x_u32 fence_high, v9x_u32 fence_value)
 {
     v9x_u32 values[3];
 
@@ -653,9 +662,21 @@ static void v9x_vi_3d_draw_and_fence(struct v9x_vi_pm4 *stream, v9x_u32 prim,
     }
     v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_NUM_INSTANCES, 0ul));
     v9x_vi_pm4_put(stream, 1ul);
-    v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
-    v9x_vi_pm4_put(stream, count);
-    v9x_vi_pm4_put(stream, VI_DI_SRC_SEL_AUTO_INDEX);
+    if (index_count != 0ul) {
+        v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_INDEX_TYPE, 0ul));
+        v9x_vi_pm4_put(stream, VI_INDEX_TYPE_16);
+        v9x_vi_pm4_put(stream, V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_2, 4ul));
+        v9x_vi_pm4_put(stream, index_count);
+        v9x_vi_pm4_put(stream, index_low);
+        v9x_vi_pm4_put(stream, index_high & 0xfful);
+        v9x_vi_pm4_put(stream, index_count);
+        v9x_vi_pm4_put(stream, VI_DI_SRC_SEL_DMA);
+    } else {
+        v9x_vi_pm4_put(stream,
+                       V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_AUTO, 1ul));
+        v9x_vi_pm4_put(stream, count);
+        v9x_vi_pm4_put(stream, VI_DI_SRC_SEL_AUTO_INDEX);
+    }
 
     if (fenced) {
         v9x_vi_3d_fence_packets(stream, fence_low, fence_high, fence_value);
@@ -710,8 +731,8 @@ v9x_status v9x_vi_3d_solid_rect(struct v9x_vi_pm4 *stream,
     v9x_vi_pm4_set_sh(stream, VI_SPI_SHADER_USER_DATA_PS, values, ps_sgprs);
 
     /* Three vertices of a RECTLIST. */
-    v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_RECTLIST, 3ul, 1,
-                             rect->fence_low, rect->fence_high,
+    v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_RECTLIST, 3ul, 0ul, 0ul, 0ul,
+                             1, rect->fence_low, rect->fence_high,
                              rect->fence_value);
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
 }
@@ -998,7 +1019,11 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
                              draw->height) ||
         ((draw->vs_low | draw->ps_low) & VI_SHADER_ALIGN) != 0ul ||
         ((draw->fence_low | draw->vertex_low) & 3ul) != 0ul ||
-        draw->vertex_count == 0ul || (draw->vertex_count % 3ul) != 0ul ||
+        draw->vertex_count == 0ul ||
+        (draw->index_count == 0ul && (draw->vertex_count % 3ul) != 0ul) ||
+        (draw->index_count != 0ul &&
+         ((draw->index_count % 3ul) != 0ul ||
+          (draw->index_low & 1ul) != 0ul)) ||
         (draw->depth_low & VI_SHADER_ALIGN) != 0ul ||
         draw->depth_func > V9X_VI_ZFUNC_ALWAYS ||
         (stream->gfx6 && draw->depth_low != 0ul && draw->depth_linear != 0ul) ||
@@ -1138,7 +1163,9 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     }
 
     v9x_vi_3d_draw_and_fence(stream, VI_DI_PT_TRILIST, draw->vertex_count,
-                             draw->no_fence == 0ul, draw->fence_low,
-                             draw->fence_high, draw->fence_value);
+                             draw->index_low, draw->index_high,
+                             draw->index_count, draw->no_fence == 0ul,
+                             draw->fence_low, draw->fence_high,
+                             draw->fence_value);
     return stream->overflow == 0ul ? V9X_STATUS_OK : V9X_STATUS_INVALID_ARGUMENT;
 }

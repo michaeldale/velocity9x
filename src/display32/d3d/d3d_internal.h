@@ -574,6 +574,16 @@ typedef struct v9x_d3d_engine_limits {
      */
     DWORD batch_triangles;
     /*
+     * For an engine with draw_indexed: the most vertices of a converted
+     * pool the core hands it whole, up to V9X_D3D_DP2_POOL_MAX (zero for
+     * the 192 the shared gather holds), and nonzero indexed_two_units when
+     * a two-stage call goes whole too, its pairs per pool vertex in the
+     * draw's texcoords1. Appended 2026-11-18; an initialiser that stops
+     * short leaves both zero.
+     */
+    DWORD indexed_pool_vertices;
+    DWORD indexed_two_units;
+    /*
      * APPEND ONLY, and the reason is not style. The initialisers below are
      * positional - C89 has no designated form - and every member is an
      * arithmetic type, so inserting a field in the middle silently reassigns

@@ -1039,6 +1039,60 @@ static void test_tl_open_and_fence(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* An indexed draw: INDEX_TYPE 16-bit, then DRAW_INDEX_2 (max size, the
+ * index buffer's address, the count, DI_SRC_SEL_DMA), as radeonsi emits
+ * it; the vertex count is the pool's and need not be a multiple of 3, and
+ * the GFX6 V# covers the pool. An odd index count or address is refused. */
+static void test_tl_indexed(void)
+{
+    struct v9x_vi_pm4 stream;
+    struct v9x_vi_tl_draw draw;
+    v9x_u32 at;
+
+    base_tl(&draw);
+    draw.no_fence = 1ul;
+    draw.vertex_count = 4ul;
+    draw.index_low = 0x0f80c000ul;
+    draw.index_high = 0xf4ul;
+    draw.index_count = 6ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    CHECK(walk(buffer, stream.count) != 0ul);
+    CHECK(buffer[stream.count - 8ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_INDEX_TYPE, 0ul));
+    CHECK(buffer[stream.count - 7ul] == 0ul);
+    CHECK(buffer[stream.count - 6ul] ==
+          V9X_VI_PACKET3(V9X_VI_P3_DRAW_INDEX_2, 4ul));
+    CHECK(buffer[stream.count - 5ul] == 6ul);
+    CHECK(buffer[stream.count - 4ul] == 0x0f80c000ul);
+    CHECK(buffer[stream.count - 3ul] == 0xf4ul);
+    CHECK(buffer[stream.count - 2ul] == 6ul);
+    CHECK(buffer[stream.count - 1ul] == 0ul);
+
+    /* GFX6: the V# names the pool, four vertices of 32 bytes. */
+    base_tl(&draw);
+    draw.no_fence = 1ul;
+    draw.vertex_count = 4ul;
+    draw.index_low = 0x0f80c000ul;
+    draw.index_high = 0xf4ul;
+    draw.index_count = 6ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_sh(buffer, stream.count, 0x2c4cul);
+    CHECK(at < stream.count);
+    CHECK(buffer[at + 4ul] == 4ul * 32ul);
+
+    base_tl(&draw);
+    draw.index_low = 0x0f80c000ul;
+    draw.index_count = 4ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+    base_tl(&draw);
+    draw.index_low = 0x0f80c001ul;
+    draw.index_count = 6ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* With a depth buffer: Z16 in Carrizo's 1D depth tile mode 5, the size of
  * the target, LESS with writes; HiZ, HiS and compression forced off. */
 static void test_tl_depth(void)
@@ -1670,6 +1724,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_tl_shaders();
     test_tl_draw();
     test_tl_open_and_fence();
+    test_tl_indexed();
     test_tl_depth();
     test_texture_shaders();
     test_specular_shaders();

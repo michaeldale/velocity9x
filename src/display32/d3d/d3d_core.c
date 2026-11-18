@@ -1346,7 +1346,7 @@ static int v9x_d3d_draw_batch(const V9X_D3D_ENGINE_OPS *ops,
 static int v9x_d3d_draw_indexed_whole(
     const V9X_D3D_ENGINE_OPS *ops, V9X_D3D_CONTEXT *context,
     const V9X_R3D_VERTEX *pool, DWORD vertex_count,
-    const v9x_u16 *indices, DWORD index_count, int strip)
+    const v9x_u16 *indices, DWORD index_count, int strip, const float *uv1)
 {
     V9X_R3D_DRAW draw;
     DWORD misc = v9x_hal->d3d_global.hwCaps.dpcTriCaps.dwMiscCaps;
@@ -1359,6 +1359,14 @@ static int v9x_d3d_draw_indexed_whole(
     int submitted;
 
     v9x_d3d_describe_draw(ops, context, &draw);
+    /* Stage 1's pairs, one per pool vertex (limits indexed_two_units): a
+     * unit the engine cannot describe is the list path's to draw. */
+    if (uv1 != 0) {
+        if (!v9x_d3d_describe_unit1(ops, context, &draw)) {
+            return -1;
+        }
+        draw.texcoords1 = uv1;
+    }
     /* The state census, as v9x_d3d_dispatch_engine takes it: without this
      * an engine that draws indices whole (Gen3, 3DMark 2001 SE) recorded
      * nothing. Its per-vertex fields read the pool, so "first vertex" is
@@ -1395,7 +1403,7 @@ static int v9x_d3d_draw_indexed_engine(
         ops, context, (const V9X_R3D_VERTEX *)data->lpvVertices,
         data->dwNumVertices, (const v9x_u16 *)data->lpwIndices,
         data->dwNumIndices,
-        data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP ? 1 : 0);
+        data->PrimitiveType == V9X_D3DPT_TRIANGLESTRIP ? 1 : 0, 0);
 }
 
 /* A handle is an entry's address, so it is checked, not searched for: a
@@ -5592,8 +5600,73 @@ static void v9x_d3d_dp2_triangle(void *opaque, const v9x_u8 *a,
  * A converted record's vertices go to v9x_d3d_gather, the DX5 paths'
  * scratch: free here, since no DX5 entry runs inside a DrawPrimitives2
  * call and the run being drawn reads its own storage.
+ *
+ * An engine whose limits name indexed_pool_vertices (the Oland) takes
+ * converted pools that large, from v9x_d3d_dp2_pool, and with
+ * indexed_two_units two-stage calls too, stage 1's pairs per pool vertex
+ * beside it. Only the vertices the indices name are converted, each once,
+ * in the order first named, and the indices are rewritten to them
+ * (v9x_d3d_dp2_compact). 3DMark 2001 SE sent 463 M triangles in 5.7 M
+ * records through the expansion, which converted each shared vertex once
+ * for every triangle using it (docs\decisions\
+ * 2026-11-18-gcn-batch-cost.md).
  */
 #define V9X_D3D_DP2_GATHER_VERTICES (V9X_D3D_INDEXED_BATCH * 3ul)
+#define V9X_D3D_DP2_POOL_MAX        8192ul
+#define V9X_D3D_DP2_REBASE_MAX      49152ul
+/* Every 16-bit index. */
+#define V9X_D3D_DP2_INDEX_RANGE     65536ul
+
+static V9X_R3D_VERTEX v9x_d3d_dp2_pool[V9X_D3D_DP2_POOL_MAX];
+static float v9x_d3d_dp2_pool_uv1[V9X_D3D_DP2_POOL_MAX * 2ul];
+static v9x_u16 v9x_d3d_dp2_rebased[V9X_D3D_DP2_REBASE_MAX];
+/* Which call last named each source vertex, and its place in that call's
+ * pool: a call is a new generation, so nothing is cleared between calls. */
+static DWORD v9x_d3d_dp2_named[V9X_D3D_DP2_INDEX_RANGE];
+static v9x_u16 v9x_d3d_dp2_place[V9X_D3D_DP2_INDEX_RANGE];
+static DWORD v9x_d3d_dp2_generation;
+
+/*
+ * The vertices count indices name, converted once each into
+ * v9x_d3d_dp2_pool (and their pairs, two nonzero) in the order first
+ * named, and the indices rewritten to them in v9x_d3d_dp2_rebased. The
+ * pool's vertex count, or 0 when it would pass pool_max.
+ */
+static DWORD v9x_d3d_dp2_compact(const V9X_D3D_DP2_USER *user,
+                                 const v9x_u8 *first, const v9x_u16 *words,
+                                 DWORD count, DWORD pool_max, int two)
+{
+    DWORD used = 0ul;
+    DWORD index;
+
+    if (++v9x_d3d_dp2_generation == 0ul) {
+        for (index = 0ul; index < V9X_D3D_DP2_INDEX_RANGE; ++index) {
+            v9x_d3d_dp2_named[index] = 0ul;
+        }
+        v9x_d3d_dp2_generation = 1ul;
+    }
+    for (index = 0ul; index < count; ++index) {
+        DWORD source = (DWORD)words[index];
+
+        if (v9x_d3d_dp2_named[source] != v9x_d3d_dp2_generation) {
+            const v9x_u8 *vertex = first + source * user->layout->stride;
+
+            if (used == pool_max) {
+                return 0ul;
+            }
+            v9x_d3d_dp2_named[source] = v9x_d3d_dp2_generation;
+            v9x_d3d_dp2_place[source] = (v9x_u16)used;
+            v9x_d3d_dp2_vertex(user, vertex, &v9x_d3d_dp2_pool[used]);
+            if (two) {
+                v9x_d3d_dp2_pair(user, vertex,
+                                 &v9x_d3d_dp2_pool_uv1[used * 2ul]);
+            }
+            ++used;
+        }
+        v9x_d3d_dp2_rebased[index] = v9x_d3d_dp2_place[source];
+    }
+    return used;
+}
 
 static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
                                     v9x_u32 base, const v9x_u8 *indices,
@@ -5605,8 +5678,11 @@ static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
     const v9x_u16 *words = (const v9x_u16 *)indices;
     const V9X_R3D_VERTEX *pool;
     DWORD count = triangles * 3ul;
+    DWORD pool_max;
+    DWORD used;
     DWORD last = 0ul;
     DWORD index;
+    int two;
 
     (void)base;
     /* Object-space vertices: the walker's triangle calls, which the T&L
@@ -5616,10 +5692,39 @@ static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
         return 0;
     }
     v9x_d3d_dp2_settle(user);
-    if (v9x_d3d_dp2_two(user) ||
+    two = v9x_d3d_dp2_two(user);
+    if ((two && ops->limits->indexed_two_units == 0ul) ||
         v9x_d3d_fog_table_active(context->fog_enable, &context->fog_table)) {
         return 0;
     }
+    if (count == 0ul) {
+        return 0;
+    }
+    pool_max = ops->limits->indexed_pool_vertices;
+    if (pool_max != 0ul) {
+        /* The opted-in engines: only the named vertices, compacted. */
+        if (pool_max > V9X_D3D_DP2_POOL_MAX) {
+            pool_max = V9X_D3D_DP2_POOL_MAX;
+        }
+        if (count > V9X_D3D_DP2_REBASE_MAX) {
+            return 0;
+        }
+        used = v9x_d3d_dp2_compact(user, first, words, count, pool_max, two);
+        if (used == 0ul) {
+            ++v9x_hal->d3d_diagnostics.indexed_decline[
+                V9X_D3D_INDEXED_DECLINE_RANGE];
+            return 0;
+        }
+        if (user->run->pending != 0ul) {
+            v9x_d3d_dp2_draw_run();
+        }
+        return v9x_d3d_draw_indexed_whole(ops, context, v9x_d3d_dp2_pool,
+                                          used, v9x_d3d_dp2_rebased, count,
+                                          0, two ? v9x_d3d_dp2_pool_uv1
+                                                 : 0) >= 0;
+    }
+
+    /* The engines as they were: the shared gather, from vertex 0. */
     for (index = 0ul; index < count; ++index) {
         if ((DWORD)words[index] > last) {
             last = (DWORD)words[index];
@@ -5643,7 +5748,7 @@ static int v9x_d3d_dp2_indexed_list(void *opaque, const v9x_u8 *first,
         v9x_d3d_dp2_draw_run();
     }
     return v9x_d3d_draw_indexed_whole(ops, context, pool, last + 1ul, words,
-                                      count, 0) >= 0;
+                                      count, 0, 0) >= 0;
 }
 
 /*

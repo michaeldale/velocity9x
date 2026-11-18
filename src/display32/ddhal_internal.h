@@ -754,6 +754,9 @@ int v9x_d3d_r6_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
  * bits 39:32 and 31:0, zero until the engine is validated. */
 int v9x_vi_dma_settle(void);
 int v9x_vi_heap_address(DWORD *high, DWORD *low);
+/* engines/vi_cp.c, for eng_vi.c: the note that DMA wrote, so the next CP
+ * batch syncs its caches. */
+void v9x_vi_cp_note_dma(void);
 /* engines/eng_vi.c, for eg_scanout.c's queued flips: the CP fence and SDMA
  * sequence submitted so far, and whether both engines have passed them
  * (one read each, no wait). */

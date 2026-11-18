@@ -25,6 +25,12 @@ build identifier so exact guest-tested binaries remain traceable.
   3DMark 2001 SE went from 2601-2616 to 3670 with the game's vsync.
   Carrizo, Mullins and the Evergreen cards have not run it
   ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
+- **`ati` package, Oland: indexed Direct3D lists are drawn whole.** Each
+  call's vertices are converted and copied once, only the ones its
+  indices name, and drawn with an index buffer, where the shared core
+  converted and copied every corner of every triangle. 3DMark 2001 SE
+  went from 3670 to 3989
+  ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
 - **Every package: two diagnostic register reads are sampled one draw
   in 16**, the retrace duty cycle and (GCN) the ring's write pointer.
   On the Oland they were 2 % of 3DMark 2000's CPU time.

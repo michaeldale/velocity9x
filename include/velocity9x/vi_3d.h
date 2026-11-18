@@ -23,6 +23,8 @@
 #define V9X_VI_P3_DRAW_INDEX_AUTO   0x2dul
 #define V9X_VI_P3_NUM_INSTANCES     0x2ful
 #define V9X_VI_P3_SURFACE_SYNC      0x43ul
+#define V9X_VI_P3_DRAW_INDEX_2      0x27ul
+#define V9X_VI_P3_INDEX_TYPE        0x2aul
 #define V9X_VI_P3_EVENT_WRITE_EOP   0x47ul
 #define V9X_VI_P3_PREAMBLE_CNTL     0x4aul
 #define V9X_VI_P3_SET_CONTEXT_REG   0x69ul
@@ -237,6 +239,14 @@ struct v9x_vi_tl_draw {
      * v9x_vi_3d_fence. */
     v9x_u32 no_cache_sync;
     v9x_u32 no_fence;
+    /* Nonzero index_count: a DRAW_INDEX_2 of index_count 16-bit indices
+     * (a multiple of 3) at index_low/high, 2-byte aligned, into
+     * vertex_count vertices, which is then the pool's size and need not
+     * be a multiple of 3. The VS reads each vertex by VertexID, which an
+     * indexed draw sets to the index. */
+    v9x_u32 index_low;
+    v9x_u32 index_high;
+    v9x_u32 index_count;
 };
 
 /*

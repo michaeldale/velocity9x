@@ -625,10 +625,18 @@ int v9x_vi_window_address(DWORD *high, DWORD *low)
     return 1;
 }
 
-/* Before a fill or copy, the CP's drawing finished: SDMA must not read a
+/*
+ * Before a fill or copy, the CP's drawing finished: SDMA must not read a
  * surface the CP is still writing, or write one it still reads. A CP that
  * times out here is given up by vi_cp.c and its work dropped, so the SDMA
- * operation goes ahead either way. */
+ * operation goes ahead either way.
+ *
+ * The CPU waits. Waits on the GPU were measured and dropped: the DMA
+ * engine polling the CP's fence (POLL_REG_MEM) and the CP waiting on the
+ * DMA fence (WAIT_REG_MEM) took the Oland's 3DMark 2001 SE from 3670 to
+ * 1464, and with equal compares they hung the CP (docs\decisions\
+ * 2026-11-18-gcn-batch-cost.md).
+ */
 static void v9x_vi_after_cp(void)
 {
     (void)v9x_vi_cp_drain(1);
@@ -644,7 +652,7 @@ static v9x_status v9x_vi_plan_check(const struct v9x_eg_dma_plan *plan)
 }
 
 /* Every row of a plan into the ring, a stage at a time, as SDMA or SI DMA
- * packets. */
+ * packets, once the CP is idle (v9x_vi_after_cp). */
 static int v9x_vi_emit(const struct v9x_eg_dma_plan *plan)
 {
     v9x_u32 stage[V9X_VI_STAGE_DWORDS];
@@ -656,6 +664,11 @@ static int v9x_vi_emit(const struct v9x_eg_dma_plan *plan)
     oland = v9x_vi_oland();
     row_max = oland ? V9X_SI_DMA_ROW_DWORDS_MAX : V9X_VI_SDMA_ROW_DWORDS_MAX;
     used = 0ul;
+    v9x_vi_after_cp();
+    /* The CP's next batch syncs its texture caches: this may write what
+     * it samples, and the CP's batches end in no cache flush of their own
+     * now (vi_cp.c). */
+    v9x_vi_cp_note_dma();
     for (row = 0ul; row < plan->rows; ++row) {
         if (used + row_max > V9X_VI_STAGE_DWORDS) {
             if (!v9x_vi_submit(stage, used)) {
@@ -739,7 +752,6 @@ static int v9x_vi_fill(V9X_DDHAL_BLTDATA *data, DWORD offset,
         v9x_vi_plan_check(&plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
-    v9x_vi_after_cp();
     return v9x_vi_emit_or_give_up(&plan);
 }
 
@@ -779,7 +791,6 @@ static int v9x_vi_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
         v9x_vi_plan_check(&plan) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
-    v9x_vi_after_cp();
     return v9x_vi_emit_or_give_up(&plan);
 }
 
