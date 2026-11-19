@@ -35,12 +35,32 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.56.0
+## Current version: 0.56.1
 
-[Download](releases/0.56.0/README.md) ·
+[Download](releases/0.56.1/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 0.56.1:
+- **HD 4000, `intel-gma` package: the GPU at its top clock.** The driver
+  asked for the render clock's top speed (RP0) on Haswell only; Ivy
+  Bridge stayed where the BIOS left it. On the i5-3570K the HD 4000 now
+  runs 1150 MHz, and 3DMark 2000 went from 3121 to 4169, 3DMark 2001 SE
+  from 1743 to 2555
+  ([record](docs/decisions/2026-11-19-ivybridge-render-clock-rp0.md)).
+- **HD 7660D (Trinity), `ati` package: the clock its VBIOS allows at the
+  boot voltage.** The BIOS boots it at 200 MHz; the driver now runs the
+  VBIOS's own SetEngineClock to 304 MHz, the most its PowerPlay table
+  lists without a higher voltage
+  ([record](docs/decisions/2026-11-19-trinity-engine-clock-200mhz.md)).
+- **Evergreen-class Radeons, `ati` package: longer Direct3D batches and
+  one cache flush per group of batches**, as on GCN since 0.55.0
+  ([record](docs/decisions/2026-11-19-evergreen-batch-flush-groups.md)).
+  With the clock, the HD 7660D's 3DMark 2000 went from 3821 to 4228 and
+  3DMark 2001 SE from 1906 to 2628.
+- **Evergreen-class Radeons: XRGB8888 textures**, which drew black
+  ([record](docs/decisions/2026-11-19-evergreen-xrgb8888-textures.md)).
 
 New in 0.56.0:
 - **HD 4600, `intel-gma` package: longer Direct3D batches.** Batches
@@ -66,18 +86,6 @@ New in 0.56.0:
   picture's size to the mode's. Games were drawn twice across once on the
   i5-4570; that state did not come back, so this fix has not yet had to
   act ([issue](docs/issues/2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)).
-
-New in 0.55.0:
-- **GCN Radeons, `ati` package: less driver work per frame.** Flips are
-  queued behind the GPU instead of waited for; the command window is
-  write-combined; Direct3D batches carry up to 512 triangles and share
-  their fences; indexed lists are drawn whole on the Oland; clears are
-  drawn on the command processor, whose ring is now 256 KiB. On the
-  Oland, 3DMark 2001 SE with the game's vsync went from 2601 to 4234.
-  The R3E and R7E pass the release checks; their speed was not measured
-  ([record](docs/decisions/2026-11-18-gcn-batch-cost.md)).
-- **Evergreen Radeons:** the command window is write-combined too. Not
-  run on any Evergreen card.
 
 ### Known issues
 
@@ -154,6 +162,10 @@ New in 0.55.0:
 
 ### Recent releases
 
+- **0.55.0:** GCN Radeons with less driver work per frame (queued flips,
+  a write-combined command window, 512-triangle batches sharing their
+  fences, indexed lists whole on the Oland, CP clears): the Oland's
+  3DMark 2001 SE from 2601 to 4234.
 - **0.54.0:** the AMD Oland XT (GCN 1) with pixel shader 1.1, DXT and
   OpenGL; tree leaves that vanished under DX5's MODULATE, fixed on the
   Oland, GeForce 210 and HD 2400 Pro; the GCN command processor's read
@@ -266,7 +278,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel GMA X4500 (G45, `8086:2E22`), GMA 4500 (Q45, `8086:2E12`) | `intel-gma` | Gen4 (G4x) | The GM965's path with G4x's encodings, built from one reporter's two surveys. That reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, and 3DMark 2000 to 1942 (G45) and 1760 (Q45). No diagnostic files; no later release run ([record](docs/decisions/2026-11-04-g4x-g45-q45-field-report.md)) |
 | Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)). From 0.44.0 the same machine is reached through remote help: Direct3D, OpenGL and Glide 2 probes pass, two-unit REPLACE and DECAL fail as on the GMA X3100 and Ironlake, and Forsaken's menu draws ([audit](docs/decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md), [issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)). From 0.48.0 Half-Life's grates and doors draw, in every renderer by its reporter's account ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)) |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
-| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's MSI B75MA-P45 desktop (i5-3570K) through remote help. 3DCIF not run |
+| Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000 and 2001 SE; the render clock at its 1150 MHz top (0.56.1). Every release probe passes on 0.56.0 (an i5-3570K desktop through remote help, 2026-11-19). 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. From 0.51.0, environment and DOT3 bump mapping in Direct3D 8 and 9, and the core at its full 1150 MHz instead of the BIOS's 400. From 0.56.0, Direct3D batches a slot long (3DMark 2001 SE 3388 to 3888). One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 
@@ -286,7 +298,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | AMD Radeon HD 5570 (Redwood, `1002:68D9`), from 0.40.0 | `ati` | Evergreen, through AMD's Redwood CP microcode | Recognised, untested: the HD 5770's path with Redwood's numbers, from one reporter's survey. Nothing has run on one yet |
 | AMD Radeon HD 5450 (Evergreen "Cedar", `1002:68F9`) | `ati` | Evergreen, through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; the Glide 2 probe; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3. One tester's card through remote help, up to 0.33.0; that card is no longer installed, and 0.34.0 has not run on one; modes from the VBE |
 | AMD Radeon HD 7470 (Caicos, `1002:6778`), from 0.34.0 | `ati` | Evergreen (BTC), through AMD's Caicos CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. Quake 3. One tester's machine through remote help; 2 GiB of video memory above 4 GiB in the GPU's address space; modes from the VBE, up to 1400x1050. The Glide 2 probe passes; 3DMark not run |
-| AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. The Glide 2 probe passes (0.41.0) |
+| AMD Radeon HD 7660D (Trinity, `1002:9901`), from 0.35.0 | `ati` | Cayman (VLIW4), through AMD's Aruba CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 at 1280x1024x32. One tester's A10-5700 machine through remote help; modes from the VBE. The Glide 2 probe passes (0.41.0). Every release probe passes from 0.56.1, which also takes XRGB8888 textures and sets the engine clock to 304 MHz from the BIOS's 200; 3DMark 2001 SE 2628 |
 | AMD Radeon Oland XT (GCN 1, `1002:6610`), from 0.54.0 | `ati` | GCN 1 (SI), through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, two texture stages, specular, fog and colour keys, and through the DirectX 8 interface pixel shader 1.1, cube maps, Q8W8V8U8 and V8U8, and DXT1-3; OpenGL and the Glide probes on the engine; DirectDraw fills, copies and page flips on the DMA engine. 3DMark 2000 and 2001 SE (with compressed textures; 2001 SE 4234 with vsync from 0.55.0, 4797 from 0.56.0, which sets the clocks its VBIOS allows: 400 MHz engine and 1000 MHz memory), Quake 2 and Quake 3. One Dell 2 GiB card; the driver maps 128 MiB of it (the VESA BIOS reports 16 MiB); modes from the VBE. 3DCIF not run |
 | AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU, from 0.47.0 into a copy of the desktop, with the screen write-combined (scrolling 30 to 1,170 MB/s). OpenGL and the Glide 2 probe on the engine. 3DMark 2000 (0.42.0); no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. |
 | AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips; from 0.47.0 the screen write-combined and GDI drawn into a copy of the desktop (scrolling 8 to 630 MB/s). 3DMark 2000 and Quake 3 (windowed too, 18.7 fps). The Glide 2 probe passes (0.47.0). One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only |

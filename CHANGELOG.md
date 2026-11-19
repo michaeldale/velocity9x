@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.56.1 - not yet released
+## 0.56.1 - 2026-11-19
 
 - **`intel-gma` package, Ivy Bridge HD 4000: the render clock raised to
   its top speed.** The driver asked for the GPU's highest clock (RP0)
