@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.56.2 - not yet released
+## 0.56.2 - 2026-11-19
 
 - **`intel-gma` package: Ironlake mobile HD Graphics (`8086:0046`)
   claimed**, as an alias of the desktop Ironlake (`8086:0042`): the same
