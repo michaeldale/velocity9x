@@ -273,6 +273,23 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_layout(
     const struct v9x_intel_hsw_config *config,
     struct v9x_intel_hsw_layout *out);
 
+/*
+ * The system-memory texture pool's layout on Haswell and Ivy Bridge
+ * (docs\plans\intel-haswell-system-memory-textures.md), for the Gen3 pool
+ * policy (velocity9x\i9xx_pool.h), which sizes, places and checks it
+ * unchanged: stolen memory from BDSM and GMS, the aperture, the whole GTT,
+ * the HAL's 64 MiB mapping, and the GTT's own stolen block (BGSM, the
+ * GGMS bytes below BDSM) excluded, since no pool page may lie in it. Its
+ * PTE is the Gen3 one, frame | 1: Haswell's uncached form, address bits
+ * 39:32 in 11:4 being zero below 4 GiB (Phase 0 record). UNSUPPORTED for a
+ * layout decode_layout refused; out is then cleared.
+ */
+#define V9X_INTEL_HSW_POOL_MAPPED_BYTES ((v9x_u32)0x04000000ul)
+struct v9x_i9xx_pool_layout;
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_pool_layout(
+    const struct v9x_intel_hsw_layout *layout, v9x_u32 ram_bytes,
+    struct v9x_i9xx_pool_layout *out);
+
 v9x_status V9X_I9XX_FAR v9x_intel_hsw_decode_pte(
     v9x_u32 raw, struct v9x_intel_hsw_pte *out);
 

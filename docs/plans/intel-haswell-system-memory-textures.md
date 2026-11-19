@@ -2,8 +2,13 @@
 
 Date: 2026-11-19. Status: approved; Michael took all four decisions below
 as proposed the same day. Phase 0 measured the same day
-([record](../decisions/2026-11-19-haswell-texture-pool-phase0.md)); Phase 1
-next. Requested by
+([record](../decisions/2026-11-19-haswell-texture-pool-phase0.md)). Phase 1
+done the same day: `v9x_intel_hsw_pool_layout` (`hsw_config.c`) feeds the
+Gen3 policy unchanged, with the GTT's own stolen block excluded; host-tested
+on the i5-4570's config and Phase 0's frames. Phase 1 found no need for a
+Gen7 PTE encoder (the Gen3 `frame | 1` is Haswell's uncached form below
+4 GiB); the "write all, read every entry back" rule for junk entries is
+the mini-VDD's, in Phase 2. Phase 2 next. Requested by
 Michael the same day, after the vsync-off work showed 3DMark 2001 SE's Car
 Chase short of texture memory on the HD 4600 with vsync on as well
 ([record](../decisions/2026-11-19-haswell-vsync-off-async-flips.md)).

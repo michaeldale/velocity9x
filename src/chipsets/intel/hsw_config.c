@@ -4,6 +4,7 @@
  * for why this is not the Gen3 decode.
  */
 #include "velocity9x/intel_hsw.h"
+#include "velocity9x/i9xx_pool.h"
 
 /* GGMS 0, 1 and 2 are 0, 1 and 2 MB; 3 is reserved (datasheet 3.1.13). */
 #define V9X_INTEL_HSW_GGMS_RESERVED ((v9x_u16)3u)
@@ -354,4 +355,45 @@ v9x_u32 V9X_I9XX_FAR v9x_intel_hsw_rps_request_mhz(v9x_u32 rpnswreq)
 {
     return v9x_intel_hsw_rps_mhz((rpnswreq >> V9X_INTEL_HSW_RPS_REQ_SHIFT) &
                                  V9X_INTEL_HSW_RPS_REQ_MASK);
+}
+
+v9x_status V9X_I9XX_FAR v9x_intel_hsw_pool_layout(
+    const struct v9x_intel_hsw_layout *layout, v9x_u32 ram_bytes,
+    struct v9x_i9xx_pool_layout *out)
+{
+    v9x_u16 index;
+
+    if (layout == 0 || out == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    out->bsm = 0ul;
+    out->stolen_bytes = 0ul;
+    out->aperture_bytes = 0ul;
+    out->gtt_entries = 0ul;
+    out->mapped_bytes = 0ul;
+    out->ram_bytes = 0ul;
+    out->excluded_count = 0u;
+    for (index = 0u; index < V9X_I9XX_POOL_MAX_EXCLUDED; ++index) {
+        out->excluded[index].base = 0ul;
+        out->excluded[index].bytes = 0ul;
+    }
+    if (layout->refused != 0u) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+
+    out->bsm = layout->stolen_base;
+    out->stolen_bytes = layout->ggc.stolen_bytes;
+    out->aperture_bytes = layout->aperture_bytes;
+    out->gtt_entries = layout->gtt_entries;
+    out->mapped_bytes = V9X_INTEL_HSW_POOL_MAPPED_BYTES;
+    out->ram_bytes = ram_bytes;
+
+    /* The GTT lives in the GGMS bytes below BDSM: a page there would be
+     * mapped by an entry of the table it overwrites. */
+    if (layout->ggc.gtt_stolen_bytes != 0ul) {
+        out->excluded[0].base = layout->gtt_stolen_base;
+        out->excluded[0].bytes = layout->ggc.gtt_stolen_bytes;
+        out->excluded_count = 1u;
+    }
+    return V9X_STATUS_OK;
 }

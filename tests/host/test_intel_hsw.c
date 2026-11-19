@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "velocity9x/intel_hsw.h"
+#include "velocity9x/i9xx_pool.h"
 
 static unsigned int failures = 0u;
 
@@ -57,6 +58,87 @@ static void test_ggc(void)
           ggc.locked != 0u);
 
     CHECK(v9x_intel_hsw_decode_ggc(0u, 0) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/*
+ * The texture pool on the i5-4570 (docs\plans\intel-haswell-system-memory-
+ * textures.md): its layout from the decoded config, then the Gen3 policy's
+ * plan and page checks on Phase 0's numbers (docs\decisions\2026-11-19-
+ * haswell-texture-pool-phase0.md: 2 GiB RAM, frames 151F2000-DB7D0000).
+ */
+static void test_pool_layout(void)
+{
+    struct v9x_intel_hsw_config config;
+    struct v9x_intel_hsw_layout layout;
+    struct v9x_i9xx_pool_layout pool;
+    struct v9x_i9xx_pool_plan plan;
+
+    v9x_hsw_desktop(&config);
+    CHECK(v9x_intel_hsw_decode_layout(&config, &layout) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_pool_layout(&layout, 0x7ffff000ul, &pool) ==
+          V9X_STATUS_OK);
+    CHECK(pool.bsm == 0xdd200000ul);
+    CHECK(pool.stolen_bytes == 0x02000000ul);
+    CHECK(pool.aperture_bytes == 0x10000000ul);
+    CHECK(pool.gtt_entries == 0x80000ul);
+    CHECK(pool.mapped_bytes == V9X_INTEL_HSW_POOL_MAPPED_BYTES);
+    CHECK(pool.ram_bytes == 0x7ffff000ul);
+    /* The GTT's own 2 MB below BDSM. */
+    CHECK(pool.excluded_count == 1u);
+    CHECK(pool.excluded[0].base == 0xdd000000ul);
+    CHECK(pool.excluded[0].bytes == 0x00200000ul);
+
+    /* The plan Phase 0's probe printed: GMADR 32 MiB, 8,192 entries. */
+    CHECK(v9x_i9xx_pool_size(&pool, &plan) == V9X_I9XX_POOL_OK);
+    CHECK(plan.aperture_offset == 0x02000000ul);
+    CHECK(plan.bytes == 0x02000000ul);
+    CHECK(plan.first_entry == 0x2000ul);
+    CHECK(plan.entry_count == 0x2000ul);
+    CHECK(v9x_i9xx_pool_check_plan(&pool, &plan) == V9X_I9XX_POOL_OK);
+
+    /* Phase 0's lowest and highest frames; the GTT's block and stolen
+     * memory refused. */
+    CHECK(v9x_i9xx_pool_check_page(&pool, 0x151f2000ul) ==
+          V9X_I9XX_POOL_OK);
+    CHECK(v9x_i9xx_pool_check_page(&pool, 0xdb7d0000ul) ==
+          V9X_I9XX_POOL_OK);
+    CHECK(v9x_i9xx_pool_check_page(&pool, 0xdd000000ul) ==
+          V9X_I9XX_POOL_EXCLUDED);
+    CHECK(v9x_i9xx_pool_check_page(&pool, 0xdd1ff000ul) ==
+          V9X_I9XX_POOL_EXCLUDED);
+    CHECK(v9x_i9xx_pool_check_page(&pool, 0xdd200000ul) ==
+          V9X_I9XX_POOL_STOLEN);
+
+    /* Haswell's uncached PTE below 4 GiB: frame | valid, bits 11:1 clear,
+     * as the BIOS's own E1FFE=DF1FE001. */
+    CHECK(v9x_i9xx_pool_pte(0xdb7d0000ul) == 0xdb7d0001ul);
+    CHECK((v9x_i9xx_pool_pte(0xdb7d0000ul) & 0x00000ffeul) == 0ul);
+
+    /* Under 512 MiB of RAM, no pool. */
+    CHECK(v9x_intel_hsw_pool_layout(&layout, 0x10000000ul, &pool) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_i9xx_pool_size(&pool, &plan) == V9X_I9XX_POOL_NO_RAM);
+
+    /* 64 MB stolen: the pool would start at the 64 MiB mapping's end. */
+    config.ggc = (v9x_u16)((2u << 8) | (2u << 3));
+    config.bdsm = 0xdb200001ul;
+    config.host_bgsm = 0xdb000001ul;
+    CHECK(v9x_intel_hsw_decode_layout(&config, &layout) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_pool_layout(&layout, 0x7ffff000ul, &pool) ==
+          V9X_STATUS_OK);
+    CHECK(pool.stolen_bytes == 0x04000000ul);
+    CHECK(v9x_i9xx_pool_size(&pool, &plan) == V9X_I9XX_POOL_NO_ROOM);
+
+    /* A layout the decode refused gives no pool layout. */
+    v9x_hsw_desktop(&config);
+    config.host_bgsm = 0xdd100001ul;
+    CHECK(v9x_intel_hsw_decode_layout(&config, &layout) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_intel_hsw_pool_layout(&layout, 0x7ffff000ul, &pool) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(pool.stolen_bytes == 0ul && pool.excluded_count == 0u);
+    CHECK(v9x_intel_hsw_pool_layout(0, 0x7ffff000ul, &pool) ==
+          V9X_STATUS_INVALID_ARGUMENT);
 }
 
 static void test_aperture(void)
@@ -426,6 +508,7 @@ unsigned int v9x_run_intel_hsw_tests(void)
     test_ggc();
     test_aperture();
     test_layout();
+    test_pool_layout();
     test_pte();
     test_heap_plan();
     test_protected_bytes();

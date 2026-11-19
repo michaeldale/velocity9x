@@ -1326,16 +1326,18 @@ $boundarySymbols = @([regex]::Matches($boundaryHeaderText,
 # v9x_i9xx_sandbox_calculate is declared in intel_gma.h, which the other i9xx_
 # entry points share; it carries the qualifier there for the same reason.
 $boundarySymbols += 'v9x_i9xx_sandbox_calculate'
-# hsw_config.c is the family's third code segment, HSWCODE. Its ten calls
+# hsw_config.c is the family's third code segment, HSWCODE. Its eleven calls
 # are declared far in intel_hsw.h, beside the structures they take, and are
-# held to the same two rules.
+# held to the same two rules. The eleventh, v9x_intel_hsw_pool_layout, is
+# the Haswell texture pool's (docs\plans\intel-haswell-system-memory-
+# textures.md), called from the DRV's pool setup in another segment.
 $hswBoundaryPath = Join-Path $repoRoot "include\velocity9x\intel_hsw.h"
 $hswBoundarySymbols = @([regex]::Matches((Get-Content -LiteralPath $hswBoundaryPath -Raw),
     '\bV9X_I9XX_FAR\s+(v9x_intel_hsw_\w+)\s*\(') |
     ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-if ($hswBoundarySymbols.Count -ne 10) {
+if ($hswBoundarySymbols.Count -ne 11) {
     throw ("include\velocity9x\intel_hsw.h declares $($hswBoundarySymbols.Count) " +
-           "far hsw_config call(s), not 10; the parse or the header has changed.")
+           "far hsw_config call(s), not 11; the parse or the header has changed.")
 }
 $boundarySymbols += $hswBoundarySymbols
 if ($boundarySymbols.Count -lt 6) {
