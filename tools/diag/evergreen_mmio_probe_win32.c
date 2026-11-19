@@ -22,7 +22,9 @@
  * scanout address is that base plus the LFB offset. Nothing on the device
  * is written, except with /smu on Trinity: then the SMU's sclk DPM table is
  * read through the SMC index pair, whose index register EGMM.VXD sets and
- * puts back ([Smc] and [Smu] sections; v9x_request_build_smu).
+ * puts back ([Smc] and [Smu] sections; v9x_request_build_smu); and with
+ * /sclk:XX on Trinity, which sets the engine clock's divider ID as the
+ * VBIOS's SetEngineClock does ([Sclk]; 46h is 200 MHz, 32h 304 MHz).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -235,6 +237,8 @@ static const struct v9x_egmm_register v9x_discrete[] = {
  * the CP's second and third rings, the second DMA engine, and the RLC
  * load-balancing registers evergreen_rlc_resume programs on CHIP_ARUBA. */
 static const struct v9x_egmm_register v9x_trinity[] = {
+    { 0x0600ul, "TN_SCLK_DID (VBIOS SetEngineClock)" },
+    { 0x0604ul, "TN_SCLK_READY (VBIOS SetEngineClock)" },
     { 0x0670ul, "GENERAL_PWRMGT" },
     { 0x0684ul, "TARGET_AND_CURRENT_PROFILE_INDEX" },
     { 0x3f10ul, "TN_RLC_SAVE_AND_RESTORE_BASE" },
@@ -377,6 +381,12 @@ static DWORD v9x_values[V9X_EGMM_MMIO_BYTES / 4u];
 #define V9X_TN_PROFILE_INDEX     0x0684ul
 #define V9X_TN_DENTIST_VCO_10KHZ 380000ul
 #define V9X_TN_GNB_TEMP          0x1f390ul
+#define V9X_TN_SCLK_DID_REG      0x0600ul
+#define V9X_TN_SCLK_READY_REG    0x0604ul
+#define V9X_EGMM_SCLK            2u
+#define V9X_ST_SCLK_REFUSED      0x00000800ul
+#define V9X_ST_SCLK_WRITTEN      0x00001000ul
+#define V9X_ST_SCLK_READY_AFTER  0x00002000ul
 static DWORD v9x_smc[(V9X_TN_SMU_LIMIT - V9X_TN_SMU_STATE0) / 4u];
 static DWORD v9x_gnb_temp;
 
@@ -397,6 +407,38 @@ static int v9x_switch(const char *name)
         }
     }
     return 0;
+}
+
+/* /sclk:XX, two hex digits: the divider ID to ask for, or 0 if absent or
+ * malformed. The VxD takes only 46h (200 MHz) and 32h (304 MHz). */
+static DWORD v9x_sclk_switch(void)
+{
+    const char *line = GetCommandLineA();
+    DWORD value = 0ul;
+    int digits;
+    char c;
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        if (line[0] != '/' || line[1] != 's' || line[2] != 'c' ||
+            line[3] != 'l' || line[4] != 'k' || line[5] != ':') {
+            continue;
+        }
+        line += 6;
+        for (digits = 0; digits < 2; ++digits) {
+            c = line[digits];
+            if (c >= '0' && c <= '9') {
+                value = value * 16ul + (DWORD)(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                value = value * 16ul + (DWORD)(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                value = value * 16ul + (DWORD)(c - 'A' + 10);
+            } else {
+                return 0ul;
+            }
+        }
+        return value;
+    }
+    return 0ul;
 }
 
 /* trinity_convert_did_to_freq: the dentist divider for a DID, in hundredths;
@@ -785,6 +827,52 @@ static void v9x_decode_global(int trinity)
             V9X_EG_SIMD_DISABLE_MASK);
 }
 
+/* /sclk's request (EGMM.VXD DIOC 2): no offsets, the ID in the first
+ * offset's place. Published under [Sclk] before the read that follows. */
+static void v9x_set_sclk(DWORD config, DWORD did)
+{
+    HANDLE device;
+    DWORD returned;
+    BOOL ok;
+
+    v9x_text("Report", "Access", "mmio, sclk-divider-write");
+    v9x_request.config = config;
+    v9x_request.count = 0ul;
+    v9x_request.offsets[0] = did;
+    device = CreateFileA(V9X_EGMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        v9x_text("Sclk", "Result", "VXD-LOAD-FAILED");
+        return;
+    }
+    returned = 0ul;
+    ok = DeviceIoControl(device, V9X_EGMM_SCLK, &v9x_request,
+                         sizeof(v9x_request), &v9x_result,
+                         sizeof(v9x_result), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_result) ||
+        v9x_result.magic != V9X_EGMM_MAGIC) {
+        v9x_text("Sclk", "Result", "DIOC-FAILED");
+        return;
+    }
+    v9x_key("Sclk", "Status", v9x_result.status);
+    v9x_key("Sclk", "DidAsked", v9x_result.reserved[0]);
+    v9x_key("Sclk", "DidRegBefore", v9x_result.reserved[1]);
+    v9x_key("Sclk", "DidRegAfter", v9x_result.reserved[2]);
+    v9x_key("Sclk", "ReadyRegBefore", v9x_result.reserved[3]);
+    v9x_number("Sclk", "PollsBefore", v9x_result.reserved[4]);
+    v9x_number("Sclk", "PollsAfter", v9x_result.reserved[5]);
+    if ((v9x_result.status & V9X_ST_SCLK_REFUSED) != 0ul) {
+        v9x_text("Sclk", "Result", "REFUSED");
+    } else if ((v9x_result.status & V9X_ST_SCLK_READY_AFTER) != 0ul) {
+        v9x_text("Sclk", "Result", "WRITTEN-READY");
+    } else if ((v9x_result.status & V9X_ST_SCLK_WRITTEN) != 0ul) {
+        v9x_text("Sclk", "Result", "WRITTEN-NOT-READY");
+    } else {
+        v9x_text("Sclk", "Result", "NOT-WRITTEN");
+    }
+}
+
 /* /smu's decode: whether power management and SMU sclk DPM run, the
  * current and target state, and each valid state's divider, VID and
  * clock. */
@@ -796,6 +884,17 @@ static void v9x_decode_smu(void)
     DWORD did;
     DWORD divider;
 
+    /* 600h's low byte is the dentist divider ID the VBIOS's SetEngineClock
+     * writes and GetEngineClock reads back. */
+    value = v9x_value(V9X_TN_SCLK_DID_REG);
+    v9x_key("Smu", "SclkDidReg", value);
+    v9x_key("Smu", "SclkReadyReg", v9x_value(V9X_TN_SCLK_READY_REG));
+    divider = v9x_tn_did_divider(value & 0xfful);
+    if (divider != 0ul) {
+        v9x_number("Smu", "Sclk10kHzFromDid",
+                   (V9X_TN_DENTIST_VCO_10KHZ * 100ul + divider - 1ul) /
+                   divider);
+    }
     value = v9x_value(V9X_TN_GENERAL_PWRMGT);
     v9x_yes_no("Smu", "GlobalPwrmgtEnabled", (value & 1ul) != 0ul);
     value = v9x_value(V9X_TN_PROFILE_INDEX);
@@ -908,6 +1007,9 @@ void __stdcall V9xEvergreenMmioEntry(void)
     v9x_key("Report", "RomBase", v9x_config_read(config, 0x30ul));
 
     trinity = (v9x_config_read(config, 0x00ul) >> 16) == V9X_DEVICE_TRINITY;
+    if (trinity && v9x_sclk_switch() != 0ul) {
+        v9x_set_sclk(config, v9x_sclk_switch());
+    }
     smu = trinity && v9x_switch("/smu");
     if (smu) {
         v9x_text("Report", "Access", "mmio-read-only, smc-index-read");

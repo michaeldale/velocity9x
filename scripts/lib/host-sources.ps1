@@ -183,6 +183,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\si\si_dma.c',
         # Oland: the clock targets from the VBIOS's PowerPlay, no I/O.
         'src\chipsets\ati\si\si_clocks.c',
+        # Trinity: the engine-clock target from the VBIOS's PowerPlay, no I/O.
+        'src\chipsets\ati\cayman\tn_clocks.c',
         # Oland graphics microcode (generated from linux-firmware), data
         # only.
         'src\chipsets\ati\si\si_gfx_microcode.c',

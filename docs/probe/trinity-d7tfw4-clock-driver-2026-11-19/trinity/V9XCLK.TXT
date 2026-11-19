@@ -1,0 +1,13 @@
+[TrinityClocks]
+Result=already-set
+PlanStatus=0
+DefaultSclk10kHz=20000
+BootVddcIndex=0
+Levels=9
+LevelsAtBootVddc=3
+TargetSclk10kHz=30400
+BeforeSclk10kHz=30400
+SetSclkStatus=0
+AfterSclk10kHz=30400
+FaultOpcode=0
+FaultOffset=0

@@ -19,6 +19,9 @@
 ; SMU_SCLK_DPM_CNTL 1F100h and the registers up to SMU_S_PG_CNTL 1F118h),
 ; which Linux trinity_dpm.c reads the same way (RREG32_SMC). Nothing in
 ; this driver uses the SMC index, so there is no reader to race.
+; And DIOC 2 (EG_Set_Sclk, V9XEGMM /sclk:XX): the engine clock's divider
+; ID written to 600h with the VBIOS's own handshake, Trinity only, only
+; the two IDs at the boot voltage.
 ; (docs\decisions\2026-11-19-trinity-engine-clock-200mhz.md)
 ;
 ; The caller names the device by its configuration address; the VxD reads
@@ -116,6 +119,9 @@ VxD_LOCKED_DATA_SEG
 ; the CRTC offsets 0, 0C00h, 9800h and A400h (evergreen_reg.h).
 EGWindows label dword
     dd 0300h, 0340h     ; VGA_RENDER_CONTROL, VGA memory base, D1/D2 VGA control
+    dd 0600h, 0608h     ; Trinity: the engine clock's divider ID and its
+                        ; ready bit, as the VBIOS's GetEngineClock and
+                        ; SetEngineClock use them (EG_DIOC_SCLK below)
     dd 0670h, 0674h     ; GENERAL_PWRMGT (trinityd.h)
     dd 0684h, 0688h     ; TARGET_AND_CURRENT_PROFILE_INDEX (trinityd.h)
     dd 0e50h, 0e54h     ; SRBM_STATUS
@@ -202,7 +208,7 @@ EGWindows label dword
     dd 112a0h, 112a4h
     dd 112d4h, 112d8h
     dd 112f4h, 112fch
-EG_WINDOW_COUNT         equ 83
+EG_WINDOW_COUNT         equ 84
 
 EGResult label dword
     dd EG_MAGIC                 ; 00 magic
@@ -227,6 +233,7 @@ EGSecond     dd EG_OFFSET_MAX dup (0)
 EGConfig     dd 0
 EGMmio       dd 0
 EGSmcCount   dd 0
+EGSclk       dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -491,31 +498,137 @@ BeginProc EG_Reset_Result
     ret
 EndProc EG_Reset_Result
 
+; DIOC 2, Trinity's engine clock: the VBIOS's SetEngineClock replayed
+; (simulated against M-D7TFW4's VBIOS: ComputeMemoryEnginePLL turns the
+; clock into a dentist divider ID, then the table waits for 604h bit 0,
+; writes the ID to 600h and waits again; docs\decisions\2026-11-19-
+; trinity-engine-clock-200mhz.md). The input is the capture's, with no
+; offsets, and the ID at EG_IN_SCLK_DID. Refused, with nothing written,
+; unless the capture mapped a Trinity with its identity check passed, the
+; ID is one of the two at the boot voltage (46h, 200 MHz; 32h, 304 MHz, by
+; trinity_convert_did_to_freq from the 3800 MHz VCO), and 604h is ready
+; first. Bits above the ID's byte in 600h are kept as read.
+; Out, in the header's spare dwords: 10 the ID asked for, 11 and 12 600h
+; before and after, 13 604h before, 14 the polls to the first ready, 15 to
+; the second.
+EG_DIOC_SCLK            equ 2
+EG_IN_SCLK_DID          equ 8
+EG_IN_SCLK_BYTES        equ 12
+EG_SCLK_DID_REG         equ 0600h
+EG_SCLK_READY_REG       equ 0604h
+EG_SCLK_READY           equ 00000001h
+EG_SCLK_DID_200         equ 46h
+EG_SCLK_DID_304         equ 32h
+EG_SCLK_POLLS           equ 1000000
+EG_ST_SCLK_REFUSED      equ 00000800h
+EG_ST_SCLK_WRITTEN      equ 00001000h
+EG_ST_SCLK_READY_AFTER  equ 00002000h
+
+; EBP = DIOC input. After EG_Capture with no offsets.
+BeginProc EG_Set_Sclk
+    pushad
+    mov     eax, [ebp+EG_IN_SCLK_DID]
+    mov     EGResult[40], eax
+    test    EGResult[4], EG_ST_IDENTITY_MATCH
+    jz      EG_Set_Sclk_Refused
+    mov     edx, EGResult[8]
+    shr     edx, 16
+    cmp     dx, EG_DEVICE_TRINITY
+    jne     EG_Set_Sclk_Refused
+    cmp     eax, EG_SCLK_DID_200
+    je      short EG_Set_Sclk_Allowed
+    cmp     eax, EG_SCLK_DID_304
+    jne     EG_Set_Sclk_Refused
+EG_Set_Sclk_Allowed:
+    mov     esi, EGMmio
+    mov     edx, [esi+EG_SCLK_DID_REG]
+    mov     EGResult[44], edx
+    mov     edx, [esi+EG_SCLK_READY_REG]
+    mov     EGResult[52], edx
+    xor     ecx, ecx
+EG_Set_Sclk_Wait1:
+    test    dword ptr [esi+EG_SCLK_READY_REG], EG_SCLK_READY
+    jnz     short EG_Set_Sclk_Write
+    inc     ecx
+    cmp     ecx, EG_SCLK_POLLS
+    jb      short EG_Set_Sclk_Wait1
+    mov     EGResult[56], ecx
+    jmp     short EG_Set_Sclk_Refused
+EG_Set_Sclk_Write:
+    mov     EGResult[56], ecx
+    mov     edx, [esi+EG_SCLK_DID_REG]
+    and     edx, NOT 0ffh
+    or      edx, eax
+    mov     [esi+EG_SCLK_DID_REG], edx
+    or      EGResult[4], EG_ST_SCLK_WRITTEN
+    xor     ecx, ecx
+EG_Set_Sclk_Wait2:
+    test    dword ptr [esi+EG_SCLK_READY_REG], EG_SCLK_READY
+    jnz     short EG_Set_Sclk_Ready
+    inc     ecx
+    cmp     ecx, EG_SCLK_POLLS
+    jb      short EG_Set_Sclk_Wait2
+    jmp     short EG_Set_Sclk_After
+EG_Set_Sclk_Ready:
+    or      EGResult[4], EG_ST_SCLK_READY_AFTER
+EG_Set_Sclk_After:
+    mov     EGResult[60], ecx
+    mov     edx, [esi+EG_SCLK_DID_REG]
+    mov     EGResult[48], edx
+    popad
+    ret
+EG_Set_Sclk_Refused:
+    or      EGResult[4], EG_ST_SCLK_REFUSED
+    popad
+    ret
+EndProc EG_Set_Sclk
+
 BeginProc EG_W32_DeviceIoControl
     cmp     ecx, DIOC_OPEN
     je      EG_Dioc_Ok
     cmp     ecx, DIOC_CLOSEHANDLE
     je      EG_Dioc_Ok
+    cmp     ecx, EG_DIOC_SCLK
+    je      short EG_Dioc_Clock_Request
     cmp     ecx, EG_DIOC_CAPTURE
     jne     EG_Dioc_Fail
+    mov     EGSclk, 0
+    jmp     short EG_Dioc_Go
+EG_Dioc_Clock_Request:
+    mov     EGSclk, 1
 
+EG_Dioc_Go:
     pushad
     mov     ebx, esi
     mov     ebp, [ebx.lpvInBuffer]
     test    ebp, ebp
-    jz      short EG_Dioc_Copy_Fail
+    jz      EG_Dioc_Copy_Fail
     mov     ecx, [ebx.cbInBuffer]
     cmp     ecx, EG_IN_MIN_BYTES
-    jb      short EG_Dioc_Copy_Fail
+    jb      EG_Dioc_Copy_Fail
     mov     edi, [ebx.lpvOutBuffer]
     test    edi, edi
-    jz      short EG_Dioc_Copy_Fail
+    jz      EG_Dioc_Copy_Fail
     cmp     [ebx.cbOutBuffer], EG_RESULT_DWORDS * 4
-    jb      short EG_Dioc_Copy_Fail
+    jb      EG_Dioc_Copy_Fail
 
     call    EG_Reset_Result
     mov     eax, [ebp+EG_IN_CONFIG]
     mov     EGConfig, eax
+    cmp     EGSclk, 0
+    je      short EG_Dioc_Offsets
+    ; The clock request: no offsets, and room for the ID.
+    cmp     ecx, EG_IN_SCLK_BYTES
+    jb      short EG_Dioc_Sclk_Refused
+    cmp     dword ptr [ebp+EG_IN_COUNT], 0
+    jne     short EG_Dioc_Sclk_Refused
+    call    EG_Capture
+    call    EG_Set_Sclk
+    jmp     short EG_Dioc_Copy_Out
+EG_Dioc_Sclk_Refused:
+    or      EGResult[4], EG_ST_SCLK_REFUSED
+    jmp     short EG_Dioc_Copy_Out
+EG_Dioc_Offsets:
     call    EG_Accept_Offsets
     test    EGResult[4], EG_ST_OFFSETS_REFUSED
     jnz     short EG_Dioc_Copy_Out

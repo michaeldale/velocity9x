@@ -26,6 +26,15 @@ build identifier so exact guest-tested binaries remain traceable.
   on GCN since 0.55.0. On the HD 7660D, 3DMark 2000 went from 3821 to
   4130 and 3DMark 2001 SE from 1906 to 2462. Not run on Cedar or Caicos
   ([record](docs/decisions/2026-11-19-evergreen-batch-flush-groups.md)).
+- **`ati` package, Trinity (HD 7660D): the engine clock its VBIOS allows
+  at the boot voltage.** The BIOS boots the APU's graphics at 200 MHz and
+  nothing raised it. The driver now runs the VBIOS's own SetEngineClock
+  to the highest clock its PowerPlay table lists at the boot voltage:
+  304 MHz on the measured A10-5700. 3DMark 2000 went from 4130 to 4228
+  and 3DMark 2001 SE from 2462 to 2628. The outcome is in
+  `C:\V9XDIAG\V9XCLK.TXT`. The table's 608 and 760 MHz need a higher
+  voltage and are not set
+  ([record](docs/decisions/2026-11-19-trinity-engine-clock-200mhz.md)).
 
 ## 0.56.0 - 2026-11-18
 

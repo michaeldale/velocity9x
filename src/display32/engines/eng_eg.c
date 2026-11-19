@@ -249,6 +249,14 @@ static int v9x_eg_validate(void)
         (v9x_hal->fb.physical_base & V9X_EG_BAR0_OFFSET_MASK);
     v9x_eg_ring_gpu = fb_low + V9X_EG_RING_WINDOW_OFFSET;
 
+    /* Trinity's engine clock as its VBIOS allows at the boot voltage,
+     * before any engine of this mode starts (tn_clock_apply.c); a table
+     * that stopped part way leaves the engine unclaimed. */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_TRINITY) != 0ul &&
+        !v9x_tn_clocks_apply()) {
+        return 0;
+    }
+
     v9x_eg_reset();
 
     /* r600_dma_resume's order, without writeback or interrupts: DMA_CNTL's

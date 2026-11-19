@@ -16,6 +16,7 @@
 
 #include "velocity9x/atombios.h"
 #include "velocity9x/si_clocks.h"
+#include "velocity9x/tn_clocks.h"
 
 static unsigned int failures = 0u;
 #define CHECK(e) do { if (!(e)) { \
@@ -444,6 +445,84 @@ static void test_clock_policy(void)
           V9X_STATUS_UNSUPPORTED);
 }
 
+/* --- Trinity's engine-clock policy on a synthetic VBIOS ------------------- */
+
+static void tn_clock_entry(v9x_u32 at, v9x_u32 sclk, v9x_u32 vddc_index)
+{
+    put16(at, sclk & 0xfffful);
+    rom[at + 2u] = (v9x_u8)(sclk >> 16);
+    rom[at + 3u] = (v9x_u8)vddc_index;
+}
+
+/* M-D7TFW4's tables in miniature (docs\decisions\2026-11-19-trinity-
+ * engine-clock-200mhz.md): boot 200 MHz; Sumo clock entries 0 608 MHz at
+ * VDDC index 2, 1 760 at 3, 2 304 at 0, 3 200 at 0; states [0, 1],
+ * [2, 0, 1] and [3]. */
+static void build_tn_clock_rom(void)
+{
+    v9x_u32 clocks = PP_AT + 0x20u;
+    v9x_u32 states = PP_AT + 0x60u;
+
+    rom_reset();
+    put16(ROM_DATA + 4u + V9X_ATOM_DATA_FIRMWARE_INFO * 2u, FW_AT);
+    put16(FW_AT, 108u);
+    rom[FW_AT + 2u] = 2u;
+    rom[FW_AT + 3u] = 2u;
+    put32(FW_AT + V9X_TN_FW_DEFAULT_SCLK, 20000ul);
+
+    put16(ROM_DATA + 4u + V9X_ATOM_DATA_POWERPLAY_INFO * 2u, PP_AT);
+    put16(PP_AT, 0xa0u);
+    rom[PP_AT + 2u] = 6u;
+    rom[PP_AT + 3u] = 1u;
+    put16(PP_AT + V9X_TN_PP_STATE_ARRAY, states - PP_AT);
+    put16(PP_AT + V9X_TN_PP_CLOCK_ARRAY, clocks - PP_AT);
+    rom[clocks] = 4u;
+    rom[clocks + 1u] = 16u;
+    tn_clock_entry(clocks + 2u, 60800ul, 2u);
+    tn_clock_entry(clocks + 18u, 76000ul, 3u);
+    tn_clock_entry(clocks + 34u, 30400ul, 0u);
+    tn_clock_entry(clocks + 50u, 20000ul, 0u);
+    rom[states] = 3u;
+    rom[states + 1u] = 2u; rom[states + 2u] = 0u;
+    rom[states + 3u] = 0u; rom[states + 4u] = 1u;
+    rom[states + 5u] = 3u; rom[states + 6u] = 1u;
+    rom[states + 7u] = 2u; rom[states + 8u] = 0u; rom[states + 9u] = 1u;
+    rom[states + 10u] = 1u; rom[states + 11u] = 2u; rom[states + 12u] = 3u;
+}
+
+static void test_tn_clock_policy(void)
+{
+    struct v9x_tn_clock_plan plan;
+
+    build_tn_clock_rom();
+    CHECK(v9x_atom_init(&atom, rom, ROM_BYTES, &fake_io) == V9X_STATUS_OK);
+    CHECK(v9x_tn_clocks_plan(&atom, &plan) == V9X_STATUS_OK);
+    CHECK(plan.default_sclk == 20000ul);
+    CHECK(plan.boot_vddc_index == 0ul);
+    CHECK(plan.levels == 6ul);
+    CHECK(plan.levels_allowed == 2ul);
+    CHECK(plan.sclk == 30400ul);
+
+    /* No level at the default clock: its VDDC is not known, so nothing is
+     * raised. */
+    put32(FW_AT + V9X_TN_FW_DEFAULT_SCLK, 25000ul);
+    CHECK(v9x_tn_clocks_plan(&atom, &plan) == V9X_STATUS_UNSUPPORTED);
+    CHECK(plan.sclk == 25000ul);
+
+    /* Another PowerPlay revision is not read. */
+    put32(FW_AT + V9X_TN_FW_DEFAULT_SCLK, 20000ul);
+    rom[PP_AT + 2u] = 7u;
+    CHECK(v9x_tn_clocks_plan(&atom, &plan) == V9X_STATUS_UNSUPPORTED);
+    CHECK(plan.sclk == 20000ul);
+
+    /* A state naming an entry past the array is not read. */
+    rom[PP_AT + 2u] = 6u;
+    rom[PP_AT + 0x60u + 3u] = 9u;
+    CHECK(v9x_tn_clocks_plan(&atom, &plan) == V9X_STATUS_UNSUPPORTED);
+
+    CHECK(v9x_tn_clocks_plan(0, &plan) == V9X_STATUS_INVALID_ARGUMENT);
+}
+
 /* --- W9QI0DAD's own VBIOS, when it is at hand ------------------------------ */
 
 static v9x_u8 real_rom[0x20000];
@@ -540,6 +619,66 @@ static void test_real_vbios(void)
     CHECK(plan.mclk == 100000ul);
 }
 
+/* M-D7TFW4's own VBIOS (V9X_TRINITY_ROM) against its V9XEGMM /smu
+ * snapshot (V9X_TRINITY_INI, 600h = 46h, 604h ready): GetEngineClock reads
+ * 200 MHz, the policy names 304 MHz, and SetEngineClock 304 MHz writes
+ * divider ID 32h to 600h, as the probe's replay did on the card. */
+static void test_real_trinity(void)
+{
+    const char *rom_path = getenv("V9X_TRINITY_ROM");
+    const char *ini_path = getenv("V9X_TRINITY_INI");
+    struct v9x_tn_clock_plan plan;
+    v9x_u32 params[16];
+    FILE *file;
+    char line[128];
+    unsigned long offset;
+    unsigned long value;
+
+    if (rom_path == 0 || ini_path == 0) {
+        printf("SKIP atombios: V9X_TRINITY_ROM / V9X_TRINITY_INI not set\n");
+        return;
+    }
+    file = fopen(rom_path, "rb");
+    if (file == 0) {
+        CHECK(!"V9X_TRINITY_ROM unreadable");
+        return;
+    }
+    real_rom_bytes = (v9x_u32)fread(real_rom, 1u, sizeof(real_rom), file);
+    fclose(file);
+    file = fopen(ini_path, "r");
+    if (file == 0) {
+        CHECK(!"V9X_TRINITY_INI unreadable");
+        return;
+    }
+    fake_reset();
+    while (fgets(line, (int)sizeof(line), file) != 0) {
+        if (sscanf(line, "R%5lx=%8lx", &offset, &value) == 2 &&
+            offset / 4ul < FAKE_REGS) {
+            fake_reg[offset / 4ul] = (v9x_u32)value;
+        }
+    }
+    fclose(file);
+    CHECK(fake_reg[0x600u / 4u] == 0x46ul);
+
+    CHECK(v9x_atom_init(&atom, real_rom, real_rom_bytes, &fake_io) ==
+          V9X_STATUS_OK);
+    memset(params, 0, sizeof(params));
+    CHECK(v9x_atom_execute(&atom, V9X_ATOM_CMD_GET_ENGINE_CLOCK, params,
+                           16ul) == V9X_STATUS_OK);
+    CHECK(params[0] == 20000ul);
+
+    CHECK(v9x_tn_clocks_plan(&atom, &plan) == V9X_STATUS_OK);
+    CHECK(plan.default_sclk == 20000ul);
+    CHECK(plan.boot_vddc_index == 0ul);
+    CHECK(plan.sclk == 30400ul);
+
+    memset(params, 0, sizeof(params));
+    params[0] = plan.sclk;
+    CHECK(v9x_atom_execute(&atom, V9X_ATOM_CMD_SET_ENGINE_CLOCK, params,
+                           16ul) == V9X_STATUS_OK);
+    CHECK(fake_reg[0x600u / 4u] == 0x32ul);
+}
+
 unsigned int v9x_run_atombios_tests(void)
 {
     failures = 0u;
@@ -551,5 +690,7 @@ unsigned int v9x_run_atombios_tests(void)
     test_refusals();
     test_clock_policy();
     test_real_vbios();
+    test_tn_clock_policy();
+    test_real_trinity();
     return failures;
 }

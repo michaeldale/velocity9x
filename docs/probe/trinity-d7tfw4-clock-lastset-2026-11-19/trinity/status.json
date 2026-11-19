@@ -1,0 +1,17 @@
+{
+    "Name":  "trinity",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  78,
+    "BootAfter":  79,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  78,
+    "Desktop":  true,
+    "AnswerSeconds":  7,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}

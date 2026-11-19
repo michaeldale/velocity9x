@@ -213,6 +213,10 @@ $sources = @(
     "src\display32\engines\si_clock_apply.c",
     "src\common\atombios.c",
     "src\chipsets\ati\si\si_clocks.c",
+    # Trinity's engine clock, the same way: its VBIOS's SetEngineClock to
+    # tn_clocks.c's target.
+    "src\display32\engines\tn_clock_apply.c",
+    "src\chipsets\ati\cayman\tn_clocks.c",
     # The Carrizo 3D engine: the graphics CP and its microcode (licence in
     # NOTICES.TXT), gpu_init's list, the clear state, the PM4 streams and
     # shaders, the neutral draw to them, and the engine that submits them.

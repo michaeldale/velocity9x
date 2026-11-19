@@ -803,6 +803,14 @@ int v9x_vi_cp_running(void);
  * outcome goes to C:\V9XDIAG\V9XCLK.TXT.
  */
 int v9x_si_clocks_apply(DWORD device);
+/*
+ * Trinity: the engine clock tn_clocks.c's policy picks from the APU's
+ * VBIOS, set by the VBIOS's own SetEngineClock at Evergreen engine
+ * validation (engines\tn_clock_apply.c). 0 only when the table stopped
+ * part way; every other outcome returns 1. The outcome goes to
+ * C:\V9XDIAG\V9XCLK.TXT.
+ */
+int v9x_tn_clocks_apply(void);
 int v9x_vi_cp_submit(const v9x_u32 *dwords, DWORD count, DWORD fence);
 /* Batches fenced as a group (vi_cp.c's note at v9x_vi_cp_open): one with
  * no fence of its own, drawing into target and depth (GPU low halves, 0

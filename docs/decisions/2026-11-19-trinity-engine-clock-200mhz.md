@@ -1,4 +1,4 @@
-# Trinity's engine clock: the VBIOS boots it at 200 MHz of 760, the SMU's DPM table is empty, nothing raises it
+# Trinity's engine clock: 200 MHz of 760; the driver now sets 304 MHz, the most at the boot voltage, through the VBIOS's SetEngineClock
 
 Date: 2026-11-19. Machine: M-D7TFW4 (W9QI6DFC), A10-5700, HD 7660D
 (Trinity, `1002:9901`). Read-only at first: the shadowed video BIOS copied with
@@ -73,18 +73,98 @@ it boots at is set some other way (the VBIOS's own init); the SMU table
 does not say what the engine runs at, and nothing here measures the clock
 directly. The 200 MHz stands on the VBIOS's two tables alone.
 
-## What raising it would take
+## The clock register, found and set (same day, boot 77)
 
-- **304 MHz** is at the boot voltage (VDDC index 0): only the boot state's
-  divider changes. Dentist divider for 304 MHz from a 3800 MHz VCO: 1250
-  (`trinity_convert_did_to_freq`: DID 50, `50 x 25`). How the SMU takes a
-  new divider for the state it is in, without DPM running, is not known.
-- **608 and 760 MHz** need the SMU to raise VDDC (its VID per state),
-  which is Linux's full DPM bring-up: the state table, `sumo_program_vc`,
-  `SCLK_DPM_EN`. A wrong voltage on an APU is a hang or worse, on a
-  remote-help machine the owner has to power-cycle.
-- With the table empty, even 304 MHz means writing it: Linux's
-  `trinity_program_bootup_state` and `trinity_start_dpm` (state 0's
-  divider and VID, the valid bit, then `SCLK_DPM_EN`), or the VBIOS's own
-  SetEngineClock table if it drives the dentist directly on this APU
-  (not yet looked at).
+Simulating the VBIOS's tables (the Oland work's `atom_sim.py`, in the
+scratchpad with the image) showed where the clock is, not in the SMU:
+- **GetEngineClock** reads MMIO 600h and turns its low byte, a dentist
+  divider ID, into a clock.
+- **SetEngineClock** runs ComputeMemoryEnginePLL (304 MHz gives divider
+  1250, ID 32h), waits for MMIO 604h bit 0, writes the ID to 600h, and
+  waits for 604h bit 0 again. It sets no voltage.
+
+`V9XEGMM /smu` with 600h and 604h added as plain reads: **600h = 46h**,
+604h = 9. ID 46h is 200.00 MHz by `trinity_convert_did_to_freq` from the
+3800 MHz VCO, and the simulator's GetEngineClock against these registers
+returns 20000 (200 MHz). So the engine runs at 200 MHz, now from the card
+and not only from the tables. Re-simulated with these values,
+SetEngineClock(304 MHz) writes exactly 32h to 600h.
+
+EGMM.VXD gained DIOC 2 (`V9XEGMM /sclk:XX`): that handshake, Trinity
+only, refused for any ID but 46h (200 MHz) and 32h (304 MHz), the two at
+the boot voltage, and refused unless 604h is ready first. Bits above the
+ID's byte in 600h are kept (they read 0).
+
+`/sclk:32`: 600h 46h to 32h, ready before after 0 polls and after after 1
+(`Result=WRITTEN-READY`). The machine stayed up. At 304 MHz, the
+group-flush build (`c0c9381b`'s HAL) as installed:
+
+| | 200 MHz (boot 77, earlier) | 304 MHz |
+|---|---:|---:|
+| V9XD32, 32 bpp | PASS | PASS, failures 0 |
+| 3DMark 2000, default | 4130 | **4227** |
+| 3DMark 2001 SE, saved Low | 2462 | **2605** |
+
+One run each. After both benchmarks 600h still read 32h, and
+`TN_CURRENT_GNB_TEMP` went from 201h to 219h. A reset puts the BIOS's
+200 MHz back; the driver did not set the clock yet (it does now, below).
+
+3DMark 2000 moved 2 % for a 52 % clock rise, 2001 SE 6 %: at 304 MHz
+neither is limited mainly by the engine clock. Whether 608 or 760 MHz
+would do more is open: those need VDDC raised, which SetEngineClock does
+not do.
+
+
+## In the driver (boots 78 and 79)
+
+As the Oland's clocks are set (`si_clock_apply.c`):
+- `tn_clocks.c` (pure, host-tested): FirmwareInfo's default engine clock
+  is the boot clock; the VDDC index of the PowerPlay level at that clock
+  is the boot voltage; the target is the highest engine clock of any
+  state's level at or below that index. No level at the boot clock, a
+  table of another revision, or an index out of the array: nothing is
+  raised.
+- `tn_clock_apply.c` (HAL): the VBIOS's GetEngineClock and
+  SetEngineClock run by the AtomBIOS interpreter against BAR2's window,
+  at Evergreen engine validation (`eng_eg.c`) before the DMA block is
+  reset, Trinity only. A clock already at its target is left alone; a
+  table that stops part way leaves the engine unclaimed. The outcome,
+  and the last validation that set the clock, go to
+  `C:\V9XDIAG\V9XCLK.TXT`.
+
+Host tests first, seen failing: a synthetic Sumo-layout PowerPlay in
+M-D7TFW4's shape, and, with `V9X_TRINITY_ROM` and `V9X_TRINITY_INI`
+naming the scratchpad image and boot 77's `/smu` snapshot, the real
+tables: GetEngineClock 20000, the policy's 30400, and SetEngineClock
+writing 32h to 600h. Both pass; `run-checks.ps1` passed.
+
+Installed by `run-release-checks.ps1 -Machine trinity`, each boot after
+a reset; evidence in
+[`../probe/trinity-d7tfw4-clock-driver-2026-11-19/`](../probe/trinity-d7tfw4-clock-driver-2026-11-19/)
+(boot 78) and
+[`../probe/trinity-d7tfw4-clock-lastset-2026-11-19/`](../probe/trinity-d7tfw4-clock-lastset-2026-11-19/)
+(boot 79):
+
+| | boot 78 | boot 79 |
+|---|---|---|
+| V9XD32 at 32 and 16 bpp | PASS, PASS | PASS, PASS |
+| other release probes | pass | pass |
+| `V9XCLK.TXT` | `already-set` at 30400 (no LastSet fields yet) | `already-set`; `LastSet=set` 20000 to 30400 |
+| 600h after | 32h | |
+| 3DMark 2000 | 4228 | |
+| 3DMark 2001 SE | 2628 | |
+
+Boot 79 shows the order: the reset put the VBIOS's 200 MHz back, the
+first validation set 304 MHz, and later revalidations (mode changes,
+DirectDraw programs) found it set. The scores match the hand-set run's
+(4227 and 2605).
+
+## Still open
+
+- **608 and 760 MHz** need VDDC raised (index 2 and 3), which neither
+  SetEngineClock nor anything here does: Linux's DPM bring-up programs a
+  VID per SMU state (`trinity_program_power_level`, `sumo_program_vc`).
+  A wrong voltage on an APU is a hang or worse, on a remote-help machine.
+- Whether 3DMark gains much more from the clock: 52 % more clock gave
+  2 % and 7 %.
+- Power and temperature at 304 MHz over a long run: not measured.
