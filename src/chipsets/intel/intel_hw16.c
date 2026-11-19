@@ -13,6 +13,7 @@ extern const V9X_HW16_DEVICE v9x_gma3150_device;
 extern const V9X_HW16_DEVICE v9x_g33_gma3100_device;
 extern const V9X_HW16_DEVICE v9x_gm965_device;
 extern const V9X_HW16_DEVICE v9x_ilk_hd_device;
+extern const V9X_HW16_DEVICE v9x_ilk_hd_mobile_device;
 extern const V9X_HW16_DEVICE v9x_g45_x4500_device;
 extern const V9X_HW16_DEVICE v9x_q45_gma4500_device;
 extern const V9X_HW16_DEVICE v9x_gm45_gma4500mhd_device;
@@ -73,6 +74,7 @@ static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_g33_gma3100_device,
     &v9x_gm965_device,
     &v9x_ilk_hd_device,
+    &v9x_ilk_hd_mobile_device,
     &v9x_g45_x4500_device,
     &v9x_q45_gma4500_device,
     &v9x_gm45_gma4500mhd_device,
@@ -237,8 +239,8 @@ const V9X_HW16_OPS v9x_hw16 = {
     0,
     /* Strict PCI identity: only 8086:27AE, 8086:2592, 8086:A011, 8086:29C2,
      * 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0412,
-     * 8086:0162, the 0412's alias 8086:041E and the 0162's alias 8086:0166
-     * are claimed. */
+     * 8086:0162, the 0042's alias 8086:0046, the 0412's alias 8086:041E and
+     * the 0162's alias 8086:0166 are claimed. */
     0u,
     0,
     v9x_intel_reserve_video_memory,

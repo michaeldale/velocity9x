@@ -680,6 +680,32 @@ const V9X_HW16_DEVICE v9x_ilk_hd_device = {
 };
 
 /*
+ * The 0042's alias: Ironlake mobile (Arrandale), 8086:0046. An entry of its
+ * own because the PCI scan matches one per id and V9XHW.INI names the part
+ * the machine has. From one DOS survey, an Acer Aspire 4740 (GitHub issue
+ * 28): BAR0 64-bit at B0000000, BAR2 64-bit prefetchable at A0000000 where
+ * VBE puts the LFB, GGC 0380 as W9QI2F4F's. Nothing has run on one; the
+ * panel is LVDS, and the flip path reads which pipe is live rather than
+ * assuming plane A (i9xx_scanout.c).
+ */
+const V9X_HW16_DEVICE v9x_ilk_hd_mobile_device = {
+    0x8086u, 0x0046u,
+    "Intel HD Graphics (Ironlake mobile)",
+    "8086", "0046",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen5",
+    0,
+    v9x_ilk_fill_engine,
+    2u,
+    0u,
+    0ul,
+    0,
+    1u
+};
+
+/*
  * The G45's GMA X4500 and the Q45's GMA 4500. Config space and VBE from the
  * issue 3 surveys (docs\probe\references\dell-inspiron-560-g45-vgasurv-
  * 2026-10-07.ini, hp-8000-elite-sff-q45-vgasurv-2026-10-07.ini); nothing

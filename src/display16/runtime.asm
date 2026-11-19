@@ -5109,7 +5109,7 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     ; and-mmio.md). The rest of this driver reads the first 256 KiB of it,
     ; which maps the 256 MiB aperture.
     ;
-    ; Gen5 (Ironlake 0042) has the same two 64-bit BARs, and its GTT is at
+    ; Gen5 (Ironlake 0042, mobile 0046) has the same two 64-bit BARs, and its GTT is at
     ; GTTMMADR + 2 MiB instead: Linux 6.6 intel-gtt.c, i9xx_setup() "case 5:
     ; gtt_phys_addr = reg_addr + MB(2)". Measured on W9QI2F4F, entries linear
     ; from BSM (docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md).
@@ -5131,6 +5131,8 @@ V9XPCIREADINTELGTTCONFIG PROC FAR
     cmp     cx, 2a02h
     je      V9xPciReadIntelGttConfigGen4
     cmp     cx, 0042h
+    je      V9xPciReadIntelGttConfigGen4
+    cmp     cx, 0046h
     je      V9xPciReadIntelGttConfigGen4
     cmp     cx, 2e22h
     je      V9xPciReadIntelGttConfigGen4
@@ -5212,6 +5214,8 @@ V9xPciReadIntelGttConfigGen4:
     test    eax, 000fffffh
     jnz     V9xPciReadIntelGttConfigFailed
     cmp     si, 0042h
+    je      short V9xPciReadIntelGttConfigGen5
+    cmp     si, 0046h
     je      short V9xPciReadIntelGttConfigGen5
     cmp     si, 2e22h
     je      short V9xPciReadIntelGttConfigGen5

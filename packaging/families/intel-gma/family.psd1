@@ -291,6 +291,16 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_ilk_hd_device')
+
+            # Ironlake mobile (Arrandale): the same GT, BARs and GGC behind
+            # an LVDS panel, from one DOS survey (GitHub issue 28); nothing
+            # has run on one:
+            # docs\decisions\2026-11-19-ironlake-mobile-0046-from-a-survey.md.
+            Aliases = @(
+                @{ DeviceId = '0046'
+                   Name = 'Intel HD Graphics (Ironlake mobile)'
+                   DeviceDesc = 'Velocity9x Intel HD Graphics (Ironlake mobile)' }
+            )
         }
         @{
             # Haswell GT2 desktop, from 0.19.0. Gen7.5 shares no Gen3 path:
@@ -495,7 +505,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0412, 8086:041E, 8086:0162 or 8086:0166 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162 or 8086:0166 exactly'
     }
 
     Vm = @{

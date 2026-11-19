@@ -4,7 +4,15 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.57.0 - not yet released
+## 0.56.2 - not yet released
+
+- **`intel-gma` package: Ironlake mobile HD Graphics (`8086:0046`)
+  claimed**, as an alias of the desktop Ironlake (`8086:0042`): the same
+  Gen5 graphics, BARs and memory configuration, from one DOS survey of
+  an Acer Aspire 4740 (GitHub issue 28). Nothing has run on one. Its
+  BIOS lists 640x480, 800x600 and 1024x768 only, so the panel's
+  1366x768 is not offered
+  ([record](docs/decisions/2026-11-19-ironlake-mobile-0046-from-a-survey.md)).
 
 ## 0.56.1 - 2026-11-19
 

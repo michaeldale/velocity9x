@@ -62,6 +62,10 @@
  * (docs\decisions\2026-10-22-ironlake-gen5-read-only-mmio.md).
  */
 #define V9X_PCI_DEVICE_HD_ILK            ((v9x_u16)0x0042u)
+/* Its alias, Ironlake mobile (Arrandale): the same Gen5 GT, BARs and GGC
+ * (0380) behind an LVDS panel, from one DOS survey (GitHub issue 28,
+ * docs\decisions\2026-11-19-ironlake-mobile-0046-from-a-survey.md). */
+#define V9X_PCI_DEVICE_HD_ILK_M          ((v9x_u16)0x0046u)
 /*
  * Haswell GT2 desktop, HD Graphics 4600: Gen7.5, none of the Gen3 command
  * set, register layout or verbs (src\chipsets\intel\hsw\hsw_hw16.c). Measured
