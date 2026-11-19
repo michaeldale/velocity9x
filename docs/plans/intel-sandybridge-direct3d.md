@@ -216,8 +216,11 @@ Answered from it:
    *Probes and 3DMark 2000 done 2026-11-20*
    (`docs\decisions\2026-11-20-sandybridge-3dmark2000-and-probes.md`):
    every release probe passes (V9XD32 x4, GL, Glide, R3DP, WPRS, FBCMP),
-   3DMark 2000 4015 with clean counters and grabs. *Owed:* Quake 2/3,
-   Glide games, Z24.
+   3DMark 2000 4015 with clean counters and grabs. Quake 3 demo windowed
+   at 32-bit colour and 24-bit Z: 95.3 and 94.4 fps, all on the hardware,
+   two texture units included
+   (`docs\decisions\2026-11-20-sandybridge-quake3.md`). *Owed:* Quake 2,
+   Glide games, fullscreen.
 8. Then, separately: T&L, PS 1.1, two stages, the texture pool.
 
 ## Risks
