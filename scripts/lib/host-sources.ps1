@@ -64,6 +64,8 @@ function Get-V9xHostSourceNames {
         # Haswell EU instruction encoder and 3D packet/state builders.
         'src\chipsets\intel\hsw_eu.c',
         'src\chipsets\intel\hsw_3d.c',
+        # Sandy Bridge (Gen6) 3D packet and state builders.
+        'src\chipsets\intel\snb_3d.c',
         # Haswell vertex kernels generated from a T&L key.
         'src\chipsets\intel\hsw_vs.c',
         # Haswell pixel shader 1.0/1.1 kernels.
@@ -416,6 +418,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_intel_hsw_vs.c',
         'tests\host\test_intel_hsw_ps11.c',
         'tests\host\test_intel_hsw_3d.c',
+        'tests\host\test_intel_snb_3d.c',
         'tests\host\test_intel_hsw_pipe.c',
         'tests\host\test_intel_hsw_display.c',
         'tests\host\test_intel_g4.c',

@@ -104,8 +104,30 @@ breaks border colours.
 - MATH is a native instruction (GRF destination, no source modifiers).
   PLN exists. Three-source instructions are Align16 and float-only.
   Gen6 has no JIP/UIP control flow (none of these kernels branches).
-- The PS thread payload is shaped by 3DSTATE_WM; its register layout is
-  not in the local sources and must be checked in the PRM or measured.
+- The PS thread payload (SNB PRM Vol 2 Part 1, 7.7.3.1): R0 header, R1
+  pixel X/Y and masks, R2 only for 32-pixel dispatch (otherwise skipped
+  and the rest renumbered), then each enabled barycentric mode (perspective
+  pixel: two registers in SIMD8), source depth/W if asked for, then padding
+  up to `3DSTATE_WM` DW4's Dispatch GRF Start, push constants, and the
+  setup data in Gen7's layout: two channels of one attribute per register,
+  a1/a2/a0 per channel, which PLN reads. So the fixed-function PS's g2-g3
+  barycentrics and its setup-data base carry over unchanged.
+
+## Sources
+
+Intel's Sandy Bridge PRM, all 13 volumes from Intel's own documentation
+page (cdrdv2.intel.com, 2026-11-19), in
+`C:\everything\claude\personal\intel driver research\sandybridge-2011-gen6-prm\`,
+with `pdftotext -layout` copies of Vol 1 Part 2-3, Vol 2 Part 1 and Vol 4
+Part 1-2 beside them. The x.org mirror answers with a bot challenge now.
+
+Answered from it:
+- The PS payload, above.
+- Depth: "[DevSNB]: [Separate Stencil Buffer Enable] must be set to the
+  same value as Hierarchical Depth Buffer Enable" (Vol 2 Part 1,
+  3DSTATE_DEPTH_BUFFER DW1 bit 21). Both off: D16, D24_UNORM_X8 and
+  D24_UNORM_S8 (combined stencil) are all usable; with HiZ on the format
+  cannot carry stencil.
 
 ## Design
 
@@ -140,6 +162,17 @@ breaks border colours.
    positions, with a Gen6 batch checker: every command's length and
    opcode, the post-sync flush before each RT flush and depth stall, no
    Gen7-only command. Gate: build-host.
+   *First slice done 2026-11-19* (`src\chipsets\intel\snb_3d.c`,
+   `tests\host\test_intel_snb_3d.c`): the 27-command table and header,
+   PIPE_CONTROL (GGTT moved to DW2, DC flush, lone CS stall and
+   depth-stall-with-flush refused) and the post-sync non-zero pair, URB,
+   VS and GS off, CLIP, the 20-dword SF, the 9-dword WM, CONSTANT_PS, the
+   four combined pointer commands, DEPTH_BUFFER, CLEAR_PARAMS,
+   MULTISAMPLE, 3DPRIMITIVE, a 6-dword SURFACE_STATE and the SF and CLIP
+   viewports. Every expected word worked by hand from the field
+   positions. *Still to do:* SAMPLER_STATE and its 12-dword border
+   colour, vertex buffers without Gen7's address-modify bit, the Gen6
+   workload (init and TL draw) in crocus's order, and the batch checker.
 3. **Gen6 sends and MRFs in the encoder**, host-tested; the
    fixed-function PS and position VS built for Gen6 and run in the EU
    simulator where it can model Gen6 (else word-for-word tests).
