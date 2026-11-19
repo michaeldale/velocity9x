@@ -58,8 +58,9 @@ Sandy Bridge PRM (2011, Vol 1-4); downloading it needs Michael's go-ahead.
 6. **Done 2026-11-19.** RPS: Ivy Bridge's fields; RP0 1100 MHz asked for
    and granted on boot 62
    (`docs\decisions\2026-11-19-sandybridge-render-clock-rp0.md`).
-7. **Direct3D on Gen6:** its own state builders beside the Gen7 ones
-   (`hsw_3d.c`'s table), a Gen6 VS/PS message layer, and the SNB
-   PIPE_CONTROL workarounds. Plan it as its own document before code.
+7. **Direct3D on Gen6:** planned 2026-11-19 in
+   `docs\plans\intel-sandybridge-direct3d.md` (Gen6 builders in their own
+   file, Gen6 sends and MRFs in the encoder, a third HAL ops table);
+   nothing built.
 8. The other Sandy Bridge ids (0102, 0106, 010A, 0116, 0122, 0126) as
    aliases once a machine or a survey shows each one's layout.
