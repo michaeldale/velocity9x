@@ -71,6 +71,20 @@
 #define V9X_GTTMMADR_MASK    0xfff00000ul
 #define V9X_GM965_GTT_OFFSET 0x00080000ul
 
+/* Haswell and Ivy Bridge (Gen7): the GTT is GTTMMADR (4 MiB) + 2 MiB, GGC
+ * is host 50h with GMS in bits 7:3 counting 32 MiB and GGMS in 9:8 (MiB),
+ * as V9XG3PL reads them (docs\decisions\2026-11-19-haswell-texture-pool-
+ * phase0.md). */
+#define V9X_GEN7_GTTMMADR_MASK 0xffc00000ul
+#define V9X_GEN7_GTT_OFFSET    0x00200000ul
+#define V9X_GEN7_GMS_UNIT      0x02000000ul
+
+static int v9x_is_gen7(DWORD id)
+{
+    return id == 0x04128086ul || id == 0x041e8086ul ||
+           id == 0x01628086ul || id == 0x01668086ul;
+}
+
 /* 256 MiB GMADR, 65,536 entries; the driver maps 64 MiB of it since
  * 01496faa (gma950_hw16.c), and the pool must lie inside that. */
 #define V9X_G3PM_APERTURE    0x10000000ul
@@ -413,6 +427,7 @@ void WINAPI V9xGen3PoolMapEntry(void)
     const char *arguments;
     v9x_u16 reason;
     int pass;
+    int gen7;
 
     DeleteFileA(V9X_G3PM_PATH);
     v9x_text("Report", "Build", V9X_BUILD_ID);
@@ -431,16 +446,27 @@ void WINAPI V9xGen3PoolMapEntry(void)
     arguments = v9x_skip_count(arguments);
     first = v9x_parse_count(arguments, 0ul);
 
-    ggc = (v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) >> 16) & 0xfffful;
+    gen7 = v9x_is_gen7(v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID));
+    ggc = gen7 ? v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) & 0xfffful
+               : (v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) >> 16) &
+                     0xfffful;
     memory.dwLength = sizeof(memory);
     GlobalMemoryStatus(&memory);
     layout.bsm = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_BSM) & V9X_BSM_MASK;
-    layout.stolen_bytes = v9x_stolen_bytes(ggc);
+    layout.stolen_bytes = gen7 ? ((ggc >> 3) & 0x1ful) * V9X_GEN7_GMS_UNIT
+                               : v9x_stolen_bytes(ggc);
     layout.aperture_bytes = V9X_G3PM_APERTURE;
     layout.gtt_entries = V9X_G3PM_GTT_ENTRIES;
     layout.mapped_bytes = V9X_G3PM_MAPPED;
     layout.ram_bytes = memory.dwTotalPhys;
     layout.excluded_count = 0u;
+    /* Gen7: the GTT's own GGMS bytes below BDSM, as
+     * v9x_intel_hsw_pool_layout excludes them. */
+    if (gen7 && ((ggc >> 8) & 3ul) != 0ul && ((ggc >> 8) & 3ul) != 3ul) {
+        layout.excluded[0].bytes = ((ggc >> 8) & 3ul) * 0x00100000ul;
+        layout.excluded[0].base = layout.bsm - layout.excluded[0].bytes;
+        layout.excluded_count = 1u;
+    }
     reason = v9x_i9xx_pool_size(&layout, &plan);
     v9x_key("Report", "Ggc", ggc);
     v9x_key("Report", "Bsm", layout.bsm);
@@ -458,7 +484,11 @@ void WINAPI V9xGen3PoolMapEntry(void)
         ExitProcess(2u);
     }
 
-    if (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID) == V9X_GM965_ID) {
+    if (gen7) {
+        v9x_request.bar3 =
+            (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR) &
+             V9X_GEN7_GTTMMADR_MASK) + V9X_GEN7_GTT_OFFSET;
+    } else if (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID) == V9X_GM965_ID) {
         v9x_request.bar3 =
             (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR) &
              V9X_GTTMMADR_MASK) + V9X_GM965_GTT_OFFSET;

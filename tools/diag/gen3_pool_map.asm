@@ -150,9 +150,16 @@ VxD_LOCKED_DATA_SEG
 ; The Gen3 parts this family claims, and the GM965 2A02 (Gen4): the same
 ; 4-byte entries, 65,536 of them for its 256 MiB GMADR, at GTTMMADR +
 ; 512 KiB, which the publisher passes as the base (gen3_pool_probe.asm).
+; Haswell 0412/041E and Ivy Bridge 0162/0166 (Gen7): the GTT at GTTMMADR +
+; 2 MiB, whose first 65,536 entries map the 256 MiB GMADR. Their entries
+; past stolen memory hold junk, many with the valid bit set (Haswell pool
+; Phase 0), not one scratch value: every entry is saved and put back one
+; by one, and the uniform check is Gen3's and Gen4's only.
 G3MDevices label word
     dw 2592h, 27a2h, 27aeh, 0a011h, 29c2h, 2a02h
-G3M_DEVICE_COUNT        equ 6
+    dw 0412h, 041eh, 0162h, 0166h
+G3M_DEVICE_COUNT        equ 10
+G3M_GEN7_FIRST          equ 6       ; the index of the first Gen7 id
 
 G3MResult    dd G3M_MAGIC
              dd (G3M_HEADER_DWORDS - 1) dup (0)
@@ -169,6 +176,8 @@ G3MAperture  dd 0      ; linear address of the pool's aperture range
 G3MHandle    dd 0
 G3MLinear    dd 0
 G3MSaved     dd 0
+G3MSavedAll  dd G3M_PAGE_MAX dup (0) ; every pool entry as found
+G3MGen7      dd 0      ; 1 on a Gen7 part: no uniform check
 G3MMapped    dd 0
 G3MStarted   dd 0
 G3MStage     dd 0
@@ -202,9 +211,12 @@ BeginProc G3M_Pci_Read
     ret
 EndProc G3M_Pci_Read
 
+; AX = device id. CF clear if it is in G3MDevices; G3MGen7 set when it is
+; one of the Gen7 ids.
 BeginProc G3M_Device_Known
     push    ecx
     push    esi
+    mov     G3MGen7, 0
     mov     esi, OFFSET32 G3MDevices
     mov     ecx, G3M_DEVICE_COUNT
 G3M_Device_Next:
@@ -218,6 +230,12 @@ G3M_Device_Next:
     stc
     ret
 G3M_Device_Found:
+    ; ECX counts down from G3M_DEVICE_COUNT: the Gen7 ids are the last
+    ; G3M_DEVICE_COUNT - G3M_GEN7_FIRST of the list.
+    cmp     ecx, G3M_DEVICE_COUNT - G3M_GEN7_FIRST
+    ja      short G3M_Device_Not_Gen7
+    mov     G3MGen7, 1
+G3M_Device_Not_Gen7:
     pop     esi
     pop     ecx
     clc
@@ -269,27 +287,32 @@ BeginProc G3M_Pte_Base
     ret
 EndProc G3M_Pte_Base
 
-; Write G3MSaved to every pool entry, read the last back, count entries
-; that do not read back as it. Clears G3MMapped.
+; Write every pool entry back as ALLOC found it (G3MSavedAll), read the
+; last back, count entries that do not read back as saved. On Gen3 and
+; Gen4 the saved entries are all G3MSaved, so this is the old fill.
+; Clears G3MMapped.
 BeginProc G3M_Restore
     pushad
     call    G3M_Pte_Base
     mov     edi, esi
+    mov     esi, OFFSET32 G3MSavedAll
     mov     ecx, G3MCount
-    mov     eax, G3MSaved
     cld
-    rep     stosd
+    rep     movsd
     mov     eax, [edi-4]
     mov     G3MResult[H_RESTORE_LAST], eax
+    call    G3M_Pte_Base
+    mov     edi, OFFSET32 G3MSavedAll
     mov     ecx, G3MCount
-    mov     eax, G3MSaved
     xor     edx, edx
 G3M_Restore_Check:
+    mov     eax, [edi]
     cmp     [esi], eax
     je      short G3M_Restore_Same
     inc     edx
 G3M_Restore_Same:
     add     esi, 4
+    add     edi, 4
     dec     ecx
     jnz     short G3M_Restore_Check
     mov     G3MResult[H_RESTORE_BAD], edx
@@ -460,8 +483,16 @@ G3M_Alloc_Args:
     mov     G3MGtt, eax
     or      G3MResult[H_STATUS], G3M_ST_GTT_MAPPED
 
-    ; Every pool entry must hold the first one's value, which is what
-    ; UNMAP and the exit path will write back.
+    ; Every pool entry saved as found, which is what UNMAP and the exit
+    ; path will write back.
+    call    G3M_Pte_Base
+    mov     edi, OFFSET32 G3MSavedAll
+    mov     ecx, G3MCount
+    cld
+    rep     movsd
+
+    ; On Gen3 and Gen4 every pool entry must hold the first one's value,
+    ; the VBIOS's scratch PTE. Gen7's are junk (G3MDevices).
     call    G3M_Pte_Base
     mov     eax, [esi]
     mov     G3MSaved, eax
@@ -479,6 +510,8 @@ G3M_Alloc_Differs:
     mov     G3MResult[H_UNIFORM], edx
     cmp     edx, G3MCount
     je      short G3M_Alloc_Pages
+    cmp     G3MGen7, 0
+    jne     short G3M_Alloc_Pages
     or      G3MResult[H_STATUS], G3M_ST_NOT_UNIFORM
     jmp     G3M_Alloc_Done
 

@@ -8,7 +8,11 @@ Gen3 policy unchanged, with the GTT's own stolen block excluded; host-tested
 on the i5-4570's config and Phase 0's frames. Phase 1 found no need for a
 Gen7 PTE encoder (the Gen3 `frame | 1` is Haswell's uncached form below
 4 GiB); the "write all, read every entry back" rule for junk entries is
-the mini-VDD's, in Phase 2. Phase 2 next. Requested by
+the mini-VDD's, in Phase 2. Phase 2 passed the same day: the pool maps at
+GTTMMADR + 2 MiB, the aperture reaches its pages, mode sets leave them, and
+every junk entry is restored exactly
+([record](../decisions/2026-11-19-haswell-texture-pool-phase2.md)).
+Phase 3, the pool in the driver, next. Requested by
 Michael the same day, after the vsync-off work showed 3DMark 2001 SE's Car
 Chase short of texture memory on the HD 4600 with vsync on as well
 ([record](../decisions/2026-11-19-haswell-vsync-off-async-flips.md)).
