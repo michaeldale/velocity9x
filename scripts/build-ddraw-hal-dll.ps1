@@ -252,6 +252,8 @@ $sources = @(
     # host-tested builders.
     "src\display32\engines\eng_hsw.c",
     "src\chipsets\intel\hsw_3d.c",
+    # Sandy Bridge's Gen6 3D builders beside them (intel_snb_3d.h).
+    "src\chipsets\intel\snb_3d.c",
     "src\chipsets\intel\hsw_eu.c",
     # Vertex kernels generated from a T&L key (hardware T&L, step 4).
     "src\chipsets\intel\hsw_vs.c",

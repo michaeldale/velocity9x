@@ -50,6 +50,7 @@
 #include "velocity9x/intel_hsw_pipe.h"
 #include "velocity9x/intel_hsw_ps11.h"
 #include "velocity9x/intel_hsw_vs.h"
+#include "velocity9x/intel_snb_3d.h"
 #include "velocity9x/intel_gma.h"
 #include "r3d/r3d_cull.h"
 
@@ -297,6 +298,9 @@ typedef struct v9x_d3d_hsw_state {
 static int v9x_d3d_hsw_ring_checked = 0;
 /* Set on a timeout; nothing is submitted again in this process. */
 static int v9x_d3d_hsw_quarantined = 0;
+/* Sandy Bridge (CAP_GEN6_SNB): the Gen6 builders (intel_snb_3d.h). A
+ * property of the machine, like the Ivy Bridge chip byte. */
+static int v9x_d3d_hsw_gen6 = 0;
 
 static DWORD v9x_d3d_hsw_read32(DWORD offset)
 {
@@ -522,15 +526,22 @@ static int v9x_d3d_hsw_initialise(void)
     struct v9x_hsw_batch batch;
     DWORD index;
 
+    v9x_status built;
+
     if (status[V9X_INTEL_HSW_STATUS_RCS_INIT] ==
         V9X_INTEL_HSW_RCS_INIT_MARK) {
         return 1;
     }
     for (index = 0ul; index < V9X_HSW_PIPE_SLOTS; ++index) {
-        if (v9x_intel_hsw_pipe_slot(index, &slot) != V9X_STATUS_OK ||
+        if (v9x_intel_hsw_pipe_slot(index, &slot) != V9X_STATUS_OK) {
+            return 0;
+        }
+        built = v9x_d3d_hsw_gen6 ?
+            v9x_intel_snb_init_state(v9x_d3d_hsw_reserve(slot.state_off),
+                                     V9X_SNB_INIT_STATE_BYTES / 4ul) :
             v9x_intel_hsw_init_state(v9x_d3d_hsw_reserve(slot.state_off),
-                                     V9X_HSW_INIT_STATE_BYTES / 4ul) !=
-                V9X_STATUS_OK) {
+                                     V9X_HSW_INIT_STATE_BYTES / 4ul);
+        if (built != V9X_STATUS_OK) {
             return 0;
         }
     }
@@ -539,12 +550,18 @@ static int v9x_d3d_hsw_initialise(void)
     }
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
-    if (v9x_intel_hsw_init_workload(&batch,
-                                    V9X_D3D_HSW_GFX(slot.state_off),
+    /* Gen6's post-sync non-zero writes go to the Ivy Bridge workaround
+     * qword, which nothing reads. */
+    built = v9x_d3d_hsw_gen6 ?
+        v9x_intel_snb_init_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
                                     slot.state_span,
-                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
-            V9X_STATUS_OK ||
-        !v9x_d3d_hsw_submit(&slot, 1)) {
+                                    V9X_D3D_HSW_STATUS_GFX +
+                                        V9X_INTEL_HSW_STATUS_IVB_WA * 4ul,
+                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) :
+        v9x_intel_hsw_init_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
+                                    slot.state_span,
+                                    V9X_D3D_HSW_CRUMB_GFX, 1ul);
+    if (built != V9X_STATUS_OK || !v9x_d3d_hsw_submit(&slot, 1)) {
         return 0;
     }
     status[V9X_INTEL_HSW_STATUS_RCS_INIT] = V9X_INTEL_HSW_RCS_INIT_MARK;
@@ -610,6 +627,8 @@ static int v9x_d3d_hsw_ready(void)
      * PS and PIPE_CONTROL rules, its workaround writes going to a status
      * dword nothing reads (intel_hsw_3d.h). Before the initialising batch,
      * which is the first one built. */
+    v9x_d3d_hsw_gen6 =
+        (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN6_SNB) != 0ul;
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul) {
         if (v9x_intel_hsw_3d_set_chip(
                 V9X_HSW_3D_CHIP_IVYBRIDGE,
@@ -620,7 +639,20 @@ static int v9x_d3d_hsw_ready(void)
     } else {
         (void)v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_HASWELL, 0ul);
     }
-    return v9x_d3d_hsw_initialise();
+    if (!v9x_d3d_hsw_initialise()) {
+        return 0;
+    }
+    /*
+     * Sandy Bridge, step 4 of docs\plans\intel-sandybridge-direct3d.md:
+     * the Gen6 initialising batch runs, and nothing else is submitted.
+     * Every draw entry point asks this first, so answering no here leaves
+     * the setup batch the only Gen6 work the GPU sees until the draw
+     * workloads are wired (step 5).
+     */
+    if (v9x_d3d_hsw_gen6) {
+        return 0;
+    }
+    return 1;
 }
 
 /* The 16-bit formats the sampler takes, by mask, as the 3dfx engine reads

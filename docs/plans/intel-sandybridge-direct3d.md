@@ -197,6 +197,11 @@ Answered from it:
    the workaround registers and waits for its breadcrumb, nothing drawn.
    Record the ring, ACTHD and breadcrumb. A hang here is the cheapest one
    to diagnose.
+   *Done 2026-11-20, without the workaround registers*
+   (`docs\decisions\2026-11-20-sandybridge-gen6-init-batch.md`): boot 63,
+   `SyncSubmits` 1, breadcrumb stored back, no timeout. `CAP_GEN6_SNB`
+   picks the Gen6 builders; `ready()` declines every draw after the
+   setup batch until step 5 wires the draw workloads.
 5. **One untextured triangle** (V9XD32's first stage) at 32 bpp, no Z,
    then with Z16 and Z24.
 6. **Textures**, one stage: V9XD32 at 32 and 16 bpp.

@@ -323,9 +323,10 @@
  * 701A4h is a pixel x and is IVB's tiled offset, ignored for a linear
  * surface (IVB PRM Vol 3 Pt 3 5.3). A chip identity bit, stamped by the
  * Ivy Bridge descriptor (docs\plans\intel-ivybridge-gen7.md), and by Sandy
- * Bridge's for its plane, which i915 programs the same way; Sandy Bridge
- * stamps no CAP_D3D, so the bit never selects the Gen7 3D engine there
- * (docs\plans\intel-sandybridge-gen6.md).
+ * Bridge's for its plane, which i915 programs the same way; there it also
+ * selects the Ivy Bridge ops table, whose batches the HAL builds with the
+ * Gen6 builders when V9X_DD_ENGINE_CAP_GEN6_SNB is set beside it
+ * (docs\plans\intel-sandybridge-direct3d.md).
  */
 #define V9X_DD_ENGINE_CAP_GEN7_IVB      0x00080000ul
 /*
@@ -440,5 +441,13 @@
  * (docs\plans\ati-oland-gfx6.md, ati-oland-gfx6-3d.md).
  */
 #define V9X_DD_ENGINE_CAP_VI_OLAND      0x40000000ul
+/*
+ * Intel: this INTEL_GEN75-type part is Sandy Bridge (Gen6, the HD 3000),
+ * which also carries V9X_DD_ENGINE_CAP_GEN7_IVB for its plane. The HAL
+ * builds its render batches with the Gen6 builders (intel_snb_3d.h) when
+ * it sees this bit. A chip identity bit, stamped by Sandy Bridge's engine
+ * descriptor only (docs\plans\intel-sandybridge-direct3d.md).
+ */
+#define V9X_DD_ENGINE_CAP_GEN6_SNB      0x80000000ul
 
 #endif /* VELOCITY9X_ENGINE_ABI_H */
