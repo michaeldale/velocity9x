@@ -388,6 +388,38 @@
                    DeviceDesc = 'Velocity9x Intel HD Graphics 4000 (Ivy Bridge mobile)' }
             )
         }
+        @{
+            # Sandy Bridge GT2 desktop on the Haswell path for 2D: its BCS
+            # ring and blits, with Gen6's forcewake (i915's FORCEWAKE and
+            # FORCEWAKE_ACK, chip 2 of HSW_ENGINE_OPEN), and flips through
+            # plane A and DSPLINOFF as on Ivy Bridge. No Direct3D: Gen6's 3D
+            # pipeline is not Gen7's. Measured read-only on M-NZHWBR:
+            # docs\plans\intel-sandybridge-gen6.md.
+            Id = 'hd3000-snb'
+            Name = 'Intel HD Graphics 3000 (Sandy Bridge)'
+            VendorId = '8086'
+            DeviceId = '0112'
+            DeviceDesc = 'Velocity9x Intel HD Graphics 3000 (Sandy Bridge)'
+            Adapter = 'Intel HD Graphics 3000 (Sandy Bridge)'
+            ClockDetector = 'none'
+            ModeSwitching = 'vbe-lfb'
+            Acceleration = 'directdraw-fill-blt'
+            Direct3D = 'not-advertised'
+            EngineType = 'INTEL_GEN75'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            VideoMemoryBytes = 4194304
+            # The family's table; this VBIOS describes neither 1024x576 row
+            # and the runtime scan publishes its own modes instead.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0160' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 576; RefreshRate = 60; VbeMode = '0161' }
+            )
+            Audit = @{ Required = @(); Forbidden = @() }
+            Objects = @('hsw_hw16')
+            MapSymbols = @('v9x_snb_hd3000_device')
+        }
     )
 
     Backend = @{
@@ -505,7 +537,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162 or 8086:0166 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166 or 8086:0112 exactly'
     }
 
     Vm = @{

@@ -30,6 +30,9 @@ extern unsigned short __far __pascal V9xMiniHswEngineOpen(
  * mini-VDD takes. */
 #define V9X_HSW_OPEN_CHIP_HASWELL 0ul
 #define V9X_HSW_OPEN_CHIP_IVYBRIDGE 1ul
+#define V9X_HSW_OPEN_CHIP_SANDYBRIDGE 2ul
+/* Defined below; v9x_ivb_fill_engine tells Sandy Bridge by it. */
+extern const V9X_HW16_DEVICE v9x_snb_hd3000_device;
 extern unsigned short __far __pascal V9xMiniHswEngineClose(void);
 extern unsigned short __far __pascal V9xMiniHswRps(
     unsigned long request, unsigned long __far *cap,
@@ -476,9 +479,18 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
          * Direct3D on the render ring the open programmed beside the
          * blitter's, with Gen7's surface, PS and PIPE_CONTROL rules. The
          * HAL picks both by the identity bit (engines\hsw_scanout.c,
-         * d3d\d3d_hsw.c). */
-        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_D3D |
-                        V9X_DD_ENGINE_CAP_GEN7_IVB;
+         * d3d\d3d_hsw.c).
+         *
+         * Sandy Bridge stops after the flip: Gen6 lays out DSPLINOFF as Ivy
+         * Bridge does (i915 i9xx_plane_update_arm), so it carries the
+         * identity bit for the scanout, but no CAP_D3D, as Gen6's 3D
+         * pipeline is not Gen7's, and no render clock request, as Gen6's
+         * RPS is unmeasured (docs\plans\intel-sandybridge-gen6.md). */
+        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_GEN7_IVB;
+        if (chip == V9X_HSW_OPEN_CHIP_SANDYBRIDGE) {
+            return;
+        }
+        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
         v9x_hsw_request_render_clock(chip);
         return;
     }
@@ -519,7 +531,13 @@ static void v9x_ivb_fill_engine(unsigned long framebuffer_linear_base,
                                 unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
-    v9x_hsw_fill_engine_for(V9X_HSW_OPEN_CHIP_IVYBRIDGE, control_linear_base,
+    /* Sandy Bridge shares this hook: a wrapper of its own cost _TEXT bytes
+     * it does not have. */
+    v9x_hsw_fill_engine_for(v9x_hw16_active_device() ==
+                                &v9x_snb_hd3000_device ?
+                                V9X_HSW_OPEN_CHIP_SANDYBRIDGE :
+                                V9X_HSW_OPEN_CHIP_IVYBRIDGE,
+                            control_linear_base,
                             mapped_aperture_bytes, engine_type, engine_caps,
                             gtt_linear_base, ring_linear_base, ring_bytes);
 }
@@ -635,6 +653,35 @@ const V9X_HW16_DEVICE v9x_ivb_hd4000_mobile_device = {
     /* VBE reports the framebuffer in GMADR, BAR2: D0000000 on W9QI75E0. */
     2u,
     /* Packed pitch: 640 at 640x480x8, measured at tier 0 there. */
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset,
+    /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
+};
+
+/*
+ * Sandy Bridge GT2 desktop, HD Graphics 3000, on the same path for 2D: the
+ * same BAR layout, GGC encoding, stolen-reserved register and BCS ring, with
+ * Gen6's forcewake (chip 2). Measured read-only on M-NZHWBR, an i3-2105 on
+ * the MSI board W9QI4E14's HD 4000 used
+ * (docs\decisions\2026-11-19-sandybridge-read-only-mmio.md). No Direct3D:
+ * docs\plans\intel-sandybridge-gen6.md.
+ */
+const V9X_HW16_DEVICE v9x_snb_hd3000_device = {
+    0x8086u, 0x0112u,
+    "Intel HD Graphics 3000 (Sandy Bridge)",
+    "8086", "0112",
+    "none",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "not-advertised",
+    0,
+    v9x_ivb_fill_engine,
+    /* VBE reports the framebuffer in GMADR, BAR2: E0000000 on M-NZHWBR. */
+    2u,
+    /* Packed pitch: 4096 at 1024x768x32, 640 at 640x480x8 (vbe, boot 60). */
     1u,
     V9X_HSW_MAP_BYTES,
     v9x_hsw_reserve_offset,

@@ -85,6 +85,11 @@
 /* Its alias, Ivy Bridge GT2 mobile: the same GT behind an LVDS panel
  * (docs\plans\intel-ivybridge-mobile-0166.md). */
 #define V9X_PCI_DEVICE_HD4000M_IVB       ((v9x_u16)0x0166u)
+/*
+ * Sandy Bridge GT2 desktop, HD Graphics 3000: Gen6, on the Haswell path for
+ * 2D with Gen6's forcewake, no Direct3D (docs\plans\intel-sandybridge-gen6.md).
+ */
+#define V9X_PCI_DEVICE_HD3000_SNB        ((v9x_u16)0x0112u)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)

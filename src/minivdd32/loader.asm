@@ -367,6 +367,13 @@ V9X_IVB_ECOBUS          equ 0000a180h
 V9X_IVB_FW_CLEAR_ALL    equ 0ffff0000h
 V9X_IVB_THREAD_STATUS   equ 0013805ch
 V9X_IVB_THREAD_MASK     equ 7
+; Sandy Bridge's forcewake (V9X_HSW_CHIP_SANDYBRIDGE), i915's Gen6 pair
+; (intel_uncore.c, the GRAPHICS_VER == 6 branch): FORCEWAKE A18Ch is the
+; request, FORCEWAKE_ACK 130090h the acknowledge, with Ivy Bridge's reset,
+; masked values and thread-status wait. Measured on M-NZHWBR
+; (docs\decisions\2026-11-19-sandybridge-read-only-mmio.md).
+V9X_SNB_FW_REQUEST      equ 0000a18ch
+V9X_SNB_FW_ACK          equ 00130090h
 V9xHswMmioBase    dd 0
 V9xHswMmioLinear  dd 0
 V9xHswGttLinear   dd 0
@@ -376,10 +383,11 @@ V9xHswOpen        dd 0
 ; The reserve the rings were opened at, and the one the caller asked for.
 V9xHswReserveOffset dd 0
 V9xHswRequestOffset dd 0
-; The chip the open was asked for (EDI), its acknowledge register, and
-; whether the acknowledge was set when the open found it (Ivy Bridge only;
-; the release puts it back).
+; The chip the open was asked for (EDI), its request and acknowledge
+; registers, and whether the acknowledge was set when the open found it (Ivy
+; Bridge and Sandy Bridge; the release puts it back).
 V9xHswChip        dd 0
+V9xHswFwRequest   dd V9X_HSW_FW_REQUEST
 V9xHswFwAck       dd V9X_HSW_FW_ACK
 V9xHswFwEntryHeld dd 0
 
@@ -3331,7 +3339,8 @@ BeginProc V9xMini_Hsw_Release
     push    ecx
     push    edx
     mov     edx, V9xHswFwAck
-    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_CLEAR
+    mov     ecx, V9xHswFwRequest
+    mov     dword ptr [edi+ecx], V9X_HSW_FW_CLEAR
     xor     ecx, ecx
 V9xMini_Hsw_Release_Poll:
     test    dword ptr [edi+edx], 1
@@ -3342,7 +3351,8 @@ V9xMini_Hsw_Release_Poll:
 V9xMini_Hsw_Release_Cleared:
     cmp     V9xHswFwEntryHeld, 0
     je      short V9xMini_Hsw_Release_Done
-    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_SET
+    mov     ecx, V9xHswFwRequest
+    mov     dword ptr [edi+ecx], V9X_HSW_FW_SET
 V9xMini_Hsw_Release_Done:
     pop     edx
     pop     ecx
@@ -3422,14 +3432,19 @@ V9xMini_Hsw_Open_Fresh:
     test    eax, V9X_HSW_RESERVE_ALIGN
     jnz     V9xMini_Hsw_Open_Refused_Pop
     mov     V9xHswReserveOffset, eax
-    ; The chip, which picks the acknowledge register.
+    ; The chip, which picks the forcewake registers.
     mov     V9xHswFwEntryHeld, 0
+    mov     V9xHswFwRequest, V9X_HSW_FW_REQUEST
     mov     V9xHswFwAck, V9X_HSW_FW_ACK
     cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
     je      short V9xMini_Hsw_Open_Chip_Known
-    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
-    jne     V9xMini_Hsw_Open_Refused_Pop
     mov     V9xHswFwAck, V9X_IVB_FW_ACK
+    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
+    je      short V9xMini_Hsw_Open_Chip_Known
+    cmp     V9xHswChip, V9X_HSW_CHIP_SANDYBRIDGE
+    jne     V9xMini_Hsw_Open_Refused_Pop
+    mov     V9xHswFwRequest, V9X_SNB_FW_REQUEST
+    mov     V9xHswFwAck, V9X_SNB_FW_ACK
 V9xMini_Hsw_Open_Chip_Known:
 
     ; Code 2: the three windows.
@@ -3512,9 +3527,21 @@ V9xMini_Hsw_Open_Ptes_Ok:
     mov     edx, 5
     cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
     je      short V9xMini_Hsw_Open_Fw_Ivb
+    cmp     V9xHswChip, V9X_HSW_CHIP_SANDYBRIDGE
+    je      short V9xMini_Hsw_Open_Fw_Snb
     test    dword ptr [edi+V9X_HSW_FW_ACK], 1
     jnz     V9xMini_Hsw_Open_Fw_Refused
     jmp     short V9xMini_Hsw_Open_Fw_Set
+V9xMini_Hsw_Open_Fw_Snb:
+    ; i915's Gen6 reset: the one request register's bits cleared, then the
+    ; acknowledge awaited clear, as on Ivy Bridge. M-NZHWBR's BIOS leaves
+    ; it clear, but an acknowledge found set is put back at the release.
+    mov     eax, [edi+V9X_SNB_FW_ACK]
+    and     eax, 1
+    mov     V9xHswFwEntryHeld, eax
+    mov     dword ptr [edi+V9X_SNB_FW_REQUEST], V9X_IVB_FW_CLEAR_ALL
+    xor     ecx, ecx
+    jmp     short V9xMini_Hsw_Open_Fw_Ivb_Clear
 V9xMini_Hsw_Open_Fw_Ivb:
     ; i915's Ivy Bridge reset, which is what releases the acknowledge the
     ; BIOS leaves set: the legacy request cleared and posted through ECOBUS,
@@ -3527,7 +3554,10 @@ V9xMini_Hsw_Open_Fw_Ivb:
     mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_IVB_FW_CLEAR_ALL
     xor     ecx, ecx
 V9xMini_Hsw_Open_Fw_Ivb_Clear:
-    test    dword ptr [edi+V9X_IVB_FW_ACK], 1
+    ; The chip's acknowledge: 130040h on Ivy Bridge, 130090h on Sandy
+    ; Bridge, which joins here.
+    mov     eax, V9xHswFwAck
+    test    dword ptr [edi+eax], 1
     jz      short V9xMini_Hsw_Open_Fw_Set
     inc     ecx
     cmp     ecx, V9X_HSW_FW_POLLS
@@ -3538,7 +3568,8 @@ V9xMini_Hsw_Open_Fw_Ivb_Clear:
     jmp     V9xMini_Hsw_Open_Refused_Pop
 V9xMini_Hsw_Open_Fw_Set:
     mov     esi, V9xHswFwAck
-    mov     dword ptr [edi+V9X_HSW_FW_REQUEST], V9X_HSW_FW_SET
+    mov     eax, V9xHswFwRequest
+    mov     dword ptr [edi+eax], V9X_HSW_FW_SET
     xor     ecx, ecx
 V9xMini_Hsw_Open_Fw_Poll:
     test    dword ptr [edi+esi], 1
@@ -3554,11 +3585,12 @@ V9xMini_Hsw_Open_Fw_Refused:
     popfd
     jmp     V9xMini_Hsw_Open_Refused_Pop
 V9xMini_Hsw_Open_Fw_Acked:
-    ; Ivy Bridge: GT thread status C0 before the first register write
-    ; (i915 WaRsForcewakeWaitTC0). Bounded and not a refusal: i915 only
-    ; warns, and code 8's readback catches a write that did not land.
-    cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
-    jne     short V9xMini_Hsw_Open_Fw_Done
+    ; Ivy Bridge and Sandy Bridge: GT thread status C0 before the first
+    ; register write (i915 WaRsForcewakeWaitTC0:snb,ivb). Bounded and not a
+    ; refusal: i915 only warns, and code 8's readback catches a write that
+    ; did not land.
+    cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
+    je      short V9xMini_Hsw_Open_Fw_Done
     xor     ecx, ecx
 V9xMini_Hsw_Open_Fw_Thread:
     test    dword ptr [edi+V9X_IVB_THREAD_STATUS], V9X_IVB_THREAD_MASK

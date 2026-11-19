@@ -319,6 +319,40 @@ static const char *const v9x_gt_names[V9X_IVGT_COUNT] = {
     "GEN6_GT_GFX_RC6"
 };
 
+/* Names for the VxD's IVGtOffsetsSnb, the Sandy Bridge list. */
+static const char *const v9x_gt_names_snb[V9X_IVGT_COUNT] = {
+    "RCS_TAIL", "RCS_HEAD", "RCS_START", "RCS_CTL", "RCS_ACTHD",
+    "MI_MODE", "INSTPM", "GFX_MODE",
+    "BCS_TAIL", "BCS_HEAD", "BCS_START", "BCS_CTL", "BCS_ACTHD",
+    "GAM_ECOCHK", "RCS_HWS_PGA_GEN6",
+    "GEN6_RPSTAT1", "GEN6_RP_CONTROL", "GEN6_RC_CONTROL", "GEN6_RC_STATE",
+    "ECOBUS",
+    "BCS_HWS_PGA_GEN6", "BCS_MI_MODE", "BCS_INSTPM",
+    "GEN6_UCGCTL1", "GEN6_UCGCTL2",
+    "GTFIFODBG", "GTFIFOCTL", "GT_THREAD_STATUS", "GT_CORE_STATUS",
+    "GEN6_GT_GFX_RC6"
+};
+
+/*
+ * Sandy Bridge (Gen6) device ids, i915_pciids.h INTEL_SNB_D_IDS and
+ * INTEL_SNB_M_IDS. The VxD keeps the same list.
+ */
+static const WORD v9x_snb_ids[] = {
+    0x0102u, 0x010au, 0x0112u, 0x0122u, 0x0106u, 0x0116u, 0x0126u
+};
+
+/*
+ * First-capture offsets not read on Sandy Bridge: its CPU has two pipes,
+ * so pipe C's watermark, FDI transmitter, PIPECONF and plane do not exist,
+ * and the MT forcewake acknowledges are Ivy Bridge's (i915 reads neither
+ * on Gen6). The PCH's transcoder C is the 7-series PCH's and stays.
+ */
+static const DWORD v9x_snb_absent[] = {
+    0x045200ul, 0x062100ul, 0x072008ul, 0x072180ul, 0x130040ul, 0x130044ul
+};
+
+static int v9x_is_snb;
+
 static struct v9x_ivmm_request v9x_request;
 static struct v9x_ivmm_result v9x_result;
 static struct v9x_ivgt_result v9x_gt;
@@ -716,7 +750,9 @@ static void v9x_gt_capture(DWORD base)
     }
 
     v9x_key("Gt", "Status", v9x_gt.status);
-    v9x_key("Gt", "EntryMtAck", v9x_gt.entry_mt_ack);
+    /* On Sandy Bridge the VxD fills these with FORCEWAKE_ACK (130090h). */
+    v9x_key("Gt", v9x_is_snb ? "EntryChipAck" : "EntryMtAck",
+            v9x_gt.entry_mt_ack);
     v9x_key("Gt", "EntryLegacyAck", v9x_gt.entry_legacy_ack);
     v9x_key("Gt", "EntryThreadStatus", v9x_gt.entry_thread);
     v9x_key("Gt", "EcobusBeforeWake", v9x_gt.ecobus_unwoken);
@@ -725,7 +761,8 @@ static void v9x_gt_capture(DWORD base)
     v9x_key("Gt", "PollsThreadC0", v9x_gt.polls_thread);
     v9x_key("Gt", "PollsPutClear", v9x_gt.polls_put);
     v9x_key("Gt", "PollsRestoreSet", v9x_gt.polls_restore);
-    v9x_key("Gt", "ExitMtAck", v9x_gt.exit_mt_ack);
+    v9x_key("Gt", v9x_is_snb ? "ExitChipAck" : "ExitMtAck",
+            v9x_gt.exit_mt_ack);
     v9x_key("Gt", "ExitLegacyAck", v9x_gt.exit_legacy_ack);
     v9x_key("Gt", "ExitThreadStatus", v9x_gt.exit_thread);
     v9x_key("Gt", "AckAtTimeout", v9x_gt.timeout_ack);
@@ -741,7 +778,8 @@ static void v9x_gt_capture(DWORD base)
         }
         v9x_text("Gt", key, text);
         v9x_offset_key(key, "Name.", v9x_gt.offsets[index]);
-        v9x_text("Gt", key, v9x_gt_names[index]);
+        v9x_text("Gt", key, v9x_is_snb ? v9x_gt_names_snb[index] :
+                                         v9x_gt_names[index]);
     }
 
     if ((v9x_gt.status & V9X_GT_ST_ACK_STUCK) != 0ul) {
@@ -772,6 +810,39 @@ static void v9x_gt_capture(DWORD base)
         return;
     }
     v9x_text("Gt", "Result", "COMPLETE");
+}
+
+/* Whether the IGD at 00:02.0 is a Sandy Bridge. */
+static int v9x_igd_is_snb(void)
+{
+    DWORD id;
+    DWORD index;
+
+    id = v9x_config_read(V9X_IGD_CONFIG, 0ul);
+    if ((id & 0xfffful) != 0x8086ul) {
+        return 0;
+    }
+    for (index = 0ul; index < sizeof(v9x_snb_ids) / sizeof(v9x_snb_ids[0]);
+         ++index) {
+        if ((id >> 16) == (DWORD)v9x_snb_ids[index]) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int v9x_snb_skips(DWORD offset)
+{
+    DWORD index;
+
+    for (index = 0ul;
+         index < sizeof(v9x_snb_absent) / sizeof(v9x_snb_absent[0]);
+         ++index) {
+        if (v9x_snb_absent[index] == offset) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 /* Whether the command line carries /gt (any case). */
@@ -815,10 +886,16 @@ void __stdcall V9xIvbMmioEntry(void)
             (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_MSAC) >> 16) & 0xfful);
     v9x_key("Report", "Asls", v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ASLS));
 
+    v9x_is_snb = v9x_igd_is_snb();
+    v9x_text("Report", "Chip", v9x_is_snb ? "sandybridge" : "ivybridge");
+
     v9x_request.base = bar0 & V9X_GTTMMADR_MASK;
     v9x_request.count = 0ul;
     for (index = 0ul; index < sizeof(v9x_global) / sizeof(v9x_global[0]);
          ++index) {
+        if (v9x_is_snb && v9x_snb_skips(v9x_global[index].offset)) {
+            continue;
+        }
         v9x_add(v9x_global[index].offset);
         v9x_name(v9x_global[index].offset, v9x_global[index].name, "");
     }

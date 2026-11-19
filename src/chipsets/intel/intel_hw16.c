@@ -21,6 +21,7 @@ extern const V9X_HW16_DEVICE v9x_hsw_hd4600_device;
 extern const V9X_HW16_DEVICE v9x_hsw_hd4400_device;
 extern const V9X_HW16_DEVICE v9x_ivb_hd4000_device;
 extern const V9X_HW16_DEVICE v9x_ivb_hd4000_mobile_device;
+extern const V9X_HW16_DEVICE v9x_snb_hd3000_device;
 extern unsigned long v9x_gma950_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes);
 extern const char *v9x_hsw_engine_status_text(void);
@@ -35,14 +36,20 @@ extern void v9x_hsw_publish_layout(v9x_hw16_write_fn write);
  * (the register class that hung the 945 with its pipe off), the GTT
  * inventory expects BAR3, and the ring plan and sandbox are Gen3's layout.
  * Inventory of those paths: docs\plans\intel-haswell-direct3d.md, Phase B2.
- * Ivy Bridge runs the Haswell path (hsw_hw16.c), so it answers here too.
+ * Ivy Bridge runs the Haswell path (hsw_hw16.c), so it answers here too, and
+ * so does Sandy Bridge, whose Gen6 GT runs that path's 2D: the name means
+ * the path, not the generation.
  */
 static int v9x_intel_is_gen7(void)
 {
-    return v9x_hw16_active_device() == &v9x_hsw_hd4600_device ||
-           v9x_hw16_active_device() == &v9x_hsw_hd4400_device ||
-           v9x_hw16_active_device() == &v9x_ivb_hd4000_device ||
-           v9x_hw16_active_device() == &v9x_ivb_hd4000_mobile_device;
+    /* One call: five cost _TEXT bytes it does not have. */
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+
+    return device == &v9x_hsw_hd4600_device ||
+           device == &v9x_hsw_hd4400_device ||
+           device == &v9x_ivb_hd4000_device ||
+           device == &v9x_ivb_hd4000_mobile_device ||
+           device == &v9x_snb_hd3000_device;
 }
 
 /*
@@ -81,7 +88,8 @@ static const V9X_HW16_DEVICE * const v9x_intel_devices[] = {
     &v9x_hsw_hd4600_device,
     &v9x_hsw_hd4400_device,
     &v9x_ivb_hd4000_device,
-    &v9x_ivb_hd4000_mobile_device
+    &v9x_ivb_hd4000_mobile_device,
+    &v9x_snb_hd3000_device
 };
 
 /*
