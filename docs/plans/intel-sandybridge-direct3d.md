@@ -213,6 +213,11 @@ Answered from it:
    timeout, still without the i915 workaround registers. *Owed:* Z24.
 7. **Games**: 3DMark 2000 (score recorded, not compared), the OpenGL ICD
    with Quake 2/3, windowed for screenshots.
+   *Probes and 3DMark 2000 done 2026-11-20*
+   (`docs\decisions\2026-11-20-sandybridge-3dmark2000-and-probes.md`):
+   every release probe passes (V9XD32 x4, GL, Glide, R3DP, WPRS, FBCMP),
+   3DMark 2000 4015 with clean counters and grabs. *Owed:* Quake 2/3,
+   Glide games, Z24.
 8. Then, separately: T&L, PS 1.1, two stages, the texture pool.
 
 ## Risks
