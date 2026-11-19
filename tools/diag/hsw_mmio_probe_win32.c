@@ -508,6 +508,9 @@ static void v9x_bcs_run(void)
 #define V9X_FLIP_DIOC        4u
 #define V9X_FLIP_MAGIC       0x4c465348ul
 #define V9X_FLIP_WRITE       0x00000001ul
+/* /flipasync:N: the same move with DSPACNTR's DISP_ASYNC_FLIP set around
+ * it (hsw_mmio_probe.asm, HSW_FLIP_FLAG_ASYNC). */
+#define V9X_FLIP_ASYNC       0x00000002ul
 #define V9X_FLIP_ROW         383ul
 #define V9X_FLIP_HOLD_MS     5000ul
 #define V9X_FLIP_ST_WRITTEN  0x00000008ul
@@ -542,7 +545,10 @@ static struct v9x_flip_result {
     DWORD dsl_max;
     DWORD wraps;
     DWORD flags;
-    DWORD reserved[4];
+    DWORD cntr_async;
+    DWORD arm_wraps;
+    DWORD cntr_restored;
+    DWORD reserved;
 } v9x_flip_out;
 
 static void v9x_key(const char *section, const char *key, DWORD value);
@@ -598,6 +604,11 @@ static int v9x_flip_call(const char *section, DWORD flags, DWORD surf,
         v9x_key(section, "DspASurfAfter", v9x_flip_out.surf_after);
         v9x_key(section, "DspAOffsetAfter", v9x_flip_out.offset_after);
         v9x_key(section, "DspASurfLiveAfter", v9x_flip_out.live_after);
+        if ((flags & V9X_FLIP_ASYNC) != 0ul) {
+            v9x_key(section, "DspACntrAsync", v9x_flip_out.cntr_async);
+            v9x_key(section, "ArmFramesBegun", v9x_flip_out.arm_wraps);
+            v9x_key(section, "DspACntrRestored", v9x_flip_out.cntr_restored);
+        }
         WritePrivateProfileStringA(
             section, "LatchedInBlank",
             (v9x_flip_out.status & V9X_FLIP_ST_LATCHED) != 0ul &&
@@ -617,7 +628,7 @@ static int v9x_flip_latched(void)
            v9x_flip_out.wraps <= 1ul;
 }
 
-static void v9x_flip_run(DWORD bytes_per_pixel)
+static void v9x_flip_run(DWORD bytes_per_pixel, DWORD async)
 {
     DWORD surf_before;
     DWORD offset_before;
@@ -645,7 +656,7 @@ static void v9x_flip_run(DWORD bytes_per_pixel)
     v9x_key("FlipRead", "Row", V9X_FLIP_ROW);
     v9x_key("FlipRead", "TargetOffset", v9x_flip_out.stride * V9X_FLIP_ROW);
 
-    if (!v9x_flip_call("Flip", V9X_FLIP_WRITE, surf, offset)) {
+    if (!v9x_flip_call("Flip", V9X_FLIP_WRITE | async, surf, offset)) {
         return;
     }
     moved = v9x_flip_latched();
@@ -4164,16 +4175,29 @@ void __stdcall V9xHswMmioEntry(void)
         ExitProcess(0u);
     }
 
-    /* /flip:N is Phase F3 alone: N bytes per pixel at the desktop. */
+    /* /flip:N is Phase F3 alone: N bytes per pixel at the desktop.
+     * /flipasync:N the same with DISP_ASYNC_FLIP set around the move. */
     for (index = 1ul; index <= 4ul; index *= 2ul) {
         char option[8];
+        char async_option[16];
 
         lstrcpyA(option, "/flip:1");
         option[6] = (char)('0' + index);
+        lstrcpyA(async_option, "/flipasync:1");
+        async_option[11] = (char)('0' + index);
+        if (v9x_has_switch(async_option)) {
+            WritePrivateProfileStringA("Report", "Access",
+                                       "plane-flip-async", V9X_HSWMM_PATH);
+            v9x_flip_run(index, V9X_FLIP_ASYNC);
+            WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                       V9X_HSWMM_PATH);
+            WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+            ExitProcess(0u);
+        }
         if (v9x_has_switch(option)) {
             WritePrivateProfileStringA("Report", "Access",
                                        "plane-flip-phase-f3", V9X_HSWMM_PATH);
-            v9x_flip_run(index);
+            v9x_flip_run(index, 0ul);
             WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                        V9X_HSWMM_PATH);
             WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);

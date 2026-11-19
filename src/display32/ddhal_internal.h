@@ -580,6 +580,20 @@ int v9x_hsw_scanout_active(void);
 int v9x_hsw_scanout_live(void);
 int v9x_hsw_in_vblank(void);
 int v9x_hsw_set_display_start(DWORD byte_offset);
+/* An unsynced flip: the frame copied into the vsync-off copy target, which
+ * the plane scans (engines\hsw_scanout.c); failing that, the base written
+ * with DSPACNTR's async-flip bit set. */
+int v9x_hsw_set_display_start_now(DWORD byte_offset);
+/* The whole visible frame copied on the blitter, in engines\eng_hsw.c. */
+int v9x_hsw_present_copy(DWORD source_offset, DWORD destination_offset);
+/* The DirectDraw object the next unsynced flip may take its copy target
+ * from. */
+void v9x_hsw_scanout_note_dd(DWORD lpDD);
+/* A block of DirectDraw's stolen-memory heap with no surface attached, in
+ * d3d\d3d_place.c: rows x row_bytes from an `align`-rounded offset. */
+int v9x_d3d_place_raw(DWORD lpDD, DWORD row_bytes, DWORD rows, DWORD align,
+                      DWORD *block_out, DWORD *offset_out);
+void v9x_d3d_place_raw_free(DWORD lpDD, DWORD block);
 int v9x_hsw_flip_pending(void);
 void v9x_hsw_note_flip_done(void);
 DWORD v9x_hsw_displayed_offset(void);
@@ -845,6 +859,10 @@ int v9x_set_display_start(DWORD byte_offset);
  * register at once and nothing is queued to the retrace. Differs from the
  * call above only on Intel, which otherwise flips through the ring. */
 int v9x_set_display_start_now(DWORD byte_offset);
+/* The flipping DirectDraw object, before either call above: a scanout that
+ * needs a block of video memory for an unsynced flip takes it from that
+ * object's heap. A no-op on every scanout but Haswell's. */
+void v9x_scanout_note_dd(DWORD lpDD);
 /* A new session or mode, from DriverInit: drops the PIPESTAT baseline so
  * the next flip opens a fresh measurement boundary, and the scanline
  * readings that describe the old timing. */

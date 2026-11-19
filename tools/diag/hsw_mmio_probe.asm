@@ -380,6 +380,14 @@ HSW_FLIP_IN_SURF        equ 8         ; DSPASURF to write, 4 KB aligned
 HSW_FLIP_IN_OFFSET      equ 12        ; DSPAOFFSET to write: x, y 0
 HSW_FLIP_IN_BYTES       equ 16
 HSW_FLIP_FLAG_WRITE     equ 00000001h
+; With WRITE: set DSPACNTR's DISP_ASYNC_FLIP (bit 9, i915_reg.h "g4x+")
+; first, re-arm the plane at the base it already scans and wait two frames
+; for the control word to be taken, then make the timed write; afterwards
+; put DSPACNTR back as read and re-arm. Linux refuses async flips on a
+; linear plane before display 12 (intel_async_flip_check_hw, v6.6); this
+; measures what the hardware does with one.
+HSW_FLIP_FLAG_ASYNC     equ 00000002h
+HSW_DSPCNTR_ASYNC       equ 00000200h
 HSW_FLIP_SURF_LOW       equ 00000fffh
 HSW_FLIP_OFFSET_HIGH    equ 0ffffe000h
 ; Two MMIO reads a poll: seconds at any read rate, many frames.
@@ -428,6 +436,9 @@ HSW_FO_DSL_MIN          equ 64
 HSW_FO_DSL_MAX          equ 68
 HSW_FO_WRAPS            equ 72        ; frames begun while polling
 HSW_FO_FLAGS            equ 76
+HSW_FO_CNTR_ASYNC       equ 80        ; DSPACNTR as written with the bit
+HSW_FO_ARM_WRAPS        equ 84        ; frames begun while arming
+HSW_FO_CNTR_RESTORED    equ 88        ; DSPACNTR read after the restore
 
 HswFlipOut    dd HSW_FLIP_MAGIC
               dd (HSW_FLIP_OUT_DWORDS - 1) dup (0)
@@ -1664,6 +1675,21 @@ Hsw_Flip_Map:
     test    HswFlipIn[HSW_FLIP_IN_FLAGS], HSW_FLIP_FLAG_WRITE
     jz      Hsw_Flip_Exit
 
+    ; Async: the control word with the bit, armed at the base already
+    ; scanned so nothing on screen moves, then two frame starts.
+    test    HswFlipIn[HSW_FLIP_IN_FLAGS], HSW_FLIP_FLAG_ASYNC
+    jz      Hsw_Flip_Write
+    mov     eax, HswFlipOut[HSW_FO_DSPCNTR]
+    or      eax, HSW_DSPCNTR_ASYNC
+    mov     HswFlipOut[HSW_FO_CNTR_ASYNC], eax
+    mov     [ebp+HSW_DSPACNTR], eax
+    mov     eax, HswFlipOut[HSW_FO_SURF_BEFORE]
+    mov     [ebp+HSW_DSPASURF], eax
+    mov     eax, [ebp+HSW_DSPASURF]
+    call    Hsw_Flip_Two_Frames
+    mov     HswFlipOut[HSW_FO_ARM_WRAPS], edx
+
+Hsw_Flip_Write:
     ; The offset first, then the base, whose write arms the plane's
     ; double-buffered update; the read back posts it.
     mov     esi, HswFlipIn[HSW_FLIP_IN_SURF]
@@ -1720,7 +1746,19 @@ Hsw_Flip_After:
     mov     HswFlipOut[HSW_FO_OFFSET_AFTER], eax
     mov     eax, [ebp+HSW_DSPASURFLIVE]
     mov     HswFlipOut[HSW_FO_LIVE_AFTER], eax
-    jmp     short Hsw_Flip_Exit
+
+    ; Async: the control word back as read, armed at the base just
+    ; written, and read back two frames later.
+    test    HswFlipIn[HSW_FLIP_IN_FLAGS], HSW_FLIP_FLAG_ASYNC
+    jz      Hsw_Flip_Exit
+    mov     eax, HswFlipOut[HSW_FO_DSPCNTR]
+    mov     [ebp+HSW_DSPACNTR], eax
+    mov     [ebp+HSW_DSPASURF], esi
+    mov     eax, [ebp+HSW_DSPASURF]
+    call    Hsw_Flip_Two_Frames
+    mov     eax, [ebp+HSW_DSPACNTR]
+    mov     HswFlipOut[HSW_FO_CNTR_RESTORED], eax
+    jmp     Hsw_Flip_Exit
 
 Hsw_Flip_Not_Live:
     or      HswFlipOut[HSW_FO_STATUS], HSW_FLIP_ST_NOT_LIVE
@@ -1731,6 +1769,31 @@ Hsw_Flip_Exit:
     popad
     ret
 EndProc Hsw_Flip
+
+; EBP = the mapped MMIO. Returns once two frames have begun (PIPEADSL
+; lower than the previous read), or after HSW_FLIP_POLLS reads; EDX the
+; frames seen. Clobbers EAX, EBX, ECX.
+BeginProc Hsw_Flip_Two_Frames
+    mov     ebx, [ebp+HSW_PIPEADSL]
+    and     ebx, HSW_DSL_MASK
+    xor     ecx, ecx
+    xor     edx, edx
+Hsw_Flip_Two_Poll:
+    mov     eax, [ebp+HSW_PIPEADSL]
+    and     eax, HSW_DSL_MASK
+    cmp     eax, ebx
+    jae     short Hsw_Flip_Two_Same
+    inc     edx
+    cmp     edx, 2
+    jae     short Hsw_Flip_Two_Done
+Hsw_Flip_Two_Same:
+    mov     ebx, eax
+    inc     ecx
+    cmp     ecx, HSW_FLIP_POLLS
+    jb      short Hsw_Flip_Two_Poll
+Hsw_Flip_Two_Done:
+    ret
+EndProc Hsw_Flip_Two_Frames
 
 ; ESI = DIOCParams. Copies the input, runs Hsw_Flip, copies the result.
 BeginProc Hsw_Flip_Dioc

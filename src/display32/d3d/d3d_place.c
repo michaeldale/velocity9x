@@ -164,6 +164,58 @@ static DWORD v9x_d3d_place_take(V9X_DDHAL_CREATESURFACEDATA *data,
 }
 
 /*
+ * A block of `rows` rows of `row_bytes` from DirectDraw's stolen-memory heap
+ * for the driver's own use, no surface attached: its start rounded up to
+ * `align` (a power of two). For the Haswell vsync-off copy target
+ * (engines\hsw_scanout.c), taken while a game flips unsynced and given
+ * back after. 1 with the block (what v9x_d3d_place_raw_free takes) and its
+ * offset from fb.linear_base; 0, having kept nothing.
+ */
+int v9x_d3d_place_raw(DWORD lpDD, DWORD row_bytes, DWORD rows, DWORD align,
+                      DWORD *block_out, DWORD *offset_out)
+{
+    DWORD block;
+    DWORD base;
+
+    *block_out = 0ul;
+    *offset_out = 0ul;
+    if (v9x_hal == 0 || lpDD == 0ul || row_bytes == 0ul || rows == 0ul ||
+        align == 0ul || (align & (align - 1ul)) != 0ul ||
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        !v9x_d3d_place_vidmem_resolve()) {
+        return 0;
+    }
+    block = v9x_d3d_place_vidmem_alloc(lpDD, V9X_D3D_PLACE_HEAP_STOLEN,
+                                       row_bytes,
+                                       rows + (align + row_bytes - 1ul) /
+                                                  row_bytes);
+    if (block == 0ul) {
+        return 0;
+    }
+    if (block < v9x_hal->fb.linear_base) {
+        v9x_d3d_place_vidmem_free(lpDD, V9X_D3D_PLACE_HEAP_STOLEN, block);
+        return 0;
+    }
+    base = (block - v9x_hal->fb.linear_base + align - 1ul) & ~(align - 1ul);
+    if (base > v9x_hal->fb.vram_bytes ||
+        row_bytes * rows > v9x_hal->fb.vram_bytes - base) {
+        v9x_d3d_place_vidmem_free(lpDD, V9X_D3D_PLACE_HEAP_STOLEN, block);
+        return 0;
+    }
+    *block_out = block;
+    *offset_out = base;
+    return 1;
+}
+
+void v9x_d3d_place_raw_free(DWORD lpDD, DWORD block)
+{
+    if (lpDD == 0ul || block == 0ul || !v9x_d3d_place_vidmem_resolve()) {
+        return;
+    }
+    v9x_d3d_place_vidmem_free(lpDD, V9X_D3D_PLACE_HEAP_STOLEN, block);
+}
+
+/*
  * One block of pitch * rows from DirectDraw's heap, aligned to `align` (a
  * power of two), with surface n of the list pointed at base + offsets[n] at
  * that pitch.

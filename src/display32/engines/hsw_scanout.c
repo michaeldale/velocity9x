@@ -21,6 +21,39 @@
 /* The base the last flip wrote, so its completion can be recognised. */
 static DWORD v9x_hsw_scanout_surf = 0ul;
 static int v9x_hsw_scanout_pending = 0;
+/* The plane is on the vsync-off copy target: unsynced flips copy into it
+ * and leave the plane where it is. Any other base write clears it. */
+static int v9x_hsw_copy_scanning = 0;
+/*
+ * The copy target: a block of DirectDraw's heap held only while a game
+ * flips unsynced, taken from the flipping object's heap (lpDD) and given
+ * back at the next synced base write. A boot-time carve of 8 MiB below the
+ * reserve cost every Direct3D program its textures: 3DMark 2001 SE's Car
+ * Chase fell to 1-2 fps with vsync on as well as off, its refused mip trees
+ * four times the full heap's (docs\decisions\2026-11-19-haswell-vsync-off-
+ * async-flips.md). Its offset from fb.linear_base, page-aligned for DSPASURF.
+ */
+static DWORD v9x_hsw_copy_dd = 0ul;
+static DWORD v9x_hsw_copy_block = 0ul;
+static DWORD v9x_hsw_copy_offset = 0ul;
+static DWORD v9x_hsw_note_dd = 0ul;
+#define V9X_HSW_COPY_ALIGN 0x1000ul
+
+/* Give the copy target back to the heap it came from. */
+static void v9x_hsw_copy_release(void)
+{
+    if (v9x_hsw_copy_block != 0ul) {
+        v9x_d3d_place_raw_free(v9x_hsw_copy_dd, v9x_hsw_copy_block);
+    }
+    v9x_hsw_copy_dd = 0ul;
+    v9x_hsw_copy_block = 0ul;
+    v9x_hsw_copy_offset = 0ul;
+}
+
+void v9x_hsw_scanout_note_dd(DWORD lpDD)
+{
+    v9x_hsw_note_dd = lpDD;
+}
 
 static volatile DWORD *v9x_hsw_scanout_reg(DWORD offset)
 {
@@ -67,18 +100,28 @@ static int v9x_hsw_scanout_is_ivb(void)
     return (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul;
 }
 
-/* The offset first, then the base, whose write arms the plane's update at
- * the next blank; the read back posts it. */
-int v9x_hsw_set_display_start(DWORD byte_offset)
+/*
+ * The offset first, then the base, whose write arms the plane's update at
+ * the next blank; the read back posts it. With async, DSPACNTR's async-flip
+ * bit is set first and the base is taken at once, mid-scan: the tearing
+ * flip vsync off asks for. Without it the bit is cleared, so a synced flip
+ * after an unsynced one waits for the blank again (the first such write
+ * may still be taken at once). DSPACNTR is written only when the bit
+ * changes, and only that bit.
+ */
+static int v9x_hsw_write_base(DWORD byte_offset, int async)
 {
     v9x_u32 surf;
     v9x_u32 plane_offset;
     v9x_status split;
     DWORD offset_register;
+    DWORD control;
+    DWORD wanted;
 
     if (!v9x_hsw_scanout_live()) {
         return 0;
     }
+    v9x_hsw_copy_scanning = 0;
     if (v9x_hsw_scanout_is_ivb()) {
         split = v9x_intel_ivb_plane_split(byte_offset,
                                           v9x_hal->fb.bits_per_pixel / 8ul,
@@ -93,12 +136,72 @@ int v9x_hsw_set_display_start(DWORD byte_offset)
     if (split != V9X_STATUS_OK) {
         return 0;
     }
+    control = *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPACNTR);
+    wanted = async ? (control | V9X_INTEL_HSW_DSPCNTR_ASYNC_FLIP)
+                   : (control & ~V9X_INTEL_HSW_DSPCNTR_ASYNC_FLIP);
+    if (wanted != control) {
+        *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPACNTR) = wanted;
+    }
     *v9x_hsw_scanout_reg(offset_register) = plane_offset;
     *v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPASURF) = surf;
     (void)*v9x_hsw_scanout_reg(V9X_INTEL_HSW_DSPASURF);
     v9x_hsw_scanout_surf = surf;
     v9x_hsw_scanout_pending = 1;
     return 1;
+}
+
+/* Synced: the plane leaves the copy target, if it was on it, and the
+ * target goes back to the heap. */
+int v9x_hsw_set_display_start(DWORD byte_offset)
+{
+    int written = v9x_hsw_write_base(byte_offset, 0);
+
+    v9x_hsw_copy_release();
+    return written;
+}
+
+/*
+ * Unsynced. The flipped-to frame is copied by the blitter into the copy
+ * target, and the plane scans that: the copy passes the beam once, so the
+ * frame tears once, as a native driver's tearing looks. An async flip of
+ * the linear plane itself tore with an ~11-line strip of a third frame at
+ * every tear (docs\decisions\2026-11-19-haswell-vsync-off-async-flips.md).
+ * The first such flip takes the target from the flipping object's heap and
+ * moves the plane onto it with an ordinary latched write, tracked as any
+ * flip; after that nothing is pending, since the plane does not move. The
+ * next Flip waits for the blitter before it copies again, so copies never
+ * overlap.
+ *
+ * No room in the heap, or a copy the blitter refuses, falls back to the
+ * base written with the async-flip bit set.
+ */
+int v9x_hsw_set_display_start_now(DWORD byte_offset)
+{
+    DWORD rows = v9x_hal->fb.height;
+    DWORD row_bytes = v9x_hal->fb.pitch;
+
+    if (!v9x_hsw_scanout_live()) {
+        return 0;
+    }
+    if (v9x_hsw_copy_block == 0ul && v9x_hsw_note_dd != 0ul &&
+        v9x_d3d_place_raw(v9x_hsw_note_dd, row_bytes, rows,
+                          V9X_HSW_COPY_ALIGN, &v9x_hsw_copy_block,
+                          &v9x_hsw_copy_offset)) {
+        v9x_hsw_copy_dd = v9x_hsw_note_dd;
+    }
+    if (v9x_hsw_copy_block != 0ul &&
+        v9x_hsw_present_copy(byte_offset, v9x_hsw_copy_offset)) {
+        if (v9x_hsw_copy_scanning) {
+            v9x_hsw_scanout_pending = 0;
+            return 1;
+        }
+        if (!v9x_hsw_write_base(v9x_hsw_copy_offset, 0)) {
+            return 0;
+        }
+        v9x_hsw_copy_scanning = 1;
+        return 1;
+    }
+    return v9x_hsw_write_base(byte_offset, 1);
 }
 
 /* Pending until the live base is the one written. A plane that stopped
@@ -152,4 +255,10 @@ void v9x_hsw_scanout_reset(void)
 {
     v9x_hsw_scanout_surf = 0ul;
     v9x_hsw_scanout_pending = 0;
+    v9x_hsw_copy_scanning = 0;
+    /* DirectDraw rebuilds its heap for a new mode: the block is not there
+     * to free. */
+    v9x_hsw_copy_dd = 0ul;
+    v9x_hsw_copy_block = 0ul;
+    v9x_hsw_copy_offset = 0ul;
 }

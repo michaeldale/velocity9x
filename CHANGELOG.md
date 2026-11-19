@@ -6,6 +6,20 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.57.0 - not yet released
 
+- **Vsync off ("Always off") no longer shows half-drawn frames.** An
+  unsynced flip on Haswell, Ivy Bridge, Rage 128, Evergreen, RS690 and
+  RV280 was called done before the screen took it, so the game drew into
+  the frame on screen. It is now held until the chip reports it taken, as
+  on Gen3 since 0.40.0. Measured on the HD 4600 only.
+- **`intel-gma` package, HD 4600 and HD 4000: vsync off runs above the
+  refresh rate with ordinary tearing.** The plane scans a copy target, and
+  each flipped frame is copied into it by the blitter, so a frame tears
+  once. The target is a screen-sized block of video memory taken only while
+  a game flips unsynced. On the HD 4600 3DMark 2001 SE ran at 33-156 fps
+  with vsync off; Car Chase, short of texture memory on this machine with
+  vsync on too, dips further. Not run on the HD 4000
+  ([record](docs/decisions/2026-11-19-haswell-vsync-off-async-flips.md)).
+
 ## 0.56.2 - 2026-11-19
 
 - **`intel-gma` package: Ironlake mobile HD Graphics (`8086:0046`)

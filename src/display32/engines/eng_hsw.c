@@ -371,6 +371,44 @@ static int v9x_hsw_copy(V9X_DDHAL_BLTDATA *data, DWORD source_offset,
     return V9X_BLT_DONE;
 }
 
+/*
+ * The vsync-off copy-present (hsw_scanout.c): the whole visible frame at
+ * source_offset copied to destination_offset at the display's pitch, on the
+ * blitter. It writes rows top to bottom far faster than the plane scans
+ * them, so the frame on the panel tears once, where the copy passes the
+ * beam. 1 when the blitter took it. EXTERNAL for the scanout module, as the
+ * Gen3 ring submit is for i9xx_scanout.c.
+ */
+int v9x_hsw_present_copy(DWORD source_offset, DWORD destination_offset)
+{
+    v9x_u32 dw[V9X_HSW_SUBMIT_MAX];
+    struct v9x_hsw_batch batch;
+    DWORD bytes_per_pixel = v9x_hal->fb.bits_per_pixel / 8ul;
+
+    if (!v9x_hsw_validate() || !v9x_hsw_depth_ok(bytes_per_pixel) ||
+        v9x_hal->fb.pitch == 0ul || v9x_hal->fb.pitch > V9X_HSW_PITCH_MAX ||
+        v9x_hal->fb.width == 0ul || v9x_hal->fb.width > V9X_HSW_COORD_MAX ||
+        v9x_hal->fb.height == 0ul ||
+        v9x_hal->fb.height > V9X_HSW_COORD_MAX) {
+        return 0;
+    }
+    v9x_intel_hsw_batch_init(&batch, dw, V9X_HSW_SUBMIT_MAX -
+                             V9X_HSW_STORE_DWORDS);
+    if (v9x_intel_hsw_xy_src_copy_blt(&batch, (v9x_u8)bytes_per_pixel,
+            (v9x_u16)v9x_hal->fb.pitch, 0u, 0u,
+            (v9x_u16)v9x_hal->fb.width, (v9x_u16)v9x_hal->fb.height,
+            v9x_hsw_address(destination_offset),
+            (v9x_u16)v9x_hal->fb.pitch, 0u, 0u,
+            v9x_hsw_address(source_offset)) != V9X_STATUS_OK) {
+        return 0;
+    }
+    if (!v9x_hsw_wait_idle(1)) {
+        return 0;
+    }
+    v9x_hsw_submit(dw, batch.used);
+    return 1;
+}
+
 /* CANBLT is the non-blocking idle poll, as on the 3dfx and the SiS. */
 static int v9x_hsw_can_blt(void)
 {

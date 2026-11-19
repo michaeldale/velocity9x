@@ -1638,12 +1638,20 @@ int v9x_set_display_start(DWORD byte_offset)
 
 /* The Mach64 and VGA writes already go straight to the CRTC; the core's
  * blank wait is what times them, and an unsynced flip skips it. */
+void v9x_scanout_note_dd(DWORD lpDD)
+{
+    if (v9x_hsw_scanout_active()) {
+        v9x_hsw_scanout_note_dd(lpDD);
+    }
+}
+
 int v9x_set_display_start_now(DWORD byte_offset)
 {
-    /* Haswell's plane has one write, latched at the blank (/flip probe):
-     * an unsynced flip is the same write, and the core arms nothing. */
+    /* Haswell's plane write is latched at the blank (/flip probe) unless
+     * DSPACNTR's async-flip bit is set, which takes it at once
+     * (/flipasync): the unsynced flip sets it. */
     if (v9x_hsw_scanout_active()) {
-        return v9x_hsw_set_display_start(byte_offset);
+        return v9x_hsw_set_display_start_now(byte_offset);
     }
     if (v9x_i9xx_scanout_active()) {
         return v9x_i9xx_set_display_start(byte_offset, 0);
@@ -1838,8 +1846,18 @@ int v9x_scanout_unsynced_base_latches(void)
     /* A GCN flip queued behind its frame is pending until it is written,
      * unsynced or not (eg_scanout.c): holding it is what stops a second
      * Flip, or a draw into the buffer on the panel, overtaking the frame
-     * the GPU has yet to finish. Written, an unsynced one is done. */
-    return v9x_i9xx_scanout_active() || v9x_eg_flip_queues();
+     * the GPU has yet to finish. Written, an unsynced one is done.
+     *
+     * Every other hardware flip is held too, until its own readback says
+     * the scanout took it (v9x_scanout_hw_flip_pending). Haswell's
+     * DSPASURF is taken only at the next blank wherever it is written
+     * (hsw_scanout.c, Phase F3), so released at once the buffer it took
+     * off the screen went back to the game while still scanned: vsync off
+     * flickered there as it did on Gen3 before efd2fa90. A scanout that
+     * does apply the base at once reads "taken" at the first poll, so
+     * holding costs it nothing. */
+    return v9x_i9xx_scanout_active() || v9x_eg_flip_queues() ||
+           v9x_scanout_hw_flip();
 }
 
 int v9x_scanout_hw_flip(void)

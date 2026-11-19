@@ -40,6 +40,15 @@
 #define V9X_INTEL_HSW_PIPECONF_ENABLE ((v9x_u32)0x80000000ul)
 #define V9X_INTEL_HSW_PIPECONF_STATE  ((v9x_u32)0x40000000ul)
 #define V9X_INTEL_HSW_DSPCNTR_ENABLE  ((v9x_u32)0x80000000ul)
+/*
+ * DSPCNTR DISP_ASYNC_FLIP, bit 9 (i915_reg.h v6.6, "g4x+"): a DSPSURF
+ * write while it is set is taken at once instead of at the next blank.
+ * Linux uses it on X-tiled planes only before display 12; on the i5-4570's
+ * linear plane DSPSURFLIVE read the new base at the first poll after the
+ * write (V9XHSWMM /flipasync:2, docs\decisions\2026-11-19-haswell-vsync-
+ * off-async-flips.md).
+ */
+#define V9X_INTEL_HSW_DSPCNTR_ASYNC_FLIP ((v9x_u32)0x00000200ul)
 
 #define V9X_INTEL_HSW_DSL_LINE_MASK   ((v9x_u32)0x00001ffful)
 #define V9X_INTEL_HSW_TIMING_MASK     ((v9x_u32)0x00001ffful)

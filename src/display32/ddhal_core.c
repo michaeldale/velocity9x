@@ -1346,6 +1346,9 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
          * buffer's CPU writes out of the write-combining buffers first: a
          * plane-base flip is an MMIO write with no ring TAIL behind it. */
         v9x_wc_drain();
+        /* The DirectDraw object a scanout may take a block from for an
+         * unsynced flip (Haswell's copy target, hsw_scanout.c). */
+        v9x_scanout_note_dd(data->lpDD);
         if (!(novsync != V9X_FALSE ? v9x_set_display_start_now(offset)
                                    : v9x_set_display_start(offset))) {
             data->ddRVal = V9X_DD_OK;
