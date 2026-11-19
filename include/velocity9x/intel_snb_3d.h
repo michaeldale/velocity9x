@@ -216,4 +216,108 @@ void v9x_intel_snb_clip_viewport(v9x_u32 out[4], v9x_u32 x_min,
                                  v9x_u32 x_max, v9x_u32 y_min,
                                  v9x_u32 y_max);
 
+/*
+ * VERTEX_BUFFER_STATE in a one-buffer 3DSTATE_VERTEX_BUFFERS: DW0 index
+ * 31:26, pitch 11:0, and nothing at bit 14 (Gen7's Address Modify Enable;
+ * reserved here); Buffer Access Type 20 = 0, vertex data. DW1 start, DW2
+ * the inclusive end, DW3 step rate 0. Vertex elements and the index buffer
+ * are Gen7's encodings (gen6.xml), so v9x_intel_hsw_vertex_elements and
+ * v9x_intel_hsw_index_buffer serve both.
+ */
+v9x_status v9x_intel_snb_vertex_buffer(struct v9x_hsw_batch *batch,
+                                       v9x_u8 index, v9x_u16 pitch,
+                                       v9x_u32 start, v9x_u32 end);
+
+/*
+ * SAMPLER_STATE from the Gen7 description (struct v9x_hsw_sampler), so the
+ * HAL's texture mapping serves both:
+ *   DW0 filters at Gen7's bits (mip 21:20, mag 19:17, min 16:14), Min and
+ *       Mag State Not Equal 27 when they differ (crocus sets it on Gen6);
+ *   DW1 Min LOD 31:22 and Max LOD 21:12 in U4.6, the Gen7 U4.8 values
+ *       shifted down and the maximum clamped to 13 (crocus); the
+ *       address modes, which Gen7 keeps in DW3 8:0, at DW1 8:0;
+ *   DW2 the border colour pointer, a 12-dword SAMPLER_BORDER_COLOR_STATE
+ *       (gen5.xml) 32-byte aligned from the dynamic state base;
+ *   DW3 Gen7's DW3 less its address modes: the rounding enables 18:13 are
+ *       at the same bits.
+ */
+#define V9X_SNB_BORDER_COLOR_DWORDS 12u
+v9x_status v9x_intel_snb_sampler(v9x_u32 out[4],
+                                 const struct v9x_hsw_sampler *sampler);
+
+/*
+ * The initialising batch's state image (Phase C's role on Gen6): every
+ * pointer the batch sends points at valid state and nothing is drawn.
+ * Offsets from the state base, which is every base but the indirect one,
+ * each meeting its pointer's alignment. The Gen7 image's SF_CLIP_VIEWPORT
+ * slot holds Gen6's separate SF and CLIP viewports, and the NULL surface
+ * is 6 dwords; the rest are where Gen7's are, so draw state the HAL
+ * writes at Gen7's shaded offsets lands clear of them.
+ */
+#define V9X_SNB_INIT_CC_VIEWPORT   ((v9x_u32)0x000ul) /* 2 dwords */
+#define V9X_SNB_INIT_SF_VIEWPORT   ((v9x_u32)0x040ul) /* 8 */
+#define V9X_SNB_INIT_CLIP_VIEWPORT ((v9x_u32)0x060ul) /* 4 */
+#define V9X_SNB_INIT_SCISSOR       ((v9x_u32)0x080ul) /* 2 */
+#define V9X_SNB_INIT_BLEND         ((v9x_u32)0x0c0ul) /* 2 */
+#define V9X_SNB_INIT_DEPTH_STENCIL ((v9x_u32)0x100ul) /* 3 */
+#define V9X_SNB_INIT_CC            ((v9x_u32)0x140ul) /* 6 */
+#define V9X_SNB_INIT_SAMPLER       ((v9x_u32)0x180ul) /* 4 */
+#define V9X_SNB_INIT_BINDING_TABLE ((v9x_u32)0x1c0ul) /* 1 entry */
+#define V9X_SNB_INIT_NULL_SURFACE  ((v9x_u32)0x200ul) /* 6 */
+#define V9X_SNB_INIT_STATE_BYTES   ((v9x_u32)0x220ul)
+
+/* Writes the image: all zero but the CC viewport's maximum depth (1.0),
+ * the NULL surface and the binding table entry naming it, as Gen7's. The
+ * SF and CLIP viewports stay zero: these batches clip with ACCEPT_ALL and
+ * the viewport transform off, so neither is read. */
+v9x_status v9x_intel_snb_init_state(v9x_u32 *image, v9x_u32 dwords);
+
+/*
+ * The batches, in crocus's Gen6 order: the post-sync non-zero pair and a
+ * flush before PIPELINE_SELECT, STATE_BASE_ADDRESS and a cache invalidate,
+ * 3DSTATE_URB (256 VS entries of one 128-byte row: VS off, the VF writes
+ * the VUE), CONSTANT_VS, VS off and the post-VS flush, CONSTANT_GS and GS
+ * off, CLIP, SF, WM, CONSTANT_PS, the depth stall/flush/stall around the
+ * depth buffer, HiZ, stencil and clear parameters, sample mask, drawing
+ * rectangle, multisample, the viewport, scissor, CC, binding-table and
+ * sampler pointers; for a draw the vertices and 3DPRIMITIVE; then an RT
+ * flush, a scoreboard stall and the breadcrumb, MI_BATCH_BUFFER_END
+ * padded to a qword. Every RT flush and depth stall follows the post-sync
+ * non-zero pair, writing scratch_address (a qword in the GGTT nothing
+ * else uses).
+ *
+ * The init batch zeroes CLIP, SF and WM as the Gen7 one does. The draw
+ * batch takes the Gen7 path's struct v9x_hsw_draw, for Direct3D's TL
+ * vertices only (tl_vertices set, attributes V9X_HSW_SHADE_ATTRIBUTES):
+ * depth (with or without a clear primitive), cull, flat, scissor, a
+ * second texture coordinate and 16-bit indices as a list or strip.
+ * Anything else is INVALID_ARGUMENT.
+ */
+v9x_status v9x_intel_snb_init_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       v9x_u32 scratch_address,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value);
+v9x_status v9x_intel_snb_draw_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       const struct v9x_hsw_draw *draw,
+                                       v9x_u32 scratch_address,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value);
+
+/*
+ * Walks a finished batch and refuses what Gen6 would not take: a GFXPIPE
+ * command outside the Gen6 table or of another length (so Gen7's 7-dword
+ * 3DPRIMITIVE, 2-dword CC_STATE_POINTERS or 3DSTATE_SBE), an MI command
+ * other than MI_NOOP and MI_BATCH_BUFFER_END, a PIPE_CONTROL with an RT
+ * flush or depth stall not straight after the post-sync non-zero pair, a
+ * 3DPRIMITIVE before the pipeline, bases, URB, stages and pointers have
+ * all been sent, and a batch that does not end in MI_BATCH_BUFFER_END at
+ * a qword boundary. OK, or UNSUPPORTED with *bad_at the dword index.
+ */
+v9x_status v9x_intel_snb_3d_check(const v9x_u32 *dw, v9x_u32 count,
+                                  v9x_u32 *bad_at);
+
 #endif

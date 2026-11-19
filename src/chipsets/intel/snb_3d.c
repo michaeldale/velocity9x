@@ -536,3 +536,574 @@ void v9x_intel_snb_clip_viewport(v9x_u32 out[4], v9x_u32 x_min,
     out[2] = y_min;
     out[3] = y_max;
 }
+
+/* VERTEX_BUFFER_STATE (gen6.xml): index 31:26, pitch 11:0; bit 14 is
+ * reserved on Gen6, where Gen7 has Address Modify Enable. */
+#define V9X_SNB_VB_MAX ((v9x_u8)33u)
+
+v9x_status v9x_intel_snb_vertex_buffer(struct v9x_hsw_batch *batch,
+                                       v9x_u8 index, v9x_u16 pitch,
+                                       v9x_u32 start, v9x_u32 end)
+{
+    v9x_u32 header;
+    v9x_u32 *at;
+
+    if (batch == 0 || index >= V9X_SNB_VB_MAX || pitch > 0x7ffu ||
+        end < start) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (v9x_intel_snb_3d_header(V9X_SNB_CMD_VERTEX_BUFFERS, 5ul, 0ul,
+                                &header) != V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (batch->dw == 0 || batch->used > batch->capacity ||
+        5ul > batch->capacity - batch->used) {
+        batch->overflow = 1u;
+        return V9X_STATUS_INSUFFICIENT_MEMORY;
+    }
+    at = batch->dw + batch->used;
+    at[0] = header;
+    at[1] = ((v9x_u32)index << 26) | (v9x_u32)pitch;
+    at[2] = start;
+    at[3] = end;
+    at[4] = 0ul;
+    batch->used += 5ul;
+    return V9X_STATUS_OK;
+}
+
+/* SAMPLER_STATE (gen6.xml). Gen7's U4.8 LODs become U4.6 by dropping two
+ * fraction bits; 13.0 in U4.6 is crocus's Gen6 maximum. */
+#define V9X_SNB_SAMPLER_MIN_MAG_DIFFER ((v9x_u32)0x08000000ul)
+#define V9X_SNB_SAMPLER_LOD_MAX        ((v9x_u32)(13ul << 6))
+#define V9X_SNB_SAMPLER_ADDRESS_MODES  ((v9x_u32)0x000001fful)
+
+v9x_status v9x_intel_snb_sampler(v9x_u32 out[4],
+                                 const struct v9x_hsw_sampler *sampler)
+{
+    v9x_u32 min_lod;
+    v9x_u32 max_lod;
+
+    if (out == 0 || sampler == 0 || sampler->mip_filter > 3u ||
+        sampler->mag_filter > 7u || sampler->min_filter > 7u ||
+        sampler->min_lod > 0xfffu || sampler->max_lod > 0xfffu ||
+        (sampler->border_color_pointer & 0x1ful) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    min_lod = (v9x_u32)sampler->min_lod >> 2;
+    max_lod = (v9x_u32)sampler->max_lod >> 2;
+    if (min_lod > V9X_SNB_SAMPLER_LOD_MAX) {
+        min_lod = V9X_SNB_SAMPLER_LOD_MAX;
+    }
+    if (max_lod > V9X_SNB_SAMPLER_LOD_MAX) {
+        max_lod = V9X_SNB_SAMPLER_LOD_MAX;
+    }
+    out[0] = ((v9x_u32)sampler->mip_filter << 20) |
+             ((v9x_u32)sampler->mag_filter << 17) |
+             ((v9x_u32)sampler->min_filter << 14);
+    if (sampler->mag_filter != sampler->min_filter) {
+        out[0] |= V9X_SNB_SAMPLER_MIN_MAG_DIFFER;
+    }
+    out[1] = (min_lod << 22) | (max_lod << 12) |
+             (sampler->dw3 & V9X_SNB_SAMPLER_ADDRESS_MODES);
+    out[2] = sampler->border_color_pointer;
+    out[3] = sampler->dw3 & ~V9X_SNB_SAMPLER_ADDRESS_MODES;
+    return V9X_STATUS_OK;
+}
+
+#define V9X_SNB_FLOAT_ONE ((v9x_u32)0x3f800000ul)
+
+v9x_status v9x_intel_snb_init_state(v9x_u32 *image, v9x_u32 dwords)
+{
+    if (image == 0 || dwords < V9X_SNB_INIT_STATE_BYTES / 4ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    v9x_snb_zero(image, dwords);
+    /* CC_VIEWPORT: minimum depth 0.0, maximum 1.0. */
+    image[V9X_SNB_INIT_CC_VIEWPORT / 4ul + 1ul] = V9X_SNB_FLOAT_ONE;
+    /* A NULL RENDER_SURFACE_STATE in Mesa's null-surface format; the
+     * binding table entry is its offset from the surface state base,
+     * which is the state base. */
+    image[V9X_SNB_INIT_NULL_SURFACE / 4ul] =
+        ((v9x_u32)V9X_HSW_SURFTYPE_NULL << 29) |
+        ((v9x_u32)V9X_HSW_FMT_B8G8R8A8_UNORM << 18);
+    image[V9X_SNB_INIT_BINDING_TABLE / 4ul] = V9X_SNB_INIT_NULL_SURFACE;
+    return V9X_STATUS_OK;
+}
+
+/* One table command with an all-zero payload of its fixed length. */
+static v9x_status v9x_snb_emit_zero(struct v9x_hsw_batch *batch,
+                                    v9x_u16 command)
+{
+    static const v9x_u32 zero[19] = { 0ul };
+
+    return v9x_intel_snb_3d_emit(batch, command, 0ul, zero,
+                                 (v9x_u32)v9x_snb_commands[command].total -
+                                     1ul);
+}
+
+/* Every RT flush and depth stall behind the post-sync non-zero pair. */
+static void v9x_snb_flush(struct v9x_hsw_batch *batch, v9x_u32 flags,
+                          v9x_u32 scratch)
+{
+    if ((flags & (V9X_HSW_PC_RT_CACHE_FLUSH |
+                  V9X_HSW_PC_DEPTH_STALL)) != 0ul) {
+        v9x_intel_snb_post_sync_nonzero(batch, scratch);
+    }
+    v9x_intel_snb_pipe_control(batch, flags, 0ul, 0ul);
+}
+
+#define V9X_SNB_PAGE_MASK      ((v9x_u32)0x00000ffful)
+#define V9X_SNB_NO_BOUND       ((v9x_u32)0xfffff000ul)
+#define V9X_SNB_URB_ENTRIES    ((v9x_u16)256u)
+#define V9X_SNB_URB_ROWS       ((v9x_u8)1u)
+#define V9X_SNB_INIT_WIDTH     ((v9x_u16)640u)
+#define V9X_SNB_INIT_HEIGHT    ((v9x_u16)480u)
+/* The setup data's first GRF: r0, r1, then SIMD8 perspective-pixel
+ * barycentrics in r2-r3 (SNB PRM Vol 2 Part 1, 7.7.3.1). */
+#define V9X_SNB_SETUP_GRF      ((v9x_u8)4u)
+/* The TL vertex's VUE: header, position, diffuse, specular, two texture
+ * coordinates; the attributes are read from 256-bit unit 1, two per
+ * unit. */
+#define V9X_SNB_TL_ELEMENTS    6u
+#define V9X_SNB_TL_READ_OFFSET ((v9x_u8)1u)
+#define V9X_SNB_TL_READ_LENGTH ((v9x_u8)2u)
+/* Flat: diffuse and specular (attributes 0 and 1) constant. */
+#define V9X_SNB_TL_FLAT_MASK   ((v9x_u32)3ul)
+
+static void v9x_snb_tl_elements(struct v9x_hsw_vertex_element *elements,
+                                const struct v9x_hsw_draw *draw)
+{
+    v9x_u32 index;
+    v9x_u32 c;
+
+    for (index = 0ul; index < V9X_SNB_TL_ELEMENTS; ++index) {
+        elements[index].buffer = 0u;
+        elements[index].format = V9X_HSW_FMT_R32G32B32A32_FLOAT;
+        elements[index].offset = 0u;
+        for (c = 0ul; c < 4ul; ++c) {
+            elements[index].component[c] = V9X_HSW_VFCOMP_STORE_SRC;
+        }
+    }
+    /* The VUE header, all zero; sx sy sz rhw as the position, so w
+     * carries rhw; the colours as B8G8R8A8_UNORM, D3DCOLOR's byte order;
+     * tu tv twice, or tu1 tv1 at 32 for a second unit. */
+    for (c = 0ul; c < 4ul; ++c) {
+        elements[0].component[c] = V9X_HSW_VFCOMP_STORE_0;
+    }
+    elements[2].format = V9X_HSW_FMT_B8G8R8A8_UNORM;
+    elements[2].offset = 16u;
+    elements[3].format = V9X_HSW_FMT_B8G8R8A8_UNORM;
+    elements[3].offset = 20u;
+    for (index = 4ul; index < 6ul; ++index) {
+        elements[index].format = V9X_HSW_FMT_R32G32_FLOAT;
+        elements[index].offset = 24u;
+        elements[index].component[2] = V9X_HSW_VFCOMP_STORE_0;
+        elements[index].component[3] = V9X_HSW_VFCOMP_STORE_1_FP;
+    }
+    if (draw->tl_uv1) {
+        elements[5].offset = V9X_HSW_TL_VERTEX_BYTES;
+    }
+}
+
+static void v9x_snb_draw_vertices(struct v9x_hsw_batch *batch,
+                                  const struct v9x_hsw_draw *draw,
+                                  v9x_u32 blend, v9x_u32 cc)
+{
+    struct v9x_hsw_vertex_element elements[V9X_SNB_TL_ELEMENTS];
+    v9x_u32 vertices;
+    v9x_u16 stride;
+
+    v9x_snb_tl_elements(elements, draw);
+    stride = draw->tl_uv1 ? V9X_HSW_TL2_VERTEX_BYTES :
+                            V9X_HSW_TL_VERTEX_BYTES;
+    if (draw->depth_buffer != 0ul && draw->depth_clear != 0ul) {
+        /* The clear, then the scene under the depth test. */
+        v9x_intel_snb_vertex_buffer(
+            batch, 0u, stride, draw->vertices,
+            draw->vertices +
+                (V9X_HSW_DEPTH_CLEAR_VERTICES + V9X_HSW_DEPTH_SCENE_VERTICES) *
+                    stride - 1ul);
+        v9x_intel_hsw_vertex_elements(batch, elements,
+                                      (v9x_u8)V9X_SNB_TL_ELEMENTS);
+        v9x_intel_snb_3dprimitive(batch, V9X_HSW_PRIM_TRILIST,
+                                  V9X_HSW_DEPTH_CLEAR_VERTICES, 0ul, 0u);
+        v9x_intel_snb_cc_ptrs(batch, blend, draw->depth_test, cc);
+        v9x_intel_snb_3dprimitive(batch, V9X_HSW_PRIM_TRILIST,
+                                  V9X_HSW_DEPTH_SCENE_VERTICES,
+                                  V9X_HSW_DEPTH_CLEAR_VERTICES, 0u);
+        return;
+    }
+    vertices = draw->vertex_count != 0ul ? draw->vertex_count : 3ul;
+    v9x_intel_snb_vertex_buffer(batch, 0u, stride, draw->vertices,
+                                draw->vertices + vertices * stride - 1ul);
+    v9x_intel_hsw_vertex_elements(batch, elements,
+                                  (v9x_u8)V9X_SNB_TL_ELEMENTS);
+    if (draw->indices != 0ul) {
+        /* To the end of the cache line holding the last index, which the
+         * caller has zeroed: Haswell's rule, kept for one index layout. */
+        v9x_intel_hsw_index_buffer(
+            batch, draw->indices,
+            ((draw->indices + draw->index_count * 2ul + 0x3ful) &
+             ~(v9x_u32)0x3ful) - 1ul);
+        v9x_intel_snb_3dprimitive(batch,
+                                  draw->strip ? V9X_HSW_PRIM_TRISTRIP :
+                                                V9X_HSW_PRIM_TRILIST,
+                                  draw->index_count, 0ul, 1u);
+        return;
+    }
+    v9x_intel_snb_3dprimitive(batch, V9X_HSW_PRIM_TRILIST, vertices, 0ul,
+                              0u);
+}
+
+static v9x_status v9x_snb_workload(struct v9x_hsw_batch *batch,
+                                   v9x_u32 state_base, v9x_u32 state_bytes,
+                                   const struct v9x_hsw_draw *draw,
+                                   v9x_u32 scratch, v9x_u32 done_address,
+                                   v9x_u32 done_value)
+{
+    v9x_u32 bound;
+    v9x_u32 blend;
+    v9x_u32 cc;
+    v9x_u32 sampler;
+    v9x_u32 depth_stencil;
+    v9x_u32 mask;
+    v9x_u8 depth_format;
+
+    if (batch == 0 || (state_base & V9X_SNB_PAGE_MASK) != 0ul ||
+        (state_bytes & V9X_SNB_PAGE_MASK) != 0ul ||
+        state_bytes < V9X_SNB_INIT_STATE_BYTES ||
+        (scratch & 7ul) != 0ul || (done_address & 7ul) != 0ul) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    bound = state_base + state_bytes;
+    blend = draw != 0 && draw->depth_only ? V9X_HSW_SHADE_BLEND_NO_COLOUR :
+            draw != 0 && draw->blend != 0ul ? draw->blend :
+                                              V9X_SNB_INIT_BLEND;
+    cc = draw != 0 && draw->cc != 0ul ? draw->cc : V9X_SNB_INIT_CC;
+    sampler = draw != 0 && draw->sampler != 0ul ? draw->sampler :
+                                                  V9X_SNB_INIT_SAMPLER;
+    depth_stencil = draw != 0 && draw->depth_buffer != 0ul ?
+                        (draw->depth_clear != 0ul ? draw->depth_clear :
+                                                    draw->depth_test) :
+                        V9X_SNB_INIT_DEPTH_STENCIL;
+    depth_format = draw != 0 && draw->depth_format != 0u ?
+                       draw->depth_format : V9X_HSW_DEPTH_D32_FLOAT;
+
+    /* Before PIPELINE_SELECT, crocus flushes the render and depth caches
+     * with a CS stall and then invalidates the read-only ones. */
+    v9x_snb_flush(batch, V9X_HSW_PC_RT_CACHE_FLUSH |
+                  V9X_HSW_PC_DEPTH_CACHE_FLUSH | V9X_HSW_PC_CS_STALL,
+                  scratch);
+    v9x_intel_snb_3d_emit(batch, V9X_SNB_CMD_PIPELINE_SELECT, 0ul, 0, 0ul);
+    v9x_intel_hsw_state_base_address(batch, state_base, state_base,
+                                     state_base, 0ul, state_base,
+                                     V9X_SNB_NO_BOUND, bound,
+                                     V9X_SNB_NO_BOUND, bound);
+    /* The VF cache too: the 4570 fetched the previous run's vertices from
+     * the same address without it (Haswell Phase F1a). */
+    v9x_snb_flush(batch, V9X_HSW_PC_CS_STALL | V9X_HSW_PC_STALL_AT_SCOREBOARD |
+                  V9X_HSW_PC_STATE_CACHE_INVALIDATE |
+                  V9X_HSW_PC_CONST_CACHE_INVALIDATE |
+                  V9X_HSW_PC_VF_CACHE_INVALIDATE |
+                  V9X_HSW_PC_TEXTURE_CACHE_INVALIDATE |
+                  V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE, scratch);
+
+    v9x_intel_snb_urb(batch, V9X_SNB_URB_ENTRIES, V9X_SNB_URB_ROWS);
+    v9x_snb_emit_zero(batch, V9X_SNB_CMD_CONSTANT_VS);
+    v9x_intel_snb_vs_disabled(batch);
+    /* crocus's "post VS const" flush after 3DSTATE_VS. */
+    v9x_snb_flush(batch, V9X_HSW_PC_DEPTH_STALL |
+                  V9X_HSW_PC_INSTRUCTION_CACHE_INVALIDATE |
+                  V9X_HSW_PC_STATE_CACHE_INVALIDATE, scratch);
+    v9x_snb_emit_zero(batch, V9X_SNB_CMD_CONSTANT_GS);
+    v9x_intel_snb_gs_disabled(batch);
+
+    if (draw == 0) {
+        v9x_snb_emit_zero(batch, V9X_SNB_CMD_CLIP);
+        v9x_snb_emit_zero(batch, V9X_SNB_CMD_SF);
+        v9x_snb_emit_zero(batch, V9X_SNB_CMD_WM);
+    } else {
+        v9x_intel_snb_clip_screen(batch);
+        v9x_intel_snb_sf(batch, V9X_HSW_SHADE_ATTRIBUTES,
+                         V9X_SNB_TL_READ_OFFSET, V9X_SNB_TL_READ_LENGTH,
+                         draw->cull, draw->flat ? V9X_SNB_TL_FLAT_MASK : 0ul);
+        /* The sampler count field is in groups of four. A depth-only draw
+         * still dispatches; its colour writes are masked by the blend. */
+        v9x_intel_snb_wm(batch, draw->kernel, V9X_HSW_SHADE_BINDING_ENTRIES,
+                         1u, V9X_HSW_SHADE_ATTRIBUTES, V9X_SNB_SETUP_GRF,
+                         V9X_HSW_BARY_PERSPECTIVE_PIXEL, 0u);
+    }
+    v9x_intel_snb_constant_ps(batch, 0ul, 0u);
+
+    /* Before depth buffer state, a depth stall, a depth cache flush and a
+     * depth stall (crocus_emit_depth_stall_flushes); always, since the
+     * NULL buffer is a change too. */
+    v9x_snb_flush(batch, V9X_HSW_PC_DEPTH_STALL, scratch);
+    v9x_snb_flush(batch, V9X_HSW_PC_DEPTH_CACHE_FLUSH, scratch);
+    v9x_snb_flush(batch, V9X_HSW_PC_DEPTH_STALL, scratch);
+    if (draw != 0 && draw->depth_buffer != 0ul) {
+        v9x_intel_snb_depth_buffer(batch, depth_format, draw->depth_buffer,
+                                   draw->depth_pitch != 0ul ?
+                                       draw->depth_pitch :
+                                       (v9x_u32)draw->width * 4ul,
+                                   draw->width, draw->height);
+    } else {
+        v9x_intel_snb_depth_buffer(batch, 0u, 0ul, 0ul, 0u, 0u);
+    }
+    v9x_snb_emit_zero(batch, V9X_SNB_CMD_HIER_DEPTH_BUFFER);
+    v9x_snb_emit_zero(batch, V9X_SNB_CMD_STENCIL_BUFFER);
+    v9x_intel_snb_clear_params(batch);
+
+    mask = 1ul;
+    v9x_intel_snb_3d_emit(batch, V9X_SNB_CMD_SAMPLE_MASK, 0ul, &mask, 1ul);
+    if (draw == 0) {
+        v9x_intel_hsw_drawing_rectangle(batch, 0u, 0u,
+                                        (v9x_u16)(V9X_SNB_INIT_WIDTH - 1u),
+                                        (v9x_u16)(V9X_SNB_INIT_HEIGHT - 1u));
+    } else if (draw->scissor) {
+        v9x_intel_hsw_drawing_rectangle(batch, draw->scissor_x0,
+                                        draw->scissor_y0, draw->scissor_x1,
+                                        draw->scissor_y1);
+    } else {
+        v9x_intel_hsw_drawing_rectangle(batch, 0u, 0u,
+                                        (v9x_u16)(draw->width - 1u),
+                                        (v9x_u16)(draw->height - 1u));
+    }
+    v9x_intel_snb_multisample(batch);
+
+    v9x_intel_snb_viewport_ptrs(batch, V9X_SNB_INIT_CLIP_VIEWPORT,
+                                V9X_SNB_INIT_SF_VIEWPORT,
+                                V9X_SNB_INIT_CC_VIEWPORT);
+    v9x_intel_hsw_state_pointer(batch, V9X_HSW_CMD_SCISSOR_PTRS,
+                                V9X_SNB_INIT_SCISSOR);
+    v9x_intel_snb_cc_ptrs(batch, blend, depth_stencil, cc);
+    v9x_intel_snb_binding_table_ptrs_ps(batch,
+                                        draw == 0 ?
+                                            V9X_SNB_INIT_BINDING_TABLE :
+                                            draw->binding_table);
+    v9x_intel_snb_sampler_ptrs_ps(batch, sampler);
+    if (draw != 0) {
+        v9x_snb_draw_vertices(batch, draw, blend, cc);
+    }
+
+    v9x_snb_flush(batch, V9X_HSW_PC_RT_CACHE_FLUSH | V9X_HSW_PC_CS_STALL,
+                  scratch);
+    v9x_snb_flush(batch, V9X_HSW_PC_CS_STALL | V9X_HSW_PC_STALL_AT_SCOREBOARD,
+                  scratch);
+    v9x_intel_snb_pipe_control(batch, V9X_HSW_PC_CS_STALL |
+                               V9X_HSW_PC_WRITE_IMMEDIATE | V9X_HSW_PC_GGTT,
+                               done_address, done_value);
+    v9x_intel_hsw_mi_batch_buffer_end(batch);
+    if ((batch->used & 1ul) != 0ul) {
+        v9x_intel_hsw_mi_noop(batch);
+    }
+
+    /* Each builder above refuses only on overflow with these arguments,
+     * and overflow is sticky, so one test covers them all. */
+    return batch->overflow != 0u ? V9X_STATUS_INSUFFICIENT_MEMORY :
+                                   V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_snb_init_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       v9x_u32 scratch_address,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value)
+{
+    return v9x_snb_workload(batch, state_base, state_bytes, 0,
+                            scratch_address, done_address, done_value);
+}
+
+v9x_status v9x_intel_snb_draw_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       const struct v9x_hsw_draw *draw,
+                                       v9x_u32 scratch_address,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value)
+{
+    v9x_u8 depth_format;
+
+    if (draw == 0 || !draw->tl_vertices ||
+        draw->attributes != V9X_HSW_SHADE_ATTRIBUTES ||
+        (draw->kernel & 0x3ful) != 0ul ||
+        (draw->binding_table & 0x1ful) != 0ul ||
+        (draw->sampler & 0x1ful) != 0ul ||
+        ((draw->blend | draw->cc | draw->depth_clear | draw->depth_test) &
+         0x3ful) != 0ul ||
+        draw->width == 0u || draw->height == 0u ||
+        (draw->vertices & 3ul) != 0ul ||
+        state_bytes < V9X_HSW_SHADE_STATE_BYTES ||
+        (draw->indices == 0ul && draw->vertex_count % 3ul != 0ul) ||
+        (draw->indices != 0ul &&
+         ((draw->indices & 1ul) != 0ul || draw->index_count == 0ul)) ||
+        draw->cull > V9X_HSW_DRAW_CULL_CCW ||
+        (draw->scissor &&
+         (draw->scissor_x1 < draw->scissor_x0 ||
+          draw->scissor_y1 < draw->scissor_y0))) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (draw->depth_buffer != 0ul) {
+        depth_format = draw->depth_format != 0u ? draw->depth_format :
+                                                  V9X_HSW_DEPTH_D32_FLOAT;
+        if ((draw->depth_buffer & V9X_SNB_PAGE_MASK) != 0ul ||
+            draw->depth_test == 0ul ||
+            (depth_format != V9X_HSW_DEPTH_D32_FLOAT &&
+             depth_format != V9X_HSW_DEPTH_D24_UNORM_X8 &&
+             depth_format != V9X_HSW_DEPTH_D16_UNORM) ||
+            (draw->depth_clear != 0ul && draw->indices != 0ul)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    return v9x_snb_workload(batch, state_base, state_bytes, draw,
+                            scratch_address, done_address, done_value);
+}
+
+/*
+ * The checker. MI commands are type 0 at 31:29; GFXPIPE type 3, matched
+ * to the table by subtype, opcode and sub-opcode. A command counts as
+ * sent once it has been seen; 3DPRIMITIVE needs all of V9X_SNB_NEEDED.
+ */
+#define V9X_SNB_MI_NOOP              ((v9x_u32)0x00000000ul)
+#define V9X_SNB_MI_BATCH_BUFFER_END  ((v9x_u32)0x05000000ul)
+#define V9X_SNB_PC_POST_SYNC_ONLY    V9X_HSW_PC_WRITE_IMMEDIATE
+
+static const v9x_u16 v9x_snb_needed[] = {
+    V9X_SNB_CMD_PIPELINE_SELECT, V9X_SNB_CMD_STATE_BASE_ADDRESS,
+    V9X_SNB_CMD_URB, V9X_SNB_CMD_VS, V9X_SNB_CMD_GS, V9X_SNB_CMD_CLIP,
+    V9X_SNB_CMD_SF, V9X_SNB_CMD_WM, V9X_SNB_CMD_DEPTH_BUFFER,
+    V9X_SNB_CMD_VIEWPORT_PTRS, V9X_SNB_CMD_CC_PTRS,
+    V9X_SNB_CMD_BINDING_TABLE_PTRS, V9X_SNB_CMD_SAMPLER_PTRS,
+    V9X_SNB_CMD_VERTEX_BUFFERS, V9X_SNB_CMD_VERTEX_ELEMENTS
+};
+
+static v9x_u16 v9x_snb_lookup(v9x_u32 header)
+{
+    v9x_u16 command;
+    const struct v9x_snb_command *cmd;
+
+    for (command = 0u; command < V9X_SNB_CMD_COUNT; ++command) {
+        cmd = &v9x_snb_commands[command];
+        if (((header >> 27) & 3ul) == cmd->subtype &&
+            ((header >> 24) & 7ul) == cmd->opcode &&
+            ((header >> 16) & 0xfful) == cmd->subop) {
+            return command;
+        }
+    }
+    /* 3DSTATE_INDEX_BUFFER is Gen7's builder's (780Ah, 3 dwords). */
+    return V9X_SNB_CMD_COUNT;
+}
+
+#define V9X_SNB_INDEX_BUFFER_OP ((v9x_u32)0x780a0000ul)
+
+v9x_status v9x_intel_snb_3d_check(const v9x_u32 *dw, v9x_u32 count,
+                                  v9x_u32 *bad_at)
+{
+    v9x_u8 seen[V9X_SNB_CMD_COUNT];
+    v9x_u32 at;
+    v9x_u32 length;
+    v9x_u32 index;
+    v9x_u32 header;
+    v9x_u32 flags;
+    v9x_u16 command;
+    v9x_u8 previous_pc;   /* 0 none, 1 CS+scoreboard, 2 the pair */
+    v9x_u8 ended;
+
+    if (dw == 0 || bad_at == 0) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    for (index = 0ul; index < V9X_SNB_CMD_COUNT; ++index) {
+        seen[index] = 0u;
+    }
+    previous_pc = 0u;
+    ended = 0u;
+    at = 0ul;
+    while (at < count) {
+        *bad_at = at;
+        header = dw[at];
+        if (ended) {
+            /* Only the qword pad may follow the end. */
+            if (header != V9X_SNB_MI_NOOP || at + 1ul != count) {
+                return V9X_STATUS_UNSUPPORTED;
+            }
+            ++at;
+            continue;
+        }
+        if ((header >> 29) == 0ul) {
+            if (header == V9X_SNB_MI_BATCH_BUFFER_END) {
+                ended = 1u;
+            } else if (header != V9X_SNB_MI_NOOP) {
+                return V9X_STATUS_UNSUPPORTED;
+            }
+            previous_pc = 0u;
+            ++at;
+            continue;
+        }
+        if ((header >> 29) != 3ul) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        if ((header & 0xffff0000ul) == V9X_SNB_INDEX_BUFFER_OP) {
+            if ((header & 0xfful) != 1ul || at + 3ul > count) {
+                return V9X_STATUS_UNSUPPORTED;
+            }
+            previous_pc = 0u;
+            at += 3ul;
+            continue;
+        }
+        command = v9x_snb_lookup(header);
+        if (command == V9X_SNB_CMD_COUNT) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        length = command == V9X_SNB_CMD_PIPELINE_SELECT ?
+                     1ul : (header & 0xfful) + 2ul;
+        if (v9x_snb_commands[command].total == V9X_SNB_VARIABLE) {
+            if ((command == V9X_SNB_CMD_VERTEX_BUFFERS &&
+                 (length - 1ul) % 4ul != 0ul) ||
+                (command == V9X_SNB_CMD_VERTEX_ELEMENTS &&
+                 (length - 1ul) % 2ul != 0ul)) {
+                return V9X_STATUS_UNSUPPORTED;
+            }
+        } else if (length != v9x_snb_commands[command].total) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        if (at + length > count) {
+            return V9X_STATUS_UNSUPPORTED;
+        }
+        if (command == V9X_SNB_CMD_PIPE_CONTROL) {
+            flags = dw[at + 1ul];
+            if ((flags & (V9X_HSW_PC_RT_CACHE_FLUSH |
+                          V9X_HSW_PC_DEPTH_STALL)) != 0ul &&
+                previous_pc != 2u) {
+                return V9X_STATUS_UNSUPPORTED;
+            }
+            if (flags == (V9X_HSW_PC_CS_STALL |
+                          V9X_HSW_PC_STALL_AT_SCOREBOARD)) {
+                previous_pc = 1u;
+            } else if (flags == V9X_SNB_PC_POST_SYNC_ONLY &&
+                       previous_pc == 1u) {
+                previous_pc = 2u;
+            } else {
+                previous_pc = 0u;
+            }
+        } else {
+            previous_pc = 0u;
+        }
+        if (command == V9X_SNB_CMD_3DPRIMITIVE) {
+            for (index = 0ul;
+                 index < sizeof(v9x_snb_needed) / sizeof(v9x_snb_needed[0]);
+                 ++index) {
+                if (!seen[v9x_snb_needed[index]]) {
+                    return V9X_STATUS_UNSUPPORTED;
+                }
+            }
+        }
+        seen[command] = 1u;
+        at += length;
+    }
+    *bad_at = count;
+    if (!ended || (count & 1ul) != 0ul) {
+        return V9X_STATUS_UNSUPPORTED;
+    }
+    return V9X_STATUS_OK;
+}

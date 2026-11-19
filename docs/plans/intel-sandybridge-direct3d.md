@@ -170,9 +170,15 @@ Answered from it:
    four combined pointer commands, DEPTH_BUFFER, CLEAR_PARAMS,
    MULTISAMPLE, 3DPRIMITIVE, a 6-dword SURFACE_STATE and the SF and CLIP
    viewports. Every expected word worked by hand from the field
-   positions. *Still to do:* SAMPLER_STATE and its 12-dword border
-   colour, vertex buffers without Gen7's address-modify bit, the Gen6
-   workload (init and TL draw) in crocus's order, and the batch checker.
+   positions. *Rest done 2026-11-20:* SAMPLER_STATE from the Gen7
+   description (LODs to U4.6, clamped to 13; address modes from DW3 to
+   DW1), vertex buffers without bit 14, the init state image, the init
+   and TL draw workloads (depth with or without a clear, cull, flat,
+   scissor, second UV, indexed list or strip) in crocus's Gen6 order, and
+   the checker, which refuses Gen7's lengths, 3DSTATE_SBE, an RT flush or
+   depth stall without the post-sync pair, and a primitive before the
+   state. Every workload test batch passes it. Border colours are left
+   zero (12 dwords at Gen7's 0x360 slot fit before 0x400).
 3. **Gen6 sends and MRFs in the encoder**, host-tested; the
    fixed-function PS and position VS built for Gen6 and run in the EU
    simulator where it can model Gen6 (else word-for-word tests).

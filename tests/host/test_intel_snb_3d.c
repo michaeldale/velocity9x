@@ -364,6 +364,369 @@ static void test_indirect_state(void)
           clip[3] == 12ul);
 }
 
+static void test_vertex_buffer_and_sampler(void)
+{
+    struct v9x_hsw_sampler sampler;
+    v9x_u32 out[4];
+
+    snb_reset();
+    CHECK(v9x_intel_snb_vertex_buffer(&snb_batch, 0u, 32u, 0x12000ul,
+                                      0x1205ful) == V9X_STATUS_OK);
+    CHECK(snb_batch.used == 5ul && snb_store[0] == 0x78080003ul);
+    CHECK(snb_store[1] == 0x00000020ul);   /* index 0, pitch 32, no bit 14 */
+    CHECK(snb_store[2] == 0x12000ul && snb_store[3] == 0x1205ful &&
+          snb_store[4] == 0ul);
+    CHECK(v9x_intel_snb_vertex_buffer(&snb_batch, 1u, 40u, 0x100ul,
+                                      0x0fful) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Bilinear, no mips, the Gen7 path's CLAMP in its DW3 (TCX 8:6, TCY
+     * 5:3, TCZ 2:0 = 2) plus a rounding enable at 13. */
+    sampler.mip_filter = 0u;
+    sampler.mag_filter = 1u;
+    sampler.min_filter = 1u;
+    sampler.min_lod = 0u;
+    sampler.max_lod = 0x0e00u;           /* 14.0 in U4.8 */
+    sampler.border_color_pointer = 0x360ul;
+    sampler.dw3 = 0x00002092ul;
+    CHECK(v9x_intel_snb_sampler(out, &sampler) == V9X_STATUS_OK);
+    CHECK(out[0] == 0x00024000ul);      /* mag 1 at 19:17, min 1 at 16:14 */
+    /* Max LOD clamped to 13.0 U4.6 (340h) at 21:12, the modes at 8:0. */
+    CHECK(out[1] == 0x00340092ul);
+    CHECK(out[2] == 0x360ul);
+    CHECK(out[3] == 0x00002000ul);      /* the rounding enable stays */
+
+    sampler.mag_filter = 1u;
+    sampler.min_filter = 0u;
+    sampler.min_lod = 0x0100u;          /* 1.0 */
+    sampler.max_lod = 0x0300u;          /* 3.0 */
+    CHECK(v9x_intel_snb_sampler(out, &sampler) == V9X_STATUS_OK);
+    CHECK(out[0] == 0x08020000ul);      /* min/mag differ, bit 27 */
+    CHECK(out[1] == 0x100c0092ul);      /* 1.0 = 40h at 31:22, 3.0 = C0h */
+
+    sampler.border_color_pointer = 0x370ul;
+    CHECK(v9x_intel_snb_sampler(out, &sampler) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_init_state(void)
+{
+    v9x_u32 image[V9X_SNB_INIT_STATE_BYTES / 4ul];
+
+    CHECK(v9x_intel_snb_init_state(image, V9X_SNB_INIT_STATE_BYTES / 4ul) ==
+          V9X_STATUS_OK);
+    CHECK(image[0] == 0ul && image[1] == 0x3f800000ul);
+    CHECK(image[V9X_SNB_INIT_NULL_SURFACE / 4ul] == 0xe3000000ul);
+    CHECK(image[V9X_SNB_INIT_BINDING_TABLE / 4ul] == 0x200ul);
+    CHECK(image[V9X_SNB_INIT_SF_VIEWPORT / 4ul] == 0ul);
+    CHECK(v9x_intel_snb_init_state(image, 8ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+#define SNB_WORKLOAD_DWORDS 512u
+
+static v9x_u32 snb_work[SNB_WORKLOAD_DWORDS];
+static struct v9x_hsw_batch snb_work_batch;
+
+static void snb_work_reset(void)
+{
+    v9x_u32 index;
+
+    for (index = 0ul; index < SNB_WORKLOAD_DWORDS; ++index) {
+        snb_work[index] = 0xdeadbeeful;
+    }
+    snb_work_batch.dw = snb_work;
+    snb_work_batch.capacity = SNB_WORKLOAD_DWORDS;
+    snb_work_batch.used = 0ul;
+    snb_work_batch.overflow = 0u;
+    snb_work_batch.pc_since_cs_stall = 0u;
+}
+
+/* The index of the first dword equal to value, or count. */
+static v9x_u32 snb_find(v9x_u32 value)
+{
+    v9x_u32 index;
+
+    for (index = 0ul; index < snb_work_batch.used; ++index) {
+        if (snb_work[index] == value) {
+            return index;
+        }
+    }
+    return snb_work_batch.used;
+}
+
+static void snb_tl_draw(struct v9x_hsw_draw *draw)
+{
+    v9x_u8 *bytes = (v9x_u8 *)draw;
+    v9x_u32 index;
+
+    for (index = 0ul; index < sizeof(*draw); ++index) {
+        bytes[index] = 0u;
+    }
+    draw->binding_table = V9X_HSW_SHADE_BINDING_TABLE(0);
+    draw->kernel = V9X_HSW_SHADE_KERNEL(0);
+    draw->vertices = 0x00412000ul;
+    draw->width = 640u;
+    draw->height = 480u;
+    draw->attributes = V9X_HSW_SHADE_ATTRIBUTES;
+    draw->sampler = V9X_HSW_SHADE_SAMPLER;
+    draw->tl_vertices = 1u;
+    draw->vertex_count = 6ul;
+}
+
+#define SNB_STATE_BASE  ((v9x_u32)0x00404000ul)
+#define SNB_STATE_BYTES ((v9x_u32)0x00004000ul)
+#define SNB_SCRATCH     ((v9x_u32)0x00401040ul)
+#define SNB_DONE        ((v9x_u32)0x00401008ul)
+
+static void test_init_workload(void)
+{
+    v9x_u32 bad;
+    v9x_u32 at;
+
+    snb_work_reset();
+    CHECK(v9x_intel_snb_init_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, SNB_SCRATCH, SNB_DONE,
+                                      0x1234ul) == V9X_STATUS_OK);
+    CHECK((snb_work_batch.used & 1ul) == 0ul);
+    CHECK(v9x_intel_snb_3d_check(snb_work, snb_work_batch.used, &bad) ==
+          V9X_STATUS_OK);
+
+    /* It opens with the post-sync non-zero pair and the flush, then
+     * PIPELINE_SELECT. */
+    CHECK(snb_work[0] == 0x7a000003ul &&
+          snb_work[1] == (V9X_HSW_PC_CS_STALL |
+                          V9X_HSW_PC_STALL_AT_SCOREBOARD));
+    CHECK(snb_work[5] == 0x7a000003ul &&
+          snb_work[6] == V9X_HSW_PC_WRITE_IMMEDIATE &&
+          snb_work[7] == (SNB_SCRATCH | V9X_SNB_PC_GGTT_DW2));
+    CHECK(snb_work[11] == (V9X_HSW_PC_RT_CACHE_FLUSH |
+                           V9X_HSW_PC_DEPTH_CACHE_FLUSH |
+                           V9X_HSW_PC_CS_STALL));
+    CHECK(snb_work[15] == 0x69040000ul);
+    CHECK(snb_work[16] == 0x61010008ul);
+
+    /* 256 one-row VS entries, and no Gen7 URB or push-constant commands
+     * (which would also fail the checker). */
+    at = snb_find(0x78050001ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0x100ul);
+    CHECK(snb_find(0x78300000ul) == snb_work_batch.used);  /* URB_VS */
+    CHECK(snb_find(0x79120000ul) == snb_work_batch.used);  /* PUSH_..VS */
+
+    /* A NULL depth buffer, and nothing drawn. */
+    at = snb_find(0x79050005ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0xe0040000ul);
+    CHECK(snb_find(0x7b000004ul) == snb_work_batch.used);
+
+    /* The breadcrumb, then the end. */
+    at = snb_find(0x00104000ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 1ul] == (SNB_DONE | V9X_SNB_PC_GGTT_DW2) &&
+          snb_work[at + 2ul] == 0x1234ul);
+    CHECK(snb_find(0x05000000ul) < snb_work_batch.used);
+
+    snb_work_reset();
+    CHECK(v9x_intel_snb_init_workload(&snb_work_batch, SNB_STATE_BASE + 8ul,
+                                      SNB_STATE_BYTES, SNB_SCRATCH, SNB_DONE,
+                                      0ul) == V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_snb_init_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, SNB_SCRATCH + 4ul,
+                                      SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    snb_work_reset();
+    snb_work_batch.capacity = 64ul;
+    CHECK(v9x_intel_snb_init_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, SNB_SCRATCH, SNB_DONE,
+                                      0ul) == V9X_STATUS_INSUFFICIENT_MEMORY);
+}
+
+static void test_draw_workload(void)
+{
+    struct v9x_hsw_draw draw;
+    v9x_u32 bad;
+    v9x_u32 at;
+
+    snb_tl_draw(&draw);
+    snb_work_reset();
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 7ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_snb_3d_check(snb_work, snb_work_batch.used, &bad) ==
+          V9X_STATUS_OK);
+
+    /* SF: four attributes from unit 1, two units; WM: the kernel, three
+     * binding entries, one sampler group, setup from g4, four attributes,
+     * perspective pixel barycentrics. */
+    at = snb_find(0x78130012ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 1ul] == 0x01001010ul &&
+          snb_work[at + 3ul] == 0x20000000ul);
+    at = snb_find(0x78140007ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 1ul] == V9X_HSW_SHADE_KERNEL(0) &&
+          snb_work[at + 2ul] == 0x080c0000ul &&
+          snb_work[at + 4ul] == 0x00040000ul &&
+          snb_work[at + 6ul] == 0x00400400ul);
+
+    /* Six 32-byte TL vertices, sequential, one TRILIST. */
+    at = snb_find(0x78080003ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0x20ul &&
+          snb_work[at + 2ul] == 0x00412000ul &&
+          snb_work[at + 3ul] == 0x00412000ul + 6ul * 32ul - 1ul);
+    CHECK(snb_find(0x7809000bul) < snb_work_batch.used); /* 6 elements */
+    at = snb_find(0x7b001004ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 6ul &&
+          snb_work[at + 2ul] == 0ul);
+
+    /* Indexed strip with Z16, a second texture coordinate, back-face cull
+     * and flat shading. */
+    snb_tl_draw(&draw);
+    draw.indices = 0x00413000ul;
+    draw.index_count = 5ul;
+    draw.strip = 1u;
+    draw.tl_uv1 = 1u;
+    draw.cull = V9X_HSW_DRAW_CULL_CW;
+    draw.flat = 1u;
+    draw.depth_buffer = 0x00800000ul;
+    draw.depth_test = V9X_HSW_SHADE_DS_LEQUAL;
+    draw.depth_format = V9X_HSW_DEPTH_D16_UNORM;
+    draw.depth_pitch = 1280ul;
+    snb_work_reset();
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 8ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_snb_3d_check(snb_work, snb_work_batch.used, &bad) ==
+          V9X_STATUS_OK);
+    at = snb_find(0x79050005ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 1ul] == 0x2c1404fful &&   /* D16, pitch 1280 */
+          snb_work[at + 2ul] == 0x00800000ul);
+    at = snb_find(0x78130012ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 2ul] == 1ul &&
+          snb_work[at + 3ul] == 0x60000000ul && snb_work[at + 17ul] == 3ul);
+    at = snb_find(0x78080003ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0x28ul);
+    at = snb_find(0x780a0101ul);           /* word indices */
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0x00413000ul &&
+          snb_work[at + 2ul] == 0x0041303ful);
+    at = snb_find(0x7b009404ul);           /* RANDOM TRISTRIP */
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 5ul);
+    at = snb_find(0x780e0002ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 2ul] == (V9X_HSW_SHADE_DS_LEQUAL | 1ul));
+
+    /* The clear, then the scene under the test: two primitives, the CC
+     * pointers changed between them. */
+    snb_tl_draw(&draw);
+    draw.depth_buffer = 0x00800000ul;
+    draw.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
+    draw.depth_test = V9X_HSW_SHADE_DS_LESS;
+    snb_work_reset();
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 9ul) == V9X_STATUS_OK);
+    CHECK(v9x_intel_snb_3d_check(snb_work, snb_work_batch.used, &bad) ==
+          V9X_STATUS_OK);
+    at = snb_find(0x7b001004ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 3ul &&
+          snb_work[at + 6ul] == 0x780e0002ul &&
+          snb_work[at + 8ul] == (V9X_HSW_SHADE_DS_LESS | 1ul) &&
+          snb_work[at + 10ul] == 0x7b001004ul &&
+          snb_work[at + 11ul] == 9ul && snb_work[at + 12ul] == 3ul);
+
+    /* Not Gen6's to draw yet: non-TL geometry, a misaligned kernel, a
+     * depth buffer with no test state. */
+    snb_tl_draw(&draw);
+    draw.tl_vertices = 0u;
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_tl_draw(&draw);
+    draw.kernel = 0x420ul;
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_tl_draw(&draw);
+    draw.depth_buffer = 0x00800000ul;
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+static void test_checker_refusals(void)
+{
+    struct v9x_hsw_draw draw;
+    v9x_u32 bad;
+    v9x_u32 at;
+    v9x_u32 used;
+    v9x_u32 saved;
+
+    snb_tl_draw(&draw);
+    snb_work_reset();
+    CHECK(v9x_intel_snb_draw_workload(&snb_work_batch, SNB_STATE_BASE,
+                                      SNB_STATE_BYTES, &draw, SNB_SCRATCH,
+                                      SNB_DONE, 1ul) == V9X_STATUS_OK);
+    used = snb_work_batch.used;
+
+    /* Gen7's 3DPRIMITIVE length (7 dwords). */
+    at = snb_find(0x7b001004ul);
+    saved = snb_work[at];
+    snb_work[at] = 0x7b001005ul;
+    CHECK(v9x_intel_snb_3d_check(snb_work, used, &bad) ==
+          V9X_STATUS_UNSUPPORTED);
+    snb_work[at] = saved;
+
+    /* Gen7's 2-dword CC_STATE_POINTERS. */
+    at = snb_find(0x780e0002ul);
+    snb_work[at] = 0x780e0000ul;
+    CHECK(v9x_intel_snb_3d_check(snb_work, used, &bad) ==
+          V9X_STATUS_UNSUPPORTED && bad == at);
+    snb_work[at] = 0x780e0002ul;
+
+    /* 3DSTATE_SBE (781Fh) does not exist on Gen6. */
+    at = snb_find(0x78130012ul);
+    snb_work[at] = 0x781f0012ul;
+    CHECK(v9x_intel_snb_3d_check(snb_work, used, &bad) ==
+          V9X_STATUS_UNSUPPORTED && bad == at);
+    snb_work[at] = 0x78130012ul;
+
+    /* An RT flush without the post-sync pair before it: the pair's write
+     * turned into a plain scoreboard stall. */
+    at = snb_find(V9X_HSW_PC_RT_CACHE_FLUSH | V9X_HSW_PC_CS_STALL);
+    CHECK(at < used && snb_work[at - 5ul] == V9X_HSW_PC_WRITE_IMMEDIATE);
+    snb_work[at - 5ul] = V9X_HSW_PC_CS_STALL | V9X_HSW_PC_STALL_AT_SCOREBOARD;
+    CHECK(v9x_intel_snb_3d_check(snb_work, used, &bad) ==
+          V9X_STATUS_UNSUPPORTED && bad == at - 1ul);
+    snb_work[at - 5ul] = V9X_HSW_PC_WRITE_IMMEDIATE;
+
+    /* The intact batch passes again. */
+    CHECK(v9x_intel_snb_3d_check(snb_work, used, &bad) == V9X_STATUS_OK);
+
+    /* A primitive before the state: the first command made a 3DPRIMITIVE
+     * of the same length is not possible, so check a short batch. */
+    snb_work_reset();
+    v9x_intel_snb_3dprimitive(&snb_work_batch, V9X_HSW_PRIM_TRILIST, 3ul,
+                              0ul, 0u);
+    v9x_intel_hsw_mi_batch_buffer_end(&snb_work_batch);
+    v9x_intel_hsw_mi_noop(&snb_work_batch);
+    CHECK(v9x_intel_snb_3d_check(snb_work, snb_work_batch.used, &bad) ==
+          V9X_STATUS_UNSUPPORTED && bad == 0ul);
+
+    /* No end, and an odd length. */
+    CHECK(v9x_intel_snb_3d_check(snb_work, 6ul, &bad) ==
+          V9X_STATUS_UNSUPPORTED);
+    snb_work_reset();
+    v9x_intel_hsw_mi_noop(&snb_work_batch);
+    v9x_intel_hsw_mi_noop(&snb_work_batch);
+    v9x_intel_hsw_mi_batch_buffer_end(&snb_work_batch);
+    CHECK(v9x_intel_snb_3d_check(snb_work, 3ul, &bad) ==
+          V9X_STATUS_UNSUPPORTED);
+}
+
 /* A batch too small for the command: refused, nothing half-written. */
 static void test_overflow(void)
 {
@@ -385,5 +748,10 @@ unsigned int v9x_run_intel_snb_3d_tests(void)
     test_pipe_control();
     test_indirect_state();
     test_overflow();
+    test_vertex_buffer_and_sampler();
+    test_init_state();
+    test_init_workload();
+    test_draw_workload();
+    test_checker_refusals();
     return failures;
 }
