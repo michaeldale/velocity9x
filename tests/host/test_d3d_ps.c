@@ -635,9 +635,26 @@ static void fixed_bump_tests(void)
     CHECK(!needs2(&s0, &s1,1));
 }
 
+/*
+ * DirectX 8's MIPFILTER numbering (D3DTEXF_NONE 0, POINT 1, LINEAR 2,
+ * ANISOTROPIC 3, FLATCUBIC 4, GAUSSIANCUBIC 5; d3d8types.h) into DirectX 7's
+ * (D3DTFP_NONE 1, POINT 2, LINEAR 3; d3dtypes.h), which the core's fold
+ * reads. docs\issues\2026-11-19-ddi8-mip-filter-read-as-dx7.md.
+ */
+static void mip_filter_tests(void)
+{
+    CHECK(v9x_d3d_ps_mip_filter_dx7(0ul) == 1ul);
+    CHECK(v9x_d3d_ps_mip_filter_dx7(1ul) == 2ul);
+    CHECK(v9x_d3d_ps_mip_filter_dx7(2ul) == 3ul);
+    CHECK(v9x_d3d_ps_mip_filter_dx7(3ul) == 3ul);
+    CHECK(v9x_d3d_ps_mip_filter_dx7(5ul) == 3ul);
+    CHECK(v9x_d3d_ps_mip_filter_dx7(0xfffffffful) == 3ul);
+}
+
 unsigned int v9x_run_d3d_ps_tests(void)
 {
     failures = 0u;
+    mip_filter_tests();
     stage_tests();
     constant_tests();
     wide_tests();

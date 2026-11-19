@@ -6,6 +6,14 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.57.0 - not yet released
 
+- **Direct3D 8 programs get their mipmaps back** (`intel-gma`, `ati`,
+  `nvidia` packages, wherever DirectX 8's interface is offered). The driver
+  read DirectX 8's mip filter with DirectX 7's numbering, so a point mip
+  filter switched mipmapping off and a linear one gave nearest-level only;
+  3DMark 2001 SE's distant road and grass speckled on the HD 4600. Not yet
+  run on hardware
+  ([issue](docs/issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)).
+
 - **`intel-gma` package, HD 4600: textures in system memory.** The driver
   maps 32 MiB of locked RAM into the GTT at boot and offers it to Direct3D
   for textures, as on the GMA 950 and GMA X3100. On the i5-4570, 3DMark

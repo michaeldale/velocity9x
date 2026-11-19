@@ -5077,7 +5077,11 @@ static void v9x_d3d_dp2_stage1_state(V9X_D3D_CONTEXT *context,
         context->stage1_min = (DWORD)value;
         break;
     case V9X_D3DTSS_MIPFILTER:
-        context->stage1_mip = (DWORD)value;
+        /* A DDI 8 context is handed DirectX 8's numbering; the fold reads
+         * DirectX 7's (v9x_d3d_ps_mip_filter_dx7). */
+        context->stage1_mip = context->ddi8 != 0ul
+                                  ? v9x_d3d_ps_mip_filter_dx7((v9x_u32)value)
+                                  : (DWORD)value;
         break;
     case V9X_D3DTSS_TEXCOORDINDEX:
         context->stage1_texcoord = (DWORD)value & 0xfffful;
@@ -5220,7 +5224,13 @@ static void v9x_d3d_dp2_stage_state(void *opaque, v9x_u32 stage,
                             v9x_d3d_dp2_min_filter(context));
         break;
     case V9X_D3DTSS_MIPFILTER:
-        context->stage_mip = (DWORD)value;
+        /* DirectX 8's numbering on a DDI 8 context, one below DirectX 7's:
+         * read as DirectX 7's, POINT turned mipmapping off and LINEAR gave
+         * nearest-level (docs\issues\2026-11-19-ddi8-mip-filter-read-as-
+         * dx7.md). */
+        context->stage_mip = context->ddi8 != 0ul
+                                 ? v9x_d3d_ps_mip_filter_dx7((v9x_u32)value)
+                                 : (DWORD)value;
         v9x_d3d_apply_state(context, V9X_D3DRENDERSTATE_TEXTUREMIN,
                             v9x_d3d_dp2_min_filter(context));
         break;
@@ -7188,8 +7198,9 @@ static void v9x_d3d_ps_texture(V9X_D3D_CONTEXT *context,
             v9x_d3d_ddi7_texture(context, stage->texture), (DWORD)context);
     }
     out->object = texture != 0 ? texture->lcl : 0;
-    out->min_filter = v9x_d3d_min_filter_fold(stage->min_filter,
-                                              stage->mip_filter);
+    /* The shader stage keeps DirectX 8's mip filter as written. */
+    out->min_filter = v9x_d3d_min_filter_fold(
+        stage->min_filter, v9x_d3d_ps_mip_filter_dx7(stage->mip_filter));
     out->mag_filter = stage->mag_filter;
     out->op = 0ul;
     out->alpha_diffuse = 0ul;

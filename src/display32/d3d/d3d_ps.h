@@ -69,6 +69,18 @@ void v9x_d3d_ps_stage_reset(V9X_D3D_PS_STAGE *stage, v9x_u32 index);
 int v9x_d3d_ps_stage_state(V9X_D3D_PS_STAGE *stage, v9x_u32 state,
                            v9x_u32 value);
 
+/*
+ * A DirectX 8 MIPFILTER value (D3DTEXTUREFILTERTYPE: NONE 0, POINT 1,
+ * LINEAR 2, ANISOTROPIC 3 and the cubics above) as DirectX 7's
+ * D3DTEXTUREMIPFILTER, the numbering the core's filter fold reads (NONE 1,
+ * POINT 2, LINEAR 3). A DDI 8 driver is handed the DirectX 8 values; read
+ * as DirectX 7's, POINT meant no mipmaps and LINEAR nearest-level, and the
+ * HD 4600 sampled 3DMark 2001 SE's distant road and grass at level 0
+ * (docs\issues\2026-11-19-ddi8-mip-filter-read-as-dx7.md). Anything above
+ * LINEAR is LINEAR: no mip filter is finer than blending two levels.
+ */
+v9x_u32 v9x_d3d_ps_mip_filter_dx7(v9x_u32 dx8);
+
 /* SETPIXELSHADERCONST: count registers from first, four float bits each.
  * Registers past c7 are not kept (1.1 has eight). */
 void v9x_d3d_ps_set_constants(float c[8][4], v9x_u32 first, v9x_u32 count,

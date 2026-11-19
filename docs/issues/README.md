@@ -3,6 +3,7 @@
 An issue record is a dated defect report or investigation. Its body is appended to as the investigation moves, never rewritten. The split below is a reading of each record and of docs/STATUS.md as of 2026-10-14; the record itself is authoritative. On 2026-11-10 the seven records missing from this index were added from their own status lines; the older entries were not re-read, and several say in their own line that a fix is in and a re-run is owed.
 
 ## Open
+- [2026-11-19 DDI 8: MIPFILTER read with DirectX 7's numbering, so DirectX 8 programs lose mipmapping (3DMark 2001 SE's road and grass speckle on the HD 4600); fix written and host-tested, not yet run](2026-11-19-ddi8-mip-filter-read-as-dx7.md)
 
 - [2026-11-18 HD 4600 on its VGA port into a 1080p capture: games drawn twice across and wrapping; the VBIOS leaves 1920x1080 timing with the panel fitter on and PIPE_SRCSZ at 1920x1080 under a 1024-pixel surface after a boot with no display connected; fix on branch hsw-panel-fit (source size written to the mode's), its write path not yet run on hardware](2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)
 - [2026-11-18 GCN (SI/VI): the CPU waits for the GPU to go idle at every flip, lock and DMA fill, so the two never overlap; the fence spin is 7.1 % of a 3DMark 2001 SE run on the R7E](2026-11-18-vi-cp-full-drain-serialises-cpu-and-gpu.md)

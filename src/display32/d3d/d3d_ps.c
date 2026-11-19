@@ -40,6 +40,19 @@ void v9x_d3d_ps_stage_reset(V9X_D3D_PS_STAGE *stage, v9x_u32 index)
     stage->transform = 0ul;
 }
 
+/* D3DTEXF_NONE..LINEAR (d3d8types.h) and D3DTFP_NONE..LINEAR (d3dtypes.h):
+ * the same three filters, numbered one apart. */
+#define V9X_D3D_PS_TEXF_LINEAR 2ul
+#define V9X_D3D_PS_TFP_LINEAR  3ul
+
+v9x_u32 v9x_d3d_ps_mip_filter_dx7(v9x_u32 dx8)
+{
+    if (dx8 >= V9X_D3D_PS_TEXF_LINEAR) {
+        return V9X_D3D_PS_TFP_LINEAR;
+    }
+    return dx8 + 1ul;
+}
+
 int v9x_d3d_ps_stage_state(V9X_D3D_PS_STAGE *stage, v9x_u32 state,
                            v9x_u32 value)
 {
