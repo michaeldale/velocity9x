@@ -45,16 +45,23 @@ static v9x_u8 v9x_hsw_eu_sources(v9x_u8 opcode)
     }
 }
 
-static int v9x_hsw_eu_file_ok(v9x_u8 file)
+/* gen6: Sandy Bridge's encoding, which adds the MRF file (intel_hsw_eu.h);
+ * the caller decides where it may appear. */
+static int v9x_hsw_eu_file_ok(v9x_u8 file, int gen6)
 {
     return file == V9X_HSW_EU_FILE_ARF || file == V9X_HSW_EU_FILE_GRF ||
-           file == V9X_HSW_EU_FILE_IMM;
+           file == V9X_HSW_EU_FILE_IMM ||
+           (gen6 && file == V9X_SNB_EU_FILE_MRF);
 }
 
-/* A register operand's number and byte offset must name a GRF byte. */
+/* A register operand's number and byte offset must name a GRF or MRF
+ * byte. */
 static int v9x_hsw_eu_reg_ok(const struct v9x_hsw_eu_operand *op)
 {
     if (op->file == V9X_HSW_EU_FILE_GRF && op->nr >= V9X_HSW_EU_GRF_COUNT) {
+        return 0;
+    }
+    if (op->file == V9X_SNB_EU_FILE_MRF && op->nr >= V9X_SNB_EU_MRF_COUNT) {
         return 0;
     }
     return op->subnr < V9X_HSW_EU_SUBNR_MAX && op->type <= 7u &&
@@ -184,8 +191,8 @@ static v9x_status v9x_hsw_eu_encode_3src(const struct v9x_hsw_eu_inst *inst,
     return V9X_STATUS_OK;
 }
 
-v9x_status v9x_intel_hsw_eu_encode(const struct v9x_hsw_eu_inst *inst,
-                                   v9x_u32 out[4])
+static v9x_status v9x_hsw_eu_encode_for(const struct v9x_hsw_eu_inst *inst,
+                                        v9x_u32 out[4], int gen6)
 {
     struct v9x_hsw_eu_operand src1;
     v9x_u8 sources;
@@ -199,16 +206,29 @@ v9x_status v9x_intel_hsw_eu_encode(const struct v9x_hsw_eu_inst *inst,
         return V9X_STATUS_UNSUPPORTED;
     }
     if (sources == 3u) {
+        /* No MRF in the three-source form: it has no file fields. */
         return v9x_hsw_eu_encode_3src(inst, out);
     }
 
-    if (!v9x_hsw_eu_file_ok(inst->dst.file) ||
+    if (!v9x_hsw_eu_file_ok(inst->dst.file, gen6) ||
         inst->dst.file == V9X_HSW_EU_FILE_IMM ||
         !v9x_hsw_eu_reg_ok(&inst->dst)) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    if (sources >= 1u && (!v9x_hsw_eu_file_ok(inst->src0.file) ||
+    if (sources >= 1u && (!v9x_hsw_eu_file_ok(inst->src0.file, gen6) ||
                           !v9x_hsw_eu_reg_ok(&inst->src0))) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* Gen6's MRF is write-only and a send's payload: a destination of
+     * anything but send and math (whose Gen6 destination must be a GRF,
+     * Mesa gfx6_math), or a send's src0, and nowhere else. */
+    if (inst->dst.file == V9X_SNB_EU_FILE_MRF &&
+        (inst->opcode == V9X_HSW_EU_OP_SEND ||
+         inst->opcode == V9X_HSW_EU_OP_MATH)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (sources >= 1u && inst->src0.file == V9X_SNB_EU_FILE_MRF &&
+        inst->opcode != V9X_HSW_EU_OP_SEND) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -237,7 +257,8 @@ v9x_status v9x_intel_hsw_eu_encode(const struct v9x_hsw_eu_inst *inst,
         src1.file = V9X_HSW_EU_FILE_IMM;
         src1.type = V9X_HSW_EU_TYPE_UD;
     } else {
-        if (!v9x_hsw_eu_file_ok(src1.file) || !v9x_hsw_eu_reg_ok(&src1)) {
+        /* src1 is never an MRF: Gen6 or not. */
+        if (!v9x_hsw_eu_file_ok(src1.file, 0) || !v9x_hsw_eu_reg_ok(&src1)) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
         /* Only the last source may be immediate. */
@@ -299,6 +320,18 @@ v9x_status v9x_intel_hsw_eu_encode(const struct v9x_hsw_eu_inst *inst,
         out[3] = 0ul;
     }
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_eu_encode(const struct v9x_hsw_eu_inst *inst,
+                                   v9x_u32 out[4])
+{
+    return v9x_hsw_eu_encode_for(inst, out, 0);
+}
+
+v9x_status v9x_intel_snb_eu_encode(const struct v9x_hsw_eu_inst *inst,
+                                   v9x_u32 out[4])
+{
+    return v9x_hsw_eu_encode_for(inst, out, 1);
 }
 
 static void v9x_hsw_eu_clear(struct v9x_hsw_eu_inst *inst)
@@ -468,6 +501,39 @@ v9x_status v9x_intel_hsw_eu_sampler_fc(v9x_u8 simd, v9x_u8 msg_type,
     return V9X_STATUS_OK;
 }
 
+/* Gen6's render cache descriptor (intel_hsw_eu.h): message type 16:13,
+ * then Gen7's last render target 12, slot group 11, subtype 10:8 and
+ * binding table index. The same refusals as Gen7's. */
+#define V9X_SNB_DP_RC_TYPE_SHIFT 13
+
+v9x_status v9x_intel_snb_eu_rt_write_fc(v9x_u8 last_rt, v9x_u8 slot_hi,
+                                        v9x_u8 msg_type, v9x_u8 bti,
+                                        v9x_u32 *function)
+{
+    if (function == 0 || last_rt > 1u || slot_hi > 1u || msg_type > 7u ||
+        msg_type == 5u || msg_type == 6u || bti == 0xffu) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *function = ((v9x_u32)V9X_HSW_DP_RC_RT_WRITE << V9X_SNB_DP_RC_TYPE_SHIFT) |
+                ((v9x_u32)last_rt << 12) | ((v9x_u32)slot_hi << 11) |
+                ((v9x_u32)msg_type << 8) | (v9x_u32)bti;
+    return V9X_STATUS_OK;
+}
+
+/* Gen6's sampler descriptor: SIMD mode 17:16, message type 15:12 (four
+ * bits), sampler 11:8, binding table index 7:0. */
+v9x_status v9x_intel_snb_eu_sampler_fc(v9x_u8 simd, v9x_u8 msg_type,
+                                       v9x_u8 sampler, v9x_u8 bti,
+                                       v9x_u32 *function)
+{
+    if (function == 0 || simd > 3u || msg_type > 0xfu || sampler > 15u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    *function = ((v9x_u32)simd << 16) | ((v9x_u32)msg_type << 12) |
+                ((v9x_u32)sampler << 8) | (v9x_u32)bti;
+    return V9X_STATUS_OK;
+}
+
 /* Phase D kernels. */
 #define V9X_HSW_PS_COMPONENTS ((v9x_u8)4u)
 #define V9X_HSW_PS_BARY_GRF   ((v9x_u8)2u)
@@ -628,17 +694,36 @@ struct v9x_hsw_psg {
     v9x_u32 capacity;
     v9x_u32 used;
     int failed;
+    int gen6;   /* Sandy Bridge: sends from MRFs (intel_hsw_eu.h) */
 };
 
 static void v9x_hsw_psg_emit(struct v9x_hsw_psg *g,
                              const struct v9x_hsw_eu_inst *inst)
 {
     if (g->failed || g->capacity - g->used < 4ul ||
-        v9x_intel_hsw_eu_encode(inst, g->out + g->used) != V9X_STATUS_OK) {
+        v9x_hsw_eu_encode_for(inst, g->out + g->used, g->gen6) !=
+            V9X_STATUS_OK) {
         g->failed = 1;
         return;
     }
     g->used += 4ul;
+}
+
+/* Gen6: mov(8) m<mrf><1>:UD g<grf><8;8,1>:UD {NoMask}, one register of a
+ * message payload, as Mesa's gfx6_resolve_implied_move writes it. */
+static void v9x_snb_psg_to_mrf(struct v9x_hsw_psg *g, v9x_u8 mrf,
+                               v9x_u8 grf)
+{
+    struct v9x_hsw_eu_inst inst;
+
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_MOV;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.mask_disable = 1u;
+    v9x_hsw_ps_grf(&inst.dst, mrf, V9X_HSW_EU_TYPE_UD);
+    inst.dst.file = V9X_SNB_EU_FILE_MRF;
+    v9x_hsw_ps_grf(&inst.src0, grf, V9X_HSW_EU_TYPE_UD);
+    v9x_hsw_psg_emit(g, &inst);
 }
 
 /* pln(8) dst attribute a, component c. */
@@ -695,10 +780,21 @@ static void v9x_hsw_psg_sample(struct v9x_hsw_psg *g, v9x_u8 dst,
 {
     struct v9x_hsw_eu_inst inst;
     v9x_u32 function;
+    v9x_status status;
     v9x_u32 desc;
 
-    if (v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, sampler, bti,
-                                    &function) != V9X_STATUS_OK ||
+    /* Gen6: u and v to m1-m2 first, the send reading them from there. */
+    if (g->gen6) {
+        v9x_snb_psg_to_mrf(g, V9X_SNB_PS_MRF, payload);
+        v9x_snb_psg_to_mrf(g, (v9x_u8)(V9X_SNB_PS_MRF + 1u),
+                           (v9x_u8)(payload + 1u));
+        status = v9x_intel_snb_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u,
+                                             sampler, bti, &function);
+    } else {
+        status = v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u,
+                                             sampler, bti, &function);
+    }
+    if (status != V9X_STATUS_OK ||
         v9x_intel_hsw_eu_send_desc(2u, V9X_HSW_PS_COMPONENTS, 0u, function,
                                    &desc) != V9X_STATUS_OK) {
         g->failed = 1;
@@ -711,6 +807,44 @@ static void v9x_hsw_psg_sample(struct v9x_hsw_psg *g, v9x_u8 dst,
     inst.desc = desc;
     v9x_hsw_ps_grf(&inst.dst, dst, V9X_HSW_EU_TYPE_UW);
     v9x_hsw_ps_grf(&inst.src0, payload, V9X_HSW_EU_TYPE_UD);
+    if (g->gen6) {
+        inst.src0.nr = V9X_SNB_PS_MRF;
+        inst.src0.file = V9X_SNB_EU_FILE_MRF;
+    }
+    v9x_hsw_psg_emit(g, &inst);
+}
+
+/* Gen6's end: g112-g115 to m1-m4, then the header-less SIMD8 render target
+ * write from m1, last render target, EOT (intel_hsw_eu.h). */
+static void v9x_snb_psg_rt_write(struct v9x_hsw_psg *g)
+{
+    struct v9x_hsw_eu_inst inst;
+    v9x_u32 function;
+    v9x_u32 desc;
+    v9x_u8 c;
+
+    for (c = 0u; c < V9X_HSW_PS_COMPONENTS; ++c) {
+        v9x_snb_psg_to_mrf(g, (v9x_u8)(V9X_SNB_PS_MRF + c),
+                           (v9x_u8)(V9X_HSW_PS_PAYLOAD_GRF + c));
+    }
+    if (v9x_intel_snb_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
+                                     &function) != V9X_STATUS_OK ||
+        v9x_intel_hsw_eu_send_desc(V9X_HSW_PS_COMPONENTS, 0u, 0u, function,
+                                   &desc) != V9X_STATUS_OK) {
+        g->failed = 1;
+        return;
+    }
+    v9x_hsw_ps_zero(&inst);
+    inst.opcode = V9X_HSW_EU_OP_SEND;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.sfid = V9X_HSW_SFID_DP_RC;
+    inst.eot = 1u;
+    inst.desc = desc;
+    inst.dst.file = V9X_HSW_EU_FILE_ARF; /* null */
+    inst.dst.type = V9X_HSW_EU_TYPE_UD;
+    inst.dst.hstride = V9X_HSW_EU_HSTRIDE_1;
+    v9x_hsw_ps_grf(&inst.src0, V9X_SNB_PS_MRF, V9X_HSW_EU_TYPE_UD);
+    inst.src0.file = V9X_SNB_EU_FILE_MRF;
     v9x_hsw_psg_emit(g, &inst);
 }
 
@@ -779,9 +913,9 @@ static void v9x_hsw_psg_combine(struct v9x_hsw_psg *g, v9x_u8 c,
     }
 }
 
-v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
-                                         const struct v9x_hsw_ps_desc *desc,
-                                         v9x_u32 *used)
+static v9x_status v9x_hsw_ps_kernel_build_for(
+    v9x_u32 *out, v9x_u32 capacity, const struct v9x_hsw_ps_desc *desc,
+    v9x_u32 *used, int gen6)
 {
     struct v9x_hsw_psg g;
     v9x_u8 c;
@@ -797,6 +931,7 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
     g.capacity = capacity;
     g.used = 0ul;
     g.failed = 0;
+    g.gen6 = gen6;
     textured = desc->stage0 != V9X_HSW_PS_DIFFUSE;
 
     /* Interpolate what the stages read. */
@@ -922,12 +1057,34 @@ v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
         }
     }
 
+    if (gen6) {
+        v9x_snb_psg_rt_write(&g);
+        if (g.failed) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+        *used = g.used;
+        return V9X_STATUS_OK;
+    }
     if (g.failed || g.capacity - g.used < 4ul ||
         v9x_hsw_ps_rt_write(g.out + g.used) != V9X_STATUS_OK) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
     *used = g.used + 4ul;
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
+                                         const struct v9x_hsw_ps_desc *desc,
+                                         v9x_u32 *used)
+{
+    return v9x_hsw_ps_kernel_build_for(out, capacity, desc, used, 0);
+}
+
+v9x_status v9x_intel_snb_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
+                                         const struct v9x_hsw_ps_desc *desc,
+                                         v9x_u32 *used)
+{
+    return v9x_hsw_ps_kernel_build_for(out, capacity, desc, used, 1);
 }
 
 /* URB write fields, Vol 7 p316-323 (intel_hsw_eu.h). */

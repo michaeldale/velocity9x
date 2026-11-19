@@ -182,6 +182,17 @@ Answered from it:
 3. **Gen6 sends and MRFs in the encoder**, host-tested; the
    fixed-function PS and position VS built for Gen6 and run in the EU
    simulator where it can model Gen6 (else word-for-word tests).
+   *Done 2026-11-20 for the PS* (`hsw_eu.c`, `test_intel_hsw_eu.c`):
+   `v9x_intel_snb_eu_encode` allows the MRF file (10b, 24 registers) as
+   a non-send, non-math destination and a send's src0 only; the Gen6
+   sampler (SIMD 17:16, type 15:12) and render-cache (type 16:13)
+   descriptors, checked against the SNB PRM's descriptor tables and
+   Mesa's Gen6 field positions; `v9x_intel_snb_ps_kernel_build`, Gen7's
+   program with each sample's u, v MOVed to m1-m2 and the colour MOVed to
+   m1-m4 before a header-less EOT write. Word-for-word tests, worked by
+   hand; the EU simulator models Gen7 only and was not extended. The
+   position VS is left Gen7-only: TL draws run with the VS off, and
+   T&L is out of this plan's scope.
 4. **Init batch on hardware**: the HAL submits the Gen6 init batch with
    the workaround registers and waits for its breadcrumb, nothing drawn.
    Record the ring, ACTHD and breadcrumb. A hang here is the cheapest one
