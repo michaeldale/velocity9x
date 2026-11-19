@@ -154,8 +154,9 @@ static void v9x_hsw_format_hex(char *text, unsigned long value)
 /*
  * The render clock request at engine open (intel_hsw.h has why and what).
  * The last open's outcome and the three registers as read after it, for
- * V9XHW.INI. Haswell and Ivy Bridge; the chip picks the request field
- * (HSW_ENGINE_OPEN's chip values are V9X_INTEL_HSW_RPS_CHIP_*'s).
+ * V9XHW.INI. Haswell, Ivy Bridge and Sandy Bridge; the chip picks the
+ * request field (HSW_ENGINE_OPEN's chip values are
+ * V9X_INTEL_HSW_RPS_CHIP_*'s).
  */
 static const char *v9x_hsw_rps_status = "not-requested";
 static unsigned long v9x_hsw_rps_cap;
@@ -481,16 +482,16 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
          * HAL picks both by the identity bit (engines\hsw_scanout.c,
          * d3d\d3d_hsw.c).
          *
-         * Sandy Bridge stops after the flip: Gen6 lays out DSPLINOFF as Ivy
+         * Sandy Bridge flips the same way: Gen6 lays out DSPLINOFF as Ivy
          * Bridge does (i915 i9xx_plane_update_arm), so it carries the
-         * identity bit for the scanout, but no CAP_D3D, as Gen6's 3D
-         * pipeline is not Gen7's, and no render clock request, as Gen6's
-         * RPS is unmeasured (docs\plans\intel-sandybridge-gen6.md). */
-        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_GEN7_IVB;
+         * identity bit for the scanout, and asks for RP0 with Ivy Bridge's
+         * fields. Its Direct3D is the Gen6 builders', which CAP_GEN6_SNB
+         * tells the HAL (docs\plans\intel-sandybridge-direct3d.md). */
+        *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_GEN7_IVB |
+                        V9X_DD_ENGINE_CAP_D3D;
         if (chip == V9X_HSW_OPEN_CHIP_SANDYBRIDGE) {
-            return;
+            *engine_caps |= V9X_DD_ENGINE_CAP_GEN6_SNB;
         }
-        *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
         v9x_hsw_request_render_clock(chip);
         return;
     }
@@ -666,8 +667,8 @@ const V9X_HW16_DEVICE v9x_ivb_hd4000_mobile_device = {
  * same BAR layout, GGC encoding, stolen-reserved register and BCS ring, with
  * Gen6's forcewake (chip 2). Measured read-only on M-NZHWBR, an i3-2105 on
  * the MSI board W9QI4E14's HD 4000 used
- * (docs\decisions\2026-11-19-sandybridge-read-only-mmio.md). No Direct3D:
- * docs\plans\intel-sandybridge-gen6.md.
+ * (docs\decisions\2026-11-19-sandybridge-read-only-mmio.md). Direct3D
+ * through the Gen6 builders: docs\plans\intel-sandybridge-direct3d.md.
  */
 const V9X_HW16_DEVICE v9x_snb_hd3000_device = {
     0x8086u, 0x0112u,
@@ -676,7 +677,7 @@ const V9X_HW16_DEVICE v9x_snb_hd3000_device = {
     "none",
     "vbe-lfb",
     "directdraw-fill-blt",
-    "not-advertised",
+    "hardware-gen6",
     0,
     v9x_ivb_fill_engine,
     /* VBE reports the framebuffer in GMADR, BAR2: E0000000 on M-NZHWBR. */

@@ -50,6 +50,7 @@
 #include "velocity9x/intel_hsw_pipe.h"
 #include "velocity9x/intel_hsw_ps11.h"
 #include "velocity9x/intel_hsw_vs.h"
+#include "velocity9x/intel_snb_3d.h"
 #include "velocity9x/intel_gma.h"
 #include "r3d/r3d_cull.h"
 
@@ -253,6 +254,40 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
     1ul                         /* indexed_two_units */
 };
 
+/*
+ * Sandy Bridge: Ivy Bridge's limits, one stage, with the Gen6 builders
+ * behind the same draw code (docs\plans\intel-sandybridge-direct3d.md),
+ * and no DXT: Gen6's BC surfaces are not built or measured.
+ */
+static const V9X_D3D_ENGINE_LIMITS v9x_d3d_snb_limits = {
+    16ul,           /* target_bits_per_pixel */
+    16384ul,        /* target_pitch_max */
+    4ul,            /* target_pitch_align */
+    4096ul,         /* target_dimension_max */
+    1ul,            /* texture_size_min */
+    2048ul,         /* texture_size_max */
+    8192.0f,        /* coordinate_limit */
+    16ul,           /* depth_bits_per_pixel: D16_UNORM */
+    16ul,           /* texture_align */
+    0ul,            /* clip_in_core */
+    1ul,            /* depth_pitch_own */
+    0ul,            /* depth_fill_shift */
+    2ul,            /* texture_units */
+    1ul,            /* pixel_centre_half */
+    1ul,            /* depth_tiled: Y tiles */
+    16384ul,        /* target_pitch_max_xrgb8888 */
+    24ul,           /* depth32_bits */
+    1ul,            /* centre_in_engine */
+    1ul,            /* texture_stages */
+    1ul,            /* guard_band_ddi6 */
+    0ul,            /* dxt_textures: the difference from Ivy Bridge */
+    0ul,            /* modulate2x */
+    0ul,            /* bump_luminance */
+    V9X_D3D_HSW_BATCH_TRIANGLES, /* batch_triangles */
+    8192ul,                     /* indexed_pool_vertices */
+    1ul                         /* indexed_two_units */
+};
+
 /* One texture unit as the sampler reads it. */
 typedef struct v9x_d3d_hsw_texture {
     struct v9x_hsw_sampler sampler;
@@ -297,6 +332,80 @@ typedef struct v9x_d3d_hsw_state {
 static int v9x_d3d_hsw_ring_checked = 0;
 /* Set on a timeout; nothing is submitted again in this process. */
 static int v9x_d3d_hsw_quarantined = 0;
+/* Sandy Bridge (CAP_GEN6_SNB): the Gen6 builders (intel_snb_3d.h). Read
+ * from the engine descriptor at each use rather than kept, because
+ * accepts() can build a kernel before ready() has run. */
+static int v9x_d3d_hsw_on_gen6(void)
+{
+    return v9x_hal != 0 &&
+           (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_GEN6_SNB) != 0ul;
+}
+
+/*
+ * The builders that differ by generation, chosen here once so every call
+ * site below stays as it was: a render or texture surface (6 dwords on
+ * Gen6, 8 on Gen7, either fitting Gen7's slots), its mip count, a sampler
+ * (Gen6's 12-dword border colour sits in the 64 bytes zeroed at
+ * V9X_HSW_SHADE_BORDER_COLOR), the pixel kernel, and a draw batch, whose
+ * Gen6 post-sync writes go to the Ivy Bridge workaround qword.
+ */
+static v9x_status v9x_d3d_hsw_surface(v9x_u32 *out, v9x_u16 format,
+                                      v9x_u32 base, v9x_u16 width,
+                                      v9x_u16 height, v9x_u32 pitch)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_surface_2d(out, format, base, width, height,
+                                        pitch);
+    }
+    return v9x_intel_hsw_surface_2d(out, format, base, width, height, pitch);
+}
+
+static v9x_status v9x_d3d_hsw_surface_levels(v9x_u32 *out, v9x_u8 levels)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_surface_mips(out, levels);
+    }
+    return v9x_intel_hsw_surface_mips(out, levels);
+}
+
+static v9x_status v9x_d3d_hsw_sampler_state(
+    v9x_u32 *out, const struct v9x_hsw_sampler *sampler)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_sampler(out, sampler);
+    }
+    return v9x_intel_hsw_sampler(out, sampler);
+}
+
+static v9x_status v9x_d3d_hsw_kernel_build(v9x_u32 *out, v9x_u32 capacity,
+                                           const struct v9x_hsw_ps_desc *desc,
+                                           v9x_u32 *used)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_ps_kernel_build(out, capacity, desc, used);
+    }
+    return v9x_intel_hsw_ps_kernel_build(out, capacity, desc, used);
+}
+
+#define V9X_D3D_HSW_SNB_SCRATCH_GFX \
+    (V9X_D3D_HSW_STATUS_GFX + V9X_INTEL_HSW_STATUS_IVB_WA * 4ul)
+
+static v9x_status v9x_d3d_hsw_workload(struct v9x_hsw_batch *batch,
+                                       v9x_u32 state_base,
+                                       v9x_u32 state_bytes,
+                                       const struct v9x_hsw_draw *draw,
+                                       v9x_u32 done_address,
+                                       v9x_u32 done_value)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_draw_workload(batch, state_base, state_bytes,
+                                           draw,
+                                           V9X_D3D_HSW_SNB_SCRATCH_GFX,
+                                           done_address, done_value);
+    }
+    return v9x_intel_hsw_draw_workload(batch, state_base, state_bytes, draw,
+                                       done_address, done_value);
+}
 
 static DWORD v9x_d3d_hsw_read32(DWORD offset)
 {
@@ -522,15 +631,22 @@ static int v9x_d3d_hsw_initialise(void)
     struct v9x_hsw_batch batch;
     DWORD index;
 
+    v9x_status built;
+
     if (status[V9X_INTEL_HSW_STATUS_RCS_INIT] ==
         V9X_INTEL_HSW_RCS_INIT_MARK) {
         return 1;
     }
     for (index = 0ul; index < V9X_HSW_PIPE_SLOTS; ++index) {
-        if (v9x_intel_hsw_pipe_slot(index, &slot) != V9X_STATUS_OK ||
+        if (v9x_intel_hsw_pipe_slot(index, &slot) != V9X_STATUS_OK) {
+            return 0;
+        }
+        built = v9x_d3d_hsw_on_gen6() ?
+            v9x_intel_snb_init_state(v9x_d3d_hsw_reserve(slot.state_off),
+                                     V9X_SNB_INIT_STATE_BYTES / 4ul) :
             v9x_intel_hsw_init_state(v9x_d3d_hsw_reserve(slot.state_off),
-                                     V9X_HSW_INIT_STATE_BYTES / 4ul) !=
-                V9X_STATUS_OK) {
+                                     V9X_HSW_INIT_STATE_BYTES / 4ul);
+        if (built != V9X_STATUS_OK) {
             return 0;
         }
     }
@@ -539,12 +655,18 @@ static int v9x_d3d_hsw_initialise(void)
     }
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
-    if (v9x_intel_hsw_init_workload(&batch,
-                                    V9X_D3D_HSW_GFX(slot.state_off),
+    /* Gen6's post-sync non-zero writes go to the Ivy Bridge workaround
+     * qword, which nothing reads. */
+    built = v9x_d3d_hsw_on_gen6() ?
+        v9x_intel_snb_init_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
                                     slot.state_span,
-                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
-            V9X_STATUS_OK ||
-        !v9x_d3d_hsw_submit(&slot, 1)) {
+                                    V9X_D3D_HSW_STATUS_GFX +
+                                        V9X_INTEL_HSW_STATUS_IVB_WA * 4ul,
+                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) :
+        v9x_intel_hsw_init_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
+                                    slot.state_span,
+                                    V9X_D3D_HSW_CRUMB_GFX, 1ul);
+    if (built != V9X_STATUS_OK || !v9x_d3d_hsw_submit(&slot, 1)) {
         return 0;
     }
     status[V9X_INTEL_HSW_STATUS_RCS_INIT] = V9X_INTEL_HSW_RCS_INIT_MARK;
@@ -1438,9 +1560,9 @@ static int v9x_d3d_hsw_write_kernel(const struct v9x_hsw_ps_desc *desc,
         V9X_TIME_END(V9X_TIME_DECODE, started);
         return 0;
     }
-    built = v9x_intel_hsw_ps_kernel_build(v9x_d3d_hsw_kernel_words,
-                                          V9X_D3D_HSW_KERNEL_DWORDS, desc,
-                                          &used) == V9X_STATUS_OK;
+    built = v9x_d3d_hsw_kernel_build(v9x_d3d_hsw_kernel_words,
+                                     V9X_D3D_HSW_KERNEL_DWORDS, desc,
+                                     &used) == V9X_STATUS_OK;
     /* Only the words the builder produced, as building in place wrote; the
      * signature after them, so a slot is never marked for words it does not
      * yet hold. */
@@ -1536,12 +1658,12 @@ static DWORD v9x_d3d_hsw_write_state_at(const V9X_R3D_DRAW *draw,
     const V9X_D3D_HSW_TEXTURE *texture;
     DWORD index;
 
-    if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
-                                 state->target_format,
-                                 v9x_d3d_hsw_vram(draw->target.offset),
-                                 (v9x_u16)draw->target.width,
-                                 (v9x_u16)draw->target.height,
-                                 draw->target.pitch) != V9X_STATUS_OK) {
+    if (v9x_d3d_hsw_surface(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
+                            state->target_format,
+                            v9x_d3d_hsw_vram(draw->target.offset),
+                            (v9x_u16)draw->target.width,
+                            (v9x_u16)draw->target.height,
+                            draw->target.pitch) != V9X_STATUS_OK) {
         return V9X_D3D_HSW_REFUSE_TARGET_STATE;
     }
     table = image + layout->binding_table / 4ul;
@@ -1552,7 +1674,7 @@ static DWORD v9x_d3d_hsw_write_state_at(const V9X_R3D_DRAW *draw,
      * (the kernel's TEX1 reads binding 2, sampler 1: hsw_eu.c). */
     for (index = 0ul; index < (DWORD)state->textured; ++index) {
         texture = &state->texture[index];
-        if (v9x_intel_hsw_surface_2d(
+        if (v9x_d3d_hsw_surface(
                 image + layout->tex_surface[index] / 4ul,
                 texture->format, texture->address, texture->width,
                 texture->height, texture->pitch) != V9X_STATUS_OK) {
@@ -1560,13 +1682,13 @@ static DWORD v9x_d3d_hsw_write_state_at(const V9X_R3D_DRAW *draw,
             return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
         }
         if (texture->levels > 1u &&
-            v9x_intel_hsw_surface_mips(
+            v9x_d3d_hsw_surface_levels(
                 image + layout->tex_surface[index] / 4ul,
                 texture->levels) != V9X_STATUS_OK) {
             v9x_d3d_hsw_note_texture(texture, index, 2ul);
             return V9X_D3D_HSW_REFUSE_TEXTURE_STATE;
         }
-        if (v9x_intel_hsw_sampler(
+        if (v9x_d3d_hsw_sampler_state(
                 image + (layout->sampler +
                          index * V9X_HSW_SAMPLER_BYTES) / 4ul,
                 &texture->sampler) != V9X_STATUS_OK) {
@@ -1626,9 +1748,9 @@ static int v9x_d3d_hsw_kernel_fits(const struct v9x_hsw_ps_desc *desc)
         v9x_intel_hsw_pipe_kernel_sig_equal(wanted, checked) == V9X_TRUE) {
         return checked_fits;
     }
-    checked_fits = v9x_intel_hsw_ps_kernel_build(v9x_d3d_hsw_kernel_words,
-                                                 V9X_D3D_HSW_KERNEL_DWORDS,
-                                                 desc, &used) ==
+    checked_fits = v9x_d3d_hsw_kernel_build(v9x_d3d_hsw_kernel_words,
+                                            V9X_D3D_HSW_KERNEL_DWORDS,
+                                            desc, &used) ==
                    V9X_STATUS_OK;
     for (index = 0ul; index < V9X_HSW_PIPE_SIG_DWORDS; ++index) {
         checked[index] = wanted[index];
@@ -1981,11 +2103,11 @@ static int v9x_d3d_hsw_draw_batch(const V9X_R3D_DRAW *draw,
         d.vertex_count = count * 3ul;
         v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                                  slot.batch_bytes / 4ul);
-        if (v9x_intel_hsw_draw_workload(&batch,
-                                        V9X_D3D_HSW_GFX(slot.state_off),
-                                        slot.state_span, &d,
-                                        V9X_D3D_HSW_CRUMB_GFX,
-                                        done) != V9X_STATUS_OK) {
+        if (v9x_d3d_hsw_workload(&batch,
+                                 V9X_D3D_HSW_GFX(slot.state_off),
+                                 slot.state_span, &d,
+                                 V9X_D3D_HSW_CRUMB_GFX,
+                                 done) != V9X_STATUS_OK) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
             return 0;
         }
@@ -3040,11 +3162,11 @@ static int v9x_d3d_hsw_draw_pieces(const V9X_R3D_DRAW *draw,
         d.cull = v9x_d3d_hsw_cull_of(cull_mode);
         v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                                  slot.batch_bytes / 4ul);
-        if (v9x_intel_hsw_draw_workload(&batch,
-                                        V9X_D3D_HSW_GFX(slot.state_off),
-                                        slot.state_span, &d,
-                                        V9X_D3D_HSW_CRUMB_GFX,
-                                        next) != V9X_STATUS_OK) {
+        if (v9x_d3d_hsw_workload(&batch,
+                                 V9X_D3D_HSW_GFX(slot.state_off),
+                                 slot.state_span, &d,
+                                 V9X_D3D_HSW_CRUMB_GFX,
+                                 next) != V9X_STATUS_OK) {
             v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
             return 0;
         }
@@ -3218,10 +3340,10 @@ static int v9x_d3d_hsw_draw_indexed(const V9X_R3D_DRAW *draw,
     d.cull = v9x_d3d_hsw_cull_of(cull_mode);
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
-    if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
-                                    slot.state_span, &d,
-                                    V9X_D3D_HSW_CRUMB_GFX,
-                                    index_count) != V9X_STATUS_OK) {
+    if (v9x_d3d_hsw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
+                             slot.state_span, &d,
+                             V9X_D3D_HSW_CRUMB_GFX,
+                             index_count) != V9X_STATUS_OK) {
         v9x_d3d_hsw_count_refusal(V9X_D3D_HSW_REFUSE_WORKLOAD);
         V9X_TIME_END(V9X_TIME_ENGINE_DRAW, started);
         return 0;
@@ -3323,10 +3445,10 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     }
 
     image = v9x_d3d_hsw_reserve(slot.state_off);
-    if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
-                                 V9X_HSW_FMT_B5G6R5_UNORM,
-                                 v9x_d3d_hsw_vram(offset), (v9x_u16)width,
-                                 (v9x_u16)height, pitch) != V9X_STATUS_OK) {
+    if (v9x_d3d_hsw_surface(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
+                            V9X_HSW_FMT_B5G6R5_UNORM,
+                            v9x_d3d_hsw_vram(offset), (v9x_u16)width,
+                            (v9x_u16)height, pitch) != V9X_STATUS_OK) {
         return V9X_BLT_DECLINED;
     }
     table = image + V9X_HSW_SHADE_BINDING_TABLE(0) / 4ul;
@@ -3404,9 +3526,9 @@ int v9x_d3d_hsw_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     d.cull = V9X_HSW_DRAW_CULL_NONE;
     v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                              slot.batch_bytes / 4ul);
-    if (v9x_intel_hsw_draw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
-                                    slot.state_span, &d,
-                                    V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
+    if (v9x_d3d_hsw_workload(&batch, V9X_D3D_HSW_GFX(slot.state_off),
+                             slot.state_span, &d,
+                             V9X_D3D_HSW_CRUMB_GFX, 1ul) !=
             V9X_STATUS_OK ||
         !v9x_d3d_hsw_submit(&slot, 1)) {
         return V9X_BLT_DECLINED;
@@ -4411,6 +4533,26 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_draw_tnl,
     v9x_d3d_hsw_tnl_available,
     v9x_d3d_hsw_lock_surface,           /* lock_surface: DXT levels */
+    v9x_d3d_hsw_unlock_surface,
+    v9x_d3d_hsw_draw_shader
+};
+
+/* Sandy Bridge: the same entry points with its limits (one stage, no
+ * DXT); ready() turns the builders to Gen6's by CAP_GEN6_SNB. */
+const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw_snb = {
+    &v9x_d3d_snb_limits,
+    v9x_d3d_hsw_texture_format,
+    v9x_d3d_hsw_describe_caps,
+    0,                                  /* draw_triangles: draw serves */
+    v9x_d3d_hsw_ready,
+    v9x_d3d_hsw_create_surface,
+    v9x_d3d_hsw_destroy_surface,
+    v9x_d3d_hsw_draw,
+    v9x_d3d_hsw_accepts,
+    v9x_d3d_hsw_draw_indexed,
+    v9x_d3d_hsw_draw_tnl,
+    v9x_d3d_hsw_tnl_available,
+    v9x_d3d_hsw_lock_surface,
     v9x_d3d_hsw_unlock_surface,
     v9x_d3d_hsw_draw_shader
 };

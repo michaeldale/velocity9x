@@ -53,6 +53,10 @@
 /* The Oland on the GCN engine: its two-stage limits (d3d_vi.c, step 4 of
  * docs\plans\ati-gcn-ps11.md), named by its identity bit. */
 #define V9X_D3D_SELECT_VI_OLAND  21ul
+/* Sandy Bridge on the Gen7.5 engine's entry points with the Gen6
+ * builders, named by its identity bit (docs\plans\intel-sandybridge-
+ * direct3d.md). */
+#define V9X_D3D_SELECT_GEN6      22ul
 
 /*
  * valid is non-zero when the descriptor carries V9X_DD_ENGINE_VALID. The

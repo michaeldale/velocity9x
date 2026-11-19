@@ -3788,8 +3788,13 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     bh, V9X_HSW_RPS_CAGF_SHIFT
     cmp     V9xHswChip, V9X_HSW_CHIP_HASWELL
     je      short V9xMini_Api_HswRps_Fields
+    ; Sandy Bridge takes Ivy Bridge's fields (i915 GEN6_FREQUENCY and
+    ; GEN6_CAGF on both).
+    cmp     V9xHswChip, V9X_HSW_CHIP_SANDYBRIDGE
+    je      short V9xMini_Api_HswRps_Gen6
     cmp     V9xHswChip, V9X_HSW_CHIP_IVYBRIDGE
     jne     V9xMini_Api_HswRps_Refused
+V9xMini_Api_HswRps_Gen6:
     mov     esi, V9X_IVB_RPS_REQ_LOW
     mov     bl, V9X_IVB_RPS_REQ_SHIFT
     mov     bh, V9X_IVB_RPS_CAGF_SHIFT

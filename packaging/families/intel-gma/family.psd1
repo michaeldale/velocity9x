@@ -392,9 +392,9 @@
             # Sandy Bridge GT2 desktop on the Haswell path for 2D: its BCS
             # ring and blits, with Gen6's forcewake (i915's FORCEWAKE and
             # FORCEWAKE_ACK, chip 2 of HSW_ENGINE_OPEN), and flips through
-            # plane A and DSPLINOFF as on Ivy Bridge. No Direct3D: Gen6's 3D
-            # pipeline is not Gen7's. Measured read-only on M-NZHWBR:
-            # docs\plans\intel-sandybridge-gen6.md.
+            # plane A and DSPLINOFF as on Ivy Bridge. Direct3D through the
+            # Gen6 builders (CAP_GEN6_SNB), in progress on M-NZHWBR:
+            # docs\plans\intel-sandybridge-direct3d.md.
             Id = 'hd3000-snb'
             Name = 'Intel HD Graphics 3000 (Sandy Bridge)'
             VendorId = '8086'
@@ -404,9 +404,9 @@
             ClockDetector = 'none'
             ModeSwitching = 'vbe-lfb'
             Acceleration = 'directdraw-fill-blt'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-gen6'
             EngineType = 'INTEL_GEN75'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             VideoMemoryBytes = 4194304
             # The family's table; this VBIOS describes neither 1024x576 row
             # and the runtime scan publishes its own modes instead.

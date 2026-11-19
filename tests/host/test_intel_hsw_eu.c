@@ -577,9 +577,128 @@ static void test_vs_kernel_position(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * Sandy Bridge: the MRF file and the Gen6 descriptors. Expected words by
+ * hand: register file 10b, the sampler's SIMD8 (1) at 17:16, the render
+ * cache's RT write (12) at 16:13 (intel_hsw_eu.h).
+ */
+static void test_snb_sends_and_kernel(void)
+{
+    struct v9x_hsw_eu_inst inst;
+    struct v9x_hsw_ps_desc desc;
+    v9x_u32 out[256];
+    v9x_u32 hsw[256];
+    v9x_u32 function;
+    v9x_u32 used;
+    v9x_u32 hsw_used;
+    v9x_u32 index;
+
+    CHECK(v9x_intel_snb_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, 0u, 1u,
+                                      &function) == V9X_STATUS_OK &&
+          function == 0x00010001ul);
+    CHECK(v9x_intel_snb_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0x10u, 0u, 1u,
+                                      &function) ==
+          V9X_STATUS_INVALID_ARGUMENT);   /* four type bits on Gen6 */
+    CHECK(v9x_intel_snb_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
+                                       &function) == V9X_STATUS_OK &&
+          function == 0x00019400ul);
+    CHECK(v9x_intel_snb_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0xffu,
+                                       &function) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* mov(8) m1<1>:UD g28<8;8,1>:UD {NoMask} */
+    v9x_clear(&inst);
+    inst.opcode = V9X_HSW_EU_OP_MOV;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.mask_disable = 1u;
+    v9x_grf(&inst.dst, 1u, V9X_HSW_EU_TYPE_UD);
+    inst.dst.file = V9X_SNB_EU_FILE_MRF;
+    v9x_grf(&inst.src0, 28u, V9X_HSW_EU_TYPE_UD);
+    CHECK(v9x_intel_snb_eu_encode(&inst, out) == V9X_STATUS_OK);
+    CHECK(out[0] == 0x00600201ul && out[1] == 0x20200022ul &&
+          out[2] == 0x008d0380ul && out[3] == 0ul);
+    /* Gen7 reserves the file. */
+    CHECK(v9x_intel_hsw_eu_encode(&inst, out) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* 24 MRFs. */
+    inst.dst.nr = 24u;
+    CHECK(v9x_intel_snb_eu_encode(&inst, out) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* Write-only: not a MOV's source. */
+    inst.dst.nr = 1u;
+    inst.dst.file = V9X_HSW_EU_FILE_GRF;
+    inst.src0.file = V9X_SNB_EU_FILE_MRF;
+    inst.src0.nr = 1u;
+    CHECK(v9x_intel_snb_eu_encode(&inst, out) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* Not a math destination on Gen6. */
+    v9x_clear(&inst);
+    inst.opcode = V9X_HSW_EU_OP_MATH;
+    inst.exec_size = V9X_HSW_EU_EXEC_8;
+    inst.cond_mod = V9X_HSW_EU_MATH_INV;
+    v9x_grf(&inst.dst, 1u, V9X_HSW_EU_TYPE_F);
+    inst.dst.file = V9X_SNB_EU_FILE_MRF;
+    v9x_grf(&inst.src0, 2u, V9X_HSW_EU_TYPE_F);
+    v9x_grf(&inst.src1, 2u, V9X_HSW_EU_TYPE_F);
+    CHECK(v9x_intel_snb_eu_encode(&inst, out) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    /* Nor src1 of anything. */
+    inst.opcode = V9X_HSW_EU_OP_MUL;
+    inst.dst.file = V9X_HSW_EU_FILE_GRF;
+    inst.src1.file = V9X_SNB_EU_FILE_MRF;
+    CHECK(v9x_intel_snb_eu_encode(&inst, out) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* The MODULATE kernel: Gen7's, with the sends rebuilt. */
+    desc.stage0 = V9X_HSW_PS_MODULATE;
+    desc.stage1 = V9X_HSW_PS_STAGE1_NONE;
+    desc.fog = 0u;
+    desc.specular = 0u;
+    desc.fog_rgb[0] = desc.fog_rgb[1] = desc.fog_rgb[2] = 0ul;
+    CHECK(v9x_intel_hsw_ps_kernel_build(hsw, 256ul, &desc, &hsw_used) ==
+          V9X_STATUS_OK && hsw_used == 48ul);
+    /* 6 pln, 2 mov, sample, 4 mul, 4 mov, write. */
+    CHECK(v9x_intel_snb_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 72ul);
+    for (index = 0ul; index < 24ul; ++index) {
+        CHECK(out[index] == hsw[index]);   /* the planes, unchanged */
+    }
+    /* u, v to m1, m2. */
+    CHECK(out[24] == 0x00600201ul && out[25] == 0x20200022ul &&
+          out[26] == 0x008d0380ul);
+    CHECK(out[28] == 0x00600201ul && out[29] == 0x20400022ul &&
+          out[30] == 0x008d03a0ul);
+    /* send(8) g32:UW m1:UD, SFID 2, mlen 2, rlen 4, SIMD8 at 17:16. */
+    CHECK(out[32] == 0x02600031ul && out[33] == 0x24000c49ul &&
+          out[34] == 0x008d0020ul && out[35] == 0x04410001ul);
+    for (index = 0ul; index < 16ul; ++index) {
+        CHECK(out[36ul + index] == hsw[28ul + index]);   /* the muls */
+    }
+    /* g112-g115 to m1-m4. */
+    CHECK(out[53] == 0x20200022ul && out[54] == 0x008d0e00ul);
+    CHECK(out[65] == 0x20800022ul && out[66] == 0x008d0e60ul);
+    /* send(8) null m1:UD, SFID 5, mlen 4, RT write at 16:13, last RT,
+     * SIMD8_LO, EOT. */
+    CHECK(out[68] == 0x05600031ul && out[69] == 0x20000c40ul &&
+          out[70] == 0x008d0020ul && out[71] == 0x88019400ul);
+
+    /* Two stages: the second sample from m1 too, its own sampler, BTI 2. */
+    desc.stage1 = V9X_HSW_PS_MODULATE_TEX1;
+    /* Gen7's 76 dwords, two pairs of sample MOVs and the four write
+     * MOVs: 108; the second sample at 52 (6 pln, 2 mov, sample, 2 pln,
+     * 2 mov). */
+    CHECK(v9x_intel_snb_ps_kernel_build(out, 256ul, &desc, &used) ==
+          V9X_STATUS_OK && used == 108ul);
+    CHECK(out[52] == 0x02600031ul && out[54] == 0x008d0020ul &&
+          out[55] == 0x04410102ul);
+    CHECK(v9x_intel_snb_ps_kernel_build(out, 70ul, &desc, &used) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
 unsigned int v9x_run_intel_hsw_eu_tests(void)
 {
     failures = 0u;
+    test_snb_sends_and_kernel();
     test_urb_write_fc();
     test_dph();
     test_vs_kernel_position();

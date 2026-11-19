@@ -108,6 +108,15 @@ static void test_every_engine_type(void)
         { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75,
           V9X_DD_ENGINE_CAP_D3D_SOFTWARE | V9X_DD_ENGINE_CAP_GEN7_IVB,
           V9X_D3D_SELECT_SOFTWARE },
+        /* Sandy Bridge carries the Ivy Bridge plane bit too; its own bit
+         * selects the Gen6 table, only with CAP_D3D. */
+        { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75,
+          V9X_DD_ENGINE_CAP_D3D | V9X_DD_ENGINE_CAP_GEN7_IVB |
+              V9X_DD_ENGINE_CAP_GEN6_SNB,
+          V9X_D3D_SELECT_GEN6 },
+        { 1, V9X_DD_ENGINE_TYPE_INTEL_GEN75,
+          V9X_DD_ENGINE_CAP_GEN7_IVB | V9X_DD_ENGINE_CAP_GEN6_SNB,
+          V9X_D3D_SELECT_NONE },
         /* The Rage 128: the 2D engine alone selects nothing; CAP_D3D
          * selects the CCE engine; software still wins. */
         { 1, V9X_DD_ENGINE_TYPE_ATI_RAGE128,

@@ -353,4 +353,57 @@ v9x_status v9x_intel_hsw_eu_urb_write_fc(v9x_u32 global_offset,
 v9x_status v9x_intel_hsw_vs_kernel_position(v9x_u32 *out, v9x_u32 capacity,
                                             v9x_u32 *used);
 
+/*
+ * Sandy Bridge (Gen6), step 3 of docs\plans\intel-sandybridge-direct3d.md.
+ *
+ * Gen6 encodes these instructions as Gen7 does (Mesa brw_inst.h: the
+ * fields this encoder writes sit at the same bits; Gen7 adds the flag
+ * register number and nibble control, which stay 0), with two
+ * differences that matter here:
+ *
+ *   - Messages go out of the Message Register File, file 10b, which Gen7
+ *     reserves: 24 write-only registers per thread (SNB PRM Vol 4 Part 2,
+ *     table 5-4). A send's src0 is the first MRF of the payload; Gen6
+ *     dropped Gen4-5's implied move (Mesa gfx6_resolve_implied_move), so
+ *     the payload is MOVed there first.
+ *   - The descriptors move. The sampler's SIMD mode is 17:16 and its
+ *     message type 15:12 (SNB PRM Vol 4 Part 1, 2.12.1.1.1); the render
+ *     cache's message type is 16:13 and its control 12:8 (Mesa
+ *     dp_msg_type and dp_msg_control for Gen6; the PRM's own table,
+ *     3.9.9.2.1, gives last render target 12, slot group 11 and the
+ *     subtype 10:8, as on Gen7).
+ *
+ * v9x_intel_snb_eu_encode: v9x_intel_hsw_eu_encode with the MRF file
+ * allowed where Gen6 allows it, as the destination of a non-send,
+ * non-math instruction and as a send's src0, numbers 0-23; anywhere else
+ * INVALID_ARGUMENT.
+ */
+#define V9X_SNB_EU_FILE_MRF  ((v9x_u8)2u)
+#define V9X_SNB_EU_MRF_COUNT 24u
+
+v9x_status v9x_intel_snb_eu_encode(const struct v9x_hsw_eu_inst *inst,
+                                   v9x_u32 out[4]);
+v9x_status v9x_intel_snb_eu_rt_write_fc(v9x_u8 last_rt, v9x_u8 slot_hi,
+                                        v9x_u8 msg_type, v9x_u8 bti,
+                                        v9x_u32 *function);
+v9x_status v9x_intel_snb_eu_sampler_fc(v9x_u8 simd, v9x_u8 msg_type,
+                                       v9x_u8 sampler, v9x_u8 bti,
+                                       v9x_u32 *function);
+
+/*
+ * The fixed-function pixel kernel for Gen6: v9x_intel_hsw_ps_kernel_build's
+ * program, instruction for instruction, except at the two sends. Each
+ * sample MOVs u and v to m1-m2 and sends from m1; the colour in g112-g115
+ * is MOVed to m1-m4 and the render-target write sent from m1, header-less
+ * (allowed on SNB, Vol 4 Part 1 3.9.9.3.1), with EOT. The MOVs disable the
+ * execution mask, as Mesa's payload moves do. The thread payload is
+ * Gen7's for SIMD8 (SNB PRM Vol 2 Part 1, 7.7.3.1), so the PLNs read the
+ * same registers.
+ */
+#define V9X_SNB_PS_MRF ((v9x_u8)1u)
+
+v9x_status v9x_intel_snb_ps_kernel_build(v9x_u32 *out, v9x_u32 capacity,
+                                         const struct v9x_hsw_ps_desc *desc,
+                                         v9x_u32 *used);
+
 #endif

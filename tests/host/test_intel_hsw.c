@@ -436,6 +436,7 @@ static void test_protected_bytes(void)
 
 #define HSW V9X_INTEL_HSW_RPS_CHIP_HASWELL
 #define IVB V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE
+#define SNB V9X_INTEL_HSW_RPS_CHIP_SANDYBRIDGE
 
 static void test_rps_request(void)
 {
@@ -489,8 +490,18 @@ static void test_rps_request(void)
           V9X_STATUS_UNSUPPORTED);
     CHECK(request == 0ul);
 
-    /* A chip neither names: nothing asked for. */
-    CHECK(v9x_intel_hsw_rps_request(2ul, 0x00040717ul, &request) ==
+    /* Sandy Bridge: i915 asks with GEN6_FREQUENCY, as on Ivy Bridge. The
+     * cap is the i3-2105's rated 850 and 1100 MHz over a 350 MHz RPn,
+     * not a reading: M-NZHWBR's cap is unmeasured. */
+    CHECK(v9x_intel_hsw_rps_request(SNB, 0x00071116ul, &request) ==
+          V9X_STATUS_OK);
+    CHECK(request == 0x2c000000ul);
+    CHECK(v9x_intel_hsw_rps_request(SNB, 0xfffffffful, &request) ==
+          V9X_STATUS_UNSUPPORTED);
+    CHECK(request == 0ul);
+
+    /* A chip none names: nothing asked for. */
+    CHECK(v9x_intel_hsw_rps_request(3ul, 0x00040717ul, &request) ==
           V9X_STATUS_INVALID_ARGUMENT);
     CHECK(request == 0ul);
 

@@ -258,6 +258,9 @@ unsigned int v9x_run_intel_hsw_ps11_tests(void);
 /* tests\host\test_intel_hsw_3d.c: Gen7.5 3D packets, state, checker. */
 unsigned int v9x_run_intel_hsw_3d_tests(void);
 
+/* tests\host\test_intel_snb_3d.c: Gen6 3D packets and state. */
+unsigned int v9x_run_intel_snb_3d_tests(void);
+
 /* tests\host\test_intel_hsw_pipe.c: Haswell pipelined submission slots,
  * sequences and kernel signatures. */
 unsigned int v9x_run_intel_hsw_pipe_tests(void);
@@ -1600,6 +1603,7 @@ int main(int argc, char **argv)
     failures += v9x_run_intel_hsw_vs_tests();
     failures += v9x_run_intel_hsw_ps11_tests();
     failures += v9x_run_intel_hsw_3d_tests();
+    failures += v9x_run_intel_snb_3d_tests();
     failures += v9x_run_intel_hsw_pipe_tests();
     failures += v9x_run_intel_hsw_display_tests();
     failures += v9x_run_intel_g4_tests();
