@@ -313,7 +313,8 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 chip,
     }
     *request = 0ul;
     if (chip != V9X_INTEL_HSW_RPS_CHIP_HASWELL &&
-        chip != V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE) {
+        chip != V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE &&
+        chip != V9X_INTEL_HSW_RPS_CHIP_SANDYBRIDGE) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
 
@@ -324,7 +325,8 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_rps_request(v9x_u32 chip,
         rp0 > V9X_INTEL_HSW_RPS_CAGF_MASK) {
         return V9X_STATUS_UNSUPPORTED;
     }
-    if (chip == V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE) {
+    if (chip != V9X_INTEL_HSW_RPS_CHIP_HASWELL) {
+        /* Ivy Bridge and Sandy Bridge: GEN6_FREQUENCY. */
         *request = rp0 << V9X_INTEL_IVB_RPS_REQ_SHIFT;
         return V9X_STATUS_OK;
     }

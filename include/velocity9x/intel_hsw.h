@@ -373,6 +373,9 @@ v9x_status V9X_I9XX_FAR v9x_intel_hsw_protected_bytes(
  */
 #define V9X_INTEL_HSW_RPS_CHIP_HASWELL   ((v9x_u32)0ul)
 #define V9X_INTEL_HSW_RPS_CHIP_IVYBRIDGE ((v9x_u32)1ul)
+/* Sandy Bridge: Ivy Bridge's fields, GEN6_FREQUENCY and GEN6_CAGF (i915
+ * gen6_rps_set, intel_rps_get_cagf). */
+#define V9X_INTEL_HSW_RPS_CHIP_SANDYBRIDGE ((v9x_u32)2ul)
 #define V9X_INTEL_IVB_RPS_REQ_SHIFT      25
 #define V9X_INTEL_HSW_RP_STATE_CAP   ((v9x_u32)0x00145998ul)
 #define V9X_INTEL_HSW_RPNSWREQ       ((v9x_u32)0x0000a008ul)

@@ -1,9 +1,9 @@
 # Sandy Bridge (Gen6, HD 3000): bring-up on M-NZHWBR
 
-Status: **steps 1-5 done 2026-11-19** (2D blits at 8, 16 and 32 bpp and
+Status: **steps 1-6 done 2026-11-19** (2D blits at 8, 16 and 32 bpp and
 flips on M-NZHWBR boot 61,
-`docs\decisions\2026-11-19-sandybridge-bcs-blits-and-flips.md`); RPS and
-Direct3D next. Branch `intel-snb`.
+`docs\decisions\2026-11-19-sandybridge-bcs-blits-and-flips.md`; RP0 on
+boot 62); Direct3D next. Branch `intel-snb`.
 
 ## Machine
 
@@ -53,8 +53,11 @@ Sandy Bridge PRM (2011, Vol 1-4); downloading it needs Michael's go-ahead.
    and 32 bpp, all blits on the engine. *Owed:* the engine close on
    Disable, and a DOS box.
 5. **Done 2026-11-19.** Flips: V9XDDP's 640x480x16 chain, 23 of 23 taken.
-   *Owed:* 8 and 32 bpp chains, 800x600.
-6. **RPS:** read `RP_STATE_CAP`, then ask for RP0 as IVB does.
+   800x600x16 (back buffer off a 4 KiB page) also 23 of 23, boot 61.
+   V9XDDP has no 8 or 32 bpp chain.
+6. **Done 2026-11-19.** RPS: Ivy Bridge's fields; RP0 1100 MHz asked for
+   and granted on boot 62
+   (`docs\decisions\2026-11-19-sandybridge-render-clock-rp0.md`).
 7. **Direct3D on Gen6:** its own state builders beside the Gen7 ones
    (`hsw_3d.c`'s table), a Gen6 VS/PS message layer, and the SNB
    PIPE_CONTROL workarounds. Plan it as its own document before code.
