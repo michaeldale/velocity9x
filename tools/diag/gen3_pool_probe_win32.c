@@ -62,6 +62,22 @@
 #define V9X_GTTMMADR_MASK    0xfff00000ul
 #define V9X_GM965_GTT_OFFSET 0x00080000ul
 
+/* Haswell and Ivy Bridge (Gen7): the GTT is GTTMMADR (10h, 4 MiB) + 2 MiB,
+ * GGC is host 50h with GMS in bits 7:3 counting 32 MiB, and the HAL maps
+ * 64 MiB of GMADR (docs\plans\intel-haswell-system-memory-textures.md;
+ * GGC 0209h is 32 MiB on the i5-4570, 2026-10-20-haswell-stolen-
+ * layout.md). The first 65,536 entries map the 256 MiB GMADR as on Gen3. */
+#define V9X_GEN7_GTTMMADR_MASK 0xffc00000ul
+#define V9X_GEN7_GTT_OFFSET    0x00200000ul
+#define V9X_GEN7_MAPPED        0x04000000ul
+#define V9X_GEN7_GMS_UNIT      0x02000000ul
+
+static int v9x_is_gen7(DWORD id)
+{
+    return id == 0x04128086ul || id == 0x041e8086ul ||
+           id == 0x01628086ul || id == 0x01668086ul;
+}
+
 /* The 945's GMADR is 256 MiB with 65,536 GTT entries
  * (2026-09-12-intel-phase2-gtt-inventory.md). */
 #define V9X_G3PL_APERTURE    0x10000000ul
@@ -347,6 +363,7 @@ void WINAPI V9xGen3PoolEntry(void)
     DWORD pages;
     DWORD end;
     v9x_u16 reason;
+    int gen7;
 
     WritePrivateProfileStringA(0, 0, 0, V9X_G3PL_PATH);
     DeleteFileA(V9X_G3PL_PATH);
@@ -355,7 +372,13 @@ void WINAPI V9xGen3PoolEntry(void)
 
     ggc = (v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) >> 16) & 0xfffful;
     bsm = v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_BSM) & V9X_BSM_MASK;
-    if (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID) == V9X_GM965_ID) {
+    gen7 = v9x_is_gen7(v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID));
+    if (gen7) {
+        ggc = v9x_config_read(V9X_HOST_CONFIG, V9X_CFG_GGC) & 0xfffful;
+        bar3 = (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR) &
+                V9X_GEN7_GTTMMADR_MASK) + V9X_GEN7_GTT_OFFSET;
+        v9x_text("Report", "GttFrom", "GTTMMADR+2M");
+    } else if (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_ID) == V9X_GM965_ID) {
         bar3 = (v9x_config_read(V9X_IGD_CONFIG, V9X_CFG_GTTMMADR) &
                 V9X_GTTMMADR_MASK) + V9X_GM965_GTT_OFFSET;
         v9x_text("Report", "GttFrom", "GTTMMADR+512K");
@@ -374,10 +397,11 @@ void WINAPI V9xGen3PoolEntry(void)
     v9x_key("Report", "RamBytes", memory.dwTotalPhys);
 
     layout.bsm = bsm;
-    layout.stolen_bytes = v9x_stolen_bytes(ggc);
+    layout.stolen_bytes = gen7 ? ((ggc >> 3) & 0x1ful) * V9X_GEN7_GMS_UNIT
+                               : v9x_stolen_bytes(ggc);
     layout.aperture_bytes = V9X_G3PL_APERTURE;
     layout.gtt_entries = V9X_G3PL_GTT_ENTRIES;
-    layout.mapped_bytes = V9X_G3PL_MAPPED;
+    layout.mapped_bytes = gen7 ? V9X_GEN7_MAPPED : V9X_G3PL_MAPPED;
     layout.ram_bytes = memory.dwTotalPhys;
     layout.excluded_count = 0u;
     reason = v9x_i9xx_pool_size(&layout, &plan);

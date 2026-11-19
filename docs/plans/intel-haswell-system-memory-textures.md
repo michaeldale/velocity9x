@@ -1,7 +1,9 @@
 # Haswell: textures in system memory through the GTT
 
 Date: 2026-11-19. Status: approved; Michael took all four decisions below
-as proposed the same day. Phase 0 next. Requested by
+as proposed the same day. Phase 0 measured the same day
+([record](../decisions/2026-11-19-haswell-texture-pool-phase0.md)); Phase 1
+next. Requested by
 Michael the same day, after the vsync-off work showed 3DMark 2001 SE's Car
 Chase short of texture memory on the HD 4600 with vsync on as well
 ([record](../decisions/2026-11-19-haswell-vsync-off-async-flips.md)).
