@@ -70,6 +70,11 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
         /* Ivy Bridge runs the same builders with its own table: two
          * stages in one pass stopped the HD 4000 in 3DMark 2000's Game 1
          * (W9QI75E0, 2026-11-06), one stage did not. */
+        /* Sandy Bridge carries Ivy Bridge's plane bit as well, so its own
+         * is asked first. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_GEN6_SNB) != 0ul) {
+            return V9X_D3D_SELECT_GEN6;
+        }
         if ((engine_caps & V9X_DD_ENGINE_CAP_GEN7_IVB) != 0ul) {
             return V9X_D3D_SELECT_GEN7;
         }

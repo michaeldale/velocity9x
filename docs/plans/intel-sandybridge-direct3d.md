@@ -205,6 +205,12 @@ Answered from it:
 5. **One untextured triangle** (V9XD32's first stage) at 32 bpp, no Z,
    then with Z16 and Z24.
 6. **Textures**, one stage: V9XD32 at 32 and 16 bpp.
+   *Steps 5 and 6 done 2026-11-20* (`docs\decisions\2026-11-20-
+   sandybridge-gen6-direct3d-v9xd32.md`): its own engine selection and
+   limits (no DXT), the HAL's surfaces, mips, samplers, kernels and draw
+   batches switched to Gen6 by the engine bit; V9XD32 passes at 32 and 16
+   bpp and under DDI 6 and 5 with Z16, 4523 asynchronous batches, no
+   timeout, still without the i915 workaround registers. *Owed:* Z24.
 7. **Games**: 3DMark 2000 (score recorded, not compared), the OpenGL ICD
    with Quake 2/3, windowed for screenshots.
 8. Then, separately: T&L, PS 1.1, two stages, the texture pool.

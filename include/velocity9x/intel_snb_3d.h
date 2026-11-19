@@ -206,6 +206,15 @@ v9x_status v9x_intel_snb_surface_2d(v9x_u32 out[6], v9x_u16 format,
                                     v9x_u32 base, v9x_u16 width,
                                     v9x_u16 height, v9x_u32 pitch);
 
+/*
+ * RENDER_SURFACE_STATE DW2 MIP Count/LOD 5:2: for a sampled surface, the
+ * levels below the base, levels - 1, 0-13 (the sampler's maximum LOD,
+ * crocus). Mip Map Layout Mode (DW0 bit 10) stays MIPLAYOUT_BELOW and the
+ * vertical alignment (DW5 bit 24) VALIGN_2, the layout the Gen7 path's
+ * miptrees are placed in (HALIGN 4, VALIGN 2).
+ */
+v9x_status v9x_intel_snb_surface_mips(v9x_u32 out[6], v9x_u8 levels);
+
 /* SF_VIEWPORT, 8 dwords: m00 m11 m22 m30 m31 m32 as floats' bits, then 2
  * reserved; CLIP_VIEWPORT, 4 dwords: x min, x max, y min, y max guard
  * band, as floats' bits. */

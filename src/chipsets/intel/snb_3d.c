@@ -513,6 +513,19 @@ v9x_status v9x_intel_snb_surface_2d(v9x_u32 out[6], v9x_u16 format,
     return V9X_STATUS_OK;
 }
 
+#define V9X_SNB_SURFACE_MIP_MASK   ((v9x_u32)0x0000003cul)
+#define V9X_SNB_SURFACE_LEVELS_MAX 14u
+
+v9x_status v9x_intel_snb_surface_mips(v9x_u32 out[6], v9x_u8 levels)
+{
+    if (out == 0 || levels == 0u || levels > V9X_SNB_SURFACE_LEVELS_MAX) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    out[2] = (out[2] & ~V9X_SNB_SURFACE_MIP_MASK) |
+             ((v9x_u32)(levels - 1u) << 2);
+    return V9X_STATUS_OK;
+}
+
 void v9x_intel_snb_sf_viewport(v9x_u32 out[8], v9x_u32 m00, v9x_u32 m11,
                                v9x_u32 m22, v9x_u32 m30, v9x_u32 m31,
                                v9x_u32 m32)

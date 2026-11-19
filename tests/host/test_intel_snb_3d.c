@@ -349,6 +349,15 @@ static void test_indirect_state(void)
     CHECK(surface[2] == 0x0ef89fc0ul);   /* 479 << 19 | 639 << 6 */
     CHECK(surface[3] == 0x00004ff8ul);   /* 2559 << 3, linear */
     CHECK(surface[4] == 0ul && surface[5] == 0ul);
+    /* Nine levels: MIP Count 8 at DW2 5:2, the rest kept. */
+    CHECK(v9x_intel_snb_surface_mips(surface, 9u) == V9X_STATUS_OK);
+    CHECK(surface[2] == 0x0ef89fe0ul && surface[0] == 0x23a40000ul);
+    CHECK(v9x_intel_snb_surface_mips(surface, 1u) == V9X_STATUS_OK &&
+          surface[2] == 0x0ef89fc0ul);
+    CHECK(v9x_intel_snb_surface_mips(surface, 0u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_snb_surface_mips(surface, 15u) ==
+          V9X_STATUS_INVALID_ARGUMENT);
     CHECK(v9x_intel_snb_surface_2d(surface, V9X_HSW_FMT_B8G8R8X8_UNORM,
                                    0x00100000ul, 0u, 480u, 2560ul) ==
           V9X_STATUS_INVALID_ARGUMENT);
