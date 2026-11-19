@@ -39,6 +39,15 @@
 ; budget) with interrupts off for the whole sequence. No other register is
 ; written, and no GT register outside IV_GT_OFFSETS is read.
 ;
+; Sandy Bridge (Gen6, docs\plans\intel-sandybridge-gen6.md) takes the same
+; sequence on i915's Gen6 pair instead (intel_uncore.c, the
+; GRAPHICS_VER == 6 branch): FORCEWAKE (A18Ch) is both the reset and the
+; request register and FORCEWAKE_ACK (130090h) the acknowledge, with the
+; same masked values and thread-status wait. No ECOBUS read, and neither
+; FORCEWAKE_MT nor its acknowledge is touched: i915 uses neither on Gen6.
+; Its GT list (IVGtOffsetsSnb) swaps the Gen7-only slice-chicken and L3
+; registers for Gen6 ones.
+;
 ; Offsets are accepted only inside IV_WINDOWS below, each window a named
 ; register or block from the IVB PRM Vol 3 Pt 3/4. Left out on purpose:
 ; the pipes' scanline and frame counters (70000h, 70040h-7004Ch), which
@@ -138,9 +147,19 @@ VxD_LOCKED_DATA_SEG
 ; Ivy Bridge IGD device ids (Linux 6.6 i915_pciids.h INTEL_IVB_M_IDS and
 ; INTEL_IVB_D_IDS): mobile GT1 0156, GT2 0166; desktop GT1 0152, GT2 0162;
 ; server GT1 015A, GT2 016A.
+; Then Sandy Bridge's (INTEL_SNB_D_IDS, INTEL_SNB_M_IDS): desktop GT1 0102
+; and 010A, GT2 0112 and 0122; mobile GT1 0106, GT2 0116 and 0126. They
+; sit last: IV_Device_Known marks a match among the last IV_SNB_COUNT.
 IVDevices label word
     dw 0152h, 0156h, 015ah, 0162h, 0166h, 016ah
-IV_DEVICE_COUNT         equ 6
+    dw 0102h, 010ah, 0112h, 0122h, 0106h, 0116h, 0126h
+IV_DEVICE_COUNT         equ 13
+IV_SNB_COUNT            equ 7
+; Set by IV_Device_Known: 1 when the IGD is a Sandy Bridge.
+IVChipSnb               dd 0
+; The forcewake request and acknowledge registers DIOC 2 uses.
+IVFwRequest             dd IV_FW_MT
+IVFwAck                 dd IV_FW_MT_ACK
 
 ; Accepted windows: start, limit (exclusive). Offsets within the 2 MB of
 ; registers. Names are the IVB PRM's, i915's in brackets where they differ.
@@ -234,6 +253,26 @@ IVGtOffsets label dword
     dd 00a180h                            ; ECOBUS
     dd 00b01ch, 00b020h, 00b024h          ; GEN7_L3CNTLREG1-3
     dd 00b030h, 00b034h                   ; L3 chicken mode, GEN7_L3SQCREG4
+    dd 120000h, 120008h                   ; GTFIFODBG, GTFIFOCTL
+    dd 13805ch, 138060h                   ; GT thread status, GT core status
+    dd 138108h                            ; GEN6_GT_GFX_RC6 residency
+
+; Sandy Bridge's list: the same, with GEN7_COMMON_SLICE_CHICKEN1 and the
+; five Gen7 L3 registers replaced by Gen6 registers i915 programs there
+; (intel_gt_regs.h; RING_HWS_PGA_GEN6 is ring base + 2080h).
+IVGtOffsetsSnb label dword
+    dd 002030h, 002034h, 002038h, 00203ch ; RCS TAIL, HEAD, START, CTL
+    dd 002074h                            ; RCS ACTHD
+    dd 00209ch, 0020c0h, 00229ch          ; MI_MODE, INSTPM, GFX_MODE
+    dd 022030h, 022034h, 022038h, 02203ch ; BCS TAIL, HEAD, START, CTL
+    dd 022074h                            ; BCS ACTHD
+    dd 004090h                            ; GAM_ECOCHK
+    dd 004080h                            ; RCS HWS_PGA (Gen6)
+    dd 00a01ch, 00a024h                   ; GEN6_RPSTAT1, GEN6_RP_CONTROL
+    dd 00a090h, 00a094h                   ; GEN6_RC_CONTROL, GEN6_RC_STATE
+    dd 00a180h                            ; ECOBUS
+    dd 024080h, 02209ch, 0220c0h          ; BCS HWS_PGA (Gen6), MI_MODE, INSTPM
+    dd 009400h, 009404h                   ; GEN6_UCGCTL1, GEN6_UCGCTL2
     dd 120000h, 120008h                   ; GTFIFODBG, GTFIFOCTL
     dd 13805ch, 138060h                   ; GT thread status, GT core status
     dd 138108h                            ; GEN6_GT_GFX_RC6 residency
@@ -341,6 +380,13 @@ IV_Device_Next:
     stc
     ret
 IV_Device_Found:
+    ; ECX counts down, so the last IV_SNB_COUNT entries leave it at or
+    ; below IV_SNB_COUNT.
+    mov     IVChipSnb, 0
+    cmp     ecx, IV_SNB_COUNT
+    ja      short IV_Device_Found_Done
+    mov     IVChipSnb, 1
+IV_Device_Found_Done:
     pop     esi
     pop     ecx
     clc
@@ -537,10 +583,11 @@ IV_Poll_Done:
     ret
 EndProc IV_Poll
 
-; ESI = MMIO mapping, EDI = destination. Reads every IVGtOffsets register.
+; ESI = MMIO mapping, EDI = destination. Reads every register in IVGtCopy,
+; the chip's list.
 BeginProc IV_Gt_Read
     pushad
-    mov     ebx, OFFSET32 IVGtOffsets
+    mov     ebx, OFFSET32 IVGtCopy
     mov     ecx, IV_GT_COUNT
 IV_Gt_Read_Next:
     mov     eax, [ebx]
@@ -584,11 +631,33 @@ IV_Gt_Check_Base:
     mov     esi, eax
     or      IVGtResult[4], IV_GT_ST_MAPPED
 
+    ; The chip's pair: Ivy Bridge's MT registers, or Sandy Bridge's
+    ; legacy ones with its own GT list. EBP holds the request register
+    ; for the rest of the capture.
+    mov     IVFwRequest, IV_FW_MT
+    mov     IVFwAck, IV_FW_MT_ACK
+    cmp     IVChipSnb, 0
+    je      short IV_Gt_Chip_Known
+    mov     IVFwRequest, IV_FW_LEGACY
+    mov     IVFwAck, IV_FW_LEGACY_ACK
+    push    esi
+    mov     esi, OFFSET32 IVGtOffsetsSnb
+    mov     edi, OFFSET32 IVGtCopy
+    mov     ecx, IV_GT_COUNT
+    cld
+    rep     movsd
+    pop     esi
+IV_Gt_Chip_Known:
+    mov     ebp, IVFwRequest
+
     pushfd
     cli
 
-    ; State on entry, all three registers i915 reads raw.
-    mov     eax, [esi+IV_FW_MT_ACK]
+    ; State on entry, all three registers i915 reads raw. Word 04 is the
+    ; chip's own acknowledge: FORCEWAKE_ACK on Sandy Bridge, where
+    ; FORCEWAKE_MT_ACK is never read.
+    mov     edx, IVFwAck
+    mov     eax, [esi+edx]
     mov     IVGtResult[16], eax
     mov     eax, [esi+IV_FW_LEGACY_ACK]
     mov     IVGtResult[20], eax
@@ -596,16 +665,19 @@ IV_Gt_Check_Base:
     mov     IVGtResult[24], eax
 
     ; i915's IVB init: clear the legacy request, post through ECOBUS, then
-    ; clear every MT thread bit.
+    ; clear every MT thread bit. Gen6's is the reset alone, on A18Ch.
+    cmp     IVChipSnb, 0
+    jne     short IV_Gt_Reset
     mov     dword ptr [esi+IV_FW_LEGACY], 0
     mov     eax, [esi+IV_ECOBUS]
     mov     IVGtResult[28], eax
-    mov     dword ptr [esi+IV_FW_MT], IV_FW_CLEAR_ALL
+IV_Gt_Reset:
+    mov     dword ptr [esi+ebp], IV_FW_CLEAR_ALL
 
     ; The acknowledge must clear before bit 0 is requested. If it does
     ; not, nothing more is written: the request register is already
     ; clear, which is the state i915 leaves at reset.
-    mov     edx, IV_FW_MT_ACK
+    mov     edx, IVFwAck
     mov     ebx, IV_FW_KERNEL
     xor     eax, eax
     call    IV_Poll
@@ -616,8 +688,8 @@ IV_Gt_Check_Base:
     jmp     IV_Gt_Exit_State
 
 IV_Gt_Request:
-    mov     dword ptr [esi+IV_FW_MT], IV_FW_SET_KERNEL
-    mov     edx, IV_FW_MT_ACK
+    mov     dword ptr [esi+ebp], IV_FW_SET_KERNEL
+    mov     edx, IVFwAck
     mov     ebx, IV_FW_KERNEL
     mov     eax, IV_FW_KERNEL
     call    IV_Poll
@@ -646,8 +718,8 @@ IV_Gt_Reads:
     or      IVGtResult[4], IV_GT_ST_READ_DONE
 
 IV_Gt_Put:
-    mov     dword ptr [esi+IV_FW_MT], IV_FW_CLEAR_KERNEL
-    mov     edx, IV_FW_MT_ACK
+    mov     dword ptr [esi+ebp], IV_FW_CLEAR_KERNEL
+    mov     edx, IVFwAck
     mov     ebx, IV_FW_KERNEL
     xor     eax, eax
     call    IV_Poll
@@ -660,8 +732,8 @@ IV_Gt_Restore:
     ; left as the BIOS left it.
     test    IVGtResult[16], IV_FW_KERNEL
     jz      short IV_Gt_Exit_State
-    mov     dword ptr [esi+IV_FW_MT], IV_FW_SET_KERNEL
-    mov     edx, IV_FW_MT_ACK
+    mov     dword ptr [esi+ebp], IV_FW_SET_KERNEL
+    mov     edx, IVFwAck
     mov     ebx, IV_FW_KERNEL
     mov     eax, IV_FW_KERNEL
     call    IV_Poll
@@ -673,7 +745,8 @@ IV_Gt_Restore_Timeout:
     or      IVGtResult[4], IV_GT_ST_RESTORE_TIMEOUT
 
 IV_Gt_Exit_State:
-    mov     eax, [esi+IV_FW_MT_ACK]
+    mov     edx, IVFwAck
+    mov     eax, [esi+edx]
     mov     IVGtResult[52], eax
     mov     eax, [esi+IV_FW_LEGACY_ACK]
     mov     IVGtResult[56], eax

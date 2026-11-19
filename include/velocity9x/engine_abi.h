@@ -322,7 +322,10 @@
  * plane pans through PRI_LINOFF (70184h), a byte offset, where Haswell's
  * 701A4h is a pixel x and is IVB's tiled offset, ignored for a linear
  * surface (IVB PRM Vol 3 Pt 3 5.3). A chip identity bit, stamped by the
- * Ivy Bridge descriptor only (docs\plans\intel-ivybridge-gen7.md).
+ * Ivy Bridge descriptor (docs\plans\intel-ivybridge-gen7.md), and by Sandy
+ * Bridge's for its plane, which i915 programs the same way; Sandy Bridge
+ * stamps no CAP_D3D, so the bit never selects the Gen7 3D engine there
+ * (docs\plans\intel-sandybridge-gen6.md).
  */
 #define V9X_DD_ENGINE_CAP_GEN7_IVB      0x00080000ul
 /*

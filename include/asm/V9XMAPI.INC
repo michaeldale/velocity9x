@@ -486,7 +486,10 @@ V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
 ; every MT thread bit cleared, the acknowledge awaited clear - so an
 ; acknowledge the BIOS left set is not refusal 5 there - then bit 0 set and
 ; GT thread status awaited C0. Its release sets bit 0 again when it was
-; acknowledged at the open, leaving the GT as the BIOS left it. An open ring at another offset is closed and the
+; acknowledged at the open, leaving the GT as the BIOS left it. 2 Sandy
+; Bridge takes the same reset, set and wait on i915's Gen6 pair, FORCEWAKE
+; A18Ch and FORCEWAKE_ACK 130090h
+; (docs\decisions\2026-11-19-sandybridge-read-only-mmio.md). An open ring at another offset is closed and the
 ; rings reopened at this one. Phase B1's measured sequence
 ; (docs\decisions\2026-10-17-haswell-phase-b1-bcs-ring.md): map the MMIO
 ; and GTT halves of GTTMMADR and the reserve at GMADR + ESI (128 KB: BCS
@@ -505,6 +508,7 @@ V9XMINI_FN_TDFX_BAR1_MAP    EQU 001Fh
 V9XMINI_FN_HSW_ENGINE_OPEN  EQU 0020h
 V9X_HSW_CHIP_HASWELL        EQU 0
 V9X_HSW_CHIP_IVYBRIDGE      EQU 1
+V9X_HSW_CHIP_SANDYBRIDGE    EQU 2
 
 ; Intel Haswell: close what HSW_ENGINE_OPEN opened - BCS and RCS CTL 0, HEAD,
 ; TAIL, START 0, forcewake released. No input. Out: AX=1 if a ring was open, AX=0
