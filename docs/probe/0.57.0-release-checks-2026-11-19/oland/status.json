@@ -1,0 +1,17 @@
+{
+    "Name":  "oland",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  117,
+    "BootAfter":  118,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  117,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null
+}
