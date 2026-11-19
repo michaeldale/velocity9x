@@ -71,7 +71,14 @@ Then check those packages on hardware. First see which machines answer:
 
 It asks every machine in the list once, in parallel, and prints which are
 online, their agent, boot and whether the desktop is ready, ending with a
-`-Machine` line for the ready ones. Pick from it and run:
+`-Machine` line for the ready ones. It also runs the family package's
+V9XTRACE on each machine to read which display card is present this boot
+(its `[Card]` section), and compares that with the entry's `PciId`
+(`'1002:9901'`, or an array). A machine whose present card differs is
+refused before anything is installed, in the listing and in a real run, and
+the record's Builds table names the card it found. Remote-help owners swap
+cards: on 2026-11-19 the 0.57.0 checks ran the `ati` package on an HD 7470
+fitted where the list said HD 7660D. Pick from it and run:
 
 ```powershell
 ./scripts/run-release-checks.ps1 -MachineList <release-machines.psd1> -Machine <names>

@@ -1209,8 +1209,14 @@ static int v9x_card_present(const char *hardware_key, DWORD *problem)
  * Every display-class PCI device Windows has enumerated: its id string,
  * which carries vendor, device, subsystem and revision, its bus location,
  * and whether it is the one present.
+ *
+ * Every present card is listed; cards no longer in the machine only up to
+ * V9X_CARD_ABSENT_MAX, the rest counted in Unlisted. The cap once applied
+ * to all of them, in Enum\PCI order, and A8U4I5's six old cards filled it
+ * before the one in the slot (0.28.0 snapshots: six cards, none present).
+ * The release runner reads the present card from here before installing.
  */
-#define V9X_CARD_MAX 6ul
+#define V9X_CARD_ABSENT_MAX 6ul
 
 static void v9x_write_cards(void)
 {
@@ -1225,7 +1231,10 @@ static void v9x_write_cards(void)
     DWORD device_index;
     DWORD instance_index;
     DWORD count = 0ul;
+    DWORD absent = 0ul;
+    DWORD unlisted = 0ul;
     DWORD problem;
+    int present;
 
     if (!v9x_reg_load()) {
         v9x_write_in(V9X_SECTION_CARD, "Error", "no-advapi32");
@@ -1235,14 +1244,14 @@ static void v9x_write_cards(void)
         v9x_write_in(V9X_SECTION_CARD, "Error", "no-enum-pci");
         return;
     }
-    for (device_index = 0ul; count < V9X_CARD_MAX &&
+    for (device_index = 0ul;
          v9x_reg_enum_key(pci, device_index, device_name,
                           sizeof(device_name)) == ERROR_SUCCESS;
          ++device_index) {
         if (!v9x_reg_open_key(pci, device_name, &device)) {
             continue;
         }
-        for (instance_index = 0ul; count < V9X_CARD_MAX &&
+        for (instance_index = 0ul;
              v9x_reg_enum_key(device, instance_index, instance_name,
                               sizeof(instance_name)) == ERROR_SUCCESS;
              ++instance_index) {
@@ -1251,6 +1260,17 @@ static void v9x_write_cards(void)
             }
             if (v9x_reg_text(instance, "Class", value, sizeof(value)) &&
                 lstrcmpiA(value, "DISPLAY") == 0) {
+                wsprintfA(hardware_key, "PCI\\%s\\%s", device_name,
+                          instance_name);
+                present = v9x_card_present(hardware_key, &problem);
+                if (!present && absent >= V9X_CARD_ABSENT_MAX) {
+                    ++unlisted;
+                    v9x_reg_close(instance);
+                    continue;
+                }
+                if (!present) {
+                    ++absent;
+                }
                 ++count;
                 v9x_indexed_key(key, "Card", count, "Id");
                 v9x_write_in(V9X_SECTION_CARD, key, device_name);
@@ -1262,12 +1282,8 @@ static void v9x_write_cards(void)
                 v9x_reg_text(instance, "Driver", value, sizeof(value));
                 v9x_indexed_key(key, "Card", count, "Driver");
                 v9x_write_in(V9X_SECTION_CARD, key, value);
-                wsprintfA(hardware_key, "PCI\\%s\\%s", device_name,
-                          instance_name);
                 v9x_indexed_key(key, "Card", count, "Present");
-                v9x_write_in(V9X_SECTION_CARD, key,
-                             v9x_card_present(hardware_key, &problem)
-                                 ? "1" : "0");
+                v9x_write_in(V9X_SECTION_CARD, key, present ? "1" : "0");
                 v9x_indexed_key(key, "Card", count, "Problem");
                 v9x_uint_text(value, problem);
                 v9x_write_in(V9X_SECTION_CARD, key, value);
@@ -1279,6 +1295,8 @@ static void v9x_write_cards(void)
     v9x_reg_close(pci);
     v9x_uint_text(value, count);
     v9x_write_in(V9X_SECTION_CARD, "Count", value);
+    v9x_uint_text(value, unlisted);
+    v9x_write_in(V9X_SECTION_CARD, "Unlisted", value);
 }
 
 /*

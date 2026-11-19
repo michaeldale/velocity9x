@@ -21,7 +21,10 @@
 # and remote-help relay ids, so it lives outside this repository: pass
 # -MachineList or set V9X_RELEASE_MACHINES. Its format is described at the top
 # of the file itself; in short, a .psd1 with ControllerPath and Machines, each
-# machine a Name, Family, Host or Relay, and D32Runs.
+# machine a Name, Family, Host or Relay, D32Runs, and PciId: the display
+# card's VVVV:DDDD id (an array for more than one), checked before anything is
+# installed. A machine whose present card differs is skipped and its row in
+# the record says so.
 [CmdletBinding()]
 param(
     [string]$MachineList = $env:V9X_RELEASE_MACHINES,
@@ -152,6 +155,35 @@ function Get-V9xProbeVerdicts {
     return $verdicts
 }
 
+# The display cards Configuration Manager has a devnode for this boot, as
+# VVVV:DDDD, from a V9XTRACE snapshot's [Card] section (CardNId is the
+# Enum\PCI key, VEN_1002&DEV_9901&SUBSYS_...; CardNPresent is 1 or 0).
+function Get-V9xPresentCards {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return @()
+    }
+    $section = ''
+    $ids = @{}
+    $flags = @{}
+    foreach ($line in [IO.File]::ReadAllLines($Path)) {
+        if ($line -match '^\[(.+)\]\s*$') {
+            $section = $Matches[1]
+            continue
+        }
+        if ($section -ne 'Card') {
+            continue
+        }
+        if ($line -match '^Card(\d+)Id=VEN_([0-9A-Fa-f]{4})&DEV_([0-9A-Fa-f]{4})') {
+            $ids[$Matches[1]] = "$($Matches[2]):$($Matches[3])".ToUpper()
+        } elseif ($line -match '^Card(\d+)Present=(\d+)') {
+            $flags[$Matches[1]] = $Matches[2]
+        }
+    }
+    return @($ids.Keys | Sort-Object | Where-Object { $flags[$_] -eq '1' } |
+        ForEach-Object { $ids[$_] } | Select-Object -Unique)
+}
+
 function Get-V9xVerdictWord {
     param([string]$Value)
     return ($Value -split '\s+')[0]
@@ -189,6 +221,7 @@ if ($Worker) {
         BootBefore = $null; BootAfter = $null; Installed = $null; Error = $null
         Offline = $false; Agent = $null; Boot = $null; Desktop = $null; AnswerSeconds = $null
         ThreeDMark = $null; Counters = $null; CounterFlags = $null
+        Adapter = $null; AdapterMismatch = $false
     }
 
     function Invoke-Ctl {
@@ -313,6 +346,46 @@ if ($Worker) {
             -Call { param($Verb, $Arguments) Invoke-Ctl $Verb $Arguments 120 } `
             -Log { param($Text) Note $Text }
         $status.Agent = $info.AgentVersion
+
+        # The display card before anything is installed. Remote-help owners
+        # swap cards between our runs: on 2026-11-19 M-D7TFW4 had an HD 7470
+        # fitted where the list said HD 7660D, and the ati package and every
+        # probe ran on it and were reported as Trinity's
+        # (docs\issues\2026-11-19-release-probes-missed.md, entry 8). The
+        # package's V9XTRACE reads which display devnodes Configuration
+        # Manager has this boot ([Card], CardNPresent); Enum\PCI alone keeps
+        # every card the machine ever held. The list's PciId names the
+        # expected VVVV:DDDD id or ids: each must be present, and no other
+        # display card may be.
+        $null = Invoke-Ctl mkdir @{ Path = $guestDir }
+        Send-GuestFile (Join-Path $package 'V9XTRACE.EXE') "$guestDir\V9XTRACE.EXE"
+        $null = Invoke-Ctl exec @{ Application = "$guestDir\V9XTRACE.EXE"; WorkingDirectory = $guestDir; TimeoutSeconds = 120 } 150
+        $latest = Invoke-Ctl cat @{ RemotePath = 'C:\V9XDIAG\V9XSNAL.TXT' }
+        $snapshotPath = $(if ($latest -and $latest.Text) {
+            @($latest.Text -split "`r?`n" | Where-Object { $_.Trim() })[0] })
+        $cardLocal = Join-Path $machineDir 'cards-V9XSNA.INI'
+        if ($snapshotPath) {
+            Get-GuestFile $snapshotPath.Trim() $cardLocal
+        }
+        $present = @(Get-V9xPresentCards -Path $cardLocal)
+        if ($present.Count -eq 0) {
+            throw "Could not read the display card (V9XTRACE [Card] has no present card)."
+        }
+        $status.Adapter = ($present -join ', ')
+        Note "display card present: $($status.Adapter)"
+        if (-not $entry.PciId) {
+            Note "the list gives no PciId for $Worker; card not compared"
+        } else {
+            $expected = @($entry.PciId | ForEach-Object { $_.ToUpper() })
+            $missing = @($expected | Where-Object { $_ -notin $present })
+            $extra = @($present | Where-Object { $_ -notin $expected })
+            if ($missing.Count -gt 0 -or $extra.Count -gt 0) {
+                $status.AdapterMismatch = $true
+                throw ("Display card $($status.Adapter) present; the list expects " +
+                       "$($expected -join ', '). Not installing.")
+            }
+        }
+
         if ($List) {
             exit 0
         }
@@ -933,11 +1006,18 @@ if ($List) {
             Agent   = $(if ($answered) { $s.Agent } else { '' })
             Boot    = $(if ($answered) { $s.Boot } else { '' })
             Desktop = $(if ($answered) { $(if ($s.Desktop) { 'ready' } else { 'NOT READY' }) } else { '' })
+            # The present display card, and whether it is the list's PciId.
+            Card    = $(if (-not $answered) { '' }
+                elseif ($s.AdapterMismatch) { "$($s.Adapter) WRONG (list: $(@($entry.PciId) -join ', '))" }
+                elseif (-not $s.Adapter) { 'not read' }
+                elseif (-not $entry.PciId) { "$($s.Adapter) (no PciId)" }
+                else { "$($s.Adapter) ok" })
             InList  = $(if ($entry.Enabled -eq $false) { 'off' } else { 'on' })
         }
     }
     $rows | Sort-Object { $_.Online -eq 'no' }, Machine | Format-Table -AutoSize | Out-String -Width 200
-    $ready = @($rows | Where-Object { $_.Desktop -eq 'ready' } | ForEach-Object { $_.Machine })
+    $ready = @($rows | Where-Object { $_.Desktop -eq 'ready' -and $_.Card -notlike '*WRONG*' -and $_.Card -ne 'not read' } |
+        ForEach-Object { $_.Machine })
     Write-Output "Ready: -Machine $($ready -join ',')"
     Remove-Item -LiteralPath $OutDir -Recurse -Force -ErrorAction SilentlyContinue
     exit 0
@@ -1088,19 +1168,19 @@ if ($Baseline) {
     $md += "by ``reset``, then every installed file's SHA-256 compared with the package:"
 }
 $md += ''
-$md += '| Machine | Package | Boot | Installed |'
-$md += '|---|---|---|---|'
+$md += '| Machine | Package | Card | Boot | Installed |'
+$md += '|---|---|---|---|---|'
 foreach ($folder in $folderNames) {
     $s = $statuses[$folder]
     if (-not $s) {
-        $md += "| $($labels[$folder]) | $($families[$folder]) | | not recorded |"
+        $md += "| $($labels[$folder]) | $($families[$folder]) | | | not recorded |"
         continue
     }
     $boot = if ($s.BootBefore -ne $null) { "$($s.BootBefore) to $($s.BootAfter)" } elseif ($s.Boot -ne $null) { "$($s.Boot)" } else { '' }
     $installed = if ($s.Error -and $s.Installed -eq $null) { "not checked: $($s.Error)" }
         elseif ($s.Baseline) { 'as found' }
         else { "$($s.Installed) of $($installFiles.Count)" }
-    $md += "| $($labels[$folder]) | $($s.Family) | $boot | $installed |"
+    $md += "| $($labels[$folder]) | $($s.Family) | $($s.Adapter) | $boot | $installed |"
 }
 $md += ''
 $md += '## Results'
