@@ -1,0 +1,13 @@
+[+0:03] agent 0.19.0, boot 68, desktop True
+[+0:24] staged 8 files; resetting
+[+1:12] reset: boot 68 -> 69
+[+1:14] logon dialog cancelled
+[+1:26] installed: 8 of 8
+[+1:40] probes in place: sent 7 of 7
+[+2:01] V9XD32 default exit=0
+[+2:11] V9XD32 z24 exit=0
+[+2:21] V9XGLP.EXE exit=0
+[+2:29] V9XGLIDP.EXE exit=0
+[+2:31] V9XR3DP.EXE exit=0
+[+2:38] V9XWPRS.EXE exit=0
+[+2:40] V9XFBCMP.EXE exit=0
