@@ -12,7 +12,11 @@ the mini-VDD's, in Phase 2. Phase 2 passed the same day: the pool maps at
 GTTMMADR + 2 MiB, the aperture reaches its pages, mode sets leave them, and
 every junk entry is restored exactly
 ([record](../decisions/2026-11-19-haswell-texture-pool-phase2.md)).
-Phase 3, the pool in the driver, next. Requested by
+Phase 3 passed the same day: the driver maps the pool at boot on the
+i5-4570, V9XD32 samples textures from it, and Car Chase refuses no mip
+tree and no longer drops to 1 fps
+([record](../decisions/2026-11-19-haswell-texture-pool-phase3.md)).
+Phase 4, games, next. Requested by
 Michael the same day, after the vsync-off work showed 3DMark 2001 SE's Car
 Chase short of texture memory on the HD 4600 with vsync on as well
 ([record](../decisions/2026-11-19-haswell-vsync-off-async-flips.md)).

@@ -524,6 +524,20 @@ static void v9x_ivb_fill_engine(unsigned long framebuffer_linear_base,
                             gtt_linear_base, ring_linear_base, ring_bytes);
 }
 
+/*
+ * The texture pool intel_pool16.c mapped at Enable, for dd16.c's heap 1
+ * (docs\plans\intel-haswell-system-memory-textures.md). A near call to the
+ * pool's two words, which live in intel_pool16.c's data.
+ */
+extern unsigned long v9x_intel_pool_offset;
+extern unsigned long v9x_intel_pool_bytes;
+
+static unsigned long v9x_hsw_engine_pool(unsigned long *bytes)
+{
+    *bytes = v9x_intel_pool_bytes;
+    return v9x_intel_pool_offset;
+}
+
 const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
     0x8086u, 0x0412u,
     "Intel HD Graphics 4600 (Haswell)",
@@ -542,7 +556,10 @@ const V9X_HW16_DEVICE v9x_hsw_hd4600_device = {
     v9x_hsw_reserve_offset,
     /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
     1u,
-    v9x_hsw_write_combine
+    v9x_hsw_write_combine,
+    /* GDI on the frame buffer, no screen shadow. */
+    0u,
+    v9x_hsw_engine_pool
 };
 
 /*

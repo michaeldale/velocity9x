@@ -21,6 +21,7 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/i9xx_pool.h"
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/intel_hsw.h"
 #include "velocity9x/leaf16.h"
 
 /* V9XMAPI.INC's numbers and acceptance word. */
@@ -36,6 +37,10 @@
  * mini-VDD checks the device again. */
 #define V9X_POOL_DEVICE       0x27AEu
 #define V9X_POOL_DEVICE_GM965 0x2A02u
+/* And the HD 4600, gated to the i5-4570 by the mini-VDD's subsystem check
+ * (docs\plans\intel-haswell-system-memory-textures.md, decision 3). */
+#define V9X_POOL_DEVICE_HSW   0x0412u
+#define V9X_POOL_BDSM_MASK    0xfff00000ul
 
 /* The 945's GMADR is 256 MiB (MSAC; 2026-09-12-intel-phase2-gtt-
  * inventory.md, 65,536 entries). */
@@ -56,6 +61,12 @@ DWORD v9x_intel_pool_bytes;
 
 extern WORD FAR PASCAL V9xMiniI9xxPoolCall(WORD function, DWORD ebx_in,
                                            DWORD ecx_in, DWORD edx_in);
+/* runtime.asm, as hsw_hw16.c declares them. */
+extern unsigned short __far __pascal V9xPciReadHswConfig(
+    unsigned long __far *bar0, unsigned long __far *gmadr,
+    unsigned long __far *bdsm);
+extern unsigned short __far __pascal V9xPciReadHswGgc(
+    unsigned short __far *ggc);
 extern void FAR PASCAL V9xEnsureDiagDir(void);
 extern WORD v9x_intel_runtime3d_allowed;
 extern DWORD v9x_i9xx_bsm;
@@ -93,6 +104,40 @@ static DWORD v9x_pool_stolen_bytes(WORD ggc)
         128u, 256u, 96u, 160u, 224u, 352u, 0u, 0u
     };
     return (DWORD)sizes[(ggc >> 4) & 15u] * 1024ul * 1024ul;
+}
+
+/*
+ * Haswell's layout: GGC and BDSM read as HSW_ENGINE_OPEN reads them, GGC
+ * decoded, and v9x_intel_hsw_pool_layout (hsw_config.c, host-tested) builds
+ * the policy's input with the GTT's own block excluded. GMADR is taken as
+ * 256 MiB: MSAC is not read here, and the pool's limit is the 64 MiB
+ * mapping well below it. 1 with the layout, 0 when the config cannot be
+ * read or is not understood.
+ */
+static int v9x_pool_hsw_layout(DWORD ram_bytes,
+                               struct v9x_i9xx_pool_layout *layout)
+{
+    static struct v9x_intel_hsw_layout hsw;
+    unsigned long bar0 = 0ul;
+    unsigned long gmadr = 0ul;
+    unsigned long bdsm = 0ul;
+    unsigned short ggc = 0u;
+
+    if (V9xPciReadHswConfig(&bar0, &gmadr, &bdsm) == 0u ||
+        V9xPciReadHswGgc(&ggc) == 0u ||
+        v9x_intel_hsw_decode_ggc(ggc, &hsw.ggc) != V9X_STATUS_OK ||
+        hsw.ggc.stolen_bytes == 0ul) {
+        return 0;
+    }
+    hsw.stolen_base = bdsm & V9X_POOL_BDSM_MASK;
+    hsw.gtt_stolen_base = hsw.stolen_base - hsw.ggc.gtt_stolen_bytes;
+    hsw.gtt_entries = hsw.ggc.gtt_stolen_bytes / 4ul;
+    hsw.aperture_bytes = V9X_POOL_APERTURE;
+    hsw.refused = 0u;
+    v9x_pool_hex("Bdsm", hsw.stolen_base);
+    v9x_pool_hex("Ggc", (DWORD)ggc);
+    return v9x_intel_hsw_pool_layout(&hsw, ram_bytes, layout) ==
+           V9X_STATUS_OK;
 }
 
 /* Hand the pages back unmapped after the driver refused them. */
@@ -146,7 +191,8 @@ void V9X_LEAF_FAR v9x_intel_pool_setup(unsigned short device_id)
     V9xEnsureDiagDir();
     WritePrivateProfileString(V9X_POOL_SECTION, 0, 0, V9X_DIAG_INTELGTT_TXT);
 
-    if (device_id != V9X_POOL_DEVICE && device_id != V9X_POOL_DEVICE_GM965) {
+    if (device_id != V9X_POOL_DEVICE && device_id != V9X_POOL_DEVICE_GM965 &&
+        device_id != V9X_POOL_DEVICE_HSW) {
         v9x_pool_result("not-gated-device", 0ul);
         return;
     }
@@ -163,15 +209,24 @@ void V9X_LEAF_FAR v9x_intel_pool_setup(unsigned short device_id)
     v9x_pool_hex("PhysPages", phys_pages);
     v9x_pool_hex("StateBefore", v9x_i9xx_pool_regs[1]);
 
-    layout.bsm = v9x_i9xx_bsm;
-    layout.stolen_bytes = v9x_pool_stolen_bytes(v9x_i9xx_ggc);
-    layout.aperture_bytes = V9X_POOL_APERTURE;
-    layout.gtt_entries = V9X_I9XX_GTT_ENTRY_COUNT;
-    layout.mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
-                           (DWORD)v9x_map_pages_lo) + 1ul;
-    layout.ram_bytes = phys_pages >= 0x00100000ul ? 0xfffff000ul
-                                                  : phys_pages * 4096ul;
-    layout.excluded_count = 0u;
+    if (device_id == V9X_POOL_DEVICE_HSW) {
+        if (!v9x_pool_hsw_layout(phys_pages >= 0x00100000ul
+                                     ? 0xfffff000ul : phys_pages * 4096ul,
+                                 &layout)) {
+            v9x_pool_result("refused-layout", 0ul);
+            return;
+        }
+    } else {
+        layout.bsm = v9x_i9xx_bsm;
+        layout.stolen_bytes = v9x_pool_stolen_bytes(v9x_i9xx_ggc);
+        layout.aperture_bytes = V9X_POOL_APERTURE;
+        layout.gtt_entries = V9X_I9XX_GTT_ENTRY_COUNT;
+        layout.mapped_bytes = (((DWORD)v9x_map_pages_hi << 16) |
+                               (DWORD)v9x_map_pages_lo) + 1ul;
+        layout.ram_bytes = phys_pages >= 0x00100000ul ? 0xfffff000ul
+                                                      : phys_pages * 4096ul;
+        layout.excluded_count = 0u;
+    }
     reason = v9x_i9xx_pool_size(&layout, &plan);
     v9x_pool_hex("MappedBytes", layout.mapped_bytes);
     v9x_pool_hex("PlanOffset", plan.aperture_offset);

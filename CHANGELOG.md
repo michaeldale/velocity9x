@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.57.0 - not yet released
 
+- **`intel-gma` package, HD 4600: textures in system memory.** The driver
+  maps 32 MiB of locked RAM into the GTT at boot and offers it to Direct3D
+  for textures, as on the GMA 950 and GMA X3100. On the i5-4570, 3DMark
+  2001 SE's Car Chase went from 185 mip trees refused for room in two
+  minutes to none, and no longer drops to 1 fps. For now on that one
+  machine only (its PCI subsystem id); every other Haswell keeps stolen
+  memory alone
+  ([record](docs/decisions/2026-11-19-haswell-texture-pool-phase3.md)).
+
 - **Vsync off ("Always off") no longer shows half-drawn frames.** An
   unsynced flip on Haswell, Ivy Bridge, Rage 128, Evergreen, RS690 and
   RV280 was called done before the screen took it, so the game drew into

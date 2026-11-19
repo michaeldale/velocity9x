@@ -669,6 +669,15 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; aperture page i is allocation page i (measured, Phase 2 record).
 V9X_I9XX_POOL_DEVICE   equ 27ae8086h     ; the gate: MICHAEL-NETBOOK's 945GSE
 V9X_I9XX_POOL_DEVICE_GM965 equ 2a028086h ; and every GM965
+; Haswell, gated to the i5-4570 (Dell subsystem 1028:05A4) by decision 3 of
+; docs\plans\intel-haswell-system-memory-textures.md. Its GTT is
+; V9xHswGttLinear, mapped by HSW_ENGINE_OPEN; its pool entries are junk
+; (Phase 0), so every one is saved and a failed map puts each back; and the
+; GTT's own stolen block, up to 2 MiB below BDSM, is refused as a page.
+V9X_I9XX_POOL_DEVICE_HSW equ 04128086h
+V9X_I9XX_POOL_SUBSYS_HSW equ 05a41028h
+V9X_I9XX_POOL_CFG_SUBSYS equ 8000102ch   ; 00:02.0, register 2Ch
+V9X_I9XX_POOL_GSM_MAX  equ 00200000h
 V9X_I9XX_POOL_FRAME    equ 0fffff000h
 V9X_I9XX_POOL_CFG_ADDR equ 0cf8h         ; PCI configuration mechanism 1
 V9X_I9XX_POOL_CFG_DATA equ 0cfch
@@ -681,6 +690,9 @@ V9xI9xxPoolLinear  dd 0
 V9xI9xxPoolFirst   dd 0
 V9xI9xxPoolCount   dd 0
 V9xI9xxPoolSaved   dd 0
+V9xI9xxPoolSavedAll dd V9X_I9XX_POOL_PAGE_MAX dup (0) ; every entry as found
+V9xI9xxPoolGtt     dd 0                  ; the GTT the pool's entries are in
+V9xI9xxPoolGen7    dd 0                  ; 1 on Haswell
 V9xI9xxPoolBad     dd 0
 ENDIF
 VxD_LOCKED_DATA_ENDS
@@ -5291,7 +5303,7 @@ EndProc V9xMini_I9xx_Pool_Igd_Config
 BeginProc V9xMini_I9xx_Pool_Pte_Base
     mov     esi, V9xI9xxPoolFirst
     shl     esi, 2
-    add     esi, V9xI9xxGttLinear
+    add     esi, V9xI9xxPoolGtt
     ret
 EndProc V9xMini_I9xx_Pool_Pte_Base
 
@@ -5305,15 +5317,40 @@ BeginProc V9xMini_I9xx_Pool_Alloc
     mov     edx, 1
     cmp     V9xI9xxPoolState, 0
     jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     V9xI9xxPoolGen7, 0
+
+    ; Haswell first: its GTT is HSW_ENGINE_OPEN's mapping, not the Gen3
+    ; capture's, and its gate is one machine. The same PTE serves: frame |
+    ; valid is Haswell's uncached form below 4 GiB (Phase 0 record).
+    call    V9xMini_I9xx_Pool_Igd_Id
+    cmp     eax, V9X_I9XX_POOL_DEVICE_HSW
+    jne     short V9xMini_I9xx_Pool_Alloc_Not_Hsw
+    mov     eax, V9X_I9XX_POOL_CFG_SUBSYS
+    call    V9xMini_I9xx_Pool_Igd_Config
+    mov     edx, 3
+    cmp     eax, V9X_I9XX_POOL_SUBSYS_HSW
+    jne     V9xMini_I9xx_Pool_Alloc_Refused
+    mov     edx, 2
+    mov     eax, V9xHswGttLinear
+    test    eax, eax
+    jz      V9xMini_I9xx_Pool_Alloc_Refused
+    mov     V9xI9xxPoolGtt, eax
+    mov     V9xI9xxPoolGen7, 1
+    jmp     short V9xMini_I9xx_Pool_Alloc_Gated
+
+V9xMini_I9xx_Pool_Alloc_Not_Hsw:
     mov     edx, 2
     cmp     V9xI9xxGttValid, 0
     je      V9xMini_I9xx_Pool_Alloc_Refused
+    push    eax
+    mov     eax, V9xI9xxGttLinear
+    mov     V9xI9xxPoolGtt, eax
+    pop     eax
     ; The gate. The netbook's 945GSE, whose GTT is BAR3's; or any GM965,
     ; whose GTT is in BAR0 (docs\decisions\2026-11-14-intel-gm965-texture-
     ; pool-decisions.md; measured on TOMMOHP, opened to the design by
     ; Michael's decision). The same PTE serves both: every frame Windows
     ; 98 hands out is below 4 GiB, so Gen4's address bits 35:32 are zero.
-    call    V9xMini_I9xx_Pool_Igd_Id
     cmp     eax, V9X_I9XX_POOL_DEVICE
     jne     short V9xMini_I9xx_Pool_Alloc_Gm965
     mov     edx, 2
@@ -5342,18 +5379,27 @@ V9xMini_I9xx_Pool_Alloc_Gated:
     mov     V9xI9xxPoolFirst, ebx
     mov     V9xI9xxPoolCount, ecx
 
-    ; Every entry the pool will take must hold the first one's value -
-    ; the VBIOS's scratch PTE - which is what a failed map restores.
+    ; Every entry the pool will take, saved as found: a failed map puts
+    ; each back. On Gen3 and Gen4 they must also all hold the first one's
+    ; value - the VBIOS's scratch PTE; Haswell's are junk.
+    call    V9xMini_I9xx_Pool_Pte_Base
+    mov     edi, OFFSET32 V9xI9xxPoolSavedAll
+    cld
+    rep     movsd
+    mov     ecx, V9xI9xxPoolCount
     mov     edx, 5
     call    V9xMini_I9xx_Pool_Pte_Base
     mov     eax, [esi]
     mov     V9xI9xxPoolSaved, eax
+    cmp     V9xI9xxPoolGen7, 0
+    jne     short V9xMini_I9xx_Pool_Alloc_Uniform_Done
 V9xMini_I9xx_Pool_Alloc_Uniform:
     cmp     [esi], eax
     jne     V9xMini_I9xx_Pool_Alloc_Refused
     add     esi, 4
     dec     ecx
     jnz     short V9xMini_I9xx_Pool_Alloc_Uniform
+V9xMini_I9xx_Pool_Alloc_Uniform_Done:
 
     mov     ecx, V9xI9xxPoolCount
     VMMcall _PageAllocate,<ecx,PG_SYS,0,0,0,0,0,PAGEFIXED+PAGEZEROINIT>
@@ -5432,6 +5478,13 @@ BeginProc V9xMini_I9xx_Pool_Map
 V9xMini_I9xx_Pool_Map_Check:
     mov     ebx, ecx
     mov     ebp, edx
+    ; Haswell: the GTT's own block sits up to 2 MiB below BDSM; refuse the
+    ; whole 2 MiB with stolen memory.
+    cmp     V9xI9xxPoolGen7, 0
+    je      short V9xMini_I9xx_Pool_Map_Range
+    sub     ebx, V9X_I9XX_POOL_GSM_MAX
+    add     ebp, V9X_I9XX_POOL_GSM_MAX
+V9xMini_I9xx_Pool_Map_Range:
     mov     edi, OFFSET32 V9xI9xxPoolPages
     xor     esi, esi
 V9xMini_I9xx_Pool_Map_Page:
@@ -5498,16 +5551,16 @@ V9xMini_I9xx_Pool_Map_Same:
     mov     ax, 1
     jmp     short V9xMini_I9xx_Pool_Map_Out
 
-    ; A PTE that did not read back: the scratch PTE back in every entry
+    ; A PTE that did not read back: every entry back as ALLOC found it
     ; before the pages are freed, so no entry is left naming a freed page.
 V9xMini_I9xx_Pool_Map_Restore:
     mov     ebp, edx
     call    V9xMini_I9xx_Pool_Pte_Base
     mov     edi, esi
+    mov     esi, OFFSET32 V9xI9xxPoolSavedAll
     mov     ecx, V9xI9xxPoolCount
-    mov     eax, V9xI9xxPoolSaved
     cld
-    rep     stosd
+    rep     movsd
     mov     eax, [edi-4]
     call    V9xMini_I9xx_Pool_Release
     mov     esi, ebp

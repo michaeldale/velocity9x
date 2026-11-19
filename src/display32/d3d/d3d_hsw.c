@@ -970,7 +970,10 @@ static DWORD v9x_d3d_hsw_texture_unit(const V9X_R3D_TEXTURE *texture,
                                        0)) {
         return V9X_D3D_HSW_REFUSE_TEXTURE;
     }
-    offset = v9x_surface_offset(surface);
+    /* Stolen memory or the texture pool (docs\plans\intel-haswell-system-
+     * memory-textures.md): the sampler reads either through the GTT.
+     * Targets and Z stay v9x_surface_offset's, stolen memory only. */
+    offset = v9x_surface_sample_offset(surface);
     if (offset == 0xfffffffful) {
         return V9X_D3D_HSW_REFUSE_TEXTURE;
     }
@@ -3746,7 +3749,7 @@ static void v9x_d3d_hsw_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     const V9X_DD_SURFACE_LCL *surface =
         (const V9X_DD_SURFACE_LCL *)data->lpDDSurface;
     DWORD offset = surface != 0 && surface->lpGbl != 0
-                       ? v9x_surface_offset(surface) : 0xfffffffful;
+                       ? v9x_surface_sample_offset(surface) : 0xfffffffful;
     DWORD n;
 
     if (v9x_d3d_place_release(data, V9X_D3D_HSW_TILE_BYTES)) {

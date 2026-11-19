@@ -210,6 +210,10 @@ static void v9x_intel_publish_diagnostics(const V9X_HW16_DEVICE *device,
      * CPU display keeps; no counter. */
     if (v9x_intel_is_gen7()) {
         v9x_hsw_publish_layout(write);
+        /* The texture pool, after HSW_ENGINE_OPEN has mapped the GTT its
+         * PTEs go into (docs\plans\intel-haswell-system-memory-
+         * textures.md). The device test is inside: the HD 4600 only. */
+        v9x_intel_pool_setup(device->device_id);
         return;
     }
     v9x_intel_publish_mmio_fingerprint();
