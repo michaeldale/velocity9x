@@ -310,6 +310,10 @@ struct v9x_eg_3d_state {
     v9x_u32 texture_pitch;
     v9x_u32 texture_format;      /* V9X_EG_COLOR_5_6_5, _1_5_5_5, _4_4_4_4
                                     or _8_8_8_8 */
+    /* Nonzero: the texture's fourth field is not alpha (an XRGB8888
+     * texture), so W reads the constant 1, as a 565 texture's always
+     * does. */
+    v9x_u32 texture_opaque;
     v9x_u32 sampler_word0;       /* v9x_eg_3d_sampler */
     /* 1 for a single level (linear general, 64-byte rows); more for a
      * chain laid out by v9x_eg_3d_mip_layout, level 1 at mip_gpu, sampled

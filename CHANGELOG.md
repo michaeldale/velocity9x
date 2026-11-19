@@ -14,6 +14,13 @@ build identifier so exact guest-tested binaries remain traceable.
   2001 SE at its saved settings went from 1743 to 2555, 3DMark 2000 from
   3121 to 4169. Not run on the mobile HD 4000
   ([record](docs/decisions/2026-11-19-ivybridge-render-clock-rp0.md)).
+- **`ati` package, Evergreen class (Trinity, Cedar, Caicos): XRGB8888
+  textures.** A texture in the 32 bpp desktop's own format was created
+  and drawn without an error but came out black. It is now offered and
+  sampled as opaque, as on the R600 class. On the HD 7660D, V9XD32's
+  T22X goes from black to exact and V9XD32 passes at 32 and 16 bpp. Not
+  run on Cedar or Caicos
+  ([record](docs/decisions/2026-11-19-evergreen-xrgb8888-textures.md)).
 
 ## 0.56.0 - 2026-11-18
 

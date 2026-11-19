@@ -70,8 +70,8 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_eg_limits = {
     1ul             /* texture_stages */
 };
 
-/* RGB565 at 16 bits and ARGB8888 at 32: the colour-buffer format number
- * the sampler takes, or UNKNOWN. */
+/* RGB565, ARGB1555, ARGB4444, ARGB8888 and XRGB8888: the colour-buffer
+ * format number the sampler takes, or UNKNOWN. */
 static DWORD v9x_d3d_eg_format_of(const V9X_DD_SURFACE_LCL *surface,
                                   DWORD *bytes_out, DWORD *has_alpha)
 {
@@ -127,6 +127,18 @@ static DWORD v9x_d3d_eg_format_of(const V9X_DD_SURFACE_LCL *surface,
         format->dwRGBAlphaBitMask == 0xff000000ul) {
         *bytes_out = 4ul;
         *has_alpha = 1ul;
+        return V9X_EG_COLOR_8_8_8_8;
+    }
+    /* XRGB8888: ARGB8888's layout, its top byte not alpha, so sampled
+     * opaque (V9XD32 T22X drew black while it was not offered, Trinity
+     * M-D7TFW4 boot 74; d3d_r6.c has the same entry). */
+    if (format->dwRGBBitCount == 32ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x00ff0000ul &&
+        format->dwGBitMask == 0x0000ff00ul &&
+        format->dwBBitMask == 0x000000fful) {
+        *bytes_out = 4ul;
+        *has_alpha = 0ul;
         return V9X_EG_COLOR_8_8_8_8;
     }
     return V9X_D3D_EG_TEXTURE_UNKNOWN;
@@ -241,7 +253,7 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB1555, ARGB4444, ARGB8888. */
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888, then XRGB8888 below. */
     for (index = 0ul; index < 4ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
@@ -274,8 +286,12 @@ static void v9x_d3d_eg_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
     shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
+    /* XRGB8888, the fifth and last entry the table holds. */
+    shared->texture_formats[4] = shared->texture_formats[3];
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 4ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }

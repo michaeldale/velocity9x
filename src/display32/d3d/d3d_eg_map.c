@@ -263,6 +263,7 @@ static v9x_u32 v9x_d3d_eg_map_texture(const V9X_R3D_DRAW *draw,
     state->texture_height = texture->height;
     state->texture_pitch = texture->pitch_texels;
     state->texture_format = texture->format;
+    state->texture_opaque = texture->has_alpha == 0ul ? 1ul : 0ul;
     state->sampler_word0 = v9x_eg_3d_sampler(mag, min, clamp, clamp);
     state->vs_gprs = 3ul;
     state->ps_gprs = 2ul;

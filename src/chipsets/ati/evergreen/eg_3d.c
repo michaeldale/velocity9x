@@ -1010,8 +1010,10 @@ v9x_status v9x_eg_3d_build_state(const struct v9x_eg_3d_state *state,
         /* A 565 texture has no fourth component, which samples as 0: its
          * W is the constant 1, so it is opaque, as Direct3D reads a
          * texture without alpha (V9XDDP's untagged texture blended away
-         * under SRCALPHA, boot 21). */
-        v9x_eg_pm4_put(stream, state->texture_format == V9X_EG_COLOR_5_6_5 ?
+         * under SRCALPHA, boot 21). An XRGB8888 texture's top byte is not
+         * alpha either. */
+        v9x_eg_pm4_put(stream, state->texture_format == V9X_EG_COLOR_5_6_5 ||
+                               state->texture_opaque != 0ul ?
                                EG_TEX_SWIZZLE_XYZ1 : EG_TEX_SWIZZLE_XYZW);
         /* LAST_LEVEL, the chain's last; BASE_LEVEL 0. */
         v9x_eg_pm4_put(stream, state->texture_levels - 1ul);

@@ -238,6 +238,13 @@ static void test_lit(void)
     CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
               V9X_D3D_EG_REFUSE_NONE &&
           ps == V9X_EG_SLOT_PS_FIRST + V9X_EG_D3D_OP_MODULATE);
+
+    /* A texture without alpha is sampled opaque; one with alpha is not. */
+    CHECK(state.texture_opaque == 1ul);
+    texture.has_alpha = 1ul;
+    CHECK(map(&draw, &texture, 0ul, &state, &vs, &ps) ==
+              V9X_D3D_EG_REFUSE_NONE &&
+          state.texture_opaque == 0ul);
 }
 
 static void test_untextured(void)

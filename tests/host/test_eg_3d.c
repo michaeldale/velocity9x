@@ -684,6 +684,21 @@ static void test_state(void)
     }
     CHECK(at < stream.count && ((buffer[at + 6ul] >> 25) & 7ul) == 3ul);
 
+    /* An XRGB8888 texture: 8888's layout with an opaque fourth byte, so
+     * W reads 1 as a 565's does (V9XD32 T22X drew black on Trinity,
+     * M-D7TFW4 boot 74). */
+    fill_state(&state);
+    state.texture_format = V9X_EG_COLOR_8_8_8_8;
+    state.texture_opaque = 1ul;
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    CHECK(v9x_eg_3d_build_state(&state, &stream) == V9X_STATUS_OK);
+    for (at = 0ul; at < stream.count; ++at) {
+        if (buffer[at] == 0xc0086d00ul && buffer[at + 1ul] == 0ul) {
+            break;
+        }
+    }
+    CHECK(at < stream.count && ((buffer[at + 6ul] >> 25) & 7ul) == 5ul);
+
     /* 1555 and 4444 are taken, with their format in word 7. */
     fill_state(&state);
     state.texture_format = V9X_EG_COLOR_1_5_5_5;
