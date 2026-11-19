@@ -16,7 +16,12 @@ Phase 3 passed the same day: the driver maps the pool at boot on the
 i5-4570, V9XD32 samples textures from it, and Car Chase refuses no mip
 tree and no longer drops to 1 fps
 ([record](../decisions/2026-11-19-haswell-texture-pool-phase3.md)).
-Phase 4, games, next. Requested by
+Phase 4 the same day: mapped at a fresh boot's first Enable; a full 3DMark
+2001 SE (4517) and the UT2004 botmatch run on it with no mip tree refused;
+vsync-off Car Chase loses its 1 fps stalls too
+([record](../decisions/2026-11-19-haswell-texture-pool-phase4.md)). Left:
+a DOS box with Michael at the machine, then lifting the gate to every
+Haswell after the next release checks (decision 3). Requested by
 Michael the same day, after the vsync-off work showed 3DMark 2001 SE's Car
 Chase short of texture memory on the HD 4600 with vsync on as well
 ([record](../decisions/2026-11-19-haswell-vsync-off-async-flips.md)).

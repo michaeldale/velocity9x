@@ -1,0 +1,10 @@
+[IntelPool]
+PhysPages=000DB60D
+StateBefore=00000000
+Bdsm=DD200000
+Ggc=00000209
+MappedBytes=04000000
+PlanOffset=02000000
+PlanBytes=02000000
+Result=mapped
+Reason=00000000
