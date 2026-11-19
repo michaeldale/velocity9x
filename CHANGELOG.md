@@ -21,6 +21,11 @@ build identifier so exact guest-tested binaries remain traceable.
   T22X goes from black to exact and V9XD32 passes at 32 and 16 bpp. Not
   run on Cedar or Caicos
   ([record](docs/decisions/2026-11-19-evergreen-xrgb8888-textures.md)).
+- **`ati` package, Evergreen class: longer Direct3D batches, and the GPU's
+  caches flushed per group of batches instead of after every one.** As
+  on GCN since 0.55.0. On the HD 7660D, 3DMark 2000 went from 3821 to
+  4130 and 3DMark 2001 SE from 1906 to 2462. Not run on Cedar or Caicos
+  ([record](docs/decisions/2026-11-19-evergreen-batch-flush-groups.md)).
 
 ## 0.56.0 - 2026-11-18
 

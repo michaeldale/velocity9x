@@ -39,7 +39,7 @@
 #define V9X_D3D_EG_LEVELS_MAX      12ul
 
 /* A batch's stream: set_default_state (262), the state (under 160), the
- * draw (10), the flush (5), padding to 16. */
+ * draw (10), padding to 16; the cache flush goes out per group (eg_cp.c). */
 #define V9X_D3D_EG_STREAM_DWORDS 512ul
 
 static v9x_u32 v9x_d3d_eg_stream[V9X_D3D_EG_STREAM_DWORDS];
@@ -67,7 +67,17 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_eg_limits = {
     65504ul,        /* target_pitch_max_xrgb8888 */
     0ul,            /* depth32_bits: Z16 only for now */
     0ul,            /* centre_in_engine */
-    1ul             /* texture_stages */
+    1ul,            /* texture_stages */
+    0ul,            /* guard_band_ddi6 */
+    0ul,            /* dxt_textures */
+    0ul,            /* modulate2x */
+    0ul,            /* bump_luminance */
+    /* batch_triangles: the core's runs as long as one call of
+     * v9x_d3d_eg_draw takes, not V9X_D3D_INDEXED_BATCH's 64, as on GCN.
+     * It changed nothing measurable in 3DMark 2000 on Trinity: its calls
+     * average 48 triangles, so each was one batch already (3.64 M before
+     * and after, M-D7TFW4 boots 73 and 76). */
+    V9X_D3D_EG_CHUNK_TRIANGLES
 };
 
 /* RGB565, ARGB1555, ARGB4444, ARGB8888 and XRGB8888: the colour-buffer
@@ -512,7 +522,7 @@ static v9x_u32 v9x_d3d_eg_lit_ps_eg[V9X_EG_SHADER_DWORDS_MAX];
 /*
  * A run of triangles, in batches of at most V9X_D3D_EG_CHUNK_TRIANGLES:
  * each batch's vertices copied into the CP's arena as they are, then the
- * default state, the batch's state, the draw and the cache flush. A lit
+ * default state, the batch's state and the draw, flushed as a group. A lit
  * draw's PS goes into the arena ahead of each batch's vertices: it holds
  * the fog colour, and the arena is the only space that is not reused
  * before the GPU has read it.
@@ -612,8 +622,10 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
             V9X_TIME_END(V9X_TIME_DECODE, started);
             return 0;
         }
+        /* No cache flush of its own: batches are flushed as a group
+         * (eg_cp.c), and a texture drawn into since the group's last flush
+         * is flushed to memory before this batch samples it. */
         v9x_eg_3d_draw(&stream, chunk * 3ul);
-        v9x_eg_3d_flush(&stream);
         v9x_eg_pm4_pad(&stream);
         if (stream.overflow != 0ul) {
             v9x_d3d_eg_count_refusal(draw, V9X_D3D_EG_REFUSE_OVERFLOW);
@@ -621,7 +633,12 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
             return 0;
         }
         V9X_TIME_END(V9X_TIME_DECODE, started);
-        if (!v9x_eg_cp_submit(stream.dwords, stream.count)) {
+        if (!v9x_eg_cp_before_read(state.has_texture != 0ul ?
+                                   state.texture_gpu : 0ul) ||
+            !v9x_eg_cp_submit_open(stream.dwords, stream.count,
+                                   state.target_gpu,
+                                   state.has_depth != 0ul ? state.depth_gpu
+                                                          : 0ul)) {
             return 0;
         }
         v9x_present_note_submission();

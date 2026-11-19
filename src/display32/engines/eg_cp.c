@@ -90,6 +90,27 @@ static DWORD v9x_eg_cp_heap_gpu;
 static DWORD v9x_eg_cp_vertex_at;
 static int v9x_eg_cp_dirty;
 
+/*
+ * Batches flushed as a group. Every D3D batch used to end with a
+ * SURFACE_SYNC flushing the colour and depth caches and invalidating the
+ * texture cache over all of memory, which waits for the pipe to finish:
+ * on Trinity's 3DMark 2000 run 3.64 M of them, one per 48 triangles
+ * (M-D7TFW4 boot 76), GCN's per-batch fence pattern before 390f9dfa
+ * (docs\decisions\2026-11-18-gcn-batch-cost.md). Batches in between need
+ * none of it: the CP and the caches give them the same order and data.
+ * What needs the flush is whatever reads the memory from outside the
+ * pipe - the CPU, the DMA engine, scanout - and each of those drains the
+ * CP first (v9x_eg_cp_drain closes the group), or a later batch's texture
+ * unit, which closes it before sampling a surface drawn into since
+ * (v9x_eg_cp_before_read). A group is also closed after
+ * V9X_EG_CP_OPEN_MAX batches, as GCN's is.
+ */
+#define V9X_EG_CP_OPEN_MAX      16ul
+#define V9X_EG_CP_OPEN_SURFACES 4ul
+static DWORD v9x_eg_cp_open;
+static DWORD v9x_eg_cp_open_surface[V9X_EG_CP_OPEN_SURFACES];
+static DWORD v9x_eg_cp_open_surfaces;
+
 static DWORD v9x_eg_cp_read32(DWORD offset)
 {
     return *(volatile DWORD *)(v9x_hal->engine.control_linear_base + offset);
@@ -269,6 +290,8 @@ static void v9x_eg_cp_quarantine(DWORD tag)
     }
     v9x_eg_cp_state = V9X_EG_CP_FAILED;
     v9x_eg_cp_dirty = 0;
+    v9x_eg_cp_open = 0ul;
+    v9x_eg_cp_open_surfaces = 0ul;
 }
 
 /* Moves the write pointer after the CPU's writes are out of the
@@ -773,11 +796,93 @@ int v9x_eg_cp_submit(const v9x_u32 *dwords, DWORD count)
     return 1;
 }
 
+/* The open group's flush, on its own (v9x_eg_3d_flush); none open,
+ * nothing to do. A flush that cannot be put gives the CP up, as a batch's
+ * would. */
+static int v9x_eg_cp_close(void)
+{
+    v9x_u32 buffer[V9X_EG_CP_ALIGN_DWORDS];
+    struct v9x_eg_pm4 stream;
+
+    if (v9x_eg_cp_open == 0ul || v9x_eg_cp_state != V9X_EG_CP_RUNNING) {
+        return 1;
+    }
+    v9x_eg_pm4_begin(&stream, buffer, sizeof(buffer) / sizeof(buffer[0]));
+    v9x_eg_3d_flush(&stream);
+    v9x_eg_pm4_pad(&stream);
+    if (stream.overflow != 0ul ||
+        !v9x_eg_cp_put(stream.dwords, stream.count)) {
+        v9x_eg_cp_quarantine(V9X_EG_CP_FAULT_PUT);
+        return 0;
+    }
+    v9x_eg_cp_open = 0ul;
+    v9x_eg_cp_open_surfaces = 0ul;
+    return 1;
+}
+
+int v9x_eg_cp_submit_open(const v9x_u32 *dwords, DWORD count, DWORD target,
+                          DWORD depth)
+{
+    DWORD drawn[2];
+    DWORD which;
+    DWORD index;
+    int close = 0;
+
+    if (!v9x_eg_cp_submit(dwords, count)) {
+        return 0;
+    }
+    ++v9x_eg_cp_open;
+    drawn[0] = target;
+    drawn[1] = depth;
+    for (which = 0ul; which < 2ul; ++which) {
+        if (drawn[which] == 0ul) {
+            continue;
+        }
+        for (index = 0ul; index < v9x_eg_cp_open_surfaces; ++index) {
+            if (v9x_eg_cp_open_surface[index] == drawn[which]) {
+                break;
+            }
+        }
+        if (index < v9x_eg_cp_open_surfaces) {
+            continue;
+        }
+        if (v9x_eg_cp_open_surfaces == V9X_EG_CP_OPEN_SURFACES) {
+            close = 1;
+            continue;
+        }
+        v9x_eg_cp_open_surface[v9x_eg_cp_open_surfaces++] = drawn[which];
+    }
+    if (close || v9x_eg_cp_open >= V9X_EG_CP_OPEN_MAX) {
+        return v9x_eg_cp_close();
+    }
+    return 1;
+}
+
+int v9x_eg_cp_before_read(DWORD low)
+{
+    DWORD index;
+
+    if (low == 0ul) {
+        return 1;
+    }
+    for (index = 0ul; index < v9x_eg_cp_open_surfaces; ++index) {
+        if (v9x_eg_cp_open_surface[index] == low) {
+            return v9x_eg_cp_close();
+        }
+    }
+    return 1;
+}
+
 int v9x_eg_cp_drain(int wait)
 {
     if (v9x_eg_cp_state != V9X_EG_CP_RUNNING || !v9x_eg_cp_dirty ||
         !v9x_eg_cp_mapped()) {
         return 1;
+    }
+    /* Whatever drains reads the memory from outside the pipe: the open
+     * group's flush goes first. */
+    if (!v9x_eg_cp_close()) {
+        return 0;
     }
     if (!v9x_eg_cp_poll_idle(wait ? V9X_EG_CP_SPINS
                                   : V9X_EG_CP_QUICK_READS)) {

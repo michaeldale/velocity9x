@@ -711,6 +711,13 @@ int v9x_d3d_nv50_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
 int v9x_eg_cp_ready(void);
 int v9x_eg_cp_submit(const v9x_u32 *dwords, DWORD count);
 int v9x_eg_cp_drain(int wait);
+/* Batches flushed as a group (eg_cp.c's note at v9x_eg_cp_open): a batch
+ * without its own cache flush, drawing into target and depth (GPU
+ * addresses' low halves, 0 for none); and closing the group before a
+ * batch samples low. Non-zero on success; zero gave the CP up. */
+int v9x_eg_cp_submit_open(const v9x_u32 *dwords, DWORD count, DWORD target,
+                          DWORD depth);
+int v9x_eg_cp_before_read(DWORD low);
 int v9x_eg_cp_vertex_space(DWORD bytes, volatile DWORD **linear, DWORD *gpu);
 /* Where the framebuffer mapping starts in the GPU's address space, read
  * from the chip without starting the CP: bits 39:32 of every address in
