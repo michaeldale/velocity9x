@@ -20,7 +20,9 @@
  * What the plan needs from it: whether the DMA engine is usable as the BIOS
  * left it, where VRAM sits in the GPU's address space, and whether the VBE
  * scanout address is that base plus the LFB offset. Nothing on the device
- * is written.
+ * is written, except with /smu on Trinity: then the SMU's sclk DPM table is
+ * read through the SMC index pair, whose index register EGMM.VXD sets and
+ * puts back ([Smc] and [Smu] sections; v9x_request_build_smu).
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -233,6 +235,8 @@ static const struct v9x_egmm_register v9x_discrete[] = {
  * the CP's second and third rings, the second DMA engine, and the RLC
  * load-balancing registers evergreen_rlc_resume programs on CHIP_ARUBA. */
 static const struct v9x_egmm_register v9x_trinity[] = {
+    { 0x0670ul, "GENERAL_PWRMGT" },
+    { 0x0684ul, "TARGET_AND_CURRENT_PROFILE_INDEX" },
     { 0x3f10ul, "TN_RLC_SAVE_AND_RESTORE_BASE" },
     { 0x3f14ul, "TN_RLC_LB_CNTR_MAX" },
     { 0x3f18ul, "TN_RLC_LB_CNTR_INIT" },
@@ -350,6 +354,70 @@ static struct v9x_egmm_request v9x_request;
 static struct v9x_egmm_result v9x_result;
 static DWORD v9x_values[V9X_EGMM_MMIO_BYTES / 4u];
 
+/*
+ * /smu, Trinity only: the SMU's sclk DPM block through the SMC index pair
+ * (EGMM.VXD's one write: TN_SMC_IND_INDEX_0 set and put back). Linux
+ * trinityd.h: eight states SMU_SCLK_DPM_STATE_n_CNTL_0 at 1F000h + 20h n
+ * (bits 7:0 STATE_VALID, 15:8 CLK_DIVIDER, 23:16 VID, 31:24 LVRT), their
+ * CNTL_1, CNTL_3, AT and PG_CNTL at +4, +0Ch, +10h, +14h; SMU_SCLK_DPM_CNTL
+ * 1F100h (bits 7:0 SCLK_DPM_EN). GENERAL_PWRMGT (670h) bit 0
+ * GLOBAL_PWRMGT_EN and TARGET_AND_CURRENT_PROFILE_INDEX (684h) bits 7:4
+ * CURRENT_STATE are plain MMIO. The divider converts to a clock as
+ * trinity_convert_did_to_freq does, from the dentist VCO the VBIOS's
+ * IntegratedSystemInfo v1.7 gives: 3800 MHz on M-D7TFW4
+ * (docs\decisions\2026-11-19-trinity-engine-clock-200mhz.md).
+ */
+#define V9X_EGMM_SMC_FLAG        0x80000000ul
+#define V9X_TN_SMU_STATE0        0x1f000ul
+#define V9X_TN_SMU_STATE_STRIDE  0x20ul
+#define V9X_TN_SMU_STATES        8ul
+#define V9X_TN_SMU_DPM_CNTL      0x1f100ul
+#define V9X_TN_SMU_LIMIT         0x1f120ul
+#define V9X_TN_GENERAL_PWRMGT    0x0670ul
+#define V9X_TN_PROFILE_INDEX     0x0684ul
+#define V9X_TN_DENTIST_VCO_10KHZ 380000ul
+#define V9X_TN_GNB_TEMP          0x1f390ul
+static DWORD v9x_smc[(V9X_TN_SMU_LIMIT - V9X_TN_SMU_STATE0) / 4u];
+static DWORD v9x_gnb_temp;
+
+/* Nonzero when the command line holds name (si_mmio_probe_win32.c's). */
+static int v9x_switch(const char *name)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(name);
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        int index = 0;
+
+        while (index < length && line[index] == name[index]) {
+            ++index;
+        }
+        if (index == length) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* trinity_convert_did_to_freq: the dentist divider for a DID, in hundredths;
+ * 0 for a DID outside its table. */
+static DWORD v9x_tn_did_divider(DWORD did)
+{
+    if (did >= 8ul && did <= 0x3ful) {
+        return did * 25ul;
+    }
+    if (did > 0x3ful && did <= 0x5ful) {
+        return (did - 64ul) * 50ul + 1600ul;
+    }
+    if (did > 0x5ful && did <= 0x7eul) {
+        return (did - 96ul) * 100ul + 3200ul;
+    }
+    if (did == 0x7ful) {
+        return 128ul * 100ul;
+    }
+    return 0ul;
+}
+
 static DWORD v9x_config_read(DWORD device, DWORD offset)
 {
     DWORD saved;
@@ -439,7 +507,67 @@ static void v9x_request_add(DWORD offset, const char *prefix,
     v9x_text("Mmio", key, label);
 }
 
-static void v9x_request_build(int trinity)
+/* The SMU block's registers /smu reads: each state's five, then the four
+ * after the table (trinityd.h). */
+static const DWORD v9x_tn_state_regs[5] = {
+    0x00ul, 0x04ul, 0x0cul, 0x10ul, 0x14ul
+};
+static const struct v9x_egmm_register v9x_tn_smu_tail[] = {
+    { 0x1f100ul, "SMU_SCLK_DPM_CNTL" },
+    { 0x1f108ul, "SMU_SCLK_DPM_TT_CNTL" },
+    { 0x1f10cul, "SMU_SCLK_DPM_TTT" },
+    { 0x1f118ul, "SMU_S_PG_CNTL" }
+};
+#define V9X_TN_SMU_TAIL_COUNT \
+    (sizeof(v9x_tn_smu_tail) / sizeof(v9x_tn_smu_tail[0]))
+typedef char v9x_egmm_smu_fits[
+    V9X_GLOBAL_COUNT + V9X_TRINITY_COUNT +
+    V9X_TN_SMU_STATES * 5u + V9X_TN_SMU_TAIL_COUNT + 1u <=
+    V9X_EGMM_OFFSET_MAX ? 1 : -1];
+
+/* An SMC address into the request, flagged for the VxD. */
+static void v9x_request_smc(DWORD address, const char *name)
+{
+    char key[24];
+
+    v9x_request.offsets[v9x_request.count++] = address | V9X_EGMM_SMC_FLAG;
+    v9x_offset_key(key, "Name.S", address);
+    v9x_text("Smc", key, name);
+}
+
+static void v9x_request_build_smu(void)
+{
+    static const char * const names[5] = {
+        "CNTL_0", "CNTL_1", "CNTL_3", "AT", "PG_CNTL"
+    };
+    char name[48];
+    DWORD state;
+    DWORD reg;
+
+    for (state = 0ul; state < V9X_TN_SMU_STATES; ++state) {
+        for (reg = 0ul; reg < 5ul; ++reg) {
+            /* "SMU_SCLK_DPM_STATE_" is 19 characters; the state's digit
+             * replaces the placeholder after it. */
+            lstrcpyA(name, "SMU_SCLK_DPM_STATE_n_");
+            name[19] = (char)('0' + (int)state);
+            lstrcatA(name, names[reg]);
+            v9x_request_smc(V9X_TN_SMU_STATE0 +
+                            state * V9X_TN_SMU_STATE_STRIDE +
+                            v9x_tn_state_regs[reg], name);
+        }
+    }
+    for (reg = 0ul; reg < V9X_TN_SMU_TAIL_COUNT; ++reg) {
+        v9x_request_smc(v9x_tn_smu_tail[reg].offset, v9x_tn_smu_tail[reg].name);
+    }
+    /* A control: the GNB temperature is never 0 on a running APU, so a
+     * table of zeros beside it is the SMU's, not a pair that decodes
+     * nothing (M-D7TFW4's first /smu run read 44 zeros). */
+    v9x_request_smc(V9X_TN_GNB_TEMP, "TN_CURRENT_GNB_TEMP");
+}
+
+/* crtcs zero leaves the display controllers out (/smu's run, which needs
+ * the room: the offsets fit 256 one way or the other). */
+static void v9x_request_build(int trinity, int crtcs)
 {
     static const char * const prefixes[V9X_EG_CRTC_COUNT] = {
         "D1.", "D2.", "D3.", "D4."
@@ -461,6 +589,9 @@ static void v9x_request_build(int trinity)
             v9x_request_add(v9x_discrete[index].offset, "",
                             v9x_discrete[index].name);
         }
+    }
+    if (!crtcs) {
+        return;
     }
     for (crtc = 0ul; crtc < V9X_EG_CRTC_COUNT; ++crtc) {
         for (index = 0ul; index < V9X_CRTC_REG_COUNT; ++index) {
@@ -507,6 +638,23 @@ static void v9x_publish_mmio(void)
 
     for (index = 0ul; index < v9x_result.accepted; ++index) {
         offset = v9x_result.offsets[index];
+        if ((offset & V9X_EGMM_SMC_FLAG) != 0ul) {
+            offset &= ~V9X_EGMM_SMC_FLAG;
+            v9x_offset_key(key, "S", offset);
+            v9x_hex(text, v9x_result.first[index], 8);
+            if (v9x_result.second[index] != v9x_result.first[index]) {
+                text[8] = ',';
+                v9x_hex(text + 9, v9x_result.second[index], 8);
+            }
+            v9x_text("Smc", key, text);
+            if (offset == V9X_TN_GNB_TEMP) {
+                v9x_gnb_temp = v9x_result.first[index];
+            } else {
+                v9x_smc[(offset - V9X_TN_SMU_STATE0) >> 2] =
+                    v9x_result.first[index];
+            }
+            continue;
+        }
         v9x_offset_key(key, "R", offset);
         v9x_hex(text, v9x_result.first[index], 8);
         if (v9x_result.second[index] != v9x_result.first[index]) {
@@ -637,6 +785,46 @@ static void v9x_decode_global(int trinity)
             V9X_EG_SIMD_DISABLE_MASK);
 }
 
+/* /smu's decode: whether power management and SMU sclk DPM run, the
+ * current and target state, and each valid state's divider, VID and
+ * clock. */
+static void v9x_decode_smu(void)
+{
+    char section[8];
+    DWORD state;
+    DWORD value;
+    DWORD did;
+    DWORD divider;
+
+    value = v9x_value(V9X_TN_GENERAL_PWRMGT);
+    v9x_yes_no("Smu", "GlobalPwrmgtEnabled", (value & 1ul) != 0ul);
+    value = v9x_value(V9X_TN_PROFILE_INDEX);
+    v9x_number("Smu", "CurrentState", (value >> 4) & 0xful);
+    v9x_number("Smu", "TargetState", value & 0xful);
+    value = v9x_smc[(V9X_TN_SMU_DPM_CNTL - V9X_TN_SMU_STATE0) >> 2];
+    v9x_key("Smu", "SclkDpmEnMask", value & 0xfful);
+    v9x_number("Smu", "DentistVco10kHz", V9X_TN_DENTIST_VCO_10KHZ);
+    v9x_key("Smu", "GnbTempRaw", v9x_gnb_temp);
+
+    lstrcpyA(section, "State0");
+    for (state = 0ul; state < V9X_TN_SMU_STATES; ++state) {
+        section[5] = (char)('0' + (int)state);
+        value = v9x_smc[(state * V9X_TN_SMU_STATE_STRIDE) >> 2];
+        v9x_key(section, "Valid", value & 0xfful);
+        did = (value >> 8) & 0xfful;
+        v9x_key(section, "Did", did);
+        v9x_key(section, "Vid", (value >> 16) & 0xfful);
+        divider = v9x_tn_did_divider(did);
+        if (divider != 0ul) {
+            /* trinity_convert_did_to_freq: (vco x 100 + divider - 1) /
+             * divider, in 10 kHz. */
+            v9x_number(section, "Sclk10kHz",
+                       (V9X_TN_DENTIST_VCO_10KHZ * 100ul + divider - 1ul) /
+                       divider);
+        }
+    }
+}
+
 /* Each display controller's scanout. LfbOffset is the primary surface
  * address less the FB start, which the plan expects to equal the VBE
  * framebuffer's offset into BAR0 for the controller VBE drives. */
@@ -693,6 +881,7 @@ void __stdcall V9xEvergreenMmioEntry(void)
     DWORD config;
     DWORD crtc;
     int trinity;
+    int smu;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
     DeleteFileA(V9X_EGMM_PATH);
@@ -719,8 +908,15 @@ void __stdcall V9xEvergreenMmioEntry(void)
     v9x_key("Report", "RomBase", v9x_config_read(config, 0x30ul));
 
     trinity = (v9x_config_read(config, 0x00ul) >> 16) == V9X_DEVICE_TRINITY;
+    smu = trinity && v9x_switch("/smu");
+    if (smu) {
+        v9x_text("Report", "Access", "mmio-read-only, smc-index-read");
+    }
     v9x_request.config = config;
-    v9x_request_build(trinity);
+    v9x_request_build(trinity, !smu);
+    if (smu) {
+        v9x_request_build_smu();
+    }
     if (!v9x_capture()) {
         v9x_key("Report", "Status", v9x_result.status);
         v9x_key("Report", "MemSize", v9x_result.memsize);
@@ -733,7 +929,10 @@ void __stdcall V9xEvergreenMmioEntry(void)
     v9x_number("Report", "Accepted", v9x_result.accepted);
     v9x_publish_mmio();
     v9x_decode_global(trinity);
-    for (crtc = 0ul; crtc < V9X_EG_CRTC_COUNT; ++crtc) {
+    if (smu) {
+        v9x_decode_smu();
+    }
+    for (crtc = 0ul; !smu && crtc < V9X_EG_CRTC_COUNT; ++crtc) {
         v9x_decode_crtc(crtc);
     }
     v9x_text("Report", "Result", "COMPLETE");

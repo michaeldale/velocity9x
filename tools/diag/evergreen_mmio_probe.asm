@@ -8,9 +8,18 @@
 ; BAR (BAR2, a 64-bit memory BAR) and reads a caller's list of offsets, each
 ; twice. The Rage 128 probe (r128_mmio_probe.asm) is the model.
 ;
-; Writes: none, to the device or to memory. 0CF8h is saved and restored
-; around each configuration read. Mapping a physical range with
-; _MapPhysToLinear changes no device state.
+; Writes: none to memory. 0CF8h is saved and restored around each
+; configuration read. Mapping a physical range with _MapPhysToLinear changes
+; no device state. On the device, one register only, and only for an
+; offset the caller marks with EG_SMC_FLAG on Trinity: TN_SMC_IND_INDEX_0
+; (200h, Linux evergreen_reg.h), set to the SMC address, TN_SMC_IND_DATA_0
+; (204h) read, and the index put back as found, with interrupts off. Those
+; addresses must lie in the SMU's sclk DPM block (trinityd.h:
+; SMU_SCLK_DPM_STATE_0_CNTL_0 1F000h, eight states 20h apart,
+; SMU_SCLK_DPM_CNTL 1F100h and the registers up to SMU_S_PG_CNTL 1F118h),
+; which Linux trinity_dpm.c reads the same way (RREG32_SMC). Nothing in
+; this driver uses the SMC index, so there is no reader to race.
+; (docs\decisions\2026-11-19-trinity-engine-clock-200mhz.md)
 ;
 ; The caller names the device by its configuration address; the VxD reads
 ; the id and BAR2 itself and refuses anything that is not 1002:68F9, 6778,
@@ -70,6 +79,12 @@ EG_BAR_TYPE_64          equ 00000004h
 EG_CONFIG_MEMSIZE       equ 5428h
 EG_MEMSIZE_MAX_MIB      equ 4096
 EG_OFFSET_MAX           equ 256
+EG_SMC_FLAG             equ 80000000h
+EG_SMC_INDEX            equ 0200h
+EG_SMC_DATA             equ 0204h
+EG_SMC_FIRST            equ 1f000h
+EG_SMC_LIMIT            equ 1f120h
+EG_SMC_GNB_TEMP         equ 1f390h  ; TN_CURRENT_GNB_TEMP (nid.h)
 
 ; Status bits returned to the publisher.
 EG_ST_ATI               equ 00000001h
@@ -82,6 +97,7 @@ EG_ST_BAR_64            equ 00000040h
 EG_ST_NOT_ACCEPTED      equ 00000080h
 EG_ST_ADDRESS_INVALID   equ 00000100h
 EG_ST_BAR_ABOVE_4G      equ 00000200h
+EG_ST_SMC_NOT_TRINITY   equ 00000400h
 
 ; Input from V9XEGMM.EXE.
 EG_IN_CONFIG            equ 0
@@ -100,6 +116,8 @@ VxD_LOCKED_DATA_SEG
 ; the CRTC offsets 0, 0C00h, 9800h and A400h (evergreen_reg.h).
 EGWindows label dword
     dd 0300h, 0340h     ; VGA_RENDER_CONTROL, VGA memory base, D1/D2 VGA control
+    dd 0670h, 0674h     ; GENERAL_PWRMGT (trinityd.h)
+    dd 0684h, 0688h     ; TARGET_AND_CURRENT_PROFILE_INDEX (trinityd.h)
     dd 0e50h, 0e54h     ; SRBM_STATUS
     dd 0e60h, 0e64h     ; SRBM_SOFT_RESET
     dd 0ec4h, 0ec8h     ; SRBM_STATUS2
@@ -184,7 +202,7 @@ EGWindows label dword
     dd 112a0h, 112a4h
     dd 112d4h, 112d8h
     dd 112f4h, 112fch
-EG_WINDOW_COUNT         equ 81
+EG_WINDOW_COUNT         equ 83
 
 EGResult label dword
     dd EG_MAGIC                 ; 00 magic
@@ -208,6 +226,7 @@ EGFirst      dd EG_OFFSET_MAX dup (0)
 EGSecond     dd EG_OFFSET_MAX dup (0)
 EGConfig     dd 0
 EGMmio       dd 0
+EGSmcCount   dd 0
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -243,6 +262,26 @@ BeginProc EG_Offset_Allowed
     push    esi
     test    edx, 3
     jnz     short EG_Offset_Refused
+    ; An SMC address: only inside the SMU's sclk DPM block, or the GNB
+    ; temperature that shows the pair decodes; counted so EG_Capture can
+    ; refuse the list on anything but Trinity.
+    test    edx, EG_SMC_FLAG
+    jz      short EG_Offset_Mmio
+    mov     ecx, edx
+    and     ecx, NOT EG_SMC_FLAG
+    cmp     ecx, EG_SMC_GNB_TEMP
+    je      short EG_Offset_Smc
+    cmp     ecx, EG_SMC_FIRST
+    jb      short EG_Offset_Refused
+    cmp     ecx, EG_SMC_LIMIT
+    jae     short EG_Offset_Refused
+EG_Offset_Smc:
+    inc     EGSmcCount
+    pop     esi
+    pop     ecx
+    clc
+    ret
+EG_Offset_Mmio:
     mov     esi, OFFSET32 EGWindows
     mov     ecx, EG_WINDOW_COUNT
 EG_Offset_Next:
@@ -313,8 +352,24 @@ BeginProc EG_Read_Snapshot
     jecxz   short EG_Read_Snapshot_Done
 EG_Read_Snapshot_Next:
     mov     eax, [ebx]
+    test    eax, EG_SMC_FLAG
+    jnz     short EG_Read_Snapshot_Smc
     mov     eax, [esi+eax]
     mov     [edi], eax
+    jmp     short EG_Read_Snapshot_Step
+EG_Read_Snapshot_Smc:
+    ; The index as found, the address, the data, the index put back; no
+    ; interrupt in between.
+    and     eax, NOT EG_SMC_FLAG
+    pushfd
+    cli
+    mov     edx, [esi+EG_SMC_INDEX]
+    mov     [esi+EG_SMC_INDEX], eax
+    mov     eax, [esi+EG_SMC_DATA]
+    mov     [esi+EG_SMC_INDEX], edx
+    popfd
+    mov     [edi], eax
+EG_Read_Snapshot_Step:
     add     ebx, 4
     add     edi, 4
     dec     ecx
@@ -342,15 +397,23 @@ BeginProc EG_Capture
     jne     EG_Capture_Bad_Base
     or      EGResult[4], EG_ST_ATI
     shr     eax, 16
-    cmp     ax, EG_DEVICE_CEDAR
-    je      short EG_Capture_Check_Base
-    cmp     ax, EG_DEVICE_CAICOS
-    je      short EG_Capture_Check_Base
-    cmp     ax, EG_DEVICE_JUNIPER
-    je      short EG_Capture_Check_Base
     cmp     ax, EG_DEVICE_TRINITY
     je      short EG_Capture_Check_Base
+    cmp     ax, EG_DEVICE_CEDAR
+    je      short EG_Capture_Not_Trinity
+    cmp     ax, EG_DEVICE_CAICOS
+    je      short EG_Capture_Not_Trinity
+    cmp     ax, EG_DEVICE_JUNIPER
+    je      short EG_Capture_Not_Trinity
     or      EGResult[4], EG_ST_NOT_ACCEPTED
+    jmp     EG_Capture_Done
+
+    ; The SMC index pair is Trinity's (TN_SMC_IND_*): a list naming SMC
+    ; addresses on any other chip is refused whole, before anything maps.
+EG_Capture_Not_Trinity:
+    cmp     EGSmcCount, 0
+    je      short EG_Capture_Check_Base
+    or      EGResult[4], EG_ST_SMC_NOT_TRINITY OR EG_ST_OFFSETS_REFUSED
     jmp     EG_Capture_Done
 
 EG_Capture_Check_Base:
@@ -423,6 +486,7 @@ BeginProc EG_Reset_Result
     cld
     rep     stosd
     mov     EGMmio, eax
+    mov     EGSmcCount, eax
     popad
     ret
 EndProc EG_Reset_Result
