@@ -9,3 +9,4 @@
 "aty128fb.c","https://github.com/torvalds/linux/blob/master/drivers/video/fbdev/aty/aty128fb.c","d193d563cf496a71feb06a9c107445c61de55a3353e4f3db81b3da8ee4bc0005","2026-11-13"
 "atyfb_base.c","https://github.com/torvalds/linux/blob/master/drivers/video/fbdev/aty/atyfb_base.c","55aa58891c21405d4b3a52af6b38961e4910b1b42d10cad450a72f8ac08a501f","2026-11-13"
 "riva_fb.c","https://github.com/torvalds/linux/blob/master/drivers/video/fbdev/riva/fbdev.c","074ef4c0f480ee78871fc3da0cf6328e7c7132505cb54551b48a97972934d9b2","2026-11-13"
+"pci.ids","https://github.com/pciutils/pciids/blob/master/pci.ids","b5061fa3f67deff11a989a9be2de80eaeba8657564b8217559fb9e0fa558f34c","2026-11-20"

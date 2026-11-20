@@ -1,12 +1,57 @@
 # Supported GPU PCI device ID audit
 
 Date: 2026-11-13. Repository HEAD: `bf18b41201a3706716e5789fa3e781e7f789d5a7`.
+Updated 2026-11-20 at `e1b38f92`: inventory, missing IDs and counts
+refreshed for the chips claimed since (see
+[Update, 2026-11-20](#update-2026-11-20)).
 Research only: no driver, manifest or binding changed. The working tree already
 contained unrelated changes, including `gma950_hw16.c`.
 
-## Result
+## Update, 2026-11-20
 
-There are **71 distinct PCI bindings across eight packages: 33 chip entries
+Claimed since the audit: Ironlake mobile `8086:0046` (a24e920c) and
+HD 2500 `8086:0152` (ea4dd5aa), both from its candidate list; and five
+chips it did not cover: HD 3000 `8086:0112`, Oland XT `1002:6610`,
+HD 2400 Pro `1002:94C3`, Radeon 9250 / 9200SE `1002:5960` / `5964`, and
+GeForce 210 `10DE:0A65`. Bindings are now **79: 38 chips and 41
+aliases**, and `backend_registry_table.inc` has 79 rows.
+
+The siblings of those five chips are added below and to the CSV. The
+Linux tables (`drm_pciids.h`, `amdgpu_drv.c`, Intel `pciids.h`) were
+fetched again and are byte-identical to the 2026-11-13 copies; `pci.ids`
+moved to 2026.11.19 and has its own ledger row. GT218 has no upstream ID
+table (nouveau binds by display class and reads the chipset from the
+GPU), so its rows rest on `pci.ids` alone.
+
+Same silicon on another bus or package, ranked by how little stands
+between the ID and a binding:
+
+| Supported part | Bound IDs | Absent IDs | Assessment |
+|---|---|---|---|
+| Millennium II / Mystique | `102B:051B`, `051A` | `051F`, `051E` (AGP) | Unchanged from the audit; exact-ID tests at `millennium_hw16.c` and `mga_backend.c`. |
+| Radeon 9250 / 9200SE (RV280) | `5960`, `5964` | `5961`, `5962` (9200), `5965` (FireMV 2200 PCI); `5C61`, `5C63` (Mobility 9200) | RV280 is native AGP/PCI, no bridge. Do not bind the `59x0`/`5Dxx` "Secondary" functions. |
+| HD 3000 (Sandy Bridge GT2) | `0112` | `0122` (desktop GT2); `0116`, `0126` (mobile GT2) | `0122` is the same desktop GT2. Mobile adds the panel path the IVB `0166` needed. |
+| HD 2500 (Ivy Bridge GT1) | `0152` | `0156` (mobile), `015A` (Xeon) | Now siblings of a claimed GT1, not a separate resource tier: the GT1 thread limits exist. |
+| Rage 128 Pro | `5046` (AGP 4X) | `5050` (PCI), `5052` (AGP 4X) | Bus variants by `pci.ids`; the CCE work is parked. |
+| GeForce 210 (GT218) | `0A65` | `0A60`, `0A62`, `0A63`, `0A66`, `0A67`, `0A7B`, `10C0`, `10C3`, `10C5`, `10D8` | Same die on desktop boards; memory type differs by board and is POSTed by the VBIOS. |
+| HD 2400 Pro (RV610) | `94C3` | `94C4` (AGP), `94CC` (PCI); `94C1`, `94C5`, `94C7` | AGP/PCI boards are believed to put the PCIe GPU behind a bridge; unverified. |
+| HD 2600 XT (RV630) | `9588` | `9586` (XT AGP), `9587` (Pro AGP), `9589` (Pro) | Same bridge caveat as the audit gave `9586`. |
+| Oland XT | `6610` | `6611`, `6613`, `6617`, `6608` | Fewer CUs than `6610`; check whether the SI init reads the count or assumes it. |
+
+Sandy Bridge GT1 (`0102`, `0106`, `010A`, HD 2000) is a resource variant
+of the claimed GT2, as `0152` was of the HD 4000.
+
+The dispatch points listed under
+[Why adding INF aliases alone would not work](#why-adding-inf-aliases-alone-would-not-work)
+grew with the new chips: the ATI backend's exact list
+(`ati_backend.c`, `v9x_ati_device_ids`), the per-chip device objects
+(`rv280_hw16.c`, `cedar_hw16.c` for RV610, `oland_hw16.c`,
+`hsw_hw16.c` for Sandy Bridge, `gt218_hw16.c`) and the Intel strict
+identity comment in `intel_hw16.c`.
+
+## Result (2026-11-13)
+
+There were **71 distinct PCI bindings across eight packages: 33 chip entries
 and 38 aliases**. All 71 are present in the generated INF text and backend
 registry. The existing host family-matrix tests also pass, including backend
 probe acceptance. There is no declared GPU whose ID was accidentally omitted
@@ -45,7 +90,7 @@ an exhaustive inventory of every OEM identity ever shipped.
 | GMA 3100 | `8086:29C2` | `8086:29B2`, `8086:29D2` | Q35 and Q33 siblings of the G33/G31 entry. |
 | GMA X3100 | `8086:2A02` | `8086:2A12` | Embedded GME965/GLE960 sibling; exact-ID GTT and panel paths need extending. |
 | GMA 4500 / X4500 | `8086:2E12`, `8086:2E22` | `8086:2E02`, `8086:2E32`, `8086:2E42`, `8086:2E92` | Other G4x desktop identities; exact-ID GTT offset handling needs extending. |
-| Ironlake | `8086:0042` | `8086:0046` | Mobile sibling; panel/display and GTT handling need checking. |
+| Ironlake | `8086:0042` | ~~`8086:0046`~~ | Claimed as the 0042's alias in a24e920c (2026-11-20 update). |
 | Ivy Bridge HD 4000 | `8086:0162`, `8086:0166` | `8086:016A` | GT2 server sibling; retain the Gen7 path explicitly. |
 | Haswell GT2 | `8086:0412`, `8086:041E` | Start with `8086:0416`, `8086:041A`; ULT/ULX and CRW IDs are listed below | Mobile/server and platform variants; do not include GT1/GT3 as unchanged aliases. |
 
@@ -161,7 +206,7 @@ No hardware was newly exercised, and no newly identified ID was enabled.
 
 ## Current inventory
 
-IDs below are device IDs; the vendor is shown separately. Aliases are bindings, not independent hardware validation. The CSV contains every individual binding.
+As of 2026-11-20. IDs below are device IDs; the vendor is shown separately. Aliases are bindings, not independent hardware validation. The CSV contains every individual binding.
 
 | Package | Chip | Vendor | Primary ID | Alias IDs |
 |---|---|---|---|---|
@@ -177,8 +222,11 @@ IDs below are device IDs; the vendor is shown separately. Aliases are bindings, 
 | ati | AMD Radeon HD 7660D (Trinity) | `1002` | `9901` | none |
 | ati | AMD Radeon R7E (Carrizo) | `1002` | `9874` | none |
 | ati | AMD Radeon R3E (Mullins) | `1002` | `9854` | none |
+| ati | AMD Radeon Oland XT | `1002` | `6610` | none |
 | ati | ATI Radeon X1200 (RS690) | `1002` | `791F` | none |
 | ati | ATI Radeon HD 2600 XT (RV630) | `1002` | `9588` | none |
+| ati | ATI Radeon HD 2400 Pro (RV610) | `1002` | `94C3` | none |
+| ati | ATI Radeon 9250 (RV280) | `1002` | `5960` | `5964` |
 | intel-gma | Intel GMA 950 (945GSE) | `8086` | `27AE` | none |
 | intel-gma | Intel GMA 900 (915GM) | `8086` | `2592` | none |
 | intel-gma | Intel GMA 3150 (Pineview) | `8086` | `A011` | none |
@@ -187,13 +235,15 @@ IDs below are device IDs; the vendor is shown separately. Aliases are bindings, 
 | intel-gma | Intel GMA X4500 (G45) | `8086` | `2E22` | none |
 | intel-gma | Intel GMA 4500 (Q45) | `8086` | `2E12` | none |
 | intel-gma | Intel GMA 4500MHD (GM45) | `8086` | `2A42` | none |
-| intel-gma | Intel HD Graphics (Ironlake) | `8086` | `0042` | none |
+| intel-gma | Intel HD Graphics (Ironlake) | `8086` | `0042` | `0046` |
 | intel-gma | Intel HD Graphics 4600 (Haswell) | `8086` | `0412` | `041E` |
-| intel-gma | Intel HD Graphics 4000 (Ivy Bridge) | `8086` | `0162` | `0166` |
+| intel-gma | Intel HD Graphics 4000 (Ivy Bridge) | `8086` | `0162` | `0166`, `0152` |
+| intel-gma | Intel HD Graphics 3000 (Sandy Bridge) | `8086` | `0112` | none |
 | matrox | Matrox Millennium MGA-2064W | `102B` | `0519` | none |
 | matrox | Matrox Millennium II MGA-2164W | `102B` | `051B` | none |
 | matrox | Matrox Mystique | `102B` | `051A` | none |
 | nvidia | NVIDIA RIVA 128 | `12D2` | `0018` | none |
+| nvidia | NVIDIA GeForce 210 | `10DE` | `0A65` | none |
 | s3 | S3 ViRGE/DX 86C375 | `5333` | `8A01` | `8A13`, `8904` |
 | s3 | S3 Trio32/64 86C764 | `5333` | `8811` | `8810`, `8812`, `8813`, `8814`, `8901` |
 | sis | SiS 6326 | `1039` | `6326` | none |
@@ -201,7 +251,7 @@ IDs below are device IDs; the vendor is shown separately. Aliases are bindings, 
 
 ## Missing primary IDs in the compared tables
 
-These are absent from all current manifests. A row is a research result, not a promise of compatible hardware. [missing-ids.csv](2026-11-13-pci-device-id-audit/missing-ids.csv) gives one row per ID, its reference name when available, source and disposition.
+These are absent from all current manifests as of 2026-11-20. A row is a research result, not a promise of compatible hardware. [missing-ids.csv](2026-11-13-pci-device-id-audit/missing-ids.csv) gives one row per ID, its reference name when available, source and disposition.
 
 | Compared GPU group | Vendor | Missing IDs | Disposition |
 |---|---|---|---|
@@ -211,9 +261,10 @@ These are absent from all current manifests. A row is a research result, not a p
 | GMA 3100 Q35 / Q33 | `8086` | `29B2`, `29D2` | sibling-survey-required |
 | GMA X3100 embedded | `8086` | `2A12` | sibling-survey-required |
 | G4x desktop variants | `8086` | `2E02`, `2E32`, `2E42`, `2E92` | sibling-survey-required |
-| Ironlake mobile | `8086` | `0046` | sibling-survey-required |
 | Ivy Bridge GT2 server | `8086` | `016A` | sibling-survey-required |
-| Ivy Bridge GT1 | `8086` | `0152`, `0156`, `015A` | resource-variant |
+| Ivy Bridge GT1 (siblings of the claimed `0152`) | `8086` | `0156`, `015A` | sibling-survey-required |
+| Sandy Bridge GT2 | `8086` | `0116`, `0122`, `0126` | sibling-survey-required |
+| Sandy Bridge GT1 | `8086` | `0102`, `0106`, `010A` | resource-variant |
 | Haswell GT1 production variants | `8086` | `0402`, `0406`, `040A`, `0A02`, `0A06`, `0A0A`, `0A0E`, `0D02`, `0D06`, `0D0A` | resource-variant |
 | Haswell GT1 reserved / SDV | `8086` | `040B`, `040E`, `0A0B`, `0C02`, `0C06`, `0C0A`, `0C0B`, `0C0E`, `0D0B`, `0D0E` | do-not-auto-bind |
 | Haswell GT2 production variants | `8086` | `0416`, `041A`, `0A12`, `0A16`, `0A1A`, `0A1E`, `0D12`, `0D16`, `0D1A` | sibling-survey-required |
@@ -221,6 +272,10 @@ These are absent from all current manifests. A row is a research result, not a p
 | Haswell GT3 production variants | `8086` | `0422`, `0426`, `042A`, `0A22`, `0A26`, `0A2A`, `0D22`, `0D26`, `0D2A` | resource-variant |
 | Haswell GT3 reserved / SDV | `8086` | `042B`, `042E`, `0A2B`, `0A2E`, `0C22`, `0C26`, `0C2A`, `0C2B`, `0C2E`, `0D2B`, `0D2E` | do-not-auto-bind |
 | RV630 | `1002` | `9580`, `9581`, `9583`, `9586`, `9587`, `9589`, `958A`, `958B`, `958C`, `958D`, `958E`, `958F` | same-family-survey-required |
+| RV610 | `1002` | `94C0`, `94C1`, `94C4`, `94C5`, `94C6`, `94C7`, `94C8`, `94C9`, `94CB`, `94CC`, `94CD` | same-family-survey-required |
+| RV280 | `1002` | `5961`, `5962`, `5965`, `5C61`, `5C63` | same-family-survey-required |
+| OLAND | `1002` | `6600`, `6601`, `6602`, `6603`, `6604`, `6605`, `6606`, `6607`, `6608`, `6611`, `6613`, `6617`, `6620`, `6621`, `6623`, `6631` | same-family-survey-required |
+| Oland database-only identity | `1002` | `6609` | database-only-confirm-first |
 | RS690 | `1002` | `791E` | same-family-survey-required |
 | CEDAR | `1002` | `68E0`, `68E1`, `68E4`, `68E5`, `68E8`, `68E9`, `68F1`, `68F2`, `68F8`, `68FA`, `68FE` | same-family-survey-required |
 | REDWOOD | `1002` | `68C0`, `68C1`, `68C7`, `68C8`, `68C9`, `68D8`, `68DA`, `68DE` | same-family-survey-required |
@@ -233,6 +288,8 @@ These are absent from all current manifests. A row is a research result, not a p
 | Millennium II AGP | `102B` | `051F` | sibling-survey-required |
 | Mystique AGP | `102B` | `051E` | sibling-survey-required |
 | Mystique database-only identity | `102B` | `0100` | database-only-confirm-first |
+| GT218 desktop (`pci.ids` only) | `10DE` | `0A60`, `0A62`, `0A63`, `0A64`, `0A66`, `0A67`, `0A78`, `0A7B`, `10C0`, `10C3`, `10C5`, `10D8` | same-family-survey-required |
+| GT218M mobile (`pci.ids` only) | `10DE` | `0A68`, `0A69`, `0A6A`, `0A6C`, `0A6E`, `0A6F`, `0A70`, `0A71`, `0A72`, `0A73`, `0A74`, `0A75`, `0A76`, `0A7A`, `0A7C` | same-family-survey-required |
 | RIVA / RIVA ZX alternate identity | `12D2` | `0019` | database-only-confirm-first |
 | RIVA / RIVA ZX alternate vendor | `10DE` | `0018`, `0019` | database-only-confirm-first |
 | S3 Trio database-only variants | `5333` | `8900`, `8903`, `8905`, `8906`, `8907`, `8908`, `8909`, `890A`, `890B`, `890C`, `890D`, `890E`, `890F` | database-only-confirm-first |
@@ -241,11 +298,12 @@ These are absent from all current manifests. A row is a research result, not a p
 
 | Disposition | IDs |
 |---|---|
-| database-only-confirm-first | 17 |
+| database-only-confirm-first | 18 |
 | deliberate-exclusion | 3 |
 | do-not-auto-bind | 30 |
 | resource-variant | 22 |
-| same-family-survey-required | 133 |
-| sibling-survey-required | 22 |
+| same-family-survey-required | 192 |
+| sibling-survey-required | 26 |
 
-Total examined absent IDs: 227. This includes exclusions and database-only leads; it is not a count of GPUs this driver already supports.
+Total examined absent IDs: 291 (227 on 2026-11-13, less the two claimed,
+plus 66 siblings of the five chips claimed since). This includes exclusions and database-only leads; it is not a count of GPUs this driver already supports.
