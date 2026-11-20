@@ -247,6 +247,12 @@ struct v9x_vi_tl_draw {
     v9x_u32 index_low;
     v9x_u32 index_high;
     v9x_u32 index_count;
+    /* APPENDED for Z24 (docs\decisions\2026-11-20-gcn-z24-depth.md); zero
+     * keeps the meaning above. Nonzero depth_32: the depth buffer is Z_24
+     * in 32-bit cells, depth in the low 24 bits, in the same tiles as a
+     * Z16 (v9x_vi_z32_detile_band), its pitch and height still in
+     * pixels. */
+    v9x_u32 depth_32;
 };
 
 /*
@@ -359,6 +365,16 @@ v9x_u32 v9x_vi_z16_tile_sample(v9x_u32 x, v9x_u32 y);
 void v9x_vi_z16_detile_band(const v9x_u16 *tiled, v9x_u16 *linear,
                             v9x_u32 pitch_pixels);
 void v9x_vi_z16_retile_band(const v9x_u16 *linear, v9x_u16 *tiled,
+                            v9x_u32 pitch_pixels);
+/*
+ * The same band of 32-bit cells (Z_24). The DB's depth sample order does
+ * not change with the element size (AMD addrlib's ADDR_DEPTH_SAMPLE_ORDER:
+ * x0 y0 x1 y1 x2 y2 at every bpp), so a cell sits at the Z16 sample index
+ * and a tile is 256 bytes. Not measured against the DB's own writes yet.
+ */
+void v9x_vi_z32_detile_band(const v9x_u32 *tiled, v9x_u32 *linear,
+                            v9x_u32 pitch_pixels);
+void v9x_vi_z32_retile_band(const v9x_u32 *linear, v9x_u32 *tiled,
                             v9x_u32 pitch_pixels);
 
 /* CB_BLEND0_CONTROL's factors (Mesa's sid.h V_028780_BLEND_*), and

@@ -240,6 +240,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-19 Evergreen class takes XRGB8888 textures: Trinity's release probes pass but V9XD32 T22X (black); offered and sampled opaque as on the R600 class, T22X exact and V9XD32 PASS at 32 and 16 bpp](2026-11-19-evergreen-xrgb8888-textures.md)
 - [2026-11-19 Evergreen batches as long as a call and one cache flush per group: Trinity 3DMark 2000 3821 to 4130, 2001 SE 1906 to 2462, every probe passes](2026-11-19-evergreen-batch-flush-groups.md)
 - [2026-11-19 Trinity's engine clock: 200 MHz (MMIO 600h, divider ID 46h) of the 760 its PowerPlay lists, the SMU's DPM table empty; the VBIOS's SetEngineClock handshake replayed by V9XEGMM /sclk sets 304 MHz at the boot voltage: 3DMark 2000 4130 to 4227, 2001 SE 2462 to 2605; the driver now sets it at validation (2000 4228, 2001 SE 2628)](2026-11-19-trinity-engine-clock-200mhz.md)
+- [2026-11-20 GCN: Z24 depth (Z_24 in 32-bit cells, the Z16 tile order); UT2004 stopped at its device setup on the Oland because no depth format matched X8R8G8B8, now runs at 32 bpp, DM-Rankin botmatch 28.36; V9XD32 /z24 passes all but the known T19; 3DMark03's SI3.dll needs Windows 2000](2026-11-20-gcn-z24-depth.md)
 - [2026-11-18 HD 4600 batch size and indexed pieces: the core cut Haswell batches at 64 triangles and declined indexed calls past one slot; batches a slot long and indexed calls in slot-sized pieces take the i5-4570's 3DMark 2001 SE from 3388 to 3888](2026-11-18-haswell-batch-size-and-indexed-pieces.md)
 
 ## Matrox

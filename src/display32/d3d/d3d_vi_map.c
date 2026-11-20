@@ -537,14 +537,16 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
         }
     }
 
-    /* Depth, when enabled and bound: Z16 as d3d_vi.c places it, its rows
-     * padded to the tile. Disabled, the DB has no buffer and neither tests
-     * nor writes, which is Direct3D's ZENABLE FALSE. */
+    /* Depth, when enabled and bound: Z16, or Z24 in a 32-bit cell, as
+     * d3d_vi.c places it, its rows padded to the tile and its pitch whole
+     * 8-pixel tiles at the cell's size. Disabled, the DB has no buffer and
+     * neither tests nor writes, which is Direct3D's ZENABLE FALSE. */
     if (draw->depth_enable != 0ul && draw->depth.object != 0 &&
         draw->depth.pitch != 0ul) {
-        if (depth_bytes != 2ul ||
-            (draw->depth.pitch % V9X_D3D_VI_DEPTH_PITCH_UNIT) != 0ul ||
-            draw->depth.pitch / 2ul < draw->target.width ||
+        if ((depth_bytes != 2ul && depth_bytes != 4ul) ||
+            (draw->depth.pitch %
+             (V9X_D3D_VI_DEPTH_PITCH_UNIT / 2ul * depth_bytes)) != 0ul ||
+            draw->depth.pitch / depth_bytes < draw->target.width ||
             draw->depth.height < draw->target.height ||
             !v9x_d3d_vi_address(heap_low, draw->depth.offset, &low)) {
             return V9X_D3D_VI_REFUSE_DEPTH_SURFACE;
@@ -556,7 +558,8 @@ v9x_u32 v9x_d3d_vi_map_draw(const V9X_R3D_DRAW *draw,
         out->depth_high = heap_high;
         out->depth_func = code;
         out->depth_write = draw->depth_write != 0ul ? 1ul : 0ul;
-        out->depth_pitch = draw->depth.pitch / 2ul;
+        out->depth_pitch = draw->depth.pitch / depth_bytes;
+        out->depth_32 = depth_bytes == 4ul ? 1ul : 0ul;
         out->depth_height =
             (draw->depth.height + V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul) &
             ~(V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul);

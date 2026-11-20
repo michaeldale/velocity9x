@@ -59,9 +59,9 @@ static const DWORD v9x_d3d_vi_ps_slot[V9X_D3D_VI_PS_COUNT] = {
     V9X_VI_CP_SLOT_PS_SPECULAR_FIRST + V9X_VI_PS_MODULATE
 };
 
-/* 16 and 32 bpp targets, Z16 1D-tiled, textures to 2048; pixel centres at
- * whole coordinates, which the PA is told (PIX_CENTER clear), so the core
- * moves nothing. Triangles go to the PA unclipped within +-8192, the
+/* 16 and 32 bpp targets, Z16 or Z24 1D-tiled, textures to 2048; pixel
+ * centres at whole coordinates, which the PA is told (PIX_CENTER clear), so
+ * the core moves nothing. Triangles go to the PA unclipped within +-8192, the
  * scissor keeping the target's pixels, and DDI 6 programs are told of
  * that band: V9XD32's T10 and three 3DMark 2000 runs drew with it on
  * M-XP7053 (boots 31 and 33). It was tried for 3DMark's lines along
@@ -82,9 +82,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_limits = {
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
     0ul,            /* pixel_centre_half: the PA samples D3D's centres */
-    1ul,            /* depth_tiled: Z16 is 1D tiled */
+    1ul,            /* depth_tiled: Z16 and Z24 are 1D tiled */
     65504ul,        /* target_pitch_max_xrgb8888 */
-    0ul,            /* depth32_bits: Z16 only for now */
+    24ul,           /* depth32_bits: Z_24 in the low 24 bits */
     0ul,            /* centre_in_engine */
     1ul,            /* texture_stages */
     1ul,            /* guard_band_ddi6 */
@@ -117,9 +117,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_vi_oland_limits = {
     0ul,            /* depth_fill_shift */
     1ul,            /* texture_units */
     0ul,            /* pixel_centre_half: the PA samples D3D's centres */
-    1ul,            /* depth_tiled: Z16 is 1D tiled */
+    1ul,            /* depth_tiled: Z16 and Z24 are 1D tiled */
     65504ul,        /* target_pitch_max_xrgb8888 */
-    0ul,            /* depth32_bits: Z16 only for now */
+    24ul,           /* depth32_bits: Z_24 in the low 24 bits */
     0ul,            /* centre_in_engine */
     2ul,            /* texture_stages */
     1ul,            /* guard_band_ddi6 */
@@ -344,9 +344,15 @@ static void v9x_d3d_vi_describe_caps(V9X_DD_SHARED *shared)
     shared->d3d_extended_caps.dwMaxStippleWidth = 0ul;
     shared->d3d_extended_caps.dwMinStippleHeight = 0ul;
     shared->d3d_extended_caps.dwMaxStippleHeight = 0ul;
+    /* 16 and 32 bpp targets; depth Z16 or Z24 in a 32-bit cell at both
+     * (depth32_bits). Without the 32-bit one, Direct3D 8 had no depth
+     * format to match an X8R8G8B8 target, and UT2004 stopped at its
+     * device setup on the Oland (docs\decisions\
+     * 2026-11-20-gcn-z24-depth.md). */
     shared->d3d_global.hwCaps.dwDeviceRenderBitDepth =
         V9X_DDBD_16 | V9X_DDBD_32;
-    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
+    shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth =
+        V9X_DDBD_16 | V9X_DDBD_32;
 
     /* RGB565, ARGB1555, ARGB4444, ARGB8888, as Cedar's list, and XRGB8888
      * as the Intel engines offer it. */
@@ -1453,14 +1459,15 @@ static int v9x_d3d_vi_rect_draw(struct v9x_vi_tl_draw *state,
 }
 
 /*
- * A rectangle of a Z16 at value, drawn on the CP: every depth fill, the
- * whole surface's included (eng_vi.c). The SDMA engine cannot write part
- * of one tiled (Cedar's d3d_eg.c the same way), and a fill of all of it
- * there made the CPU wait for the CP first (docs\decisions\
+ * A rectangle of a Z16 or Z24 at value, drawn on the CP: every depth fill,
+ * the whole surface's included (eng_vi.c). The SDMA engine cannot write
+ * part of one tiled (Cedar's d3d_eg.c the same way), and a fill of all of
+ * it there made the CPU wait for the CP first (docs\decisions\
  * 2026-11-18-gcn-batch-cost.md). Two triangles over it, ZFUNC ALWAYS
  * with writes on; the colour target is the Z buffer's own memory named
- * as RGB565, which only sizes the draw: no channel is written. The batch
- * waits for queued SDMA work itself (vi_cp.c).
+ * as RGB565, or 8888 for a 32-bit cell, which only sizes the draw: no
+ * channel is written. The batch waits for queued SDMA work itself
+ * (vi_cp.c).
  */
 int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
                           DWORD value, int wait)
@@ -1471,12 +1478,14 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     DWORD offset;
     DWORD rows;
     DWORD index;
+    DWORD bytes;
     float z;
 
     (void)wait;
+    bytes = v9x_d3d_depth_bytes_per_pixel(surface);
     if (surface == 0 || rect == 0 || surface->lpGbl == 0 ||
         surface->lpGbl->lPitch <= 0l || !v9x_d3d_vi_ready() ||
-        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul ||
+        (bytes != 2ul && bytes != 4ul) ||
         rect[0] < 0l || rect[1] < 0l || rect[2] <= rect[0] ||
         rect[3] <= rect[1] ||
         rect[2] > (LONG)surface->lpGbl->wWidth ||
@@ -1496,9 +1505,11 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     }
     state.target_low = heap_low + offset;
     state.target_high = high;
-    state.pitch_pixels = (DWORD)surface->lpGbl->lPitch / 2ul;
+    state.pitch_pixels = (DWORD)surface->lpGbl->lPitch / bytes;
     state.height = rows;
-    state.format = V9X_VI_CB_FORMAT_5_6_5;
+    state.format = bytes == 4ul ? V9X_VI_CB_FORMAT_8_8_8_8
+                                : V9X_VI_CB_FORMAT_5_6_5;
+    state.depth_32 = bytes == 4ul ? 1ul : 0ul;
     state.tile_mode_index = V9X_VI_TILE_LINEAR_ALIGNED;
     state.target_mask_none = 1ul;
     state.d3d_pixel_centres = 1ul;
@@ -1515,8 +1526,14 @@ int v9x_d3d_vi_depth_fill(V9X_DD_SURFACE_LCL *surface, const LONG *rect,
     state.vertex_high = high;
     state.fence_high = high;
 
-    /* On the 16-bit full scale. */
-    z = (float)(long)(value & 0xfffful) / 65535.0f;
+    /* On the cell's full scale: 16 bits, or the low 24 of a 32-bit cell
+     * (v9x_d3d_depth_fill_value masks it to depth32_bits); the DB turns
+     * the float back into 24-bit UNORM. */
+    if (bytes == 4ul) {
+        z = (float)(long)(value & 0x00fffffful) / 16777215.0f;
+    } else {
+        z = (float)(long)(value & 0xfffful) / 65535.0f;
+    }
     if (!v9x_d3d_vi_rect_draw(&state, rect, z, 0ul)) {
         return V9X_BLT_DECLINED;
     }
@@ -1799,15 +1816,16 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                       V9X_D3D_VI_ROW_ALIGN - 1ul) & ~(V9X_D3D_VI_ROW_ALIGN - 1ul);
         rows[0] = height;
     } else if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
-        if (data->dwSCnt != 1ul ||
-            v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
+        bytes = v9x_d3d_depth_bytes_per_pixel(surface);
+        if (data->dwSCnt != 1ul || (bytes != 2ul && bytes != 4ul)) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         /* Rows of whole 64 bytes, not just the DB's 8-pixel tiles: the
          * core binds a depth buffer only at the engine's target row
          * alignment (v9x_d3d_set_target), and an 800-byte Z for a 400-wide
-         * OpenGL window was refused, every batch with it (V9XGLP, boot 37). */
-        pitches[0] = (width * 2ul + V9X_D3D_VI_ROW_ALIGN - 1ul) &
+         * OpenGL window was refused, every batch with it (V9XGLP, boot 37).
+         * 64 bytes is 16 Z24 cells, so a Z24's rows are whole tiles too. */
+        pitches[0] = (width * bytes + V9X_D3D_VI_ROW_ALIGN - 1ul) &
                      ~(V9X_D3D_VI_ROW_ALIGN - 1ul);
         rows[0] = (height + V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul) &
                   ~(V9X_D3D_VI_DEPTH_TILE_ROWS - 1ul);
@@ -1906,7 +1924,8 @@ static DWORD v9x_d3d_vi_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
  * rows padded to whole tiles, so the last band is the surface's own;
  * recognised by v9x_d3d_place_release's signature. A nested Lock converts
  * nothing, and a surface past the table, the band's pitch or the
- * allocation is left as it is.
+ * allocation is left as it is. A Z24 in 32-bit cells is converted the same
+ * way, band by band, in the same sample order (vi_3d.h).
  */
 #define V9X_D3D_VI_LOCKED_MAX     4ul
 #define V9X_D3D_VI_BAND_PITCH_MAX 2048ul
@@ -1916,11 +1935,15 @@ static DWORD v9x_d3d_vi_locked[V9X_D3D_VI_LOCKED_MAX];
 static int v9x_d3d_vi_tiled_depth(const V9X_DD_SURFACE_LCL *surface)
 {
     const V9X_DD_SURFACE_GBL *global;
+    DWORD bytes;
 
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul ||
-        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
-        v9x_d3d_depth_bytes_per_pixel(surface) != 2ul) {
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
+        return 0;
+    }
+    bytes = v9x_d3d_depth_bytes_per_pixel(surface);
+    if (bytes != 2ul && bytes != 4ul) {
         return 0;
     }
     global = surface->lpGbl;
@@ -1929,8 +1952,9 @@ static int v9x_d3d_vi_tiled_depth(const V9X_DD_SURFACE_LCL *surface)
            global->fpVidMem >= global->dwReserved1 &&
            global->fpVidMem - global->dwReserved1 < V9X_D3D_VI_SURFACE_ALIGN &&
            global->lPitch > 0l &&
-           ((DWORD)global->lPitch % V9X_D3D_VI_DEPTH_PITCH_UNIT) == 0ul &&
-           (DWORD)global->lPitch / 2ul <= V9X_D3D_VI_BAND_PITCH_MAX;
+           ((DWORD)global->lPitch %
+            (V9X_D3D_VI_DEPTH_PITCH_UNIT / 2ul * bytes)) == 0ul &&
+           (DWORD)global->lPitch / bytes <= V9X_D3D_VI_BAND_PITCH_MAX;
 }
 
 /* The table slot holding the surface's memory, or LOCKED_MAX. */
@@ -1952,7 +1976,8 @@ static int v9x_d3d_vi_convert_depth(const V9X_DD_SURFACE_LCL *surface,
                                     int to_linear)
 {
     const V9X_DD_SURFACE_GBL *global = surface->lpGbl;
-    DWORD pitch_pixels = (DWORD)global->lPitch / 2ul;
+    DWORD bytes = v9x_d3d_depth_bytes_per_pixel(surface);
+    DWORD pitch_pixels = (DWORD)global->lPitch / bytes;
     DWORD band_bytes = (DWORD)global->lPitch * V9X_VI_Z16_TILE_ROWS;
     DWORD bands = ((DWORD)global->wHeight + V9X_VI_Z16_TILE_ROWS - 1ul) /
                   V9X_VI_Z16_TILE_ROWS;
@@ -1971,7 +1996,13 @@ static int v9x_d3d_vi_convert_depth(const V9X_DD_SURFACE_LCL *surface,
         for (index = 0ul; index < band_bytes / 4ul; ++index) {
             band_words[index] = memory[index];
         }
-        if (to_linear) {
+        if (bytes == 4ul && to_linear) {
+            v9x_vi_z32_detile_band((const v9x_u32 *)band_words,
+                                   (v9x_u32 *)memory, pitch_pixels);
+        } else if (bytes == 4ul) {
+            v9x_vi_z32_retile_band((const v9x_u32 *)band_words,
+                                   (v9x_u32 *)memory, pitch_pixels);
+        } else if (to_linear) {
             v9x_vi_z16_detile_band((const v9x_u16 *)band_words,
                                    (v9x_u16 *)memory, pitch_pixels);
         } else {

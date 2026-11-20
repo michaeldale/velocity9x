@@ -1,0 +1,189 @@
+; d3d8 proxy v4 log (C:\V9XDIAG\D3D8LG4.TXT), excerpt: lines 1-60 (the Z16-only build: 32 bpp aborts, then 16 bpp), the device and Reset lines of the Z24 runs
+Direct3DCreate8 220 -> 00a61d00 at 1419224 ms from C:\UT2004DEMO\SYSTEM\D3DDRV.DLL (runtime at 04b40000)
+D3D.GetDeviceCaps type 1 -> 0 PS ffff0101 (max 3f800000) VS fffe0000/0 streams 1 stages 4 simtex 4
+  maxtex 2048x2048 vol 0 aspect 0 texcaps 00034805 filter 0303033f cube 0303033f addr 00000007
+  caps2 00080000 dev 0008a650 pmisc 00000072 raster 00000190 blend 0000033f/0000033f stencil 00000000 fvf 00000004 texop 00a0104f vp 00000000 prim 65535 idx 65535
+  caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000072
+  caps[09] 00000190 000000ff 0000033f 0000033f 000000ff 00084208 00034805 0303033f 0303033f
+  caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+  caps[27] 00000001 501502f9 c5fff800 c5fff800 45fff800 45fff800 00000000 00000000 00000004
+  caps[36] 00a0104f 00000004 00000004 00000000 00000000 00000000 00000000 00000000 3f800000
+  caps[45] 0000ffff 0000ffff 00000001 000000ff fffe0000 00000000 ffff0101 3f800000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 827611204 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 861165636 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 894720068 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 21 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 23 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 1 fmt 22 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 77 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 71 -> 8876086a
+CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 75 -> 8876086a
+Direct3DCreate8 220 -> 00a61d00 at 1489261 ms from C:\UT2004DEMO\SYSTEM\D3DDRV.DLL (runtime at 04b40000)
+D3D.GetDeviceCaps type 1 -> 0 PS ffff0101 (max 3f800000) VS fffe0000/0 streams 1 stages 4 simtex 4
+  maxtex 2048x2048 vol 0 aspect 0 texcaps 00034805 filter 0303033f cube 0303033f addr 00000007
+  caps2 00080000 dev 0008a650 pmisc 00000072 raster 00000190 blend 0000033f/0000033f stencil 00000000 fvf 00000004 texop 00a0104f vp 00000000 prim 65535 idx 65535
+  caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000072
+  caps[09] 00000190 000000ff 0000033f 0000033f 000000ff 00084208 00034805 0303033f 0303033f
+  caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+  caps[27] 00000001 501502f9 c5fff800 c5fff800 45fff800 45fff800 00000000 00000000 00000004
+  caps[36] 00a0104f 00000004 00000004 00000000 00000000 00000000 00000000 00000000 3f800000
+  caps[45] 0000ffff 0000ffff 00000001 000000ff fffe0000 00000000 ffff0101 3f800000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 827611204 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 861165636 -> 00000000
+CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 894720068 -> 00000000
+CheckDeviceFormat type 1 adfmt 23 usage 1 rtype 3 fmt 21 -> 8876086a
+CheckDeviceFormat type 1 adfmt 23 usage 1 rtype 3 fmt 23 -> 00000000
+CheckDeviceFormat type 1 adfmt 23 usage 1 rtype 1 fmt 23 -> 00000000
+CheckDeviceFormat type 1 adfmt 23 usage 2 rtype 1 fmt 80 -> 00000000
+CheckDepthStencilMatch type 1 adfmt 23 rt 23 ds 80 -> 00000000
+CreateDevice 1 type 1 flags 22 800x600 bbfmt 23 ds 80/1 -> 00000000
+GetAvailableTextureMem -> 131072000 (128000 KiB)
+SetTransform TEXTURE0 ptr 101ad078
+SetTransform TEXTURE1 ptr 101ad078
+SetTransform TEXTURE2 ptr 101ad078
+SetTransform TEXTURE3 ptr 101ad078
+SetTransform TEXTURE4 ptr 101ad078
+SetTransform TEXTURE5 ptr 101ad078
+SetTransform TEXTURE6 ptr 101ad078
+SetTransform TEXTURE7 ptr 101ad078
+TSS stage 0 state 1 = 00000001
+TSS stage 0 state 11 = 00000000
+TSS stage 0 state 24 = 00000000
+TSS stage 1 state 1 = 00000001
+TSS stage 1 state 11 = 00000000
+TSS stage 1 state 24 = 00000000
+TSS stage 2 state 1 = 00000001
+TSS stage 2 state 11 = 00000000
+TSS stage 2 state 24 = 00000000
+TSS stage 3 state 1 = 00000001
+TSS stage 3 state 11 = 00000000
+TSS stage 3 state 24 = 00000000
+CreateTexture 512x512 levels 2 usage 0 fmt 861165636 pool 1 -> 00000000
+; ...
+125001: Direct3DCreate8 220 -> 00a61d00 at 97549 ms from C:\UT2004DEMO\SYSTEM\D3DDRV.DLL (runtime at 04b40000)
+125002: D3D.GetDeviceCaps type 1 -> 0 PS ffff0101 (max 3f800000) VS fffe0000/0 streams 1 stages 4 simtex 4
+125003:   maxtex 2048x2048 vol 0 aspect 0 texcaps 00034805 filter 0303033f cube 0303033f addr 00000007
+125004:   caps2 00080000 dev 0008a650 pmisc 00000072 raster 00000190 blend 0000033f/0000033f stencil 00000000 fvf 00000004 texop 00a0104f vp 00000000 prim 65535 idx 65535
+125005:   caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000072
+125006:   caps[09] 00000190 000000ff 0000033f 0000033f 000000ff 00084208 00034805 0303033f 0303033f
+125007:   caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+125008:   caps[27] 00000001 501502f9 c5fff800 c5fff800 45fff800 45fff800 00000000 00000000 00000004
+125009:   caps[36] 00a0104f 00000004 00000004 00000000 00000000 00000000 00000000 00000000 3f800000
+125010:   caps[45] 0000ffff 0000ffff 00000001 000000ff fffe0000 00000000 ffff0101 3f800000
+125011: CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 827611204 -> 00000000
+125012: CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 861165636 -> 00000000
+125013: CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 894720068 -> 00000000
+125014: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 21 -> 8876086a
+125015: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 23 -> 8876086a
+125016: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 1 fmt 22 -> 00000000
+125017: CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 77 -> 00000000
+125018: CheckDepthStencilMatch type 1 adfmt 22 rt 22 ds 77 -> 00000000
+125019: CreateDevice 1 type 1 flags 22 800x600 bbfmt 22 ds 77/1 -> 00000000
+125020: GetAvailableTextureMem -> 127926272 (124928 KiB)
+125021: SetTransform TEXTURE0 ptr 101ad078
+125022: SetTransform TEXTURE1 ptr 101ad078
+125023: SetTransform TEXTURE2 ptr 101ad078
+125024: SetTransform TEXTURE3 ptr 101ad078
+125025: SetTransform TEXTURE4 ptr 101ad078
+125026: SetTransform TEXTURE5 ptr 101ad078
+125027: SetTransform TEXTURE6 ptr 101ad078
+125028: SetTransform TEXTURE7 ptr 101ad078
+125029: TSS stage 0 state 1 = 00000001
+125030: TSS stage 0 state 11 = 00000000
+125031: TSS stage 0 state 24 = 00000000
+125032: TSS stage 1 state 1 = 00000001
+125033: TSS stage 1 state 11 = 00000000
+125034: TSS stage 1 state 24 = 00000000
+125035: TSS stage 2 state 1 = 00000001
+125036: TSS stage 2 state 11 = 00000000
+125037: TSS stage 2 state 24 = 00000000
+125038: TSS stage 3 state 1 = 00000001
+125039: TSS stage 3 state 11 = 00000000
+125040: TSS stage 3 state 24 = 00000000
+125041: CreateTexture 128x128 levels 8 usage 0 fmt 21 pool 1 -> 00000000
+300256: TSS stage 1 state 1 = 00000003
+300257: TSS stage 1 state 24 = 00000000
+300258: TSS stage 1 state 1 = 00000001
+300259: GetAvailableTextureMem -> 116391936 (113664 KiB)
+300260: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 1 fmt 22 -> 00000000
+300261: CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 77 -> 00000000
+300262: CheckDepthStencilMatch type 1 adfmt 22 rt 22 ds 77 -> 00000000
+300263: Reset -> 88760868
+300264: Device 1 released: 2357448 draw calls, 38161333 primitives
+300265: Draw keys: 35 (overflow 0)
+300266:   key 0 stages 1 vs 00000003 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 0 aop1 1 | stage2 010201: 3 draws, 20 prims
+300267:   key 1 stages 3 vs 00000003 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 5 a1 2 a2 1 tci1 1 aop1 2 | stage2 010201: 6 draws, 140 prims
+300268:   key 2 stages 1 vs 00000003 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 4 draws, 110 prims
+300269:   key 3 stages 1 vs 00000005 ps 00000000 cop0 5 carg0 2 tci0 0 lighting 1 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 1 draws, 534 prims
+300270:   key 4 stages 1 vs 00000007 ps 00000000 cop0 5 carg0 2 tci0 0 lighting 1 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 8 draws, 7766 prims
+300271:   key 5 stages 1 vs 00000009 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 1 draws, 240 prims
+300272:   key 6 stages 1 vs 0000000b ps 00000000 cop0 5 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 7 draws, 18410 prims
+300273:   key 7 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 1 draws, 2 prims
+300274:   key 8 stages 0 vs 00000003 ps 00000000 cop0 2 carg0 3 tci0 0 lighting 0 type0 0 ttff0 0 addr0 3 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010201: 1 draws, 90 prims
+300275:   key 9 stages 3 vs 00000005 ps 00000000 cop0 2 carg0 2 tci0 30000 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 7 a1 2 a2 1 tci1 0 aop1 2 | stage2 010005: 444 draws, 692222 prims
+300276:   key 10 stages 1 vs 00000007 ps 00000000 cop0 5 carg0 2 tci0 0 lighting 1 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 0 aop1 1 | stage2 010001: 1973 draws, 1411592 prims
+300277:   key 11 stages 1 vs 00000009 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 0 aop1 1 | stage2 010001: 50 draws, 12000 prims
+300278:   key 12 stages 3 vs 00000007 ps 00000000 cop0 5 carg0 2 tci0 0 lighting 1 type0 771 ttff0 0 addr0 1 | cop1 3 a1 1 a2 1 tci1 0 aop1 2 | stage2 010001: 2555 draws, 960680 prims
+300279:   key 13 stages 1 vs 00000007 ps 00000000 cop0 5 carg0 2 tci0 0 lighting 1 type0 3 ttff0 0 addr0 1 | cop1 1 a1 1 a2 1 tci1 0 aop1 1 | stage2 010001: 5112 draws, 9745698 prims
+300280:   key 14 stages 3 vs 0000000b ps 00000000 cop0 5 carg0 2 tci0 0 lighting 0 type0 1283 ttff0 0 addr0 1 | cop1 5 a1 1 a2 2 tci1 30000 aop1 2 | stage2 010001: 1023 draws, 2250600 prims
+300281:   key 15 stages 1 vs 0000000b ps 00000000 cop0 5 carg0 2 tci0 30000 lighting 0 type0 5 ttff0 3 addr0 3 | cop1 1 a1 1 a2 2 tci1 30000 aop1 1 | stage2 010001: 1023 draws, 6103218 prims
+300282:   key 16 stages 1 vs 0000000b ps 00000000 cop0 5 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 1 a2 2 tci1 30000 aop1 1 | stage2 010001: 1 draws, 2978 prims
+300283:   key 17 stages 3 vs 0000000b ps 00000000 cop0 2 carg0 2 tci0 30000 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 7 a1 2 a2 1 tci1 0 aop1 2 | stage2 010005: 4 draws, 7266 prims
+300284:   key 18 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 0 aop1 1 | stage2 010001: 1955622 draws, 12709346 prims
+300285:   key 19 stages 3 vs 00000003 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 5 a1 2 a2 1 tci1 1 aop1 2 | stage2 010001: 5108 draws, 73930 prims
+300286:   key 20 stages 0 vs 00000003 ps 00000000 cop0 2 carg0 3 tci0 0 lighting 0 type0 0 ttff0 0 addr0 3 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010001: 2554 draws, 123094 prims
+300287:   key 21 stages 1 vs 00000009 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 1 a2 1 tci1 0 aop1 1 | stage2 010001: 1151 draws, 276240 prims
+300288:   key 22 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 1 a2 1 tci1 0 aop1 1 | stage2 010001: 286189 draws, 1250078 prims
+300289:   key 23 stages 1 vs 00000007 ps 00000000 cop0 5 carg0 2 tci0 0 lighting 1 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010001: 3025 draws, 2163480 prims
+300290:   key 24 stages 3 vs 00000009 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 12 a1 2 a2 1 tci1 1 aop1 12 | stage2 010004: 971 draws, 6458 prims
+300291:   key 25 stages 1 vs 00000009 ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010001: 194 draws, 46560 prims
+300292:   key 26 stages 0 vs 00000003 ps 00000000 cop0 2 carg0 3 tci0 0 lighting 0 type0 0 ttff0 0 addr0 3 | cop1 1 a1 1 a2 1 tci1 0 aop1 1 | stage2 010001: 243 draws, 3645 prims
+300293:   key 27 stages 1 vs 00000003 ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 1 | cop1 1 a1 2 a2 1 tci1 1 aop1 1 | stage2 010001: 4596 draws, 30640 prims
+300294:   key 28 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 3 | cop1 1 a1 1 a2 1 tci1 0 aop1 1 | stage2 010001: 26889 draws, 119358 prims
+300295:   key 29 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 2 addr0 1 | cop1 1 a1 1 a2 1 tci1 0 aop1 1 | stage2 010001: 20331 draws, 40662 prims
+300296:   key 30 stages 3 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 1 | cop1 16 a1 2 a2 1 tci1 0 aop1 3 | stage2 010001: 9533 draws, 19066 prims
+300297:   key 31 stages 3 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 3 | cop1 3 a1 1 a2 1 tci1 0 aop1 2 | stage2 010001: 6777 draws, 13554 prims
+300298:   key 32 stages b vs 0000000d ps 00000000 cop0 2 carg0 2 tci0 0 lighting 0 type0 771 ttff0 0 addr0 3 | cop1 14 a1 2 a2 1 tci1 0 aop1 2 | stage2 010004: 2756 draws, 5512 prims
+300299:   key 33 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 0 addr0 3 | cop1 1 a1 2 a2 1 tci1 0 aop1 1 | stage2 010001: 11024 draws, 49608 prims
+300300:   key 34 stages 1 vs 0000000d ps 00000000 cop0 4 carg0 2 tci0 0 lighting 0 type0 3 ttff0 2 addr0 1 | cop1 1 a1 2 a2 1 tci1 0 aop1 1 | stage2 010001: 8268 draws, 16536 prims
+300301: CreateDevice 2 type 1 flags 22 640x480 bbfmt 22 ds 77/1 -> 00000000
+300302: GetAvailableTextureMem -> 128974848 (125952 KiB)
+300303: SetTransform TEXTURE0 ptr 101ad078
+300304: SetTransform TEXTURE1 ptr 101ad078
+300305: SetTransform TEXTURE2 ptr 101ad078
+300306: SetTransform TEXTURE3 ptr 101ad078
+300307: SetTransform TEXTURE4 ptr 101ad078
+300308: SetTransform TEXTURE5 ptr 101ad078
+300309: SetTransform TEXTURE6 ptr 101ad078
+300310: SetTransform TEXTURE7 ptr 101ad078
+300311: TSS stage 0 state 1 = 00000001
+300312: Device 2 released: 0 draw calls, 0 primitives
+300313: Draw keys: 0 (overflow 0)
+300314: Direct3DCreate8 220 -> 00a61d00 at 208516 ms from C:\UT2004DEMO\SYSTEM\D3DDRV.DLL (runtime at 04b40000)
+300315: D3D.GetDeviceCaps type 1 -> 0 PS ffff0101 (max 3f800000) VS fffe0000/0 streams 1 stages 4 simtex 4
+300316:   maxtex 2048x2048 vol 0 aspect 0 texcaps 00034805 filter 0303033f cube 0303033f addr 00000007
+300317:   caps2 00080000 dev 0008a650 pmisc 00000072 raster 00000190 blend 0000033f/0000033f stencil 00000000 fvf 00000004 texop 00a0104f vp 00000000 prim 65535 idx 65535
+300318:   caps[00] 00000001 00000000 00000000 00080000 00000000 00000001 00000000 0008a650 00000072
+300319:   caps[09] 00000190 000000ff 0000033f 0000033f 000000ff 00084208 00034805 0303033f 0303033f
+300320:   caps[18] 00000000 00000007 00000000 0000001f 00000800 00000800 00000000 00000800 00000000
+300321:   caps[27] 00000001 501502f9 c5fff800 c5fff800 45fff800 45fff800 00000000 00000000 00000004
+300322:   caps[36] 00a0104f 00000004 00000004 00000000 00000000 00000000 00000000 00000000 3f800000
+300323:   caps[45] 0000ffff 0000ffff 00000001 000000ff fffe0000 00000000 ffff0101 3f800000
+300324: CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 827611204 -> 00000000
+300325: CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 861165636 -> 00000000
+300326: CheckDeviceFormat type 1 adfmt 22 usage 0 rtype 3 fmt 894720068 -> 00000000
+300327: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 21 -> 8876086a
+300328: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 3 fmt 23 -> 8876086a
+300329: CheckDeviceFormat type 1 adfmt 22 usage 1 rtype 1 fmt 22 -> 00000000
+300330: CheckDeviceFormat type 1 adfmt 22 usage 2 rtype 1 fmt 77 -> 00000000
+300331: CheckDepthStencilMatch type 1 adfmt 22 rt 22 ds 77 -> 00000000
+300332: CreateDevice 1 type 1 flags 22 800x600 bbfmt 22 ds 77/1 -> 00000000
+300333: GetAvailableTextureMem -> 127926272 (124928 KiB)
+300334: SetTransform TEXTURE0 ptr 101ad078
+300335: SetTransform TEXTURE1 ptr 101ad078
+300336: SetTransform TEXTURE2 ptr 101ad078
+300337: SetTransform TEXTURE3 ptr 101ad078
+300338: SetTransform TEXTURE4 ptr 101ad078
+300339: SetTransform TEXTURE5 ptr 101ad078
+300340: SetTransform TEXTURE6 ptr 101ad078
+300341: SetTransform TEXTURE7 ptr 101ad078
