@@ -1,6 +1,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/intel_gma.h"
 #include "velocity9x/engine_abi.h"
+#include "velocity9x/pat.h"
 
 /*
  * The two linear windows the mini-VDD has already mapped: BAR0 and BAR3.
@@ -26,6 +27,19 @@ extern unsigned short __far __pascal V9xMiniI9xxEngineMap(
 extern unsigned short __far __pascal V9xMiniI9xxRingOpen(
     unsigned long gmadr, unsigned long reserve,
     unsigned long __far *base, unsigned long __far *bytes);
+
+/* runtime.asm, the mini-VDD's PAT verbs (include\velocity9x\pat.h). */
+extern unsigned short __far __pascal V9xMiniPatInfo(
+    unsigned long __far *low, unsigned long __far *high,
+    unsigned short __far *flags);
+extern unsigned short __far __pascal V9xMiniPatCover(
+    unsigned long linear, unsigned long bytes, unsigned long old_high,
+    unsigned long new_high, unsigned long __far *pages,
+    unsigned long __far *back, unsigned short __far *why);
+
+/* What V9xMiniI9xxRingOpen maps from the reserve's start: the ring, its
+ * batches and their vertices (loader.asm, V9X_I9XX_RESERVE_BYTES_TOTAL). */
+#define V9X_I9XX_RESERVE_MAP_BYTES 0x00100000ul
 
 /* Fresh BAR2, BAR3, BSM and GGC reads into the globals below; non-zero when
  * every read validated (runtime.asm). Read-only config access. */
@@ -135,6 +149,134 @@ unsigned long v9x_gma950_reserve_video_memory(
 }
 
 /*
+ * Write-combining through the page attribute table, for a BIOS that leaves
+ * the MTRRs no room: the HD 4600's route (hsw_hw16.c,
+ * docs\decisions\2026-10-28-haswell-pat-write-combining.md) on Gen3 to Gen5.
+ *
+ * An Acer Aspire 4740 (Ironlake mobile, GitHub issue 28) uses all eight
+ * MTRR pairs, so its boot record reads MtrrWrite=refused (NO_SLOT) and every
+ * CPU store to the aperture went uncached. On the desktop Ironlake the same
+ * stores write-combined took 3DMark 2000 from 1246 to 2909
+ * (docs\decisions\2026-10-25-ironlake-write-combining.md).
+ *
+ * Two mappings carry those stores, as on Haswell: the driver's DPMI
+ * mapping of the aperture (framebuffer, heap, the texture pool where there
+ * is one), typed when enable16.c's MTRR step refuses, and the mini-VDD's
+ * mapping of the ring reserve (the ring, batches, vertices), typed when the
+ * descriptor next opens the ring. The ring may open before or after the
+ * aperture's plan is made, so the reserve is covered on whichever
+ * descriptor call comes after both.
+ *
+ * pat_high is IA32_PAT's high dword once the aperture is covered, and the
+ * licence for the reserve; zero before or after a refusal. The submit path
+ * drains before RING_TAIL and each flip already, as it does under the MTRR.
+ */
+static unsigned long v9x_i9xx_pat_high;
+static unsigned long v9x_i9xx_pat_reserve;
+static void (*v9x_i9xx_pat_write)(const char *key, const char *value);
+
+/* Eight uppercase hex digits into a caller-owned buffer of at least 8. */
+static void v9x_i9xx_format_hex32(char *text, unsigned long value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    unsigned short i;
+
+    for (i = 0u; i < 8u; ++i) {
+        text[i] = digits[(unsigned short)(value >> (28u - 4u * i)) & 0xfu];
+    }
+}
+
+/* key = head, eight hex digits, mid, eight hex digits. */
+static void v9x_i9xx_pat_record(const char *key, const char *head,
+                                unsigned long first, const char *mid,
+                                unsigned long second)
+{
+    char text[48];
+    unsigned short at = 0u;
+
+    if (v9x_i9xx_pat_write == 0) {
+        return;
+    }
+    while (*head != '\0') {
+        text[at++] = *head++;
+    }
+    v9x_i9xx_format_hex32(text + at, first);
+    at += 8u;
+    while (*mid != '\0') {
+        text[at++] = *mid++;
+    }
+    v9x_i9xx_format_hex32(text + at, second);
+    at += 8u;
+    text[at] = '\0';
+    v9x_i9xx_pat_write(key, text);
+}
+
+/* Cover one mapping under a plan already made; 1 when it is covered. */
+static unsigned short v9x_i9xx_pat_cover(const char *key,
+                                         unsigned long linear,
+                                         unsigned long bytes,
+                                         const struct v9x_pat_plan *plan)
+{
+    unsigned long pages = 0ul;
+    unsigned long back = 0ul;
+    unsigned short why = 0u;
+
+    if (V9xMiniPatCover(linear, bytes, plan->old_high, plan->new_high,
+                        &pages, &back, &why) == 0u) {
+        v9x_i9xx_pat_record(key, "why=", (unsigned long)why, " hi=", back);
+        return 0u;
+    }
+    v9x_i9xx_pat_record(key, "ok pages=", pages, " hi=", back);
+    return 1u;
+}
+
+/*
+ * The ring reserve's mapping, once the aperture is covered; once per
+ * mapping, since V9xMiniI9xxRingOpen hands the same one back each session.
+ * Under the aperture's plan, with entry 4 already WC; ring 0 re-checks the
+ * range.
+ */
+static void v9x_i9xx_pat_cover_reserve(unsigned long reserve)
+{
+    struct v9x_pat_plan plan;
+
+    if (v9x_i9xx_pat_high == 0ul || reserve == 0ul ||
+        reserve == v9x_i9xx_pat_reserve) {
+        return;
+    }
+    v9x_i9xx_pat_reserve = reserve;
+    plan.old_high = v9x_i9xx_pat_high;
+    plan.new_high = v9x_i9xx_pat_high;
+    (void)v9x_i9xx_pat_cover("PatReserve", reserve,
+                             V9X_I9XX_RESERVE_MAP_BYTES, &plan);
+}
+
+/* V9X_HW16_DEVICE.write_combine_fallback: the aperture mapping. The rows
+ * that take it have write_combine 1, a mapping inside GMADR. */
+static void v9x_i9xx_write_combine(unsigned long linear, unsigned long bytes,
+                                   unsigned short mtrr_reason,
+                                   void (*write)(const char *key,
+                                                 const char *value))
+{
+    struct v9x_pat_plan plan;
+    unsigned long low = 0ul;
+    unsigned long high = 0ul;
+    unsigned short flags = 0u;
+
+    v9x_i9xx_pat_write = write;
+    (void)V9xMiniPatInfo(&low, &high, &flags);
+    if (v9x_pat_plan_wc(mtrr_reason, flags, high, linear, bytes,
+                        &plan) == V9X_FALSE) {
+        v9x_i9xx_pat_record("PatWrite", "plan=", (unsigned long)plan.reason,
+                            " hi=", high);
+        return;
+    }
+    if (v9x_i9xx_pat_cover("PatWrite", linear, bytes, &plan) != 0u) {
+        v9x_i9xx_pat_high = plan.new_high;
+    }
+}
+
+/*
  * The Gen3 engine descriptor.
  *
  * Unlike every chip before it, this one cannot derive its control window from
@@ -238,6 +380,7 @@ static void v9x_gma950_fill_engine(unsigned long framebuffer_linear_base,
         v9x_gma950_engine_status = "ring-incomplete";
     } else {
         v9x_gma950_engine_status = "d3d-claimed";
+        v9x_i9xx_pat_cover_reserve(ring);
         *ring_linear_base = ring;
         *ring_bytes = ring_size;
     }
@@ -530,7 +673,8 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
      * The GMA 900 and GMA 3150 below are the same design and take it too.
      */
     1u,
-    0,
+    /* PAT when the BIOS's ranges leave no MTRR (v9x_i9xx_write_combine). */
+    v9x_i9xx_write_combine,
     0u,
     /* The texture pool intel_pool16.c mapped at Enable, if any. */
     v9x_gma950_engine_pool
@@ -556,8 +700,9 @@ const V9X_HW16_DEVICE v9x_gma900_device = {
     0u,
     0ul,
     0,
-    /* Write-combined, as the GMA 950. */
-    1u
+    /* Write-combined, as the GMA 950, PAT included. */
+    1u,
+    v9x_i9xx_write_combine
 };
 
 /*
@@ -581,8 +726,9 @@ const V9X_HW16_DEVICE v9x_gma3150_device = {
     0u,
     0ul,
     0,
-    /* Write-combined, as the GMA 950. */
-    1u
+    /* Write-combined, as the GMA 950, PAT included. */
+    1u,
+    v9x_i9xx_write_combine
 };
 
 /*
@@ -606,8 +752,9 @@ const V9X_HW16_DEVICE v9x_g33_gma3100_device = {
     0u,
     0ul,
     0,
-    /* Write-combined, as the GMA 950. */
-    1u
+    /* Write-combined, as the GMA 950, PAT included. */
+    1u,
+    v9x_i9xx_write_combine
 };
 
 /*
@@ -645,7 +792,8 @@ const V9X_HW16_DEVICE v9x_gm965_device = {
      * (docs\decisions\2026-11-13-gm965-write-combining.md).
      */
     1u,
-    0,
+    /* PAT when the BIOS's ranges leave no MTRR (v9x_i9xx_write_combine). */
+    v9x_i9xx_write_combine,
     0u,
     /* The texture pool intel_pool16.c mapped at Enable, if any. */
     v9x_gma950_engine_pool
@@ -675,8 +823,9 @@ const V9X_HW16_DEVICE v9x_ilk_hd_device = {
      * GMADR at D0000000, under the UC default with pairs 5-7 free on
      * W9QI2F4F; ring, batch and vertex writes drain before RING_TAIL in the
      * shared Gen3/Gen4 submit (docs\decisions\2026-10-25-ironlake-write-
-     * combining.md). */
-    1u
+     * combining.md). Through PAT when no pair is free. */
+    1u,
+    v9x_i9xx_write_combine
 };
 
 /*
@@ -702,7 +851,10 @@ const V9X_HW16_DEVICE v9x_ilk_hd_mobile_device = {
     0u,
     0ul,
     0,
-    1u
+    /* Write-combined, as the desktop's. Its BIOS uses all eight MTRR
+     * pairs (MtrrWrite=refused, NO_SLOT), so it is the PAT route here. */
+    1u,
+    v9x_i9xx_write_combine
 };
 
 /*
@@ -727,7 +879,8 @@ const V9X_HW16_DEVICE v9x_g45_x4500_device = {
     0,
     /* Write-combined, as the GM965: the same engine and submit path
      * (docs\decisions\2026-11-13-gm965-write-combining.md). Not run. */
-    1u
+    1u,
+    v9x_i9xx_write_combine
 };
 
 const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
@@ -745,7 +898,8 @@ const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
     0ul,
     0,
     /* Write-combined, as the GM965 (see the G45 above). Not run. */
-    1u
+    1u,
+    v9x_i9xx_write_combine
 };
 
 /*
@@ -769,5 +923,6 @@ const V9X_HW16_DEVICE v9x_gm45_gma4500mhd_device = {
     0ul,
     0,
     /* Write-combined, as the GM965 (see the G45 above). */
-    1u
+    1u,
+    v9x_i9xx_write_combine
 };

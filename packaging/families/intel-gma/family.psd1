@@ -439,7 +439,9 @@
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
-            @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
+            # In LEAFCODE, as in the ati family, since the Gen3-5 PAT fallback
+            # (gma950_hw16.c) took _TEXT 679 bytes past its budget.
+            @{ Name = 'mtrr'; Path = 'src\common\mtrr.c'; CodeSegment = 'LEAFCODE' }
             # The panel-mode slot plan and the module that runs it at Enable
             # (velocity9x\vbios_panel.h); LEAFCODE, as I9XXCODE is full.
             @{ Name = 'vbios_panel'; Path = 'src\common\vbios_panel.c'; CodeSegment = 'LEAFCODE' }
