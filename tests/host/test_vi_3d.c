@@ -678,6 +678,32 @@ static void test_z16_tiles(void)
     CHECK(memcmp(back, tiled, sizeof(tiled)) == 0);
 }
 
+/* A Z24 band: the depth sample order is the element size's own (AMD
+ * addrlib's ADDR_DEPTH_SAMPLE_ORDER: x0 y0 x1 y1 x2 y2 at every bpp), so a
+ * 32-bit cell takes the Z16 sample index, 256 bytes a tile. */
+static void test_z32_tiles(void)
+{
+    static v9x_u32 tiled[24u * 8u];
+    static v9x_u32 linear[24u * 8u];
+    static v9x_u32 back[24u * 8u];
+    v9x_u32 index;
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (index = 0ul; index < 24ul * 8ul; ++index) {
+        tiled[index] = 0x00ab0000ul | index;
+    }
+    v9x_vi_z32_detile_band(tiled, linear, 24ul);
+    for (y = 0ul; y < 8ul; ++y) {
+        for (x = 0ul; x < 24ul; ++x) {
+            CHECK(linear[y * 24ul + x] ==
+                  (0x00ab0000ul | v9x_vi_z16_tile_sample(x, y)));
+        }
+    }
+    v9x_vi_z32_retile_band(linear, back, 24ul);
+    CHECK(memcmp(back, tiled, sizeof(tiled)) == 0);
+}
+
 /* Every type-3 packet's count must land the next header exactly at the
  * stream's end. Returns the number of packets, 0 on a mismatch. */
 static v9x_u32 walk(const v9x_u32 *dwords, v9x_u32 count)
@@ -1137,7 +1163,42 @@ static void test_tl_depth(void)
     CHECK(at != 0ul && buffer[at] == 0x00000011ul);
     CHECK(buffer[at + 1ul] == 0x00700001ul);
     CHECK(buffer[at + 7ul] == 0x00000807ul);
+
+    /* Z24 in a 32-bit cell: FORMAT Z_24 (2) in DB_Z_INFO, linear or
+     * tiled; DB_DEPTH_INFO and the size words as Z16's, in pixels. */
+    draw.depth_32 = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul && buffer[at] == 0x00000011ul);
+    CHECK(buffer[at + 1ul] == 0x00700002ul);
+    CHECK(buffer[at + 7ul] == 0x00000807ul);
     draw.depth_linear = 0ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul && buffer[at] == 0x00000021ul);
+    CHECK(buffer[at + 1ul] == 0x0050a002ul);
+    CHECK(buffer[at + 7ul] == 0x00000807ul);
+    CHECK(buffer[at + 8ul] == 15ul);
+
+    /* GFX6: the tile index alone, 4, with Z_16 or Z_24. */
+    draw.depth_32 = 0ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul && buffer[at] == 0x00000001ul);
+    CHECK(buffer[at + 1ul] == 0x00400001ul);
+    draw.depth_32 = 1ul;
+    v9x_vi_pm4_init(&stream, buffer, 2048ul);
+    stream.gfx6 = 1ul;
+    CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
+    at = find_context(buffer, stream.count, 0xa00ful);
+    CHECK(at != 0ul && buffer[at] == 0x00000001ul);
+    CHECK(buffer[at + 1ul] == 0x00400002ul);
+    draw.depth_32 = 0ul;
+
     v9x_vi_pm4_init(&stream, buffer, 2048ul);
     CHECK(v9x_vi_3d_tl_draw(&stream, &draw) == V9X_STATUS_OK);
     at = find_context(buffer, stream.count, 0xa00ful);
@@ -1738,6 +1799,7 @@ unsigned int v9x_run_vi_3d_tests(void)
     test_bc_block_offset();
     test_bc_layout();
     test_z16_tiles();
+    test_z32_tiles();
     test_tl_scissor();
     return failures;
 }

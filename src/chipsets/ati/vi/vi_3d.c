@@ -181,6 +181,11 @@
 #define VI_GFX6_TILE_DEPTH_1D       4ul
 #define VI_DEPTH_INFO_GFX6          1ul
 #define VI_Z_INFO_Z16_GFX6          (1ul | (VI_GFX6_TILE_DEPTH_1D << 20))
+/* DB_Z_INFO FORMAT (1:0): Z_16 is 1, Z_24 2 (Mesa's sid.h V_028040_Z_24),
+ * depth in a 32-bit cell's low 24 bits. The rest of the word stays the
+ * Z16 one: the 1D modes above are depth micro-tiled at any element size. */
+#define VI_Z_INFO_FORMAT_MASK       3ul
+#define VI_Z_INFO_FORMAT_Z24        2ul
 #define VI_RENDER_OVERRIDE_NO_HI    0x0000002aul
 #define VI_RENDER_CONTROL_NO_COMPRESS 0x00000060ul
 #define VI_DEPTH_CONTROL_Z_ENABLE   0x00000002ul
@@ -507,13 +512,14 @@ static void v9x_vi_3d_common_state(struct v9x_vi_pm4 *stream, v9x_u32 low,
     v9x_vi_context1(stream, VI_VGT_GS_MODE, 0ul);
 }
 
-/* A Z16 depth buffer of pitch x height in the 1D depth tile mode. It
- * follows the shared state's no-depth writes, so these are the ones that
- * hold. Stencil stays invalid; its bases name the depth buffer, as
- * radeonsi's do. */
+/* A Z16 depth buffer, or a Z24 one with z24, of pitch x height in the 1D
+ * depth tile mode. It follows the shared state's no-depth writes, so these
+ * are the ones that hold. Stencil stays invalid; its bases name the depth
+ * buffer, as radeonsi's do. */
 static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
                             v9x_u32 high, v9x_u32 pitch, v9x_u32 height,
-                            v9x_u32 func, v9x_u32 write, v9x_u32 linear)
+                            v9x_u32 func, v9x_u32 write, v9x_u32 linear,
+                            v9x_u32 z24)
 {
     v9x_u32 values[9];
     v9x_u32 base = v9x_vi_address_256(low, high);
@@ -526,6 +532,10 @@ static void v9x_vi_3d_depth(struct v9x_vi_pm4 *stream, v9x_u32 low,
                                   : VI_DEPTH_INFO_1D_P2;
         values[1] = linear != 0ul ? VI_Z_INFO_Z16_LINEAR
                                   : VI_Z_INFO_Z16_TILE5;
+    }
+    if (z24 != 0ul) {
+        values[1] = (values[1] & ~VI_Z_INFO_FORMAT_MASK) |
+                    VI_Z_INFO_FORMAT_Z24;
     }
     values[2] = 0ul;
     values[3] = base;
@@ -911,6 +921,34 @@ void v9x_vi_z16_retile_band(const v9x_u16 *linear, v9x_u16 *tiled,
     }
 }
 
+void v9x_vi_z32_detile_band(const v9x_u32 *tiled, v9x_u32 *linear,
+                            v9x_u32 pitch_pixels)
+{
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (y = 0ul; y < V9X_VI_Z16_TILE_ROWS; ++y) {
+        for (x = 0ul; x < pitch_pixels; ++x) {
+            linear[y * pitch_pixels + x] =
+                tiled[v9x_vi_z16_tile_sample(x, y)];
+        }
+    }
+}
+
+void v9x_vi_z32_retile_band(const v9x_u32 *linear, v9x_u32 *tiled,
+                            v9x_u32 pitch_pixels)
+{
+    v9x_u32 x;
+    v9x_u32 y;
+
+    for (y = 0ul; y < V9X_VI_Z16_TILE_ROWS; ++y) {
+        for (x = 0ul; x < pitch_pixels; ++x) {
+            tiled[v9x_vi_z16_tile_sample(x, y)] =
+                linear[y * pitch_pixels + x];
+        }
+    }
+}
+
 /* CLAMP_X, _Y and _Z alike. */
 static v9x_u32 v9x_vi_3d_sampler_clamp(v9x_u32 address)
 {
@@ -1102,7 +1140,8 @@ v9x_status v9x_vi_3d_tl_draw(struct v9x_vi_pm4 *stream,
     if (draw->depth_low != 0ul) {
         v9x_vi_3d_depth(stream, draw->depth_low, draw->depth_high,
                         depth_pitch, depth_height, draw->depth_func,
-                        draw->depth_write, draw->depth_linear);
+                        draw->depth_write, draw->depth_linear,
+                        draw->depth_32);
     }
 
     /* The VS's two user SGPRs are the vertex buffer's address; the PS has

@@ -215,10 +215,25 @@ static void test_depth(void)
     CHECK(map(&draw, 0, 2ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
     CHECK(out.depth_low == 0ul);
 
-    /* Refused: a Z32, a pitch not whole tiles, a buffer smaller than the
-     * target, a function out of range. */
+    /* A Z24 in a 32-bit cell: its pitch in pixels is a quarter of the
+     * bytes, and depth_32 says which. */
     draw.depth_enable = 1ul;
+    CHECK(out.depth_32 == 0ul);
+    draw.depth.pitch = 2560ul;
+    CHECK(map(&draw, 0, 4ul, &out, &ps) == V9X_D3D_VI_REFUSE_NONE);
+    CHECK(out.depth_32 == 1ul);
+    CHECK(out.depth_pitch == 640ul);
+    CHECK(out.depth_height == 480ul);
+    /* Refused at 4 bytes: a pitch not whole 8-pixel tiles of 32 bytes, a
+     * pitch narrower than the target. */
+    draw.depth.pitch = 2576ul;
     CHECK(map(&draw, 0, 4ul, &out, &ps) == V9X_D3D_VI_REFUSE_DEPTH_SURFACE);
+    draw.depth.pitch = 1280ul;
+    CHECK(map(&draw, 0, 4ul, &out, &ps) == V9X_D3D_VI_REFUSE_DEPTH_SURFACE);
+
+    /* Refused: a cell of another size, a pitch not whole tiles, a buffer
+     * smaller than the target, a function out of range. */
+    CHECK(map(&draw, 0, 3ul, &out, &ps) == V9X_D3D_VI_REFUSE_DEPTH_SURFACE);
     draw.depth.pitch = 1288ul;
     CHECK(map(&draw, 0, 2ul, &out, &ps) == V9X_D3D_VI_REFUSE_DEPTH_SURFACE);
     draw.depth.pitch = 1280ul;
