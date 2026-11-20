@@ -4,7 +4,28 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.59.0 - not yet released
+## 0.59.0 - 2026-11-20
+
+- **`intel-gma` package: Intel HD Graphics 2500 (Ivy Bridge GT1,
+  `8086:0152`) claimed**, on the HD 4000's path, from one DOS survey of an
+  ASRock board (GitHub issue 29). GT1 has a third of the HD 4000's
+  execution units, so its Direct3D asks for at most 36 vertex and 48
+  pixel shader threads where the HD 4000 path asked for 70 and 64.
+  Nothing has run on one
+  ([record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md)).
+- **`intel-gma` package, GMA 900 to Ironlake: write-combining where the
+  BIOS leaves no MTRR free**, through the page attribute table as on the
+  HD 4600. Found on an Ironlake laptop (GitHub issue 28) whose BIOS uses
+  all eight MTRRs, so the screen and the 3D engine's memory were written
+  uncached; on the desktop Ironlake write-combining took 3DMark 2000 from
+  1246 to 2909. Machines whose MTRR is free are unchanged. Not yet run on
+  a machine that needs it
+  ([record](docs/decisions/2026-11-20-intel-gen3-5-pat-write-combining.md)).
+- **`ati` package, GCN Radeons: a 24-bit depth buffer.** Direct3D 8 games
+  that want 24-bit depth at 32-bit colour found none and stopped: the
+  Unreal Tournament 2004 demo quit at its device setup on the Oland XT. It
+  now runs at 32 bpp (DM-Rankin botmatch 28.36 fps). Measured on the
+  Oland only ([record](docs/decisions/2026-11-20-gcn-z24-depth.md)).
 
 ## 0.58.0 - 2026-11-20
 

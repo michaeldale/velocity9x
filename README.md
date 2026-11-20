@@ -35,12 +35,26 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.58.0
+## Current version: 0.59.0
 
-[Download](releases/0.58.0/README.md) ·
+[Download](releases/0.59.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 0.59.0:
+- **Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), `intel-gma`
+  package**, on the HD 4000's path with GT1's smaller thread limits, from
+  one owner's DOS survey. Not run on one yet
+  ([record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md)).
+- **GMA 900 to Ironlake: write-combining where the BIOS leaves no MTRR
+  free**, through the page attribute table as on the HD 4600; for an
+  Ironlake laptop whose BIOS uses all eight. Not yet run on a machine that
+  needs it
+  ([record](docs/decisions/2026-11-20-intel-gen3-5-pat-write-combining.md)).
+- **GCN Radeons: 24-bit depth.** The Unreal Tournament 2004 demo, which
+  found no depth format for 32-bit colour and quit, runs on the Oland XT
+  at 32 bpp ([record](docs/decisions/2026-11-20-gcn-z24-depth.md)).
 
 New in 0.58.0:
 - **Intel HD Graphics 3000 (Sandy Bridge desktop, `8086:0112`),
@@ -62,17 +76,6 @@ New in 0.58.0:
   next line and tears as it should. Measured on the Oland only; the
   Carrizo, Mullins and Evergreen cards take the same change
   ([record](docs/decisions/2026-11-20-gcn-vsync-off-hretrace-flips.md)).
-
-New in 0.57.0:
-- **Vsync off ("Always off") no longer shows half-drawn frames** on
-  Haswell, Ivy Bridge, Rage 128, Evergreen, RS690 and RV280, and on the
-  HD 4600 and HD 4000 runs above the refresh rate with ordinary tearing
-  ([record](docs/decisions/2026-11-19-haswell-vsync-off-async-flips.md)).
-- **HD 4600: 32 MiB of textures in system memory** on the measured
-  i5-4570 ([record](docs/decisions/2026-11-19-haswell-texture-pool-phase3.md)).
-- **Direct3D 8 programs get their mipmaps back**: DirectX 8's mip filter
-  was read with DirectX 7's numbering
-  ([issue](docs/issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)).
 
 ### Known issues
 
@@ -151,6 +154,13 @@ New in 0.57.0:
   of hillside over the helicopter (0.32.0).
 
 ### Recent releases
+
+- **0.58.0:** the Intel HD Graphics 3000 (Sandy Bridge) with Direct3D,
+  pixel shader 1.1, OpenGL and Glide; vsync off without half-drawn frames
+  on GCN Radeons.
+- **0.57.0:** vsync off without half-drawn frames on Haswell to RV280,
+  with ordinary tearing on the HD 4600; HD 4600 textures in system
+  memory; DirectX 8 mipmaps fixed.
 
 - **0.56.2:** the Ironlake mobile HD Graphics (`8086:0046`) claimed,
   from a survey.
@@ -281,6 +291,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel HD Graphics 3000 (Sandy Bridge, `8086:0112`), from 0.58.0 | `intel-gma` | Gen6 | Direct3D at 16 and 32 bpp with two texture stages, and through the DirectX 8 interface pixel shader 1.1, DXT textures and cube maps; OpenGL (Quake 3 at 32-bit colour, 24-bit depth) and the Glide 2 probe; DirectDraw fills, copies and page flips on the blitter; the render clock at its 1100 MHz top. Every release probe passes. 3DMark 2000 and 2001 SE. One i3-2105 desktop through remote help. Other Sandy Bridge ids (GT1 parts, mobile) are not claimed; 3DCIF not run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000 and 2001 SE; the render clock at its 1150 MHz top (0.56.1). Every release probe passes on 0.56.0 (an i5-3570K desktop through remote help, 2026-11-19). 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
+| Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), from 0.59.0 | `intel-gma` | Gen7 | Recognised, untested: the HD 4000's path with GT1's 36 vertex and 48 pixel shader threads, from one owner's DOS survey of an ASRock board ([GitHub issue 29](https://github.com/michaeldale/velocity9x/issues/29), [record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md)). Nothing has run on one |
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. From 0.51.0, environment and DOT3 bump mapping in Direct3D 8 and 9, and the core at its full 1150 MHz instead of the BIOS's 400. From 0.56.0, Direct3D batches a slot long (3DMark 2001 SE 3388 to 3888). One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 
 #### AMD and ATI
@@ -381,6 +392,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel HD Graphics 3000 (0.58.0) | DirectDraw, flips | Yes | Yes, with pixel shader 1.1 | Yes | Yes | Glide 2 probe only | Not run |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
+| Intel HD Graphics 2500 (0.59.0, recognised, untested) | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
 | Intel HD Graphics 4600 | DirectDraw | Yes | Yes, with pixel shader 1.1 (0.34.0) | Yes | Yes | Probe only, no game | No (0.19.0) |
 | ATI Mach64 VT2 | No | No | No | No | No | No | No |
 | ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |
@@ -414,8 +426,8 @@ from the records the [changelog](CHANGELOG.md) links.
 Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
-  Graphics 4600 and the Millennium II (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
-  HD 5770, HD 7660D, the Oland XT, the R3E, the R7E, the X1200, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  Graphics 4600, the Millennium II and, from 0.59.0, the Oland XT (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
+  HD 5770, HD 7660D, the R3E, the R7E, the X1200, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
@@ -425,7 +437,8 @@ Limits found in testing:
 - **Write-combining:** the CPU writes video memory write-combined on the
   Rage 128 Pro, the GMA 950/900/3150 and the Ironlake, on the HD 4600
   through the page attribute table (from 0.33.0, its BIOS leaving no
-  memory-type range free), on the SiS 6326 (0.34.0), the Radeon HD 5450
+  memory-type range free) and, from 0.59.0, on the GMA 900 to Ironlake
+  the same way when their BIOS leaves none (not yet run on one), on the SiS 6326 (0.34.0), the Radeon HD 5450
   to 7660D (0.41.0), the R7E and R3E (0.47.0), and on any card on
   the `vbe` package (0.39.0; through the page attribute table when the
   BIOS's ranges refuse, 0.43.0); `C:\V9XDIAG\NOWC.TXT` turns it off on
