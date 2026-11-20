@@ -1,0 +1,5 @@
+Target=1024x768x16 dx7 hal
+FlipSafety.Lock=check verified=no
+FlipSafety.Draw=check verified=yes
+Problem=truncated report (no Result/Complete marker)
+Problem=FlipSafety.Lock: verification failed

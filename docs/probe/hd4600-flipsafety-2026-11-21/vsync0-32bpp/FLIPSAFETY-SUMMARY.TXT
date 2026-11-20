@@ -1,0 +1,4 @@
+Target=1024x768x32 dx7 hal
+FlipSafety.Lock=check verified=no
+FlipSafety.Draw=check verified=yes
+Problem=FlipSafety.Lock: verification failed

@@ -1,0 +1,3 @@
+Target=1024x768x16 dx7 hal
+FlipSafety.Lock=check verified=skipped
+FlipSafety.Draw=check verified=skipped
