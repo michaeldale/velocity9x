@@ -271,6 +271,12 @@ Progress:
     device (Michael, 2026-10-27), an exception to Decision 1 until the
     device is faster.
   - **Next:** measure where a batch's time goes before another design.
+- **Step 6 continued (planned 2026-11-21):**
+  [`haswell-d3d-tnl-device-speed.md`](haswell-d3d-tnl-device-speed.md).
+  The step 6 numbers predate write-combining, RP0 (they were taken at
+  400 MHz) and the batch-size work, and DX8 programs now take DDI 8, so
+  3DMark 2001 SE no longer reaches the device. Phase 0 re-measures it on
+  one boot.
 
 1. **Read before writing.** The output is a spec note, each field to be
    set with the section that licenses it.
