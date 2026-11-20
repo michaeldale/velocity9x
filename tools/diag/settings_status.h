@@ -47,9 +47,9 @@ typedef struct v9x_settings_status {
      * The Direct3D selector, which is the one setting these surfaces can
      * change rather than only report.
      *
-     * `direct3d_capable` is the chip's answer, from the driver's own
-     * Direct3D= key: false means no selector value can produce Direct3D and
-     * the control is disabled. `direct3d_request` is the raw
+     * `direct3d_capable` is the chip's answer: the driver's own Direct3D=
+     * word, or the engine's D3D capability bit as the chip's hook reported
+     * it. False means the page does not offer Hardware. `direct3d_request` is the raw
      * [Velocity9x] Direct3D value out of SYSTEM.INI, one of the
      * V9X_D3D_REQUEST_* numbers, and is what a page writes back.
      *
@@ -84,10 +84,15 @@ typedef struct v9x_settings_status {
      */
     int ddi_request;
     char ddi[48];
+    /* Whether the framebuffer aperture is write-combining this boot, from
+     * V9XBOOT.INI's MtrrWrite= and PatWrite=, as a sentence for the page. */
+    char write_combining[48];
     /* The runtime mode table's story, from C:\V9XDIAG\V9XMODES.INI: published and
      * hidden counts, or the static-list statement when no inventory exists. */
     char dynamic_modes[128];
-    char report[2048];
+    /* Grown from 2048 when the layout and write-combining lines joined it,
+     * so they cannot push the last lines off the end. */
+    char report[3072];
 } V9X_SETTINGS_STATUS;
 
 unsigned long v9x_settings_string_length(const char *text);

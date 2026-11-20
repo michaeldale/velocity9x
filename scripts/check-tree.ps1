@@ -2133,6 +2133,15 @@ if ($statusText -notmatch
     throw ('settings_status.c must derive direct3d_capable from the ' +
            '"hardware-" convention, not from one engine name.')
 }
+# And from the engine's D3D bit as well. Cedar, Carrizo, Mullins and Oland
+# grant Direct3D at runtime and keep "not-advertised" as their word, and the
+# word alone hid Hardware on all four while the driver ran it (2026-11-21).
+if ($statusText -notmatch '\(raw_caps & V9X_DD_ENGINE_CAP_D3D\) != 0ul' -or
+    $statusText -notmatch '(?s)if \(engine_d3d\) \{\s*status->direct3d_capable = 1;') {
+    throw ('settings_status.c must also treat the raw EngineCaps D3D bit ' +
+           'as a Direct3D engine. Chips that grant the capability at ' +
+           'runtime keep a not-advertised word.')
+}
 # And the reported sentence must be keyed on the RESOLVED mode, or a chip
 # whose engine this boot did not permit is described as running it.
 # Stated as a prohibition rather than a presence check, because the first

@@ -100,6 +100,53 @@ static int v9x_is_hardware_engine(const char *word)
     return word[index] != '\0' ? 1 : 0;
 }
 
+/*
+ * The engine's name for the Direct3D sentence, from the chip's Direct3D=
+ * word. A word not listed here, or a chip whose engine is granted only at
+ * runtime and whose word is therefore "not-advertised", reads as "the
+ * chip's own engine": true, if less specific. Short, because the sentence
+ * is also rendered into the 160-unit selector on the Advanced tab.
+ */
+static const struct v9x_engine_name {
+    const char *word;
+    const char *name;
+} v9x_engine_names[] = {
+    { "hardware-s3d",          "S3D triangle engine" },
+    { "hardware-gen3",         "Gen3 render engine" },
+    { "hardware-gen4",         "Gen4 render engine" },
+    { "hardware-gen5",         "Gen5 render engine" },
+    { "hardware-gen6",         "Gen6 render engine" },
+    { "hardware-gen7",         "Gen7 render engine" },
+    { "hardware-gen75",        "Gen7.5 render engine" },
+    { "hardware-mach64",       "Rage Pro 3D engine" },
+    { "hardware-rage2",        "Rage II 3D engine" },
+    { "hardware-rage128-cce",  "Rage 128 CCE" },
+    { "hardware-rv280-pio",    "R200 3D engine" },
+    { "hardware-rs690-pio",    "RS690 3D engine" },
+    { "hardware-r600-cp",      "R600 command processor" },
+    { "hardware-evergreen-cp", "Evergreen command processor" },
+    { "hardware-mga1064sg",    "Mystique 3D engine" },
+    { "hardware-mga2164w",     "Millennium II 3D engine" },
+    { "hardware-nv3",          "RIVA 128 3D engine" },
+    { "hardware-nv50",         "Tesla render engine" },
+    { "hardware-sis6326",      "SiS 6326 3D engine" },
+    { "hardware-vsa100",       "VSA-100 3D engine" }
+};
+#define V9X_ENGINE_NAME_COUNT \
+    (sizeof(v9x_engine_names) / sizeof(v9x_engine_names[0]))
+
+static const char *v9x_engine_name(const char *word)
+{
+    UINT index;
+
+    for (index = 0u; index < V9X_ENGINE_NAME_COUNT; ++index) {
+        if (lstrcmpiA(word, v9x_engine_names[index].word) == 0) {
+            return v9x_engine_names[index].name;
+        }
+    }
+    return "the chip's own engine";
+}
+
 static void v9x_append_uint(char *destination, DWORD capacity, UINT value)
 {
     char reverse[12];
@@ -457,6 +504,50 @@ static void v9x_collect_gdi_rendering(V9X_SETTINGS_STATUS *status)
 }
 
 /*
+ * Write combining on the framebuffer aperture, from what enable16.c and the
+ * chips' PAT routes record in V9XBOOT.INI:
+ *
+ *   MtrrWrite= present | ok ... | why=N ... | refused | off-marker
+ *   PatWrite=  ok pages=... | why=N ... | plan=N ... | off-marker
+ *
+ * Neither key means the chip does not opt in (device->write_combine is 0),
+ * which is not a fault. The page reports; it has no switch for this, and the
+ * recovery route stays the NOWC.TXT marker
+ * (docs\plans\write-combining-stage-b.md).
+ */
+static void v9x_collect_write_combining(V9X_SETTINGS_STATUS *status)
+{
+    char mtrr[48];
+    char pat[48];
+
+    GetPrivateProfileStringA("Velocity9x", "MtrrWrite", "", mtrr,
+                             sizeof(mtrr), V9X_DIAG_BOOT_INI);
+    GetPrivateProfileStringA("Velocity9x", "PatWrite", "", pat,
+                             sizeof(pat), V9X_DIAG_BOOT_INI);
+    status->write_combining[0] = '\0';
+    if (lstrcmpiA(mtrr, "present") == 0 ||
+        (mtrr[0] == 'o' && mtrr[1] == 'k')) {
+        v9x_append(status->write_combining,
+                   sizeof(status->write_combining), "On (MTRR)");
+    } else if (pat[0] == 'o' && pat[1] == 'k') {
+        v9x_append(status->write_combining,
+                   sizeof(status->write_combining), "On (PAT)");
+    } else if (lstrcmpiA(mtrr, "off-marker") == 0 ||
+               lstrcmpiA(pat, "off-marker") == 0) {
+        v9x_append(status->write_combining,
+                   sizeof(status->write_combining),
+                   "Off (NOWC.TXT is present)");
+    } else if (mtrr[0] != '\0' || pat[0] != '\0') {
+        v9x_append(status->write_combining,
+                   sizeof(status->write_combining),
+                   "Off (refused or failed; see report)");
+    } else {
+        v9x_append(status->write_combining,
+                   sizeof(status->write_combining), "Not used on this chip");
+    }
+}
+
+/*
  * The rows only the property page shows, collected after everything they
  * are derived from.
  */
@@ -473,13 +564,29 @@ static void v9x_collect_page_rows(V9X_SETTINGS_STATUS *status, UINT width,
     v9x_append(status->resolution, sizeof(status->resolution), " x ");
     v9x_append_uint(status->resolution, sizeof(status->resolution), height);
 
+    /* A 16-bit desktop names its layout, from the sentence built out of
+     * ColourLayout=: at 5:5:5 it shows 32,768 colours, not 65,536. A driver
+     * that published no layout keeps the old wording. */
     status->colour_depth[0] = '\0';
     v9x_append_uint(status->colour_depth, sizeof(status->colour_depth), bits);
-    v9x_append(status->colour_depth, sizeof(status->colour_depth),
-               bits == 8u ? "-bit (256 colours)"
-                          : (bits == 16u ? "-bit (65,536 colours)"
-                                         : (bits >= 24u ? "-bit (true colour)"
-                                                        : "-bit")));
+    if (bits == 16u && status->colour_layout[0] == '5' &&
+        status->colour_layout[2] == '5') {
+        v9x_append(status->colour_depth, sizeof(status->colour_depth),
+                   "-bit 5:5:5 (32,768 colours)");
+    } else if (bits == 16u && status->colour_layout[0] == '5' &&
+               status->colour_layout[2] == '6') {
+        v9x_append(status->colour_depth, sizeof(status->colour_depth),
+                   "-bit 5:6:5 (65,536 colours)");
+    } else {
+        v9x_append(status->colour_depth, sizeof(status->colour_depth),
+                   bits == 8u ? "-bit (256 colours)"
+                              : (bits == 16u ? "-bit (65,536 colours)"
+                                             : (bits >= 24u
+                                                    ? "-bit (true colour)"
+                                                    : "-bit")));
+    }
+
+    v9x_collect_write_combining(status);
 
     /* GDI answers 0 or 1 for "the hardware default", which is what a VBE
      * mode set gives: the BIOS's own timing for the mode. */
@@ -518,8 +625,9 @@ static void v9x_collect_page_rows(V9X_SETTINGS_STATUS *status, UINT width,
 
     status->driver_short[0] = '\0';
     if (lstrcmpiA(status->driver_stage, "enable-ok") == 0) {
+        /* The stage name stays in the report's "Driver stage:" line. */
         v9x_append(status->driver_short, sizeof(status->driver_short),
-                   "Running (enable-ok)");
+                   "Running");
     } else {
         v9x_append(status->driver_short, sizeof(status->driver_short),
                    status->driver_stage);
@@ -669,6 +777,9 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
          * a layout word against mode words and could never report a
          * disabled, unimplemented or software mode. */
         char colour_layout[32];
+        /* Whether the chip's hook reported a Direct3D engine, from the
+         * capability bits; see the direct3d_capable assignment below. */
+        int engine_d3d = 0;
 
         GetPrivateProfileStringA("Velocity9xHardware", "ModeSwitching",
                                  "reboot-selected", switching,
@@ -720,8 +831,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
          */
         {
             char stamp[64];
+            char raw_text[16];
             const char *caps_text;
             DWORD caps = 0ul;
+            DWORD raw_caps = 0ul;
             int have_caps = 0;
 
             GetPrivateProfileStringA("Velocity9xHardware", "EngineStamp", "",
@@ -729,6 +842,33 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             caps_text = v9x_find_text(stamp, "caps=");
             if (caps_text != 0) {
                 have_caps = v9x_parse_hex32(caps_text, &caps);
+            }
+
+            /*
+             * Whether the chip has a Direct3D engine, from the bits rather
+             * than the manifest word. Some chips grant the capability at
+             * runtime, once the mini-VDD has mapped their ring window, and
+             * keep "not-advertised" as their static word: Cedar, Carrizo,
+             * Mullins and Oland. Reading only the word hid Hardware on all
+             * of them while the driver ran it.
+             *
+             * Two sources, either enough. EngineCaps= is the descriptor's
+             * raw answer at Enable, before any SYSTEM.INI policy, so a
+             * user who turned Direct3D off still sees Hardware offered. The
+             * stamp is later (Gen3 maps its engine after Enable) but is
+             * masked by the resolved mode, and the software engine sets the
+             * same D3D bit, so it counts only without D3D_SOFTWARE beside it.
+             */
+            if (have_caps && (caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
+                (caps & V9X_DD_ENGINE_CAP_D3D_SOFTWARE) == 0ul) {
+                engine_d3d = 1;
+            }
+            GetPrivateProfileStringA("Velocity9xHardware", "EngineCaps", "",
+                                     raw_text, sizeof(raw_text),
+                                     V9X_DIAG_HW_INI);
+            if (v9x_parse_hex32(raw_text, &raw_caps) &&
+                (raw_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul) {
+                engine_d3d = 1;
             }
             /* The stamp is the later word - Gen3 maps its engine after
              * Enable - but any mode change since DirectDraw ran clears it.
@@ -796,6 +936,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
          * card the engine was built for. The next engine would have repeated
          * it; the convention is what is tested now. */
         status->direct3d_capable = v9x_is_hardware_engine(direct3d);
+        /* Or the bits, for an engine granted at runtime (above). */
+        if (engine_d3d) {
+            status->direct3d_capable = 1;
+        }
         /*
          * The absent-key default is the driver's, not this tool's.
          *
@@ -867,7 +1011,15 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                                  ? "Game decides"
                                  : "Not yet stamped by DirectDraw")));
         }
-        /* The DDI: Direct3DDdi= is stamped by dd16.c beside VSync=. */
+        /*
+         * The Direct3D interface: Direct3DDdi= is stamped by dd16.c beside
+         * VSync=. "A" is the per-program choice, which is wider than
+         * "Direct3D 8 programs": a two-stage engine gives every program
+         * DrawPrimitives2, and Haswell answers it with DDI 7 or 8
+         * (v9x_d3d_dp2_for_process). dd16.c also stamps 5 on a chip with
+         * no Direct3D at all, where "DirectX 5 only" would read as a choice,
+         * so the absence of Direct3D is said first.
+         */
         {
             char ddi[8];
             int asked = (int)GetPrivateProfileIntA(
@@ -877,14 +1029,24 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             GetPrivateProfileStringA("Velocity9xHardware", "Direct3DDdi", "",
                                      ddi, sizeof(ddi), V9X_DIAG_HW_INI);
             status->ddi[0] = '\0';
-            v9x_append(status->ddi, sizeof(status->ddi),
-                       lstrcmpiA(ddi, "6") == 0
-                           ? "DDI 6 for every program"
-                           : (lstrcmpiA(ddi, "5") == 0
-                              ? "DDI 5 for every program"
-                              : (lstrcmpiA(ddi, "A") == 0
-                                 ? "DDI 6 for Direct3D 8 programs"
-                                 : "Not yet stamped by DirectDraw")));
+            if (lstrcmpiA(direct3d_mode, "user-disabled") == 0) {
+                v9x_append(status->ddi, sizeof(status->ddi),
+                           "Direct3D is turned off");
+            } else if (!status->direct3d_capable &&
+                       lstrcmpiA(direct3d_mode, "software") != 0) {
+                v9x_append(status->ddi, sizeof(status->ddi),
+                           "Direct3D is not running");
+            } else {
+                v9x_append(status->ddi, sizeof(status->ddi),
+                           lstrcmpiA(ddi, "6") == 0
+                               ? "DrawPrimitives2 for every program"
+                               : (lstrcmpiA(ddi, "5") == 0
+                                  ? "DirectX 5 interface only"
+                                  : (lstrcmpiA(ddi, "A") == 0
+                                     ? "Chosen per program"
+                                     : "Known once a DirectDraw program "
+                                       "runs")));
+            }
         }
         status->direct3d[0] = '\0';
         if (lstrcmpiA(direct3d_mode, "user-disabled") == 0) {
@@ -908,20 +1070,15 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             v9x_append(status->direct3d, sizeof(status->direct3d),
                        "Software (CPU rasterizer)");
         } else if (lstrcmpiA(direct3d_mode, "hardware") == 0 &&
-                   lstrcmpiA(direct3d, "hardware-s3d") == 0) {
+                   status->direct3d_capable) {
+            /* The engine named from its word (v9x_engine_names), short for
+             * the reason recorded above: this string can be rendered into
+             * the selector as the entry carrying the loaded value. */
             v9x_append(status->direct3d, sizeof(status->direct3d),
-                       "Hardware (S3D triangle engine)");
-        } else if (lstrcmpiA(direct3d_mode, "hardware") == 0 &&
-                   lstrcmpiA(direct3d, "hardware-gen3") == 0) {
-            /* Short, for the reason recorded above: this string is rendered
-             * into a 166-unit selector when it is the entry carrying the
-             * loaded value. */
+                       "Hardware (");
             v9x_append(status->direct3d, sizeof(status->direct3d),
-                       "Hardware (Gen3 render engine)");
-        } else if (lstrcmpiA(direct3d_mode, "hardware") == 0 &&
-                   v9x_is_hardware_engine(direct3d)) {
-            v9x_append(status->direct3d, sizeof(status->direct3d),
-                       "Hardware (the chip's own engine)");
+                       v9x_engine_name(direct3d));
+            v9x_append(status->direct3d, sizeof(status->direct3d), ")");
         } else {
             /*
              * Everything else, and the important member is a chip that HAS an
@@ -1107,13 +1264,39 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                     (UINT)status->vsync_request);
     v9x_append(status->report, sizeof(status->report), ")");
     v9x_append(status->report, sizeof(status->report),
-               "\r\nDirect3D DDI: ");
+               "\r\nDirect3D interface: ");
     v9x_append(status->report, sizeof(status->report), status->ddi);
     v9x_append(status->report, sizeof(status->report),
                " (SYSTEM.INI Direct3DDdi=");
     v9x_append_uint(status->report, sizeof(status->report),
                     (UINT)status->ddi_request);
     v9x_append(status->report, sizeof(status->report), ")");
+    v9x_append(status->report, sizeof(status->report),
+               "\r\n16-bit layout: ");
+    v9x_append(status->report, sizeof(status->report), status->colour_layout);
+    v9x_append(status->report, sizeof(status->report), " (SYSTEM.INI HighColor=");
+    v9x_append_uint(status->report, sizeof(status->report),
+                    (UINT)status->highcolor_request);
+    v9x_append(status->report, sizeof(status->report), ")");
+    /* The sentence, then both raw records, so a refusal's reason code
+     * travels with a pasted report. */
+    {
+        char line[48];
+
+        v9x_append(status->report, sizeof(status->report),
+                   "\r\nWrite combining: ");
+        v9x_append(status->report, sizeof(status->report),
+                   status->write_combining);
+        GetPrivateProfileStringA("Velocity9x", "MtrrWrite", "none", line,
+                                 sizeof(line), V9X_DIAG_BOOT_INI);
+        v9x_append(status->report, sizeof(status->report), " (MtrrWrite=");
+        v9x_append(status->report, sizeof(status->report), line);
+        GetPrivateProfileStringA("Velocity9x", "PatWrite", "none", line,
+                                 sizeof(line), V9X_DIAG_BOOT_INI);
+        v9x_append(status->report, sizeof(status->report), ", PatWrite=");
+        v9x_append(status->report, sizeof(status->report), line);
+        v9x_append(status->report, sizeof(status->report), ")");
+    }
     v9x_append(status->report, sizeof(status->report),
         "\r\nBaseline modes: " V9X_MODES_SUMMARY
         "\r\nRuntime modes: ");

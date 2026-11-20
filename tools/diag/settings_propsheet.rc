@@ -19,9 +19,9 @@
 //
 // Rows are on an 11-unit pitch for labels and 16 for combo boxes, whose cy
 // (60) is the dropped-down height. Controls for features this driver does
-// not have yet - texture filtering, write combining, running the
-// diagnostics from here - are present and disabled, so the page shows where
-// they will go without promising them. Every combo carries only entries this
+// not have yet - texture filtering, running the diagnostics from here - are
+// present and disabled. Write combining is a read-only row: the driver
+// decides it, and NOWC.TXT is its off switch. Every combo carries only entries this
 // build implements; when SYSTEM.INI already names something else the page
 // adds an entry for it, so opening the page cannot silently rewrite a
 // setting somebody put there deliberately.
@@ -66,13 +66,11 @@ BEGIN
     LTEXT           "Direct3D:", -1, 14, 156, 50, 8
     LTEXT           "", V9X_IDC_DIRECT3D, 66, 156, 174, 8
 
-    GROUPBOX        "Diagnostics", -1, 7, 172, 238, 34
+    GROUPBOX        "Status", -1, 7, 172, 238, 34
     LTEXT           "Driver:", -1, 14, 182, 50, 8
-    LTEXT           "", V9X_IDC_FRAMEBUFFER, 66, 182, 60, 8
-    LTEXT           "GDI test:", -1, 128, 182, 40, 8
-    LTEXT           "", V9X_IDC_GDI_TEST, 170, 182, 70, 8
-    LTEXT           "DirectDraw test:", -1, 14, 193, 56, 8
-    LTEXT           "", V9X_IDC_DDRAW_TEST, 72, 193, 168, 8
+    LTEXT           "", V9X_IDC_FRAMEBUFFER, 66, 182, 174, 8
+    LTEXT           "D3D interface:", -1, 14, 193, 50, 8
+    LTEXT           "", V9X_IDC_DDI_STATE, 66, 193, 174, 8
 
     LTEXT           "", V9X_IDC_VERSION, 7, 210, 64, 8
     PUSHBUTTON      "Check for updates...", V9X_IDC_CHECK_UPDATES,
@@ -90,13 +88,13 @@ BEGIN
     LTEXT           "Direct3D:", -1, 14, 18, 64, 8
     COMBOBOX        V9X_IDC_DIRECT3D_MODE, 80, 15, 160, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Direct3D 8 DDI:", -1, 14, 34, 64, 8
+    LTEXT           "D3D interface:", -1, 14, 34, 64, 8
     COMBOBOX        V9X_IDC_DDI, 80, 31, 160, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Texture filtering:", -1, 14, 50, 64, 8, WS_DISABLED
     COMBOBOX        V9X_IDC_TEXTURE_FILTER, 80, 47, 160, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_DISABLED
-    LTEXT           "Direct3D needs a restart to change. The DDI applies to the next Direct3D program.", -1, 14, 64, 226, 16
+    LTEXT           "Direct3D needs a restart to change. The interface applies to the next Direct3D program.", -1, 14, 64, 226, 16
 
     GROUPBOX        "Display", -1, 7, 86, 238, 74
     LTEXT           "Vertical sync:", -1, 14, 100, 64, 8
@@ -105,8 +103,8 @@ BEGIN
     LTEXT           "16-bit colour:", -1, 14, 116, 64, 8
     COMBOBOX        V9X_IDC_COLOUR_LAYOUT, 80, 113, 160, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    AUTOCHECKBOX    "Write combining (MTRR)", V9X_IDC_WRITE_COMBINE,
-                    14, 130, 226, 10, WS_DISABLED
+    LTEXT           "Write combining:", -1, 14, 130, 64, 8
+    LTEXT           "", V9X_IDC_WRITE_COMBINE, 80, 130, 160, 8
     LTEXT           "Vertical sync applies to the next DirectDraw program; the colour layout needs a restart.", -1, 14, 143, 226, 16
 
     GROUPBOX        "Hardware and diagnostics", -1, 7, 164, 238, 56

@@ -108,8 +108,8 @@ static const struct v9x_layout_choice {
     const char *label;
 } v9x_page_layout_choices[] = {
     { 0,  "Automatic (the 3D engine's layout)" },
-    { 16, "5:6:5 - 64 greens; ATI 3DCIF games miscolour" },
-    { 15, "5:5:5 - S3 ViRGE 3D and ATI 3DCIF games" }
+    { 16, "5:6:5 - more greens; some 3D games miscolour" },
+    { 15, "5:5:5 - what some 3D engines and games need" }
 };
 #define V9X_PAGE_LAYOUT_CHOICE_COUNT \
     (sizeof(v9x_page_layout_choices) / sizeof(v9x_page_layout_choices[0]))
@@ -238,8 +238,9 @@ static void v9x_page_fill_d3d(HWND dialog)
  * Game decides is the key's absence and today's behaviour; choosing it
  * deletes the key. Every card gets all three entries: the rule is applied by
  * the shared flip path, and on a card whose flips DirectDraw copies instead
- * it changes nothing, which is not worth hiding the control for. The labels
- * are short because the closed control is 68 units wide.
+ * it changes nothing, which is not worth hiding the control for. "Always
+ * off" says it may tear: an unsynced flip can show a split frame, and
+ * VSync=2 has been seen to flicker.
  */
 static int v9x_page_vsync_loaded;
 
@@ -249,7 +250,7 @@ static const struct v9x_vsync_choice {
 } v9x_page_vsync_choices[] = {
     { (int)V9X_VSYNC_REQUEST_APPLICATION, "Game decides" },
     { (int)V9X_VSYNC_REQUEST_ON,          "Always on" },
-    { (int)V9X_VSYNC_REQUEST_OFF,         "Always off" }
+    { (int)V9X_VSYNC_REQUEST_OFF,         "Always off (may tear)" }
 };
 #define V9X_PAGE_VSYNC_CHOICE_COUNT \
     (sizeof(v9x_page_vsync_choices) / sizeof(v9x_page_vsync_choices[0]))
@@ -342,12 +343,17 @@ static int v9x_page_apply_vsync(HWND dialog)
 }
 
 /*
- * The DDI 6 selector, on the same terms as the VSync one.
+ * The Direct3D interface selector ([Velocity9x] Direct3DDdi), on the same
+ * terms as the VSync one.
  *
- * Automatic is the key's absence: DrawPrimitives2 for programs that load
- * Direct3D 8, and for any [Velocity9x.Direct3DDdi] lists with 6; the DX5
- * interface for the rest (engine_abi.h, docs\plans\ddi6-drawprimitives2.md
- * Part B). Never and Always write 5 and 6. Like VSync it needs no restart.
+ * Automatic is the key's absence, and the driver chooses per program
+ * (v9x_d3d_dp2_for_process): DrawPrimitives2 for programs that load
+ * Direct3D 8 or 9, for every program on a two-stage engine, and for any
+ * [Velocity9x.Direct3DDdi] lists; the DX5 interface for the rest. On Haswell
+ * DrawPrimitives2 is answered with DDI 7 or 8, so the labels name the
+ * interface and not a DDI number. 5 removes DrawPrimitives2 from every
+ * program, and the Direct3D 8 runtime has no hardware device without it,
+ * which the label says. Like VSync it needs no restart.
  */
 static int v9x_page_ddi_loaded;
 
@@ -355,9 +361,9 @@ static const struct v9x_ddi_choice {
     int value;
     const char *label;
 } v9x_page_ddi_choices[] = {
-    { 0, "Automatic" },
-    { 5, "Never" },
-    { 6, "Always" }
+    { 0, "Automatic (per program)" },
+    { 5, "DirectX 5 only - DX8 games lose 3D" },
+    { 6, "DrawPrimitives2 for every program" }
 };
 #define V9X_PAGE_DDI_CHOICE_COUNT \
     (sizeof(v9x_page_ddi_choices) / sizeof(v9x_page_ddi_choices[0]))
@@ -427,13 +433,39 @@ static int v9x_page_apply_ddi(HWND dialog)
     if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION, "Direct3DDdi",
                                     value, V9X_SETTINGS_INI)) {
         MessageBoxA(dialog,
-                    "Could not write the DDI 6 setting to SYSTEM.INI.\n\n"
+                    "Could not write the Direct3D interface setting to "
+                    "SYSTEM.INI.\n\n"
                     "The file may be read-only or in use.",
                     v9x_page_caption, MB_OK | MB_ICONWARNING);
         return 0;
     }
     v9x_page_ddi_loaded = selected;
     return 1;
+}
+
+static int v9x_page_selected_d3d(HWND dialog);
+
+/*
+ * The interface selector is live only where the driver reads the key: dd16.c
+ * consults Direct3DDdi only beside the D3D capability bit, which a hardware
+ * engine or the software rasterizer sets and Disabled clears. Elsewhere the
+ * control would change nothing. Follows the Direct3D selector, not the file,
+ * so choosing Software on an engineless card enables it at once. The value
+ * is kept either way; a greyed control still writes nothing new.
+ */
+static void v9x_page_update_ddi_enable(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_DDI);
+    int selected = v9x_page_selected_d3d(dialog);
+    BOOL live;
+
+    if (combo == 0) {
+        return;
+    }
+    live = selected != (int)V9X_D3D_REQUEST_DISABLED &&
+           (v9x_page_status.direct3d_capable ||
+            selected == (int)V9X_D3D_REQUEST_SOFTWARE);
+    EnableWindow(combo, live);
 }
 
 /* The selector's current value, or the loaded one when nothing is selected. */
@@ -674,9 +706,9 @@ static void v9x_page_about(HWND dialog)
                 "Build " V9X_BUILD_ID "\n\n"
                 "A display driver for Windows 95 and 98: a 16-bit display "
                 "driver, a DirectDraw and Direct3D HAL, and a mini-VDD.\n\n"
-                "Settings on this page are stored in SYSTEM.INI under "
-                "[Velocity9x]. Copy report puts the full diagnostic report "
-                "on the clipboard.",
+                "Settings on the Velocity9x Advanced tab are stored in "
+                "SYSTEM.INI under [Velocity9x]. Copy report puts the full "
+                "diagnostic report on the clipboard.",
                 "About Velocity9x", MB_OK | MB_ICONINFORMATION);
 }
 
@@ -723,7 +755,6 @@ static void v9x_page_fill_unavailable(HWND dialog)
         SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)"Not available");
         SendMessageA(combo, CB_SETCURSEL, 0, 0);
     }
-    CheckDlgButton(dialog, V9X_IDC_WRITE_COMBINE, BST_UNCHECKED);
 }
 
 /*
@@ -763,9 +794,7 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
         SetDlgItemTextA(dialog, V9X_IDC_DIRECT3D, v9x_page_status.direct3d);
         SetDlgItemTextA(dialog, V9X_IDC_FRAMEBUFFER,
                         v9x_page_status.driver_short);
-        SetDlgItemTextA(dialog, V9X_IDC_GDI_TEST, v9x_page_status.gdi_short);
-        SetDlgItemTextA(dialog, V9X_IDC_DDRAW_TEST,
-                        v9x_page_status.ddraw_test);
+        SetDlgItemTextA(dialog, V9X_IDC_DDI_STATE, v9x_page_status.ddi);
         SetDlgItemTextA(dialog, V9X_IDC_VERSION,
                         "Version: " V9X_VERSION_STRING);
         return TRUE;
@@ -808,8 +837,12 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
         v9x_page_fill_vsync(dialog);
         v9x_page_fill_ddi(dialog);
         v9x_page_fill_unavailable(dialog);
+        v9x_page_update_ddi_enable(dialog);
         v9x_page_widen_list(dialog, V9X_IDC_DIRECT3D_MODE);
         v9x_page_widen_list(dialog, V9X_IDC_COLOUR_LAYOUT);
+        v9x_page_widen_list(dialog, V9X_IDC_DDI);
+        SetDlgItemTextA(dialog, V9X_IDC_WRITE_COMBINE,
+                        v9x_page_status.write_combining);
         SetDlgItemTextA(dialog, V9X_IDC_CORE_CLOCK,
                         v9x_page_status.core_clock);
         SetDlgItemTextA(dialog, V9X_IDC_MEMORY_CLOCK,
@@ -827,6 +860,9 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
              LOWORD(wparam) == V9X_IDC_VSYNC ||
              LOWORD(wparam) == V9X_IDC_DDI) &&
             HIWORD(wparam) == CBN_SELCHANGE) {
+            if (LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE) {
+                v9x_page_update_ddi_enable(dialog);
+            }
             if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded ||
                 v9x_page_selected_layout(dialog) !=
                     v9x_page_layout_loaded ||

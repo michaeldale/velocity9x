@@ -11,7 +11,6 @@
 #define V9X_ID_PAGE_ADVANCED  2100
 #define V9X_IDC_ADAPTER       2001
 #define V9X_IDC_FRAMEBUFFER   2009
-#define V9X_IDC_GDI_TEST      2010
 #define V9X_IDC_COPY_REPORT   2011
 #define V9X_IDC_VERSION       2013
 #define V9X_IDC_PCI_ID        2014
@@ -33,7 +32,6 @@
 /* The 2026-10-09 layout's rows. */
 #define V9X_IDC_REVISION        2024
 #define V9X_IDC_MINIVDD         2026
-#define V9X_IDC_DDRAW_TEST      2027
 #define V9X_IDC_RESOLUTION      2028
 #define V9X_IDC_COLOUR_DEPTH    2029
 #define V9X_IDC_REFRESH         2030
@@ -44,10 +42,15 @@
 /* Present and disabled until the driver has the feature. */
 #define V9X_IDC_RUN_DIAGNOSTICS 2033
 #define V9X_IDC_TEXTURE_FILTER  2034
+/* The Advanced tab's read-only write-combining row. */
 #define V9X_IDC_WRITE_COMBINE   2035
 /* The two buttons that start V9XUPD.EXE: Send report... on the Advanced
  * tab, Check for updates... on the Velocity9x tab. */
 #define V9X_IDC_SEND_REPORT     2038
 #define V9X_IDC_CHECK_UPDATES   2039
+/* The Velocity9x tab's row for the Direct3D interface the driver last
+ * stamped (replaced the GDI and DirectDraw test rows, which the report
+ * keeps). */
+#define V9X_IDC_DDI_STATE       2040
 
 #endif
