@@ -45,8 +45,10 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 New in 0.59.0:
 - **Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), `intel-gma`
   package**, on the HD 4000's path with GT1's smaller thread limits, from
-  one owner's DOS survey. Not run on one yet
-  ([record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md)).
+  one owner's DOS survey. That owner reports 3DMark 2001 SE completing on
+  it (2696)
+  ([record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md),
+  [field report](docs/decisions/2026-11-20-hd2500-field-report.md)).
 - **GMA 900 to Ironlake: write-combining where the BIOS leaves no MTRR
   free**, through the page attribute table as on the HD 4600; for an
   Ironlake laptop whose BIOS uses all eight. Not yet run on a machine that
@@ -291,7 +293,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel HD Graphics 3000 (Sandy Bridge, `8086:0112`), from 0.58.0 | `intel-gma` | Gen6 | Direct3D at 16 and 32 bpp with two texture stages, and through the DirectX 8 interface pixel shader 1.1, DXT textures and cube maps; OpenGL (Quake 3 at 32-bit colour, 24-bit depth) and the Glide 2 probe; DirectDraw fills, copies and page flips on the blitter; the render clock at its 1100 MHz top. Every release probe passes. 3DMark 2000 and 2001 SE. One i3-2105 desktop through remote help. Other Sandy Bridge ids (GT1 parts, mobile) are not claimed; 3DCIF not run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000 and 2001 SE; the render clock at its 1150 MHz top (0.56.1). Every release probe passes on 0.56.0 (an i5-3570K desktop through remote help, 2026-11-19). 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
-| Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), from 0.59.0 | `intel-gma` | Gen7 | Recognised, untested: the HD 4000's path with GT1's 36 vertex and 48 pixel shader threads, from one owner's DOS survey of an ASRock board ([GitHub issue 29](https://github.com/michaeldale/velocity9x/issues/29), [record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md)). Nothing has run on one |
+| Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), from 0.59.0 | `intel-gma` | Gen7 | The HD 4000's path with GT1's 36 vertex and 48 pixel shader threads, from one owner's DOS survey of an ASRock board ([GitHub issue 29](https://github.com/michaeldale/velocity9x/issues/29), [record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md)). That owner reports 3DMark 2001 SE completing on 0.59.0 (2696, settings not shown) by one screenshot, with no diagnostic files ([field report](docs/decisions/2026-11-20-hd2500-field-report.md)) |
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. From 0.51.0, environment and DOT3 bump mapping in Direct3D 8 and 9, and the core at its full 1150 MHz instead of the BIOS's 400. From 0.56.0, Direct3D batches a slot long (3DMark 2001 SE 3388 to 3888). One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
 
 #### AMD and ATI
@@ -392,7 +394,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel HD Graphics 3000 (0.58.0) | DirectDraw, flips | Yes | Yes, with pixel shader 1.1 | Yes | Yes | Glide 2 probe only | Not run |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
-| Intel HD Graphics 2500 (0.59.0, recognised, untested) | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
+| Intel HD Graphics 2500 (0.59.0, reported) | Not recorded | Yes (reported, 3DMark 2001 SE) | Not run | Not run | Not run | Not run | Not run |
 | Intel HD Graphics 4600 | DirectDraw | Yes | Yes, with pixel shader 1.1 (0.34.0) | Yes | Yes | Probe only, no game | No (0.19.0) |
 | ATI Mach64 VT2 | No | No | No | No | No | No | No |
 | ATI Rage IIC | No | Yes | Not run | Yes | No | Yes | Yes |
