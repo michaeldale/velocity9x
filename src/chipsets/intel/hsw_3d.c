@@ -117,6 +117,19 @@ static int v9x_hsw_3d_is_ivb(void)
     return v9x_hsw_3d_chip == V9X_HSW_3D_CHIP_IVYBRIDGE;
 }
 
+/* Ivy Bridge GT1's thread limits (intel_hsw_3d.h). */
+static int v9x_hsw_3d_gt1 = 0;
+
+void v9x_intel_hsw_3d_set_gt1(int gt1)
+{
+    v9x_hsw_3d_gt1 = gt1 != 0;
+}
+
+static int v9x_hsw_3d_is_ivb_gt1(void)
+{
+    return v9x_hsw_3d_is_ivb() && v9x_hsw_3d_gt1;
+}
+
 void v9x_intel_hsw_batch_init(struct v9x_hsw_batch *batch, v9x_u32 *dw,
                               v9x_u32 capacity)
 {
@@ -1304,6 +1317,8 @@ static v9x_status v9x_hsw_emit_zero(struct v9x_hsw_batch *batch,
 /* 3DSTATE_PS DW4: Maximum Number of Threads 31:23 is the count minus 1
  * and must be odd; GT2 allows 7-203. 63 = 64 threads. */
 #define V9X_HSW_PS_MAX_THREADS_FIELD ((v9x_u32)63ul)
+/* Ivy Bridge GT1: 48 threads, Mesa's max_wm_threads - 1 (intel_hsw_3d.h). */
+#define V9X_IVB_GT1_PS_MAX_THREADS_FIELD ((v9x_u32)47ul)
 #define V9X_HSW_PS_SAMPLE_MASK_ONE   ((v9x_u32)0x00001000ul) /* 19:12 = 1 */
 #define V9X_HSW_PS_PUSH_CONSTANTS    ((v9x_u32)0x00000800ul) /* 11 */
 #define V9X_HSW_PS_ATTRIBUTE_ENABLE  ((v9x_u32)0x00000400ul)
@@ -1445,8 +1460,12 @@ static v9x_status v9x_hsw_ps_simd8(struct v9x_hsw_batch *batch,
                  ((v9x_u32)binding_entries << 18);
     payload[2] = 0ul;
     if (v9x_hsw_3d_is_ivb()) {
-        /* IVB: threads at 31:24 (GT2 has 172, Mesa), no Sample Mask. */
-        payload[3] = (V9X_HSW_PS_MAX_THREADS_FIELD << 24) | V9X_HSW_PS_SIMD8;
+        /* IVB: threads at 31:24 (GT2 has 172, GT1 48, Mesa), no Sample
+         * Mask. */
+        payload[3] = ((v9x_hsw_3d_is_ivb_gt1() ?
+                           V9X_IVB_GT1_PS_MAX_THREADS_FIELD :
+                           V9X_HSW_PS_MAX_THREADS_FIELD) << 24) |
+                     V9X_HSW_PS_SIMD8;
     } else {
         payload[3] = (V9X_HSW_PS_MAX_THREADS_FIELD << 23) |
                      V9X_HSW_PS_SAMPLE_MASK_ONE | V9X_HSW_PS_SIMD8;
@@ -2318,6 +2337,11 @@ v9x_status v9x_intel_hsw_draw_workload_ps11(struct v9x_hsw_batch *batch,
  * Threads 31:23 as the count less one (GT2: 280), Statistics Enable 10,
  * VS Function Enable 0. */
 #define V9X_HSW_VS_MAX_THREADS_FIELD ((v9x_u32)279ul)
+/* Ivy Bridge GT1: 36 threads (Mesa max_vs_threads - 1) in Gen7's field,
+ * 31:25 (gen7.xml bits 185-191; Gen7.5's is 31:23). GT2 keeps the word
+ * above, which Gen7 reads as 70 threads, under its 128. */
+#define V9X_IVB_GT1_VS_MAX_THREADS_FIELD ((v9x_u32)35ul)
+#define V9X_IVB_VS_MAX_THREADS_SHIFT     25u
 #define V9X_HSW_VS_STATISTICS        ((v9x_u32)0x00000400ul)
 #define V9X_HSW_VS_ENABLE            ((v9x_u32)0x00000001ul)
 
@@ -2334,7 +2358,10 @@ v9x_status v9x_intel_hsw_vs(struct v9x_hsw_batch *batch, v9x_u32 kernel,
     payload[2] = 0ul;   /* no scratch */
     payload[3] = ((v9x_u32)V9X_HSW_VS_DISPATCH_GRF << 20) |
                  ((v9x_u32)read_length << 11);
-    payload[4] = (V9X_HSW_VS_MAX_THREADS_FIELD << 23) |
+    payload[4] = (v9x_hsw_3d_is_ivb_gt1() ?
+                      (V9X_IVB_GT1_VS_MAX_THREADS_FIELD <<
+                       V9X_IVB_VS_MAX_THREADS_SHIFT) :
+                      (V9X_HSW_VS_MAX_THREADS_FIELD << 23)) |
                  V9X_HSW_VS_STATISTICS | V9X_HSW_VS_ENABLE;
     return v9x_intel_hsw_3d_emit(batch, V9X_HSW_CMD_VS, payload, 5ul);
 }

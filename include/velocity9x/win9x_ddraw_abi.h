@@ -1982,6 +1982,10 @@ typedef struct v9x_ddhal_destroydriverdata {
  * 32-bit side that reads it as a second aperture would map address zero. An
  * address nobody set is a mapping to somewhere.
  */
+/* 2026112001: V9X_DD_ENGINE gains pci_device, for Ivy Bridge GT1's
+ * thread limits (docs\decisions\2026-11-20-ivybridge-gt1-hd2500.md). A
+ * layout change: everything after the engine block moves, in
+ * V9X_DD_SHARED and in the trace snapshot. */
 /* 2026111201: the Gen3 texture pool. V9X_DD_ENGINE gains pool_offset and
  * pool_bytes, and V9X_DD_SHARED's heaps grows from one to two, for the
  * texture-only heap over the pool
@@ -2130,7 +2134,7 @@ typedef struct v9x_ddhal_destroydriverdata {
  */
 /* 2026092005: append correlated blit/state rejection records and MIN
  * submission count; MAG now counts successful submissions. */
-#define V9X_DD_SHARED_ABI   2026111201ul
+#define V9X_DD_SHARED_ABI   2026112001ul
 /*
  * Capacity of modes[], not the number of modes in use - that is mode_count,
  * which the 16-bit side sets from the family table. The two were the same
@@ -2278,6 +2282,15 @@ typedef struct v9x_dd_engine {
      */
     DWORD pool_offset;
     DWORD pool_bytes;
+    /*
+     * The display device's PCI device id, as the 16-bit side matched it
+     * (V9X_HW16_DEVICE.device_id); zero with no matched device. For a HAL
+     * whose limits follow the part within one engine identity: Ivy Bridge
+     * GT1 (HD 2500, 0x0152) has 36 VS and 48 PS threads where the HD
+     * 4000's GT2 has 128 and 172 (Mesa intel_device_info.c), and every
+     * engine cap bit is taken.
+     */
+    DWORD pci_device;
 } V9X_DD_ENGINE;
 
 typedef struct v9x_dd_cb32 {

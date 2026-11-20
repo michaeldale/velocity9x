@@ -646,6 +646,9 @@ static void v9x_dd_stamp_engine_caps(V9X_DD_SHARED FAR *shared)
         shared->engine.engine_type = engine_type;
         shared->engine.flags |= V9X_DD_ENGINE_VALID;
     }
+    /* The part within its engine identity, for limits that follow it
+     * (ABI 2026112001: Ivy Bridge GT1's thread counts). */
+    shared->engine.pci_device = device != 0 ? (DWORD)device->device_id : 0ul;
     if (v9x_d3d_mode_advertises(v9x_dd_d3d_state) == V9X_FALSE) {
         engine_caps &= ~V9X_DD_ENGINE_CAP_D3D;
     }

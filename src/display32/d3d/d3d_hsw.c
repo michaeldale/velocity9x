@@ -810,8 +810,12 @@ static int v9x_d3d_hsw_ready(void)
                     V9X_INTEL_HSW_STATUS_IVB_WA * 4ul) != V9X_STATUS_OK) {
             return 0;
         }
+        /* GT1's thread limits, by the part (ABI 2026112001). */
+        v9x_intel_hsw_3d_set_gt1(v9x_hal->engine.pci_device ==
+                                 (DWORD)V9X_PCI_DEVICE_HD2500_IVB);
     } else {
         (void)v9x_intel_hsw_3d_set_chip(V9X_HSW_3D_CHIP_HASWELL, 0ul);
+        v9x_intel_hsw_3d_set_gt1(0);
     }
     return v9x_d3d_hsw_initialise();
 }

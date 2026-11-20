@@ -1915,6 +1915,27 @@ static void test_ivb_variant(void)
           V9X_STATUS_OK);
     CHECK(batch.used == 8ul && dw[4] == 0x3f000401ul);
 
+    /* Ivy Bridge GT1 (HD 2500): 48 PS threads, 47 at 31:24, 2F000401h;
+     * 36 VS threads, 35 at Gen7's 31:25 with statistics and enable,
+     * 46000401h, where GT2 keeps 8B800401h. Clearing GT1 gives GT2's
+     * words back. */
+    v9x_intel_hsw_3d_set_gt1(1);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x00004000ul, 1u, 0u, 1u, 4u) ==
+          V9X_STATUS_OK);
+    CHECK(batch.used == 8ul && dw[4] == 0x2f000401ul);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b40ul, 3u) == V9X_STATUS_OK);
+    CHECK(batch.used == 6ul && dw[5] == 0x46000401ul);
+    v9x_intel_hsw_3d_set_gt1(0);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b40ul, 3u) == V9X_STATUS_OK);
+    CHECK(dw[5] == 0x8b800401ul);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x00004000ul, 1u, 0u, 1u, 4u) ==
+          V9X_STATUS_OK);
+    CHECK(dw[4] == 0x3f000401ul);
+
     /* Every fourth PIPE_CONTROL carries CS stall: with an allowed
      * companion (RT flush) only CS stall is added; with none, stall at
      * scoreboard too. A CS stall restarts the count. */
@@ -1974,6 +1995,17 @@ static void test_ivb_variant(void)
                                    0x00100000ul, 64u, 32u, 256ul) ==
               V9X_STATUS_OK &&
           surface[7] == 0x09770000ul);
+
+    /* GT1 is ignored on Haswell: its PS and VS words are unchanged. */
+    v9x_intel_hsw_3d_set_gt1(1);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_ps_simd8(&batch, 0x00004000ul, 1u, 0u, 1u, 4u) ==
+          V9X_STATUS_OK);
+    CHECK(dw[4] == 0x1f801401ul);
+    v9x_intel_hsw_batch_init(&batch, dw, 512ul);
+    CHECK(v9x_intel_hsw_vs(&batch, 0x1b40ul, 3u) == V9X_STATUS_OK);
+    CHECK(dw[5] == 0x8b800401ul);
+    v9x_intel_hsw_3d_set_gt1(0);
 }
 
 /*
