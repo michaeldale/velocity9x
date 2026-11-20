@@ -47,9 +47,12 @@
 #define V9X_EG_GRPH_UPDATE_PENDING      0x00000004ul
 #define V9X_EG_CRTC_MASTER_EN           0x00000001ul
 #define V9X_EG_CRTC_V_BLANK             0x00000001ul
-/* GRPH_FLIP_CONTROL clear: the update is taken at the vertical blank, not
- * the horizontal (SURFACE_UPDATE_H_RETRACE_EN is the async flip). */
+/* GRPH_FLIP_CONTROL clear: the update is taken at the vertical blank.
+ * SURFACE_UPDATE_H_RETRACE_EN takes it at the next horizontal blank, the
+ * unsynced flip: Linux's evergreen_page_flip and dce_v6_0_page_flip write
+ * it for an async flip (evergreen_reg.h, dce_6_0_sh_mask.h: bit 0). */
 #define V9X_EG_FLIP_AT_VBLANK           0x00000000ul
+#define V9X_EG_FLIP_AT_HRETRACE         0x00000001ul
 
 static int v9x_eg_scanout_pending = 0;
 
@@ -105,9 +108,16 @@ static int v9x_eg_scanout_heap(DWORD *high, DWORD *low)
            v9x_eg_dma_settle();
 }
 
-static void v9x_eg_scanout_write(DWORD heap_high, v9x_u32 address)
+/* An unsynced write is taken at the next line, not the next blank: until
+ * then the buffer leaving the screen is still scanned. Taken at the blank
+ * and called done once written, the GCN path gave that buffer back to the
+ * game at once, and 3DMark 2001 SE at 160 fps drew into it on the panel:
+ * the R7 250 showed frames missing sky, car bodies and the HUD (OBS,
+ * 2026-11-20). The pending bit is polled either way. */
+static void v9x_eg_scanout_write(DWORD heap_high, v9x_u32 address, int now)
 {
-    *v9x_eg_scanout_reg(V9X_EG_GRPH_FLIP_CONTROL) = V9X_EG_FLIP_AT_VBLANK;
+    *v9x_eg_scanout_reg(V9X_EG_GRPH_FLIP_CONTROL) =
+        now ? V9X_EG_FLIP_AT_HRETRACE : V9X_EG_FLIP_AT_VBLANK;
     *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS_HI) = heap_high;
     *v9x_eg_scanout_reg(V9X_EG_GRPH_PRIMARY_ADDRESS) = address;
     /* Posts the write, as Linux does. */
@@ -133,8 +143,9 @@ static void v9x_eg_scanout_write(DWORD heap_high, v9x_u32 address)
  * clear, taken at the next vertical blank. Until the write the flip is
  * pending, so a second Flip, and anything drawn into the buffer on the
  * panel, waits as it did for the latch: the CPU runs one frame ahead and
- * no further. An unsynced flip is written at the same point and is done
- * once written (v9x_eg_set_display_start_now).
+ * no further. An unsynced flip is written at the same point, to be taken
+ * at the next line, and is pending until the controller says it took it
+ * (v9x_eg_set_display_start_now).
  *
  * Evergreen's own CP is not queued: it keeps the drain and the immediate
  * write.
@@ -145,7 +156,6 @@ static DWORD v9x_eg_deferred_high;
 static v9x_u32 v9x_eg_deferred_address;
 static DWORD v9x_eg_deferred_cp;
 static DWORD v9x_eg_deferred_dma;
-static int v9x_eg_written_now = 0;
 
 static int v9x_eg_queues(void)
 {
@@ -169,9 +179,9 @@ static int v9x_eg_flip_release(void)
     }
     v9x_eg_deferred = 0;
     if (v9x_eg_scanout_live()) {
-        v9x_eg_scanout_write(v9x_eg_deferred_high, v9x_eg_deferred_address);
+        v9x_eg_scanout_write(v9x_eg_deferred_high, v9x_eg_deferred_address,
+                             v9x_eg_deferred_now);
     }
-    v9x_eg_written_now = v9x_eg_deferred_now;
     return 1;
 }
 
@@ -206,7 +216,6 @@ static int v9x_eg_display_start(DWORD byte_offset, int now)
         v9x_eg_deferred_now = now;
         v9x_vi_frame_mark(&v9x_eg_deferred_cp, &v9x_eg_deferred_dma);
         v9x_eg_deferred = 1;
-        v9x_eg_written_now = 0;
         v9x_eg_scanout_pending = 1;
         (void)v9x_eg_flip_release();
         return 1;
@@ -217,7 +226,7 @@ static int v9x_eg_display_start(DWORD byte_offset, int now)
             V9X_STATUS_OK) {
         return 0;
     }
-    v9x_eg_scanout_write(heap_high, address);
+    v9x_eg_scanout_write(heap_high, address, now);
     v9x_eg_scanout_pending = 1;
     return 1;
 }
@@ -227,16 +236,16 @@ int v9x_eg_set_display_start(DWORD byte_offset)
     return v9x_eg_display_start(byte_offset, 0);
 }
 
-/* Unsynced: the same write, taken at the blank as before (nothing else was
- * measured); queued, the flip is done once it is written. */
+/* Unsynced: the same write, taken at the next horizontal blank, so it
+ * tears instead of waiting for the frame. */
 int v9x_eg_set_display_start_now(DWORD byte_offset)
 {
     return v9x_eg_display_start(byte_offset, 1);
 }
 
-/* Pending while a queued flip's frame is unfinished, then (synced) while
- * the controller has the address but has not yet taken it at a vertical
- * blank. */
+/* Pending while a queued flip's frame is unfinished, then while the
+ * controller has the address but has not yet taken it: at a vertical
+ * blank, or for an unsynced flip at the next horizontal one. */
 int v9x_eg_flip_pending(void)
 {
     if (!v9x_eg_scanout_pending) {
@@ -245,7 +254,7 @@ int v9x_eg_flip_pending(void)
     if (!v9x_eg_flip_release()) {
         return 1;
     }
-    if (v9x_eg_written_now || !v9x_eg_scanout_live()) {
+    if (!v9x_eg_scanout_live()) {
         return 0;
     }
     return (*v9x_eg_scanout_reg(V9X_EG_GRPH_UPDATE) &
@@ -274,5 +283,4 @@ void v9x_eg_scanout_reset(void)
 {
     v9x_eg_scanout_pending = 0;
     v9x_eg_deferred = 0;
-    v9x_eg_written_now = 0;
 }

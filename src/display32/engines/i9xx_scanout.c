@@ -1846,7 +1846,8 @@ int v9x_scanout_unsynced_base_latches(void)
     /* A GCN flip queued behind its frame is pending until it is written,
      * unsynced or not (eg_scanout.c): holding it is what stops a second
      * Flip, or a draw into the buffer on the panel, overtaking the frame
-     * the GPU has yet to finish. Written, an unsynced one is done.
+     * the GPU has yet to finish. Written, an unsynced one is pending until
+     * the next line takes it (eg_scanout.c).
      *
      * Every other hardware flip is held too, until its own readback says
      * the scanout took it (v9x_scanout_hw_flip_pending). Haswell's
