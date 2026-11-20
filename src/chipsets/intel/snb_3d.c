@@ -526,6 +526,111 @@ v9x_status v9x_intel_snb_surface_mips(v9x_u32 out[6], v9x_u8 levels)
     return V9X_STATUS_OK;
 }
 
+/*
+ * The sampler's surface padding (SNB PRM Vol 4 Part 1, "Surface Padding
+ * Requirements", as isl_apply_surface_padding quotes it): a compressed
+ * surface pads to an even row of blocks, a cube gets two more rows. The
+ * array pitch before Gen7 is h0 + h1 + 11 j, always: Gen6 has no
+ * Surface Array Spacing field, so a one-level cube spaces its faces the
+ * same way (isl_calc_array_pitch_el_rows_gfx4_2d). j is VALIGN, 2, for
+ * texels; 4 for BC blocks.
+ */
+#define V9X_SNB_CUBE_QPITCH_J  11ul
+#define V9X_SNB_CUBE_PAD_ROWS  2ul
+#define V9X_SNB_MIP_ALIGN_H    2ul
+#define V9X_SNB_BC_BLOCK       4ul
+#define V9X_SNB_CUBE_FACES     6ul
+#define V9X_SNB_SURFTYPE_CUBE  ((v9x_u32)3ul)
+#define V9X_SNB_CUBE_FACE_BITS ((v9x_u32)0x0000003ful)
+
+static v9x_u32 v9x_snb_align(v9x_u32 value, v9x_u32 unit)
+{
+    return (value + unit - 1ul) & ~(unit - 1ul);
+}
+
+v9x_status v9x_intel_snb_miptree_bc(v9x_u16 width, v9x_u16 height,
+                                    v9x_u8 levels, v9x_u8 block_bytes,
+                                    struct v9x_hsw_miptree *tree)
+{
+    v9x_status status;
+
+    status = v9x_intel_hsw_miptree_bc(width, height, levels, block_bytes,
+                                      tree);
+    if (status == V9X_STATUS_OK) {
+        tree->rows = v9x_snb_align(tree->rows, 2ul);
+    }
+    return status;
+}
+
+/* bc: block_bytes per 4 x 4 block, else bytes per texel. */
+static v9x_status v9x_snb_cubetree(v9x_u16 side, v9x_u8 levels, v9x_u8 unit,
+                                   int bc, struct v9x_hsw_cubetree *tree)
+{
+    struct v9x_hsw_miptree face;
+    v9x_u32 h0 = (v9x_u32)side;
+    v9x_u32 h1 = h0 > 1ul ? h0 >> 1 : 1ul;
+    v9x_u32 j = bc ? V9X_SNB_BC_BLOCK : V9X_SNB_MIP_ALIGN_H;
+    v9x_u32 level;
+
+    if (tree == 0 || side == 0u ||
+        (bc && (h0 & (V9X_SNB_BC_BLOCK - 1ul)) != 0ul)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if ((bc ? v9x_intel_hsw_miptree_bc(side, side, levels, unit, &face) :
+              v9x_intel_hsw_miptree(side, side, levels, unit, &face)) !=
+        V9X_STATUS_OK) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* In pixel rows, then in the tree's rows: a block is four. */
+    tree->qpitch = v9x_snb_align(h0, j) + v9x_snb_align(h1, j) +
+                   V9X_SNB_CUBE_QPITCH_J * j;
+    if (bc) {
+        tree->qpitch /= V9X_SNB_BC_BLOCK;
+    }
+    tree->pitch = face.pitch;
+    tree->rows = (V9X_SNB_CUBE_FACES - 1ul) * tree->qpitch + face.rows +
+                 V9X_SNB_CUBE_PAD_ROWS;
+    if (bc) {
+        tree->rows = v9x_snb_align(tree->rows, 2ul);
+    }
+    for (level = 0ul; level < (v9x_u32)levels; ++level) {
+        tree->level_offset[level] = face.level_offset[level];
+    }
+    return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_snb_cubetree(v9x_u16 side, v9x_u8 levels,
+                                  v9x_u8 bytes_per_texel,
+                                  struct v9x_hsw_cubetree *tree)
+{
+    return v9x_snb_cubetree(side, levels, bytes_per_texel, 0, tree);
+}
+
+v9x_status v9x_intel_snb_cubetree_bc(v9x_u16 side, v9x_u8 levels,
+                                     v9x_u8 block_bytes,
+                                     struct v9x_hsw_cubetree *tree)
+{
+    if (block_bytes != 8u && block_bytes != 16u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    return v9x_snb_cubetree(side, levels, block_bytes, 1, tree);
+}
+
+v9x_status v9x_intel_snb_surface_cube(v9x_u32 out[6], v9x_u16 format,
+                                      v9x_u32 base, v9x_u16 side,
+                                      v9x_u32 pitch, v9x_u8 levels)
+{
+    v9x_status status;
+
+    status = v9x_intel_snb_surface_2d(out, format, base, side, side, pitch);
+    if (status != V9X_STATUS_OK) {
+        return status;
+    }
+    out[0] = (out[0] & ~((v9x_u32)7ul << 29)) |
+             (V9X_SNB_SURFTYPE_CUBE << 29) | V9X_SNB_CUBE_FACE_BITS;
+    return v9x_intel_snb_surface_mips(out, levels);
+}
+
 void v9x_intel_snb_sf_viewport(v9x_u32 out[8], v9x_u32 m00, v9x_u32 m11,
                                v9x_u32 m22, v9x_u32 m30, v9x_u32 m31,
                                v9x_u32 m32)
@@ -682,14 +787,22 @@ static void v9x_snb_flush(struct v9x_hsw_batch *batch, v9x_u32 flags,
 #define V9X_SNB_TL_READ_LENGTH ((v9x_u8)2u)
 /* Flat: diffuse and specular (attributes 0 and 1) constant. */
 #define V9X_SNB_TL_FLAT_MASK   ((v9x_u32)3ul)
+/* A PS 1.1 draw's wide vertex: header, position, six four-float
+ * attributes, three units of two from unit 1; 128 bytes, one URB row. */
+#define V9X_SNB_WIDE_ELEMENTS    8u
+#define V9X_SNB_WIDE_READ_LENGTH ((v9x_u8)3u)
 
-static void v9x_snb_tl_elements(struct v9x_hsw_vertex_element *elements,
-                                const struct v9x_hsw_draw *draw)
+/* The draw's vertex elements, V9X_SNB_TL_ELEMENTS or, for the wide form,
+ * V9X_SNB_WIDE_ELEMENTS; the count. */
+static v9x_u32 v9x_snb_tl_elements(struct v9x_hsw_vertex_element *elements,
+                                   const struct v9x_hsw_draw *draw)
 {
+    v9x_u32 count = draw->attributes == V9X_HSW_WIDE_ATTRIBUTES ?
+                        V9X_SNB_WIDE_ELEMENTS : V9X_SNB_TL_ELEMENTS;
     v9x_u32 index;
     v9x_u32 c;
 
-    for (index = 0ul; index < V9X_SNB_TL_ELEMENTS; ++index) {
+    for (index = 0ul; index < count; ++index) {
         elements[index].buffer = 0u;
         elements[index].format = V9X_HSW_FMT_R32G32B32A32_FLOAT;
         elements[index].offset = 0u;
@@ -702,6 +815,13 @@ static void v9x_snb_tl_elements(struct v9x_hsw_vertex_element *elements,
      * tu tv twice, or tu1 tv1 at 32 for a second unit. */
     for (c = 0ul; c < 4ul; ++c) {
         elements[0].component[c] = V9X_HSW_VFCOMP_STORE_0;
+    }
+    if (count == V9X_SNB_WIDE_ELEMENTS) {
+        /* As the Gen7 path's wide form: every attribute four floats. */
+        for (index = 2ul; index < count; ++index) {
+            elements[index].offset = (v9x_u16)(16u + 16u * (index - 2ul));
+        }
+        return count;
     }
     elements[2].format = V9X_HSW_FMT_B8G8R8A8_UNORM;
     elements[2].offset = 16u;
@@ -716,18 +836,21 @@ static void v9x_snb_tl_elements(struct v9x_hsw_vertex_element *elements,
     if (draw->tl_uv1) {
         elements[5].offset = V9X_HSW_TL_VERTEX_BYTES;
     }
+    return count;
 }
 
 static void v9x_snb_draw_vertices(struct v9x_hsw_batch *batch,
                                   const struct v9x_hsw_draw *draw,
                                   v9x_u32 blend, v9x_u32 cc)
 {
-    struct v9x_hsw_vertex_element elements[V9X_SNB_TL_ELEMENTS];
+    struct v9x_hsw_vertex_element elements[V9X_SNB_WIDE_ELEMENTS];
     v9x_u32 vertices;
+    v9x_u32 count;
     v9x_u16 stride;
 
-    v9x_snb_tl_elements(elements, draw);
-    stride = draw->tl_uv1 ? V9X_HSW_TL2_VERTEX_BYTES :
+    count = v9x_snb_tl_elements(elements, draw);
+    stride = count == V9X_SNB_WIDE_ELEMENTS ? V9X_HSW_WIDE_VERTEX_BYTES :
+             draw->tl_uv1 ? V9X_HSW_TL2_VERTEX_BYTES :
                             V9X_HSW_TL_VERTEX_BYTES;
     if (draw->depth_buffer != 0ul && draw->depth_clear != 0ul) {
         /* The clear, then the scene under the depth test. */
@@ -737,7 +860,7 @@ static void v9x_snb_draw_vertices(struct v9x_hsw_batch *batch,
                 (V9X_HSW_DEPTH_CLEAR_VERTICES + V9X_HSW_DEPTH_SCENE_VERTICES) *
                     stride - 1ul);
         v9x_intel_hsw_vertex_elements(batch, elements,
-                                      (v9x_u8)V9X_SNB_TL_ELEMENTS);
+                                      (v9x_u8)count);
         v9x_intel_snb_3dprimitive(batch, V9X_HSW_PRIM_TRILIST,
                                   V9X_HSW_DEPTH_CLEAR_VERTICES, 0ul, 0u);
         v9x_intel_snb_cc_ptrs(batch, blend, draw->depth_test, cc);
@@ -750,7 +873,7 @@ static void v9x_snb_draw_vertices(struct v9x_hsw_batch *batch,
     v9x_intel_snb_vertex_buffer(batch, 0u, stride, draw->vertices,
                                 draw->vertices + vertices * stride - 1ul);
     v9x_intel_hsw_vertex_elements(batch, elements,
-                                  (v9x_u8)V9X_SNB_TL_ELEMENTS);
+                                  (v9x_u8)count);
     if (draw->indices != 0ul) {
         /* To the end of the cache line holding the last index, which the
          * caller has zeroed: Haswell's rule, kept for one index layout. */
@@ -771,6 +894,7 @@ static void v9x_snb_draw_vertices(struct v9x_hsw_batch *batch,
 static v9x_status v9x_snb_workload(struct v9x_hsw_batch *batch,
                                    v9x_u32 state_base, v9x_u32 state_bytes,
                                    const struct v9x_hsw_draw *draw,
+                                   const struct v9x_hsw_ps11_draw *ps,
                                    v9x_u32 scratch, v9x_u32 done_address,
                                    v9x_u32 done_value)
 {
@@ -835,6 +959,18 @@ static v9x_status v9x_snb_workload(struct v9x_hsw_batch *batch,
         v9x_snb_emit_zero(batch, V9X_SNB_CMD_CLIP);
         v9x_snb_emit_zero(batch, V9X_SNB_CMD_SF);
         v9x_snb_emit_zero(batch, V9X_SNB_CMD_WM);
+    } else if (ps != 0) {
+        /* A PS 1.1 draw: the six wide attributes; entry 0 the target and
+         * 1 + N stage N; the push constants from the dispatch GRF, the
+         * setup data after them (intel_hsw_ps11.h). */
+        v9x_intel_snb_clip_screen(batch);
+        v9x_intel_snb_sf(batch, V9X_HSW_WIDE_ATTRIBUTES,
+                         V9X_SNB_TL_READ_OFFSET, V9X_SNB_WIDE_READ_LENGTH,
+                         draw->cull, 0ul);
+        v9x_intel_snb_wm(batch, draw->kernel, (v9x_u8)(1u + ps->stages),
+                         ps->stages != 0u ? 1u : 0u, V9X_HSW_WIDE_ATTRIBUTES,
+                         V9X_SNB_SETUP_GRF, V9X_HSW_BARY_PERSPECTIVE_PIXEL,
+                         ps->kill);
     } else {
         v9x_intel_snb_clip_screen(batch);
         v9x_intel_snb_sf(batch, V9X_HSW_SHADE_ATTRIBUTES,
@@ -846,7 +982,11 @@ static v9x_status v9x_snb_workload(struct v9x_hsw_batch *batch,
                          1u, V9X_HSW_SHADE_ATTRIBUTES, V9X_SNB_SETUP_GRF,
                          V9X_HSW_BARY_PERSPECTIVE_PIXEL, 0u);
     }
-    v9x_intel_snb_constant_ps(batch, 0ul, 0u);
+    if (ps != 0) {
+        v9x_intel_snb_constant_ps(batch, ps->constants, ps->constant_grfs);
+    } else {
+        v9x_intel_snb_constant_ps(batch, 0ul, 0u);
+    }
 
     /* Before depth buffer state, a depth stall, a depth cache flush and a
      * depth stall (crocus_emit_depth_stall_flushes); always, since the
@@ -924,7 +1064,7 @@ v9x_status v9x_intel_snb_init_workload(struct v9x_hsw_batch *batch,
                                        v9x_u32 done_address,
                                        v9x_u32 done_value)
 {
-    return v9x_snb_workload(batch, state_base, state_bytes, 0,
+    return v9x_snb_workload(batch, state_base, state_bytes, 0, 0,
                             scratch_address, done_address, done_value);
 }
 
@@ -969,7 +1109,62 @@ v9x_status v9x_intel_snb_draw_workload(struct v9x_hsw_batch *batch,
             return V9X_STATUS_INVALID_ARGUMENT;
         }
     }
-    return v9x_snb_workload(batch, state_base, state_bytes, draw,
+    return v9x_snb_workload(batch, state_base, state_bytes, draw, 0,
+                            scratch_address, done_address, done_value);
+}
+
+v9x_status v9x_intel_snb_draw_workload_ps11(struct v9x_hsw_batch *batch,
+                                            v9x_u32 state_base,
+                                            v9x_u32 state_bytes,
+                                            const struct v9x_hsw_draw *draw,
+                                            const struct v9x_hsw_ps11_draw *ps,
+                                            v9x_u32 scratch_address,
+                                            v9x_u32 done_address,
+                                            v9x_u32 done_value)
+{
+    v9x_u8 depth_format;
+
+    if (draw == 0 || ps == 0 || (ps->constants & 0x1ful) != 0ul ||
+        ps->constant_grfs == 0u ||
+        ps->constant_grfs > V9X_SNB_CONSTANT_MAX_REGISTERS ||
+        ps->stages > 4u || ps->kill > 1u) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    /* As the Gen7 form (v9x_intel_hsw_draw_workload_ps11): sequential wide
+     * vertices, whole triangles, depth under depth_test alone, a scissor
+     * inside the target. */
+    if ((draw->kernel & 0x3ful) != 0ul ||
+        (draw->binding_table & 0x1ful) != 0ul ||
+        (draw->sampler & 0x1ful) != 0ul ||
+        ((draw->blend | draw->cc | draw->depth_test) & 0x3ful) != 0ul ||
+        draw->width == 0u || draw->height == 0u ||
+        (draw->vertices & 3ul) != 0ul ||
+        state_bytes < V9X_HSW_SHADE_STATE_BYTES ||
+        draw->attributes != V9X_HSW_WIDE_ATTRIBUTES || draw->tl_vertices ||
+        draw->tl_uv1 || draw->indices != 0ul ||
+        draw->vertex_count == 0ul || draw->vertex_count % 3ul != 0ul ||
+        draw->depth_clear != 0ul || draw->cull > V9X_HSW_DRAW_CULL_CCW) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (draw->scissor &&
+        (draw->scissor_x1 < draw->scissor_x0 ||
+         draw->scissor_y1 < draw->scissor_y0 ||
+         draw->scissor_x1 >= draw->width ||
+         draw->scissor_y1 >= draw->height)) {
+        return V9X_STATUS_INVALID_ARGUMENT;
+    }
+    if (draw->depth_buffer != 0ul) {
+        depth_format = draw->depth_format != 0u ? draw->depth_format :
+                                                  V9X_HSW_DEPTH_D32_FLOAT;
+        if ((draw->depth_buffer & V9X_SNB_PAGE_MASK) != 0ul ||
+            draw->depth_test == 0ul ||
+            (depth_format != V9X_HSW_DEPTH_D32_FLOAT &&
+             depth_format != V9X_HSW_DEPTH_D24_UNORM_X8 &&
+             depth_format != V9X_HSW_DEPTH_D16_UNORM)) {
+            return V9X_STATUS_INVALID_ARGUMENT;
+        }
+    }
+    return v9x_snb_workload(batch, state_base, state_bytes, draw, ps,
                             scratch_address, done_address, done_value);
 }
 

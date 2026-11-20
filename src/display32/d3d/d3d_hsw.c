@@ -255,9 +255,17 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_ivb_limits = {
 };
 
 /*
- * Sandy Bridge: Ivy Bridge's limits, one stage, with the Gen6 builders
- * behind the same draw code (docs\plans\intel-sandybridge-direct3d.md),
- * and no DXT: Gen6's BC surfaces are not built or measured.
+ * Sandy Bridge: Ivy Bridge's limits with the Gen6 builders behind the
+ * same draw code (docs\plans\intel-sandybridge-direct3d.md), DXT, which
+ * DDI 8 offers (Gen6's BC trees pad to an even block row,
+ * v9x_intel_snb_miptree_bc), and two texture stages. DDI 8 comes with
+ * CAP_D3D_DDI8, which hsw_hw16.c stamps on Sandy Bridge for its pixel
+ * shaders, and DDI 8 tells an application four blend stages wherever
+ * shaders run: with one stage here the core dropped stage 1, and V9XD32
+ * T19's two-stage rows (FfSpec2, FfTwo, FfBem, FfBem3) drew stage 0 alone
+ * while ValidateDevice passed them (boot 67). Ivy Bridge has one because
+ * two stopped an HD 4000 in 3DMark 2000 (Gen7, cause not found); the
+ * Gen6 kernels had drawn two units through the ICD in Quake 3 first.
  */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_snb_limits = {
     16ul,           /* target_bits_per_pixel */
@@ -278,9 +286,9 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_snb_limits = {
     16384ul,        /* target_pitch_max_xrgb8888 */
     24ul,           /* depth32_bits */
     1ul,            /* centre_in_engine */
-    1ul,            /* texture_stages */
+    2ul,            /* texture_stages: the difference from Ivy Bridge */
     1ul,            /* guard_band_ddi6 */
-    0ul,            /* dxt_textures: the difference from Ivy Bridge */
+    1ul,            /* dxt_textures */
     0ul,            /* modulate2x */
     0ul,            /* bump_luminance */
     V9X_D3D_HSW_BATCH_TRIANGLES, /* batch_triangles */
@@ -405,6 +413,69 @@ static v9x_status v9x_d3d_hsw_workload(struct v9x_hsw_batch *batch,
     }
     return v9x_intel_hsw_draw_workload(batch, state_base, state_bytes, draw,
                                        done_address, done_value);
+}
+
+/* The PS 1.1 builders. ps->constants is the push block's graphics
+ * address; Gen6's CONSTANT_PS takes it as an offset from the dynamic
+ * state base, which is state_base (intel_snb_3d.h). */
+static v9x_status v9x_d3d_hsw_workload_ps11(struct v9x_hsw_batch *batch,
+                                            v9x_u32 state_base,
+                                            v9x_u32 state_bytes,
+                                            const struct v9x_hsw_draw *draw,
+                                            const struct v9x_hsw_ps11_draw *ps,
+                                            v9x_u32 done_address,
+                                            v9x_u32 done_value)
+{
+    struct v9x_hsw_ps11_draw relative;
+
+    if (v9x_d3d_hsw_on_gen6()) {
+        relative = *ps;
+        relative.constants = ps->constants - state_base;
+        return v9x_intel_snb_draw_workload_ps11(batch, state_base,
+                                                state_bytes, draw, &relative,
+                                                V9X_D3D_HSW_SNB_SCRATCH_GFX,
+                                                done_address, done_value);
+    }
+    return v9x_intel_hsw_draw_workload_ps11(batch, state_base, state_bytes,
+                                            draw, ps, done_address,
+                                            done_value);
+}
+
+static v9x_status v9x_d3d_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
+                                         const V9X_PS11_PROGRAM *program,
+                                         const struct v9x_hsw_ps11_desc *desc,
+                                         v9x_u32 *used)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_ps11_build(out, capacity, program, desc, used);
+    }
+    return v9x_intel_hsw_ps11_build(out, capacity, program, desc, used);
+}
+
+/* A cube's layout and surface: Gen6 spaces faces by 11 j, pads, and has no
+ * LOD0 spacing (intel_snb_3d.h). bc: format is BC1-3, bytes a block's. */
+static v9x_status v9x_d3d_hsw_cubetree(int bc, v9x_u16 side, v9x_u8 levels,
+                                       v9x_u8 bytes,
+                                       struct v9x_hsw_cubetree *tree)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return bc ? v9x_intel_snb_cubetree_bc(side, levels, bytes, tree) :
+                    v9x_intel_snb_cubetree(side, levels, bytes, tree);
+    }
+    return bc ? v9x_intel_hsw_cubetree_bc(side, levels, bytes, tree) :
+                v9x_intel_hsw_cubetree(side, levels, bytes, tree);
+}
+
+static v9x_status v9x_d3d_hsw_surface_cube(v9x_u32 *out, v9x_u16 format,
+                                           v9x_u32 base, v9x_u16 side,
+                                           v9x_u32 pitch, v9x_u8 levels)
+{
+    if (v9x_d3d_hsw_on_gen6()) {
+        return v9x_intel_snb_surface_cube(out, format, base, side, pitch,
+                                          levels);
+    }
+    return v9x_intel_hsw_surface_cube_mips(out, format, base, side, pitch,
+                                           levels);
 }
 
 static DWORD v9x_d3d_hsw_read32(DWORD offset)
@@ -803,6 +874,12 @@ static v9x_status v9x_d3d_hsw_tree(v9x_u16 format, DWORD width, DWORD height,
                                    struct v9x_hsw_miptree *tree)
 {
     if (v9x_d3d_hsw_is_bc(format)) {
+        /* Gen6 pads to an even row of blocks (intel_snb_3d.h). */
+        if (v9x_d3d_hsw_on_gen6()) {
+            return v9x_intel_snb_miptree_bc((v9x_u16)width, (v9x_u16)height,
+                                            (v9x_u8)levels, (v9x_u8)bytes,
+                                            tree);
+        }
         return v9x_intel_hsw_miptree_bc((v9x_u16)width, (v9x_u16)height,
                                         (v9x_u8)levels, (v9x_u8)bytes, tree);
     }
@@ -3752,11 +3829,8 @@ static DWORD v9x_d3d_hsw_create_cube(V9X_DDHAL_CREATESURFACEDATA *data)
         side > v9x_d3d_hsw_limits.texture_size_max ||
         !v9x_d3d_hsw_texture_format_of(list[0], &format, &has_alpha,
                                        &bytes) ||
-        (v9x_d3d_hsw_is_bc(format)
-             ? v9x_intel_hsw_cubetree_bc((v9x_u16)side, (v9x_u8)levels,
-                                         (v9x_u8)bytes, &tree)
-             : v9x_intel_hsw_cubetree((v9x_u16)side, (v9x_u8)levels,
-                                      (v9x_u8)bytes, &tree)) !=
+        v9x_d3d_hsw_cubetree(v9x_d3d_hsw_is_bc(format), (v9x_u16)side,
+                             (v9x_u8)levels, (v9x_u8)bytes, &tree) !=
             V9X_STATUS_OK) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
@@ -4156,7 +4230,7 @@ static int v9x_d3d_hsw_ps11_kernel(const V9X_R3D_SHADER *shader,
     for (index2 = 0ul; index2 < 3ul; ++index2) {
         desc.fog_rgb[index2] = fixed->fog_rgb[index2];
     }
-    if (v9x_intel_hsw_ps11_build(
+    if (v9x_d3d_hsw_ps11_build(
             v9x_d3d_hsw_reserve(V9X_INTEL_HSW_PS11_KERNEL_OFF +
                                 index * V9X_INTEL_HSW_PS11_KERNEL_SLOT),
             V9X_D3D_HSW_PS11_KERNEL_DWORDS, shader->program, &desc,
@@ -4205,12 +4279,12 @@ static DWORD v9x_d3d_hsw_ps11_state(const V9X_R3D_DRAW *draw,
     v9x_u32 *table = image + V9X_HSW_SHADE_PS11_BINDING_TABLE / 4ul;
     DWORD index;
 
-    if (v9x_intel_hsw_surface_2d(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
-                                 state->target_format,
-                                 v9x_d3d_hsw_vram(draw->target.offset),
-                                 (v9x_u16)draw->target.width,
-                                 (v9x_u16)draw->target.height,
-                                 draw->target.pitch) != V9X_STATUS_OK) {
+    if (v9x_d3d_hsw_surface(image + V9X_HSW_DRAW_RT_SURFACE(0) / 4ul,
+                            state->target_format,
+                            v9x_d3d_hsw_vram(draw->target.offset),
+                            (v9x_u16)draw->target.width,
+                            (v9x_u16)draw->target.height,
+                            draw->target.pitch) != V9X_STATUS_OK) {
         return V9X_D3D_HSW_REFUSE_TARGET_STATE;
     }
     table[0] = V9X_HSW_DRAW_RT_SURFACE(0);
@@ -4222,19 +4296,19 @@ static DWORD v9x_d3d_hsw_ps11_state(const V9X_R3D_DRAW *draw,
             continue;
         }
         if ((texture->cube
-                 ? v9x_intel_hsw_surface_cube_mips(
+                 ? v9x_d3d_hsw_surface_cube(
                        image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
                        texture->format, texture->address, texture->width,
                        texture->pitch, texture->levels)
-                 : v9x_intel_hsw_surface_2d(
+                 : v9x_d3d_hsw_surface(
                        image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
                        texture->format, texture->address, texture->width,
                        texture->height, texture->pitch)) != V9X_STATUS_OK ||
             (!texture->cube && texture->levels > 1u &&
-             v9x_intel_hsw_surface_mips(
+             v9x_d3d_hsw_surface_levels(
                  image + V9X_HSW_SHADE_PS11_TEX_SURFACE(index) / 4ul,
                  texture->levels) != V9X_STATUS_OK) ||
-            v9x_intel_hsw_sampler(
+            v9x_d3d_hsw_sampler_state(
                 image + (V9X_HSW_SHADE_PS11_SAMPLER +
                          index * V9X_HSW_SAMPLER_BYTES) / 4ul,
                 &texture->sampler) != V9X_STATUS_OK) {
@@ -4501,7 +4575,7 @@ static int v9x_d3d_hsw_draw_shader(const V9X_R3D_DRAW *draw,
         d.vertex_count = count * 3ul;
         v9x_intel_hsw_batch_init(&batch, v9x_d3d_hsw_reserve(slot.batch_off),
                                  slot.batch_bytes / 4ul);
-        if (v9x_intel_hsw_draw_workload_ps11(
+        if (v9x_d3d_hsw_workload_ps11(
                 &batch, V9X_D3D_HSW_GFX(slot.state_off),
                 V9X_D3D_HSW_TNL_STATE_BYTES(slot), &d, &ps,
                 V9X_D3D_HSW_CRUMB_GFX, done) != V9X_STATUS_OK) {
@@ -4537,7 +4611,7 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw = {
     v9x_d3d_hsw_draw_shader
 };
 
-/* Sandy Bridge: the same entry points with its limits (one stage, no
+/* Sandy Bridge: the same entry points with its limits (two stages,
  * DXT); ready() turns the builders to Gen6's by CAP_GEN6_SNB. */
 const V9X_D3D_ENGINE_OPS v9x_d3d_engine_hsw_snb = {
     &v9x_d3d_snb_limits,
