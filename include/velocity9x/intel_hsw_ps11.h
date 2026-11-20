@@ -71,4 +71,12 @@ v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
                                     const struct v9x_hsw_ps11_desc *desc,
                                     v9x_u32 *used);
 
+/* Sandy Bridge's (Gen6) kernel for the same program: the same instructions
+ * in the same registers, each send's payload first moved to m1 on and sent
+ * from there with Gen6's function control (intel_hsw_eu.h). */
+v9x_status v9x_intel_snb_ps11_build(v9x_u32 *out, v9x_u32 capacity,
+                                    const V9X_PS11_PROGRAM *program,
+                                    const struct v9x_hsw_ps11_desc *desc,
+                                    v9x_u32 *used);
+
 #endif

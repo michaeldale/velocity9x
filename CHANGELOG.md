@@ -10,14 +10,15 @@ build identifier so exact guest-tested binaries remain traceable.
   `8086:0112`).** DirectDraw fills, copies and page flips run on the chip
   at 8, 16 and 32 bpp, on the HD 4000's path with Sandy Bridge's own GT
   wake-up, and the driver asks for the chip's top clock (1100 MHz on the
-  i3-2105, where it idled at 850). Hardware Direct3D with one texture
-  stage, as on the HD 4000, built for the chip's own 3D pipeline: the
-  driver's Direct3D probe passes at 16 and 32 bpp. No games have been run
-  on it yet, nor OpenGL or Glide, and DXT textures are not offered.
-  Measured on one i3-2105
+  i3-2105, where it idled at 850). Hardware Direct3D built for the chip's
+  own 3D pipeline, with two texture stages, and for DirectX 8 programs
+  pixel shader 1.1, DXT textures and cube maps; OpenGL and Glide through
+  the same engine. The driver's probes pass; 3DMark 2000, 3DMark 2001 SE
+  and the Quake 3 demo run on it. Measured on one i3-2105
   ([record](docs/decisions/2026-11-19-sandybridge-bcs-blits-and-flips.md),
   [clock](docs/decisions/2026-11-19-sandybridge-render-clock-rp0.md),
-  [Direct3D](docs/decisions/2026-11-20-sandybridge-gen6-direct3d-v9xd32.md)).
+  [Direct3D](docs/decisions/2026-11-20-sandybridge-gen6-direct3d-v9xd32.md),
+  [pixel shaders](docs/decisions/2026-11-20-sandybridge-ddi8-ps11.md)).
 
 ## 0.57.0 - 2026-11-19
 

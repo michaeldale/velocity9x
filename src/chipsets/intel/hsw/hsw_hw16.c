@@ -486,11 +486,13 @@ static void v9x_hsw_fill_engine_for(unsigned long chip,
          * Bridge does (i915 i9xx_plane_update_arm), so it carries the
          * identity bit for the scanout, and asks for RP0 with Ivy Bridge's
          * fields. Its Direct3D is the Gen6 builders', which CAP_GEN6_SNB
-         * tells the HAL (docs\plans\intel-sandybridge-direct3d.md). */
+         * tells the HAL (docs\plans\intel-sandybridge-direct3d.md), with
+         * DDI 8 for the Gen6 PS 1.1 kernels and DXT. */
         *engine_caps |= V9X_DD_ENGINE_CAP_FLIP | V9X_DD_ENGINE_CAP_GEN7_IVB |
                         V9X_DD_ENGINE_CAP_D3D;
         if (chip == V9X_HSW_OPEN_CHIP_SANDYBRIDGE) {
-            *engine_caps |= V9X_DD_ENGINE_CAP_GEN6_SNB;
+            *engine_caps |= V9X_DD_ENGINE_CAP_GEN6_SNB |
+                            V9X_DD_ENGINE_CAP_D3D_DDI8;
         }
         v9x_hsw_request_render_clock(chip);
         return;

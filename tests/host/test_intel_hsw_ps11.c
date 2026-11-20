@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "hsw_eu_sim.h"
+#include "velocity9x/intel_hsw_eu.h"
 #include "velocity9x/intel_hsw_ps11.h"
 #include "velocity9x/ps11.h"
 
@@ -504,6 +505,137 @@ static void refusals(void)
                                    &dwords) == V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/*
+ * Sandy Bridge's kernel (v9x_intel_snb_ps11_build): Gen7's instruction for
+ * instruction, except that each send first moves its payload to m1 on,
+ * NoMask, and reads it from there with Gen6's function control. Two
+ * stages, one sampled with three coordinates (texm3x3-style payloads are
+ * not needed: tex on a cube does it), and texkill. Gen7 predicates the
+ * write on the kill flag; Gen6 instead ANDs the flag into g1.7's pixel
+ * mask and sends a two-register header (g0, g1) before the colours, the
+ * write unpredicated.
+ */
+#define SNB_MRF_FILE 2ul
+#define SNB_OPCODE(w)   ((w)[0] & 0x7ful)
+#define SNB_DST_FILE(w) ((w)[1] & 3ul)
+#define SNB_SRC0_FILE(w) (((w)[1] >> 5) & 3ul)
+#define SNB_OP_MOV  0x01ul
+#define SNB_OP_AND  0x05ul
+#define SNB_OP_SEND 0x31ul
+/* DW3 31 is EOT, outside the descriptor (hsw_eu.c). */
+
+static void gen6_kernel(void)
+{
+    static v9x_u32 gen7[KERNEL_DWORDS];
+    V9X_PS11_PROGRAM program;
+    struct v9x_hsw_ps11_desc desc;
+    v9x_u32 where;
+    v9x_u32 gen7_used = 0ul;
+    v9x_u32 gen6_used = 0ul;
+    v9x_u32 i = 0ul;
+    v9x_u32 j = 0ul;
+    v9x_u32 moves = 0ul;
+    v9x_u32 sends = 0ul;
+    v9x_u32 ands = 0ul;
+    v9x_u32 expect_moves[3];
+    v9x_u32 expect_desc[3];
+    v9x_u32 function;
+    v9x_u32 k;
+
+    used = 0ul;
+    put(VER(1ul, 1ul));
+    put(OP_TEX); put(DST(T, 0, ALL, 0, 0));
+    put(OP_TEX); put(DST(T, 1, ALL, 0, 0));
+    put(OP_TEXKILL); put(DST(T, 2, ALL, 0, 0));
+    put(OP_MUL); put(DST(R, 0, ALL, 0, 0)); put(SRC(T, 0, XYZW, 0));
+    put(SRC(T, 1, XYZW, 0));
+    put(END);
+    CHECK(v9x_ps11_parse(words, used, &program, &where) == V9X_PS11_OK);
+    desc.const_grf = CONST_GRF;
+    desc.setup_grf = SETUP_GRF;
+    desc.cube = 2ul;        /* stage 1 a cube: u v r */
+    desc.projected = 0ul;
+    desc.unbound = 0ul;
+    desc.fog = 0u;
+    CHECK(v9x_intel_hsw_ps11_build(gen7, KERNEL_DWORDS, &program, &desc,
+                                   &gen7_used) == V9X_STATUS_OK);
+    CHECK(v9x_intel_snb_ps11_build(kernel, KERNEL_DWORDS, &program, &desc,
+                                   &gen6_used) == V9X_STATUS_OK);
+
+    /* Two coordinates for stage 0, three for the cube, the header's two
+     * and four colours. */
+    expect_moves[0] = 2ul;
+    expect_moves[1] = 3ul;
+    expect_moves[2] = 6ul;
+    for (k = 0ul; k < 2ul; ++k) {
+        CHECK(v9x_intel_snb_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u,
+                                          (v9x_u8)k, (v9x_u8)(1ul + k),
+                                          &function) == V9X_STATUS_OK);
+        CHECK(v9x_intel_hsw_eu_send_desc((v9x_u8)expect_moves[k], 4u, 0u,
+                                         function, &expect_desc[k]) ==
+              V9X_STATUS_OK);
+    }
+    CHECK(v9x_intel_snb_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
+                                       &function) == V9X_STATUS_OK);
+    CHECK(v9x_intel_hsw_eu_send_desc(6u, 0u, 1u, function,
+                                     &expect_desc[2]) == V9X_STATUS_OK);
+
+    while (i < gen7_used && j < gen6_used) {
+        if (SNB_OPCODE(&kernel[j]) == SNB_OP_AND) {
+            /* and(1) g1.14<0;1,0>:UW f0.0:UW g1.14:UW {NoMask}: exec size
+             * 1, NoMask, g1 the destination, the flag (ARF 30h, file 0)
+             * src0 as Mesa's Gen6 discard has it, g1 src1. */
+            CHECK(((kernel[j] >> 21) & 7ul) == 0ul &&
+                  (kernel[j] & 0x00000200ul) != 0ul);
+            CHECK(((kernel[j + 1ul] >> 21) & 0xfful) == 1ul);
+            CHECK(((kernel[j + 2ul] >> 5) & 0xfful) == 0x30ul &&
+                  SNB_SRC0_FILE(&kernel[j]) == 0ul);
+            CHECK(((kernel[j + 3ul] >> 5) & 0xfful) == 1ul);
+            ++ands;
+            j += 4ul;
+            continue;
+        }
+        if (SNB_OPCODE(&kernel[j]) == SNB_OP_MOV &&
+            SNB_DST_FILE(&kernel[j]) == SNB_MRF_FILE) {
+            /* m1 + n, in order. */
+            CHECK(((kernel[j + 1ul] >> 21) & 0xfful) == 1ul + moves);
+            ++moves;
+            j += 4ul;
+            continue;
+        }
+        if (SNB_OPCODE(&gen7[i]) == SNB_OP_SEND) {
+            CHECK(SNB_OPCODE(&kernel[j]) == SNB_OP_SEND);
+            CHECK(SNB_SRC0_FILE(&kernel[j]) == SNB_MRF_FILE);
+            CHECK(((kernel[j + 2ul] >> 5) & 0xfful) == 1ul);  /* m1 */
+            if (sends < 3ul) {
+                CHECK(moves == expect_moves[sends]);
+                CHECK((kernel[j + 3ul] & 0x7ffffffful) ==
+                      expect_desc[sends]);
+            }
+            /* The samples as Gen7's; the write unpredicated (Gen7's is
+             * predicated on the kill flag), EOT both. */
+            if (sends < 2ul) {
+                CHECK((kernel[j] & 0x000f0000ul) ==
+                      (gen7[i] & 0x000f0000ul));
+            } else {
+                CHECK((gen7[i] & 0x000f0000ul) != 0ul &&
+                      (kernel[j] & 0x000f0000ul) == 0ul &&
+                      (kernel[j + 3ul] & 0x80000000ul) != 0ul);
+            }
+            ++sends;
+            moves = 0ul;
+        } else {
+            CHECK(kernel[j] == gen7[i] && kernel[j + 1ul] == gen7[i + 1ul] &&
+                  kernel[j + 2ul] == gen7[i + 2ul] &&
+                  kernel[j + 3ul] == gen7[i + 3ul]);
+        }
+        i += 4ul;
+        j += 4ul;
+    }
+    CHECK(i == gen7_used && j == gen6_used && sends == 3ul && ands == 1ul);
+    CHECK(gen6_used == gen7_used + 4ul * (2ul + 3ul + 6ul + 1ul));
+}
+
 /* The push block as the kernels read it (intel_hsw_ps11.h), packed from an
  * environment: c_k clamped in register k / 2, half k % 2; stage s's bump
  * matrix in register 4 + s / 2, half s % 2; its luminance terms in
@@ -547,6 +679,7 @@ unsigned int v9x_run_intel_hsw_ps11_tests(void)
     failures = 0u;
     cases();
     refusals();
+    gen6_kernel();
     constants();
     return failures;
 }

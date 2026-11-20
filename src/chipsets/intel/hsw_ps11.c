@@ -48,6 +48,7 @@ typedef struct v9x_hsw_ps11_gen {
     v9x_u32 capacity;
     v9x_u32 used;
     int failed;
+    int gen6;   /* Sandy Bridge: sends from MRFs (intel_hsw_eu.h) */
     const V9X_PS11_PROGRAM *program;
     const struct v9x_hsw_ps11_desc *desc;
 } V9X_HSW_PS11_GEN;
@@ -157,7 +158,9 @@ static void v9x_hsw_ps11_emit(V9X_HSW_PS11_GEN *g,
                               const struct v9x_hsw_eu_inst *inst)
 {
     if (g->failed || g->capacity - g->used < 4ul ||
-        v9x_intel_hsw_eu_encode(inst, g->out + g->used) != V9X_STATUS_OK) {
+        (g->gen6 ? v9x_intel_snb_eu_encode(inst, g->out + g->used) :
+                   v9x_intel_hsw_eu_encode(inst, g->out + g->used)) !=
+            V9X_STATUS_OK) {
         g->failed = 1;
         return;
     }
@@ -295,6 +298,66 @@ static void v9x_hsw_ps11_pln(V9X_HSW_PS11_GEN *g, v9x_u8 dst, v9x_u32 a,
     v9x_hsw_ps11_emit(g, &inst);
 }
 
+/* Gen6: count registers of a message payload from grf to mrf on, each a
+ * mov(8) m<n>:UD g<n>:UD {NoMask}: Gen6 sends from MRFs (intel_hsw_eu.h;
+ * hsw_eu.c's fixed-function kernels do the same). The send then reads
+ * from V9X_SNB_PS_MRF (v9x_snb_ps11_from_mrf). */
+static void v9x_snb_ps11_to_mrf(V9X_HSW_PS11_GEN *g, v9x_u8 mrf, v9x_u8 grf,
+                                v9x_u8 count)
+{
+    struct v9x_hsw_eu_inst inst;
+    v9x_u8 k;
+
+    for (k = 0u; k < count; ++k) {
+        v9x_hsw_ps11_inst(&inst, V9X_HSW_EU_OP_MOV, (v9x_u8)(mrf + k));
+        inst.mask_disable = 1u;
+        inst.dst.file = V9X_SNB_EU_FILE_MRF;
+        inst.dst.type = V9X_HSW_EU_TYPE_UD;
+        inst.src0 = v9x_hsw_ps11_reg((v9x_u8)(grf + k));
+        inst.src0.type = V9X_HSW_EU_TYPE_UD;
+        v9x_hsw_ps11_emit(g, &inst);
+    }
+}
+
+static void v9x_snb_ps11_from_mrf(struct v9x_hsw_eu_inst *send)
+{
+    send->src0.file = V9X_SNB_EU_FILE_MRF;
+    send->src0.nr = V9X_SNB_PS_MRF;
+}
+
+/*
+ * Gen6's texkill: and(1) g1.14<0;1,0>:UW f0.0:UW g1.14:UW {NoMask}, the
+ * kill flag (set where a pixel is kept) into the pixel mask copy the
+ * thread was dispatched with, g1.7's low word (SNB PRM Vol 2 Part 1, the
+ * PS payload's R1.7; its high word, the mask itself, stays as
+ * dispatched), which the render target write then takes from its
+ * header's M1.7 (Vol 4 Part 1, render target write header). Predicating
+ * the EOT write, as Gen7 does, kills nothing on Gen6: M-NZHWBR drew every
+ * one of V9XD32 T19 Kill's 335 killed pixels so (boot 65). The flag is
+ * src0, as Mesa's Gen6 discard (FS_OPCODE_DISCARD_AND) has it: with the
+ * flag as src1, boot 66 wrote no pixel of Kill at all.
+ */
+#define V9X_SNB_PS11_PIXEL_MASK_GRF   ((v9x_u8)1u)
+#define V9X_SNB_PS11_PIXEL_MASK_SUBNR ((v9x_u8)28u)
+#define V9X_SNB_PS11_ARF_FLAG0        ((v9x_u8)0x30u)
+
+static void v9x_snb_ps11_kill_mask(V9X_HSW_PS11_GEN *g)
+{
+    struct v9x_hsw_eu_inst inst;
+
+    v9x_hsw_ps11_inst(&inst, V9X_HSW_EU_OP_AND, V9X_SNB_PS11_PIXEL_MASK_GRF);
+    inst.exec_size = V9X_HSW_EU_EXEC_1;
+    inst.mask_disable = 1u;
+    inst.dst.type = V9X_HSW_EU_TYPE_UW;
+    inst.dst.subnr = V9X_SNB_PS11_PIXEL_MASK_SUBNR;
+    inst.src0 = v9x_hsw_ps11_scalar(V9X_SNB_PS11_ARF_FLAG0, 0ul);
+    inst.src0.file = V9X_HSW_EU_FILE_ARF;
+    inst.src0.type = V9X_HSW_EU_TYPE_UW;
+    inst.src1 = v9x_hsw_ps11_scalar(V9X_SNB_PS11_PIXEL_MASK_GRF, 7ul);
+    inst.src1.type = V9X_HSW_EU_TYPE_UW;
+    v9x_hsw_ps11_emit(g, &inst);
+}
+
 /* send(8) the SIMD8 "sample" message from the payload, mlen coordinates,
  * into stage's four texture registers: sampler stage, binding table entry
  * 1 + stage, no header. A stage with no texture is not sent for: its
@@ -305,6 +368,7 @@ static void v9x_hsw_ps11_sample(V9X_HSW_PS11_GEN *g, v9x_u32 stage,
     struct v9x_hsw_eu_inst inst;
     v9x_u32 function;
     v9x_u32 desc;
+    v9x_status status;
     v9x_u8 k;
 
     if ((g->desc->unbound & (1ul << stage)) != 0ul) {
@@ -314,9 +378,12 @@ static void v9x_hsw_ps11_sample(V9X_HSW_PS11_GEN *g, v9x_u32 stage,
         }
         return;
     }
-    if (v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, (v9x_u8)stage,
-                                    (v9x_u8)(1ul + stage), &function) !=
-            V9X_STATUS_OK ||
+    status = g->gen6 ?
+        v9x_intel_snb_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, (v9x_u8)stage,
+                                    (v9x_u8)(1ul + stage), &function) :
+        v9x_intel_hsw_eu_sampler_fc(V9X_HSW_SAMPLER_SIMD8, 0u, (v9x_u8)stage,
+                                    (v9x_u8)(1ul + stage), &function);
+    if (status != V9X_STATUS_OK ||
         v9x_intel_hsw_eu_send_desc(mlen, 4u, 0u, function, &desc) !=
             V9X_STATUS_OK) {
         g->failed = 1;
@@ -329,6 +396,10 @@ static void v9x_hsw_ps11_sample(V9X_HSW_PS11_GEN *g, v9x_u32 stage,
     inst.dst.type = V9X_HSW_EU_TYPE_UW;
     inst.src0 = v9x_hsw_ps11_reg(V9X_HSW_PS11_G_PAYLOAD);
     inst.src0.type = V9X_HSW_EU_TYPE_UD;
+    if (g->gen6) {
+        v9x_snb_ps11_to_mrf(g, V9X_SNB_PS_MRF, V9X_HSW_PS11_G_PAYLOAD, mlen);
+        v9x_snb_ps11_from_mrf(&inst);
+    }
     v9x_hsw_ps11_emit(g, &inst);
 }
 
@@ -800,16 +871,27 @@ static void v9x_hsw_ps11_texture(V9X_HSW_PS11_GEN *g,
 }
 
 /* send(8) the render target write from g112-g115, EOT; under the kill
- * flag when the shader has texkill. As hsw_eu.c's v9x_hsw_ps_rt_write. */
+ * flag when the shader has texkill. As hsw_eu.c's v9x_hsw_ps_rt_write;
+ * Haswell's predicated EOT write was measured
+ * (2026-10-30-haswell-ps11-step5a-probe.md). Gen6 kills through the
+ * header's pixel mask instead (v9x_snb_ps11_kill_mask): g0 and g1 to m1
+ * and m2, the colours to m3-m6, header present, the write unpredicated. */
 static void v9x_hsw_ps11_write(V9X_HSW_PS11_GEN *g, int kill)
 {
     struct v9x_hsw_eu_inst inst;
     v9x_u32 function;
     v9x_u32 desc;
+    v9x_status status;
+    int header = g->gen6 && kill;
 
-    if (v9x_intel_hsw_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
-                                     &function) != V9X_STATUS_OK ||
-        v9x_intel_hsw_eu_send_desc(4u, 0u, 0u, function, &desc) !=
+    status = g->gen6 ?
+        v9x_intel_snb_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
+                                     &function) :
+        v9x_intel_hsw_eu_rt_write_fc(1u, 0u, V9X_HSW_RT_SIMD8_LO, 0u,
+                                     &function);
+    if (status != V9X_STATUS_OK ||
+        v9x_intel_hsw_eu_send_desc(header ? 6u : 4u, 0u, header ? 1u : 0u,
+                                   function, &desc) !=
             V9X_STATUS_OK) {
         g->failed = 1;
         return;
@@ -822,9 +904,20 @@ static void v9x_hsw_ps11_write(V9X_HSW_PS11_GEN *g, int kill)
     inst.dst.type = V9X_HSW_EU_TYPE_UD;
     inst.src0 = v9x_hsw_ps11_reg(V9X_HSW_PS11_G_OUT);
     inst.src0.type = V9X_HSW_EU_TYPE_UD;
-    if (kill) {
+    if (kill && !g->gen6) {
         inst.pred_ctrl = 1u;
         inst.flag_subreg = V9X_HSW_PS11_FLAG_KILL;
+    }
+    if (header) {
+        v9x_snb_ps11_kill_mask(g);
+        v9x_snb_ps11_to_mrf(g, V9X_SNB_PS_MRF, 0u, 2u);
+        v9x_snb_ps11_to_mrf(g, (v9x_u8)(V9X_SNB_PS_MRF + 2u),
+                            V9X_HSW_PS11_G_OUT, 4u);
+    } else if (g->gen6) {
+        v9x_snb_ps11_to_mrf(g, V9X_SNB_PS_MRF, V9X_HSW_PS11_G_OUT, 4u);
+    }
+    if (g->gen6) {
+        v9x_snb_ps11_from_mrf(&inst);
     }
     v9x_hsw_ps11_emit(g, &inst);
 }
@@ -860,10 +953,10 @@ void v9x_intel_hsw_ps11_constants(const V9X_PS11_ENV *env,
     }
 }
 
-v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
-                                    const V9X_PS11_PROGRAM *program,
-                                    const struct v9x_hsw_ps11_desc *desc,
-                                    v9x_u32 *used)
+static v9x_status v9x_hsw_ps11_build_for(v9x_u32 *out, v9x_u32 capacity,
+                                         const V9X_PS11_PROGRAM *program,
+                                         const struct v9x_hsw_ps11_desc *desc,
+                                         v9x_u32 *used, int gen6)
 {
     V9X_HSW_PS11_GEN g;
     v9x_u32 pads = 0ul;
@@ -883,6 +976,7 @@ v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
     g.capacity = capacity;
     g.used = 0ul;
     g.failed = 0;
+    g.gen6 = gen6;
     g.program = program;
     g.desc = desc;
 
@@ -969,4 +1063,20 @@ v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
     }
     *used = g.used;
     return V9X_STATUS_OK;
+}
+
+v9x_status v9x_intel_hsw_ps11_build(v9x_u32 *out, v9x_u32 capacity,
+                                    const V9X_PS11_PROGRAM *program,
+                                    const struct v9x_hsw_ps11_desc *desc,
+                                    v9x_u32 *used)
+{
+    return v9x_hsw_ps11_build_for(out, capacity, program, desc, used, 0);
+}
+
+v9x_status v9x_intel_snb_ps11_build(v9x_u32 *out, v9x_u32 capacity,
+                                    const V9X_PS11_PROGRAM *program,
+                                    const struct v9x_hsw_ps11_desc *desc,
+                                    v9x_u32 *used)
+{
+    return v9x_hsw_ps11_build_for(out, capacity, program, desc, used, 1);
 }

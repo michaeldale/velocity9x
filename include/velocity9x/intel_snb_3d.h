@@ -317,6 +317,52 @@ v9x_status v9x_intel_snb_draw_workload(struct v9x_hsw_batch *batch,
                                        v9x_u32 done_value);
 
 /*
+ * A draw under a PS 1.1 kernel from v9x_intel_snb_ps11_build: the Gen7
+ * form's arguments and rules (v9x_intel_hsw_draw_workload_ps11: wide
+ * vertices, whole triangles, no indices, depth under depth_test alone, a
+ * scissor inside the target), but ps->constants is an offset from the
+ * dynamic state base, as 3DSTATE_CONSTANT_PS takes it on Gen6, and at
+ * most 32 registers. WM: 1 + stages binding entries, the six attributes,
+ * Pixel Shader Kills Pixel when ps->kill.
+ */
+v9x_status v9x_intel_snb_draw_workload_ps11(struct v9x_hsw_batch *batch,
+                                            v9x_u32 state_base,
+                                            v9x_u32 state_bytes,
+                                            const struct v9x_hsw_draw *draw,
+                                            const struct v9x_hsw_ps11_draw *ps,
+                                            v9x_u32 scratch_address,
+                                            v9x_u32 done_address,
+                                            v9x_u32 done_value);
+
+/*
+ * Gen6's texture layouts where they differ from Gen7's, from the SNB PRM
+ * Vol 4 Part 1's "Surface Padding Requirements" and Mesa's isl:
+ *
+ * - miptree_bc: v9x_intel_hsw_miptree_bc's layout, rows rounded up to an
+ *   even row of blocks.
+ * - cubetree, cubetree_bc: each face v9x_intel_hsw_miptree's (or _bc's)
+ *   tree; QPitch h0 + h1 + 11 j pixel rows for any level count (Gen7's
+ *   is 12 j, and Gen6 has no LOD0 spacing), j 2 for texels and 4 for
+ *   blocks, a BC QPitch in rows of blocks; two rows of padding after the
+ *   sixth face, and a BC cube's rows then even. A BC side must be whole
+ *   blocks.
+ * - surface_cube: surface_2d of side x side, SURFTYPE_CUBE, all six faces
+ *   enabled, MIP Count levels - 1. Unmeasured until a Gen6 cube is drawn.
+ */
+v9x_status v9x_intel_snb_miptree_bc(v9x_u16 width, v9x_u16 height,
+                                    v9x_u8 levels, v9x_u8 block_bytes,
+                                    struct v9x_hsw_miptree *tree);
+v9x_status v9x_intel_snb_cubetree(v9x_u16 side, v9x_u8 levels,
+                                  v9x_u8 bytes_per_texel,
+                                  struct v9x_hsw_cubetree *tree);
+v9x_status v9x_intel_snb_cubetree_bc(v9x_u16 side, v9x_u8 levels,
+                                     v9x_u8 block_bytes,
+                                     struct v9x_hsw_cubetree *tree);
+v9x_status v9x_intel_snb_surface_cube(v9x_u32 out[6], v9x_u16 format,
+                                      v9x_u32 base, v9x_u16 side,
+                                      v9x_u32 pitch, v9x_u8 levels);
+
+/*
  * Walks a finished batch and refuses what Gen6 would not take: a GFXPIPE
  * command outside the Gen6 table or of another length (so Gen7's 7-dword
  * 3DPRIMITIVE, 2-dword CC_STATE_POINTERS or 3DSTATE_SBE), an MI command

@@ -666,6 +666,166 @@ static void test_draw_workload(void)
           V9X_STATUS_INVALID_ARGUMENT);
 }
 
+/* A PS 1.1 draw: six wide vertices, four stages, texkill, seven push
+ * registers at the slot's constant block. */
+static void snb_ps11_draw(struct v9x_hsw_draw *draw,
+                          struct v9x_hsw_ps11_draw *ps)
+{
+    snb_tl_draw(draw);
+    draw->tl_vertices = 0u;
+    draw->attributes = V9X_HSW_WIDE_ATTRIBUTES;
+    draw->binding_table = V9X_HSW_SHADE_PS11_BINDING_TABLE;
+    draw->sampler = V9X_HSW_SHADE_PS11_SAMPLER;
+    ps->constants = V9X_HSW_SHADE_PS11_CONSTANTS;
+    ps->constant_grfs = 7u;
+    ps->stages = 4u;
+    ps->kill = 1u;
+}
+
+static void test_ps11_workload(void)
+{
+    struct v9x_hsw_draw draw;
+    struct v9x_hsw_ps11_draw ps;
+    v9x_u32 bad;
+    v9x_u32 at;
+
+    snb_ps11_draw(&draw, &ps);
+    snb_work_reset();
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 5ul) ==
+          V9X_STATUS_OK);
+    CHECK(v9x_intel_snb_3d_check(snb_work, snb_work_batch.used, &bad) ==
+          V9X_STATUS_OK);
+
+    /* SF: six attributes from unit 1, three units, no flat mask. WM: five
+     * binding entries and one sampler group, setup from g4, kills pixels,
+     * six attributes. */
+    at = snb_find(0x78130012ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0x01801810ul &&
+          snb_work[at + 17ul] == 0ul);
+    at = snb_find(0x78140007ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 1ul] == V9X_HSW_SHADE_KERNEL(0) &&
+          snb_work[at + 2ul] == 0x08140000ul &&
+          snb_work[at + 4ul] == 0x00040000ul &&
+          (snb_work[at + 5ul] & 0x00400000ul) != 0ul &&
+          snb_work[at + 6ul] == 0x00600400ul);
+    /* CONSTANT_PS: buffer 0 valid, the offset with seven registers. */
+    at = snb_find(0x78171003ul);
+    CHECK(at < snb_work_batch.used &&
+          snb_work[at + 1ul] == (V9X_HSW_SHADE_PS11_CONSTANTS | 6ul));
+    /* Six 112-byte vertices in eight elements, one TRILIST. */
+    at = snb_find(0x78080003ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 0x70ul &&
+          snb_work[at + 3ul] == 0x00412000ul + 6ul * 112ul - 1ul);
+    CHECK(snb_find(0x7809000ful) < snb_work_batch.used);
+    at = snb_find(0x7b001004ul);
+    CHECK(at < snb_work_batch.used && snb_work[at + 1ul] == 6ul);
+
+    /* Without texkill the WM does not say so. */
+    ps.kill = 0u;
+    snb_work_reset();
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 5ul) ==
+          V9X_STATUS_OK);
+    at = snb_find(0x78140007ul);
+    CHECK(at < snb_work_batch.used &&
+          (snb_work[at + 5ul] & 0x00400000ul) == 0ul);
+
+    /* Refused: TL vertices, indices, a depth clear, five stages, an
+     * unaligned or empty constant block. */
+    snb_ps11_draw(&draw, &ps);
+    draw.tl_vertices = 1u;
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_ps11_draw(&draw, &ps);
+    draw.indices = 0x00413000ul;
+    draw.index_count = 3ul;
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_ps11_draw(&draw, &ps);
+    draw.depth_buffer = 0x00800000ul;
+    draw.depth_clear = V9X_HSW_SHADE_DS_ALWAYS;
+    draw.depth_test = V9X_HSW_SHADE_DS_LESS;
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_ps11_draw(&draw, &ps);
+    ps.stages = 5u;
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_ps11_draw(&draw, &ps);
+    ps.constants += 4ul;
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    snb_ps11_draw(&draw, &ps);
+    ps.constant_grfs = 0u;
+    CHECK(v9x_intel_snb_draw_workload_ps11(&snb_work_batch, SNB_STATE_BASE,
+                                           SNB_STATE_BYTES, &draw, &ps,
+                                           SNB_SCRATCH, SNB_DONE, 0ul) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+}
+
+/* Gen6's BC padding and cube spacing (intel_snb_3d.h). */
+static void test_layouts(void)
+{
+    struct v9x_hsw_miptree tree;
+    struct v9x_hsw_cubetree cube;
+    v9x_u32 surface[6];
+
+    /* One row of blocks pads to two; 64 x 64 BC1 in three levels already
+     * ends on an even row (24). */
+    CHECK(v9x_intel_hsw_miptree_bc(4u, 4u, 1u, 8u, &tree) == V9X_STATUS_OK &&
+          tree.rows == 1ul);
+    CHECK(v9x_intel_snb_miptree_bc(4u, 4u, 1u, 8u, &tree) == V9X_STATUS_OK &&
+          tree.rows == 2ul && tree.pitch == 64ul);
+    CHECK(v9x_intel_snb_miptree_bc(12u, 12u, 1u, 16u, &tree) ==
+              V9X_STATUS_OK && tree.rows == 4ul);
+    CHECK(v9x_intel_snb_miptree_bc(64u, 64u, 3u, 8u, &tree) ==
+              V9X_STATUS_OK && tree.rows == 24ul);
+    CHECK(v9x_intel_snb_miptree_bc(64u, 64u, 3u, 4u, &tree) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* Side 16, one level: h0 + h1 + 11 j = 16 + 8 + 22 = 46 (Gen7 would
+     * space a one-level cube by 16); five QPitches, the face, two rows. */
+    CHECK(v9x_intel_snb_cubetree(16u, 1u, 4u, &cube) == V9X_STATUS_OK &&
+          cube.qpitch == 46ul && cube.pitch == 64ul &&
+          cube.rows == 5ul * 46ul + 16ul + 2ul &&
+          cube.level_offset[0] == 0ul);
+    /* Five levels: the same QPitch; the face tree is 24 rows deep. */
+    CHECK(v9x_intel_snb_cubetree(16u, 5u, 4u, &cube) == V9X_STATUS_OK &&
+          cube.qpitch == 46ul && cube.rows == 5ul * 46ul + 24ul + 2ul);
+    /* BC: j 4, (16 + 8 + 44) / 4 = 17 block rows; 85 + 4 + 2 = 91, even
+     * 92. A side not of whole blocks is refused. */
+    CHECK(v9x_intel_snb_cubetree_bc(16u, 1u, 16u, &cube) == V9X_STATUS_OK &&
+          cube.qpitch == 17ul && cube.rows == 92ul);
+    CHECK(v9x_intel_snb_cubetree_bc(6u, 1u, 16u, &cube) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_intel_snb_cubetree_bc(16u, 1u, 4u, &cube) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* SURFTYPE_CUBE, the six faces, MIP Count 2. */
+    CHECK(v9x_intel_snb_surface_cube(surface, V9X_HSW_FMT_BC3_UNORM,
+                                     0x00500000ul, 16u, 64ul, 3u) ==
+          V9X_STATUS_OK);
+    CHECK(surface[0] == ((3ul << 29) |
+                         ((v9x_u32)V9X_HSW_FMT_BC3_UNORM << 18) | 0x3ful) &&
+          surface[1] == 0x00500000ul &&
+          surface[2] == ((15ul << 19) | (15ul << 6) | (2ul << 2)) &&
+          surface[3] == (63ul << 3));
+}
+
 static void test_checker_refusals(void)
 {
     struct v9x_hsw_draw draw;
@@ -761,6 +921,8 @@ unsigned int v9x_run_intel_snb_3d_tests(void)
     test_init_state();
     test_init_workload();
     test_draw_workload();
+    test_ps11_workload();
+    test_layouts();
     test_checker_refusals();
     return failures;
 }

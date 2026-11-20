@@ -4286,6 +4286,34 @@ static long d32_t19_to_long(float value)
 }
 #endif
 
+/* The x87 status and control words as a row's judging starts: TOP in
+ * status 13:11, stack fault 6 and invalid operation 0 sticky. The
+ * reference is float arithmetic in this process, after the driver has
+ * run in it; an x87 stack someone left full makes every load an
+ * indefinite and every fistp 80000000h. */
+#ifdef __WATCOMC__
+static unsigned short d32_fpu_status(void);
+#pragma aux d32_fpu_status = \
+    "fnstsw ax" \
+    value [ax] modify exact [ax];
+static unsigned short d32_fpu_control(void);
+#pragma aux d32_fpu_control = \
+    "sub esp,4" \
+    "fnstcw word ptr [esp]" \
+    "pop eax" \
+    value [ax] modify exact [eax];
+#else
+static unsigned short d32_fpu_status(void)
+{
+    return 0u;
+}
+
+static unsigned short d32_fpu_control(void)
+{
+    return 0u;
+}
+#endif
+
 /* Constants c0-c7, every one distinct, the three Push reads set apart;
  * stage 1's bump matrix for Bem. One environment serves all four. */
 static void d32_t19_env(V9X_PS11_ENV *env)
@@ -4307,6 +4335,12 @@ static void d32_t19_env(V9X_PS11_ENV *env)
     }
     env->cube = 0ul;
     env->projected = 0ul;
+    /* Every stage bound. The field came after this function was written;
+     * left unset, the reference read the caller's stack and on some
+     * machines took stage 0 as empty, (0, 0, 0, 1): the M-NZHWBR HD 3000
+     * and the GeForce 210's 0.54.0 run at X8R8G8B8 failed the same rows
+     * with the same pixels (2026-11-20-sandybridge-ddi8-ps11.md). */
+    env->unbound = 0ul;
     env->c[0][0] = 0.8f;
     env->c[0][1] = 0.6f;
     env->c[0][2] = 0.4f;
@@ -4777,12 +4811,17 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
     DWORD first_bad = 0xfffffffful;
     DWORD first_got = 0ul;
     DWORD first_want = 0ul;
+    DWORD last_bad = 0xfffffffful;
+    DWORD last_got = 0ul;
+    DWORD last_want = 0ul;
     int on_edge;
     int in;
     int kept;
     int lookup_unjudged;
     int got_guard;
 
+    d32_t19_key(name, "FpuStatus", (DWORD)d32_fpu_status());
+    d32_t19_key(name, "FpuControl", (DWORD)d32_fpu_control());
     for (i = 0ul; i < 3ul; ++i) {
         d32_t19_colour(vertex[i].diffuse, attribute[i][0]);
         d32_t19_colour(vertex[i].specular, attribute[i][1]);
@@ -4940,6 +4979,12 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
                     first_got = got;
                     first_want = want;
                 }
+                /* The last too: the first is at the triangle's corner,
+                 * where every set's coordinates are near zero, so it
+                 * cannot tell a wrong lookup from a wrong coordinate. */
+                last_bad = (y << 16) | x;
+                last_got = got;
+                last_want = want;
             }
         }
     }
@@ -4954,6 +4999,9 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
     d32_t19_key(name, "FirstBadYX", first_bad);
     d32_t19_key(name, "FirstBadGot", first_got);
     d32_t19_key(name, "FirstBadWant", first_want);
+    d32_t19_key(name, "LastBadYX", last_bad);
+    d32_t19_key(name, "LastBadGot", last_got);
+    d32_t19_key(name, "LastBadWant", last_want);
     if (bad != 0ul) {
         return "mismatch";
     }

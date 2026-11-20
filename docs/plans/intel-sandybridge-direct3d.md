@@ -222,6 +222,12 @@ Answered from it:
    (`docs\decisions\2026-11-20-sandybridge-quake3.md`). *Owed:* Quake 2,
    Glide games, fullscreen.
 8. Then, separately: T&L, PS 1.1, two stages, the texture pool.
+   *PS 1.1, DXT, cubes and two stages done 2026-11-20*
+   (`docs\decisions\2026-11-20-sandybridge-ddi8-ps11.md`): DDI 8 on
+   Sandy Bridge with Gen6 PS 1.1 kernels (texkill through the render
+   target header), Gen6 BC and cube layouts, two texture stages; V9XD32
+   T19 passes, every release probe passes, 3DMark 2001 SE 3519.
+   *Owed:* T&L, the texture pool, mipped and BC cubes.
 
 ## Risks
 
