@@ -386,6 +386,13 @@
                 @{ DeviceId = '0166'
                    Name = 'Intel HD Graphics 4000 (Ivy Bridge mobile)'
                    DeviceDesc = 'Velocity9x Intel HD Graphics 4000 (Ivy Bridge mobile)' }
+                # Ivy Bridge GT1 desktop: the same open and forcewake, its
+                # 3D threads capped to GT1's by the PCI id. From one DOS
+                # survey (GitHub issue 29); not run:
+                # docs\decisions\2026-11-20-ivybridge-gt1-hd2500.md.
+                @{ DeviceId = '0152'
+                   Name = 'Intel HD Graphics 2500 (Ivy Bridge)'
+                   DeviceDesc = 'Velocity9x Intel HD Graphics 2500 (Ivy Bridge)' }
             )
         }
         @{
@@ -539,7 +546,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166 or 8086:0112 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166, 8086:0152 or 8086:0112 exactly'
     }
 
     Vm = @{

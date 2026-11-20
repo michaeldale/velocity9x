@@ -665,6 +665,37 @@ const V9X_HW16_DEVICE v9x_ivb_hd4000_mobile_device = {
 };
 
 /*
+ * Ivy Bridge GT1 desktop, HD Graphics 2500: the 0162's path. Its DOS survey
+ * (GitHub issue 29, docs\probe\references\asrock-ivb-gt1-hd2500-0152-
+ * vgasurv-2026-11-20-a5156b16.ini) shows the 0162's layout: BAR0 64-bit at
+ * F7800000, BAR2 64-bit prefetchable at E0000000 where VBE puts the LFB,
+ * GGC 0241 (256 MiB stolen, 2 MiB GTT). GT1 has one subslice of six EUs,
+ * so the 3D builders cap its VS and PS threads at 36 and 48 by the PCI id
+ * the HAL now reads (engine.pci_device, intel_hsw_3d.h). Nothing has run
+ * on one.
+ */
+const V9X_HW16_DEVICE v9x_ivb_hd2500_device = {
+    0x8086u, 0x0152u,
+    "Intel HD Graphics 2500 (Ivy Bridge)",
+    "8086", "0152",
+    "none",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen7",
+    0,
+    v9x_ivb_fill_engine,
+    /* VBE reports the framebuffer in GMADR, BAR2: E0000000 in the survey. */
+    2u,
+    /* Packed pitch, as the 0162's: its BIOS lists 640x480x8 at 640. */
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset,
+    /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
+};
+
+/*
  * Sandy Bridge GT2 desktop, HD Graphics 3000, on the same path for 2D: the
  * same BAR layout, GGC encoding, stolen-reserved register and BCS ring, with
  * Gen6's forcewake (chip 2). Measured read-only on M-NZHWBR, an i3-2105 on

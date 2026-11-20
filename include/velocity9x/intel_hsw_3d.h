@@ -60,6 +60,17 @@ struct v9x_hsw_batch {
 v9x_status v9x_intel_hsw_3d_set_chip(v9x_u8 chip,
                                      v9x_u32 workaround_address);
 
+/*
+ * Ivy Bridge GT1 (HD 2500, 0x0152): one subslice of six EUs, so 36 VS and
+ * 48 PS threads where GT2 has 128 and 172 (Mesa intel_device_info.c,
+ * ivb_gt1 and ivb_gt2). With gt1 non-zero, on Ivy Bridge, 3DSTATE_VS DW5
+ * asks for 36 threads in Gen7's field, 31:25 (gen7.xml: bits 185-191),
+ * and 3DSTATE_PS DW4 for 48 at 31:24. Every other word is unchanged,
+ * GT2's and Haswell's included. Set by the HAL beside the chip, from the
+ * engine's PCI id; ignored on Haswell.
+ */
+void v9x_intel_hsw_3d_set_gt1(int gt1);
+
 /* Commands the builders and the checker know, by index into the table in
  * hsw_3d.c. */
 #define V9X_HSW_CMD_PIPELINE_SELECT        ((v9x_u16)0u)
