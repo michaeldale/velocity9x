@@ -1,0 +1,19 @@
+{
+    "Name":  "hd3000",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  68,
+    "BootAfter":  69,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  68,
+    "Desktop":  true,
+    "AnswerSeconds":  7,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "8086:0112",
+    "AdapterMismatch":  false
+}
