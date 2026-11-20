@@ -19,6 +19,14 @@ build identifier so exact guest-tested binaries remain traceable.
   [clock](docs/decisions/2026-11-19-sandybridge-render-clock-rp0.md),
   [Direct3D](docs/decisions/2026-11-20-sandybridge-gen6-direct3d-v9xd32.md),
   [pixel shaders](docs/decisions/2026-11-20-sandybridge-ddi8-ps11.md)).
+- **Vsync off on Radeon GCN cards no longer shows half-drawn frames**
+  (`ati` package: Oland, Carrizo, Mullins; Evergreen cards take the same
+  change). With vsync off a flip was called done before the screen took
+  it, so games drew into the frame still being shown: on an R7 250 3DMark
+  2001 SE showed missing sky, cars and HUD. A flip without vsync now
+  takes effect at the next line and tears as it should. Measured on the
+  R7 250 only
+  ([record](docs/decisions/2026-11-20-gcn-vsync-off-hretrace-flips.md)).
 
 ## 0.57.0 - 2026-11-19
 
