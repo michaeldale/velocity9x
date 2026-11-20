@@ -33,9 +33,14 @@ depth through the shared path, measured on the 2064W, and now says so.
 
 ## Controls shown disabled
 
-Texture filtering, write combining (MTRR stage A is inspect-only) and Run
-diagnostics are on the Advanced tab, disabled with "Not available", until
-the driver has the feature.
+None since 2026-11-21. Texture filtering and Run diagnostics were removed:
+the driver has no filtering setting to drive, and the button had nothing
+to launch. Write combining became a live box beside a
+status row, because the feature shipped (MtrrWrite=/PatWrite=) and its off
+switch is NOWC.TXT. The same change added the controls for keys the driver
+already read: 2D acceleration (GdiAccel), software textures in system
+memory (D3DSoftSysMem) and the per-program interface list
+([Velocity9x.Direct3DDdi]).
 
 ## Change display mode button: removed
 

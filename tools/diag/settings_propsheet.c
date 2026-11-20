@@ -12,9 +12,10 @@
  * standalone V9XSET.EXE panel and offers the clipboard report, and it
  * performs no hardware access.
  *
- * One control writes: the Direct3D selector, which puts [Velocity9x] Direct3D
- * into SYSTEM.INI for the 16-bit driver to read at its next Enable. Every
- * other row is a statement of fact.
+ * The first tab only reports. The Advanced tab writes keys the driver
+ * already reads - [Velocity9x] Direct3D, Direct3DDdi, VSync, HighColor,
+ * GdiAccel, D3DSoftSysMem and the [Velocity9x.Direct3DDdi] program list -
+ * and C:\V9XDIAG\NOWC.TXT, write combining's off switch.
  *
  * The module is built without a C runtime, so COM is implemented with
  * explicit vtables and static singleton objects.
@@ -25,6 +26,7 @@
 
 #include "velocity9x/build.h"
 #include "velocity9x/d3dmode.h"
+#include "velocity9x/diagpaths.h"
 #include "velocity9x/vsync.h"
 #include "settings_propsheet.h"
 #include "settings_status.h"
@@ -446,26 +448,28 @@ static int v9x_page_apply_ddi(HWND dialog)
 static int v9x_page_selected_d3d(HWND dialog);
 
 /*
- * The interface selector is live only where the driver reads the key: dd16.c
- * consults Direct3DDdi only beside the D3D capability bit, which a hardware
- * engine or the software rasterizer sets and Disabled clears. Elsewhere the
- * control would change nothing. Follows the Direct3D selector, not the file,
- * so choosing Software on an engineless card enables it at once. The value
- * is kept either way; a greyed control still writes nothing new.
+ * The controls that follow the Direct3D selector, not the file, so choosing
+ * Software on an engineless card enables them at once. Values are kept
+ * either way; a greyed control still writes nothing new.
+ *
+ * The interface selector and its per-program list are live only where the
+ * driver reads them: dd16.c consults Direct3DDdi only beside the D3D
+ * capability bit, which a hardware engine or the software rasterizer sets
+ * and Disabled clears. The software-texture box only under Software, the
+ * one engine that reads D3DSoftSysMem.
  */
 static void v9x_page_update_ddi_enable(HWND dialog)
 {
-    HWND combo = GetDlgItem(dialog, V9X_IDC_DDI);
     int selected = v9x_page_selected_d3d(dialog);
     BOOL live;
 
-    if (combo == 0) {
-        return;
-    }
     live = selected != (int)V9X_D3D_REQUEST_DISABLED &&
            (v9x_page_status.direct3d_capable ||
             selected == (int)V9X_D3D_REQUEST_SOFTWARE);
-    EnableWindow(combo, live);
+    EnableWindow(GetDlgItem(dialog, V9X_IDC_DDI), live);
+    EnableWindow(GetDlgItem(dialog, V9X_IDC_DDI_PROGRAMS), live);
+    EnableWindow(GetDlgItem(dialog, V9X_IDC_SOFT_SYSMEM),
+                 selected == (int)V9X_D3D_REQUEST_SOFTWARE);
 }
 
 /* The selector's current value, or the loaded one when nothing is selected. */
@@ -628,14 +632,208 @@ static int v9x_page_apply_d3d(HWND dialog)
     return 1;
 }
 
+static void v9x_page_widen_list(HWND dialog, int control);
+
+/* A combo's selected item data, or `fallback` when nothing is selected. */
+static int v9x_page_combo_value(HWND dialog, int control, int fallback)
+{
+    HWND combo = GetDlgItem(dialog, control);
+    LRESULT selection;
+    LRESULT data;
+
+    if (combo == 0) {
+        return fallback;
+    }
+    selection = SendMessageA(combo, CB_GETCURSEL, 0, 0);
+    if (selection == CB_ERR) {
+        return fallback;
+    }
+    data = SendMessageA(combo, CB_GETITEMDATA, (WPARAM)selection, 0);
+    return data == CB_ERR ? fallback : (int)data;
+}
+
 /*
- * Both selectors, one message.
+ * 2D acceleration ([Velocity9x] GdiAccel), on the same terms as the VSync
+ * selector.
+ *
+ * Only the master key. gdi_accel.c reads it at Enable and, when it is not
+ * zero, turns on each primitive its own key and the chip allow; Off sends
+ * every GDI call to the DIB engine, which is the troubleshooting switch a
+ * user needs. The per-primitive keys stay hand-edited. On is the key's
+ * absence (V9X_GDI_DEFAULT_MASTER is 1), so choosing it deletes the key.
+ *
+ * Greyed on a chip whose engine reported no fill and no copy, where the key
+ * changes nothing - unless the file already turns it off, so it can always
+ * be turned back on from here.
+ */
+static int v9x_page_gdi_loaded;
+
+static const struct v9x_gdi_choice {
+    int value;
+    const char *label;
+} v9x_page_gdi_choices[] = {
+    { 1, "On (the driver's default)" },
+    { 0, "Off - the CPU draws all 2D" }
+};
+#define V9X_PAGE_GDI_CHOICE_COUNT \
+    (sizeof(v9x_page_gdi_choices) / sizeof(v9x_page_gdi_choices[0]))
+
+static void v9x_page_fill_gdi(HWND dialog)
+{
+    HWND combo = GetDlgItem(dialog, V9X_IDC_GDI_ACCEL);
+    UINT index;
+    LRESULT item;
+
+    if (combo == 0) {
+        return;
+    }
+    SendMessageA(combo, CB_RESETCONTENT, 0, 0);
+    v9x_page_gdi_loaded = v9x_page_status.gdi_accel_request;
+    for (index = 0u; index < V9X_PAGE_GDI_CHOICE_COUNT; ++index) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_page_gdi_choices[index].label);
+        if (item < 0) {
+            continue;
+        }
+        SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                     (LPARAM)v9x_page_gdi_choices[index].value);
+        if (v9x_page_gdi_choices[index].value == v9x_page_gdi_loaded) {
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+    /* gdi_accel.c reads any non-zero value as on; this page offers only the
+     * absent key for that, so another number keeps its own entry. */
+    if (SendMessageA(combo, CB_GETCURSEL, 0, 0) == CB_ERR) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)"On (value set in SYSTEM.INI)");
+        if (item >= 0) {
+            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                         (LPARAM)v9x_page_gdi_loaded);
+            SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+        }
+    }
+    EnableWindow(combo, v9x_page_status.gdi_engine_capable ||
+                        v9x_page_gdi_loaded == 0);
+}
+
+static int v9x_page_apply_gdi(HWND dialog)
+{
+    int selected = v9x_page_combo_value(dialog, V9X_IDC_GDI_ACCEL,
+                                        v9x_page_gdi_loaded);
+    const char *value;
+
+    if (selected == v9x_page_gdi_loaded) {
+        return 0;
+    }
+    if (selected == 1) {
+        value = 0;
+    } else if (selected == 0) {
+        value = "0";
+    } else {
+        return 0;
+    }
+    if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION, "GdiAccel", value,
+                                    V9X_SETTINGS_INI)) {
+        MessageBoxA(dialog,
+                    "Could not write the 2D acceleration setting to "
+                    "SYSTEM.INI.\n\nThe file may be read-only or in use.",
+                    v9x_page_caption, MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+    v9x_page_gdi_loaded = selected;
+    return 1;
+}
+
+/*
+ * [Velocity9x] D3DSoftSysMem: whether the software rasterizer advertises
+ * textures in system memory as well as video memory (d3d_soft.c). Latched
+ * at Enable beside the Direct3D mode (dd16.c), so a restart. Live only
+ * while the Direct3D selector says Software, the one engine that reads it;
+ * off is the key's absence. It bought Final Reality nothing when measured
+ * (docs\decisions\2026-09-11-d3dsoftsysmem-buys-final-reality-nothing.md),
+ * which is why it is a checkbox and not the default.
+ */
+static int v9x_page_soft_loaded;
+
+static int v9x_page_apply_soft(HWND dialog)
+{
+    int selected = IsDlgButtonChecked(dialog, V9X_IDC_SOFT_SYSMEM) ==
+                   BST_CHECKED;
+
+    if (selected == v9x_page_soft_loaded) {
+        return 0;
+    }
+    if (!WritePrivateProfileStringA(V9X_SETTINGS_SECTION, "D3DSoftSysMem",
+                                    selected ? "1" : 0, V9X_SETTINGS_INI)) {
+        MessageBoxA(dialog,
+                    "Could not write the software texture setting to "
+                    "SYSTEM.INI.\n\nThe file may be read-only or in use.",
+                    v9x_page_caption, MB_OK | MB_ICONWARNING);
+        return 0;
+    }
+    v9x_page_soft_loaded = selected;
+    return 1;
+}
+
+/*
+ * Write combining's switch: C:\V9XDIAG\NOWC.TXT, which enable16.c checks
+ * before it writes the MTRR (or a chip's PAT route), and which until now
+ * only V9X3D OFF and RECOVER.TXT wrote (diagpaths.h). Checked means the
+ * file is absent. Greyed on a chip that does not opt in, where the file
+ * changes nothing, unless the file exists, so it can always be removed.
+ *
+ * Off takes a cold start, not a restart: enable16.c finds a range the CPU
+ * kept across a Windows restart ("present") before it looks for the file.
+ */
+static int v9x_page_wc_loaded;
+static const char v9x_page_nowc_text[] =
+    "Written by the Velocity9x settings page. While this file exists the "
+    "driver does not make the framebuffer write-combining. Delete it, or "
+    "tick Write combining on the Velocity9x Advanced tab, to allow it.\r\n";
+
+static int v9x_page_apply_wc(HWND dialog)
+{
+    int selected = IsDlgButtonChecked(dialog, V9X_IDC_WRITE_COMBINE_SWITCH) ==
+                   BST_CHECKED;
+    HANDLE file;
+    DWORD written = 0ul;
+
+    if (selected == v9x_page_wc_loaded) {
+        return 0;
+    }
+    if (selected) {
+        if (!DeleteFileA(V9X_DIAG_NOWC_TXT)) {
+            MessageBoxA(dialog,
+                        "Could not delete " V9X_DIAG_NOWC_TXT ".",
+                        v9x_page_caption, MB_OK | MB_ICONWARNING);
+            return 0;
+        }
+    } else {
+        (void)CreateDirectoryA(V9X_DIAG_DIR, 0);
+        file = CreateFileA(V9X_DIAG_NOWC_TXT, GENERIC_WRITE, 0, 0,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (file == INVALID_HANDLE_VALUE) {
+            MessageBoxA(dialog,
+                        "Could not create " V9X_DIAG_NOWC_TXT ".",
+                        v9x_page_caption, MB_OK | MB_ICONWARNING);
+            return 0;
+        }
+        (void)WriteFile(file, v9x_page_nowc_text,
+                        sizeof(v9x_page_nowc_text) - 1u, &written, 0);
+        CloseHandle(file);
+    }
+    v9x_page_wc_loaded = selected;
+    return selected ? 1 : 2;
+}
+
+/*
+ * Every control, one message that says when each change lands.
  *
  * The Direct3D wording is measured, not a hedge:
  * docs\decisions\2026-08-30-d3d-mode-disabled-gate.md - DDRAW keeps the
- * device it enumerated until a fresh boot. The colour layout is decided at
- * Enable, and the desktop, DirectDraw and the DIB engine all read it there,
- * so it too is a restart and not a re-enable.
+ * device it enumerated until a fresh boot. The colour layout, GdiAccel and
+ * D3DSoftSysMem are read at Enable, so they too are a restart. VSync and the
+ * interface are read each time DirectDraw creates its driver object.
  */
 static void v9x_page_apply(HWND dialog)
 {
@@ -643,26 +841,369 @@ static void v9x_page_apply(HWND dialog)
     int wrote_layout = v9x_page_apply_layout(dialog);
     int wrote_vsync = v9x_page_apply_vsync(dialog);
     int wrote_ddi = v9x_page_apply_ddi(dialog);
+    int wrote_gdi = v9x_page_apply_gdi(dialog);
+    int wrote_soft = v9x_page_apply_soft(dialog);
+    int wrote_wc = v9x_page_apply_wc(dialog);
+    char text[640];
 
-    if (!wrote_d3d && !wrote_layout && !wrote_vsync && !wrote_ddi) {
+    if (!wrote_d3d && !wrote_layout && !wrote_vsync && !wrote_ddi &&
+        !wrote_gdi && !wrote_soft && !wrote_wc) {
         return;
     }
-    /* VSync and the DDI alone need no restart: the 16-bit driver reads both
-     * each time DirectDraw creates its driver object. */
-    if (!wrote_d3d && !wrote_layout) {
-        MessageBoxA(dialog,
-                    "The setting has been saved to SYSTEM.INI.\n\n"
-                    "It takes effect the next time a DirectDraw or "
-                    "Direct3D program starts.",
-                    v9x_page_caption, MB_OK | MB_ICONINFORMATION);
+    lstrcpyA(text, "Your changes have been saved.");
+    if (wrote_vsync || wrote_ddi) {
+        lstrcatA(text, "\n\nVertical sync and the Direct3D interface apply "
+                       "from the next DirectDraw or Direct3D program.");
+    }
+    if (wrote_d3d || wrote_layout || wrote_gdi || wrote_soft ||
+        wrote_wc == 1) {
+        lstrcatA(text, "\n\nDirect3D, the 16-bit colour layout, 2D "
+                       "acceleration, software textures and turning write "
+                       "combining on take effect after you restart Windows. "
+                       "Until then programs see the previous settings.");
+    }
+    if (wrote_wc == 2) {
+        lstrcatA(text, "\n\nWrite combining stops after the computer is "
+                       "switched off and on again: a Windows restart can "
+                       "keep the processor's existing setting.");
+    }
+    MessageBoxA(dialog, text, v9x_page_caption, MB_OK | MB_ICONINFORMATION);
+}
+
+/*
+ * The per-program interface dialog: [Velocity9x.Direct3DDdi] <file>=N.
+ *
+ * d3d_core.c (v9x_d3d_dp2_for_process) reads it by the program's file name
+ * when a driver object is made: 5 is the DX5 interface, 6 is DDI 6, 7 is
+ * DDI 7 on an engine that runs T&L and DDI 6 elsewhere, 8 is DDI 8 where
+ * the engine has it and the step below otherwise. It is read only where
+ * DrawPrimitives2 is available at all, so it cannot lift a program above a
+ * global DirectX 5 only.
+ *
+ * Writes on OK, not on the sheet's Apply: the dialog is its own transaction.
+ * Every key read at open and absent at OK is deleted, every listed one is
+ * written, and a value this dialog does not offer is kept as it was.
+ */
+#define V9X_DDI_PROGRAMS_SECTION "Velocity9x.Direct3DDdi"
+/* Under 32767, the Windows 9x profile API's limit; on the heap for the
+ * reason given over V9X_MINIVDD_READ_BYTES in settings_status.c. */
+#define V9X_DDI_PROGRAMS_BYTES   8192ul
+/* The list's tab stop, in dialog units: room for an 8.3 name and more. */
+#define V9X_DDI_PROGRAMS_TAB     96
+
+static char *v9x_programs_loaded;
+static int v9x_programs_dirty;
+
+static const struct v9x_level_choice {
+    int value;
+    const char *label;
+} v9x_program_levels[] = {
+    { 5, "DirectX 5 interface" },
+    { 6, "DDI 6 (DrawPrimitives2)" },
+    { 7, "DDI 7 with hardware T&L, else DDI 6" },
+    { 8, "DDI 8 where available, else the best below" }
+};
+#define V9X_PROGRAM_LEVEL_COUNT \
+    (sizeof(v9x_program_levels) / sizeof(v9x_program_levels[0]))
+
+static const char *v9x_programs_label(int level)
+{
+    UINT index;
+
+    for (index = 0u; index < V9X_PROGRAM_LEVEL_COUNT; ++index) {
+        if (v9x_program_levels[index].value == level) {
+            return v9x_program_levels[index].label;
+        }
+    }
+    return "Value set by hand (kept)";
+}
+
+/* The name part of list item `index` (the text before its tab). */
+static int v9x_programs_item_name(HWND list, int index, char *name, int size)
+{
+    char text[MAX_PATH + 64];
+    LRESULT length = SendMessageA(list, LB_GETTEXTLEN, (WPARAM)index, 0);
+    int at = 0;
+
+    if (length == LB_ERR || length >= (LRESULT)sizeof(text)) {
+        return 0;
+    }
+    SendMessageA(list, LB_GETTEXT, (WPARAM)index, (LPARAM)text);
+    while (text[at] != '\0' && text[at] != '\t' && at + 1 < size) {
+        name[at] = text[at];
+        ++at;
+    }
+    name[at] = '\0';
+    return 1;
+}
+
+static int v9x_programs_find(HWND list, const char *name)
+{
+    char other[MAX_PATH];
+    LRESULT count = SendMessageA(list, LB_GETCOUNT, 0, 0);
+    int index;
+
+    for (index = 0; index < (int)count; ++index) {
+        if (v9x_programs_item_name(list, index, other, sizeof(other)) &&
+            lstrcmpiA(other, name) == 0) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+/* Add, or replace in place, one entry; selects it. */
+static void v9x_programs_put(HWND list, const char *name, int level)
+{
+    char text[MAX_PATH + 64];
+    int index = v9x_programs_find(list, name);
+    LRESULT item;
+
+    lstrcpynA(text, name, MAX_PATH);
+    lstrcatA(text, "\t");
+    lstrcatA(text, v9x_programs_label(level));
+    if (index >= 0) {
+        SendMessageA(list, LB_DELETESTRING, (WPARAM)index, 0);
+        item = SendMessageA(list, LB_INSERTSTRING, (WPARAM)index,
+                            (LPARAM)text);
+    } else {
+        item = SendMessageA(list, LB_ADDSTRING, 0, (LPARAM)text);
+    }
+    if (item >= 0) {
+        SendMessageA(list, LB_SETITEMDATA, (WPARAM)item, (LPARAM)level);
+        SendMessageA(list, LB_SETCURSEL, (WPARAM)item, 0);
+    }
+}
+
+/*
+ * The program name as typed, reduced to what d3d_core.c compares: the file
+ * name with no path, since it strips its own module path at the last \, /
+ * or :. Empty, or carrying a character a profile key cannot hold, is
+ * refused.
+ */
+static int v9x_programs_clean(const char *typed, char *name, int size)
+{
+    const char *start = typed;
+    const char *at;
+    int length = 0;
+
+    for (at = typed; *at != '\0'; ++at) {
+        if (*at == '\\' || *at == '/' || *at == ':') {
+            start = at + 1;
+        }
+    }
+    while (*start == ' ') {
+        ++start;
+    }
+    while (start[length] != '\0' && length + 1 < size) {
+        char c = start[length];
+
+        if (c == '=' || c == '[' || c == ']' || c == ';' || c == '\t') {
+            return 0;
+        }
+        name[length] = c;
+        ++length;
+    }
+    while (length > 0 && name[length - 1] == ' ') {
+        --length;
+    }
+    name[length] = '\0';
+    return length > 0;
+}
+
+static void v9x_programs_init(HWND dialog)
+{
+    HWND list = GetDlgItem(dialog, V9X_IDC_PROG_LIST);
+    HWND combo = GetDlgItem(dialog, V9X_IDC_PROG_LEVEL);
+    int tab = V9X_DDI_PROGRAMS_TAB;
+    const char *line;
+    UINT index;
+    LRESULT item;
+
+    v9x_programs_dirty = 0;
+    SendMessageA(list, LB_SETTABSTOPS, 1, (LPARAM)&tab);
+    for (index = 0u; index < V9X_PROGRAM_LEVEL_COUNT; ++index) {
+        item = SendMessageA(combo, CB_ADDSTRING, 0,
+                            (LPARAM)v9x_program_levels[index].label);
+        if (item >= 0) {
+            SendMessageA(combo, CB_SETITEMDATA, (WPARAM)item,
+                         (LPARAM)v9x_program_levels[index].value);
+            if (v9x_program_levels[index].value == 6) {
+                SendMessageA(combo, CB_SETCURSEL, (WPARAM)item, 0);
+            }
+        }
+    }
+    v9x_page_widen_list(dialog, V9X_IDC_PROG_LEVEL);
+
+    v9x_programs_loaded = (char *)HeapAlloc(GetProcessHeap(), 0,
+                                            V9X_DDI_PROGRAMS_BYTES);
+    if (v9x_programs_loaded == 0) {
+        EnableWindow(GetDlgItem(dialog, IDOK), FALSE);
         return;
     }
-    MessageBoxA(dialog,
-                "The setting has been saved to SYSTEM.INI.\n\n"
-                "It takes effect after you restart Windows. Until then "
-                "DirectDraw applications continue to see the previous "
-                "setting.",
-                v9x_page_caption, MB_OK | MB_ICONINFORMATION);
+    if (GetPrivateProfileSectionA(V9X_DDI_PROGRAMS_SECTION,
+                                  v9x_programs_loaded,
+                                  V9X_DDI_PROGRAMS_BYTES,
+                                  V9X_SETTINGS_INI) == 0ul) {
+        v9x_programs_loaded[0] = '\0';
+        v9x_programs_loaded[1] = '\0';
+    }
+    for (line = v9x_programs_loaded; *line != '\0';
+         line += lstrlenA(line) + 1) {
+        char name[MAX_PATH];
+        int length = 0;
+
+        while (line[length] != '\0' && line[length] != '=' &&
+               length + 1 < (int)sizeof(name)) {
+            name[length] = line[length];
+            ++length;
+        }
+        name[length] = '\0';
+        if (length == 0) {
+            continue;
+        }
+        v9x_programs_put(list, name,
+                         (int)GetPrivateProfileIntA(V9X_DDI_PROGRAMS_SECTION,
+                                                    name, 0,
+                                                    V9X_SETTINGS_INI));
+    }
+    SendMessageA(list, LB_SETCURSEL, (WPARAM)-1, 0);
+}
+
+/* Write the list back; non-zero on success. */
+static int v9x_programs_save(HWND dialog)
+{
+    HWND list = GetDlgItem(dialog, V9X_IDC_PROG_LIST);
+    LRESULT count = SendMessageA(list, LB_GETCOUNT, 0, 0);
+    const char *line;
+    int ok = 1;
+    int index;
+
+    for (line = v9x_programs_loaded; *line != '\0';
+         line += lstrlenA(line) + 1) {
+        char name[MAX_PATH];
+        int length = 0;
+
+        while (line[length] != '\0' && line[length] != '=' &&
+               length + 1 < (int)sizeof(name)) {
+            name[length] = line[length];
+            ++length;
+        }
+        name[length] = '\0';
+        if (length != 0 && v9x_programs_find(list, name) < 0 &&
+            !WritePrivateProfileStringA(V9X_DDI_PROGRAMS_SECTION, name, 0,
+                                        V9X_SETTINGS_INI)) {
+            ok = 0;
+        }
+    }
+    for (index = 0; index < (int)count; ++index) {
+        char name[MAX_PATH];
+        char value[12];
+        int level = (int)SendMessageA(list, LB_GETITEMDATA, (WPARAM)index,
+                                      0);
+
+        if (!v9x_programs_item_name(list, index, name, sizeof(name))) {
+            continue;
+        }
+        wsprintfA(value, "%d", level);
+        if (!WritePrivateProfileStringA(V9X_DDI_PROGRAMS_SECTION, name, value,
+                                        V9X_SETTINGS_INI)) {
+            ok = 0;
+        }
+    }
+    return ok;
+}
+
+static BOOL CALLBACK v9x_programs_dialog_proc(HWND dialog,
+                                              UINT message,
+                                              WPARAM wparam,
+                                              LPARAM lparam)
+{
+    HWND list;
+    char typed[MAX_PATH];
+    char name[MAX_PATH];
+    LRESULT selection;
+
+    (void)lparam;
+    switch (message) {
+    case WM_INITDIALOG:
+        v9x_programs_init(dialog);
+        return TRUE;
+    case WM_DESTROY:
+        if (v9x_programs_loaded != 0) {
+            HeapFree(GetProcessHeap(), 0, v9x_programs_loaded);
+            v9x_programs_loaded = 0;
+        }
+        return FALSE;
+    case WM_COMMAND:
+        list = GetDlgItem(dialog, V9X_IDC_PROG_LIST);
+        switch (LOWORD(wparam)) {
+        case V9X_IDC_PROG_LIST:
+            /* Selecting an entry loads it into the editor below. */
+            if (HIWORD(wparam) == LBN_SELCHANGE) {
+                selection = SendMessageA(list, LB_GETCURSEL, 0, 0);
+                if (selection != LB_ERR &&
+                    v9x_programs_item_name(list, (int)selection, name,
+                                           sizeof(name))) {
+                    HWND combo = GetDlgItem(dialog, V9X_IDC_PROG_LEVEL);
+                    int level = (int)SendMessageA(list, LB_GETITEMDATA,
+                                                  (WPARAM)selection, 0);
+                    LRESULT count = SendMessageA(combo, CB_GETCOUNT, 0, 0);
+                    int index;
+
+                    SetDlgItemTextA(dialog, V9X_IDC_PROG_NAME, name);
+                    for (index = 0; index < (int)count; ++index) {
+                        if ((int)SendMessageA(combo, CB_GETITEMDATA,
+                                              (WPARAM)index, 0) == level) {
+                            SendMessageA(combo, CB_SETCURSEL, (WPARAM)index,
+                                         0);
+                        }
+                    }
+                }
+            }
+            return TRUE;
+        case V9X_IDC_PROG_ADD:
+            GetDlgItemTextA(dialog, V9X_IDC_PROG_NAME, typed, sizeof(typed));
+            if (!v9x_programs_clean(typed, name, sizeof(name))) {
+                MessageBoxA(dialog,
+                            "Type the program's file name, such as "
+                            "QUAKE2.EXE. It cannot contain = [ ] or ;.",
+                            v9x_page_caption, MB_OK | MB_ICONEXCLAMATION);
+                return TRUE;
+            }
+            v9x_programs_put(list, name,
+                             v9x_page_combo_value(dialog, V9X_IDC_PROG_LEVEL,
+                                                  6));
+            v9x_programs_dirty = 1;
+            return TRUE;
+        case V9X_IDC_PROG_REMOVE:
+            selection = SendMessageA(list, LB_GETCURSEL, 0, 0);
+            if (selection != LB_ERR) {
+                SendMessageA(list, LB_DELETESTRING, (WPARAM)selection, 0);
+                v9x_programs_dirty = 1;
+            }
+            return TRUE;
+        case IDOK:
+            if (v9x_programs_dirty && !v9x_programs_save(dialog)) {
+                MessageBoxA(dialog,
+                            "Could not write every entry to SYSTEM.INI.\n\n"
+                            "The file may be read-only or in use.",
+                            v9x_page_caption, MB_OK | MB_ICONWARNING);
+            } else if (v9x_programs_dirty) {
+                MessageBoxA(dialog,
+                            "Saved. A listed program gets its interface the "
+                            "next time it starts.",
+                            v9x_page_caption, MB_OK | MB_ICONINFORMATION);
+            }
+            EndDialog(dialog, IDOK);
+            return TRUE;
+        case IDCANCEL:
+            EndDialog(dialog, IDCANCEL);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
 }
 
 static BOOL v9x_guid_equal(const V9X_GUID *left, const V9X_GUID *right)
@@ -744,19 +1285,6 @@ static void v9x_page_launch_update(HWND dialog, const char *switch_text)
     }
 }
 
-/* Disabled controls for features this driver does not have yet, each with
- * the one entry that says so. */
-static void v9x_page_fill_unavailable(HWND dialog)
-{
-    HWND combo = GetDlgItem(dialog, V9X_IDC_TEXTURE_FILTER);
-
-    if (combo != 0) {
-        SendMessageA(combo, CB_RESETCONTENT, 0, 0);
-        SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)"Not available");
-        SendMessageA(combo, CB_SETCURSEL, 0, 0);
-    }
-}
-
 /*
  * The Velocity9x page: what the card and driver are. Read-only, apart from
  * the three buttons, none of which writes anything.
@@ -817,10 +1345,25 @@ static BOOL CALLBACK v9x_page_dialog_proc(HWND dialog,
     return FALSE;
 }
 
+/* Whether any control differs from what the page loaded, for Apply. */
+static int v9x_page_any_changed(HWND dialog)
+{
+    return v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded ||
+           v9x_page_selected_layout(dialog) != v9x_page_layout_loaded ||
+           v9x_page_selected_vsync(dialog) != v9x_page_vsync_loaded ||
+           v9x_page_selected_ddi(dialog) != v9x_page_ddi_loaded ||
+           v9x_page_combo_value(dialog, V9X_IDC_GDI_ACCEL,
+                                v9x_page_gdi_loaded) != v9x_page_gdi_loaded ||
+           (IsDlgButtonChecked(dialog, V9X_IDC_SOFT_SYSMEM) ==
+                BST_CHECKED) != v9x_page_soft_loaded ||
+           (IsDlgButtonChecked(dialog, V9X_IDC_WRITE_COMBINE_SWITCH) ==
+                BST_CHECKED) != v9x_page_wc_loaded;
+}
+
 /*
  * The Velocity9x Advanced page: every control that writes SYSTEM.INI, and
- * the disabled controls for features not built yet. It collects its own
- * status, since the sheet may open on either page.
+ * the write-combining switch. It collects its own status, since the sheet
+ * may open on either page.
  */
 static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
                                               UINT message,
@@ -836,11 +1379,21 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
         v9x_page_fill_layout(dialog);
         v9x_page_fill_vsync(dialog);
         v9x_page_fill_ddi(dialog);
-        v9x_page_fill_unavailable(dialog);
+        v9x_page_fill_gdi(dialog);
+        v9x_page_soft_loaded = v9x_page_status.soft_sysmem_request != 0;
+        CheckDlgButton(dialog, V9X_IDC_SOFT_SYSMEM,
+                       v9x_page_soft_loaded ? BST_CHECKED : BST_UNCHECKED);
+        v9x_page_wc_loaded = !v9x_page_status.wc_marker;
+        CheckDlgButton(dialog, V9X_IDC_WRITE_COMBINE_SWITCH,
+                       v9x_page_wc_loaded ? BST_CHECKED : BST_UNCHECKED);
+        EnableWindow(GetDlgItem(dialog, V9X_IDC_WRITE_COMBINE_SWITCH),
+                     v9x_page_status.wc_applicable ||
+                         v9x_page_status.wc_marker);
         v9x_page_update_ddi_enable(dialog);
         v9x_page_widen_list(dialog, V9X_IDC_DIRECT3D_MODE);
         v9x_page_widen_list(dialog, V9X_IDC_COLOUR_LAYOUT);
         v9x_page_widen_list(dialog, V9X_IDC_DDI);
+        v9x_page_widen_list(dialog, V9X_IDC_GDI_ACCEL);
         SetDlgItemTextA(dialog, V9X_IDC_WRITE_COMBINE,
                         v9x_page_status.write_combining);
         SetDlgItemTextA(dialog, V9X_IDC_CORE_CLOCK,
@@ -853,21 +1406,28 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
             v9x_page_launch_update(dialog, "/REPORT");
             return TRUE;
         }
+        if (LOWORD(wparam) == V9X_IDC_DDI_PROGRAMS) {
+            (void)DialogBoxParamA(v9x_page_instance,
+                                  MAKEINTRESOURCEA(V9X_ID_DDI_PROGRAMS),
+                                  dialog, (DLGPROC)v9x_programs_dialog_proc,
+                                  0);
+            return TRUE;
+        }
         /* Enable Apply only once the selection actually differs from the
          * file, so OK on an untouched page writes nothing. */
-        if ((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||
-             LOWORD(wparam) == V9X_IDC_COLOUR_LAYOUT ||
-             LOWORD(wparam) == V9X_IDC_VSYNC ||
-             LOWORD(wparam) == V9X_IDC_DDI) &&
-            HIWORD(wparam) == CBN_SELCHANGE) {
+        if (((LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE ||
+              LOWORD(wparam) == V9X_IDC_COLOUR_LAYOUT ||
+              LOWORD(wparam) == V9X_IDC_VSYNC ||
+              LOWORD(wparam) == V9X_IDC_DDI ||
+              LOWORD(wparam) == V9X_IDC_GDI_ACCEL) &&
+             HIWORD(wparam) == CBN_SELCHANGE) ||
+            ((LOWORD(wparam) == V9X_IDC_SOFT_SYSMEM ||
+              LOWORD(wparam) == V9X_IDC_WRITE_COMBINE_SWITCH) &&
+             HIWORD(wparam) == BN_CLICKED)) {
             if (LOWORD(wparam) == V9X_IDC_DIRECT3D_MODE) {
                 v9x_page_update_ddi_enable(dialog);
             }
-            if (v9x_page_selected_d3d(dialog) != v9x_page_d3d_loaded ||
-                v9x_page_selected_layout(dialog) !=
-                    v9x_page_layout_loaded ||
-                v9x_page_selected_vsync(dialog) != v9x_page_vsync_loaded ||
-                v9x_page_selected_ddi(dialog) != v9x_page_ddi_loaded) {
+            if (v9x_page_any_changed(dialog)) {
                 SendMessageA(GetParent(dialog), PSM_CHANGED,
                              (WPARAM)dialog, 0);
             } else {

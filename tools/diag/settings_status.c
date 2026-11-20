@@ -524,6 +524,9 @@ static void v9x_collect_write_combining(V9X_SETTINGS_STATUS *status)
                              sizeof(mtrr), V9X_DIAG_BOOT_INI);
     GetPrivateProfileStringA("Velocity9x", "PatWrite", "", pat,
                              sizeof(pat), V9X_DIAG_BOOT_INI);
+    status->wc_applicable = mtrr[0] != '\0' || pat[0] != '\0';
+    status->wc_marker =
+        GetFileAttributesA(V9X_DIAG_NOWC_TXT) != 0xFFFFFFFFul;
     status->write_combining[0] = '\0';
     if (lstrcmpiA(mtrr, "present") == 0 ||
         (mtrr[0] == 'o' && mtrr[1] == 'k')) {
@@ -780,6 +783,8 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         /* Whether the chip's hook reported a Direct3D engine, from the
          * capability bits; see the direct3d_capable assignment below. */
         int engine_d3d = 0;
+        /* And a 2D fill or copy, from the same raw bits. */
+        int engine_2d = 0;
 
         GetPrivateProfileStringA("Velocity9xHardware", "ModeSwitching",
                                  "reboot-selected", switching,
@@ -869,6 +874,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             if (v9x_parse_hex32(raw_text, &raw_caps) &&
                 (raw_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul) {
                 engine_d3d = 1;
+            }
+            if ((raw_caps & (V9X_DD_ENGINE_CAP_SOLID_FILL |
+                             V9X_DD_ENGINE_CAP_SCREEN_COPY)) != 0ul) {
+                engine_2d = 1;
             }
             /* The stamp is the later word - Gen3 maps its engine after
              * Enable - but any mode change since DirectDraw ran clears it.
@@ -967,6 +976,15 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
          */
         status->highcolor_request = (int)GetPrivateProfileIntA(
             V9X_SETTINGS_SECTION, "HighColor", 0, V9X_SETTINGS_INI);
+
+        /* The two Enable-time keys the Advanced tab also writes. 1 is
+         * gdi_accel.c's V9X_GDI_DEFAULT_MASTER; D3DSoftSysMem is off when
+         * absent (dd16.c). */
+        status->gdi_accel_request = (int)GetPrivateProfileIntA(
+            V9X_SETTINGS_SECTION, "GdiAccel", 1, V9X_SETTINGS_INI);
+        status->gdi_engine_capable = engine_2d;
+        status->soft_sysmem_request = (int)GetPrivateProfileIntA(
+            V9X_SETTINGS_SECTION, "D3DSoftSysMem", 0, V9X_SETTINGS_INI);
         GetPrivateProfileStringA("Velocity9xHardware", "ColourLayout", "",
                                  colour_layout, sizeof(colour_layout),
                                  V9X_DIAG_HW_INI);

@@ -10,7 +10,8 @@
 // Re-check at 640x480 after changing anything here.
 //
 // Velocity9x: what the card and driver are, read-only, with the logo.
-// Velocity9x Advanced: everything that writes SYSTEM.INI.
+// Velocity9x Advanced: everything that writes SYSTEM.INI, and the
+// write-combining switch, which is C:\V9XDIAG\NOWC.TXT rather than a key.
 //
 // The logo slot must stay larger than the generated bitmap in both axes:
 // SS_CENTERIMAGE centres the image and clips whatever does not fit rather
@@ -18,13 +19,14 @@
 // page.ps1) against this 238x24-unit slot.
 //
 // Rows are on an 11-unit pitch for labels and 16 for combo boxes, whose cy
-// (60) is the dropped-down height. Controls for features this driver does
-// not have yet - texture filtering, running the diagnostics from here - are
-// present and disabled. Write combining is a read-only row: the driver
-// decides it, and NOWC.TXT is its off switch. Every combo carries only entries this
-// build implements; when SYSTEM.INI already names something else the page
-// adds an entry for it, so opening the page cannot silently rewrite a
-// setting somebody put there deliberately.
+// (60) is the dropped-down height. Every control drives something the
+// driver reads; the placeholders for features it does not have (texture
+// filtering, Run diagnostics) were removed on 2026-11-21. When each setting
+// takes effect is said by the Apply message, which is where the two
+// restart notes this page used to carry went, to make room. Every combo
+// carries only entries this build implements; when SYSTEM.INI already
+// names something else the page adds an entry for it, so opening the page
+// cannot silently rewrite a setting somebody put there deliberately.
 #include <windows.h>
 #include "settings_propsheet.h"
 
@@ -91,10 +93,11 @@ BEGIN
     LTEXT           "D3D interface:", -1, 14, 34, 64, 8
     COMBOBOX        V9X_IDC_DDI, 80, 31, 160, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Texture filtering:", -1, 14, 50, 64, 8, WS_DISABLED
-    COMBOBOX        V9X_IDC_TEXTURE_FILTER, 80, 47, 160, 60,
-                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_DISABLED
-    LTEXT           "Direct3D needs a restart to change. The interface applies to the next Direct3D program.", -1, 14, 64, 226, 16
+    LTEXT           "Per program:", -1, 14, 50, 64, 8
+    PUSHBUTTON      "Interface exceptions...", V9X_IDC_DDI_PROGRAMS,
+                    80, 47, 100, 14, WS_TABSTOP
+    AUTOCHECKBOX    "Software Direct3D may use system-memory textures",
+                    V9X_IDC_SOFT_SYSMEM, 14, 66, 226, 10, WS_TABSTOP
 
     GROUPBOX        "Display", -1, 7, 86, 238, 74
     LTEXT           "Vertical sync:", -1, 14, 100, 64, 8
@@ -103,9 +106,12 @@ BEGIN
     LTEXT           "16-bit colour:", -1, 14, 116, 64, 8
     COMBOBOX        V9X_IDC_COLOUR_LAYOUT, 80, 113, 160, 60,
                     CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Write combining:", -1, 14, 130, 64, 8
-    LTEXT           "", V9X_IDC_WRITE_COMBINE, 80, 130, 160, 8
-    LTEXT           "Vertical sync applies to the next DirectDraw program; the colour layout needs a restart.", -1, 14, 143, 226, 16
+    LTEXT           "2D acceleration:", -1, 14, 132, 64, 8
+    COMBOBOX        V9X_IDC_GDI_ACCEL, 80, 129, 160, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX    "Write combining", V9X_IDC_WRITE_COMBINE_SWITCH,
+                    14, 146, 68, 10, WS_TABSTOP
+    LTEXT           "", V9X_IDC_WRITE_COMBINE, 84, 147, 156, 8
 
     GROUPBOX        "Hardware and diagnostics", -1, 7, 164, 238, 56
     LTEXT           "Core clock:", -1, 14, 175, 64, 8
@@ -115,6 +121,31 @@ BEGIN
     LTEXT           "Report a problem:", -1, 14, 203, 62, 8
     PUSHBUTTON      "Send report...", V9X_IDC_SEND_REPORT,
                     78, 200, 78, 14, WS_TABSTOP
-    PUSHBUTTON      "Run diagnostics...", V9X_IDC_RUN_DIAGNOSTICS,
-                    160, 200, 80, 14, WS_DISABLED
+END
+
+// [Velocity9x.Direct3DDdi]: one interface per program, by file name. A
+// modal dialog of its own, opened from the Advanced tab, that writes on OK.
+// d3d_core.c reads the list only where DrawPrimitives2 is available at all,
+// so an entry cannot lift a program above "DirectX 5 only"; the text says so.
+V9X_ID_DDI_PROGRAMS DIALOG 0, 0, 220, 156
+STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Direct3D interface per program"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Listed programs get their own interface whatever the D3D interface setting says, unless it is DirectX 5 only. Use the file name, such as QUAKE2.EXE.", -1, 7, 4, 206, 26
+    LISTBOX         V9X_IDC_PROG_LIST, 7, 32, 206, 58,
+                    LBS_NOTIFY | LBS_USETABSTOPS | WS_VSCROLL | WS_BORDER |
+                    WS_TABSTOP
+    LTEXT           "Program:", -1, 7, 98, 40, 8
+    EDITTEXT        V9X_IDC_PROG_NAME, 50, 96, 163, 12,
+                    ES_AUTOHSCROLL | ES_UPPERCASE | WS_TABSTOP
+    LTEXT           "Interface:", -1, 7, 114, 40, 8
+    COMBOBOX        V9X_IDC_PROG_LEVEL, 50, 112, 163, 60,
+                    CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Add or change", V9X_IDC_PROG_ADD, 7, 134, 58, 14,
+                    WS_TABSTOP
+    PUSHBUTTON      "Remove", V9X_IDC_PROG_REMOVE, 69, 134, 44, 14,
+                    WS_TABSTOP
+    DEFPUSHBUTTON   "OK", IDOK, 125, 134, 42, 14, WS_TABSTOP
+    PUSHBUTTON      "Cancel", IDCANCEL, 171, 134, 42, 14, WS_TABSTOP
 END

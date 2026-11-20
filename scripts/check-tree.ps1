@@ -2142,6 +2142,33 @@ if ($statusText -notmatch '\(raw_caps & V9X_DD_ENGINE_CAP_D3D\) != 0ul' -or
            'as a Direct3D engine. Chips that grant the capability at ' +
            'runtime keep a not-advertised word.')
 }
+# The Advanced tab writes keys the driver reads under its own literals. A
+# typo on either side writes a key nothing reads, and nothing else notices.
+$propsheetText = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'tools\diag\settings_propsheet.c')
+$pageKeys = @(
+    @{ Key = '"GdiAccel"';               Reader = 'src\display16\gdi_accel.c' },
+    @{ Key = '"D3DSoftSysMem"';          Reader = 'src\display16\dd16.c' },
+    @{ Key = '"Direct3DDdi"';            Reader = 'src\display16\dd16.c' },
+    @{ Key = '"Velocity9x.Direct3DDdi"'; Reader = 'src\display32\d3d\d3d_core.c' }
+)
+foreach ($pageKey in $pageKeys) {
+    $readerText = Get-Content -Raw -LiteralPath (
+        Join-Path $repoRoot $pageKey.Reader)
+    if (-not $readerText.Contains($pageKey.Key) -or
+        -not $propsheetText.Contains($pageKey.Key)) {
+        throw ("The settings page and $($pageKey.Reader) must both spell " +
+               "the key $($pageKey.Key).")
+    }
+}
+# And the page's "absent means on" reading of GdiAccel is gdi_accel.c's.
+$gdiAccelText = Get-Content -Raw -LiteralPath (
+    Join-Path $repoRoot 'src\display16\gdi_accel.c')
+if ($gdiAccelText -notmatch '(?m)^#define\s+V9X_GDI_DEFAULT_MASTER\s+1\s*$' -or
+    $statusText -notmatch 'V9X_SETTINGS_SECTION, "GdiAccel", 1,') {
+    throw ('settings_status.c reads an absent GdiAccel as 1, which must ' +
+           'match V9X_GDI_DEFAULT_MASTER in gdi_accel.c.')
+}
 # And the reported sentence must be keyed on the RESOLVED mode, or a chip
 # whose engine this boot did not permit is described as running it.
 # Stated as a prohibition rather than a presence check, because the first

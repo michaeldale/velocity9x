@@ -87,6 +87,21 @@ typedef struct v9x_settings_status {
     /* Whether the framebuffer aperture is write-combining this boot, from
      * V9XBOOT.INI's MtrrWrite= and PatWrite=, as a sentence for the page. */
     char write_combining[48];
+    /* `wc_applicable`: the chip opts in to write combining, so the driver
+     * recorded MtrrWrite= or PatWrite= this boot. `wc_marker`: NOWC.TXT,
+     * the driver's off switch, exists. */
+    int wc_applicable;
+    int wc_marker;
+    /*
+     * 2D acceleration. `gdi_accel_request` is [Velocity9x] GdiAccel, 1 when
+     * absent (gdi_accel.c's default). `gdi_engine_capable` is whether the
+     * chip's engine reported a fill or a copy, the only primitives GdiAccel
+     * can turn on.
+     */
+    int gdi_accel_request;
+    int gdi_engine_capable;
+    /* [Velocity9x] D3DSoftSysMem, 0 when absent. */
+    int soft_sysmem_request;
     /* The runtime mode table's story, from C:\V9XDIAG\V9XMODES.INI: published and
      * hidden counts, or the static-list statement when no inventory exists. */
     char dynamic_modes[128];

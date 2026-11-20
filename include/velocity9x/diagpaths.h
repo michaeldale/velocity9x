@@ -55,7 +55,8 @@
  * Write-combining's recovery switch: present, with any content, it stops
  * the MTRR write (Stage B, docs\plans\write-combining-stage-b.md decision
  * 1, option B). Written from DOS by V9X3D OFF or by RECOVER.TXT's one
- * line; nothing in the driver writes it. Here for the reason INTELARM.TXT
+ * line, or by the Advanced tab's Write combining box
+ * (tools\diag\settings_propsheet.c); nothing in the driver writes it. Here for the reason INTELARM.TXT
  * is: the driver reads this directory at every load and never SYSTEM.INI.
  */
 #define V9X_DIAG_NOWC_TXT    V9X_DIAG_PATH("NOWC.TXT")      /* enable16.c */

@@ -39,10 +39,9 @@
 /* The Advanced tab's clock rows, from the driver's clock detector. */
 #define V9X_IDC_CORE_CLOCK      2036
 #define V9X_IDC_MEMORY_CLOCK    2037
-/* Present and disabled until the driver has the feature. */
-#define V9X_IDC_RUN_DIAGNOSTICS 2033
-#define V9X_IDC_TEXTURE_FILTER  2034
-/* The Advanced tab's read-only write-combining row. */
+/* 2033 and 2034 were Run diagnostics and Texture filtering, disabled
+ * placeholders removed on 2026-11-21. Not reused. */
+/* The Advanced tab's write-combining state text, beside its switch. */
 #define V9X_IDC_WRITE_COMBINE   2035
 /* The two buttons that start V9XUPD.EXE: Send report... on the Advanced
  * tab, Check for updates... on the Velocity9x tab. */
@@ -52,5 +51,19 @@
  * stamped (replaced the GDI and DirectDraw test rows, which the report
  * keeps). */
 #define V9X_IDC_DDI_STATE       2040
+/* The Advanced tab's controls for keys the driver already read (2026-11-21):
+ * the per-program interface button, D3DSoftSysMem, GdiAccel, and the
+ * NOWC.TXT switch. */
+#define V9X_IDC_DDI_PROGRAMS          2041
+#define V9X_IDC_SOFT_SYSMEM           2042
+#define V9X_IDC_GDI_ACCEL             2043
+#define V9X_IDC_WRITE_COMBINE_SWITCH  2044
+/* The per-program interface dialog and its controls. */
+#define V9X_ID_DDI_PROGRAMS   2200
+#define V9X_IDC_PROG_LIST     2201
+#define V9X_IDC_PROG_NAME     2202
+#define V9X_IDC_PROG_LEVEL    2203
+#define V9X_IDC_PROG_ADD      2204
+#define V9X_IDC_PROG_REMOVE   2205
 
 #endif
