@@ -35,57 +35,44 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.56.1
+## Current version: 0.58.0
 
-[Download](releases/0.56.1/README.md) ·
+[Download](releases/0.58.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
 
-New in 0.56.1:
-- **HD 4000, `intel-gma` package: the GPU at its top clock.** The driver
-  asked for the render clock's top speed (RP0) on Haswell only; Ivy
-  Bridge stayed where the BIOS left it. On the i5-3570K the HD 4000 now
-  runs 1150 MHz, and 3DMark 2000 went from 3121 to 4169, 3DMark 2001 SE
-  from 1743 to 2555
-  ([record](docs/decisions/2026-11-19-ivybridge-render-clock-rp0.md)).
-- **HD 7660D (Trinity), `ati` package: the clock its VBIOS allows at the
-  boot voltage.** The BIOS boots it at 200 MHz; the driver now runs the
-  VBIOS's own SetEngineClock to 304 MHz, the most its PowerPlay table
-  lists without a higher voltage
-  ([record](docs/decisions/2026-11-19-trinity-engine-clock-200mhz.md)).
-- **Evergreen-class Radeons, `ati` package: longer Direct3D batches and
-  one cache flush per group of batches**, as on GCN since 0.55.0
-  ([record](docs/decisions/2026-11-19-evergreen-batch-flush-groups.md)).
-  With the clock, the HD 7660D's 3DMark 2000 went from 3821 to 4228 and
-  3DMark 2001 SE from 1906 to 2628.
-- **Evergreen-class Radeons: XRGB8888 textures**, which drew black
-  ([record](docs/decisions/2026-11-19-evergreen-xrgb8888-textures.md)).
+New in 0.58.0:
+- **Intel HD Graphics 3000 (Sandy Bridge desktop, `8086:0112`),
+  `intel-gma` package.** DirectDraw fills, copies and page flips on the
+  chip at 8, 16 and 32 bpp, and the render clock at its 1100 MHz top.
+  Hardware Direct3D on the chip's own 3D pipeline with two texture
+  stages, and for DirectX 8 programs pixel shader 1.1, DXT textures and
+  cube maps; OpenGL and Glide through the same engine. Every release
+  probe passes; 3DMark 2000 (4068), 3DMark 2001 SE (3519) and the Quake 3
+  demo (95.3 fps) run on it. One i3-2105 desktop through remote help
+  ([2D](docs/decisions/2026-11-19-sandybridge-bcs-blits-and-flips.md),
+  [clock](docs/decisions/2026-11-19-sandybridge-render-clock-rp0.md),
+  [Direct3D](docs/decisions/2026-11-20-sandybridge-gen6-direct3d-v9xd32.md),
+  [pixel shaders](docs/decisions/2026-11-20-sandybridge-ddi8-ps11.md)).
+- **Radeon GCN cards, `ati` package: vsync off without half-drawn
+  frames.** A flip without vsync was called done before the screen took
+  it, so games drew into the frame on screen (missing sky, cars and HUD
+  in 3DMark 2001 SE on an R7 250-class Oland). It now takes effect at the
+  next line and tears as it should. Measured on the Oland only; the
+  Carrizo, Mullins and Evergreen cards take the same change
+  ([record](docs/decisions/2026-11-20-gcn-vsync-off-hretrace-flips.md)).
 
-New in 0.56.0:
-- **HD 4600, `intel-gma` package: longer Direct3D batches.** Batches
-  fill a whole slot (293 triangles instead of 64), and indexed lists too
-  large for one slot are drawn in slot-sized pieces instead of triangle
-  by triangle. 3DMark 2001 SE with the game's vsync went from 3388 to
-  3888 on the i5-4570
-  ([record](docs/decisions/2026-11-18-haswell-batch-size-and-indexed-pieces.md)).
-- **Oland XT, `ati` package: the card's clocks.** Its BIOS leaves it at
-  300 MHz engine and 300 MHz memory with no power management. The driver
-  now runs the card's own VBIOS clock tables to the highest level its
-  PowerPlay table allows at the boot voltage: 400 MHz and 1000 MHz on the
-  measured card. 3DMark 2001 SE went from 4234 to 4797
-  ([record](docs/decisions/2026-11-18-oland-clocks-left-by-the-bios.md)).
-- **`vbe` package, adapters whose VESA BIOS says they are not VGA
-  compatible:** 256-colour palettes go through the BIOS, and the driver
-  no longer resets the BIOS's line length. Found on a Matrox Millennium
-  P650, whose 640x480 256-colour desktop came up scrambled and in the
-  wrong colours; its owner reports 640x480 to 1280x1024 at 8, 16 and
-  32 bpp now look right ([record](docs/decisions/2026-11-18-p650-vbe-palette-and-stride.md)).
-- **HD 4600 on a monitor connected after power-on:** when the BIOS
-  leaves the panel fitter scaling a full-size picture, the driver sets the
-  picture's size to the mode's. Games were drawn twice across once on the
-  i5-4570; that state did not come back, so this fix has not yet had to
-  act ([issue](docs/issues/2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)).
+New in 0.57.0:
+- **Vsync off ("Always off") no longer shows half-drawn frames** on
+  Haswell, Ivy Bridge, Rage 128, Evergreen, RS690 and RV280, and on the
+  HD 4600 and HD 4000 runs above the refresh rate with ordinary tearing
+  ([record](docs/decisions/2026-11-19-haswell-vsync-off-async-flips.md)).
+- **HD 4600: 32 MiB of textures in system memory** on the measured
+  i5-4570 ([record](docs/decisions/2026-11-19-haswell-texture-pool-phase3.md)).
+- **Direct3D 8 programs get their mipmaps back**: DirectX 8's mip filter
+  was read with DirectX 7's numbering
+  ([issue](docs/issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)).
 
 ### Known issues
 
@@ -106,6 +93,9 @@ New in 0.56.0:
   stuck; press Escape and resume
   ([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).
 - **HD 4600:** 3DMark 2001 SE's Nature draws its distant terrain white.
+- **HD 3000:** new in 0.58.0 and run on one machine. Not yet looked at:
+  3DMark 2001 SE's Nature frames, cube maps with mipmaps, a Glide game,
+  full-screen Quake 3, and leaving a full-screen DOS box.
 - **GMA 4500MHD, Incoming demo:** Start Game can fault (exception at
   465973 after the pilot-name screen), and the game is slow with some
   render faults its reporter still sees; the cause is not found
@@ -162,6 +152,15 @@ New in 0.56.0:
 
 ### Recent releases
 
+- **0.56.2:** the Ironlake mobile HD Graphics (`8086:0046`) claimed,
+  from a survey.
+- **0.56.1:** the HD 4000 at its 1150 MHz top clock (3DMark 2001 SE 1743
+  to 2555); the HD 7660D at 304 MHz with longer Direct3D batches (2001 SE
+  1906 to 2628); XRGB8888 textures on Evergreen-class Radeons.
+- **0.56.0:** longer Direct3D batches on the HD 4600 (2001 SE 3388 to
+  3888); the Oland XT's clocks from its VBIOS (2001 SE 4234 to 4797); the
+  `vbe` package's palette and line length on non-VGA adapters (Matrox
+  P650).
 - **0.55.0:** GCN Radeons with less driver work per frame (queued flips,
   a write-combined command window, 512-triangle batches sharing their
   fences, indexed lists whole on the Oland, CP clears): the Oland's
@@ -279,6 +278,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Intel GMA 4500MHD (GM45/GL40, `8086:2A42`) | `intel-gma` | Gen4 (G4x) | The G45's path unchanged, built from one survey of an HP t5740. That reporter's t5740 (GL40) ran 0.35.0: the desktop at 800x600x16 and Direct3D (3DMark 99, with flicker they put down to vsync off), by their account and a diagnostic report ([record](docs/decisions/2026-11-05-gm45-gl40-field-report.md)). From 0.44.0 the same machine is reached through remote help: Direct3D, OpenGL and Glide 2 probes pass, two-unit REPLACE and DECAL fail as on the GMA X3100 and Ironlake, and Forsaken's menu draws ([audit](docs/decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md), [issue](docs/issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)). From 0.48.0 Half-Life's grates and doors draw, in every renderer by its reporter's account ([issue](docs/issues/2026-11-11-gen4-app-alpha-test-depth-write-draws-dropped.md)) |
 | Intel HD Graphics (Ironlake, `8086:0042`) | `intel-gma` | Gen5 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Clarkdale H55 desktop (i3-540) through remote help. No game run |
 | Intel HD Graphics mobile (Ironlake, `8086:0046`), from 0.56.2 | `intel-gma` | Gen5 | The desktop Ironlake's path, built from one DOS survey of an Acer Aspire 4740 ([GitHub issue 28](https://github.com/michaeldale/velocity9x/issues/28)). Not run on one. Its BIOS lists 640x480, 800x600 and 1024x768 only, so the panel's 1366x768 is not offered ([record](docs/decisions/2026-11-19-ironlake-mobile-0046-from-a-survey.md)) |
+| Intel HD Graphics 3000 (Sandy Bridge, `8086:0112`), from 0.58.0 | `intel-gma` | Gen6 | Direct3D at 16 and 32 bpp with two texture stages, and through the DirectX 8 interface pixel shader 1.1, DXT textures and cube maps; OpenGL (Quake 3 at 32-bit colour, 24-bit depth) and the Glide 2 probe; DirectDraw fills, copies and page flips on the blitter; the render clock at its 1100 MHz top. Every release probe passes. 3DMark 2000 and 2001 SE. One i3-2105 desktop through remote help. Other Sandy Bridge ids (GT1 parts, mobile) are not claimed; 3DCIF not run |
 | Intel HD Graphics 4000 (Ivy Bridge, `8086:0162`) | `intel-gma` | Gen7 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, one texture stage per pass (0.36.0), the OpenGL and Glide 2 probes, a Glide 3 session; DirectDraw on the blitter and page flips. 3DMark 2000 and 2001 SE; the render clock at its 1150 MHz top (0.56.1). Every release probe passes on 0.56.0 (an i5-3570K desktop through remote help, 2026-11-19). 3DCIF not run |
 | Intel HD Graphics 4000 mobile (Ivy Bridge, `8086:0166`), from 0.36.0 | `intel-gma` | Gen7 | The desktop HD 4000's path, with the laptop panel (LVDS, 1366x768) behind the panel fitter: Direct3D at 16 and 32 bpp with 16 and 24-bit Z, the OpenGL and Glide 2 probes; DirectDraw on the blitter and page flips. 3DMark 2000. One tester's Lenovo laptop (i7-3632QM) through remote help; its NVIDIA GeForce (Optimus) is left alone |
 | Intel HD Graphics 4600 (Haswell, `8086:0412`) | `intel-gma` | Gen7.5 | Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; OpenGL with two texture units and transform and lighting on the card, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000, Half-Life (Direct3D and OpenGL), Quake 3. From 0.51.0, environment and DOT3 bump mapping in Direct3D 8 and 9, and the core at its full 1150 MHz instead of the BIOS's 400. From 0.56.0, Direct3D batches a slot long (3DMark 2001 SE 3388 to 3888). One Dell i5-4570 desktop. 3DCIF is not supported on it in 0.19.0 |
@@ -378,6 +378,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | Intel GMA X4500, GMA 4500 (reported, 0.28.0) | Not recorded | Yes | Not run | Yes | Not recorded | Yes | Not run |
 | Intel GMA 4500MHD | Not recorded | Yes | Not run | Probe | Probe, MODULATE and BLEND only | Glide 2 probe only | Not run |
 | Intel HD Graphics (Ironlake) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
+| Intel HD Graphics 3000 (0.58.0) | DirectDraw, flips | Yes | Yes, with pixel shader 1.1 | Yes | Yes | Glide 2 probe only | Not run |
 | Intel HD Graphics 4000 | DirectDraw | Yes | Not run | Yes | Yes | Probe only, no game | Not run |
 | Intel HD Graphics 4000 mobile (0.36.0) | DirectDraw, flips | Yes | Not run | Probe | Not run | Glide 2 probe only | Not run |
 | Intel HD Graphics 4600 | DirectDraw | Yes | Yes, with pixel shader 1.1 (0.34.0) | Yes | Yes | Probe only, no game | No (0.19.0) |
@@ -441,6 +442,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 | Card | Half-Life `mwd5`, Direct3D | Quake 2, OpenGL | Version |
 |---|---|---|---|
 | Intel HD Graphics 4600 (i5-4570) | 137.6 fps (windowed); UT2004 demo botmatch 32.9 fps (0.50.0 build) | not run; Half-Life `-gl` 174.4 fps (windowed); Quake 3 `demo001` 56.9 fps | 0.36.0 |
+| Intel HD Graphics 3000 (i3-2105) | not run | not run; Quake 3 `demo001` 95.3 fps (windowed, 32 bpp, 24-bit depth) | 0.58.0 build |
 | AMD Radeon HD 5450 | not run | not run; Quake 3 `demo001` 63.6 fps | 0.32.0 |
 | AMD Radeon R7E (Carrizo, GX-420GI) | not run | not run; Quake 3 `demo001` 21.3 fps | 0.33.0 |
 | AMD Radeon HD 7470 (A10-5700) | not run | not run; Quake 3 `demo001` 34.6 fps | 0.34.0 build |
@@ -535,6 +537,13 @@ programs keep the older interface; `[Velocity9x.Direct3DDdi]
 From 0.50.0 DXT cube textures and the doubled blend (MODULATE2X) are
 offered too, and the Unreal Tournament 2004 demo runs
 ([issue](docs/issues/2026-11-13-haswell-ut2004-demo-dxt5-cube-create-refused.md)).
+
+On the HD 3000, from 0.58.0, DirectX 8 and 9 programs get DDI 8 with
+**pixel shader 1.1** on the Gen6 engine, two texture stages, cube
+textures and DXT textures. V9XD32's pixel shader checks pass, and 3DMark
+2001 SE runs to a full score (3519) with compressed textures. Its Nature
+frames have not been looked at
+([record](docs/decisions/2026-11-20-sandybridge-ddi8-ps11.md)).
 
 On the GMA 900, 950, 3100 and 3150, from 0.47.0, DirectX 8 programs get
 DDI 8 with **pixel shader 1.1** on the Gen3 engine, four texture stages,

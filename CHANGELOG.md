@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.58.0 - not yet released
+## 0.58.0 - 2026-11-20
 
 - **`intel-gma` package: Intel HD Graphics 3000 (Sandy Bridge desktop,
   `8086:0112`).** DirectDraw fills, copies and page flips run on the chip
