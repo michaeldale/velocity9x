@@ -61,6 +61,9 @@ typedef struct v9x_settings_status {
      */
     int direct3d_capable;
     int direct3d_request;
+    /* The engine's name from its Direct3D= word ("S3D triangle engine"),
+     * or "the chip's own engine", for the selector's Hardware entry. */
+    char engine_name[40];
     /*
      * The 16-bit colour layout. `highcolor_request` is the raw [Velocity9x]
      * HighColor value - 15, 16, or 0 for absent/automatic - and

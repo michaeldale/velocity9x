@@ -949,6 +949,9 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
         if (engine_d3d) {
             status->direct3d_capable = 1;
         }
+        status->engine_name[0] = '\0';
+        v9x_append(status->engine_name, sizeof(status->engine_name),
+                   v9x_engine_name(direct3d));
         /*
          * The absent-key default is the driver's, not this tool's.
          *

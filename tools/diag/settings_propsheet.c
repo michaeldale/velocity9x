@@ -203,12 +203,23 @@ static void v9x_page_fill_d3d(HWND dialog)
     EnableWindow(combo, TRUE);
 
     for (index = 0u; index < V9X_PAGE_D3D_CHOICE_COUNT; ++index) {
+        char label[64];
+
         if (v9x_page_d3d_choices[index].needs_engine != 0 &&
             !v9x_page_status.direct3d_capable) {
             continue;
         }
-        item = SendMessageA(combo, CB_ADDSTRING, 0,
-                            (LPARAM)v9x_page_d3d_choices[index].label);
+        /* The Hardware entry names the engine, as the first tab does. */
+        if (v9x_page_d3d_choices[index].value ==
+            (int)V9X_D3D_REQUEST_HARDWARE) {
+            lstrcpyA(label, "Hardware (");
+            lstrcatA(label, v9x_page_status.engine_name);
+            lstrcatA(label, ")");
+        } else {
+            lstrcpynA(label, v9x_page_d3d_choices[index].label,
+                      sizeof(label));
+        }
+        item = SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)label);
         if (item < 0) {
             continue;
         }
@@ -1383,7 +1394,12 @@ static BOOL CALLBACK v9x_advanced_dialog_proc(HWND dialog,
         v9x_page_soft_loaded = v9x_page_status.soft_sysmem_request != 0;
         CheckDlgButton(dialog, V9X_IDC_SOFT_SYSMEM,
                        v9x_page_soft_loaded ? BST_CHECKED : BST_UNCHECKED);
-        v9x_page_wc_loaded = !v9x_page_status.wc_marker;
+        /* Ticked only where it can be on: a chip that does not opt in
+         * shows an empty, greyed box beside "Not used on this chip". The
+         * loaded value is what the box shows, so Apply never sees a change
+         * the user did not make. */
+        v9x_page_wc_loaded = v9x_page_status.wc_applicable &&
+                             !v9x_page_status.wc_marker;
         CheckDlgButton(dialog, V9X_IDC_WRITE_COMBINE_SWITCH,
                        v9x_page_wc_loaded ? BST_CHECKED : BST_UNCHECKED);
         EnableWindow(GetDlgItem(dialog, V9X_IDC_WRITE_COMBINE_SWITCH),
