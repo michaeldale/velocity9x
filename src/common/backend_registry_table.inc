@@ -59,11 +59,14 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x9874u, v9x_ati_mach64_backend }, /* ati / carrizo */
     { 0x1002u, 0x9854u, v9x_ati_mach64_backend }, /* ati / mullins */
     { 0x1002u, 0x6610u, v9x_ati_mach64_backend }, /* ati / oland */
+    { 0x1002u, 0x6611u, v9x_ati_mach64_backend }, /* ati / oland alias */
     { 0x1002u, 0x791Fu, v9x_ati_mach64_backend }, /* ati / rs690 */
     { 0x1002u, 0x9588u, v9x_ati_mach64_backend }, /* ati / rv630 */
     { 0x1002u, 0x94C3u, v9x_ati_mach64_backend }, /* ati / rv610 */
     { 0x1002u, 0x5960u, v9x_ati_mach64_backend }, /* ati / rv280 */
     { 0x1002u, 0x5964u, v9x_ati_mach64_backend }, /* ati / rv280 alias */
+    { 0x1002u, 0x5961u, v9x_ati_mach64_backend }, /* ati / rv280 alias */
+    { 0x1002u, 0x5962u, v9x_ati_mach64_backend }, /* ati / rv280 alias */
     { 0x8086u, 0x27AEu, v9x_intel_gma_backend }, /* intel-gma / gma950-945gse */
     { 0x8086u, 0x2592u, v9x_intel_gma_backend }, /* intel-gma / gma900-915gm */
     { 0x8086u, 0xA011u, v9x_intel_gma_backend }, /* intel-gma / gma3150-pineview */
@@ -80,9 +83,12 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x8086u, 0x0166u, v9x_intel_gma_backend }, /* intel-gma / hd4000-ivb alias */
     { 0x8086u, 0x0152u, v9x_intel_gma_backend }, /* intel-gma / hd4000-ivb alias */
     { 0x8086u, 0x0112u, v9x_intel_gma_backend }, /* intel-gma / hd3000-snb */
+    { 0x8086u, 0x0122u, v9x_intel_gma_backend }, /* intel-gma / hd3000-snb alias */
     { 0x102Bu, 0x0519u, v9x_matrox_mga_backend }, /* matrox / mga2064w */
     { 0x102Bu, 0x051Bu, v9x_matrox_mga_backend }, /* matrox / mga2164w */
+    { 0x102Bu, 0x051Fu, v9x_matrox_mga_backend }, /* matrox / mga2164w alias */
     { 0x102Bu, 0x051Au, v9x_matrox_mga_backend }, /* matrox / mystique */
+    { 0x102Bu, 0x051Eu, v9x_matrox_mga_backend }, /* matrox / mystique alias */
     { 0x12D2u, 0x0018u, v9x_nvidia_backend }, /* nvidia / riva128 */
     { 0x10DEu, 0x0A65u, v9x_nvidia_backend }, /* nvidia / gt218 */
     { 0x5333u, 0x8A01u, v9x_s3_virge_backend }, /* s3 / virge-dx */

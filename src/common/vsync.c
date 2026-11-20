@@ -4,7 +4,7 @@
  */
 #include "velocity9x/vsync.h"
 
-v9x_u16 v9x_vsync_resolve(v9x_u16 requested)
+v9x_u16 V9X_LEAF_FAR v9x_vsync_resolve(v9x_u16 requested)
 {
     if (requested == V9X_VSYNC_REQUEST_ON) {
         return V9X_VSYNC_STATE_ON;
@@ -18,7 +18,8 @@ v9x_u16 v9x_vsync_resolve(v9x_u16 requested)
     return V9X_VSYNC_STATE_APPLICATION;
 }
 
-v9x_u16 v9x_vsync_flip_novsync(v9x_u16 state, v9x_u16 application_novsync)
+v9x_u16 V9X_LEAF_FAR v9x_vsync_flip_novsync(v9x_u16 state,
+                                            v9x_u16 application_novsync)
 {
     if (state == V9X_VSYNC_STATE_ON) {
         return V9X_FALSE;
@@ -33,7 +34,8 @@ v9x_u16 v9x_vsync_flip_novsync(v9x_u16 state, v9x_u16 application_novsync)
     return application_novsync != V9X_FALSE ? V9X_TRUE : V9X_FALSE;
 }
 
-v9x_u16 v9x_vsync_flip_stays_pending(v9x_u16 novsync, v9x_u16 base_latches)
+v9x_u16 V9X_LEAF_FAR v9x_vsync_flip_stays_pending(v9x_u16 novsync,
+                                                 v9x_u16 base_latches)
 {
     if (novsync == V9X_FALSE) {
         return V9X_TRUE;
@@ -45,7 +47,7 @@ v9x_u16 v9x_vsync_flip_stays_pending(v9x_u16 novsync, v9x_u16 base_latches)
     return base_latches != V9X_FALSE ? V9X_TRUE : V9X_FALSE;
 }
 
-const char *v9x_vsync_text(v9x_u16 state)
+const char * V9X_LEAF_FAR v9x_vsync_text(v9x_u16 state)
 {
     if (state == V9X_VSYNC_STATE_ON) {
         return "always-on";

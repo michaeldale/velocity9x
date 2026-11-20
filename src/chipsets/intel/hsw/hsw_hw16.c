@@ -31,8 +31,9 @@ extern unsigned short __far __pascal V9xMiniHswEngineOpen(
 #define V9X_HSW_OPEN_CHIP_HASWELL 0ul
 #define V9X_HSW_OPEN_CHIP_IVYBRIDGE 1ul
 #define V9X_HSW_OPEN_CHIP_SANDYBRIDGE 2ul
-/* Defined below; v9x_ivb_fill_engine tells Sandy Bridge by it. */
+/* Defined below; v9x_ivb_fill_engine tells Sandy Bridge by them. */
 extern const V9X_HW16_DEVICE v9x_snb_hd3000_device;
+extern const V9X_HW16_DEVICE v9x_snb_hd3000_0122_device;
 extern unsigned short __far __pascal V9xMiniHswEngineClose(void);
 extern unsigned short __far __pascal V9xMiniHswRps(
     unsigned long request, unsigned long __far *cap,
@@ -533,11 +534,13 @@ static void v9x_ivb_fill_engine(unsigned long framebuffer_linear_base,
                                 unsigned long *ring_linear_base,
                                 unsigned long *ring_bytes)
 {
+    const V9X_HW16_DEVICE *device = v9x_hw16_active_device();
+
     (void)framebuffer_linear_base;
     /* Sandy Bridge shares this hook: a wrapper of its own cost _TEXT bytes
      * it does not have. */
-    v9x_hsw_fill_engine_for(v9x_hw16_active_device() ==
-                                &v9x_snb_hd3000_device ?
+    v9x_hsw_fill_engine_for(device == &v9x_snb_hd3000_device ||
+                                    device == &v9x_snb_hd3000_0122_device ?
                                 V9X_HSW_OPEN_CHIP_SANDYBRIDGE :
                                 V9X_HSW_OPEN_CHIP_IVYBRIDGE,
                             control_linear_base,
@@ -720,6 +723,31 @@ const V9X_HW16_DEVICE v9x_snb_hd3000_device = {
     V9X_HSW_MAP_BYTES,
     v9x_hsw_reserve_offset,
     /* Write-combined, through PAT where the BIOS leaves no MTRR pair. */
+    1u,
+    v9x_hsw_write_combine
+};
+
+/*
+ * The 0112's alias: the other Sandy Bridge GT2 desktop id, which i915
+ * lists beside it (INTEL_SNB_D_GT2_IDS) and Mesa gives the same GT2
+ * limits. Same CPU die and same VBIOS family, so the 0112's BARs, GGC and
+ * pitch rule are assumed, not read. Not surveyed and not run
+ * (docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md).
+ */
+const V9X_HW16_DEVICE v9x_snb_hd3000_0122_device = {
+    0x8086u, 0x0122u,
+    "Intel HD Graphics 3000 (Sandy Bridge 0122)",
+    "8086", "0122",
+    "none",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen6",
+    0,
+    v9x_ivb_fill_engine,
+    2u,
+    1u,
+    V9X_HSW_MAP_BYTES,
+    v9x_hsw_reserve_offset,
     1u,
     v9x_hsw_write_combine
 };

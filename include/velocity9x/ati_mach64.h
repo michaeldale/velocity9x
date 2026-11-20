@@ -60,6 +60,10 @@
 /* AMD Oland XT (GCN 1): SI's DMA engine through Carrizo's engine type; see
  * oland_hw16.c. Read from W9QI0DAD's Dell board (subsystem 1028:2120). */
 #define V9X_PCI_DEVICE_OLAND_6610       ((v9x_u16)0x6610u)
+/* Its alias, Oland 6611 (HD 8570 / R7 240): the full six-CU die, two RBs
+ * and the 6610's 4 KiB row, read from M-BXMFA8's Dell board by V9XSIMM
+ * (docs\decisions\2026-11-20-oland-6611-survey.md). */
+#define V9X_PCI_DEVICE_OLAND_6611       ((v9x_u16)0x6611u)
 /* The Radeon X1200 IGP (RS690): the Radeon 2D engine behind DirectDraw;
  * see rs690_hw16.c. */
 #define V9X_PCI_DEVICE_RS690_791F       ((v9x_u16)0x791Fu)

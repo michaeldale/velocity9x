@@ -687,6 +687,15 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_si_oland_device')
+
+            # Oland 6611 (HD 8570 / R7 240): the full six-CU die, both RBs
+            # and the 6610's 4 KiB row, read by V9XSIMM from M-BXMFA8's
+            # Dell board (docs\decisions\2026-11-20-oland-6611-survey.md).
+            Aliases = @(
+                @{ DeviceId = '6611'
+                   Name = 'AMD Radeon Oland 6611'
+                   DeviceDesc = 'Velocity9x AMD Radeon Oland 6611' }
+            )
         }
         @{
             Id = 'rs690'
@@ -887,10 +896,19 @@
 
             # The 9200SE: the same RV280, surveyed in the same machine with
             # the same VBE BIOS mode list. Not run under this row.
+            # The 9200 (5961, 5962): the same RV280, which Linux binds with
+            # the 5960's flags. Not surveyed and not run:
+            # docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md.
             Aliases = @(
                 @{ DeviceId = '5964'
                    Name = 'ATI Radeon 9200SE (RV280)'
                    DeviceDesc = 'Velocity9x ATI Radeon 9200SE (RV280)' }
+                @{ DeviceId = '5961'
+                   Name = 'ATI Radeon 9200 (RV280 5961)'
+                   DeviceDesc = 'Velocity9x ATI Radeon 9200 (RV280 5961)' }
+                @{ DeviceId = '5962'
+                   Name = 'ATI Radeon 9200 (RV280 5962)'
+                   DeviceDesc = 'Velocity9x ATI Radeon 9200 (RV280 5962)' }
             )
         }
     )
@@ -929,7 +947,9 @@
             @{ Name = 'build'; Path = 'src\common\build.c' }
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
-            @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            # In LEAFCODE with vsync.c below: nothing in this image calls it
+            # (the backends that do are host-built), and _TEXT is full.
+            @{ Name = 'resources'; Path = 'src\common\resources.c'; CodeSegment = 'LEAFCODE' }
             # In LEAFCODE since the one-display guard in ddi.c took _TEXT
             # 459 bytes past its budget (leaf16.h).
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c'; CodeSegment = 'LEAFCODE' }
@@ -952,7 +972,9 @@
             # has a DirectDraw HAL to apply it to. In LEAFCODE here since the
             # R6xx row took _TEXT 49 bytes past its budget (leaf16.h).
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c'; CodeSegment = 'LEAFCODE' }
-            @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
+            # The vsync policy, in LEAFCODE with resources.c since the RV280
+            # 9200 and Oland 6611 rows took _TEXT 243 bytes past its budget.
+            @{ Name = 'vsync'; Path = 'src\common\vsync.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'vt2_hw16'; Path = 'src\chipsets\ati\vt2\vt2_hw16.c' }
             @{ Name = 'mobility_hw16'; Path = 'src\chipsets\ati\mobility\mobility_hw16.c' }
@@ -1034,7 +1056,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is

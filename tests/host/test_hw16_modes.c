@@ -210,6 +210,15 @@ const V9X_HW16_DEVICE v9x_rv280_9250_device = {
 const V9X_HW16_DEVICE v9x_rv280_9200se_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_rv280_9200_5961_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_rv280_9200_5962_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_si_oland_6611_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write)
 {
     (void)write;
@@ -247,6 +256,12 @@ const V9X_HW16_DEVICE v9x_mga2164w_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 const V9X_HW16_DEVICE v9x_mystique_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_mga2164w_agp_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+const V9X_HW16_DEVICE v9x_mystique_agp_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 const V9X_HW16_DEVICE v9x_vsa100_device = {

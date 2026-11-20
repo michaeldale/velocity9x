@@ -112,6 +112,15 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_mga2164w_device')
+
+            # The Millennium II on AGP: the same MGA-2164W, which Linux
+            # matroxfb binds with the PCI board's tables. Not surveyed and
+            # not run: docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md.
+            Aliases = @(
+                @{ DeviceId = '051F'
+                   Name = 'Matrox Millennium II MGA-2164W AGP'
+                   DeviceDesc = 'Velocity9x Matrox Millennium II MGA-2164W AGP' }
+            )
         }
         @{
             Id = 'mystique'
@@ -155,6 +164,15 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_mystique_device')
+
+            # The Mystique on AGP: the same MGA-1064SG, which Linux matroxfb
+            # binds with the PCI board's tables. Not surveyed and not run:
+            # docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md.
+            Aliases = @(
+                @{ DeviceId = '051E'
+                   Name = 'Matrox Mystique AGP'
+                   DeviceDesc = 'Velocity9x Matrox Mystique AGP' }
+            )
         }
     )
 
@@ -240,7 +258,7 @@
         Include = $true
         Folder = 'MATROX'
         Order = 4
-        HardwareIdHint = 'PCI 102B:0519, 102B:051B, 102B:051A'
+        HardwareIdHint = 'PCI 102B:0519, 102B:051B, 102B:051F, 102B:051A, 102B:051E'
         # Installed files that ride a third disk, as ATI's do: disk 1 went
         # 553 bytes over when the shared Direct3D core was optimised
         # (Michael, 2026-10-24: "Matrox extra floppy ok"). The update

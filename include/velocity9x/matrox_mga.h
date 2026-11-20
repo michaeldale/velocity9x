@@ -30,6 +30,11 @@
 #define V9X_PCI_DEVICE_MGA2064W     ((v9x_u16)0x0519u)
 #define V9X_PCI_DEVICE_MGA2164W     ((v9x_u16)0x051bu)
 #define V9X_PCI_DEVICE_MYSTIQUE     ((v9x_u16)0x051au)
+/* The same two chips on AGP (Linux matroxfb's MIL_2_AGP and MYS_AGP),
+ * claimed as aliases without a survey:
+ * docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md. */
+#define V9X_PCI_DEVICE_MGA2164W_AGP ((v9x_u16)0x051fu)
+#define V9X_PCI_DEVICE_MYSTIQUE_AGP ((v9x_u16)0x051eu)
 
 v9x_status v9x_matrox_mga_probe(
     struct v9x_backend_state *state,

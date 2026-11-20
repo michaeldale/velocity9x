@@ -426,6 +426,16 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('hsw_hw16')
             MapSymbols = @('v9x_snb_hd3000_device')
+
+            # The other Sandy Bridge GT2 desktop id, which i915 lists with
+            # 0112 (INTEL_SNB_D_GT2_IDS) and Mesa gives the same GT2
+            # limits. Not surveyed and not run:
+            # docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md.
+            Aliases = @(
+                @{ DeviceId = '0122'
+                   Name = 'Intel HD Graphics 3000 (Sandy Bridge 0122)'
+                   DeviceDesc = 'Velocity9x Intel HD Graphics 3000 (Sandy Bridge 0122)' }
+            )
         }
     )
 
@@ -440,7 +450,10 @@
             @{ Name = 'build'; Path = 'src\common\build.c' }
             @{ Name = 'log'; Path = 'src\common\log.c' }
             @{ Name = 'mode'; Path = 'src\common\mode.c' }
-            @{ Name = 'resources'; Path = 'src\common\resources.c' }
+            # In LEAFCODE with vsync.c below, as in the ati family, since the
+            # HD 3000's 0122 row took _TEXT a byte past its budget; nothing
+            # in this image calls it.
+            @{ Name = 'resources'; Path = 'src\common\resources.c'; CodeSegment = 'LEAFCODE' }
             # In LEAFCODE since the one-display guard in ddi.c took _TEXT
             # 435 bytes past its budget (leaf16.h).
             @{ Name = 'vbe_parse'; Path = 'src\common\vbe_parse.c'; CodeSegment = 'LEAFCODE' }
@@ -460,7 +473,7 @@
             @{ Name = 'intel_pool16'; Path = 'src\display16\intel_pool16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'pat'; Path = 'src\common\pat.c' }
             @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
-            @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
+            @{ Name = 'vsync'; Path = 'src\common\vsync.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'i9xx_mmio'; Path = 'src\chipsets\intel\i9xx_mmio.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_gtt'; Path = 'src\chipsets\intel\i9xx_gtt.c'; CodeSegment = 'I9XXCODE' }
             @{ Name = 'i9xx_ring'; Path = 'src\chipsets\intel\i9xx_ring.c'; CodeSegment = 'I9XXCODE' }
@@ -546,7 +559,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166, 8086:0152 or 8086:0112 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166, 8086:0152, 8086:0112 or 8086:0122 exactly'
     }
 
     Vm = @{

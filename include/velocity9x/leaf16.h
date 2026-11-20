@@ -15,7 +15,10 @@
  * _TEXT 49 bytes past its budget again (2026-11-13), and
  * src\common\vbe_parse.c when ddi.c's one-display guard took it 459 bytes
  * past (2026-11-15); the intel-gma and nvidia
- * families moved it for the same reason.
+ * families moved it for the same reason. src\common\vsync.c followed in
+ * the ati family when the RV280 9200 and Oland 6611 rows took it 243 bytes
+ * past (2026-11-20), with src\common\resources.c, which nothing in that
+ * image calls.
  *
  * Open Watcom's compact model compiles every C call near, and a near call
  * cannot cross a segment (velocity9x\intel16.h says why that is a wild

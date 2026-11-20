@@ -1,5 +1,6 @@
 /*
- * ATI Radeon 9250 and 9200SE, PCI 1002:5960 and 1002:5964 (RV280).
+ * ATI Radeon 9250 and 9200SE, PCI 1002:5960 and 1002:5964 (RV280), and
+ * the 9200's 5961 and 5962, claimed unrun.
  *
  * The physical target is the remote-help machine M-HNBJNV since
  * 2026-11-15: a PowerColor Radeon 9250 (subsystem 148C:2094) on a VIA
@@ -107,5 +108,25 @@ const V9X_HW16_DEVICE v9x_rv280_9200se_device = {
     0x1002u, 0x5964u,
     "ATI Radeon 9200SE (RV280)",
     "1002", "5964",
+    V9X_RV280_TAIL
+};
+
+/*
+ * The 9200's two ids, which Linux's drm_pciids.h binds as CHIP_RV280 with
+ * the 5960's flags. RV280 attaches to AGP and PCI natively, with no bridge.
+ * Not surveyed and not run
+ * (docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md).
+ */
+const V9X_HW16_DEVICE v9x_rv280_9200_5961_device = {
+    0x1002u, 0x5961u,
+    "ATI Radeon 9200 (RV280 5961)",
+    "1002", "5961",
+    V9X_RV280_TAIL
+};
+
+const V9X_HW16_DEVICE v9x_rv280_9200_5962_device = {
+    0x1002u, 0x5962u,
+    "ATI Radeon 9200 (RV280 5962)",
+    "1002", "5962",
     V9X_RV280_TAIL
 };

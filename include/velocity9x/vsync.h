@@ -18,6 +18,7 @@
 #define VELOCITY9X_VSYNC_H
 
 #include "velocity9x/types.h"
+#include "velocity9x/leaf16.h"
 
 /* The SYSTEM.INI key, in the display driver's [Velocity9x] section. */
 #define V9X_VSYNC_SETTING_KEY "VSync"
@@ -43,7 +44,7 @@
 
 /* The request against what this build knows. Unknown values are the
  * application's choice, the behaviour before the key existed. */
-v9x_u16 v9x_vsync_resolve(v9x_u16 requested);
+v9x_u16 V9X_LEAF_FAR v9x_vsync_resolve(v9x_u16 requested);
 
 /*
  * Whether this flip skips the blank: V9X_TRUE to write the start address
@@ -53,7 +54,8 @@ v9x_u16 v9x_vsync_resolve(v9x_u16 requested);
  * application_novsync is V9X_TRUE when the flip carried DDFLIP_NOVSYNC.
  * ON overrides it; OFF overrides its absence.
  */
-v9x_u16 v9x_vsync_flip_novsync(v9x_u16 state, v9x_u16 application_novsync);
+v9x_u16 V9X_LEAF_FAR v9x_vsync_flip_novsync(v9x_u16 state,
+                                            v9x_u16 application_novsync);
 
 /*
  * Whether the core tracks an accepted flip as pending, so that no Blt, Lock
@@ -67,12 +69,13 @@ v9x_u16 v9x_vsync_flip_novsync(v9x_u16 state, v9x_u16 application_novsync);
  * clear be scanned out (Gen3 under VSync=2, 2026-11-07). Unsynced on a
  * scanout that applies the write at once, nothing is pending, as before.
  */
-v9x_u16 v9x_vsync_flip_stays_pending(v9x_u16 novsync, v9x_u16 base_latches);
+v9x_u16 V9X_LEAF_FAR v9x_vsync_flip_stays_pending(v9x_u16 novsync,
+                                                 v9x_u16 base_latches);
 
 /*
  * The state as the string written to C:\V9XDIAG\V9XHW.INI as VSync= and
  * compared by tools\diag\settings_status.c. Stable text, not prose.
  */
-const char *v9x_vsync_text(v9x_u16 state);
+const char * V9X_LEAF_FAR v9x_vsync_text(v9x_u16 state);
 
 #endif /* VELOCITY9X_VSYNC_H */

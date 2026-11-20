@@ -38,12 +38,15 @@ extern const V9X_HW16_DEVICE v9x_r600_rv630_device;
 extern const V9X_HW16_DEVICE v9x_r600_rv610_device;
 extern const V9X_HW16_DEVICE v9x_rv280_9250_device;
 extern const V9X_HW16_DEVICE v9x_rv280_9200se_device;
+extern const V9X_HW16_DEVICE v9x_rv280_9200_5961_device;
+extern const V9X_HW16_DEVICE v9x_rv280_9200_5962_device;
 /* carrizo_hw16.c: the SDMA engine hook's outcome. */
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_cik_mullins_device;
 /* mullins_hw16.c: the same, for the Mullins row. */
 void v9x_mullins_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_si_oland_device;
+extern const V9X_HW16_DEVICE v9x_si_oland_6611_device;
 /* oland_hw16.c: the same, for the Oland row. */
 void v9x_oland_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
@@ -190,7 +193,10 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_ati_4c4e_device,
     &v9x_ati_4c52_device,
     &v9x_ati_4c53_device,
-    &v9x_rv280_9200se_device
+    &v9x_rv280_9200se_device,
+    &v9x_rv280_9200_5961_device,
+    &v9x_rv280_9200_5962_device,
+    &v9x_si_oland_6611_device
 };
 
 /*
@@ -300,7 +306,8 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     if (device == &v9x_cik_mullins_device) {
         v9x_mullins_publish_diagnostics(write);
     }
-    if (device == &v9x_si_oland_device) {
+    if (device == &v9x_si_oland_device ||
+        device == &v9x_si_oland_6611_device) {
         v9x_oland_publish_diagnostics(write);
     }
 }
@@ -320,7 +327,8 @@ static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
         device == &v9x_evergreen_trinity_device ||
         device == &v9x_r600_rv630_device ||
         device == &v9x_r600_rv610_device ||
-        device == &v9x_si_oland_device) {
+        device == &v9x_si_oland_device ||
+        device == &v9x_si_oland_6611_device) {
         return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
     }
     return 0ul;

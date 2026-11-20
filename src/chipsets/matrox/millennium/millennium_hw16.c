@@ -51,6 +51,9 @@ extern const V9X_HW16_DEVICE *v9x_hw16_active_device(void);
 
 #define V9X_MGA2164W_DEVICE_ID 0x051bu
 #define V9X_MYSTIQUE_DEVICE_ID 0x051au
+/* The same chips on AGP; each takes its PCI chip's classification below. */
+#define V9X_MGA2164W_AGP_DEVICE_ID 0x051fu
+#define V9X_MYSTIQUE_AGP_DEVICE_ID 0x051eu
 
 /*
  * The control aperture mapped by the mini-VDD, which withholds a window
@@ -94,7 +97,8 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
      * prefetchable; silicon never reaches it. The Mystique has no single
      * stated order (its two chips differ), so it has no fallback and stays
      * on the CPU there. */
-    if (device->device_id == V9X_MYSTIQUE_DEVICE_ID) {
+    if (device->device_id == V9X_MYSTIQUE_DEVICE_ID ||
+        device->device_id == V9X_MYSTIQUE_AGP_DEVICE_ID) {
         fallback_index = V9X_MGA_NO_FALLBACK_BAR;
     } else {
         fallback_index = device->framebuffer_bar == 0u ? 1u : 0u;
@@ -120,10 +124,12 @@ static void v9x_mga_fill_engine(unsigned long framebuffer_linear_base,
      * 2064W has none, so the one hook stamps D3D by chip; the HAL selects
      * no MGA 3D engine without it. Only the 2164W has the 32-bit Z
      * buffer; the Mystique's is 16-bit (MGA-1064SG specification 1-4). */
-    if (device->device_id == V9X_MGA2164W_DEVICE_ID) {
+    if (device->device_id == V9X_MGA2164W_DEVICE_ID ||
+        device->device_id == V9X_MGA2164W_AGP_DEVICE_ID) {
         *engine_caps |= V9X_DD_ENGINE_CAP_D3D |
                         V9X_DD_ENGINE_CAP_MGA_DEPTH32;
-    } else if (device->device_id == V9X_MYSTIQUE_DEVICE_ID) {
+    } else if (device->device_id == V9X_MYSTIQUE_DEVICE_ID ||
+               device->device_id == V9X_MYSTIQUE_AGP_DEVICE_ID) {
         *engine_caps |= V9X_DD_ENGINE_CAP_D3D;
     }
 }
@@ -159,6 +165,26 @@ const V9X_HW16_DEVICE v9x_mga2164w_device = {
 };
 
 /*
+ * The 2164W on AGP (051F). An entry of its own because the PCI scan matches
+ * one per id and V9XHW.INI names the part the machine has. Linux matroxfb
+ * binds it with the PCI board's tables (MGA_2164 for both); the fallback
+ * order is the 2164W's. Not surveyed and not run
+ * (docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md).
+ */
+const V9X_HW16_DEVICE v9x_mga2164w_agp_device = {
+    0x102bu, V9X_MGA2164W_AGP_DEVICE_ID,
+    "Matrox Millennium II MGA-2164W AGP",
+    "102B", "051F",
+    "matrox-mga2164w-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-mga2164w",
+    0,
+    v9x_mga_fill_engine,
+    0u
+};
+
+/*
  * The Mystique (051A). The drawing engine is the 2064W's
  * (MGA-1064SG specification 1-2), measured with MGA2D on revision 02 in
  * A8U4I5 on 2026-10-19: fill, forward copy and every overlap copy pass at
@@ -178,6 +204,25 @@ const V9X_HW16_DEVICE v9x_mystique_device = {
     0x102bu, V9X_MYSTIQUE_DEVICE_ID,
     "Matrox Mystique",
     "102B", "051A",
+    "matrox-mystique-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-mga1064sg",
+    0,
+    v9x_mga_fill_engine,
+    1u
+};
+
+/*
+ * The Mystique on AGP (051E), which Linux matroxfb binds as the PCI
+ * Mystique (MGA_1064). Like 051A, it takes no stated BAR order: the
+ * prefetch bit decides. Not surveyed and not run
+ * (docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md).
+ */
+const V9X_HW16_DEVICE v9x_mystique_agp_device = {
+    0x102bu, V9X_MYSTIQUE_AGP_DEVICE_ID,
+    "Matrox Mystique AGP",
+    "102B", "051E",
     "matrox-mystique-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",

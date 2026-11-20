@@ -2,6 +2,7 @@
 #define VELOCITY9X_RESOURCES_H
 
 #include "velocity9x/status.h"
+#include "velocity9x/leaf16.h"
 
 #define V9X_PCI_BAR_MEMORY       ((v9x_u16)0x0001u)
 #define V9X_PCI_BAR_IO           ((v9x_u16)0x0002u)
@@ -24,7 +25,7 @@ struct v9x_framebuffer_binding {
     v9x_u16 override_active;
 };
 
-v9x_status v9x_framebuffer_validate_binding(
+v9x_status V9X_LEAF_FAR v9x_framebuffer_validate_binding(
     const struct v9x_pci_bar_resource *bar,
     v9x_u32 detected_vram_bytes,
     v9x_u32 override_vram_bytes,

@@ -120,3 +120,32 @@ const V9X_HW16_DEVICE v9x_si_oland_device = {
      * is kept (docs\decisions\2026-11-12-ati-screen-shadow.md). */
     V9X_HW16_SCREEN_SHADOW
 };
+
+/*
+ * The 6610's alias, Oland 6611 (HD 8570 / R7 240). An entry of its own
+ * because the PCI scan matches one per id and V9XHW.INI names the part the
+ * machine has. V9XSIMM on M-BXMFA8's Dell board (subsystem 1028:1002, rev
+ * 87, 2 GiB GDDR5) read what this path assumes of the 6610: six CUs active
+ * (CC_GC_SHADER_ARRAY_CONFIG FFC00000), both RBs (CC_RB_BACKEND_DISABLE 0),
+ * a 4 KiB row (MC_ARB_RAMCFG 2A2h, NOOFCOLS 2), BAR0 a 64-bit 256 MiB
+ * window below 4 GiB at VRAM's start, and the VM off
+ * (docs\decisions\2026-11-20-oland-6611-survey.md).
+ */
+const V9X_HW16_DEVICE v9x_si_oland_6611_device = {
+    0x1002u, 0x6611u,
+    "AMD Radeon Oland 6611",
+    "1002", "6611",
+    "ati-si-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "not-advertised",
+    0,
+    v9x_oland_fill_engine,
+    0u,
+    0u,
+    V9X_OLAND_MAP_BYTES,
+    0,
+    V9X_HW16_WC_BAR256,
+    0,
+    V9X_HW16_SCREEN_SHADOW
+};

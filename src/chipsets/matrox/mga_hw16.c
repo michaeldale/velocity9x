@@ -24,11 +24,15 @@ extern unsigned long __far __pascal V9xMgaScreenRead(unsigned long offset);
 extern const V9X_HW16_DEVICE v9x_mga2064w_device;
 extern const V9X_HW16_DEVICE v9x_mga2164w_device;
 extern const V9X_HW16_DEVICE v9x_mystique_device;
+extern const V9X_HW16_DEVICE v9x_mga2164w_agp_device;
+extern const V9X_HW16_DEVICE v9x_mystique_agp_device;
 
 static const V9X_HW16_DEVICE * const v9x_mga_devices[] = {
     &v9x_mga2064w_device,
     &v9x_mga2164w_device,
-    &v9x_mystique_device
+    &v9x_mystique_device,
+    &v9x_mga2164w_agp_device,
+    &v9x_mystique_agp_device
 };
 
 /*

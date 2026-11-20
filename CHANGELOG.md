@@ -6,6 +6,20 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.60.0 - not yet released
 
+- **`ati` package: the Oland 6611 (Radeon HD 8570 / R7 240, `1002:6611`)
+  claimed** on the Oland XT's path. A read-only survey of a tester's Dell
+  card found the same six compute units, two render backends, memory row
+  size and BAR layout the Oland XT path assumes. On that card the
+  DirectDraw and Direct3D probes give the Oland XT's results; no game has
+  run on it yet
+  ([record](docs/decisions/2026-11-20-oland-6611-survey.md)).
+- **Five ids claimed from the Linux driver tables, without a survey of
+  the card:** Matrox Millennium II AGP (`102B:051F`) and Mystique AGP
+  (`102B:051E`), Radeon 9200 (`1002:5961`, `1002:5962`) and the HD
+  Graphics 3000's second desktop id (`8086:0122`). Each takes its PCI or
+  first id's path unchanged. Nothing has run on any of them
+  ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)).
+
 ## 0.59.0 - 2026-11-20
 
 - **`intel-gma` package: Intel HD Graphics 2500 (Ivy Bridge GT1,

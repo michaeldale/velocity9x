@@ -94,6 +94,10 @@
  * 2D with Gen6's forcewake, no Direct3D (docs\plans\intel-sandybridge-gen6.md).
  */
 #define V9X_PCI_DEVICE_HD3000_SNB        ((v9x_u16)0x0112u)
+/* Its alias, the other Sandy Bridge GT2 desktop id (i915's
+ * INTEL_SNB_D_GT2_IDS), claimed without a survey:
+ * docs\decisions\2026-11-20-bus-siblings-claimed-unrun.md. */
+#define V9X_PCI_DEVICE_HD3000_SNB_0122   ((v9x_u16)0x0122u)
 
 #define V9X_I9XX_MMIO_BYTES              ((v9x_u32)0x00080000ul)
 #define V9X_I9XX_GTT_BYTES               ((v9x_u32)0x00040000ul)

@@ -72,7 +72,9 @@ v9x_status v9x_matrox_mga_probe(
     if (pci->vendor_id != V9X_PCI_VENDOR_MATROX_MGA ||
         (pci->device_id != V9X_PCI_DEVICE_MGA2064W &&
          pci->device_id != V9X_PCI_DEVICE_MGA2164W &&
-         pci->device_id != V9X_PCI_DEVICE_MYSTIQUE)) {
+         pci->device_id != V9X_PCI_DEVICE_MGA2164W_AGP &&
+         pci->device_id != V9X_PCI_DEVICE_MYSTIQUE &&
+         pci->device_id != V9X_PCI_DEVICE_MYSTIQUE_AGP)) {
         return V9X_STATUS_UNSUPPORTED;
     }
 

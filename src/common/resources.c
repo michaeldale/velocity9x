@@ -19,7 +19,7 @@ static v9x_u16 v9x_u32_is_power_of_two(v9x_u32 value)
     return ((value & (value - 1ul)) == 0ul) ? V9X_TRUE : V9X_FALSE;
 }
 
-v9x_status v9x_framebuffer_validate_binding(
+v9x_status V9X_LEAF_FAR v9x_framebuffer_validate_binding(
     const struct v9x_pci_bar_resource *bar,
     v9x_u32 detected_vram_bytes,
     v9x_u32 override_vram_bytes,
