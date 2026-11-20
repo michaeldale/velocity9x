@@ -1,0 +1,14 @@
+[+0:55] agent 0.19.0, boot 71, desktop True
+[+1:03] display card present: 8086:2A02, 8086:2A03
+[+1:30] staged 8 files; resetting
+[+2:17] reset: boot 71 -> 72
+[+2:19] logon dialog cancelled
+[+2:31] installed: 8 of 8
+[+2:45] probes in place: sent 7 of 7
+[+3:04] V9XD32 default exit=0
+[+3:15] V9XD32 z24 exit=0
+[+3:25] V9XGLP.EXE exit=0
+[+3:33] V9XGLIDP.EXE exit=0
+[+3:37] V9XR3DP.EXE exit=0
+[+3:44] V9XWPRS.EXE exit=0
+[+3:48] V9XFBCMP.EXE exit=0
