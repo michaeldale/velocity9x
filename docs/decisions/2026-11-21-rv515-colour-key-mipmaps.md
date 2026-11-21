@@ -98,7 +98,11 @@ draw has been checked by eye on this card.
 
 ## Not done
 
-- A person looking at 3DMark and a game: asked of the owner in chat.
+- A person looking at a game. The owner ran 3DMark 2000 on boot 47
+  themselves and reported in chat (05:39Z): "seems good to me, no
+  glitches on 3dmark 2000". That is their eye, not a capture; the score
+  was not sent. Our V9XD32/V9XDDP runs, with two mode switches, may
+  have overlapped their run. They are trying a Quake demo next.
 - Why V9XDDP's bilinear draws read black on both ATI R300-class chips.
 - The RS690 has not been rerun against the shared-code changes
   (`row_align` defaults to its own 64; XRGB8888 is new for it too). No
