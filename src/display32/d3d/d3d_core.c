@@ -271,6 +271,8 @@ static void v9x_d3d_ps_log(const char *tag, DWORD a, DWORD b, DWORD c,
 static void v9x_d3d_ps_log(const char *tag, DWORD a, DWORD b, DWORD c,
                            DWORD d);
 static int v9x_d3d_ddi_for_object(void);
+static void v9x_d3d_zcensus_vertices_of(const V9X_D3DTLVERTEX *vertices,
+                                        DWORD count);
 
 /*
  * The list builder's staging for v9x_d3d_draw_list, which is 6 KB and is
@@ -1915,6 +1917,7 @@ static int v9x_d3d_draw_list(const V9X_D3D_ENGINE_OPS *ops,
     list.stats = &stats;
     /* Onto the engine's pixel centres, in the staging (v9x_d3d_centre). */
     list.pixel_offset = v9x_d3d_centre_offset(ops);
+    v9x_d3d_zcensus_vertices_of(vertices, triangle_count * 3ul);
     ok = v9x_r3d_draw_list(&list, (const V9X_R3D_VERTEX *)vertices,
                            triangle_count);
     if (v9x_hal != 0) {
@@ -3085,9 +3088,101 @@ DWORD __stdcall V9xD3dTextureGetSurf(V9X_D3DHAL_TEXTUREGETSURFDATA *data)
  * One switch serves both paths so the two cannot drift, which is the whole
  * reason this is a function rather than a copy.
  */
+/*
+ * The depth and fog census in V9XPS.LOG: each value of ZENABLE,
+ * ZWRITEENABLE, ZFUNC, FOGENABLE and FOGTABLEMODE a program sets, the
+ * first time it sets it, so a W-buffer request (ZENABLE 2), an unusual
+ * depth function or table fog shows in the log without a capture. For
+ * the Dark engine's depth faults: Thief II's floor through the floor on
+ * the Rage XL (docs\issues\2026-10-14-thief2-floor-visible-through-floor-
+ * rage-xl.md) and System Shock 2's top of screen on the X1300
+ * (2026-11-21), where nothing recorded what depth state either asked for.
+ * A value of 32 or more is logged every time it is set.
+ */
+#define V9X_D3D_ZCENSUS_STATES 5u
+
+static v9x_u32 v9x_d3d_zcensus_seen[V9X_D3D_ZCENSUS_STATES];
+
+static void v9x_d3d_zcensus_state(DWORD type, DWORD argument)
+{
+    static const DWORD states[V9X_D3D_ZCENSUS_STATES] = {
+        V9X_D3DRENDERSTATE_ZENABLE, V9X_D3DRENDERSTATE_ZWRITEENABLE,
+        V9X_D3DRENDERSTATE_ZFUNC, V9X_D3DRENDERSTATE_FOGENABLE,
+        V9X_D3DRENDERSTATE_FOGTABLEMODE
+    };
+    unsigned int index;
+
+    for (index = 0u; index < V9X_D3D_ZCENSUS_STATES; ++index) {
+        if (states[index] != type) {
+            continue;
+        }
+        if (argument < 32ul) {
+            if ((v9x_d3d_zcensus_seen[index] & (1ul << argument)) != 0ul) {
+                return;
+            }
+            v9x_d3d_zcensus_seen[index] |= 1ul << argument;
+        }
+        v9x_d3d_ps_log("zstate", type, argument, 0ul, 0ul);
+        return;
+    }
+}
+
+/*
+ * The depths and reciprocal Ws a program's DX5 triangle lists carry:
+ * extremes as float bits (positive floats order as their bits; a
+ * negative or NaN depth is counted apart) and how many vertices lie
+ * outside Direct3D's 0..1 depth range, logged every
+ * V9X_D3D_ZCENSUS_EVERY lists.
+ */
+#define V9X_D3D_ZCENSUS_EVERY 4096ul
+#define V9X_D3D_FLOAT_ONE     0x3f800000ul
+
+static v9x_u32 v9x_d3d_zcensus_lists;
+static v9x_u32 v9x_d3d_zcensus_vertices;
+static v9x_u32 v9x_d3d_zcensus_sz_max;
+static v9x_u32 v9x_d3d_zcensus_sz_min = 0x7f800000ul;
+static v9x_u32 v9x_d3d_zcensus_rhw_min = 0x7f800000ul;
+static v9x_u32 v9x_d3d_zcensus_outside;
+
+static void v9x_d3d_zcensus_vertices_of(const V9X_D3DTLVERTEX *vertices,
+                                        DWORD count)
+{
+    const v9x_u32 *words = (const v9x_u32 *)vertices;
+    DWORD index;
+
+    for (index = 0ul; index < count; ++index) {
+        v9x_u32 sz = words[index * 8ul + 2ul];
+        v9x_u32 rhw = words[index * 8ul + 3ul];
+
+        if ((sz & 0x80000000ul) != 0ul || sz > V9X_D3D_FLOAT_ONE) {
+            ++v9x_d3d_zcensus_outside;
+        }
+        if ((sz & 0x80000000ul) == 0ul) {
+            if (sz > v9x_d3d_zcensus_sz_max) {
+                v9x_d3d_zcensus_sz_max = sz;
+            }
+            if (sz < v9x_d3d_zcensus_sz_min) {
+                v9x_d3d_zcensus_sz_min = sz;
+            }
+        }
+        if ((rhw & 0x80000000ul) == 0ul && rhw < v9x_d3d_zcensus_rhw_min) {
+            v9x_d3d_zcensus_rhw_min = rhw;
+        }
+    }
+    v9x_d3d_zcensus_vertices += count;
+    if (++v9x_d3d_zcensus_lists % V9X_D3D_ZCENSUS_EVERY == 0ul) {
+        v9x_d3d_ps_log("zrange", v9x_d3d_zcensus_sz_min,
+                       v9x_d3d_zcensus_sz_max, v9x_d3d_zcensus_rhw_min,
+                       v9x_d3d_zcensus_outside);
+        v9x_d3d_ps_log("zrange-count", v9x_d3d_zcensus_lists,
+                       v9x_d3d_zcensus_vertices, 0ul, 0ul);
+    }
+}
+
 static void v9x_d3d_apply_state(V9X_D3D_CONTEXT *context, DWORD type,
                                 DWORD argument)
 {
+    v9x_d3d_zcensus_state(type, argument);
     switch (type) {
     case V9X_D3DRENDERSTATE_SHADEMODE:
         context->shade_mode = argument;
