@@ -32,6 +32,7 @@
 #include "d3d_rs690_map.h"
 #include "velocity9x/rs690_2d.h"
 #include "velocity9x/rs690_3d.h"
+#include "velocity9x/rv515_3d.h"
 
 /* The register window the mini-VDD maps (eng_rs690.c's). */
 #define V9X_D3D_RS690_MMIO_BYTES 0x00010000ul
@@ -58,6 +59,8 @@
 #define V9X_D3D_RS690_FIFO_SPINS 0x00200000ul
 
 static struct v9x_rs690_3d_list v9x_d3d_rs690_list;
+/* The X1300's state list (ATI_RV515), from rv515_3d.c. */
+static struct v9x_rv515_3d_list v9x_d3d_rv515_list;
 static DWORD v9x_d3d_rs690_fb_base;
 static DWORD v9x_d3d_rs690_desktop;
 
@@ -113,19 +116,26 @@ static int v9x_d3d_rs690_room(DWORD entries)
     return 0;
 }
 
-/* A list's writes, each run of 16 behind a wait for room. */
-static int v9x_d3d_rs690_write_list(const struct v9x_rs690_3d_list *list)
+/* Register writes, each run of 16 behind a wait for room. */
+static int v9x_d3d_rs690_write_writes(const v9x_u32 *offsets,
+                                      const v9x_u32 *values, DWORD count)
 {
     DWORD index;
 
-    for (index = 0ul; index < list->count; ++index) {
+    for (index = 0ul; index < count; ++index) {
         if (index % V9X_D3D_RS690_FIFO_BATCH == 0ul &&
             !v9x_d3d_rs690_room(V9X_D3D_RS690_FIFO_BATCH)) {
             return 0;
         }
-        v9x_d3d_rs690_write(list->offsets[index], list->values[index]);
+        v9x_d3d_rs690_write(offsets[index], values[index]);
     }
     return 1;
+}
+
+static int v9x_d3d_rs690_write_list(const struct v9x_rs690_3d_list *list)
+{
+    return v9x_d3d_rs690_write_writes(list->offsets, list->values,
+                                      list->count);
 }
 
 /* RGB565, ARGB1555 and ARGB4444 at 16 bits, ARGB8888 at 32: the builder's
@@ -340,7 +350,8 @@ static int v9x_d3d_rs690_ready(void)
     return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
-        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 &&
+        (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 ||
+         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) &&
         (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
         v9x_hal->engine.control_linear_base != 0ul &&
         v9x_hal->engine.mapped_aperture_bytes >= V9X_D3D_RS690_MMIO_BYTES;
@@ -587,10 +598,20 @@ static v9x_u32 v9x_d3d_rs690_map(const V9X_R3D_DRAW *draw)
                                     v9x_d3d_rs690_desktop,
                                     v9x_hal->fb.vram_bytes,
                                     v9x_d3d_rs690_depth_bytes(draw), &state);
-    if (reason == V9X_D3D_RS690_REFUSE_NONE &&
-        v9x_rs690_build_3d_state(&state, &v9x_d3d_rs690_list) !=
-            V9X_STATUS_OK) {
-        reason = V9X_D3D_RS690_REFUSE_STATE;
+    if (reason == V9X_D3D_RS690_REFUSE_NONE) {
+        v9x_status built;
+
+        /* The X1300 takes the same state through the R500 fixup with R500
+         * rasterizer setup and programs (rv515_3d.c); its list is the one
+         * v9x_d3d_rs690_draw writes for that type. */
+        if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+            built = v9x_rv515_build_3d_state(&state, &v9x_d3d_rv515_list);
+        } else {
+            built = v9x_rs690_build_3d_state(&state, &v9x_d3d_rs690_list);
+        }
+        if (built != V9X_STATUS_OK) {
+            reason = V9X_D3D_RS690_REFUSE_STATE;
+        }
     }
     /* The colour MC addresses mapped draws write, lowest and highest, and
      * the base of the last, in fields this engine does not otherwise use
@@ -768,7 +789,13 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     v9x_d3d_rs690_write(V9X_RS690_WAIT_UNTIL, V9X_RS690_WAIT_2D_IDLECLEAN);
-    if (!v9x_d3d_rs690_write_list(&v9x_d3d_rs690_list)) {
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+        if (!v9x_d3d_rs690_write_writes(v9x_d3d_rv515_list.offsets,
+                                        v9x_d3d_rv515_list.values,
+                                        v9x_d3d_rv515_list.count)) {
+            return 0;
+        }
+    } else if (!v9x_d3d_rs690_write_list(&v9x_d3d_rs690_list)) {
         return 0;
     }
     while (at < triangle_count) {

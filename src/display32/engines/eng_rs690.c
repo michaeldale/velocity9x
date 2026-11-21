@@ -28,6 +28,7 @@
 #include "ddhal_internal.h"
 #include "velocity9x/rs690_2d.h"
 #include "velocity9x/rs690_3d.h"
+#include "velocity9x/rv515_3d.h"
 
 /* Bounded busy-wait. The write probe measured 5-11 status reads per small
  * operation; this bound only has to tell slow from stuck. */
@@ -71,7 +72,8 @@ static int v9x_rs690_ready(void)
     return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
-        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 &&
+        (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 ||
+         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) &&
         v9x_hal->engine.control_linear_base != 0ul &&
         v9x_hal->engine.mapped_aperture_bytes >= V9X_RS690_MMIO_BYTES;
 }
@@ -133,6 +135,24 @@ static int v9x_rs690_validated(void)
  * and the init list goes in on an idle engine. Any refusal leaves the
  * engine unclaimed and DirectDraw on the CPU.
  */
+/* A 3D init list in two halves on an idle engine: it is longer than the
+ * FIFO's 64 entries hold with the WAIT_UNTILs in it. Non-zero when the
+ * engine went idle before, between and after. */
+static int v9x_rs690_write_halves(const v9x_u32 *offsets,
+                                  const v9x_u32 *values, DWORD count)
+{
+    DWORD index;
+
+    for (index = 0ul; index < count; ++index) {
+        if (index == count / 2ul &&
+            !v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS)) {
+            return 0;
+        }
+        v9x_rs690_write32(offsets[index], values[index]);
+    }
+    return v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS);
+}
+
 static int v9x_rs690_validate(void)
 {
     struct v9x_rs690_blt init;
@@ -180,29 +200,36 @@ static int v9x_rs690_validate(void)
      * in every probe run (docs\decisions\2026-11-05-rs690-3d-draw-
      * probe.md).
      *
-     * Only for a row that claims D3D. The RV515 row uses this engine for
-     * 2D alone: its R500 3D core has never taken this list, and nothing
-     * would read what it sets (docs\decisions\2026-11-21-rv515-2d-write-
-     * probe.md). */
+     * Only for a row that claims D3D: a 2D-only row's 3D core is left as
+     * VBE left it. The X1300 (ATI_RV515) takes rv515_3d.c's init, the
+     * RS690's through the R500 fixup with R500_VAP_INDEX_OFFSET, 63 writes,
+     * the list V9XR53D wrote before every probe draw on M-5CAPM3
+     * (docs\decisions\2026-11-21-rv515-tl-state.md). */
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
         v9x_rs690_dirty = 0;
         v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
         return 1;
     }
-    if (v9x_rs690_build_3d_init(v9x_rs690_read32(V9X_RS690_GB_PIPE_SELECT),
-                                v9x_rs690_read32(V9X_RS690_RB2D_DSTCACHE_MODE),
-                                &init3d) != V9X_STATUS_OK) {
-        return 0;
-    }
-    for (index = 0ul; index < init3d.count; ++index) {
-        if (index == init3d.count / 2ul &&
-            !v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS)) {
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+        static struct v9x_rv515_3d_list init_r500;
+
+        if (v9x_rv515_build_3d_init(
+                v9x_rs690_read32(V9X_RS690_GB_PIPE_SELECT),
+                v9x_rs690_read32(V9X_RS690_RB2D_DSTCACHE_MODE),
+                &init_r500) != V9X_STATUS_OK ||
+            !v9x_rs690_write_halves(init_r500.offsets, init_r500.values,
+                                    init_r500.count)) {
             return 0;
         }
-        v9x_rs690_write32(init3d.offsets[index], init3d.values[index]);
-    }
-    if (!v9x_rs690_poll_idle(V9X_RS690_WAIT_SPINS)) {
-        return 0;
+    } else {
+        if (v9x_rs690_build_3d_init(
+                v9x_rs690_read32(V9X_RS690_GB_PIPE_SELECT),
+                v9x_rs690_read32(V9X_RS690_RB2D_DSTCACHE_MODE),
+                &init3d) != V9X_STATUS_OK ||
+            !v9x_rs690_write_halves(init3d.offsets, init3d.values,
+                                    init3d.count)) {
+            return 0;
+        }
     }
     v9x_rs690_dirty = 0;
     v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;

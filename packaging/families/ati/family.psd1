@@ -930,11 +930,16 @@
             # (docs\decisions\2026-11-21-rv515-2d-write-probe.md); the rest is
             # drawn by the CPU (docs\plans\ati-rv515-x1300.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
-            EngineType = 'ATI_RS690'
+            # The R500 3D core by register writes, no CP: the RS690
+            # builder's state through rv515_3d.c's R500 fixup and programs,
+            # every TL-state probe passing at 16 and 32 bpp on this card
+            # (docs\decisions\2026-11-21-rv515-tl-state.md).
+            Direct3D = 'hardware-rv515-pio'
+            # The RS690's engine under its own type (engine_abi.h).
+            EngineType = 'ATI_RV515'
             # FLIP: D1GRPH, as the RS690's (rs690_scanout.c; Linux gives the
-            # RV515 the same rs600_page_flip). No D3D yet.
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            # RV515 the same rs600_page_flip).
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What M-5CAPM3's VBE 4F00h reports. The card holds 256 MiB
             # (CONFIG_MEMSIZE, docs\decisions\2026-11-21-rv515-register-probe.md);
             # the heap stays at the family's 16 MiB mapping until phase 6.

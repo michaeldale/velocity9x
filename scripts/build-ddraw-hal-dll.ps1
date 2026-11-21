@@ -332,6 +332,10 @@ $sources = @(
     # The RS690 3D core: register values, the neutral draw to them, and
     # the engine that writes them with the CP off.
     "src\chipsets\ati\rs690\rs690_3d.c",
+    # The X1300 (R500) on the same engine: the R500 fixup, rasterizer
+    # setup and fragment programs over the RS690 builder's lists.
+    "src\chipsets\ati\rv515\r500_fp.c",
+    "src\chipsets\ati\rv515\rv515_3d.c",
     "src\display32\d3d\d3d_rs690_map.c",
     "src\display32\d3d\d3d_rs690.c",
     # The Radeon 9250's R200 3D engine: register values, the neutral draw

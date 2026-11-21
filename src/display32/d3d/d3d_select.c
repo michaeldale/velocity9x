@@ -119,6 +119,14 @@ v9x_u32 v9x_d3d_select_engine(int valid, v9x_u32 engine_type,
             return V9X_D3D_SELECT_NONE;
         }
         return V9X_D3D_SELECT_RS690;
+    case V9X_DD_ENGINE_TYPE_ATI_RV515:
+        /* The X1300: the X1200's Direct3D engine, which builds its state
+         * through rv515_3d.c for this type; rv515_engine16.c stamps
+         * CAP_D3D beside the 2D engine. */
+        if ((engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+            return V9X_D3D_SELECT_NONE;
+        }
+        return V9X_D3D_SELECT_RS690;
     case V9X_DD_ENGINE_TYPE_ATI_R600:
         /* The HD 2600 XT: cedar_hw16.c stamps CAP_D3D only when the
          * mini-VDD mapped the window the CP's ring, shaders and vertices

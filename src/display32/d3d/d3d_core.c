@@ -10431,7 +10431,13 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         }
     } else if (ops == &v9x_d3d_engine_rs690) {
         out->engine = V9X_R3D_ABI_ENGINE_RS690;
-        name = "Velocity9x Radeon X1200";
+        /* The same engine on the X1300 (ATI_RV515, its state built by
+         * rv515_3d.c), named by its engine type. */
+        if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+            name = "Velocity9x Radeon X1300";
+        } else {
+            name = "Velocity9x Radeon X1200";
+        }
     } else if (ops == &v9x_d3d_engine_rv280) {
         out->engine = V9X_R3D_ABI_ENGINE_RV280;
         name = "Velocity9x Radeon 9250";

@@ -49,13 +49,18 @@ void V9X_LEAF_FAR v9x_rv515_fill_engine_leaf(
     }
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_RV515_MMIO_BYTES;
-    *engine_type = V9X_DD_ENGINE_TYPE_ATI_RS690;
+    /* The RS690's engine under a type of its own, so the HAL builds the
+     * 3D state through rv515_3d.c (engine_abi.h). */
+    *engine_type = V9X_DD_ENGINE_TYPE_ATI_RV515;
     /* FLIP: D1GRPH, through rs690_scanout.c, which is Linux's
      * rs600_page_flip; radeon_asic.c gives the RV515 the same routine
      * (rv515_asic). The register probe read the VBE desktop on D1GRPH at
      * the frame buffer's GPU base, D0000000h
-     * (docs\decisions\2026-11-21-rv515-register-probe.md). */
+     * (docs\decisions\2026-11-21-rv515-register-probe.md). D3D: the 3D
+     * core by register writes, every TL-state probe passing at 16 and
+     * 32 bpp (docs\decisions\2026-11-21-rv515-tl-state.md). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_FLIP;
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_D3D;
 }

@@ -152,6 +152,18 @@
  * Direct3D engine yet, so d3d_select.c gives this type none.
  */
 #define V9X_DD_ENGINE_TYPE_ATI_RV280    17ul
+/*
+ * ATI Radeon X1300 (RV515, R500 class): the RS690's engine
+ * (engines\eng_rs690.c) for 2D, flips (rs690_scanout.c) and Direct3D
+ * (d3d\d3d_rs690.c), with the 3D init and every state list built by
+ * src\chipsets\ati\rv515\rv515_3d.c - the RS690 builder's lists through
+ * the R500 fixup, with R500 rasterizer setup and fragment programs. A type
+ * of its own because every capability bit is taken and the HAL must know
+ * the R500 before it writes 3D state. 2D measured byte-exact at 8, 16 and
+ * 32 bpp, the 3D state's probes all passing at 16 and 32 bpp, on M-5CAPM3
+ * (docs\decisions\2026-11-21-rv515-2d-write-probe.md, -tl-state.md).
+ */
+#define V9X_DD_ENGINE_TYPE_ATI_RV515    18ul
 
 #define V9X_DD_ENGINE_CAP_SOLID_FILL    0x00000001ul
 #define V9X_DD_ENGINE_CAP_SCREEN_COPY   0x00000002ul

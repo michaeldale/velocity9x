@@ -67,7 +67,7 @@ const V9X_HW16_DEVICE v9x_rv515_x1300_device = {
     "ati-rv515-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    0,                      /* direct3d: not advertised */
+    "hardware-rv515-pio",
     0,                      /* enable_aperture */
     v9x_rv515_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
