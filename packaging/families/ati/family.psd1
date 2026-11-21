@@ -923,14 +923,17 @@
             Adapter = 'ATI Radeon X1300 (RV515)'
             ClockDetector = 'ati-rv515-unavailable-v1'
             ModeSwitching = 'vbe-lfb'
-            # Tier-0: VBE modes, CPU drawing, GDI in the screen shadow, as the
-            # vbe package ran this card on M-5CAPM3
-            # (docs\decisions\2026-11-21-m-5capm3-rv515-phase0.md). The engine
-            # waits for the 2D write probe (docs\plans\ati-rv515-x1300.md).
-            Acceleration = 'none'
+            # VBE modes and GDI in the screen shadow, as the vbe package ran
+            # this card on M-5CAPM3. DirectDraw fill and copy on the RS690's
+            # engine: its builder values measured byte-exact at 8, 16 and 32
+            # bpp on this card
+            # (docs\decisions\2026-11-21-rv515-2d-write-probe.md); the rest is
+            # drawn by the CPU (docs\plans\ati-rv515-x1300.md).
+            Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
-            EngineType = 'NONE'
-            EngineCaps = @()
+            EngineType = 'ATI_RS690'
+            # No FLIP or D3D: neither tried on this chip.
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
             # What M-5CAPM3's VBE 4F00h reports. The card holds 256 MiB
             # (CONFIG_MEMSIZE, docs\decisions\2026-11-21-rv515-register-probe.md);
             # the heap stays at the family's 16 MiB mapping until phase 6.
@@ -949,7 +952,7 @@
                 @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
             )
 
-            Objects = @('rv515_hw16')
+            Objects = @('rv515_hw16', 'rv515_engine16')
             Audit = @{
                 Required = @()
                 Forbidden = @()
@@ -1035,6 +1038,8 @@
             @{ Name = 'rs690_hw16'; Path = 'src\chipsets\ati\rs690\rs690_hw16.c' }
             @{ Name = 'rv280_hw16'; Path = 'src\chipsets\ati\rv280\rv280_hw16.c' }
             @{ Name = 'rv515_hw16'; Path = 'src\chipsets\ati\rv515\rv515_hw16.c' }
+            # The RV515 row's hook body: _TEXT has no room (rv515_engine16.c).
+            @{ Name = 'rv515_engine16'; Path = 'src\chipsets\ati\rv515\rv515_engine16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'ati_hw16';Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }

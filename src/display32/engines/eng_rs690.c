@@ -178,7 +178,17 @@ static int v9x_rs690_validate(void)
      * more than the FIFO's 64 entries hold with the WAIT_UNTILs in it, so
      * in two halves on an idle engine; the 2D engine was exact after it
      * in every probe run (docs\decisions\2026-11-05-rs690-3d-draw-
+     * probe.md).
+     *
+     * Only for a row that claims D3D. The RV515 row uses this engine for
+     * 2D alone: its R500 3D core has never taken this list, and nothing
+     * would read what it sets (docs\decisions\2026-11-21-rv515-2d-write-
      * probe.md). */
+    if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) == 0ul) {
+        v9x_rs690_dirty = 0;
+        v9x_hal->engine.flags |= V9X_DD_ENGINE_STATUS_VALIDATED;
+        return 1;
+    }
     if (v9x_rs690_build_3d_init(v9x_rs690_read32(V9X_RS690_GB_PIPE_SELECT),
                                 v9x_rs690_read32(V9X_RS690_RB2D_DSTCACHE_MODE),
                                 &init3d) != V9X_STATUS_OK) {
