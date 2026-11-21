@@ -449,13 +449,16 @@ v9x_status v9x_rv515_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
                                       struct v9x_rv515_3d_list *list)
 {
     struct v9x_rs690_3d_list rs690;
+    struct v9x_rs690_3d_texture r500_texture;
     struct v9x_rv515_shader shader;
     v9x_status status;
 
     if (texture == 0 || list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    status = v9x_rs690_build_3d_texture(fb_gpu_base, fb_bytes, texture,
+    r500_texture = *texture;
+    r500_texture.row_align = V9X_RV515_TEX_ROW_ALIGN;
+    status = v9x_rs690_build_3d_texture(fb_gpu_base, fb_bytes, &r500_texture,
                                         &rs690);
     if (status != V9X_STATUS_OK) {
         return status;
@@ -474,6 +477,7 @@ v9x_status v9x_rv515_build_3d_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
 v9x_status v9x_rv515_build_3d_state(const struct v9x_rs690_3d_state *state,
                                     struct v9x_rv515_3d_list *list)
 {
+    static struct v9x_rs690_3d_state r500_state;
     struct v9x_rs690_3d_list rs690;
     struct v9x_rv515_shader shader;
     v9x_status status;
@@ -481,7 +485,9 @@ v9x_status v9x_rv515_build_3d_state(const struct v9x_rs690_3d_state *state,
     if (state == 0 || list == 0) {
         return V9X_STATUS_INVALID_ARGUMENT;
     }
-    status = v9x_rs690_build_3d_state(state, &rs690);
+    r500_state = *state;
+    r500_state.texture.row_align = V9X_RV515_TEX_ROW_ALIGN;
+    status = v9x_rs690_build_3d_state(&r500_state, &rs690);
     if (status != V9X_STATUS_OK) {
         return status;
     }

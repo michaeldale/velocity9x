@@ -297,6 +297,12 @@ struct v9x_rs690_3d_texture {
      * filter between levels. */
     v9x_u32 levels;
     v9x_u32 mip_filter;
+    /* The row alignment the chip steps a texture's rows and mip levels by,
+     * in bytes: 0 is the RS690's 64 (V9X_RS690_TEX_PITCH_ALIGN). The
+     * X1300 (R500) steps them 32 apart (V9XR53D MipLayout on M-5CAPM3,
+     * docs\decisions\2026-11-21-rv515-colour-key-mipmaps.md); rv515_3d.c
+     * sets it. A power of two. */
+    v9x_u32 row_align;
 };
 
 #define V9X_RS690_MIPFILTER_NONE        0ul
@@ -450,6 +456,13 @@ v9x_u32 v9x_rs690_mip_pitch(v9x_u32 width, v9x_u32 bytes_per_texel,
                             v9x_u32 level);
 v9x_u32 v9x_rs690_mip_offset(v9x_u32 width, v9x_u32 height,
                              v9x_u32 bytes_per_texel, v9x_u32 level);
+/* The same with rows aligned to row_align bytes (a power of two; 0 is the
+ * RS690's 64): the X1300 aligns to 32. */
+v9x_u32 v9x_rs690_mip_pitch_aligned(v9x_u32 width, v9x_u32 bytes_per_texel,
+                                    v9x_u32 level, v9x_u32 row_align);
+v9x_u32 v9x_rs690_mip_offset_aligned(v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 bytes_per_texel, v9x_u32 level,
+                                     v9x_u32 row_align);
 
 /* R300 float24, the shader constants' format (xf86-video-ati 6.14.6
  * F_TO_24): sign in 23, exponent biased 63 in 22:16, the top 16 mantissa

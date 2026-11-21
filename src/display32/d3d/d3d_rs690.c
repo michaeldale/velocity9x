@@ -372,6 +372,17 @@ static int v9x_d3d_rs690_ready(void)
         v9x_hal->engine.mapped_aperture_bytes >= V9X_D3D_RS690_MMIO_BYTES;
 }
 
+/* The texture row alignment the sampler assumes: the X1300 steps rows and
+ * mip levels 32 bytes apart, the RS690 64 (V9X_RV515_TEX_ROW_ALIGN). 0 is
+ * the RS690's, as v9x_rs690_mip_pitch_aligned takes it. */
+static v9x_u32 v9x_d3d_rs690_row_align(void)
+{
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+        return V9X_RV515_TEX_ROW_ALIGN;
+    }
+    return 0ul;
+}
+
 /*
  * How many of a mip chain's levels lie where the chip will look for them:
  * level n at the base plus v9x_rs690_mip_offset, at v9x_rs690_mip_pitch
@@ -389,6 +400,7 @@ static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
                                                      : texture->height;
     DWORD possible = 1ul;
     DWORD found = 1ul;
+    v9x_u32 row_align = v9x_d3d_rs690_row_align();
 
     ++v9x_hal->d3d_diagnostics.mip_chain_checks;
     while (longest > 1ul) {
@@ -396,7 +408,7 @@ static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
         ++possible;
     }
     if (texture->pitch_bytes !=
-        v9x_rs690_mip_pitch(texture->width, bytes, 0ul)) {
+        v9x_rs690_mip_pitch_aligned(texture->width, bytes, 0ul, row_align)) {
         return;
     }
     while (found < possible) {
@@ -404,9 +416,11 @@ static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
             (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
         const V9X_DD_SURFACE_LCL *next = 0;
         DWORD expected = texture->offset +
-                         v9x_rs690_mip_offset(texture->width, texture->height,
-                                              bytes, found);
-        DWORD pitch = v9x_rs690_mip_pitch(texture->width, bytes, found);
+                         v9x_rs690_mip_offset_aligned(texture->width,
+                                                      texture->height, bytes,
+                                                      found, row_align);
+        DWORD pitch = v9x_rs690_mip_pitch_aligned(texture->width, bytes,
+                                                  found, row_align);
 
         while (node != 0) {
             if (node->object != 0 && node->object != level &&
@@ -882,6 +896,7 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_u32 pitches[V9X_D3D_RS690_TEXTURE_LEVELS];
     v9x_u32 rows[V9X_D3D_RS690_TEXTURE_LEVELS];
     v9x_u32 offsets[V9X_D3D_RS690_TEXTURE_LEVELS];
+    v9x_u32 row_align = 0ul;
     DWORD bytes = 0ul;
     DWORD width;
     DWORD height;
@@ -900,6 +915,12 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     }
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
+    /* Only a chain takes the sampler's own row step; a single level is
+     * drawn with TXPITCH_EN at the pitch given, and 64 bytes is the pitch
+     * TexQuadrants measured on both chips. */
+    if (data->dwSCnt > 1ul) {
+        row_align = v9x_d3d_rs690_row_align();
+    }
 
     if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (data->dwSCnt != 1ul ||
@@ -938,22 +959,28 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 (DWORD)member->lpGbl->wHeight != height) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
-            pitches[level] = v9x_rs690_mip_pitch(base_width, bytes, level);
+            pitches[level] = v9x_rs690_mip_pitch_aligned(base_width, bytes,
+                                                         level, row_align);
             rows[level] = height;
-            offsets[level] = v9x_rs690_mip_offset(base_width, base_height,
-                                                  bytes, level);
+            offsets[level] = v9x_rs690_mip_offset_aligned(base_width,
+                                                          base_height, bytes,
+                                                          level, row_align);
         }
 
         /* A mip chain in one block, each level where the sampler looks for
-         * it: rows rounded to 64 bytes, each level straight after the last
-         * (measured, docs\decisions\2026-11-06-rs690-mipmaps.md). */
+         * it: rows rounded to 64 bytes (32 on the X1300), each level
+         * straight after the last (measured,
+         * docs\decisions\2026-11-06-rs690-mipmaps.md,
+         * 2026-11-21-rv515-colour-key-mipmaps.md). */
         if (data->dwSCnt > 1ul) {
             DWORD base = 0ul;
 
             if (v9x_d3d_place_chain(data, V9X_D3D_RS690_SURFACE_ALIGN,
-                                    v9x_rs690_mip_offset(base_width,
-                                                         base_height, bytes,
-                                                         data->dwSCnt),
+                                    v9x_rs690_mip_offset_aligned(base_width,
+                                                                 base_height,
+                                                                 bytes,
+                                                                 data->dwSCnt,
+                                                                 row_align),
                                     offsets, pitches, &base) != 0ul) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }

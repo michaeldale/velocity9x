@@ -756,6 +756,7 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     v9x_u32 alpha_addr;
     v9x_u32 alpha_inst;
     v9x_u32 texture_bytes;
+    v9x_u32 row_align;
     v9x_u32 max_level = 0ul;
 
     if (texture->format == V9X_RS690_TEXFMT_RGB565) {
@@ -826,8 +827,13 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     } else {
         return V9X_STATUS_UNSUPPORTED;
     }
-    if (texture->offset % V9X_RS690_TEX_ALIGN != 0ul ||
-        texture->pitch_bytes % V9X_RS690_TEX_PITCH_ALIGN != 0ul ||
+    /* Rows step by the chip's alignment: the RS690's 64 bytes unless the
+     * caller (rv515_3d.c) names another power of two. */
+    row_align = texture->row_align == 0ul ? V9X_RS690_TEX_PITCH_ALIGN :
+                texture->row_align;
+    if ((row_align & (row_align - 1ul)) != 0ul ||
+        texture->offset % V9X_RS690_TEX_ALIGN != 0ul ||
+        texture->pitch_bytes % row_align != 0ul ||
         texture->chroma_mode > V9X_RS690_CHROMA_BLEND) {
         return V9X_STATUS_UNSUPPORTED;
     }
@@ -848,12 +854,15 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
      * by, and every level must lie in the frame buffer. */
     if (max_level != 0ul) {
         if (texture->pitch_bytes !=
-            v9x_rs690_mip_pitch(texture->width, bytes_per_texel, 0ul)) {
+            v9x_rs690_mip_pitch_aligned(texture->width, bytes_per_texel, 0ul,
+                                        row_align)) {
             return V9X_STATUS_INVALID_ARGUMENT;
         }
-        texture_bytes = v9x_rs690_mip_offset(texture->width, texture->height,
-                                             bytes_per_texel,
-                                             max_level + 1ul);
+        texture_bytes = v9x_rs690_mip_offset_aligned(texture->width,
+                                                     texture->height,
+                                                     bytes_per_texel,
+                                                     max_level + 1ul,
+                                                     row_align);
     }
     if (texture->offset >= fb_bytes ||
         texture_bytes > fb_bytes - texture->offset ||
@@ -1210,26 +1219,47 @@ static v9x_u32 v9x_rs690_mip_side(v9x_u32 side, v9x_u32 level)
     return side;
 }
 
-v9x_u32 v9x_rs690_mip_pitch(v9x_u32 width, v9x_u32 bytes_per_texel,
-                            v9x_u32 level)
+/* A row alignment, 0 meaning the RS690's. */
+static v9x_u32 v9x_rs690_row_align(v9x_u32 row_align)
 {
-    v9x_u32 bytes = v9x_rs690_mip_side(width, level) * bytes_per_texel;
-
-    return (bytes + V9X_RS690_TEX_PITCH_ALIGN - 1ul) &
-           ~(V9X_RS690_TEX_PITCH_ALIGN - 1ul);
+    return row_align == 0ul ? V9X_RS690_TEX_PITCH_ALIGN : row_align;
 }
 
-v9x_u32 v9x_rs690_mip_offset(v9x_u32 width, v9x_u32 height,
-                             v9x_u32 bytes_per_texel, v9x_u32 level)
+v9x_u32 v9x_rs690_mip_pitch_aligned(v9x_u32 width, v9x_u32 bytes_per_texel,
+                                    v9x_u32 level, v9x_u32 row_align)
+{
+    v9x_u32 bytes = v9x_rs690_mip_side(width, level) * bytes_per_texel;
+    v9x_u32 align = v9x_rs690_row_align(row_align);
+
+    return (bytes + align - 1ul) & ~(align - 1ul);
+}
+
+v9x_u32 v9x_rs690_mip_offset_aligned(v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 bytes_per_texel, v9x_u32 level,
+                                     v9x_u32 row_align)
 {
     v9x_u32 offset = 0ul;
     v9x_u32 at;
 
     for (at = 0ul; at < level; ++at) {
-        offset += v9x_rs690_mip_pitch(width, bytes_per_texel, at) *
+        offset += v9x_rs690_mip_pitch_aligned(width, bytes_per_texel, at,
+                                              row_align) *
                   v9x_rs690_mip_side(height, at);
     }
     return offset;
+}
+
+v9x_u32 v9x_rs690_mip_pitch(v9x_u32 width, v9x_u32 bytes_per_texel,
+                            v9x_u32 level)
+{
+    return v9x_rs690_mip_pitch_aligned(width, bytes_per_texel, level, 0ul);
+}
+
+v9x_u32 v9x_rs690_mip_offset(v9x_u32 width, v9x_u32 height,
+                             v9x_u32 bytes_per_texel, v9x_u32 level)
+{
+    return v9x_rs690_mip_offset_aligned(width, height, bytes_per_texel,
+                                        level, 0ul);
 }
 
 v9x_u32 v9x_rs690_float24(v9x_u32 ieee)

@@ -284,6 +284,35 @@ static void test_state_programs(void)
     CHECK(last_value(&list, V9X_RV515_RS_INST_0 + 4ul) == 0x00091000ul);
 }
 
+/* Mip chains at the R500's 32-byte rows (V9X_RV515_TEX_ROW_ALIGN): a
+ * 16-wide 16 bpp chain with a 32-byte base pitch, which the RS690 builder
+ * alone refuses, is taken by both RV515 builders, from a caller that left
+ * row_align 0. */
+static void test_mip_rows(void)
+{
+    struct v9x_rs690_3d_state state;
+    struct v9x_rs690_3d_texture texture;
+    struct v9x_rs690_3d_list rs690;
+    struct v9x_rv515_3d_list list;
+
+    base_texture(&texture);
+    texture.width = 16ul;
+    texture.height = 16ul;
+    texture.pitch_bytes = 32ul;
+    texture.levels = 5ul;
+    texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+    CHECK(v9x_rs690_build_3d_texture(RV515_FB_BASE, RV515_FB_BYTES, &texture,
+                                     &rs690) == V9X_STATUS_UNSUPPORTED);
+    CHECK(v9x_rv515_build_3d_texture(RV515_FB_BASE, RV515_FB_BYTES, &texture,
+                                     &list) == V9X_STATUS_OK);
+
+    base_state(&state);
+    state.textured = 1ul;
+    state.texture = texture;
+    CHECK(v9x_rv515_build_3d_state(&state, &list) == V9X_STATUS_OK);
+    CHECK(state.texture.row_align == 0ul);
+}
+
 unsigned int v9x_run_rv515_3d_tests(void)
 {
     failures = 0u;
@@ -291,5 +320,6 @@ unsigned int v9x_run_rv515_3d_tests(void)
     test_init();
     test_measured_programs();
     test_state_programs();
+    test_mip_rows();
     return failures;
 }

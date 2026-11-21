@@ -50,6 +50,13 @@ struct v9x_rv515_3d_list {
     v9x_u32 dropped;
 };
 
+/* The R500's texture row and mip-level alignment in bytes: rows of every
+ * level step 32 apart, where the RS690 steps 64 (V9XR53D MipLayout on
+ * M-5CAPM3, docs\decisions\2026-11-21-rv515-colour-key-mipmaps.md). The
+ * builders below give it to the RS690 builder as row_align; the HAL places
+ * mip chains with it. */
+#define V9X_RV515_TEX_ROW_ALIGN 32ul
+
 /* R500 registers this module writes. */
 #define V9X_RV515_VAP_INDEX_OFFSET      0x208cul
 #define V9X_RV515_RS_IP_0               0x4074ul

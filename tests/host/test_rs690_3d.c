@@ -535,6 +535,44 @@ static void test_texture(void)
     CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 4ul) == 2944ul);
     CHECK(v9x_rs690_mip_offset(32ul, 16ul, 4ul, 6ul) == 3072ul);
 
+    /* The X1300's rows round to 32 bytes: the offsets V9XR53D MipLayout
+     * measured for 32x16 at 16 bpp (1024, 1280, 1408, 1472). Alignment 0
+     * is the RS690's 64. */
+    CHECK(v9x_rs690_mip_pitch_aligned(32ul, 2ul, 0ul, 0ul) == 64ul);
+    CHECK(v9x_rs690_mip_pitch_aligned(32ul, 2ul, 2ul, 0ul) == 64ul);
+    CHECK(v9x_rs690_mip_pitch_aligned(32ul, 2ul, 2ul, 32ul) == 32ul);
+    CHECK(v9x_rs690_mip_pitch_aligned(16ul, 2ul, 0ul, 32ul) == 32ul);
+    CHECK(v9x_rs690_mip_offset_aligned(32ul, 16ul, 2ul, 1ul, 32ul) ==
+          1024ul);
+    CHECK(v9x_rs690_mip_offset_aligned(32ul, 16ul, 2ul, 2ul, 32ul) ==
+          1280ul);
+    CHECK(v9x_rs690_mip_offset_aligned(32ul, 16ul, 2ul, 3ul, 32ul) ==
+          1408ul);
+    CHECK(v9x_rs690_mip_offset_aligned(32ul, 16ul, 2ul, 4ul, 32ul) ==
+          1472ul);
+    CHECK(v9x_rs690_mip_offset_aligned(32ul, 16ul, 2ul, 5ul, 32ul) ==
+          1504ul);
+    CHECK(v9x_rs690_mip_offset_aligned(32ul, 16ul, 2ul, 6ul, 0ul) ==
+          2048ul);
+
+    /* A 16-wide chain at 16 bpp: a 32-byte base pitch is the X1300's own
+     * and not the RS690's; an alignment that is not a power of two is
+     * refused. */
+    base_texture(&texture);
+    texture.width = 16ul;
+    texture.height = 16ul;
+    texture.pitch_bytes = 32ul;
+    texture.levels = 5ul;
+    texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    texture.row_align = 32ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    texture.row_align = 48ul;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
+    base_texture(&texture);
+    texture.levels = 6ul;
+    texture.mip_filter = V9X_RS690_MIPFILTER_NEAREST;
+
     /* A mipmapped base whose pitch is not the chip's own is refused, and
      * so is a chain past the frame buffer. */
     texture.pitch_bytes = 128ul;
