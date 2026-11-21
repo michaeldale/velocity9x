@@ -51,9 +51,11 @@
 #include "velocity9x/diagpaths.h"
 #include "velocity9x/rs690_2d.h"
 #include "velocity9x/rs690_3d.h"
+#include "velocity9x/r500_fp.h"
 
 #include "../../src/chipsets/ati/rs690/rs690_2d.c"
 #include "../../src/chipsets/ati/rs690/rs690_3d.c"
+#include "../../src/chipsets/ati/rv515/r500_fp.c"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -398,6 +400,89 @@ static void rv_add_r500_colour(void)
         values[9u + index] = rv_r500_colour_program[index];
     }
     rs_add_writes(offsets, values, sizeof(offsets) / sizeof(offsets[0]));
+}
+
+/* memset without the C runtime this tool does not link. */
+static void rs_zero(void *memory, DWORD bytes)
+{
+    unsigned char *at = (unsigned char *)memory;
+
+    while (bytes-- != 0u) {
+        *at++ = 0u;
+    }
+}
+
+/* R500_RS_IP_0 for the textured state: S from interpolator 0, T from 1,
+ * R constant 0 (K0, 62), Q constant 1 (K1, 63), colour 0 RGBA (Mesa
+ * r500_rs_tex SWIZ_XY01 and r500_rs_col). R500_RS_INST_0: texture 0 with
+ * TEX_CN_WRITE into temp 0, colour 0 with COL_CN_WRITE into temp 1, as
+ * the RS690's R300 rasterizer state placed them. */
+#define RV_R500_RS_IP_TEX_COLOUR    0x00ffe040ul
+#define RV_R500_RS_INST_TEX_COLOUR  0x00050010ul
+/* US_CODE_RANGE size and US_CODE_ADDR end, both at 16 (R500_US_CODE_*). */
+#define RV_R500_CODE_END_SHIFT      16
+
+/*
+ * The R500 rasterizer and fragment program for the textured state, built
+ * with r500_fp.c: LD temp0 from texture unit 0 at temp0's s, t, then OUT
+ * temp0 * 1 (REPLACE) or temp0 * temp1, the texel times the diffuse
+ * colour (MODULATE). Zero when the encoder refuses or the combine is one
+ * this probe does not model.
+ */
+static int rv_add_r500_textured(DWORD combine)
+{
+    struct v9x_r500_fp fp;
+    struct v9x_r500_alu alu;
+    DWORD offsets[9u + V9X_R500_FP_MAX_INSTRUCTIONS * 6u];
+    DWORD values[9u + V9X_R500_FP_MAX_INSTRUCTIONS * 6u];
+    DWORD words;
+    DWORD index;
+
+    v9x_r500_fp_begin(&fp);
+    v9x_r500_fp_tex(&fp, V9X_R500_TEX_LD, 0ul, 0ul, 0ul);
+    v9x_r500_alu_init(&alu);
+    alu.rgb_addr[1] = 1ul;
+    alu.alpha_addr[1] = 1ul;
+    alu.flags = V9X_R500_ALU_OUT | V9X_R500_ALU_CLAMP |
+                V9X_R500_ALU_TEX_WAIT;
+    if (combine == V9X_RS690_TEXCOMBINE_MODULATE) {
+        alu.rgb_slot[V9X_R500_OP_B] = 1ul;
+        alu.rgb_swizzle[V9X_R500_OP_B] = V9X_R500_RGB_IDENTITY;
+        alu.alpha_slot[V9X_R500_OP_B] = 1ul;
+        alu.alpha_swizzle[V9X_R500_OP_B] = V9X_R500_SWZ_A;
+    } else if (combine != V9X_RS690_TEXCOMBINE_REPLACE) {
+        return 0;
+    }
+    v9x_r500_fp_alu(&fp, &alu);
+    if (v9x_r500_fp_end(&fp) != V9X_STATUS_OK) {
+        return 0;
+    }
+
+    offsets[0] = RV_R500_RS_IP_0;
+    values[0] = RV_R500_RS_IP_TEX_COLOUR;
+    offsets[1] = RV_R500_RS_INST_0;
+    values[1] = RV_R500_RS_INST_TEX_COLOUR;
+    offsets[2] = RV_R500_US_CONFIG;
+    values[2] = RV_R500_US_CONFIG_VALUE;
+    offsets[3] = RV_R500_US_PIXSIZE;
+    values[3] = fp.max_temp;
+    offsets[4] = RV_R500_US_FC_CTRL;
+    values[4] = 0u;
+    offsets[5] = RV_R500_US_CODE_RANGE;
+    values[5] = (fp.count - 1ul) << RV_R500_CODE_END_SHIFT;
+    offsets[6] = RV_R500_US_CODE_OFFSET;
+    values[6] = 0u;
+    offsets[7] = RV_R500_US_CODE_ADDR;
+    values[7] = (fp.count - 1ul) << RV_R500_CODE_END_SHIFT;
+    offsets[8] = RV_R500_GA_US_VECTOR_INDEX;
+    values[8] = RV_R500_VECTOR_INSTR_0;
+    words = fp.count * V9X_R500_FP_WORDS_PER_INST;
+    for (index = 0u; index < words; ++index) {
+        offsets[9u + index] = RV_R500_GA_US_VECTOR_DATA;
+        values[9u + index] = fp.words[index];
+    }
+    rs_add_writes(offsets, values, 9u + words);
+    return 1;
 }
 
 /* Non-zero when the VxD ran every op. */
@@ -876,6 +961,434 @@ static void rs_triangle_test(const char *name, int gouraud, char letter)
 }
 
 
+/* Texel (x, y) of the gradient texture, as the surface stores a pixel. */
+static DWORD rs_texel(DWORD x, DWORD y)
+{
+    DWORD n = y * TEX_WIDTH + x;
+
+    if (rs_bpp == 2u) {
+        return n & 0xffffu;
+    }
+    return ((2u * n) & 0xffffu) | (((2u * n + 1u) & 0xffffu) << 16);
+}
+
+/* A pixel's channels - red, green, blue, and alpha at 32 bpp - with each
+ * channel's maximum. Returns the channel count. */
+static int rs_channels(DWORD pixel, DWORD values[4], DWORD maxima[4])
+{
+    int channel;
+
+    for (channel = 0; channel < 3; ++channel) {
+        values[channel] = rs_channel(pixel, channel, &maxima[channel]);
+    }
+    if (rs_bpp == 2u) {
+        return 3;
+    }
+    values[3] = pixel >> 24;
+    maxima[3] = 255u;
+    return 4;
+}
+
+static void rs_tex_vertex(struct v9x_rs690_3d_tex_vertex *vertex, DWORD x,
+                          DWORD y, DWORD s, DWORD t, DWORD red, DWORD green,
+                          DWORD blue)
+{
+    vertex->x = x;
+    vertex->y = y;
+    vertex->red = red;
+    vertex->green = green;
+    vertex->blue = blue;
+    vertex->alpha = 255u;
+    vertex->s = s;
+    vertex->t = t;
+}
+
+/* A rectangle as a quad, corners in RadeonCompositeTile's order, s and t
+ * running from 0 at the top-left to the given bit patterns. */
+static void rs_tex_quad(struct v9x_rs690_3d_tex_vertex vertices[4],
+                        DWORD left, DWORD top, DWORD right, DWORD bottom,
+                        DWORD s_right, DWORD t_bottom, DWORD red,
+                        DWORD green, DWORD blue)
+{
+    rs_tex_vertex(&vertices[0], left, top, 0u, 0u, red, green, blue);
+    rs_tex_vertex(&vertices[1], left, bottom, 0u, t_bottom, red, green, blue);
+    rs_tex_vertex(&vertices[2], right, bottom, s_right, t_bottom, red, green,
+                  blue);
+    rs_tex_vertex(&vertices[3], right, top, s_right, 0u, red, green, blue);
+}
+
+/*
+ * Prefill the surface, write the gradient texture, wait idle, the
+ * colour-buffer state, the texture state, the draw, the finish, wait idle,
+ * read back - all in one run. As rs_draw otherwise.
+ */
+static int rs_draw_textured(const char *name, DWORD filter, DWORD address,
+                            DWORD combine,
+                            const struct v9x_rs690_3d_tex_vertex *vertices,
+                            DWORD count)
+{
+    struct v9x_rs690_3d_target target;
+    struct v9x_rs690_3d_texture texture;
+    struct v9x_rs690_3d_list list;
+    char key[64];
+    DWORD before_index;
+    DWORD after_index;
+
+    target.fb_gpu_base = rs_fb_gpu_base;
+    target.fb_bytes = TEST_FB;
+    target.offset = TEST_BASE;
+    target.pitch_bytes = rs_pitch;
+    target.bytes_per_pixel = rs_bpp;
+    target.width = TEST_WIDTH;
+    target.height = rs_height;
+
+    rs_zero(&texture, sizeof(texture));
+    texture.offset = TEX_OFFSET;
+    texture.pitch_bytes = TEX_WIDTH * rs_bpp;
+    texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
+                     V9X_RS690_TEXFMT_ARGB8888;
+    texture.width = TEX_WIDTH;
+    texture.height = TEX_HEIGHT;
+    texture.filter = filter;
+    texture.address = address;
+    texture.combine = combine;
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
+    rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
+           TEX_WIDTH * TEX_HEIGHT * rs_bpp / 4u);
+    before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (v9x_rs690_build_3d_target(&target, &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "TARGET-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    (void)rv_add_list(&list);
+    if (v9x_rs690_build_3d_texture(rs_fb_gpu_base, TEST_FB, &texture,
+                                   &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "TEXTURE-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_decimal(rs_key(key, name, "R300WritesDropped"),
+                     rv_add_list(&list));
+    if (!rv_add_r500_textured(combine)) {
+        rs_write(rs_key(key, name, "Result"), "PROGRAM-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    if (v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_QUADS, vertices,
+                                         count, TEST_WIDTH, rs_height,
+                                         &list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    (void)rv_add_list(&list);
+    (void)v9x_rs690_build_3d_finish(&list);
+    (void)rv_add_list(&list);
+    after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_hex(rs_key(key, name, "WaitBefore"),
+                 rs_result_buffer.ops[before_index].result);
+    rs_write_hex(rs_key(key, name, "WaitAfter"),
+                 rs_result_buffer.ops[after_index].result);
+    rs_write_decimal(rs_key(key, name, "Ops"), rs_request_buffer.count);
+    return 1;
+}
+
+/*
+ * Nearest-filtered, unmodulated: a quad from (left, 0) to (right, 16) with
+ * s from 0 to s_right and t from 0 to 1. Each pixel centre lands in the
+ * middle of a texel, so the result is exact: pixel (x, y) is texel
+ * ((x - left) mod 32, y), every other pixel the prefill. TexDecal maps the
+ * texture once, clamped; TexWrap twice across 64 pixels, wrapping.
+ */
+static void rs_tex_exact_test(const char *name, char letter, DWORD address,
+                              DWORD left, DWORD right, DWORD s_right)
+{
+    struct v9x_rs690_3d_tex_vertex vertices[4];
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD mismatches;
+
+    rs_tex_quad(vertices, left, 0u, right, TEX_HEIGHT, s_right,
+                v9x_rs690_float_integer(1u), 255u, 255u, 255u);
+    if (!rs_draw_textured(name, V9X_RS690_TEXFILTER_NEAREST, address,
+                          V9X_RS690_TEXCOMBINE_REPLACE, vertices, 4u)) {
+        return;
+    }
+    rs_save_block(letter);
+
+    rs_model_prefill();
+    for (y = 0u; y < TEX_HEIGHT; ++y) {
+        for (x = left; x < right; ++x) {
+            rs_set_pixel(rs_model, x, y, rs_texel((x - left) % TEX_WIDTH, y));
+        }
+    }
+    mismatches = rs_compare_model(name);
+    rs_write_hex(rs_key(key, name, "PixelFirstTexel"),
+                 rs_pixel((const unsigned char *)rs_result_buffer.block,
+                          left, 0u));
+    rs_write_hex(rs_key(key, name, "PixelLastTexel"),
+                 rs_pixel((const unsigned char *)rs_result_buffer.block,
+                          right - 1u, TEX_HEIGHT - 1u));
+    rs_write(rs_key(key, name, "Result"), mismatches == 0u ? "PASS" :
+             "MISMATCH");
+    if (mismatches != 0u) {
+        rs_failed = 1u;
+    }
+}
+
+/*
+ * Judges every pixel of a filtered or modulated test: inside the quad
+ * (x < right, y < 16) each channel against expected[] in 1/scale of a
+ * step, within allowed[] (same units); outside, the prefill. Both are
+ * filled per pixel by the caller's model through the callback.
+ */
+typedef void (*rs_tex_model)(DWORD x, DWORD y, long expected[4],
+                             long allowed[4]);
+
+static void rs_tex_judge(const char *name, DWORD left, DWORD right,
+                         long scale, rs_tex_model model)
+{
+    const unsigned char *actual = (const unsigned char *)rs_result_buffer.block;
+    char key[64];
+    DWORD prefill_pixel;
+    DWORD x;
+    DWORD y;
+    DWORD inside_wrong = 0u;
+    DWORD outside_wrong = 0u;
+    DWORD first_wrong = 0xfffffffful;
+    long worst = 0l;
+
+    rs_model_prefill();
+    prefill_pixel = rs_pixel(rs_model, 0u, 0u);
+    for (y = 0u; y < rs_height; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD pixel = rs_pixel(actual, x, y);
+            int wrong = 0;
+
+            if (x < left || x >= right || y >= TEX_HEIGHT) {
+                if (pixel != prefill_pixel) {
+                    ++outside_wrong;
+                    wrong = 1;
+                }
+            } else {
+                DWORD values[4];
+                DWORD maxima[4];
+                long expected[4];
+                long allowed[4];
+                int channels = rs_channels(pixel, values, maxima);
+                int channel;
+
+                model(x, y, expected, allowed);
+                for (channel = 0; channel < channels; ++channel) {
+                    long error = (long)values[channel] * scale -
+                                 expected[channel];
+
+                    if (error < 0l) {
+                        error = -error;
+                    }
+                    if (error > worst) {
+                        worst = error;
+                    }
+                    if (error > allowed[channel]) {
+                        wrong = 1;
+                    }
+                }
+                if (wrong) {
+                    ++inside_wrong;
+                }
+            }
+            if (wrong && first_wrong == 0xfffffffful) {
+                first_wrong = y * TEST_WIDTH + x;
+            }
+        }
+    }
+
+    rs_write_decimal(rs_key(key, name, "InsideWrong"), inside_wrong);
+    rs_write_decimal(rs_key(key, name, "OutsideWrong"), outside_wrong);
+    rs_write_decimal(rs_key(key, name, "MaxErrorCenti"),
+                     (DWORD)((worst * 100l + scale / 2l) / scale));
+    if (first_wrong != 0xfffffffful) {
+        char text[24];
+        char number[12];
+
+        rs_decimal(text, first_wrong % TEST_WIDTH);
+        lstrcatA(text, ",");
+        rs_decimal(number, first_wrong / TEST_WIDTH);
+        lstrcatA(text, number);
+        rs_write(rs_key(key, name, "FirstWrongXY"), text);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, first_wrong % TEST_WIDTH,
+                              first_wrong / TEST_WIDTH));
+    }
+    if (inside_wrong != 0u || outside_wrong != 0u) {
+        rs_write(rs_key(key, name, "Result"), "MISMATCH");
+        rs_failed = 1u;
+        return;
+    }
+    rs_write(rs_key(key, name, "Result"), "PASS");
+}
+
+/* TexModulate's vertex colour; alpha 255. */
+#define RS_MOD_RED 160u
+#define RS_MOD_GREEN 128u
+#define RS_MOD_BLUE 96u
+#define RS_MOD_LEFT 4u
+
+/* texel channel * colour / 255, in 1/255 of a step; one step allowed. */
+static void rs_modulate_model(DWORD x, DWORD y, long expected[4],
+                              long allowed[4])
+{
+    static const DWORD colour[4] = {
+        RS_MOD_RED, RS_MOD_GREEN, RS_MOD_BLUE, 255u
+    };
+    DWORD values[4];
+    DWORD maxima[4];
+    int channels = rs_channels(rs_texel(x - RS_MOD_LEFT, y), values, maxima);
+    int channel;
+
+    for (channel = 0; channel < channels; ++channel) {
+        expected[channel] = (long)(values[channel] * colour[channel]);
+        allowed[channel] = RS_TEX_TOLERANCE * 255l;
+    }
+}
+
+/*
+ * TexModulate: TexDecal's mapping with a flat vertex colour multiplied in.
+ * Each channel must be within one step of texel * colour / 255.
+ */
+static void rs_tex_modulate_test(void)
+{
+    static const char name[] = "TexModulate";
+    struct v9x_rs690_3d_tex_vertex vertices[4];
+
+    rs_tex_quad(vertices, RS_MOD_LEFT, 0u, RS_MOD_LEFT + TEX_WIDTH,
+                TEX_HEIGHT, v9x_rs690_float_integer(1u),
+                v9x_rs690_float_integer(1u), RS_MOD_RED, RS_MOD_GREEN,
+                RS_MOD_BLUE);
+    if (!rs_draw_textured(name, V9X_RS690_TEXFILTER_NEAREST,
+                          V9X_RS690_TEXADDR_CLAMP,
+                          V9X_RS690_TEXCOMBINE_MODULATE, vertices, 4u)) {
+        return;
+    }
+    rs_save_block('M');
+    rs_tex_judge(name, RS_MOD_LEFT, RS_MOD_LEFT + TEX_WIDTH, 255l,
+                 rs_modulate_model);
+}
+
+/* Clamp a texel index to 0..limit - 1. */
+static DWORD rs_clamp_index(long index, DWORD limit)
+{
+    if (index < 0l) {
+        return 0u;
+    }
+    if (index >= (long)limit) {
+        return limit - 1u;
+    }
+    return (DWORD)index;
+}
+
+/*
+ * Bilinear at twice the size: pixel x samples texel coordinate
+ * (x + 0.5) / 2 - 0.5 = x / 2 - 0.25, in quarters 2x - 1; the same for y.
+ * The four texels around it are weighted (4 - f)(4 - g), f(4 - g), ... out
+ * of 16, clamped at the edges. Expected in 1/16 of a step.
+ *
+ * Allowed: one step, plus 1/32 of the spread of the four texels. The first
+ * run (2026-11-05, 32 bpp) found the filter's weights up to 0.018 short of
+ * the quarter on a 192-step edge, 3.5 steps; a wrong texel is off by about
+ * half the spread, far outside this.
+ */
+#define RS_BILINEAR_SPREAD_SHARE 32l
+
+static void rs_bilinear_model(DWORD x, DWORD y, long expected[4],
+                              long allowed[4])
+{
+    DWORD lowest[4] = { 255u, 255u, 255u, 255u };
+    DWORD highest[4] = { 0u, 0u, 0u, 0u };
+    long u4 = 2l * (long)x - 1l + 4l;
+    long v4 = 2l * (long)y - 1l + 4l;
+    long fu = u4 % 4l;
+    long fv = v4 % 4l;
+    long u0 = u4 / 4l - 1l;
+    long v0 = v4 / 4l - 1l;
+    DWORD texels[4];
+    long weights[4];
+    int corner;
+    int channel;
+
+    texels[0] = rs_texel(rs_clamp_index(u0, TEX_WIDTH),
+                         rs_clamp_index(v0, TEX_HEIGHT));
+    texels[1] = rs_texel(rs_clamp_index(u0 + 1l, TEX_WIDTH),
+                         rs_clamp_index(v0, TEX_HEIGHT));
+    texels[2] = rs_texel(rs_clamp_index(u0, TEX_WIDTH),
+                         rs_clamp_index(v0 + 1l, TEX_HEIGHT));
+    texels[3] = rs_texel(rs_clamp_index(u0 + 1l, TEX_WIDTH),
+                         rs_clamp_index(v0 + 1l, TEX_HEIGHT));
+    weights[0] = (4l - fu) * (4l - fv);
+    weights[1] = fu * (4l - fv);
+    weights[2] = (4l - fu) * fv;
+    weights[3] = fu * fv;
+
+    for (channel = 0; channel < 4; ++channel) {
+        expected[channel] = 0l;
+    }
+    for (corner = 0; corner < 4; ++corner) {
+        DWORD values[4];
+        DWORD maxima[4];
+        int channels = rs_channels(texels[corner], values, maxima);
+
+        for (channel = 0; channel < channels; ++channel) {
+            expected[channel] += weights[corner] * (long)values[channel];
+            if (values[channel] < lowest[channel]) {
+                lowest[channel] = values[channel];
+            }
+            if (values[channel] > highest[channel]) {
+                highest[channel] = values[channel];
+            }
+        }
+    }
+    for (channel = 0; channel < 4; ++channel) {
+        long spread = highest[channel] > lowest[channel] ?
+                      (long)(highest[channel] - lowest[channel]) : 0l;
+
+        allowed[channel] = RS_TEX_TOLERANCE * 16l +
+                           spread * 16l / RS_BILINEAR_SPREAD_SHARE;
+    }
+}
+
+/*
+ * TexBilinear: texels 0-31 x 0-7 magnified to 64 x 16 pixels, bilinear,
+ * clamped. Each channel within one step of the exact filter.
+ */
+static void rs_tex_bilinear_test(void)
+{
+    static const char name[] = "TexBilinear";
+    struct v9x_rs690_3d_tex_vertex vertices[4];
+
+    rs_tex_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT,
+                v9x_rs690_float_integer(1u), v9x_rs690_float_ratio(1u, 2u),
+                255u, 255u, 255u);
+    if (!rs_draw_textured(name, V9X_RS690_TEXFILTER_LINEAR,
+                          V9X_RS690_TEXADDR_CLAMP,
+                          V9X_RS690_TEXCOMBINE_REPLACE, vertices, 4u)) {
+        return;
+    }
+    rs_save_block('B');
+    rs_tex_judge(name, 0u, TEST_WIDTH, 16l, rs_bilinear_model);
+}
+
 /* A 2D fill after the 3D tests, byte-exact, as the 2D probe's Fill. */
 static void rs_fill_after_test(void)
 {
@@ -1313,6 +1826,15 @@ void WINAPI V9xRv5153dProbeEntry(void)
     rs_quad_test("Quad", 'Q');
     rs_triangle_test("Triangle", 0, 'T');
     rs_triangle_test("Gouraud", 1, 'G');
+    /* Texturing through the R500 program from r500_fp.c. */
+    rs_tex_exact_test("TexDecal", 'D', V9X_RS690_TEXADDR_CLAMP, 4u,
+                      4u + TEX_WIDTH, v9x_rs690_float_integer(1u));
+    rs_tex_exact_test("TexWrap", 'W', V9X_RS690_TEXADDR_WRAP, 0u, TEST_WIDTH,
+                      v9x_rs690_float_integer(2u));
+    rs_tex_modulate_test();
+    rs_tex_bilinear_test();
+    /* The colour-only state again, after the textured one. */
+    rs_quad_test("QuadAfterTex", 'A');
     rs_fill_after_test();
 
     rs_write_hex("RbbmStatusAtEnd", rs_read_register(V9X_RS690_RBBM_STATUS));
