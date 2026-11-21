@@ -211,6 +211,54 @@ static void test_download_levels(void)
     XCHECK(tmu[0] == 0u);
 }
 
+/*
+ * grTexDownloadMipMapLevelPartial: rows of one level, at that level's
+ * offset in the chain, from data that starts with the first row written.
+ * A 16x16-to-4x4 RGB565 chain has level 5 (8x8, 16-byte rows) at 512;
+ * rows 2-4 land at 512 + 32 for 48 bytes, and a cached source of the chain
+ * goes stale. Rows past the level are clipped; a level the even/odd mask
+ * leaves out, or start past end, writes nothing.
+ */
+static void test_download_partial(void)
+{
+    V9X_GLIDE_TEXINFO chain;
+    v9x_u32 state = 99ul;
+    int entry;
+
+    v9x_glide_texmem_init(&mem, tmu, sizeof(tmu));
+    info_set(&chain, 6ul, 4ul, 3ul, V9X_GLIDE_TEXFMT_RGB_565);
+    fill(data, 672ul, 0u);
+    XCHECK(v9x_glide_texmem_download(&mem, 0x1000ul, 3ul, &chain, data) ==
+           672ul);
+    entry = v9x_glide_texmem_source(&mem, 0x1000ul, 3ul, &chain, &state);
+    XCHECK(entry >= 0 && state == V9X_GLIDE_TEXMEM_NEW);
+
+    fill(data, 48ul, 200u);
+    XCHECK(v9x_glide_texmem_download_partial(&mem, 0x1000ul, 5ul, 4ul, 3ul,
+                                             V9X_GLIDE_TEXFMT_RGB_565, 3ul,
+                                             data, 2ul, 4ul) == 48ul);
+    XCHECK(tmu[0x1000ul + 512ul + 31ul] == (v9x_u8)(512u + 31u));
+    XCHECK(tmu[0x1000ul + 512ul + 32ul] == 200u);
+    XCHECK(tmu[0x1000ul + 512ul + 79ul] == (v9x_u8)(200u + 47u));
+    XCHECK(tmu[0x1000ul + 512ul + 80ul] == (v9x_u8)(512u + 80u));
+    XCHECK(v9x_glide_texmem_source(&mem, 0x1000ul, 3ul, &chain, &state) ==
+           entry);
+    XCHECK(state == V9X_GLIDE_TEXMEM_STALE);
+
+    /* Rows 6-9 of an 8-row level: rows 6 and 7 only. */
+    XCHECK(v9x_glide_texmem_download_partial(&mem, 0x1000ul, 5ul, 4ul, 3ul,
+                                             V9X_GLIDE_TEXFMT_RGB_565, 3ul,
+                                             data, 6ul, 9ul) == 32ul);
+    /* Level 5 is odd: an even-only chain holds no rows of it. */
+    XCHECK(v9x_glide_texmem_download_partial(&mem, 0x1000ul, 5ul, 4ul, 3ul,
+                                             V9X_GLIDE_TEXFMT_RGB_565,
+                                             V9X_GLIDE_MIPMAPLEVELMASK_EVEN,
+                                             data, 0ul, 1ul) == 0ul);
+    XCHECK(v9x_glide_texmem_download_partial(&mem, 0x1000ul, 5ul, 4ul, 3ul,
+                                             V9X_GLIDE_TEXFMT_RGB_565, 3ul,
+                                             data, 3ul, 2ul) == 0ul);
+}
+
 /* The cache is full: the least recently sourced entry goes, not one in
  * use. 4096 entries side by side, then one more. */
 static void test_cache_full(void)
@@ -363,6 +411,19 @@ static void test_formats(void)
                                      0ul, 0ul, dst, &format));
     XCHECK(!v9x_glide_texfmt_convert(V9X_GLIDE_TEXFMT_RGB_332, src8, 3ul, 0,
                                      0ul, 0ul, dst, &format));
+
+    /* ALPHA_8 (3dfx demo6030's light maps): ARGB4444 with the alpha's top
+     * nibble in every channel; a key matching that grey clears the alpha. */
+    XCHECK(v9x_glide_texfmt_supported(V9X_GLIDE_TEXFMT_ALPHA_8));
+    XCHECK(!v9x_glide_texfmt_key_alpha_only(V9X_GLIDE_TEXFMT_ALPHA_8));
+    src8[0] = 0x00u; src8[1] = 0xFFu; src8[2] = 0x8Cu;
+    XCHECK(v9x_glide_texfmt_convert(V9X_GLIDE_TEXFMT_ALPHA_8, src8, 3ul, 0,
+                                    0ul, 0ul, dst, &format));
+    XCHECK(format == V9X_R3D_ABI_FORMAT_ARGB4444);
+    XCHECK(dst[0] == 0x0000u && dst[1] == 0xFFFFu && dst[2] == 0x8888u);
+    XCHECK(v9x_glide_texfmt_convert(V9X_GLIDE_TEXFMT_ALPHA_8, src8, 3ul, 0,
+                                    1ul, 0x00FFFFFFul, dst, &format));
+    XCHECK(dst[0] == 0x0000u && dst[1] == 0x0FFFu && dst[2] == 0x8888u);
 }
 
 /* The frame buffer between the game's 565 and a 5:5:5 target: green loses
@@ -429,6 +490,7 @@ unsigned int v9x_run_glide_texture_tests(void)
     test_source_states();
     test_shared_address();
     test_download_levels();
+    test_download_partial();
     test_cache_full();
     test_distinct_slots();
     test_glide3_range();

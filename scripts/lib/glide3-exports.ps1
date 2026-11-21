@@ -35,7 +35,9 @@ $script:V9xGlide3Written = @(
     'grTexDownloadTable',
     'grVertexLayout', 'grDrawVertexArray', 'grDrawVertexArrayContiguous',
     'grDrawTriangle', 'grDrawLine', 'grDrawPoint',
-    'grLfbLock', 'grLfbUnlock'
+    'grLfbLock', 'grLfbUnlock', 'grLfbReadRegion',
+    'grGlideGetState', 'grGlideSetState', 'grGlideGetVertexLayout',
+    'grGlideSetVertexLayout', 'grTexDownloadMipMapLevelPartial'
 )
 
 function Get-V9xGlide3Entries {

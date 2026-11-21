@@ -16,7 +16,8 @@ v9x_u16 v9x_glide_texfmt_supported(v9x_u32 format)
     return (format == V9X_GLIDE_TEXFMT_RGB_565 ||
             format == V9X_GLIDE_TEXFMT_ARGB_1555 ||
             format == V9X_GLIDE_TEXFMT_ARGB_4444 ||
-            format == V9X_GLIDE_TEXFMT_P_8) ? V9X_TRUE : V9X_FALSE;
+            format == V9X_GLIDE_TEXFMT_P_8 ||
+            format == V9X_GLIDE_TEXFMT_ALPHA_8) ? V9X_TRUE : V9X_FALSE;
 }
 
 v9x_u16 v9x_glide_texfmt_key_alpha_only(v9x_u32 format)
@@ -127,6 +128,30 @@ static void v9x_glide_convert_p8(const v9x_u8 *src, v9x_u32 count,
                                V9X_R3D_ABI_FORMAT_RGB565;
 }
 
+/*
+ * ALPHA_8 as ARGB4444: the byte's top nibble in alpha and in each colour
+ * channel. The colour copy follows OpenGlide's A8-to-AP88 conversion; what
+ * 3dfx's TMU puts in RGB for this format has not been measured here. The
+ * key is applied as 4444's is, against the converted grey.
+ */
+static void v9x_glide_convert_a8(const v9x_u8 *src, v9x_u32 count,
+                                 v9x_u32 key_enable, v9x_u32 key_rgb,
+                                 v9x_u16 *dst)
+{
+    v9x_u32 key = v9x_glide_key_444(key_rgb);
+    v9x_u32 nibble;
+    v9x_u32 i;
+
+    for (i = 0ul; i < count; ++i) {
+        nibble = (v9x_u32)src[i] >> 4;
+        dst[i] = (v9x_u16)((nibble << 12) | (nibble << 8) | (nibble << 4) |
+                           nibble);
+        if (key_enable && ((v9x_u32)dst[i] & 0x0FFFul) == key) {
+            dst[i] = (v9x_u16)(dst[i] & 0x0FFFu);
+        }
+    }
+}
+
 v9x_u16 v9x_glide_texfmt_convert(v9x_u32 format, const void *src,
                                  v9x_u32 count, const v9x_u32 *palette,
                                  v9x_u32 key_enable, v9x_u32 key_rgb,
@@ -152,6 +177,12 @@ v9x_u16 v9x_glide_texfmt_convert(v9x_u32 format, const void *src,
     if (format == V9X_GLIDE_TEXFMT_P_8 && palette != 0) {
         v9x_glide_convert_p8((const v9x_u8 *)src, count, palette, key_enable,
                              key_rgb, dst, abi_format);
+        return V9X_TRUE;
+    }
+    if (format == V9X_GLIDE_TEXFMT_ALPHA_8) {
+        v9x_glide_convert_a8((const v9x_u8 *)src, count, key_enable, key_rgb,
+                             dst);
+        *abi_format = V9X_R3D_ABI_FORMAT_ARGB4444;
         return V9X_TRUE;
     }
     return V9X_FALSE;

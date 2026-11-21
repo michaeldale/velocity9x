@@ -60,6 +60,8 @@ typedef char v9x_glide3_exports_fit_core[
 #define V9X_GR_FIFO_FULLNESS              0x03ul
 #define V9X_GR_FOG_TABLE_ENTRIES          0x04ul
 #define V9X_GR_GAMMA_TABLE_ENTRIES        0x05ul
+#define V9X_GR_GLIDE_STATE_SIZE           0x06ul
+#define V9X_GR_GLIDE_VERTEXLAYOUT_SIZE    0x07ul
 #define V9X_GR_IS_BUSY                    0x08ul
 #define V9X_GR_LFB_PIXEL_PIPE             0x09ul
 #define V9X_GR_MAX_TEXTURE_SIZE           0x0aul
@@ -148,6 +150,20 @@ static const v9x_u32 v9x_glide3_modes[3][3] = {
 
 static V9X_GLIDE3_LAYOUT v9x_glide3_layout;
 static v9x_u32 v9x_glide3_coordinates = V9X_GR_WINDOW_COORDS;
+
+/*
+ * What grGlideGetState saves and grGlideSetState restores: the render
+ * state, the vertex layout and the coordinate space. The game sizes the
+ * buffer with grGet(GR_GLIDE_STATE_SIZE) and never looks inside, so the
+ * layout is ours. The texture source is not in it; it is the engine's.
+ * 3dfx's demo6030 asks for the size at start and exits when grGet
+ * answers 0 (M-5CAPM3, 2026-11-21).
+ */
+typedef struct v9x_glide3_saved_state {
+    V9X_GLIDE_STATE state;
+    V9X_GLIDE3_LAYOUT layout;
+    v9x_u32 coordinates;
+} V9X_GLIDE3_SAVED_STATE;
 static v9x_u32 v9x_glide3_clip_space_logged;
 static v9x_u32 v9x_glide3_context_open;
 
@@ -186,6 +202,12 @@ v9x_u32 __stdcall grGet(v9x_u32 pname, v9x_u32 plength, v9x_u32 *params)
     case V9X_GR_FIFO_FULLNESS:            values[0] = 0ul; break;
     case V9X_GR_FOG_TABLE_ENTRIES:        values[0] = V9X_GLIDE_FOG_TABLE_SIZE; break;
     case V9X_GR_GAMMA_TABLE_ENTRIES:      values[0] = V9X_GLIDE3_GAMMA_ENTRIES; break;
+    case V9X_GR_GLIDE_STATE_SIZE:
+        values[0] = (v9x_u32)sizeof(V9X_GLIDE3_SAVED_STATE);
+        break;
+    case V9X_GR_GLIDE_VERTEXLAYOUT_SIZE:
+        values[0] = (v9x_u32)sizeof(V9X_GLIDE3_LAYOUT);
+        break;
     case V9X_GR_BITS_GAMMA:               values[0] = 8ul; break;
     case V9X_GR_IS_BUSY:                  values[0] = 0ul; break;
     case V9X_GR_LFB_PIXEL_PIPE:           values[0] = 0ul; break;
@@ -483,6 +505,50 @@ void __stdcall grCoordinateSpace(v9x_u32 mode)
         v9x_glide_logf(V9X_GLIDE3_IX_grCoordinateSpace, call, "mode=%lu", mode);
     }
     v9x_glide3_coordinates = mode;
+}
+
+/* grGlideGetState / grGlideSetState: V9X_GLIDE3_SAVED_STATE. A restore
+ * keeps the open window's origin and size, which belong to grSstWinOpen,
+ * not to the state a game saves and puts back. */
+void __stdcall grGlideGetState(void *saved)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grGlideGetState);
+    V9X_GLIDE3_SAVED_STATE *out = (V9X_GLIDE3_SAVED_STATE *)saved;
+
+    if (v9x_glide_sampled(call)) {
+        v9x_glide_logf(V9X_GLIDE3_IX_grGlideGetState, call, "state=%08lX",
+                       (v9x_u32)saved);
+    }
+    if (out == 0) {
+        return;
+    }
+    out->state = v9x_glide_state;
+    out->layout = v9x_glide3_layout;
+    out->coordinates = v9x_glide3_coordinates;
+}
+
+void __stdcall grGlideSetState(const void *saved)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grGlideSetState);
+    const V9X_GLIDE3_SAVED_STATE *in = (const V9X_GLIDE3_SAVED_STATE *)saved;
+    v9x_u32 origin = v9x_glide_state.origin;
+    v9x_u32 width = v9x_glide_state.width;
+    v9x_u32 height = v9x_glide_state.height;
+
+    if (v9x_glide_sampled(call)) {
+        v9x_glide_logf(V9X_GLIDE3_IX_grGlideSetState, call, "state=%08lX",
+                       (v9x_u32)saved);
+    }
+    if (in == 0) {
+        return;
+    }
+    v9x_glide_flush();
+    v9x_glide_state = in->state;
+    v9x_glide_state.origin = origin;
+    v9x_glide_state.width = width;
+    v9x_glide_state.height = height;
+    v9x_glide3_layout = in->layout;
+    v9x_glide3_coordinates = in->coordinates;
 }
 
 /* ---- render state -------------------------------------------------- */
@@ -850,6 +916,51 @@ void __stdcall grTexDownloadMipMap(v9x_u32 tmu, v9x_u32 address,
                    valid ? "" : " (out of range)");
 }
 
+/*
+ * grTexDownloadMipMapLevelPartial(tmu, startAddress, thisLod, largeLod,
+ * aspectRatio, format, evenOdd, data, start, end): rows start..end of one
+ * level, LODs and aspect in Glide 3's log2 terms, data beginning with row
+ * `start`. That data starts at row `start` rather than row 0 is read from
+ * the Glide 3 reference, not measured against 3dfx's DLL. FXTRUE when
+ * anything was written.
+ */
+v9x_u32 __stdcall grTexDownloadMipMapLevelPartial(v9x_u32 tmu, v9x_u32 address,
+                                                  v9x_u32 this_lod,
+                                                  v9x_u32 large_lod,
+                                                  v9x_u32 aspect,
+                                                  v9x_u32 format,
+                                                  v9x_u32 even_odd,
+                                                  const v9x_u8 *data,
+                                                  v9x_u32 first_row,
+                                                  v9x_u32 last_row)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grTexDownloadMipMapLevelPartial);
+    v9x_u32 this2;
+    v9x_u32 large2;
+    v9x_u32 aspect2;
+    v9x_u32 written = 0ul;
+
+    if (v9x_glide3_lod_to_glide2(this_lod, &this2) &&
+        v9x_glide3_lod_to_glide2(large_lod, &large2) &&
+        v9x_glide3_aspect_to_glide2(aspect, &aspect2)) {
+        written = v9x_glide_texture_download_partial(address, this2, large2,
+                                                     aspect2, format, even_odd,
+                                                     data, first_row,
+                                                     last_row);
+    }
+    if (v9x_glide_noted(V9X_GLIDE3_IX_grTexDownloadMipMapLevelPartial,
+                        v9x_glide_key(address, this_lod ^ (large_lod << 8),
+                                      aspect ^ (format << 8),
+                                      first_row ^ (last_row << 16)))) {
+        v9x_glide_logf(V9X_GLIDE3_IX_grTexDownloadMipMapLevelPartial, call,
+                       "tmu=%lu addr=%08lX lod=%ld of %ld aspect=%ld format=%lu evenodd=%lu rows=%lu..%lu -> %lu",
+                       tmu, address, (long)this_lod, (long)large_lod,
+                       (long)aspect, format, even_odd, first_row, last_row,
+                       written);
+    }
+    return written != 0ul ? 1ul : 0ul;
+}
+
 /* grTexDownloadTable(type, data): Glide 3 drops Glide 2's tmu argument.
  * Palettes are 256 FxU32; the 6666 palette and NCC tables are not
  * converted. */
@@ -892,6 +1003,34 @@ void __stdcall grVertexLayout(v9x_u32 param, v9x_u32 offset, v9x_u32 mode)
         v9x_glide_logf(V9X_GLIDE3_IX_grVertexLayout, call,
                        "param=%02lX offset=%lu mode=%lu%s", param, offset, mode,
                        known ? "" : " (unknown param)");
+    }
+}
+
+/* grGlideGetVertexLayout / grGlideSetVertexLayout: the layout as it is
+ * held, sized by grGet(GR_GLIDE_VERTEXLAYOUT_SIZE). */
+void __stdcall grGlideGetVertexLayout(void *layout)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grGlideGetVertexLayout);
+
+    if (v9x_glide_sampled(call)) {
+        v9x_glide_logf(V9X_GLIDE3_IX_grGlideGetVertexLayout, call,
+                       "layout=%08lX", (v9x_u32)layout);
+    }
+    if (layout != 0) {
+        *(V9X_GLIDE3_LAYOUT *)layout = v9x_glide3_layout;
+    }
+}
+
+void __stdcall grGlideSetVertexLayout(const void *layout)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grGlideSetVertexLayout);
+
+    if (v9x_glide_sampled(call)) {
+        v9x_glide_logf(V9X_GLIDE3_IX_grGlideSetVertexLayout, call,
+                       "layout=%08lX", (v9x_u32)layout);
+    }
+    if (layout != 0) {
+        v9x_glide3_layout = *(const V9X_GLIDE3_LAYOUT *)layout;
     }
 }
 
@@ -1078,6 +1217,18 @@ v9x_u32 __stdcall grLfbUnlock(v9x_u32 type, v9x_u32 buffer)
     v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grLfbUnlock);
 
     return v9x_glide_lfb_unlock(V9X_GLIDE3_IX_grLfbUnlock, call, type, buffer);
+}
+
+/* grLfbReadRegion(src buffer, x, y, width, height, dst stride, dst): the
+ * engine's read, as GLIDE2X.DLL's; 16-bit pixels. */
+v9x_u32 __stdcall grLfbReadRegion(v9x_u32 buffer, v9x_u32 x, v9x_u32 y,
+                                  v9x_u32 width, v9x_u32 height,
+                                  v9x_u32 dst_stride, v9x_u8 *dst)
+{
+    v9x_u32 call = v9x_glide_count(V9X_GLIDE3_IX_grLfbReadRegion);
+
+    return v9x_glide_lfb_read(V9X_GLIDE3_IX_grLfbReadRegion, call, buffer, x,
+                              y, width, height, dst_stride, dst);
 }
 
 /* ---- the DLL ------------------------------------------------------- */

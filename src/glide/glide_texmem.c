@@ -201,6 +201,65 @@ v9x_u32 v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
     return span;
 }
 
+v9x_u32 v9x_glide_texmem_download_partial(V9X_GLIDE_TEXMEM *mem,
+                                          v9x_u32 start, v9x_u32 this_lod,
+                                          v9x_u32 large_lod, v9x_u32 aspect,
+                                          v9x_u32 format, v9x_u32 even_odd,
+                                          const v9x_u8 *data,
+                                          v9x_u32 first_row,
+                                          v9x_u32 last_row)
+{
+    v9x_u32 offset = 0ul;
+    v9x_u32 width;
+    v9x_u32 height;
+    v9x_u32 row_bytes;
+    v9x_u32 begin;
+    v9x_u32 end;
+    v9x_u32 lod;
+    v9x_u32 k;
+    v9x_u32 mask = (this_lod & 1ul) ? V9X_GLIDE_MIPMAPLEVELMASK_ODD :
+                                      V9X_GLIDE_MIPMAPLEVELMASK_EVEN;
+
+    if (data == 0 || first_row > last_row || large_lod > this_lod ||
+        (even_odd & mask) == 0ul ||
+        v9x_glide_level_bytes(this_lod, aspect, format) == 0ul) {
+        return 0ul;
+    }
+
+    /* The level's offset: every larger level the mask selects comes first,
+     * each rounded to the granule, as v9x_glide_texmem_download lays them. */
+    for (lod = large_lod; lod < this_lod; ++lod) {
+        v9x_u32 level_mask = (lod & 1ul) ? V9X_GLIDE_MIPMAPLEVELMASK_ODD :
+                                           V9X_GLIDE_MIPMAPLEVELMASK_EVEN;
+
+        if ((even_odd & level_mask) != 0ul) {
+            offset += v9x_glide_level_bytes(lod, aspect, format);
+        }
+    }
+
+    (void)v9x_glide_level_size(this_lod, aspect, &width, &height);
+    if (first_row >= height) {
+        return 0ul;
+    }
+    if (last_row >= height) {
+        last_row = height - 1ul;
+    }
+    row_bytes = width * (format >= V9X_GLIDE_TEXFMT_16BIT ? 2ul : 1ul);
+    begin = start + offset + first_row * row_bytes;
+    end = start + offset + (last_row + 1ul) * row_bytes;
+    if (start >= mem->size || begin >= mem->size) {
+        return 0ul;
+    }
+    if (end > mem->size) {
+        end = mem->size;
+    }
+    for (k = 0ul; begin + k < end; ++k) {
+        mem->bytes[begin + k] = data[k];
+    }
+    v9x_glide_pages_written(mem, begin, end);
+    return end - begin;
+}
+
 int v9x_glide_texmem_source(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
                             v9x_u32 even_odd, const V9X_GLIDE_TEXINFO *info,
                             v9x_u32 *state)

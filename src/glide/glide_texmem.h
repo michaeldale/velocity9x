@@ -117,6 +117,22 @@ v9x_u32 v9x_glide_texmem_download(V9X_GLIDE_TEXMEM *mem, v9x_u32 start,
                                   const v9x_u8 *data);
 
 /*
+ * grTexDownloadMipMapLevelPartial: rows first_row..last_row of level
+ * this_lod of the chain whose largest level is large_lod, from `data`,
+ * which starts with first_row. The level sits where
+ * v9x_glide_texmem_download puts it: after the larger levels even_odd
+ * selects. Rows past the level are clipped. The bytes written; 0 for an
+ * invalid level, one even_odd leaves out, or first_row past last_row.
+ */
+v9x_u32 v9x_glide_texmem_download_partial(V9X_GLIDE_TEXMEM *mem,
+                                          v9x_u32 start, v9x_u32 this_lod,
+                                          v9x_u32 large_lod, v9x_u32 aspect,
+                                          v9x_u32 format, v9x_u32 even_odd,
+                                          const v9x_u8 *data,
+                                          v9x_u32 first_row,
+                                          v9x_u32 last_row);
+
+/*
  * grTexSource: the cache entry for this key, made if there is none (the
  * least recently sourced goes when the table is full), and in *state
  * whether what is cached for it can stand (V9X_GLIDE_TEXMEM_*). The entry

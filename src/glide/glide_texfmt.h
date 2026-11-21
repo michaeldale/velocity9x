@@ -1,8 +1,9 @@
 /*
  * Glide texel formats to the render interface's 16-bit formats
  * (docs\plans\glide-2x-wrapper.md, Phase 1). Only the formats NFS II SE
- * downloaded are converted (census): RGB_565, ARGB_1555, ARGB_4444, and
- * P_8 through the 256-entry palette from grTexDownloadTable.
+ * downloaded are converted (census): RGB_565, ARGB_1555, ARGB_4444,
+ * P_8 through the 256-entry palette from grTexDownloadTable, and ALPHA_8
+ * (3dfx demo6030, M-5CAPM3 2026-11-21).
  *
  * Chroma key is approximated here. Glide compares the combined colour
  * with the key and discards matches; the render interface has no key.

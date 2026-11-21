@@ -1099,6 +1099,20 @@ void v9x_glide_texture_download(v9x_u32 address, v9x_u32 even_odd,
                                     &texinfo, (const v9x_u8 *)info[4]);
 }
 
+v9x_u32 v9x_glide_texture_download_partial(v9x_u32 address, v9x_u32 this_lod,
+                                           v9x_u32 large_lod, v9x_u32 aspect,
+                                           v9x_u32 format, v9x_u32 even_odd,
+                                           const v9x_u8 *data,
+                                           v9x_u32 first_row,
+                                           v9x_u32 last_row)
+{
+    v9x_glide_flush();
+    return v9x_glide_texmem_download_partial(&v9x_glide_texmem, address,
+                                             this_lod, large_lod, aspect,
+                                             format, even_odd, data,
+                                             first_row, last_row);
+}
+
 static void v9x_glide_vertex_setup(const V9X_GLIDE_DRAW_SETUP *draw,
                                    V9X_GLIDE_VERTEX_SETUP *vs)
 {
