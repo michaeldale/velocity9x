@@ -266,6 +266,10 @@ static void test_state_programs(void)
     CHECK((words[count - 6ul] & INST_LAST) != 0ul);
     CHECK(last_value(&list, V9X_RV515_GA_US_VECTOR_INDEX) == 0x00010000ul);
     CHECK(last_value(&list, V9X_RV515_US_PIXSIZE) == 2ul);
+    /* The last step's RGB B is slot 2 AAA (f): alpha slot 2 must name the
+     * specular temp (1), as RGB slot 2 does; word 2 is ALPHA_ADDR. */
+    CHECK(((words[count - 6ul + 2ul] >> 20) & 0x1fful) == 1ul);
+    CHECK(((words[count - 6ul + 1ul] >> 20) & 0x1fful) == 1ul);
 
     /* Textured DECALALPHA with specular: LD, two combine steps and the
      * specular add. */

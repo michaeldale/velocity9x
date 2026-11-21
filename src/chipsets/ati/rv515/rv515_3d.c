@@ -202,9 +202,15 @@ static void v9x_rv515_rgb(struct v9x_r500_alu *alu, v9x_u32 op,
  *             specular colour's alpha.
  *
  * Step 0 also makes the fragment's alpha; the last step writes the output
- * and moves that alpha out when it is not step 0. Unlike the R300, an R500
- * RGB operand can take any slot's alpha with an AAA swizzle, so the RS690's
- * alpha-address workaround is not needed.
+ * and moves that alpha out when it is not step 0.
+ *
+ * As on the R300, an RGB operand's A swizzle (AAA) reads the alpha unit's
+ * source slot, not the RGB unit's: a step that wants a temp's alpha as an
+ * RGB operand names that temp in the alpha address word too. Measured:
+ * with fog's f read through RGB slot 2 and alpha slot 2 left on temp 0
+ * (the diffuse, alpha FFh), f came out 1 and the fog vanished (V9XR53D
+ * TlFogFull, M-5CAPM3 boot 44); Mesa's pair compiler routes W reads the
+ * same way.
  */
 static void v9x_rv515_build_program(const struct v9x_rv515_shader *shader,
                                     struct v9x_r500_fp *fp)
@@ -274,13 +280,15 @@ static void v9x_rv515_build_program(const struct v9x_rv515_shader *shader,
         alu->flags |= V9X_R500_ALU_TEX_WAIT;
     }
 
-    /* DECALALPHA's second half: result * texel.a + diffuse. */
+    /* DECALALPHA's second half: result * texel.a + diffuse. The AAA
+     * operand reads alpha slot 2, so it names the texel's temp too. */
     if (combine == V9X_RS690_TEXCOMBINE_DECALALPHA) {
         alu = &steps[count++];
         v9x_rv515_step(alu, result);
         alu->rgb_addr[0] = result;
         alu->rgb_addr[1] = diffuse;
         alu->rgb_addr[2] = 0ul;
+        alu->alpha_addr[2] = 0ul;
         v9x_rv515_rgb(alu, V9X_R500_OP_B, 2ul, V9X_R500_RGB_AAA);
         v9x_rv515_rgb(alu, V9X_R500_OP_C, 1ul, V9X_R500_RGB_IDENTITY);
         alu->flags |= V9X_R500_ALU_CLAMP;
@@ -302,12 +310,14 @@ static void v9x_rv515_build_program(const struct v9x_rv515_shader *shader,
         v9x_rv515_rgb(alu, V9X_R500_OP_A, 1ul, V9X_R500_RGB_IDENTITY);
         v9x_rv515_rgb(alu, V9X_R500_OP_C, 0ul, V9X_R500_RGB_IDENTITY);
         alu->rgb_mod[V9X_R500_OP_C] = V9X_R500_MOD_NEG;
-        /* then * f + fog. */
+        /* then * f + fog. f is the specular temp's alpha, read through
+         * alpha slot 2 (see the AAA note above). */
         alu = &steps[count++];
         v9x_rv515_step(alu, result);
         alu->rgb_addr[0] = V9X_R500_ADDR_CONST;
         alu->rgb_addr[1] = result;
         alu->rgb_addr[2] = side;
+        alu->alpha_addr[2] = side;
         v9x_rv515_rgb(alu, V9X_R500_OP_A, 1ul, V9X_R500_RGB_IDENTITY);
         v9x_rv515_rgb(alu, V9X_R500_OP_B, 2ul, V9X_R500_RGB_AAA);
         v9x_rv515_rgb(alu, V9X_R500_OP_C, 0ul, V9X_R500_RGB_IDENTITY);
