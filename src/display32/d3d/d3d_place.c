@@ -396,6 +396,208 @@ DWORD v9x_d3d_place_each(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 }
 
 /*
+ * Flip-chain back buffers placed by v9x_d3d_place_flip_chain.
+ *
+ * The X1300's D1GRPH_PRIMARY_SURFACE_ADDRESS keeps only bits 31:12: a flip
+ * to D00EA600, an 800x600x16 back buffer straight after the primary, read
+ * back D00EA000 (M-5CAPM3, 2026-11-21), so every other frame was shown
+ * 1,536 bytes early and the owner saw the picture jitter.
+ *
+ * DirectDraw rotates the memory among a chain's surface objects as it
+ * flips, so which surface is destroyed holding a block is not known, and
+ * dwReserved1 is not relied on to travel with it. Each block is recorded
+ * here with the object that took it and the address it serves, and freed
+ * by that address when a chain surface holding it is destroyed. The HAL's
+ * statics are shared by every process, so each record keeps the object
+ * that took it, and only that object frees it.
+ */
+#define V9X_D3D_PLACE_FLIP_SLOTS 8u
+
+typedef struct v9x_d3d_place_flip_record {
+    DWORD dd;
+    DWORD block;
+    DWORD vidmem;
+} V9X_D3D_PLACE_FLIP_RECORD;
+
+static V9X_D3D_PLACE_FLIP_RECORD v9x_d3d_place_flips[V9X_D3D_PLACE_FLIP_SLOTS];
+
+static int v9x_d3d_place_flip_free_slots(void)
+{
+    unsigned int slot;
+    int free_slots = 0;
+
+    for (slot = 0u; slot < V9X_D3D_PLACE_FLIP_SLOTS; ++slot) {
+        if (v9x_d3d_place_flips[slot].block == 0ul) {
+            ++free_slots;
+        }
+    }
+    return free_slots;
+}
+
+static void v9x_d3d_place_flip_record(DWORD dd, DWORD block, DWORD vidmem)
+{
+    unsigned int slot;
+
+    for (slot = 0u; slot < V9X_D3D_PLACE_FLIP_SLOTS; ++slot) {
+        if (v9x_d3d_place_flips[slot].block == 0ul) {
+            v9x_d3d_place_flips[slot].dd = dd;
+            v9x_d3d_place_flips[slot].block = block;
+            v9x_d3d_place_flips[slot].vidmem = vidmem;
+            return;
+        }
+    }
+}
+
+DWORD v9x_d3d_place_flip_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align)
+{
+    V9X_DD_SURFACE_LCL **list;
+    DWORD taken[V9X_D3D_PLACE_FLIP_SLOTS];
+    DWORD bases[V9X_D3D_PLACE_FLIP_SLOTS];
+    DWORD pitch;
+    DWORD backs = 0ul;
+    DWORD index;
+
+    if (v9x_hal == 0 || data == 0 || data->lplpSList == 0 ||
+        data->dwSCnt < 2ul || align == 0ul || (align & (align - 1ul)) != 0ul ||
+        v9x_hal->info.vmiData.lDisplayPitch <= 0l ||
+        (v9x_hal->fb.flags & V9X_DD_FB_VALID) == 0ul ||
+        (v9x_hal->fb.linear_base & (align - 1ul)) != 0ul) {
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+    list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    pitch = (DWORD)v9x_hal->info.vmiData.lDisplayPitch;
+
+    /*
+     * Only a whole primary chain at the mode's size: the primary first,
+     * and every other surface a video-memory flip buffer of the screen's
+     * size. Anything else is the heap's, as before. A primary without its
+     * address yet is given the one DirectDraw scans out, vmiData's
+     * fpPrimary, since a handled call leaves no surface for the heap to
+     * fill.
+     */
+    if (v9x_hal->info.vmiData.fpPrimary == 0ul) {
+        return V9X_D3D_PLACE_BOUNDS;
+    }
+    for (index = 0ul; index < data->dwSCnt; ++index) {
+        const V9X_DD_SURFACE_LCL *surface = list[index];
+        DWORD caps;
+
+        if (surface == 0 || surface->lpGbl == 0) {
+            return V9X_D3D_PLACE_BOUNDS;
+        }
+        caps = surface->ddsCaps;
+        if (index == 0ul) {
+            if ((caps & V9X_DDSCAPS_PRIMARYSURFACE) == 0ul ||
+                (caps & V9X_DDSCAPS_FLIP) == 0ul) {
+                return V9X_D3D_PLACE_BOUNDS;
+            }
+            continue;
+        }
+        if ((caps & V9X_DDSCAPS_FLIP) == 0ul ||
+            (caps & (V9X_DDSCAPS_PRIMARYSURFACE |
+                     V9X_DDSCAPS_SYSTEMMEMORY)) != 0ul ||
+            (DWORD)surface->lpGbl->wWidth != v9x_hal->fb.width ||
+            (DWORD)surface->lpGbl->wHeight != v9x_hal->fb.height) {
+            return V9X_D3D_PLACE_BOUNDS;
+        }
+        ++backs;
+    }
+    if (backs > (DWORD)v9x_d3d_place_flip_free_slots()) {
+        return V9X_D3D_PLACE_ALLOC;
+    }
+    if (!v9x_d3d_place_vidmem_resolve()) {
+        return V9X_D3D_PLACE_EXPORT;
+    }
+
+    for (index = 1ul; index < data->dwSCnt; ++index) {
+        DWORD rows = (DWORD)list[index]->lpGbl->wHeight;
+        DWORD block = 0ul;
+        DWORD base = 0ul;
+        DWORD reason = v9x_d3d_place_take(data, align, pitch,
+                                          rows + (align + pitch - 1ul) / pitch,
+                                          pitch * rows, 0, &block, &base);
+
+        if (reason != 0ul) {
+            DWORD undo;
+
+            for (undo = 1ul; undo < index; ++undo) {
+                v9x_d3d_place_vidmem_free(data->lpDD,
+                                          V9X_D3D_PLACE_HEAP_STOLEN,
+                                          taken[undo - 1ul]);
+            }
+            return reason;
+        }
+        taken[index - 1ul] = block;
+        bases[index - 1ul] = base;
+    }
+
+    /* Placed: point the buffers at their blocks and record them. A NULL
+     * lpVidMemHeap (dwBlockSizeX) tells DirectDraw the memory is not its
+     * to free. */
+    if (list[0]->lpGbl->fpVidMem == 0ul) {
+        list[0]->lpGbl->fpVidMem = v9x_hal->info.vmiData.fpPrimary;
+        list[0]->lpGbl->lPitch = (LONG)pitch;
+    }
+    for (index = 1ul; index < data->dwSCnt; ++index) {
+        V9X_DD_SURFACE_GBL *surface = list[index]->lpGbl;
+
+        surface->fpVidMem = v9x_hal->fb.linear_base + bases[index - 1ul];
+        surface->lPitch = (LONG)pitch;
+        surface->dwBlockSizeX = 0ul;
+        surface->dwReserved1 = 0ul;
+        v9x_d3d_place_flip_record(data->lpDD, taken[index - 1ul],
+                                  surface->fpVidMem);
+    }
+    return 0ul;
+}
+
+int v9x_d3d_place_flip_release(V9X_DDHAL_DESTROYSURFACEDATA *data)
+{
+    V9X_DD_SURFACE_LCL *surface;
+    DWORD vidmem;
+    unsigned int slot;
+
+    if (v9x_hal == 0 || data == 0) {
+        return 0;
+    }
+    surface = (V9X_DD_SURFACE_LCL *)data->lpDDSurface;
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & (V9X_DDSCAPS_FLIP | V9X_DDSCAPS_PRIMARYSURFACE |
+                             V9X_DDSCAPS_BACKBUFFER)) == 0ul) {
+        return 0;
+    }
+    vidmem = surface->lpGbl->fpVidMem;
+    for (slot = 0u; slot < V9X_D3D_PLACE_FLIP_SLOTS; ++slot) {
+        V9X_D3D_PLACE_FLIP_RECORD *record = &v9x_d3d_place_flips[slot];
+
+        if (record->block != 0ul && record->dd == data->lpDD &&
+            record->vidmem == vidmem) {
+            if (v9x_d3d_place_vidmem_resolve()) {
+                v9x_d3d_place_vidmem_free(data->lpDD,
+                                          V9X_D3D_PLACE_HEAP_STOLEN,
+                                          record->block);
+            }
+            record->dd = 0ul;
+            record->block = 0ul;
+            record->vidmem = 0ul;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+void v9x_d3d_place_flip_forget(void)
+{
+    unsigned int slot;
+
+    for (slot = 0u; slot < V9X_D3D_PLACE_FLIP_SLOTS; ++slot) {
+        v9x_d3d_place_flips[slot].dd = 0ul;
+        v9x_d3d_place_flips[slot].block = 0ul;
+        v9x_d3d_place_flips[slot].vidmem = 0ul;
+    }
+}
+
+/*
  * The first surface of a list v9x_d3d_place_block placed is going; free the
  * block. Returns 1 when it freed one.
  *

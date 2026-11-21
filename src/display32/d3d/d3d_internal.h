@@ -827,6 +827,19 @@ DWORD v9x_d3d_place_chain(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
 DWORD v9x_d3d_place_each(V9X_DDHAL_CREATESURFACEDATA *data, DWORD align,
                          const v9x_u32 *pitches, const v9x_u32 *rows);
 int v9x_d3d_place_release(V9X_DDHAL_DESTROYSURFACEDATA *data, DWORD align);
+/*
+ * A primary flip chain's back buffers, each in a block of its own aligned
+ * to `align`, at the display pitch; the primary is left where DirectDraw
+ * put it. For a display controller that drops the low bits of a flip
+ * address. Zero, or a reason above having placed nothing (the heap then
+ * places the chain as before). v9x_d3d_place_flip_release frees a block by
+ * the surface's address, whichever surface of the chain holds it after
+ * the flips; v9x_d3d_place_flip_forget (ddhal_internal.h) drops every
+ * record when a mode change rebuilds DirectDraw's heap.
+ */
+DWORD v9x_d3d_place_flip_chain(V9X_DDHAL_CREATESURFACEDATA *data,
+                               DWORD align);
+int v9x_d3d_place_flip_release(V9X_DDHAL_DESTROYSURFACEDATA *data);
 
 /* The ViRGE S3D engine, in d3d_virge.c. */
 extern const V9X_D3D_ENGINE_OPS v9x_d3d_engine_virge;

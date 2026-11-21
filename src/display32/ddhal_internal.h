@@ -364,6 +364,10 @@ void v9x_win16_leave(void);
  * In d3d_core.c; DriverInit calls it. */
 void v9x_d3d_render_new_session(void);
 
+/* Drops the records of flip buffers an engine placed (d3d_place.c): the
+ * mode change rebuilt the heap their blocks came from. DriverInit calls it. */
+void v9x_d3d_place_flip_forget(void);
+
 /* Bounded callback trace, in ddhal.c. */
 void v9x_trace_push(WORD id, DWORD detail);
 void v9x_trace_count(WORD id, DWORD detail);

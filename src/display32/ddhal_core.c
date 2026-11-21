@@ -2813,6 +2813,9 @@ DWORD __stdcall DriverInit(DWORD context)
     /* And the render interface's generation: every surface description an
      * ICD built before this point may name memory the new mode reuses. */
     v9x_d3d_render_new_session();
+    /* And the flip buffers the engine placed: the mode change rebuilt the
+     * heap their blocks came from (d3d_place.c). */
+    v9x_d3d_place_flip_forget();
     /* And the scanout readings, whose PIPESTAT boundary is per session: a
      * baseline taken once per DLL lifetime would let the next run's mode
      * change contaminate the underrun measurement. */

@@ -42,6 +42,11 @@
  * whatever TX_FORMAT2 says (V9XD32's T6 texture on M-GB8KRE, 2026-11-05),
  * and Z16 takes Mesa's same 32-pixel alignment. */
 #define V9X_D3D_RS690_SURFACE_ALIGN 32ul
+/* A flip target's alignment: D1GRPH_PRIMARY_SURFACE_ADDRESS keeps bits
+ * 31:12 only. A flip to D00EA600 read back D00EA000 on the X1300
+ * (M-5CAPM3, docs\decisions\2026-11-21-rv515-flip-address-alignment.md);
+ * the RS690's D1 is the same AVIVO block and is given the same rule. */
+#define V9X_D3D_RS690_FLIP_ALIGN    0x1000ul
 #define V9X_D3D_RS690_PITCH_ALIGN   V9X_RS690_TEX_PITCH_ALIGN
 
 /* Levels a placed chain may have: 2048 halves to 1 in eleven. Only level
@@ -913,6 +918,17 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
+
+    /* A primary flip chain: its back buffers on 4 KiB, which is all of a
+     * flip address D1GRPH keeps (V9X_D3D_RS690_FLIP_ALIGN). One the
+     * placement declines is the heap's, as before. */
+    if ((surface->ddsCaps & V9X_DDSCAPS_PRIMARYSURFACE) != 0ul) {
+        if (v9x_d3d_place_flip_chain(data, V9X_D3D_RS690_FLIP_ALIGN) != 0ul) {
+            return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        data->ddRVal = V9X_DD_OK;
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
     /* Only a chain takes the sampler's own row step; a single level is
@@ -1000,6 +1016,9 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
 
 static void v9x_d3d_rs690_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
 {
+    if (v9x_d3d_place_flip_release(data)) {
+        return;
+    }
     (void)v9x_d3d_place_release(data, V9X_D3D_RS690_SURFACE_ALIGN);
 }
 

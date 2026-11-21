@@ -1657,7 +1657,25 @@ DWORD v9x_d3d_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         v9x_d3d_ps_log("surf-pf-masks", pf->dwRBitMask, pf->dwGBitMask,
                        pf->dwBBitMask, pf->dwRGBAlphaBitMask);
     }
+    /* A primary chain, before and after the engine: whether the primary
+     * already has its address, the mode's size, and where the first back
+     * buffer went (the X1300's 4 KiB flip placement, d3d_place.c). */
+    if (data->dwSCnt != 0ul && list != 0 && list[0] != 0 &&
+        list[0]->lpGbl != 0 &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_PRIMARYSURFACE) != 0ul) {
+        v9x_d3d_ps_log("flip-create", data->dwSCnt, list[0]->ddsCaps,
+                       list[0]->lpGbl->fpVidMem,
+                       (v9x_hal->fb.width << 16) | v9x_hal->fb.height);
+    }
     result = ops->create_surface(data);
+    if (data->dwSCnt > 1ul && list != 0 && list[0] != 0 && list[1] != 0 &&
+        list[1]->lpGbl != 0 &&
+        (list[0]->ddsCaps & V9X_DDSCAPS_PRIMARYSURFACE) != 0ul) {
+        v9x_d3d_ps_log("flip-placed", result, list[1]->ddsCaps,
+                       list[1]->lpGbl->fpVidMem,
+                       ((DWORD)list[1]->lpGbl->wWidth << 16) |
+                       (DWORD)list[1]->lpGbl->wHeight);
+    }
     if (data->dwSCnt != 0ul && list != 0 &&
         (list[0]->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
         (list[0]->dwFlags & V9X_DDRAWISURF_HASPIXELFORMAT) != 0ul &&
