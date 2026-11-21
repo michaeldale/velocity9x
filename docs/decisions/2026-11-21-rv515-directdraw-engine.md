@@ -2,7 +2,8 @@
 
 Date: 2026-11-21
 Machine: remote-help `M-5CAPM3`, Radeon X1300 `1002:7146`, boot 38,
-640x480x16.
+800x600x16 (the owner changed the desktop from 640x480 during boot 37;
+V9XBOOT.INI `w=800 h=600`).
 Build: ati `c4ef4973` (branch `ati-rv515`), DRV, VXD, HAL, SETP and GL
 by WININIT rename over the `e25a096f` tier-0 install (that package stays
 in `C:\V9XATI` for rollback). Staging folder empty after the reboot;
@@ -46,7 +47,7 @@ Plan: [`ati-rv515-x1300.md`](../plans/ati-rv515-x1300.md), phase 3.
 
 - Games or 3DMark: only V9XDDP's blits went through the engine (14 in
   all), so throughput and sustained load are unmeasured.
-- 8 and 32 bpp through the HAL: V9XDDP ran at 16 bpp. The builder was
+- 8 and 32 bpp through the HAL: V9XDDP ran at 16 bpp (800x600). The builder was
   byte-exact at all three depths in the write probe.
 - FLIP through D1GRPH, and Direct3D.
 - A DOS box or standby with the engine live.
