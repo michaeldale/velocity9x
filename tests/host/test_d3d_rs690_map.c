@@ -497,13 +497,55 @@ static void test_texture(void)
     CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
     CHECK(state.texture.chroma_mode == V9X_RS690_CHROMA_DISABLE);
 
-    /* A format with alpha: the unit compares the alpha bits too, which
-     * Direct3D's colour key does not. Refused. */
+    /* A format with alpha bits: the unit compares them too, which
+     * Direct3D's colour key does not, so the draw path first rewrites
+     * every texel whose colour matches into the key as stored
+     * (v9x_d3d_rs690_key_texel), and the chip compares that. The chip key
+     * is the key at the texel's width. Incoming's keyed draws were all
+     * refused here (M-5CAPM3, 2026-11-21). */
     resolved.has_key = 1;
     resolved.has_alpha = 1;
     resolved.format = V9X_RS690_TEXFMT_ARGB8888;
-    CHECK(map(&draw, &resolved, 0ul, &state) ==
-          V9X_D3D_RS690_REFUSE_COLOR_KEY);
+    resolved.key = 0x00cb00caul;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.chroma_mode == V9X_RS690_CHROMA_FORCE);
+    CHECK(state.texture.chroma_key == 0x00cb00caul);
+    resolved.format = V9X_RS690_TEXFMT_ARGB1555;
+    resolved.key = 0xffff7c00ul;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.chroma_key == 0x00007c00ul);
+    resolved.format = V9X_RS690_TEXFMT_ARGB4444;
+    resolved.key = 0x00000f0ful;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.chroma_key == 0x00000f0ful);
+    resolved.has_alpha = 0;
+    resolved.format = V9X_RS690_TEXFMT_XRGB8888;
+    resolved.key = 0x00ff00fful;
+    CHECK(map(&draw, &resolved, 0ul, &state) == V9X_D3D_RS690_REFUSE_NONE);
+    CHECK(state.texture.chroma_key == 0x00ff00fful);
+
+    /* The rewrite: a texel whose colour bits match the key's becomes the
+     * key, alpha bits and all; any other texel is left as it was. RGB565
+     * has no bits outside the colour, so nothing is rewritten. */
+    CHECK(!v9x_d3d_rs690_key_rewrites(V9X_RS690_TEXFMT_RGB565));
+    CHECK(v9x_d3d_rs690_key_rewrites(V9X_RS690_TEXFMT_ARGB1555));
+    CHECK(v9x_d3d_rs690_key_rewrites(V9X_RS690_TEXFMT_ARGB4444));
+    CHECK(v9x_d3d_rs690_key_rewrites(V9X_RS690_TEXFMT_ARGB8888));
+    CHECK(v9x_d3d_rs690_key_rewrites(V9X_RS690_TEXFMT_XRGB8888));
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_ARGB1555, 0x7c00ul,
+                                  0xfc00ul) == 0x7c00ul);
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_ARGB1555, 0x7c00ul,
+                                  0xfc01ul) == 0xfc01ul);
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_ARGB4444, 0x0f00ul,
+                                  0xaf00ul) == 0x0f00ul);
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_ARGB4444, 0x0f00ul,
+                                  0xaf01ul) == 0xaf01ul);
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_ARGB8888, 0x00cb00caul,
+                                  0xffcb00caul) == 0x00cb00caul);
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_XRGB8888, 0x00cb00caul,
+                                  0x80cb00cbul) == 0x80cb00cbul);
+    CHECK(v9x_d3d_rs690_key_texel(V9X_RS690_TEXFMT_RGB565, 0x0065ul,
+                                  0x0065ul) == 0x0065ul);
 
     /* A colour key with no texture bound means nothing. */
     base_draw(&draw);

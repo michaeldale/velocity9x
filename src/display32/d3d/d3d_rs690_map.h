@@ -89,6 +89,18 @@ typedef struct v9x_d3d_rs690_texture {
  * V9X_D3D_RS690_REFUSE_* reason; on NONE, state is ready for
  * v9x_rs690_build_3d_state, which makes the remaining range checks.
  */
+/*
+ * Colour keys on formats with bits outside the colour. The texture unit's
+ * chroma key compares the texel as stored, so a texel whose colour matches
+ * but whose alpha (or ARGB8888's X byte) differs from the key's would
+ * survive. The draw path rewrites each texel through
+ * v9x_d3d_rs690_key_texel before a keyed draw: colour matches become the
+ * key exactly, other texels are unchanged. The rewritten texels are the
+ * ones the key discards, so their alpha is never seen.
+ */
+int v9x_d3d_rs690_key_rewrites(v9x_u32 format);
+v9x_u32 v9x_d3d_rs690_key_texel(v9x_u32 format, v9x_u32 key, v9x_u32 texel);
+
 v9x_u32 v9x_d3d_rs690_map_draw(const V9X_R3D_DRAW *draw,
                                const V9X_D3D_RS690_TEXTURE *resolved,
                                v9x_u32 fb_gpu_base,

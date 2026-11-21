@@ -9,6 +9,10 @@
 #define V9X_D3D_RS690_ALPHA_REF_MASK 0xfful
 #define V9X_D3D_RS690_FOG_COLOR_MASK 0x00fffffful
 #define V9X_D3D_RS690_KEY16_MASK     0x0000fffful
+/* The colour bits of each keyed format, as Direct3D compares them. */
+#define V9X_D3D_RS690_KEY1555_COLOUR 0x00007ffful
+#define V9X_D3D_RS690_KEY4444_COLOUR 0x00000ffful
+#define V9X_D3D_RS690_KEY8888_COLOUR 0x00fffffful
 
 /* The render interface's write-mask bits (r3d_abi.h V9X_R3D_ABI_WRITE_*). */
 #define V9X_D3D_RS690_WRITE_RED      1ul
@@ -170,16 +174,17 @@ static v9x_u32 v9x_d3d_rs690_map_texture(const V9X_R3D_DRAW *draw,
     }
     /* A source colour key: the texture unit's chroma key in FORCE mode
      * kills a fragment whose texel matches (under bilinear, any texel of
-     * the footprint). It compares the texel as stored, alpha bits and all,
-     * so only RGB565 keys as Direct3D does; a format with alpha is
-     * refused (docs\decisions\2026-11-06-rs690-colour-key.md). Enabled
-     * with no key on the texture, it means nothing. */
+     * the footprint). It compares the texel as stored, alpha bits and all
+     * (docs\decisions\2026-11-06-rs690-colour-key.md), so for a format
+     * with bits outside the colour the draw path rewrites the matching
+     * texels into the key first (v9x_d3d_rs690_key_texel), and the key is
+     * compared at the texel's width. Enabled with no key on the texture,
+     * it means nothing. */
     if (draw->color_key_enable != 0ul && resolved->has_key) {
-        if (resolved->format != V9X_RS690_TEXFMT_RGB565) {
-            return V9X_D3D_RS690_REFUSE_COLOR_KEY;
-        }
         state->texture.chroma_mode = V9X_RS690_CHROMA_FORCE;
-        state->texture.chroma_key = resolved->key & V9X_D3D_RS690_KEY16_MASK;
+        state->texture.chroma_key =
+            v9x_d3d_rs690_key_texel(resolved->format, resolved->key,
+                                    resolved->key);
     }
     /* The cylindrical WRAPU/WRAPV states have no chip function. */
     if (sampler->wrap_u != 0ul || sampler->wrap_v != 0ul) {
@@ -269,6 +274,50 @@ static int v9x_d3d_rs690_explicit(const V9X_R3D_DRAW *draw,
         state->masked_channels |= V9X_RS690_CHANNEL_BLUE;
     }
     return 1;
+}
+
+/* The bits of a texel Direct3D's colour key compares, and the texel's
+ * own width; 0 for a format with no colour key here. */
+static v9x_u32 v9x_d3d_rs690_key_colour_mask(v9x_u32 format,
+                                             v9x_u32 *texel_mask)
+{
+    switch (format) {
+    case V9X_RS690_TEXFMT_RGB565:
+        *texel_mask = V9X_D3D_RS690_KEY16_MASK;
+        return V9X_D3D_RS690_KEY16_MASK;
+    case V9X_RS690_TEXFMT_ARGB1555:
+        *texel_mask = V9X_D3D_RS690_KEY16_MASK;
+        return V9X_D3D_RS690_KEY1555_COLOUR;
+    case V9X_RS690_TEXFMT_ARGB4444:
+        *texel_mask = V9X_D3D_RS690_KEY16_MASK;
+        return V9X_D3D_RS690_KEY4444_COLOUR;
+    case V9X_RS690_TEXFMT_ARGB8888:
+    case V9X_RS690_TEXFMT_XRGB8888:
+        *texel_mask = 0xfffffffful;
+        return V9X_D3D_RS690_KEY8888_COLOUR;
+    default:
+        *texel_mask = 0ul;
+        return 0ul;
+    }
+}
+
+int v9x_d3d_rs690_key_rewrites(v9x_u32 format)
+{
+    v9x_u32 texel_mask;
+    v9x_u32 colour = v9x_d3d_rs690_key_colour_mask(format, &texel_mask);
+
+    return colour != 0ul && colour != texel_mask;
+}
+
+v9x_u32 v9x_d3d_rs690_key_texel(v9x_u32 format, v9x_u32 key, v9x_u32 texel)
+{
+    v9x_u32 texel_mask;
+    v9x_u32 colour = v9x_d3d_rs690_key_colour_mask(format, &texel_mask);
+
+    if (colour == 0ul || ((texel ^ key) & colour) != 0ul) {
+        return texel & (colour != 0ul ? texel_mask : 0xfffffffful);
+    }
+    return key & texel_mask;
 }
 
 v9x_u32 v9x_d3d_rs690_map_draw(const V9X_R3D_DRAW *draw,

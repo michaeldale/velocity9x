@@ -282,8 +282,9 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
         V9X_D3DPSHADECAPS_SPECULARGOURAUDRGB |
         V9X_D3DPSHADECAPS_ALPHAFLATBLEND |
         V9X_D3DPSHADECAPS_ALPHAGOURAUDBLEND;
-    /* TRANSPARENCY: source colour keys on RGB565 textures by the texture
-     * unit's chroma key; other formats' keyed draws are refused. */
+    /* TRANSPARENCY: source colour keys by the texture unit's chroma key;
+     * on formats with alpha bits the matching texels are rewritten into
+     * the key first (v9x_d3d_rs690_apply_key). */
     tri->dwTextureCaps = V9X_D3DPTEXTURECAPS_PERSPECTIVE |
                          V9X_D3DPTEXTURECAPS_POW2 |
                          V9X_D3DPTEXTURECAPS_ALPHA |
@@ -677,6 +678,106 @@ static int v9x_d3d_rs690_accepts(const V9X_R3D_DRAW *draw)
     return v9x_d3d_rs690_map(draw) == V9X_D3D_RS690_REFUSE_NONE;
 }
 
+/*
+ * A keyed draw on a texture with bits outside the colour (ARGB1555,
+ * ARGB4444, ARGB8888, XRGB8888): every texel whose colour matches the key
+ * is rewritten into the key exactly, so the chroma key, which compares the
+ * texel as stored, discards the texels Direct3D's key does
+ * (v9x_d3d_rs690_key_texel). Other texels are not touched. Once per
+ * upload: the table entry is made from the surface record, as the ViRGE
+ * makes it (d3d_virge.c), and marked dirty on Unlock, a Blt into the
+ * texture, TextureSwap and SetColorKey. Every level the sampler reads is
+ * rewritten. A level's own Unlock marks that level, not the texture the
+ * key is on, so a mip level written alone is the gap. Called after
+ * v9x_rs690_3d_begin, which leaves the engine idle, so no draw is reading
+ * the texels. Incoming's keyed draws, all refused before, are what this
+ * is for (M-5CAPM3, 2026-11-21).
+ */
+static void v9x_d3d_rs690_apply_key(const V9X_R3D_DRAW *draw)
+{
+    const V9X_DD_SURFACE_LCL *surface =
+        (const V9X_DD_SURFACE_LCL *)draw->texture.object;
+    V9X_D3D_RS690_TEXTURE resolved;
+    V9X_D3D_COLOR_KEY *key;
+    v9x_u32 row_align = v9x_d3d_rs690_row_align();
+    DWORD bytes;
+    DWORD level;
+
+    if (draw->color_key_enable == 0ul || surface == 0 ||
+        (surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) == 0ul) {
+        return;
+    }
+    v9x_d3d_rs690_resolve_texture(&draw->texture, &resolved);
+    if (!resolved.has_key || !v9x_d3d_rs690_key_rewrites(resolved.format)) {
+        return;
+    }
+    ++v9x_hal->d3d_diagnostics.color_key_draws;
+    key = v9x_d3d_color_key_find(surface);
+    if (key == 0 || key->low != surface->ddckCKSrcBltLow ||
+        key->high != surface->ddckCKSrcBltHigh) {
+        v9x_d3d_color_key_set(surface, V9X_DDCKEY_SRCBLT,
+                              surface->ddckCKSrcBltLow,
+                              surface->ddckCKSrcBltHigh);
+        key = v9x_d3d_color_key_find(surface);
+    }
+    if (key == 0 || key->dirty == 0ul) {
+        return;
+    }
+    bytes = (resolved.format == V9X_RS690_TEXFMT_ARGB8888 ||
+             resolved.format == V9X_RS690_TEXFMT_XRGB8888) ? 4ul : 2ul;
+
+    for (level = 0ul; level < resolved.levels; ++level) {
+        DWORD width = resolved.width >> level;
+        DWORD height = resolved.height >> level;
+        DWORD pitch = resolved.pitch_bytes;
+        DWORD start = resolved.offset;
+        DWORD x;
+        DWORD y;
+
+        if (width == 0ul) {
+            width = 1ul;
+        }
+        if (height == 0ul) {
+            height = 1ul;
+        }
+        if (level != 0ul) {
+            pitch = v9x_rs690_mip_pitch_aligned(resolved.width, bytes, level,
+                                                row_align);
+            start += v9x_rs690_mip_offset_aligned(resolved.width,
+                                                  resolved.height, bytes,
+                                                  level, row_align);
+        }
+        for (y = 0ul; y < height; ++y) {
+            volatile BYTE *row = (volatile BYTE *)(v9x_hal->fb.linear_base +
+                                                   start + y * pitch);
+
+            for (x = 0ul; x < width; ++x) {
+                if (bytes == 2ul) {
+                    volatile WORD *texel = (volatile WORD *)row + x;
+                    WORD value = *texel;
+                    WORD keyed = (WORD)v9x_d3d_rs690_key_texel(
+                        resolved.format, key->low, value);
+
+                    if (keyed != value) {
+                        *texel = keyed;
+                    }
+                } else {
+                    volatile DWORD *texel = (volatile DWORD *)row + x;
+                    DWORD value = *texel;
+                    DWORD keyed = v9x_d3d_rs690_key_texel(resolved.format,
+                                                          key->low, value);
+
+                    if (keyed != value) {
+                        *texel = keyed;
+                    }
+                }
+            }
+        }
+    }
+    key->dirty = 0ul;
+    ++v9x_hal->d3d_diagnostics.color_key_rewrites;
+}
+
 /* The vertex checks, on the floats' bits, as the Rage 128 makes them. */
 #define V9X_D3D_RS690_SIGN_BIT      0x80000000ul
 #define V9X_D3D_RS690_EXPONENT_MASK 0x7f800000ul
@@ -795,6 +896,7 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
         v9x_d3d_rs690_count_refusal(draw, reason);
         return 0;
     }
+    v9x_d3d_rs690_apply_key(draw);
     textured = draw->texture.object != 0;
     ++v9x_hal->d3d_diagnostics.m64_draws;
     v9x_hal->d3d_diagnostics.m64_triangles += triangle_count;
