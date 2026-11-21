@@ -1,0 +1,13 @@
+[+0:06] agent 0.19.0, boot 97, desktop True
+[+0:38] display card present: 1002:6778, 1002:9901
+[+3:34] staged 8 files; resetting
+[+5:33] reset: boot 97 -> 98
+[+6:25] installed: 8 of 8
+[+7:51] probes in place: sent 7 of 7
+[+8:41] V9XD32 default exit=1
+[+9:06] V9XD32 bpp16 exit=1
+[+9:56] V9XGLP.EXE exit=0
+[+10:12] V9XGLIDP.EXE exit=0
+[+10:25] V9XR3DP.EXE exit=0
+[+10:46] V9XWPRS.EXE exit=0
+[+11:01] V9XFBCMP.EXE exit=0

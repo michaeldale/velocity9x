@@ -852,7 +852,13 @@ int v9x_eg_cp_submit_open(const v9x_u32 *dwords, DWORD count, DWORD target,
         }
         v9x_eg_cp_open_surface[v9x_eg_cp_open_surfaces++] = drawn[which];
     }
-    if (close || v9x_eg_cp_open >= V9X_EG_CP_OPEN_MAX) {
+    /* Groups are measured on Trinity only. Released 0.56.1, the first with
+     * them, hung M-D7TFW4's HD 7470 (Caicos) in its first V9XD32 run where
+     * 0.56.0 ran (docs\issues\2026-11-22-caicos-hd7470-hangs-in-direct3d-
+     * from-0.56.1.md), so every other Evergreen part closes its group
+     * after each batch, which is what 0.56.0 did. */
+    if (close || v9x_eg_cp_open >= V9X_EG_CP_OPEN_MAX ||
+        !v9x_eg_cp_trinity()) {
         return v9x_eg_cp_close();
     }
     return 1;

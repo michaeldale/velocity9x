@@ -6,6 +6,18 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.61.0 - not yet released
 
+- **Radeon HD 7470 (and by the same code the HD 5450, HD 5570 and
+  HD 5770): the first Direct3D program no longer hangs the machine.**
+  0.56.1 began flushing the Evergreen engine's caches once per group of
+  batches, measured on the HD 7660D only. On an HD 7470 the released
+  0.56.1 hangs in the Direct3D probe where 0.56.0 runs. These cards now
+  flush after every batch again, as in 0.56.0; the HD 7660D keeps its
+  groups. With the fix the Direct3D probe passes at 32 and 16 bpp on the
+  HD 7470, with every other release probe. The HD 5450, HD 5570 and
+  HD 5770 have not been run on it; why a group hangs the card is not
+  known
+  ([issue](docs/issues/2026-11-22-caicos-hd7470-hangs-in-direct3d-from-0.56.1.md)).
+
 ## 0.60.0 - 2026-11-21
 
 - **`ati` package: the ATI Radeon X1300 (RV515, `1002:7146`)**, on the

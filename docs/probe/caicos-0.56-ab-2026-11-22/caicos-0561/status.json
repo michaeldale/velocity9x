@@ -1,0 +1,13 @@
+{
+    "Name":  "caicos-0561",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  null,
+    "BootAfter":  null,
+    "Installed":  null,
+    "Error":  "no progress for 10 min after \u0027[+7:58] probes in place: sent 1 of 7\u0027",
+    "Offline":  false,
+    "Agent":  {
+
+              }
+}

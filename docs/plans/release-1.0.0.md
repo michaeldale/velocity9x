@@ -147,6 +147,17 @@ Dated entries, appended as work is measured.
   that needs a restart loop before `s3` can be called Supported. The
   ViRGE/DX guest's V9XD32 fails T1, T4 and T14 at 16 bpp, and released
   0.36.0 fails the same, so it is not a regression; cause open.
+- **New blocker, B14 (2026-11-22):** the HD 7470 hangs the machine in
+  its first Direct3D program on released 0.56.1, and runs on 0.56.0
+  ([issue](../issues/2026-11-22-caicos-hd7470-hangs-in-direct3d-from-0.56.1.md)).
+  Every release from 0.56.1 to 0.60.0 carries it. The HD 5450, HD 5570
+  and HD 5770 use the same engine code and have not been run since
+  0.34.0. Done when the commit is isolated, fixed, and V9XD32 passes on
+  the HD 7470 and one other Evergreen card. The same day: isolated to
+  the per-group flush of c0c9381b and fixed in source (the group closes
+  after every batch on the non-Trinity parts); V9XD32 passes on the
+  HD 7470 at both depths. One other Evergreen card still owed. `run-release-checks.ps1`
+  takes a `PackageDir` per machine for such A/Bs.
 - New for the list: M-D7TFW4 with an HD 7470 fitted beside its HD 7660D
   fails and hangs on released 0.56.2 (2026-11-19); not run today. The
   86Box Trio64's 134 ms windowed presents. The Mach64 VT2 guest's 8 bpp

@@ -214,6 +214,9 @@ if ($Worker) {
     # build\install, unless the list names another AgentInstall folder.
     $agentPackage = Get-V9xAgentPackage -ControllerPath $controller -Install $machineSet.AgentInstall
     $package = Join-Path $repoRoot "build\win98se-$($entry.Family)"
+    # A released package unpacked somewhere else, to run today's probes
+    # against an earlier driver (an A/B, never a release check).
+    if ($entry.PackageDir) { $package = [string]$entry.PackageDir }
     $machineDir = Join-Path $OutDir $(if ($Baseline) { "$Worker-before" } else { $Worker })
     New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
     $connection = if ($entry.Relay) { @{ Relay = $entry.Relay } } else { @{ Host = $entry.Host } }
@@ -845,6 +848,9 @@ if (-not (Test-Path -LiteralPath $indexPath)) {
 $index = Get-Content -LiteralPath $indexPath -Raw | ConvertFrom-Json
 $buildId = $index.BuildId
 foreach ($entry in $machines) {
+    if ($entry.PackageDir -and -not (Test-Path -LiteralPath $entry.PackageDir)) {
+        throw "PackageDir $($entry.PackageDir) does not exist (machine $($entry.Name))."
+    }
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "build\win98se-$($entry.Family)"))) {
         throw "No package for family $($entry.Family) (machine $($entry.Name))."
     }
