@@ -4,8 +4,57 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.60.0 - not yet released
+## 0.60.0 - 2026-11-21
 
+- **`ati` package: the ATI Radeon X1300 (RV515, `1002:7146`)**, on the
+  Radeon X1200's engine with the R500's own shader and rasterizer state:
+  DirectDraw fills, copies and page flips on the chip, and hardware
+  Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular,
+  fog, colour keys and mipmaps. V9XD32 passes with no failures at both
+  depths; 3DMark 2000 completes, and its owner saw no glitches in it.
+  The owner also reports Forsaken, GTA2, Half-Life and Quake 3 running,
+  the last a little dark. One card through remote help; modes from the
+  VBE
+  ([registers](docs/decisions/2026-11-21-rv515-register-probe.md),
+  [2D](docs/decisions/2026-11-21-rv515-directdraw-engine.md),
+  [flips](docs/decisions/2026-11-21-rv515-flips.md),
+  [Direct3D](docs/decisions/2026-11-21-rv515-d3d-hal.md),
+  [colour key and mipmaps](docs/decisions/2026-11-21-rv515-colour-key-mipmaps.md)).
+  **Known issues on the X1300:** System Shock 2 draws something wrong at
+  the top of the screen that its owner says affects the draw distance
+  (not yet traced); Quake 3 is darker than on period cards and its
+  brightness setting does little; V9XDDP's bilinear mip checks read black,
+  as on the X1200; no Direct3D 8, two-texture or 3DCIF run.
+- **X1300 and X1200: flip buffers on 4 KiB.** The X1300's display
+  controller drops the low 12 bits of a flip address, so at 800x600 every
+  other frame was shown from the wrong place and the owner saw Forsaken
+  and GTA2 jitter. The driver now places a flip chain's back buffers on
+  4 KiB, and the owner reports both games fixed. The X1200 takes the same
+  placement, not measured on one
+  ([record](docs/decisions/2026-11-21-rv515-flip-address-alignment.md)).
+- **X1300 and X1200: colour keys on textures with alpha.** Keyed
+  ARGB1555, ARGB4444 and ARGB8888 textures were refused, which left
+  Incoming's menu text and effects undrawn. Matching texels are now
+  rewritten into the key so the chip's key discards them; Incoming's
+  refused draws fell from 245,485 to 0 and its menu reads on the X1300
+  ([record](docs/decisions/2026-11-21-rv515-incoming-colour-key-alpha-formats.md)).
+  XRGB8888 textures are offered on both too.
+- **Glide 3, every package: 3dfx's 60/30/15 Hz demo runs.** The wrapper
+  answered no state-size query, so the demo quit at start; it now saves
+  and restores state and vertex layout, takes partial mip downloads and
+  frame-buffer reads, and converts ALPHA_8 textures, which held the
+  demo's menu. Its owner reports it working on the X1300
+  ([record](docs/decisions/2026-11-21-demo6030-glide3.md)). Known issue:
+  the Glide 3 log, `C:\V9XDIAG\V9XGLD3.LOG`, keeps growing while a game
+  runs (64 MB after one evening's runs on the X1300); delete it if it
+  gets large.
+- **Display Properties:** hardware Direct3D is offered on the settings
+  page for the cards that are granted it at run time (Cedar, Carrizo,
+  Mullins, both Olands), which the page called "not advertised"; the
+  Advanced tab gains controls for 2D acceleration, software Direct3D's
+  system-memory textures, write combining and per-program interface
+  exceptions, all keys the driver already read; two faults in it seen on
+  a ViRGE guest are fixed.
 - **`ati` package: the Oland 6611 (Radeon HD 8570 / R7 240, `1002:6611`)
   claimed** on the Oland XT's path. A read-only survey of a tester's Dell
   card found the same six compute units, two render backends, memory row

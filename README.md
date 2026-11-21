@@ -13,7 +13,7 @@ hardware 3D:
 - **Intel:** GMA 900, GMA 950, GMA 3150, GMA X3100, HD Graphics
   (Ironlake), HD 4000 and HD 4600;
 - **AMD and ATI:** Radeon 9250, HD 2400 Pro, HD 2600 XT, HD 5450, HD 5770, HD 7470, HD 7660D,
-  Oland XT, R3E (Mullins), R7E (Carrizo) and X1200; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
+  Oland XT, R3E (Mullins), R7E (Carrizo), X1200 and X1300; Rage 128 Pro, Rage Pro, Rage XL, Rage Mobility and
   Rage IIC;
 - **others:** S3 ViRGE and Trio3D, Matrox Millennium II and Mystique, SiS
   6326, NVIDIA RIVA 128ZX and GeForce 210, and 3dfx Voodoo4.
@@ -35,12 +35,34 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.59.0
+## Current version: 0.60.0
 
-[Download](releases/0.59.0/README.md) ·
+[Download](releases/0.60.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 0.60.0:
+- **ATI Radeon X1300 (RV515, `1002:7146`), `ati` package**, on the
+  X1200's engine with the R500's own shader state: DirectDraw and page
+  flips on the chip, and hardware Direct3D at 16 and 32 bpp. Every
+  Direct3D probe check passes; 3DMark 2000 completes, and its owner
+  reports Forsaken, GTA2, Half-Life, Quake 3 and Incoming running. One
+  card through remote help
+  ([Direct3D](docs/decisions/2026-11-21-rv515-d3d-hal.md),
+  [flips](docs/decisions/2026-11-21-rv515-flip-address-alignment.md),
+  [colour keys](docs/decisions/2026-11-21-rv515-incoming-colour-key-alpha-formats.md)).
+- **Glide 3: 3dfx's own 60/30/15 Hz demo runs**, menu included, with
+  state save and restore, partial texture downloads and ALPHA_8 textures
+  added to the wrapper, in every package
+  ([record](docs/decisions/2026-11-21-demo6030-glide3.md)).
+- **Display Properties:** hardware Direct3D offered where it is granted
+  at run time (Cedar, Carrizo, Mullins, Oland), and Advanced-tab controls
+  for 2D acceleration, write combining and per-program interface
+  exceptions.
+- **Oland 6611 (`1002:6611`)** claimed from a survey, and five ids from
+  the Linux tables without one
+  ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)).
 
 New in 0.59.0:
 - **Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), `intel-gma`
@@ -57,27 +79,6 @@ New in 0.59.0:
 - **GCN Radeons: 24-bit depth.** The Unreal Tournament 2004 demo, which
   found no depth format for 32-bit colour and quit, runs on the Oland XT
   at 32 bpp ([record](docs/decisions/2026-11-20-gcn-z24-depth.md)).
-
-New in 0.58.0:
-- **Intel HD Graphics 3000 (Sandy Bridge desktop, `8086:0112`),
-  `intel-gma` package.** DirectDraw fills, copies and page flips on the
-  chip at 8, 16 and 32 bpp, and the render clock at its 1100 MHz top.
-  Hardware Direct3D on the chip's own 3D pipeline with two texture
-  stages, and for DirectX 8 programs pixel shader 1.1, DXT textures and
-  cube maps; OpenGL and Glide through the same engine. Every release
-  probe passes; 3DMark 2000 (4068), 3DMark 2001 SE (3519) and the Quake 3
-  demo (95.3 fps) run on it. One i3-2105 desktop through remote help
-  ([2D](docs/decisions/2026-11-19-sandybridge-bcs-blits-and-flips.md),
-  [clock](docs/decisions/2026-11-19-sandybridge-render-clock-rp0.md),
-  [Direct3D](docs/decisions/2026-11-20-sandybridge-gen6-direct3d-v9xd32.md),
-  [pixel shaders](docs/decisions/2026-11-20-sandybridge-ddi8-ps11.md)).
-- **Radeon GCN cards, `ati` package: vsync off without half-drawn
-  frames.** A flip without vsync was called done before the screen took
-  it, so games drew into the frame on screen (missing sky, cars and HUD
-  in 3DMark 2001 SE on an R7 250-class Oland). It now takes effect at the
-  next line and tears as it should. Measured on the Oland only; the
-  Carrizo, Mullins and Evergreen cards take the same change
-  ([record](docs/decisions/2026-11-20-gcn-vsync-off-hretrace-flips.md)).
 
 ### Known issues
 
@@ -138,6 +139,17 @@ New in 0.58.0:
   ([issue](docs/issues/2026-11-07-s3-shutdown-garble-before-safe-screen.md)).
 - **Radeon X1200:** 3DMark 2000's first game test tints some distant
   terrain red ([issue](docs/issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)).
+  0.60.0's flip-buffer placement, keyed alpha textures and XRGB8888
+  textures, made for the X1300, have not been run on an X1200.
+- **Radeon X1300:** new in 0.60.0 and run on one card. System Shock 2
+  draws something wrong at the top of the screen that its owner says
+  affects the draw distance; Quake 3 is darker than on period cards and
+  its brightness setting does little. Neither is traced yet.
+- **Glide 3 log:** `C:\V9XDIAG\V9XGLD3.LOG` keeps growing while a Glide 3
+  game runs (64 MB after one evening on the X1300). Delete it if it gets
+  large.
+- **Incoming:** the same exception at 465973 inside the game was seen
+  once on the X1300, in its attract loop, and not again.
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts
   sometimes times out and is skipped; later frames draw.
 - **RIVA 128ZX:** not finished. Most of 3DMark 2000 is refused and not
@@ -157,6 +169,9 @@ New in 0.58.0:
 
 ### Recent releases
 
+- **0.59.0:** the Intel HD Graphics 2500 (Ivy Bridge GT1); write
+  combining through the page attribute table on the GMA 900 to Ironlake;
+  24-bit depth on GCN Radeons.
 - **0.58.0:** the Intel HD Graphics 3000 (Sandy Bridge) with Direct3D,
   pixel shader 1.1, OpenGL and Glide; vsync off without half-drawn frames
   on GCN Radeons.
@@ -308,6 +323,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | ATI Radeon 9250 (RV280, `1002:5960`), from 0.53.0 | `ati` | R200, by register writes, command processor off | Direct3D at 16 and 32 bpp with 16-bit Z; OpenGL; the Glide 2 probe; DirectDraw fills and copies on the 2D engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000 and Quake 2. One tester's card through remote help; modes from the VBE; the second head is not claimed. 3DCIF not run |
 | ATI Radeon 9200 (RV280, `1002:5961`, `1002:5962`), from 0.60.0 | `ati` | R200, by register writes, command processor off | The Radeon 9250 path unchanged. Claimed from the Linux tables without a survey; not run on one ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)) |
 | ATI Radeon X1200 IGP (RS690, `1002:791F`), from 0.37.0 | `ati` | R300-class, by register writes | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys and mipmaps; DirectDraw on the 2D engine and page flips. Rollcage and 3DMark 2000. From 0.38.0 OpenGL and Glide draw on the 3D engine: the OpenGL and Glide 2 probes pass; 3DCIF not run. One tester's Sempron machine through remote help; 16 MiB of the 128 MiB carve-out used; modes from the VBE |
+| ATI Radeon X1300 (RV515, `1002:7146`), from 0.60.0 | `ati` | R500, by register writes: the X1200's state through an R500 fixup, R500 fragment programs | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog, colour keys (alpha formats too) and mipmaps; DirectDraw on the 2D engine and page flips. V9XD32 passes at both depths; 3DMark 2000 completes. The owner reports Forsaken, GTA2, Half-Life, Quake 3, Incoming and 3dfx's Glide 3 demo running. One tester's card through remote help; modes from the VBE. 3DCIF not run ([record](docs/decisions/2026-11-21-rv515-d3d-hal.md)) |
 | AMD Radeon HD 2600 XT (RV630, `1002:9588`), from 0.49.0 | `ati` | R600, through AMD's RV630 CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, fog and colour keys; OpenGL; DirectDraw on the DMA engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000, 3DMark 2001 SE and Quake 3. One tester's Gigabyte card through remote help; 128 MiB of its 256 MiB used; modes from the VBE. Glide and 3DCIF not run; the screen is not write-combined |
 | ATI Radeon HD 2400 Pro (RV610, `1002:94C3`), from 0.52.0 | `ati` | R600, through AMD's RV610 CP microcode | As the HD 2600 XT: Direct3D, OpenGL, DirectDraw on the DMA engine and page flips. Every release probe passes and 3DMark 2000 completes. The same tester's Sapphire card through remote help; modes from the VBE; the screen is not write-combined |
 | AMD Radeon HD 5770 (Juniper, `1002:68B8`), from 0.34.0 | `ati` | Evergreen, through AMD's Juniper CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage; OpenGL; DirectDraw on the DMA engine and page flips. 3DMark 2000 and Quake 3 up to 1600x1200. One tester's machine through remote help; modes from the VBE. The Glide 2 probe passes |
@@ -407,6 +423,7 @@ from the records the [changelog](CHANGELOG.md) links.
 | ATI Rage 128 Pro | DirectDraw, flips | Yes | Not run | Yes | No | Yes | Not run |
 | ATI Radeon 9250 (0.53.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
 | ATI Radeon X1200 (0.37.0) | DirectDraw, flips | Yes | Not run | Probe (0.38.0) | No | Glide 2 probe only (0.38.0) | Not run |
+| ATI Radeon X1300 (0.60.0) | DirectDraw, flips | Yes | No | Reported (Quake 3) | No | Glide 3 (3dfx demo, reported) | Not run |
 | AMD Radeon HD 2600 XT (0.49.0) | DirectDraw, flips | Yes | Not run | Yes | No | Not run | Not run |
 | ATI Radeon HD 2400 Pro (0.52.0) | DirectDraw, flips | Yes | Not run | Probe | No | Glide 2 probe only | Not run |
 | AMD Radeon HD 5770 (0.34.0) | DirectDraw, flips | Yes | Not run | Yes | No | Glide 2 probe only | Not run |
@@ -433,7 +450,7 @@ Limits found in testing:
 - **Colour depth:** Direct3D renders at 32 bpp, with a 24- or 32-bit
   depth buffer as well as the 16-bit one, on the GMA 950/900/3150, the HD
   Graphics 4600, the Millennium II and, from 0.59.0, the Oland XT (the Mystique, the HD 2600 XT, the HD 5450, HD 7470,
-  HD 5770, HD 7660D, the R3E, the R7E, the X1200, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
+  HD 5770, HD 7660D, the R3E, the R7E, the X1200, the X1300, the Radeon 9250 and the GeForce 210: 32 bpp, 16-bit depth only). OpenGL follows Direct3D's colour depths, with a 24-bit depth
   format (32-bit on the Millennium II) beside the 16-bit one. Every other
   card's 3D, and Glide and 3DCIF everywhere, is 16-bit colour with a
   16-bit depth buffer.
@@ -623,6 +640,8 @@ Tested:
   game has been run on them yet.
 - **X1200:** from 0.38.0 the Glide 2 probe passes every check (0.37.0
   drew no triangles). No game has been run on it yet.
+- **3dfx's 60/30/15 Hz demo** (Glide 3): from 0.60.0 it runs, menu
+  included, on the X1300, by its owner's report.
 - **RIVA 128ZX:** from 0.39.0 Glide draws on the 3D engine; the Glide 2
   probe has one failure, a 50 % blend one step dark at 5:5:5. No game has
   been run on it yet.
