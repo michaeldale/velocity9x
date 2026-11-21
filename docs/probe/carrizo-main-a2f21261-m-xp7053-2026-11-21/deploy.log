@@ -1,0 +1,13 @@
+19:19:37 staged 8 files; resetting
+19:20:16 reset: boot 79 -> 80
+19:20:19 desktop ready: True
+19:20:21 left in C:\V9XSTAGE: 
+19:20:24 V9XDISP.DRV matches package: True
+19:20:27 V9XMINI.VXD matches package: True
+19:20:30 V9XHAL.DLL matches package: True
+19:20:33 V9XSETP.DLL matches package: True
+19:20:35 V9XGL.DLL matches package: True
+19:20:38 GLIDE2X.DLL matches package: True
+19:20:40 GLIDE3X.DLL matches package: True
+19:20:43 ATI3DCIF.DLL matches package: True
+19:20:43 RESULT: installed
