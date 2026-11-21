@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 0.61.0 - not yet released
+
 ## 0.60.0 - 2026-11-21
 
 - **`ati` package: the ATI Radeon X1300 (RV515, `1002:7146`)**, on the
