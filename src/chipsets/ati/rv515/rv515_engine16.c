@@ -50,6 +50,12 @@ void V9X_LEAF_FAR v9x_rv515_fill_engine_leaf(
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_RV515_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_ATI_RS690;
+    /* FLIP: D1GRPH, through rs690_scanout.c, which is Linux's
+     * rs600_page_flip; radeon_asic.c gives the RV515 the same routine
+     * (rv515_asic). The register probe read the VBE desktop on D1GRPH at
+     * the frame buffer's GPU base, D0000000h
+     * (docs\decisions\2026-11-21-rv515-register-probe.md). */
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
-                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY |
+                   V9X_DD_ENGINE_CAP_FLIP;
 }

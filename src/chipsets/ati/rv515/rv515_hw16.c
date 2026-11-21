@@ -14,9 +14,9 @@
  * builder's init list, fills and copies in every overlap direction were
  * measured byte-exact on this card at 8, 16 and 32 bpp with the CP's
  * queues off, as VBE leaves them
- * (docs\decisions\2026-11-21-rv515-2d-write-probe.md). No FLIP and no
- * D3D in the mask: neither has been tried on this chip, and without D3D
- * eng_rs690.c leaves the 3D core alone.
+ * (docs\decisions\2026-11-21-rv515-2d-write-probe.md). Phase 4 adds FLIP
+ * through D1GRPH (rs690_scanout.c). No D3D in the mask, so eng_rs690.c
+ * leaves the 3D core alone.
  *
  * BAR2 is read by V9xPciReadAtiMmioBar, as the RV280's is, not
  * V9xPciReadEgBars: this card's BAR2 is 64 KiB aligned and the Evergreen

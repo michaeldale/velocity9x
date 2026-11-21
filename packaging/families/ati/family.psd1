@@ -932,8 +932,9 @@
             Acceleration = 'directdraw-fill-copy'
             Direct3D = 'not-advertised'
             EngineType = 'ATI_RS690'
-            # No FLIP or D3D: neither tried on this chip.
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # FLIP: D1GRPH, as the RS690's (rs690_scanout.c; Linux gives the
+            # RV515 the same rs600_page_flip). No D3D yet.
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
             # What M-5CAPM3's VBE 4F00h reports. The card holds 256 MiB
             # (CONFIG_MEMSIZE, docs\decisions\2026-11-21-rv515-register-probe.md);
             # the heap stays at the family's 16 MiB mapping until phase 6.
