@@ -140,6 +140,13 @@ Dated entries, appended as work is measured.
 - B4 is a stale line: the fix is `4b0aa6ba`, shipped in 0.57.0. Its
   record still says not run on hardware; one 3DMark 2001 SE run on the
   HD 4600, reading `FilterMinSeen`, closes it.
+- Later the same day on 86Box: the mode matrix passes every mode for
+  `s3` on the Trio64 and ViRGE/DX guests (eleven each) and `ati` on the
+  Mach64 VT2 (six). Each S3 guest stuck once at shutdown on the way
+  ([issue](../issues/2026-11-21-86box-s3-guests-stick-at-shutdown-in-mode-matrix.md));
+  that needs a restart loop before `s3` can be called Supported. The
+  ViRGE/DX guest's V9XD32 fails T1, T4 and T14 at 16 bpp, and released
+  0.36.0 fails the same, so it is not a regression; cause open.
 - New for the list: M-D7TFW4 with an HD 7470 fitted beside its HD 7660D
   fails and hangs on released 0.56.2 (2026-11-19); not run today. The
   86Box Trio64's 134 ms windowed presents. The Mach64 VT2 guest's 8 bpp

@@ -1,0 +1,19 @@
+{
+    "Name":  "vm-virge",
+    "Family":  "s3",
+    "Baseline":  false,
+    "BootBefore":  692,
+    "BootAfter":  693,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  692,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "5333:8A01",
+    "AdapterMismatch":  false
+}

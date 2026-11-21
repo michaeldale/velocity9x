@@ -1,0 +1,19 @@
+{
+    "Name":  "vm-trio32",
+    "Family":  "s3",
+    "Baseline":  false,
+    "BootBefore":  null,
+    "BootAfter":  null,
+    "Installed":  null,
+    "Error":  "Display card 5333:8811 present; the list expects 5333:8810. Not installing.",
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  300,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "5333:8811",
+    "AdapterMismatch":  true
+}

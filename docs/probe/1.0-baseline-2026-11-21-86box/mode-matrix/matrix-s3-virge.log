@@ -1,0 +1,9 @@
+Protocol error: Guest did not reconnect with a new boot counter and resume token 'matrix-1-1024x768x32' within 180 seconds. Last error: Exception calling "Read" with "3" argument(s): "Unable to read data from the transport connection: An existing connection was forcibly closed by the remote host."
+v9xctl reboot failed (exit 42): 
+At C:\everything\velocity9x\scripts\run-vm-mode-matrix.ps1:140 char:5
++     throw "v9xctl $Operation failed (exit $exitCode): $($lines -join  ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (v9xctl reboot failed (exit 42): :String) [], RuntimeException
+    + FullyQualifiedErrorId : v9xctl reboot failed (exit 42): 
+ 
+exit=1

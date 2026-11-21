@@ -1,0 +1,19 @@
+{
+    "Name":  "vm-trio32",
+    "Family":  "s3",
+    "Baseline":  false,
+    "BootBefore":  300,
+    "BootAfter":  301,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  300,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "5333:8811",
+    "AdapterMismatch":  false
+}
