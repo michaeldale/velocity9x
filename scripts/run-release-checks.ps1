@@ -21,7 +21,8 @@
 # and remote-help relay ids, so it lives outside this repository: pass
 # -MachineList or set V9X_RELEASE_MACHINES. Its format is described at the top
 # of the file itself; in short, a .psd1 with ControllerPath and Machines, each
-# machine a Name, Family, Host or Relay, D32Runs, and PciId: the display
+# machine a Name, Family, Host or Relay (and a Port beside Host for an
+# emulator guest on a forwarded port), D32Runs, and PciId: the display
 # card's VVVV:DDDD id (an array for more than one), checked before anything is
 # installed. A machine whose present card differs is skipped and its row in
 # the record says so.
@@ -216,6 +217,9 @@ if ($Worker) {
     $machineDir = Join-Path $OutDir $(if ($Baseline) { "$Worker-before" } else { $Worker })
     New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
     $connection = if ($entry.Relay) { @{ Relay = $entry.Relay } } else { @{ Host = $entry.Host } }
+    # An emulator guest is one of several on the same host, told apart by
+    # its forwarded port.
+    if ($entry.Port) { $connection.Port = [int]$entry.Port }
     $status = [ordered]@{
         Name = $Worker; Family = $entry.Family; Baseline = [bool]$Baseline
         BootBefore = $null; BootAfter = $null; Installed = $null; Error = $null

@@ -1,0 +1,13 @@
+[+0:05] agent 0.19.0, boot 72, desktop False
+[+0:33] display card present: 12D2:0018
+[+2:39] staged 8 files; resetting
+[+5:05] reset: boot 72 -> 73
+[+5:14] logon dialog cancelled
+[+5:59] installed: 8 of 8
+[+7:04] probes in place: sent 7 of 7
+[+8:24] V9XD32 bpp16 exit=1
+[+9:04] V9XGLP.EXE exit=0
+[+9:25] V9XGLIDP.EXE exit=1
+[+9:34] V9XR3DP.EXE exit=0
+[+9:59] V9XWPRS.EXE exit=0
+[+10:21] V9XFBCMP.EXE exit=2

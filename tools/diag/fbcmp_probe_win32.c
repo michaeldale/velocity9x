@@ -508,9 +508,49 @@ void __stdcall V9xFbCompareProbeEntry(void)
     info.header.biBitCount = (WORD)bpp;
     info.header.biCompression = BI_BITFIELDS;
     if (bpp == 16ul) {
+        /* A 16-bit desktop is 5:5:5 on the ViRGE, the Rage II and Rage Pro
+         * classes and the RIVA 128ZX. Asking GDI for 5:6:5 there makes it
+         * convert every pixel, and the compare then fails on a correct
+         * screen (86Box ViRGE/DX and the RIVA 128ZX, 2026-11-21). The
+         * masks are the primary surface's own, read from a DirectDraw
+         * object that is released again before GDI's read. GetDIBits on a
+         * compatible bitmap does not return them on Windows 98 (it gave
+         * 01576DF3h as the red mask on both S3 guests). */
+        V9X_FBC_CREATE query_create;
+        LPDIRECTDRAW query_dd = 0;
+        LPDIRECTDRAWSURFACE query_primary = 0;
+        DDSURFACEDESC query_desc;
+        DDPIXELFORMAT format;
+
         info.masks[0] = 0xf800ul;
         info.masks[1] = 0x07e0ul;
         info.masks[2] = 0x001ful;
+        query_create = (V9X_FBC_CREATE)GetProcAddress(
+            LoadLibraryA("DDRAW.DLL"), "DirectDrawCreate");
+        if (query_create != 0 && query_create(0, &query_dd, 0) == DD_OK) {
+            v9x_fbc_zero(&query_desc, sizeof(query_desc));
+            query_desc.dwSize = sizeof(query_desc);
+            query_desc.dwFlags = DDSD_CAPS;
+            query_desc.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+            v9x_fbc_zero(&format, sizeof(format));
+            format.dwSize = sizeof(format);
+            if (IDirectDraw_SetCooperativeLevel(query_dd, 0,
+                                                DDSCL_NORMAL) == DD_OK &&
+                IDirectDraw_CreateSurface(query_dd, &query_desc,
+                                          &query_primary, 0) == DD_OK &&
+                IDirectDrawSurface_GetPixelFormat(query_primary,
+                                                  &format) == DD_OK &&
+                format.dwRBitMask != 0ul) {
+                info.masks[0] = format.dwRBitMask;
+                info.masks[1] = format.dwGBitMask;
+                info.masks[2] = format.dwBBitMask;
+            }
+            if (query_primary != 0) {
+                IDirectDrawSurface_Release(query_primary);
+            }
+            IDirectDraw_Release(query_dd);
+        }
+        v9x_fbc_uint("ScreenRedMask", info.masks[0]);
     } else {
         info.masks[0] = 0x00ff0000ul;
         info.masks[1] = 0x0000ff00ul;

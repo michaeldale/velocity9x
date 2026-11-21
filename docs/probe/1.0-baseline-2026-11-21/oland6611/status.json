@@ -1,0 +1,19 @@
+{
+    "Name":  "oland6611",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  185,
+    "BootAfter":  186,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  185,
+    "Desktop":  true,
+    "AnswerSeconds":  7,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "1002:6611",
+    "AdapterMismatch":  false
+}
