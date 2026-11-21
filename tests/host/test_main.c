@@ -383,6 +383,15 @@ unsigned int v9x_run_rs690_2d_tests(void);
  * register values against xf86-video-ati 6.14.6 and Mesa r300. */
 unsigned int v9x_run_rs690_3d_tests(void);
 
+/* tests\host\test_r500_fp.c: R500 fragment-program words against values
+ * generated from Mesa r300_reg.h in xf86-video-ati's R500 shapes. */
+unsigned int v9x_run_r500_fp_tests(void);
+
+/* tests\host\test_rv515_3d.c: the RS690 3D lists through the R500 fixup,
+ * and the R500 rasterizer setup and programs, against the programs
+ * measured on M-5CAPM3's X1300. */
+unsigned int v9x_run_rv515_3d_tests(void);
+
 /* tests\host\test_eg_dma.c: Evergreen DMA fill and copy packets, run
  * through a model of the engine the write probe measured and compared
  * with a CPU rectangle operation. */
@@ -1649,6 +1658,8 @@ int main(int argc, char **argv)
     failures += v9x_run_r128_3d_tests();
     failures += v9x_run_rs690_2d_tests();
     failures += v9x_run_rs690_3d_tests();
+    failures += v9x_run_r500_fp_tests();
+    failures += v9x_run_rv515_3d_tests();
     failures += v9x_run_eg_dma_tests();
     failures += v9x_run_r6_dma_tests();
     failures += v9x_run_r6_3d_tests();

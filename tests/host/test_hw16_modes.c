@@ -216,6 +216,9 @@ const V9X_HW16_DEVICE v9x_rv280_9200_5961_device = {
 const V9X_HW16_DEVICE v9x_rv280_9200_5962_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_rv515_x1300_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 const V9X_HW16_DEVICE v9x_si_oland_6611_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };

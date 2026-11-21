@@ -2243,6 +2243,9 @@ const V9X_ENGINE32_OPS *v9x_engine32(void)
     case V9X_DD_ENGINE_TYPE_NV3:
         return &v9x_engine32_nv3;
     case V9X_DD_ENGINE_TYPE_ATI_RS690:
+    case V9X_DD_ENGINE_TYPE_ATI_RV515:
+        /* The X1300 runs the X1200's engine; eng_rs690.c builds its 3D
+         * init through rv515_3d.c (engine_abi.h). */
         return &v9x_engine32_rs690;
     case V9X_DD_ENGINE_TYPE_ATI_R600:
         return &v9x_engine32_r6;

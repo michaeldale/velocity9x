@@ -74,6 +74,9 @@
 /* The Radeon 9250 (RV280, R200 class): VBE modes and the screen shadow;
  * see rv280_hw16.c. The 9200SE (5964) is its alias. */
 #define V9X_PCI_DEVICE_RV280_5960       ((v9x_u16)0x5960u)
+/* The Radeon X1300 (RV515, R500 class): VBE modes and the screen shadow,
+ * no engine yet; see rv515_hw16.c. */
+#define V9X_PCI_DEVICE_RV515_7146       ((v9x_u16)0x7146u)
 
 v9x_status v9x_ati_mach64_probe(
     struct v9x_backend_state *state,

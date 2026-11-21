@@ -68,6 +68,7 @@ int v9x_rs690_scanout_active(void)
     if (v9x_hal == 0 ||
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) == 0ul ||
         (v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_RS690 &&
+         v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_RV515 &&
          v9x_hal->engine.engine_type != V9X_DD_ENGINE_TYPE_ATI_R600) ||
         v9x_hal->engine.control_linear_base == 0ul ||
         v9x_hal->engine.mapped_aperture_bytes <

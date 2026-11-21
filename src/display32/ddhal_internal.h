@@ -628,8 +628,8 @@ void v9x_eg_flip_advance(void);
 void v9x_eg_note_flip_done(void);
 void v9x_eg_scanout_reset(void);
 /* The Radeon X1200 IGP's (RS690) AVIVO controller D1, in
- * engines/rs690_scanout.c: active only for ATI_RS690 stamped with
- * V9X_DD_ENGINE_CAP_FLIP. Written under D1GRPH_UPDATE_LOCK, taken at the
+ * engines/rs690_scanout.c: active only for ATI_RS690 (or ATI_RV515, R600)
+ * stamped with V9X_DD_ENGINE_CAP_FLIP. Written under D1GRPH_UPDATE_LOCK, taken at the
  * vertical blank; pending until SURFACE_UPDATE_PENDING clears. */
 int v9x_rs690_scanout_active(void);
 int v9x_rs690_scanout_live(void);

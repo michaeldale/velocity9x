@@ -67,6 +67,7 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x5964u, v9x_ati_mach64_backend }, /* ati / rv280 alias */
     { 0x1002u, 0x5961u, v9x_ati_mach64_backend }, /* ati / rv280 alias */
     { 0x1002u, 0x5962u, v9x_ati_mach64_backend }, /* ati / rv280 alias */
+    { 0x1002u, 0x7146u, v9x_ati_mach64_backend }, /* ati / rv515 */
     { 0x8086u, 0x27AEu, v9x_intel_gma_backend }, /* intel-gma / gma950-945gse */
     { 0x8086u, 0x2592u, v9x_intel_gma_backend }, /* intel-gma / gma900-915gm */
     { 0x8086u, 0xA011u, v9x_intel_gma_backend }, /* intel-gma / gma3150-pineview */

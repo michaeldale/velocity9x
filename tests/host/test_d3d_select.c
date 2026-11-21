@@ -210,8 +210,20 @@ static void test_every_engine_type(void)
           V9X_D3D_SELECT_NONE },
         { 1, V9X_DD_ENGINE_TYPE_ATI_RV280, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
           V9X_D3D_SELECT_SOFTWARE },
-        /* A type past every engine (17 became the Radeon 9250's). */
-        { 1, 18ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
+        /* The X1300: the X1200's register-write engine under its own
+         * type; the 2D engine alone selects nothing; software still
+         * wins. */
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RV515,
+          V9X_DD_ENGINE_CAP_SOLID_FILL | V9X_DD_ENGINE_CAP_SCREEN_COPY,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RV515, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_RS690 },
+        { 0, V9X_DD_ENGINE_TYPE_ATI_RV515, V9X_DD_ENGINE_CAP_D3D,
+          V9X_D3D_SELECT_NONE },
+        { 1, V9X_DD_ENGINE_TYPE_ATI_RV515, V9X_DD_ENGINE_CAP_D3D_SOFTWARE,
+          V9X_D3D_SELECT_SOFTWARE },
+        /* A type past every engine (18 became the X1300's). */
+        { 1, 19ul, V9X_DD_ENGINE_CAP_D3D, V9X_D3D_SELECT_NONE },
         { 1, 0xfffffffful, 0ul, V9X_D3D_SELECT_NONE },
 
         /* The publish-time case the old default got wrong: an unstamped

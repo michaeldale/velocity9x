@@ -32,6 +32,7 @@
 #include "d3d_rs690_map.h"
 #include "velocity9x/rs690_2d.h"
 #include "velocity9x/rs690_3d.h"
+#include "velocity9x/rv515_3d.h"
 
 /* The register window the mini-VDD maps (eng_rs690.c's). */
 #define V9X_D3D_RS690_MMIO_BYTES 0x00010000ul
@@ -58,6 +59,8 @@
 #define V9X_D3D_RS690_FIFO_SPINS 0x00200000ul
 
 static struct v9x_rs690_3d_list v9x_d3d_rs690_list;
+/* The X1300's state list (ATI_RV515), from rv515_3d.c. */
+static struct v9x_rv515_3d_list v9x_d3d_rv515_list;
 static DWORD v9x_d3d_rs690_fb_base;
 static DWORD v9x_d3d_rs690_desktop;
 
@@ -113,23 +116,30 @@ static int v9x_d3d_rs690_room(DWORD entries)
     return 0;
 }
 
-/* A list's writes, each run of 16 behind a wait for room. */
-static int v9x_d3d_rs690_write_list(const struct v9x_rs690_3d_list *list)
+/* Register writes, each run of 16 behind a wait for room. */
+static int v9x_d3d_rs690_write_writes(const v9x_u32 *offsets,
+                                      const v9x_u32 *values, DWORD count)
 {
     DWORD index;
 
-    for (index = 0ul; index < list->count; ++index) {
+    for (index = 0ul; index < count; ++index) {
         if (index % V9X_D3D_RS690_FIFO_BATCH == 0ul &&
             !v9x_d3d_rs690_room(V9X_D3D_RS690_FIFO_BATCH)) {
             return 0;
         }
-        v9x_d3d_rs690_write(list->offsets[index], list->values[index]);
+        v9x_d3d_rs690_write(offsets[index], values[index]);
     }
     return 1;
 }
 
-/* RGB565, ARGB1555 and ARGB4444 at 16 bits, ARGB8888 at 32: the builder's
- * format, or 0 for one this engine does not sample. */
+static int v9x_d3d_rs690_write_list(const struct v9x_rs690_3d_list *list)
+{
+    return v9x_d3d_rs690_write_writes(list->offsets, list->values,
+                                      list->count);
+}
+
+/* RGB565, ARGB1555 and ARGB4444 at 16 bits, ARGB8888 and XRGB8888 at 32:
+ * the builder's format, or 0 for one this engine does not sample. */
 static DWORD v9x_d3d_rs690_format_of(const V9X_DD_SURFACE_LCL *surface,
                                      DWORD *bytes_out)
 {
@@ -176,6 +186,16 @@ static DWORD v9x_d3d_rs690_format_of(const V9X_DD_SURFACE_LCL *surface,
         format->dwRGBAlphaBitMask == 0xff000000ul) {
         *bytes_out = 4ul;
         return V9X_RS690_TEXFMT_ARGB8888;
+    }
+    /* XRGB8888: sampled with alpha one, the X byte never read. Refused
+     * before 2026-11-21, which V9XD32's T22X drew black on the X1300. */
+    if (format->dwRGBBitCount == 32ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x00ff0000ul &&
+        format->dwGBitMask == 0x0000ff00ul &&
+        format->dwBBitMask == 0x000000fful) {
+        *bytes_out = 4ul;
+        return V9X_RS690_TEXFMT_XRGB8888;
     }
     return 0ul;
 }
@@ -295,7 +315,7 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB1555, ARGB4444, ARGB8888. */
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888, then XRGB8888 below. */
     for (index = 0ul; index < 4ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
@@ -328,8 +348,13 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
     shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
+    /* XRGB8888, the fifth and last entry the table holds, as Evergreen's
+     * (d3d_eg.c). */
+    shared->texture_formats[4] = shared->texture_formats[3];
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 4ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }
@@ -340,10 +365,22 @@ static int v9x_d3d_rs690_ready(void)
     return v9x_hal != 0 &&
         (v9x_hal->fb.flags & V9X_DD_FB_VALID) != 0ul &&
         (v9x_hal->engine.flags & V9X_DD_ENGINE_VALID) != 0ul &&
-        v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 &&
+        (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RS690 ||
+         v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) &&
         (v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_D3D) != 0ul &&
         v9x_hal->engine.control_linear_base != 0ul &&
         v9x_hal->engine.mapped_aperture_bytes >= V9X_D3D_RS690_MMIO_BYTES;
+}
+
+/* The texture row alignment the sampler assumes: the X1300 steps rows and
+ * mip levels 32 bytes apart, the RS690 64 (V9X_RV515_TEX_ROW_ALIGN). 0 is
+ * the RS690's, as v9x_rs690_mip_pitch_aligned takes it. */
+static v9x_u32 v9x_d3d_rs690_row_align(void)
+{
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+        return V9X_RV515_TEX_ROW_ALIGN;
+    }
+    return 0ul;
 }
 
 /*
@@ -363,6 +400,7 @@ static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
                                                      : texture->height;
     DWORD possible = 1ul;
     DWORD found = 1ul;
+    v9x_u32 row_align = v9x_d3d_rs690_row_align();
 
     ++v9x_hal->d3d_diagnostics.mip_chain_checks;
     while (longest > 1ul) {
@@ -370,7 +408,7 @@ static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
         ++possible;
     }
     if (texture->pitch_bytes !=
-        v9x_rs690_mip_pitch(texture->width, bytes, 0ul)) {
+        v9x_rs690_mip_pitch_aligned(texture->width, bytes, 0ul, row_align)) {
         return;
     }
     while (found < possible) {
@@ -378,9 +416,11 @@ static void v9x_d3d_rs690_resolve_chain(const V9X_DD_SURFACE_LCL *surface,
             (const V9X_DD_ATTACH_NODE *)level->lpAttachList;
         const V9X_DD_SURFACE_LCL *next = 0;
         DWORD expected = texture->offset +
-                         v9x_rs690_mip_offset(texture->width, texture->height,
-                                              bytes, found);
-        DWORD pitch = v9x_rs690_mip_pitch(texture->width, bytes, found);
+                         v9x_rs690_mip_offset_aligned(texture->width,
+                                                      texture->height, bytes,
+                                                      found, row_align);
+        DWORD pitch = v9x_rs690_mip_pitch_aligned(texture->width, bytes,
+                                                  found, row_align);
 
         while (node != 0) {
             if (node->object != 0 && node->object != level &&
@@ -445,7 +485,8 @@ static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
         texture->format = V9X_D3D_RS690_TEXTURE_UNKNOWN;
         return;
     }
-    texture->has_alpha = texture->format != V9X_RS690_TEXFMT_RGB565;
+    texture->has_alpha = texture->format != V9X_RS690_TEXFMT_RGB565 &&
+                         texture->format != V9X_RS690_TEXFMT_XRGB8888;
     texture->width = (DWORD)surface->lpGbl->wWidth;
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->pitch_bytes = (DWORD)surface->lpGbl->lPitch;
@@ -547,7 +588,8 @@ static int v9x_d3d_rs690_omitted(const V9X_R3D_DRAW *draw,
         classes |= V9X_D3D_RS690_OMIT_UNTEXTURED;
     } else if (resolved->format == V9X_RS690_TEXFMT_ARGB4444) {
         classes |= V9X_D3D_RS690_OMIT_4444;
-    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB8888) {
+    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB8888 ||
+               resolved->format == V9X_RS690_TEXFMT_XRGB8888) {
         classes |= V9X_D3D_RS690_OMIT_8888;
     } else if (resolved->format == V9X_RS690_TEXFMT_ARGB1555) {
         classes |= V9X_D3D_RS690_OMIT_1555;
@@ -587,10 +629,20 @@ static v9x_u32 v9x_d3d_rs690_map(const V9X_R3D_DRAW *draw)
                                     v9x_d3d_rs690_desktop,
                                     v9x_hal->fb.vram_bytes,
                                     v9x_d3d_rs690_depth_bytes(draw), &state);
-    if (reason == V9X_D3D_RS690_REFUSE_NONE &&
-        v9x_rs690_build_3d_state(&state, &v9x_d3d_rs690_list) !=
-            V9X_STATUS_OK) {
-        reason = V9X_D3D_RS690_REFUSE_STATE;
+    if (reason == V9X_D3D_RS690_REFUSE_NONE) {
+        v9x_status built;
+
+        /* The X1300 takes the same state through the R500 fixup with R500
+         * rasterizer setup and programs (rv515_3d.c); its list is the one
+         * v9x_d3d_rs690_draw writes for that type. */
+        if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+            built = v9x_rv515_build_3d_state(&state, &v9x_d3d_rv515_list);
+        } else {
+            built = v9x_rs690_build_3d_state(&state, &v9x_d3d_rs690_list);
+        }
+        if (built != V9X_STATUS_OK) {
+            reason = V9X_D3D_RS690_REFUSE_STATE;
+        }
     }
     /* The colour MC addresses mapped draws write, lowest and highest, and
      * the base of the last, in fields this engine does not otherwise use
@@ -768,7 +820,13 @@ static int v9x_d3d_rs690_draw(const V9X_R3D_DRAW *draw,
         return 0;
     }
     v9x_d3d_rs690_write(V9X_RS690_WAIT_UNTIL, V9X_RS690_WAIT_2D_IDLECLEAN);
-    if (!v9x_d3d_rs690_write_list(&v9x_d3d_rs690_list)) {
+    if (v9x_hal->engine.engine_type == V9X_DD_ENGINE_TYPE_ATI_RV515) {
+        if (!v9x_d3d_rs690_write_writes(v9x_d3d_rv515_list.offsets,
+                                        v9x_d3d_rv515_list.values,
+                                        v9x_d3d_rv515_list.count)) {
+            return 0;
+        }
+    } else if (!v9x_d3d_rs690_write_list(&v9x_d3d_rs690_list)) {
         return 0;
     }
     while (at < triangle_count) {
@@ -838,6 +896,7 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_u32 pitches[V9X_D3D_RS690_TEXTURE_LEVELS];
     v9x_u32 rows[V9X_D3D_RS690_TEXTURE_LEVELS];
     v9x_u32 offsets[V9X_D3D_RS690_TEXTURE_LEVELS];
+    v9x_u32 row_align = 0ul;
     DWORD bytes = 0ul;
     DWORD width;
     DWORD height;
@@ -856,6 +915,12 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     }
     width = (DWORD)surface->lpGbl->wWidth;
     height = (DWORD)surface->lpGbl->wHeight;
+    /* Only a chain takes the sampler's own row step; a single level is
+     * drawn with TXPITCH_EN at the pitch given, and 64 bytes is the pitch
+     * TexQuadrants measured on both chips. */
+    if (data->dwSCnt > 1ul) {
+        row_align = v9x_d3d_rs690_row_align();
+    }
 
     if ((surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) != 0ul) {
         if (data->dwSCnt != 1ul ||
@@ -894,22 +959,28 @@ static DWORD v9x_d3d_rs690_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 (DWORD)member->lpGbl->wHeight != height) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
-            pitches[level] = v9x_rs690_mip_pitch(base_width, bytes, level);
+            pitches[level] = v9x_rs690_mip_pitch_aligned(base_width, bytes,
+                                                         level, row_align);
             rows[level] = height;
-            offsets[level] = v9x_rs690_mip_offset(base_width, base_height,
-                                                  bytes, level);
+            offsets[level] = v9x_rs690_mip_offset_aligned(base_width,
+                                                          base_height, bytes,
+                                                          level, row_align);
         }
 
         /* A mip chain in one block, each level where the sampler looks for
-         * it: rows rounded to 64 bytes, each level straight after the last
-         * (measured, docs\decisions\2026-11-06-rs690-mipmaps.md). */
+         * it: rows rounded to 64 bytes (32 on the X1300), each level
+         * straight after the last (measured,
+         * docs\decisions\2026-11-06-rs690-mipmaps.md,
+         * 2026-11-21-rv515-colour-key-mipmaps.md). */
         if (data->dwSCnt > 1ul) {
             DWORD base = 0ul;
 
             if (v9x_d3d_place_chain(data, V9X_D3D_RS690_SURFACE_ALIGN,
-                                    v9x_rs690_mip_offset(base_width,
-                                                         base_height, bytes,
-                                                         data->dwSCnt),
+                                    v9x_rs690_mip_offset_aligned(base_width,
+                                                                 base_height,
+                                                                 bytes,
+                                                                 data->dwSCnt,
+                                                                 row_align),
                                     offsets, pitches, &base) != 0ul) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
