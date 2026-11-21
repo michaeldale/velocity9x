@@ -911,6 +911,51 @@
                    DeviceDesc = 'Velocity9x ATI Radeon 9200 (RV280 5962)' }
             )
         }
+        @{
+            Id = 'rv515'
+            Name = 'ATI Radeon X1300 (RV515)'
+            VendorId = '1002'
+            DeviceId = '7146'
+            # No SubsystemId: M-5CAPM3's reads 0322:1002, and the bare id
+            # binds every board. Function 1, the second head (7166), is never
+            # claimed.
+            DeviceDesc = 'Velocity9x ATI Radeon X1300 (RV515)'
+            Adapter = 'ATI Radeon X1300 (RV515)'
+            ClockDetector = 'ati-rv515-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # Tier-0: VBE modes, CPU drawing, GDI in the screen shadow, as the
+            # vbe package ran this card on M-5CAPM3
+            # (docs\decisions\2026-11-21-m-5capm3-rv515-phase0.md). The engine
+            # waits for the 2D write probe (docs\plans\ati-rv515-x1300.md).
+            Acceleration = 'none'
+            Direct3D = 'not-advertised'
+            EngineType = 'NONE'
+            EngineCaps = @()
+            # What M-5CAPM3's VBE 4F00h reports. The card holds 256 MiB
+            # (CONFIG_MEMSIZE, docs\decisions\2026-11-21-rv515-register-probe.md);
+            # the heap stays at the family's 16 MiB mapping until phase 6.
+            VideoMemoryBytes = 16777216
+
+            # The family's baseline table, which every chip must carry row for
+            # row (test_hw16_modes.c); M-5CAPM3's BIOS lists all seven
+            # (V9XMODES.INI, 2026-11-20).
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('rv515_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_rv515_x1300_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -989,7 +1034,8 @@
             @{ Name = 'oland_engine16'; Path = 'src\chipsets\ati\si\oland_engine16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'rs690_hw16'; Path = 'src\chipsets\ati\rs690\rs690_hw16.c' }
             @{ Name = 'rv280_hw16'; Path = 'src\chipsets\ati\rv280\rv280_hw16.c' }
-            @{ Name = 'ati_hw16'; Path = 'src\chipsets\ati\ati_hw16.c' }
+            @{ Name = 'rv515_hw16'; Path = 'src\chipsets\ati\rv515\rv515_hw16.c' }
+            @{ Name = 'ati_hw16';Path = 'src\chipsets\ati\ati_hw16.c' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
@@ -1056,7 +1102,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, 1002:7146, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -1156,6 +1202,10 @@
             }
             @{
                 ChipId = 'rv280'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'rv515'
                 Emulator = 'none'
             }
         )
