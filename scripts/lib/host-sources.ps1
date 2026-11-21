@@ -159,6 +159,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\ati\rs690\rs690_3d.c',
         # R500 fragment programs: instruction words, no I/O.
         'src\chipsets\ati\rv515\r500_fp.c',
+        # RV515 3D: the RS690 lists through the R500 fixup, R500 programs.
+        'src\chipsets\ati\rv515\rv515_3d.c',
         # Evergreen async DMA: fill and copy packets, no I/O.
         'src\chipsets\ati\evergreen\eg_dma.c',
         # R6xx async DMA: fill and copy plans, no I/O.
@@ -469,6 +471,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_rs690_2d.c',
         'tests\host\test_rs690_3d.c',
         'tests\host\test_r500_fp.c',
+        'tests\host\test_rv515_3d.c',
         'tests\host\test_eg_dma.c',
         'tests\host\test_r6_dma.c',
         'tests\host\test_r6_3d.c',

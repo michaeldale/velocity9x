@@ -52,10 +52,12 @@
 #include "velocity9x/rs690_2d.h"
 #include "velocity9x/rs690_3d.h"
 #include "velocity9x/r500_fp.h"
+#include "velocity9x/rv515_3d.h"
 
 #include "../../src/chipsets/ati/rs690/rs690_2d.c"
 #include "../../src/chipsets/ati/rs690/rs690_3d.c"
 #include "../../src/chipsets/ati/rv515/r500_fp.c"
+#include "../../src/chipsets/ati/rv515/rv515_3d.c"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -261,147 +263,6 @@ static void rs_add_blt(const struct v9x_rs690_blt *blt)
     rs_add_writes(blt->offsets, blt->values, blt->count);
 }
 
-/* R500 registers and fields: Mesa 22.3 r300_reg.h, xf86-video-ati 6.14.6
- * radeon_reg.h. */
-#define RV_R500_VAP_INDEX_OFFSET    0x208cul
-#define RV_R500_RS_IP_0             0x4074ul
-#define RV_R500_GA_US_VECTOR_INDEX  0x4250ul
-#define RV_R500_GA_US_VECTOR_DATA   0x4254ul
-#define RV_R500_RS_INST_0           0x4320ul
-#define RV_R500_US_CONFIG           0x4600ul
-#define RV_R500_US_PIXSIZE          0x4604ul
-#define RV_R500_US_FC_CTRL          0x4624ul
-#define RV_R500_US_CODE_ADDR        0x4630ul
-#define RV_R500_US_CODE_RANGE       0x4634ul
-#define RV_R500_US_CODE_OFFSET      0x4638ul
-/* R500_ZERO_TIMES_ANYTHING_EQUALS_ZERO, as Mesa sets US_CONFIG. */
-#define RV_R500_US_CONFIG_VALUE     0x00000002ul
-/* Highest temporary used, as xf86's R500 composite writes it. */
-#define RV_R500_US_PIXSIZE_VALUE    0x00000001ul
-/* R500_RS_IP_0: colour pointer 0, format RGBA (both 0), no texture
- * coordinates. R500_RS_INST_0: COL_ID(0) | COL_CN_WRITE | COL_ADDR(0),
- * colour 0 into temporary 0 (Mesa r500_rs_col / r500_rs_col_write). */
-#define RV_R500_RS_IP_COLOUR0       0x00000000ul
-#define RV_R500_RS_INST_COLOUR0     0x00010000ul
-/* GA_US_VECTOR_INDEX: TYPE_INSTR (0) at instruction 0. */
-#define RV_R500_VECTOR_INSTR_0      0x00000000ul
-
-/* The R300 guard offset on scan-converter coordinates, and the field
- * layout it is applied to (rs690_3d.h V9X_RS690_SC_OFFSET). */
-#define RV_SC_FIELD_MASK            0x00001ffful
-
-/*
- * The one-instruction R500 fragment program: temp0 * 1 + 0 to render
- * target 0, RGB and alpha written and clamped. Field values are Mesa's
- * r300_reg.h R500_INST_* / R500_ALU_* / R500_ALPHA_* defines, built as
- * xf86-video-ati's R500 composite builds its ALU instruction
- * (radeon_exa_render.c:2091-2130), with temp 0 as both sources.
- */
-static const DWORD rv_r500_colour_program[6] = {
-    /* INST: TYPE_OUT | LAST | RGB_OMASK_R/G/B | ALPHA_OMASK |
-     * RGB_CLAMP | ALPHA_CLAMP. */
-    0x001f8101ul,
-    /* RGB_ADDR: ADDR0/1/2 = temp 0. */
-    0x00000000ul,
-    /* ALPHA_ADDR: ADDR0/1/2 = temp 0. */
-    0x00000000ul,
-    /* RGB_INST: SEL_A_SRC0, swizzle A = R G B, SEL_B_SRC0, swizzle B =
-     * 1 1 1, TARGET(0). */
-    0x00db0220ul,
-    /* ALPHA_INST: OP_MAD, ADDRD(0), SEL_A_SRC0 swizzle A, SEL_B_SRC0
-     * swizzle 1, TARGET(0). */
-    0x00c0c000ul,
-    /* RGBA_INST: OP_MAD, ADDRD(0), C swizzles 0 0 0 0. */
-    0x20490000ul
-};
-
-/* Non-zero for an R300 rasterizer or shader register the R500 must not
- * be written: RS_IP_0-3, RS_INST_0-3, US_CODE_OFFSET to US_TEX_INST_7,
- * and the R300 ALU instruction blocks. */
-static int rv_r300_only(DWORD offset)
-{
-    return (offset >= 0x4310ul && offset <= 0x431cul) ||
-           (offset >= 0x4330ul && offset <= 0x433cul) ||
-           (offset >= 0x4608ul && offset <= 0x462cul) ||
-           (offset >= 0x46c0ul && offset <= 0x49fcul);
-}
-
-/* A scan-converter point without the R300's guard offset. */
-static DWORD rv_sc_point_r500(DWORD value)
-{
-    DWORD x = value & RV_SC_FIELD_MASK;
-    DWORD y = (value >> V9X_RS690_SC_Y_SHIFT) & RV_SC_FIELD_MASK;
-    DWORD rest = value & ~((RV_SC_FIELD_MASK << V9X_RS690_SC_Y_SHIFT) |
-                           RV_SC_FIELD_MASK);
-
-    x = x >= V9X_RS690_SC_OFFSET ? x - V9X_RS690_SC_OFFSET : 0ul;
-    y = y >= V9X_RS690_SC_OFFSET ? y - V9X_RS690_SC_OFFSET : 0ul;
-    return rest | x | (y << V9X_RS690_SC_Y_SHIFT);
-}
-
-/* rs_add_list for the R500: R300-only writes dropped, scan-converter
- * points moved off the guard offset. Publishes nothing; the dropped
- * count is returned for the report. */
-static DWORD rv_add_list(const struct v9x_rs690_3d_list *list)
-{
-    DWORD offsets[V9X_RS690_3D_WRITES];
-    DWORD values[V9X_RS690_3D_WRITES];
-    DWORD count = 0u;
-    DWORD dropped = 0u;
-    DWORD index;
-
-    for (index = 0u; index < list->count; ++index) {
-        DWORD offset = list->offsets[index];
-        DWORD value = list->values[index];
-
-        if (rv_r300_only(offset)) {
-            ++dropped;
-            continue;
-        }
-        if (offset == V9X_RS690_SC_CLIP_0_A ||
-            offset == V9X_RS690_SC_CLIP_0_B ||
-            offset == V9X_RS690_SC_SCISSOR0 ||
-            offset == V9X_RS690_SC_SCISSOR1) {
-            value = rv_sc_point_r500(value);
-        }
-        offsets[count] = offset;
-        values[count] = value;
-        ++count;
-    }
-    rs_add_writes(offsets, values, count);
-    return dropped;
-}
-
-/* The R500 rasterizer and fragment program for the colour-only state. */
-static void rv_add_r500_colour(void)
-{
-    static const DWORD offsets[] = {
-        RV_R500_RS_IP_0, RV_R500_RS_INST_0,
-        RV_R500_US_CONFIG, RV_R500_US_PIXSIZE, RV_R500_US_FC_CTRL,
-        RV_R500_US_CODE_RANGE, RV_R500_US_CODE_OFFSET, RV_R500_US_CODE_ADDR,
-        RV_R500_GA_US_VECTOR_INDEX,
-        RV_R500_GA_US_VECTOR_DATA, RV_R500_GA_US_VECTOR_DATA,
-        RV_R500_GA_US_VECTOR_DATA, RV_R500_GA_US_VECTOR_DATA,
-        RV_R500_GA_US_VECTOR_DATA, RV_R500_GA_US_VECTOR_DATA
-    };
-    DWORD values[sizeof(offsets) / sizeof(offsets[0])];
-    DWORD index;
-
-    values[0] = RV_R500_RS_IP_COLOUR0;
-    values[1] = RV_R500_RS_INST_COLOUR0;
-    values[2] = RV_R500_US_CONFIG_VALUE;
-    values[3] = RV_R500_US_PIXSIZE_VALUE;
-    values[4] = 0u;
-    values[5] = 0u;     /* CODE_RANGE: address 0, size 0 */
-    values[6] = 0u;
-    values[7] = 0u;     /* CODE_ADDR: start 0, end 0 */
-    values[8] = RV_R500_VECTOR_INSTR_0;
-    for (index = 0u; index < 6u; ++index) {
-        values[9u + index] = rv_r500_colour_program[index];
-    }
-    rs_add_writes(offsets, values, sizeof(offsets) / sizeof(offsets[0]));
-}
-
 /* memset without the C runtime this tool does not link. */
 static void rs_zero(void *memory, DWORD bytes)
 {
@@ -412,77 +273,25 @@ static void rs_zero(void *memory, DWORD bytes)
     }
 }
 
-/* R500_RS_IP_0 for the textured state: S from interpolator 0, T from 1,
- * R constant 0 (K0, 62), Q constant 1 (K1, 63), colour 0 RGBA (Mesa
- * r500_rs_tex SWIZ_XY01 and r500_rs_col). R500_RS_INST_0: texture 0 with
- * TEX_CN_WRITE into temp 0, colour 0 with COL_CN_WRITE into temp 1, as
- * the RS690's R300 rasterizer state placed them. */
-#define RV_R500_RS_IP_TEX_COLOUR    0x00ffe040ul
-#define RV_R500_RS_INST_TEX_COLOUR  0x00050010ul
-/* US_CODE_RANGE size and US_CODE_ADDR end, both at 16 (R500_US_CODE_*). */
-#define RV_R500_CODE_END_SHIFT      16
+/* The RV515 builders' output, one at a time. */
+static struct v9x_rv515_3d_list rv_list;
 
-/*
- * The R500 rasterizer and fragment program for the textured state, built
- * with r500_fp.c: LD temp0 from texture unit 0 at temp0's s, t, then OUT
- * temp0 * 1 (REPLACE) or temp0 * temp1, the texel times the diffuse
- * colour (MODULATE). Zero when the encoder refuses or the combine is one
- * this probe does not model.
- */
-static int rv_add_r500_textured(DWORD combine)
+/* Writes an RV515 list (rv515_3d.c) as runs behind FIFO waits. */
+static void rv_add(const struct v9x_rv515_3d_list *list)
 {
-    struct v9x_r500_fp fp;
-    struct v9x_r500_alu alu;
-    DWORD offsets[9u + V9X_R500_FP_MAX_INSTRUCTIONS * 6u];
-    DWORD values[9u + V9X_R500_FP_MAX_INSTRUCTIONS * 6u];
-    DWORD words;
-    DWORD index;
+    rs_add_writes(list->offsets, list->values, list->count);
+}
 
-    v9x_r500_fp_begin(&fp);
-    v9x_r500_fp_tex(&fp, V9X_R500_TEX_LD, 0ul, 0ul, 0ul);
-    v9x_r500_alu_init(&alu);
-    alu.rgb_addr[1] = 1ul;
-    alu.alpha_addr[1] = 1ul;
-    alu.flags = V9X_R500_ALU_OUT | V9X_R500_ALU_CLAMP |
-                V9X_R500_ALU_TEX_WAIT;
-    if (combine == V9X_RS690_TEXCOMBINE_MODULATE) {
-        alu.rgb_slot[V9X_R500_OP_B] = 1ul;
-        alu.rgb_swizzle[V9X_R500_OP_B] = V9X_R500_RGB_IDENTITY;
-        alu.alpha_slot[V9X_R500_OP_B] = 1ul;
-        alu.alpha_swizzle[V9X_R500_OP_B] = V9X_R500_SWZ_A;
-    } else if (combine != V9X_RS690_TEXCOMBINE_REPLACE) {
-        return 0;
-    }
-    v9x_r500_fp_alu(&fp, &alu);
-    if (v9x_r500_fp_end(&fp) != V9X_STATUS_OK) {
-        return 0;
-    }
+/* Writes an RS690 list through the R500 fixup (rv515_3d.c) and returns
+ * how many R300-only writes it dropped. */
+static DWORD rv_add_list(const struct v9x_rs690_3d_list *list)
+{
+    static struct v9x_rv515_3d_list fixed;
 
-    offsets[0] = RV_R500_RS_IP_0;
-    values[0] = RV_R500_RS_IP_TEX_COLOUR;
-    offsets[1] = RV_R500_RS_INST_0;
-    values[1] = RV_R500_RS_INST_TEX_COLOUR;
-    offsets[2] = RV_R500_US_CONFIG;
-    values[2] = RV_R500_US_CONFIG_VALUE;
-    offsets[3] = RV_R500_US_PIXSIZE;
-    values[3] = fp.max_temp;
-    offsets[4] = RV_R500_US_FC_CTRL;
-    values[4] = 0u;
-    offsets[5] = RV_R500_US_CODE_RANGE;
-    values[5] = (fp.count - 1ul) << RV_R500_CODE_END_SHIFT;
-    offsets[6] = RV_R500_US_CODE_OFFSET;
-    values[6] = 0u;
-    offsets[7] = RV_R500_US_CODE_ADDR;
-    values[7] = (fp.count - 1ul) << RV_R500_CODE_END_SHIFT;
-    offsets[8] = RV_R500_GA_US_VECTOR_INDEX;
-    values[8] = RV_R500_VECTOR_INSTR_0;
-    words = fp.count * V9X_R500_FP_WORDS_PER_INST;
-    for (index = 0u; index < words; ++index) {
-        offsets[9u + index] = RV_R500_GA_US_VECTOR_DATA;
-        values[9u + index] = fp.words[index];
-    }
-    rs_add_writes(offsets, values, 9u + words);
-    return 1;
+    v9x_rv515_3d_begin(&fixed);
+    v9x_rv515_3d_fixup(list, &fixed);
+    rv_add(&fixed);
+    return fixed.dropped;
 }
 
 /* Non-zero when the VxD ran every op. */
@@ -614,14 +423,14 @@ static int rs_draw(const char *name, DWORD primitive,
     rs_begin();
     rs_add(RS_OP_LFB_FILL32, TEST_BASE, TEST_PREFILL, TEST_DWORDS);
     before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
-    if (v9x_rs690_build_3d_target(&target, &list) != V9X_STATUS_OK) {
+    if (v9x_rv515_build_3d_target(&target, &rv_list) != V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "TARGET-REFUSED");
         rs_failed = 1u;
         return 0;
     }
     rs_write_decimal(rs_key(key, name, "R300WritesDropped"),
-                     rv_add_list(&list));
-    rv_add_r500_colour();
+                     rv_list.dropped);
+    rv_add(&rv_list);
     if (v9x_rs690_build_3d_draw(primitive, vertices, count, TEST_WIDTH,
                                 rs_height, &list) != V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
@@ -811,12 +620,19 @@ static DWORD rs_channel(DWORD pixel, int channel, DWORD *maximum)
  * Flat (gouraud zero) or Gouraud: corner 0 red, 1 green, 2 blue. Inside
  * pixels: flat must equal green exactly; Gouraud each channel within the
  * tolerance of the interpolated value. Outside pixels must be the prefill.
- * The RS690 probe's TL-vertex variant is left out: it needs the textured
- * state, whose fragment program is R300 code.
+ * With tl, the same triangle through the TL-vertex state, colours packed
+ * as D3DCOLORs.
  */
-static void rs_triangle_test(const char *name, int gouraud, char letter)
+static int rs_draw_tl(const char *name, struct v9x_rs690_3d_state *state,
+                      DWORD primitive, const DWORD *vertices, DWORD count,
+                      DWORD prefill);
+
+static void rs_triangle_test(const char *name, int gouraud, char letter,
+                             int tl)
 {
     struct v9x_rs690_3d_vertex vertices[3];
+    struct v9x_rs690_3d_state state;
+    DWORD tl_vertices[3 * 8];
     const unsigned char *actual;
     char key[64];
     DWORD x;
@@ -846,8 +662,27 @@ static void rs_triangle_test(const char *name, int gouraud, char letter)
             vertices[corner].green = 255u;
             vertices[corner].blue = 0u;
         }
+        tl_vertices[corner * 8 + 0] =
+            v9x_rs690_float_integer(vertices[corner].x);
+        tl_vertices[corner * 8 + 1] =
+            v9x_rs690_float_integer(vertices[corner].y);
+        tl_vertices[corner * 8 + 2] = 0u;
+        tl_vertices[corner * 8 + 3] = 0x3f800000ul;
+        tl_vertices[corner * 8 + 4] = 0xff000000ul |
+                                      (vertices[corner].red << 16) |
+                                      (vertices[corner].green << 8) |
+                                      vertices[corner].blue;
+        tl_vertices[corner * 8 + 5] = 0u;
+        tl_vertices[corner * 8 + 6] = 0u;
+        tl_vertices[corner * 8 + 7] = 0u;
     }
-    if (!rs_draw(name, V9X_RS690_PRIM_TRIANGLES, vertices, 3u)) {
+    if (tl) {
+        rs_zero(&state, sizeof(state));
+        if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_TRIANGLES, tl_vertices,
+                        3u, TEST_PREFILL)) {
+            return;
+        }
+    } else if (!rs_draw(name, V9X_RS690_PRIM_TRIANGLES, vertices, 3u)) {
         return;
     }
     rs_save_block(letter);
@@ -1058,25 +893,21 @@ static int rs_draw_textured(const char *name, DWORD filter, DWORD address,
     rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
            TEX_WIDTH * TEX_HEIGHT * rs_bpp / 4u);
     before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
-    if (v9x_rs690_build_3d_target(&target, &list) != V9X_STATUS_OK) {
+    if (v9x_rv515_build_3d_target(&target, &rv_list) != V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "TARGET-REFUSED");
         rs_failed = 1u;
         return 0;
     }
-    (void)rv_add_list(&list);
-    if (v9x_rs690_build_3d_texture(rs_fb_gpu_base, TEST_FB, &texture,
-                                   &list) != V9X_STATUS_OK) {
+    rv_add(&rv_list);
+    if (v9x_rv515_build_3d_texture(rs_fb_gpu_base, TEST_FB, &texture,
+                                   &rv_list) != V9X_STATUS_OK) {
         rs_write(rs_key(key, name, "Result"), "TEXTURE-REFUSED");
         rs_failed = 1u;
         return 0;
     }
     rs_write_decimal(rs_key(key, name, "R300WritesDropped"),
-                     rv_add_list(&list));
-    if (!rv_add_r500_textured(combine)) {
-        rs_write(rs_key(key, name, "Result"), "PROGRAM-REFUSED");
-        rs_failed = 1u;
-        return 0;
-    }
+                     rv_list.dropped);
+    rv_add(&rv_list);
     if (v9x_rs690_build_3d_draw_textured(V9X_RS690_PRIM_QUADS, vertices,
                                          count, TEST_WIDTH, rs_height,
                                          &list) != V9X_STATUS_OK) {
@@ -1389,6 +1220,776 @@ static void rs_tex_bilinear_test(void)
     rs_tex_judge(name, 0u, TEST_WIDTH, 16l, rs_bilinear_model);
 }
 
+/*
+ * The TL-vertex state (v9x_rs690_build_3d_state): vertices are
+ * D3DTLVERTEX dwords - sx, sy, sz, rhw, diffuse, specular, tu, tv.
+ */
+#define DEPTH_OFFSET (TEST_BASE + 0x20000ul)
+#define DEPTH_PITCH (TEST_WIDTH * 2ul)
+#define RS_FLOAT_ONE 0x3f800000ul
+#define RS_FLOAT_QUARTER 0x3e800000ul
+
+static void rs_tl(DWORD *vertex, DWORD x, DWORD y, DWORD z, DWORD rhw,
+                  DWORD argb, DWORD tu, DWORD tv)
+{
+    vertex[0] = v9x_rs690_float_integer(x);
+    vertex[1] = v9x_rs690_float_integer(y);
+    vertex[2] = z;
+    vertex[3] = rhw;
+    vertex[4] = argb;
+    vertex[5] = 0u;
+    vertex[6] = tu;
+    vertex[7] = tv;
+}
+
+/* A rectangle as four TL vertices, corners in RadeonCompositeTile's order,
+ * one depth and colour, rhw 1, texture coordinates 0. */
+static void rs_tl_quad(DWORD *vertices, DWORD left, DWORD top, DWORD right,
+                       DWORD bottom, DWORD z, DWORD argb)
+{
+    rs_tl(vertices, left, top, z, RS_FLOAT_ONE, argb, 0u, 0u);
+    rs_tl(vertices + 8, left, bottom, z, RS_FLOAT_ONE, argb, 0u, 0u);
+    rs_tl(vertices + 16, right, bottom, z, RS_FLOAT_ONE, argb, 0u, 0u);
+    rs_tl(vertices + 24, right, top, z, RS_FLOAT_ONE, argb, 0u, 0u);
+}
+
+/* The surface's own value for an ARGB colour: 565 drops alpha, 8888
+ * keeps it. Exact only for channels of 0 or 255 at 16 bpp. */
+static DWORD rs_encode_argb(DWORD argb)
+{
+    if (rs_bpp == 2u) {
+        return rs_encode((argb >> 16) & 255u, (argb >> 8) & 255u,
+                         argb & 255u);
+    }
+    return argb;
+}
+
+/*
+ * When set, a textured rs_draw_tl writes the texture as rows instead of
+ * the gradient: row y red with alpha y / 15, as ARGB8888 at 32 bpp and
+ * ARGB4444 at 16 bpp (the test names that format). TexDecalAlpha's.
+ */
+static DWORD rs_texture_rows;
+
+static DWORD rs_texture_row(DWORD row)
+{
+    DWORD texel;
+
+    if (rs_bpp == 2u) {
+        texel = (row << 12) | 0x0f00u;
+        return texel | (texel << 16);
+    }
+    return ((row * 17u) << 24) | 0x00ff0000ul;
+}
+
+/*
+ * Prefill the surface with `prefill`, clear the Z buffer to all ones when
+ * the state tests Z, write the gradient texture when textured, wait idle,
+ * the TL state, the draw, the finish, wait idle, read back. The caller
+ * fills the state except the target and the Z buffer's place.
+ */
+static int rs_draw_tl(const char *name, struct v9x_rs690_3d_state *state,
+                      DWORD primitive, const DWORD *vertices, DWORD count,
+                      DWORD prefill)
+{
+    struct v9x_rs690_3d_list list;
+    char key[64];
+    DWORD before_index;
+    DWORD after_index;
+
+    state->target.fb_gpu_base = rs_fb_gpu_base;
+    state->target.fb_bytes = TEST_FB;
+    state->target.offset = TEST_BASE;
+    state->target.pitch_bytes = rs_pitch;
+    state->target.bytes_per_pixel = rs_bpp;
+    state->target.width = TEST_WIDTH;
+    state->target.height = rs_height;
+    state->depth_offset = DEPTH_OFFSET;
+    state->depth_pitch_bytes = DEPTH_PITCH;
+    if (state->textured != 0ul) {
+        DWORD texel_bytes = rs_bpp;
+
+        /* A test may name a 16-bit format of its own (rs_tex_format_test);
+         * otherwise the surface's. */
+        if (state->texture.format == V9X_RS690_TEXFMT_ARGB1555 ||
+            state->texture.format == V9X_RS690_TEXFMT_ARGB4444) {
+            texel_bytes = 2u;
+        } else {
+            state->texture.format = rs_bpp == 2u ? V9X_RS690_TEXFMT_RGB565 :
+                                    V9X_RS690_TEXFMT_ARGB8888;
+        }
+        state->texture.offset = TEX_OFFSET;
+        state->texture.pitch_bytes = TEX_WIDTH * texel_bytes;
+        state->texture.width = TEX_WIDTH;
+        state->texture.height = TEX_HEIGHT;
+    }
+
+    rs_begin();
+    rs_add(RS_OP_LFB_FILL32, TEST_BASE, prefill, TEST_DWORDS);
+    if (state->depth_enable != 0ul) {
+        rs_add(RS_OP_LFB_FILL32, DEPTH_OFFSET, 0xfffffffful,
+               DEPTH_PITCH * rs_height / 4u);
+    }
+    if (state->textured != 0ul && rs_texture_rows != 0u) {
+        DWORD row;
+
+        for (row = 0u; row < TEX_HEIGHT; ++row) {
+            rs_add(RS_OP_LFB_FILL32,
+                   TEX_OFFSET + row * state->texture.pitch_bytes,
+                   rs_texture_row(row), state->texture.pitch_bytes / 4u);
+        }
+    } else if (state->textured != 0ul) {
+        rs_add(RS_OP_LFB_GRADIENT, TEX_OFFSET, 0u,
+               state->texture.pitch_bytes * TEX_HEIGHT / 4u);
+    }
+    before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    if (v9x_rv515_build_3d_state(state, &rv_list) != V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "STATE-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_decimal(rs_key(key, name, "StateWrites"), rv_list.count);
+    rv_add(&rv_list);
+    if (v9x_rs690_build_3d_draw_tl(primitive, vertices, count, &list) !=
+        V9X_STATUS_OK) {
+        rs_write(rs_key(key, name, "Result"), "DRAW-REFUSED");
+        rs_failed = 1u;
+        return 0;
+    }
+    (void)rv_add_list(&list);
+    (void)v9x_rs690_build_3d_finish(&list);
+    (void)rv_add_list(&list);
+    after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_add(RS_OP_LFB_READ_BLOCK, TEST_BASE, 0u, TEST_DWORDS);
+
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "Result"), "NOT-RUN");
+        rs_report_refusal(name);
+        rs_failed = 1u;
+        return 0;
+    }
+    rs_write_hex(rs_key(key, name, "WaitBefore"),
+                 rs_result_buffer.ops[before_index].result);
+    rs_write_hex(rs_key(key, name, "WaitAfter"),
+                 rs_result_buffer.ops[after_index].result);
+    rs_write_decimal(rs_key(key, name, "Ops"), rs_request_buffer.count);
+    return 1;
+}
+
+static void rs_result(const char *name, int pass)
+{
+    char key[64];
+
+    rs_write(rs_key(key, name, "Result"), pass ? "PASS" : "MISMATCH");
+    if (!pass) {
+        rs_failed = 1u;
+    }
+}
+
+/* Fill rs_model's rectangle with one surface value. */
+static void rs_model_rect(DWORD left, DWORD top, DWORD right, DWORD bottom,
+                          DWORD value)
+{
+    DWORD x;
+    DWORD y;
+
+    for (y = top; y < bottom && y < rs_height; ++y) {
+        for (x = left; x < right; ++x) {
+            rs_set_pixel(rs_model, x, y, value);
+        }
+    }
+}
+
+/*
+ * ZTest: Z cleared to all ones, then in one draw three quads with LESS and
+ * writes on - red at z 0.5, green at 0.25 overlapping it, blue at 0.75
+ * over the whole of rows 0-15. Green wins where it is, red where it is
+ * alone, blue only where nothing nearer was drawn: byte-exact. Then the Z
+ * buffer is read and the values at each quad published, which must rise
+ * green < red < blue < cleared.
+ */
+static void rs_z_test(void)
+{
+    static const char name[] = "ZTest";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[12 * 8];
+    char key[64];
+    DWORD z_green;
+    DWORD z_red;
+    DWORD z_blue;
+    DWORD z_clear;
+    DWORD mismatches;
+    const unsigned short *depth;
+
+    rs_zero(&state, sizeof(state));
+    state.depth_enable = 1u;
+    state.depth_func = V9X_RS690_ZFUNC_LESS;
+    state.depth_write = 1u;
+    rs_tl_quad(vertices, 4u, 2u, 36u, 12u, v9x_rs690_float_ratio(1u, 2u),
+               0xffff0000ul);
+    rs_tl_quad(vertices + 32, 20u, 6u, 52u, 14u,
+               v9x_rs690_float_ratio(1u, 4u), 0xff00ff00ul);
+    rs_tl_quad(vertices + 64, 0u, 0u, TEST_WIDTH, TEX_HEIGHT,
+               v9x_rs690_float_ratio(3u, 4u), 0xff0000fful);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 12u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('Z');
+
+    rs_model_prefill();
+    rs_model_rect(0u, 0u, TEST_WIDTH, TEX_HEIGHT,
+                  rs_encode_argb(0xff0000fful));
+    rs_model_rect(4u, 2u, 36u, 12u, rs_encode_argb(0xffff0000ul));
+    rs_model_rect(20u, 6u, 52u, 14u, rs_encode_argb(0xff00ff00ul));
+    mismatches = rs_compare_model(name);
+
+    /* The Z buffer: 64 Z16 cells a row. */
+    rs_begin();
+    rs_add(RS_OP_LFB_READ_BLOCK, DEPTH_OFFSET, 0u,
+           DEPTH_PITCH * rs_height / 4u);
+    if (!rs_run()) {
+        rs_write(rs_key(key, name, "DepthRead"), "NOT-RUN");
+        rs_failed = 1u;
+        return;
+    }
+    depth = (const unsigned short *)rs_result_buffer.block;
+    z_green = depth[10u * TEST_WIDTH + 30u];
+    z_red = depth[4u * TEST_WIDTH + 8u];
+    z_blue = depth[15u * TEST_WIDTH + 60u];
+    z_clear = rs_height > TEX_HEIGHT ? depth[20u * TEST_WIDTH + 30u] :
+              0xffffu;
+    rs_write_hex(rs_key(key, name, "DepthGreen"), z_green);
+    rs_write_hex(rs_key(key, name, "DepthRed"), z_red);
+    rs_write_hex(rs_key(key, name, "DepthBlue"), z_blue);
+    rs_write_hex(rs_key(key, name, "DepthCleared"), z_clear);
+    rs_result(name, mismatches == 0u && z_green < z_red && z_red < z_blue &&
+                    z_blue < z_clear);
+}
+
+/*
+ * Blend: a quad of (255, 0, 128) at alpha 96 over the prefill with
+ * SRCALPHA, INVSRCALPHA. Each channel (and alpha at 32 bpp, by the same
+ * factors) within one step of src * a + dst * (1 - a).
+ */
+#define RS_BLEND_ALPHA 96u
+#define RS_BLEND_ARGB 0x60ff0080ul
+
+static void rs_blend_model(DWORD x, DWORD y, long expected[4],
+                           long allowed[4])
+{
+    static const DWORD source[4] = { 255u, 0u, 128u, RS_BLEND_ALPHA };
+    DWORD destination[4];
+    DWORD maxima[4];
+    int channels = rs_channels(rs_pixel(rs_model, x, y), destination,
+                               maxima);
+    int channel;
+
+    /* In 1/(255 * 255) of a step: source in channel units is
+     * s * max / 255. */
+    for (channel = 0; channel < channels; ++channel) {
+        expected[channel] =
+            (long)(source[channel] * maxima[channel] * RS_BLEND_ALPHA) +
+            (long)(destination[channel] * 255u * (255u - RS_BLEND_ALPHA));
+        allowed[channel] = RS_TEX_TOLERANCE * 255l * 255l;
+    }
+}
+
+static void rs_blend_test(void)
+{
+    static const char name[] = "Blend";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+
+    rs_zero(&state, sizeof(state));
+    state.blend_enable = 1u;
+    state.blend_src = V9X_RS690_BLEND_SRC_ALPHA;
+    state.blend_dst = V9X_RS690_BLEND_INV_SRC_ALPHA;
+    rs_tl_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT, 0u, RS_BLEND_ARGB);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('L');
+    rs_model_prefill();
+    rs_tex_judge(name, 0u, TEST_WIDTH, 255l * 255l, rs_blend_model);
+}
+
+/*
+ * TlFog: a quad over rows 0-15 in red (diffuse FFFF0000h), specular RGB
+ * 004000h (green 64), specular alpha 255 on the left edge and 0 on the
+ * right, fog colour 0000FFh. Direct3D's vertex fog: rgb = f * c + (1 - f)
+ * * fog, f the interpolated specular alpha, alpha untouched. With
+ * specular off, c is the diffuse alone (the specular RGB must not show);
+ * TlFogSpecular adds it first. Each channel within 1.5 steps of the model
+ * at the pixel centre, f = 1 - (x + 0.5) / width.
+ */
+#define RS_FOG_SPECULAR 0x00004000ul
+#define RS_FOG_COLOR 0x000000fful
+
+static DWORD rs_fog_add_specular;
+
+static void rs_fog_model(DWORD x, DWORD y, long expected[4], long allowed[4])
+{
+    static const DWORD fog[4] = { 0u, 0u, 255u, 255u };
+    DWORD source[4] = { 255u, 0u, 0u, 255u };
+    DWORD values[4];
+    DWORD maxima[4];
+    long width2 = (long)TEST_WIDTH * 2l;
+    long near_part = width2 - (long)(2u * x + 1u);
+    int channels = rs_channels(rs_pixel(rs_model, x, y), values, maxima);
+    int channel;
+
+    if (rs_fog_add_specular != 0u) {
+        source[1] = (RS_FOG_SPECULAR >> 8) & 255u;
+    }
+    /* In 1/(255 * 2 * width) of a step. */
+    for (channel = 0; channel < channels; ++channel) {
+        expected[channel] =
+            ((long)source[channel] * near_part +
+             (long)fog[channel] * (width2 - near_part)) *
+            (long)maxima[channel];
+        allowed[channel] = 3l * 255l * width2 / 2l;
+    }
+}
+
+static void rs_fog_test(const char *name, DWORD specular)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD corner;
+
+    rs_zero(&state, sizeof(state));
+    state.fog = 1u;
+    state.fog_color = RS_FOG_COLOR;
+    state.specular = specular;
+    rs_tl_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT, 0u, 0xffff0000ul);
+
+    /* Corners 0 and 1 are the left edge (rs_tl_quad's order). */
+    for (corner = 0u; corner < 4u; ++corner) {
+        vertices[corner * 8u + 5u] =
+            RS_FOG_SPECULAR | (corner < 2u ? 0xff000000ul : 0ul);
+    }
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block(specular != 0u ? 'N' : 'J');
+    rs_fog_add_specular = specular;
+    rs_model_prefill();
+    rs_tex_judge(name, 0u, TEST_WIDTH, 255l * 2l * (long)TEST_WIDTH,
+                 rs_fog_model);
+}
+
+/*
+ * Byte-exact single-colour checks that split colour 1's routing from the
+ * fog instruction: a quad over rows 0-15, diffuse FFFF0000h, every
+ * vertex's specular dword as given, and the whole quad expected in one
+ * colour. TlSpecularOnly: untextured, specular on, specular 0000FF00h -
+ * FFFFFF00h. TlFogFull and TexFogFull: fog on, f = 0 (specular alpha 0) -
+ * the fog colour 0000FFh with the diffuse alpha, FF0000FFh, whatever the
+ * colour or texture underneath. Channels of 0 and 255 only, so exact at
+ * 16 bpp too.
+ */
+static void rs_flat_colour_test(const char *name, char letter,
+                                DWORD textured, DWORD specular, DWORD fog,
+                                DWORD specular_dword, DWORD expected)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD corner;
+
+    rs_zero(&state, sizeof(state));
+    state.specular = specular;
+    state.fog = fog;
+    state.fog_color = RS_FOG_COLOR;
+    if (textured != 0u) {
+        state.textured = 1u;
+        state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+        state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+        state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+        state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    }
+    rs_tl_quad(vertices, 0u, 0u, TEST_WIDTH, TEX_HEIGHT, 0u, 0xffff0000ul);
+    for (corner = 0u; corner < 4u; ++corner) {
+        vertices[corner * 8u + 5u] = specular_dword;
+    }
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block(letter);
+    rs_model_prefill();
+    rs_model_rect(0u, 0u, TEST_WIDTH, TEX_HEIGHT, rs_encode_argb(expected));
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+
+/*
+ * AlphaTest: white quads at alpha 100 (4-28) and 200 (36-60), GREATER
+ * than 128: only the second is drawn, byte-exact.
+ */
+static void rs_alpha_test(void)
+{
+    static const char name[] = "AlphaTest";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[8 * 8];
+
+    rs_zero(&state, sizeof(state));
+    state.alpha_test_enable = 1u;
+    state.alpha_func = V9X_RS690_AFUNC_GREATER;
+    state.alpha_ref = 128u;
+    rs_tl_quad(vertices, 4u, 0u, 28u, TEX_HEIGHT, 0u, 0x64fffffful);
+    rs_tl_quad(vertices + 32, 36u, 0u, 60u, TEX_HEIGHT, 0u, 0xc8fffffful);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 8u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('K');
+    rs_model_prefill();
+    rs_model_rect(36u, 0u, 60u, TEX_HEIGHT, rs_encode_argb(0xc8fffffful));
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
+ * ScissorTest: a white quad over x 4-60, rows 0-15, with the state's
+ * scissor (10,2)-(30,10) half-open, as an explicit draw (OpenGL's
+ * glScissor) states it. Only the scissor's pixels may change: the
+ * builder's SC_SCISSOR0/1, inclusive and guard-offset as the target's,
+ * byte-exact against the prefill.
+ */
+static void rs_scissor_test(void)
+{
+    static const char name[] = "ScissorTest";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+
+    rs_zero(&state, sizeof(state));
+    state.scissor_enable = 1u;
+    state.scissor_left = 10u;
+    state.scissor_top = 2u;
+    state.scissor_right = 30u;
+    state.scissor_bottom = 10u;
+    rs_tl_quad(vertices, 4u, 0u, 60u, TEX_HEIGHT, 0u, 0xfffffffful);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('S');
+    rs_model_prefill();
+    rs_model_rect(10u, 2u, 30u, 10u, rs_encode_argb(0xfffffffful));
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
+ * ChannelMaskTest: the same white quad, unscissored, with red masked
+ * (glColorMask(FALSE, TRUE, TRUE, ...)): every covered pixel keeps the
+ * prefill's red and takes white's green and blue - A7FFh at 16 bpp,
+ * FFA5FFFFh at 32 (alpha written). Byte-exact.
+ */
+static void rs_channel_mask_test(void)
+{
+    static const char name[] = "ChannelMaskTest";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD red_field;
+    DWORD white;
+    DWORD pixel;
+    DWORD x;
+    DWORD y;
+
+    rs_zero(&state, sizeof(state));
+    state.masked_channels = V9X_RS690_CHANNEL_RED;
+    rs_tl_quad(vertices, 4u, 0u, 60u, TEX_HEIGHT, 0u, 0xfffffffful);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('W');
+    rs_model_prefill();
+    red_field = rs_bpp == 2u ? 0x0000f800ul : 0x00ff0000ul;
+    white = rs_encode_argb(0xfffffffful);
+    for (y = 0u; y < TEX_HEIGHT; ++y) {
+        for (x = 4u; x < 60u; ++x) {
+            pixel = rs_pixel(rs_model, x, y);
+            rs_set_pixel(rs_model, x, y,
+                         (pixel & red_field) | (white & ~red_field));
+        }
+    }
+    rs_result(name, rs_compare_model(name) == 0u);
+}
+
+/*
+ * Cull: two triangles in one draw - A (4,2) (28,2) (4,14), clockwise as
+ * the screen shows it (y down); B (36,2) (36,14) (60,2), counter-clockwise
+ * - once with CULL_FRONT and once with CULL_BACK. Publishes which survive;
+ * passes when each mode removes exactly one and they remove different
+ * ones. Which is which is the measurement.
+ */
+static int rs_cull_run(const char *name, DWORD cull, int *a_drawn,
+                       int *b_drawn)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[6 * 8];
+    const unsigned char *actual;
+    DWORD prefill_pixel;
+    char key[64];
+
+    rs_zero(&state, sizeof(state));
+    state.cull = cull;
+    rs_tl(vertices, 4u, 2u, 0u, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+    rs_tl(vertices + 8, 28u, 2u, 0u, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+    rs_tl(vertices + 16, 4u, 14u, 0u, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+    rs_tl(vertices + 24, 36u, 2u, 0u, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+    rs_tl(vertices + 32, 36u, 14u, 0u, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+    rs_tl(vertices + 40, 60u, 2u, 0u, RS_FLOAT_ONE, 0xff00ff00ul, 0u, 0u);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_TRIANGLES, vertices, 6u,
+                    TEST_PREFILL)) {
+        return 0;
+    }
+    actual = (const unsigned char *)rs_result_buffer.block;
+    rs_model_prefill();
+    prefill_pixel = rs_pixel(rs_model, 0u, 0u);
+    *a_drawn = rs_pixel(actual, 8u, 5u) != prefill_pixel;
+    *b_drawn = rs_pixel(actual, 40u, 5u) != prefill_pixel;
+    rs_write_decimal(rs_key(key, name, "ClockwiseDrawn"), (DWORD)*a_drawn);
+    rs_write_decimal(rs_key(key, name, "CounterClockwiseDrawn"),
+                     (DWORD)*b_drawn);
+    return 1;
+}
+
+static void rs_cull_test(void)
+{
+    int none_a = 0;
+    int none_b = 0;
+    int front_a = 0;
+    int front_b = 0;
+    int back_a = 0;
+    int back_b = 0;
+
+    if (!rs_cull_run("CullNone", V9X_RS690_CULL_NONE, &none_a, &none_b) ||
+        !rs_cull_run("CullFront", V9X_RS690_CULL_FRONT, &front_a,
+                     &front_b) ||
+        !rs_cull_run("CullBack", V9X_RS690_CULL_BACK, &back_a, &back_b)) {
+        return;
+    }
+    rs_result("Cull", none_a && none_b && front_a != front_b &&
+                      back_a != back_b && front_a != back_a);
+}
+
+/*
+ * Perspective: the gradient texture, nearest, clamped, REPLACE, on a quad
+ * across the whole 64 x 16 with tu 0 to 1 and tv 0 throughout, rhw 1 on the
+ * left edge and 0.25 on the right. tv is held at 0 because a quad whose
+ * rhw varies across it is no projection of a rectangle: its two triangles
+ * interpolate a varying tv differently (the first run, 2026-11-05, mixed
+ * rows along the diagonal while every column was right). Every pixel then
+ * samples texel row 0. Perspective-correct, pixel x's texel column
+ * is floor(32 * s) with s = f / 4 / (1 - 3f / 4), f = (2x + 1) / 128:
+ * 32(2x + 1) / (512 - 3(2x + 1)). Affine it would be (2x + 1) / 4. Pixels
+ * whose perspective s lands within 1/50 of a texel edge are not judged;
+ * each other pixel's column is found by matching its value against row
+ * 0's texels. Passes when every judged pixel is the perspective column.
+ */
+static void rs_perspective_test(void)
+{
+    static const char name[] = "Perspective";
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    const unsigned char *actual;
+    char key[64];
+    DWORD x;
+    DWORD y;
+    DWORD judged = 0u;
+    DWORD perspective = 0u;
+    DWORD affine = 0u;
+    DWORD unmatched = 0u;
+    DWORD first_wrong = 0xfffffffful;
+
+    rs_zero(&state, sizeof(state));
+    state.textured = 1u;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = V9X_RS690_TEXCOMBINE_REPLACE;
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u, 0u);
+    rs_tl(vertices + 8, 0u, TEX_HEIGHT, 0u, RS_FLOAT_ONE, 0xfffffffful, 0u,
+          0u);
+    rs_tl(vertices + 16, TEST_WIDTH, TEX_HEIGHT, 0u, RS_FLOAT_QUARTER,
+          0xfffffffful, RS_FLOAT_ONE, 0u);
+    rs_tl(vertices + 24, TEST_WIDTH, 0u, 0u, RS_FLOAT_QUARTER, 0xfffffffful,
+          RS_FLOAT_ONE, 0u);
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        return;
+    }
+    rs_save_block('P');
+    actual = (const unsigned char *)rs_result_buffer.block;
+
+    for (y = 0u; y < TEX_HEIGHT; ++y) {
+        for (x = 0u; x < TEST_WIDTH; ++x) {
+            DWORD numerator = 32u * (2u * x + 1u);
+            DWORD denominator = 512u - 3u * (2u * x + 1u);
+            DWORD column = numerator / denominator;
+            DWORD remainder = numerator % denominator;
+            DWORD pixel = rs_pixel(actual, x, y);
+            DWORD found = 0xfffffffful;
+            DWORD candidate;
+
+            if (remainder * 50u <= denominator ||
+                (denominator - remainder) * 50u <= denominator) {
+                continue;
+            }
+            ++judged;
+            for (candidate = 0u; candidate < TEX_WIDTH; ++candidate) {
+                if (rs_texel(candidate, 0u) == pixel) {
+                    found = candidate;
+                    break;
+                }
+            }
+            if (found == 0xfffffffful) {
+                ++unmatched;
+            }
+            if (found == column) {
+                ++perspective;
+            } else if (first_wrong == 0xfffffffful) {
+                first_wrong = y * TEST_WIDTH + x;
+            }
+            if (found == (2u * x + 1u) / 4u) {
+                ++affine;
+            }
+        }
+    }
+    rs_write_decimal(rs_key(key, name, "Judged"), judged);
+    rs_write_decimal(rs_key(key, name, "PerspectiveColumn"), perspective);
+    rs_write_decimal(rs_key(key, name, "AffineColumn"), affine);
+    rs_write_decimal(rs_key(key, name, "NoTexel"), unmatched);
+    if (first_wrong != 0xfffffffful) {
+        char text[24];
+        char number[12];
+
+        rs_decimal(text, first_wrong % TEST_WIDTH);
+        lstrcatA(text, ",");
+        rs_decimal(number, first_wrong / TEST_WIDTH);
+        lstrcatA(text, number);
+        rs_write(rs_key(key, name, "FirstWrongXY"), text);
+        rs_write_hex(rs_key(key, name, "FirstWrongRead"),
+                     rs_pixel(actual, first_wrong % TEST_WIDTH,
+                              first_wrong / TEST_WIDTH));
+    }
+    rs_result(name, judged != 0u && perspective == judged);
+}
+
+/*
+ * TexAdd: the gradient 1:1 over x 0-31, rows 0-15, nearest, clamped,
+ * Direct3D's ADD through the TL state - texel + diffuse (32, 64, 96),
+ * clamped, alpha the diffuse's 255. TexAddSpecular adds a specular blue
+ * of 64 on top (ADD's specular is its own instruction). Each channel within
+ * one step. TexDecalAlpha: row y of the texture red with alpha y / 15,
+ * DECALALPHA over a diffuse of (64, 128, 192): diffuse + (texel - diffuse)
+ * * texel alpha, alpha the diffuse's; within 1.5 steps.
+ */
+#define RS_ADD_DIFFUSE 0xff204060ul
+#define RS_DECAL_DIFFUSE 0xff4080c0ul
+#define RS_ADD_SPECULAR 0x00000040ul
+
+static DWORD rs_combine_specular;
+
+static void rs_add_model(DWORD x, DWORD y, long expected[4], long allowed[4])
+{
+    DWORD values[4];
+    DWORD maxima[4];
+    DWORD addend[4];
+    int channels = rs_channels(rs_texel(x, y), values, maxima);
+    int channel;
+
+    addend[0] = (RS_ADD_DIFFUSE >> 16) & 255u;
+    addend[1] = (RS_ADD_DIFFUSE >> 8) & 255u;
+    addend[2] = (RS_ADD_DIFFUSE & 255u) + (rs_combine_specular & 255u);
+    addend[3] = 255u;
+    if (channels == 4) {
+        values[3] = 0u;
+    }
+    /* In 1/255 of a step: texel * 255 + addend * max, clamped. */
+    for (channel = 0; channel < channels; ++channel) {
+        long sum = (long)values[channel] * 255l +
+                   (long)(addend[channel] * maxima[channel]);
+        long top = (long)maxima[channel] * 255l;
+
+        expected[channel] = sum > top ? top : sum;
+        allowed[channel] = RS_TEX_TOLERANCE * 255l;
+    }
+}
+
+static void rs_decal_alpha_model(DWORD x, DWORD y, long expected[4],
+                                 long allowed[4])
+{
+    static const DWORD texel[4] = { 255u, 0u, 0u, 255u };
+    DWORD diffuse[4];
+    DWORD values[4];
+    DWORD maxima[4];
+    int channels = rs_channels(rs_pixel(rs_model, x, y), values, maxima);
+    int channel;
+
+    diffuse[0] = (RS_DECAL_DIFFUSE >> 16) & 255u;
+    diffuse[1] = (RS_DECAL_DIFFUSE >> 8) & 255u;
+    diffuse[2] = RS_DECAL_DIFFUSE & 255u;
+    diffuse[3] = 255u;
+    /* In 1/(15 * 255) of a step, alpha y / 15. */
+    for (channel = 0; channel < channels; ++channel) {
+        DWORD a = channel == 3 ? 0u : y;
+
+        expected[channel] =
+            (long)((diffuse[channel] * (15u - a) + texel[channel] * a) *
+                   maxima[channel]);
+        allowed[channel] = 3l * 15l * 255l / 2l;
+    }
+}
+
+static void rs_combine_test(const char *name, char letter, DWORD combine,
+                            DWORD diffuse, DWORD specular)
+{
+    struct v9x_rs690_3d_state state;
+    DWORD vertices[4 * 8];
+    DWORD index;
+    int rows = combine == V9X_RS690_TEXCOMBINE_DECALALPHA;
+
+    rs_zero(&state, sizeof(state));
+    state.textured = 1u;
+    state.specular = specular != 0u ? 1u : 0u;
+    state.texture.filter = V9X_RS690_TEXFILTER_NEAREST;
+    state.texture.address = V9X_RS690_TEXADDR_CLAMP;
+    state.texture.combine = combine;
+    state.texture_alpha = V9X_RS690_TEXALPHA_DIFFUSE;
+    if (rows && rs_bpp == 2u) {
+        state.texture.format = V9X_RS690_TEXFMT_ARGB4444;
+    }
+    rs_tl(vertices, 0u, 0u, 0u, RS_FLOAT_ONE, diffuse, 0u, 0u);
+    rs_tl(vertices + 8, 0u, TEX_HEIGHT, 0u, RS_FLOAT_ONE, diffuse, 0u,
+          RS_FLOAT_ONE);
+    rs_tl(vertices + 16, TEX_WIDTH, TEX_HEIGHT, 0u, RS_FLOAT_ONE, diffuse,
+          RS_FLOAT_ONE, RS_FLOAT_ONE);
+    rs_tl(vertices + 24, TEX_WIDTH, 0u, 0u, RS_FLOAT_ONE, diffuse,
+          RS_FLOAT_ONE, 0u);
+    for (index = 0u; index < 4u; ++index) {
+        vertices[index * 8u + 5u] = specular;
+    }
+    rs_texture_rows = rows ? 1u : 0u;
+    if (!rs_draw_tl(name, &state, V9X_RS690_PRIM_QUADS, vertices, 4u,
+                    TEST_PREFILL)) {
+        rs_texture_rows = 0u;
+        return;
+    }
+    rs_texture_rows = 0u;
+    rs_save_block(letter);
+    rs_combine_specular = specular;
+    rs_model_prefill();
+    if (rows) {
+        rs_tex_judge(name, 0u, TEX_WIDTH, 15l * 255l, rs_decal_alpha_model);
+    } else {
+        rs_tex_judge(name, 0u, TEX_WIDTH, 255l, rs_add_model);
+    }
+}
+
 /* A 2D fill after the 3D tests, byte-exact, as the 2D probe's Fill. */
 static void rs_fill_after_test(void)
 {
@@ -1624,7 +2225,7 @@ static void rv_bisect_init(DWORD pipe_select)
     }
     rs_begin();
     rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
-    rs_add(RS_OP_MMIO_WRITE32, RV_R500_VAP_INDEX_OFFSET, 0u, 0u);
+    rs_add(RS_OP_MMIO_WRITE32, V9X_RV515_VAP_INDEX_OFFSET, 0u, 0u);
     wait_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     rs_write_hex("BisectVapIndexWait",
                  rs_run() ? rs_result_buffer.ops[wait_index].result :
@@ -1686,7 +2287,7 @@ static void rv_read_after_init(DWORD pipe_select, DWORD offset)
     rs_begin();
     (void)rv_add_list(&init);
     rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
-    rs_add(RS_OP_MMIO_WRITE32, RV_R500_VAP_INDEX_OFFSET, 0u, 0u);
+    rs_add(RS_OP_MMIO_WRITE32, V9X_RV515_VAP_INDEX_OFFSET, 0u, 0u);
     wait_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     rs_write_hex("ReadAfterInitWait",
                  rs_run() ? rs_result_buffer.ops[wait_index].result :
@@ -1700,7 +2301,6 @@ static void rv_read_after_init(DWORD pipe_select, DWORD offset)
 void WINAPI V9xRv5153dProbeEntry(void)
 {
     static const char header[] = "[Rv5153dProbe]\r\n";
-    struct v9x_rs690_3d_list init;
     HDC display;
     DWORD returned;
     DWORD desktop_bytes = 0u;
@@ -1802,15 +2402,15 @@ void WINAPI V9xRv5153dProbeEntry(void)
         rs_close(0u);
     }
 
-    /* The 3D init list once, through the R500 fixup, then the R500 line
-     * of RADEONInit3DEngine. */
-    (void)v9x_rs690_build_3d_init(
-        pipe_select, rs_read_register(V9X_RS690_RB2D_DSTCACHE_MODE), &init);
+    /* The 3D init list once (rv515_3d.c: the RS690's through the R500
+     * fixup, then R500_VAP_INDEX_OFFSET). */
+    (void)v9x_rv515_build_3d_init(
+        pipe_select, rs_read_register(V9X_RS690_RB2D_DSTCACHE_MODE),
+        &rv_list);
     rs_begin();
     before_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
-    rs_write_decimal("InitR300WritesDropped", rv_add_list(&init));
-    rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
-    rs_add(RS_OP_MMIO_WRITE32, RV_R500_VAP_INDEX_OFFSET, 0u, 0u);
+    rs_write_decimal("InitR300WritesDropped", rv_list.dropped);
+    rv_add(&rv_list);
     after_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
     if (!rs_run()) {
         rs_write("Init", "NOT-RUN");
@@ -1824,8 +2424,8 @@ void WINAPI V9xRv5153dProbeEntry(void)
                  rs_read_register(V9X_RS690_VAP_CNTL_STATUS));
 
     rs_quad_test("Quad", 'Q');
-    rs_triangle_test("Triangle", 0, 'T');
-    rs_triangle_test("Gouraud", 1, 'G');
+    rs_triangle_test("Triangle", 0, 'T', 0);
+    rs_triangle_test("Gouraud", 1, 'G', 0);
     /* Texturing through the R500 program from r500_fp.c. */
     rs_tex_exact_test("TexDecal", 'D', V9X_RS690_TEXADDR_CLAMP, 4u,
                       4u + TEX_WIDTH, v9x_rs690_float_integer(1u));
@@ -1833,6 +2433,30 @@ void WINAPI V9xRv5153dProbeEntry(void)
                       v9x_rs690_float_integer(2u));
     rs_tex_modulate_test();
     rs_tex_bilinear_test();
+    /* The TL-vertex state (rv515_3d.c v9x_rv515_build_3d_state), as the
+     * HAL will use it. */
+    rs_triangle_test("TlGouraud", 1, 'H', 1);
+    rs_z_test();
+    rs_blend_test();
+    rs_alpha_test();
+    rs_scissor_test();
+    rs_channel_mask_test();
+    rs_cull_test();
+    rs_perspective_test();
+    rs_flat_colour_test("TlSpecularOnly", 'E', 0u, 1u, 0u, 0x0000ff00ul,
+                        0xffffff00ul);
+    rs_flat_colour_test("TlFogFull", 'I', 0u, 0u, 1u, 0x00000000ul,
+                        0xff0000fful);
+    rs_flat_colour_test("TexFogFull", 'O', 1u, 0u, 1u, 0x00000000ul,
+                        0xff0000fful);
+    rs_combine_test("TexAdd", '4', V9X_RS690_TEXCOMBINE_ADD, RS_ADD_DIFFUSE,
+                    0u);
+    rs_combine_test("TexAddSpecular", '5', V9X_RS690_TEXCOMBINE_ADD,
+                    RS_ADD_DIFFUSE, RS_ADD_SPECULAR);
+    rs_combine_test("TexDecalAlpha", '6', V9X_RS690_TEXCOMBINE_DECALALPHA,
+                    RS_DECAL_DIFFUSE, 0u);
+    rs_fog_test("TlFog", 0u);
+    rs_fog_test("TlFogSpecular", 1u);
     /* The colour-only state again, after the textured one. */
     rs_quad_test("QuadAfterTex", 'A');
     rs_fill_after_test();
