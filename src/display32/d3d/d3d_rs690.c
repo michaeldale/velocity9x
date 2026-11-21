@@ -138,8 +138,8 @@ static int v9x_d3d_rs690_write_list(const struct v9x_rs690_3d_list *list)
                                       list->count);
 }
 
-/* RGB565, ARGB1555 and ARGB4444 at 16 bits, ARGB8888 at 32: the builder's
- * format, or 0 for one this engine does not sample. */
+/* RGB565, ARGB1555 and ARGB4444 at 16 bits, ARGB8888 and XRGB8888 at 32:
+ * the builder's format, or 0 for one this engine does not sample. */
 static DWORD v9x_d3d_rs690_format_of(const V9X_DD_SURFACE_LCL *surface,
                                      DWORD *bytes_out)
 {
@@ -186,6 +186,16 @@ static DWORD v9x_d3d_rs690_format_of(const V9X_DD_SURFACE_LCL *surface,
         format->dwRGBAlphaBitMask == 0xff000000ul) {
         *bytes_out = 4ul;
         return V9X_RS690_TEXFMT_ARGB8888;
+    }
+    /* XRGB8888: sampled with alpha one, the X byte never read. Refused
+     * before 2026-11-21, which V9XD32's T22X drew black on the X1300. */
+    if (format->dwRGBBitCount == 32ul &&
+        (format->dwFlags & V9X_DDPF_ALPHAPIXELS) == 0ul &&
+        format->dwRBitMask == 0x00ff0000ul &&
+        format->dwGBitMask == 0x0000ff00ul &&
+        format->dwBBitMask == 0x000000fful) {
+        *bytes_out = 4ul;
+        return V9X_RS690_TEXFMT_XRGB8888;
     }
     return 0ul;
 }
@@ -305,7 +315,7 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
         V9X_DDBD_16 | V9X_DDBD_32;
     shared->d3d_global.hwCaps.dwDeviceZBufferBitDepth = V9X_DDBD_16;
 
-    /* RGB565, ARGB1555, ARGB4444, ARGB8888. */
+    /* RGB565, ARGB1555, ARGB4444, ARGB8888, then XRGB8888 below. */
     for (index = 0ul; index < 4ul; ++index) {
         V9X_DDPIXELFORMAT *pf = &shared->texture_formats[index].ddpfPixelFormat;
 
@@ -338,8 +348,13 @@ static void v9x_d3d_rs690_describe_caps(V9X_DD_SHARED *shared)
     shared->texture_formats[3].ddpfPixelFormat.dwBBitMask = 0x000000fful;
     shared->texture_formats[3].ddpfPixelFormat.dwRGBAlphaBitMask =
         0xff000000ul;
+    /* XRGB8888, the fifth and last entry the table holds, as Evergreen's
+     * (d3d_eg.c). */
+    shared->texture_formats[4] = shared->texture_formats[3];
+    shared->texture_formats[4].ddpfPixelFormat.dwFlags = V9X_DDPF_RGB;
+    shared->texture_formats[4].ddpfPixelFormat.dwRGBAlphaBitMask = 0ul;
     shared->d3d_global.lpTextureFormats = &shared->texture_formats[0];
-    shared->d3d_global.dwNumTextureFormats = 4ul;
+    shared->d3d_global.dwNumTextureFormats = 5ul;
     shared->d3d_global.dwNumVertices = 0ul;
     shared->d3d_global.dwNumClipVertices = 0ul;
 }
@@ -456,7 +471,8 @@ static void v9x_d3d_rs690_resolve_texture(const V9X_R3D_TEXTURE *sampler,
         texture->format = V9X_D3D_RS690_TEXTURE_UNKNOWN;
         return;
     }
-    texture->has_alpha = texture->format != V9X_RS690_TEXFMT_RGB565;
+    texture->has_alpha = texture->format != V9X_RS690_TEXFMT_RGB565 &&
+                         texture->format != V9X_RS690_TEXFMT_XRGB8888;
     texture->width = (DWORD)surface->lpGbl->wWidth;
     texture->height = (DWORD)surface->lpGbl->wHeight;
     texture->pitch_bytes = (DWORD)surface->lpGbl->lPitch;
@@ -558,7 +574,8 @@ static int v9x_d3d_rs690_omitted(const V9X_R3D_DRAW *draw,
         classes |= V9X_D3D_RS690_OMIT_UNTEXTURED;
     } else if (resolved->format == V9X_RS690_TEXFMT_ARGB4444) {
         classes |= V9X_D3D_RS690_OMIT_4444;
-    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB8888) {
+    } else if (resolved->format == V9X_RS690_TEXFMT_ARGB8888 ||
+               resolved->format == V9X_RS690_TEXFMT_XRGB8888) {
         classes |= V9X_D3D_RS690_OMIT_8888;
     } else if (resolved->format == V9X_RS690_TEXFMT_ARGB1555) {
         classes |= V9X_D3D_RS690_OMIT_1555;

@@ -203,6 +203,10 @@
 #define V9X_RS690_TEXFMT_ARGB8888       2ul
 #define V9X_RS690_TEXFMT_ARGB1555       3ul
 #define V9X_RS690_TEXFMT_ARGB4444       4ul
+/* XRGB8888: ARGB8888's layout with the alpha swizzle forced to one, so the
+ * byte Direct3D leaves undefined is never read (Mesa r300_texture.c gives
+ * B8G8R8X8 the ONE swizzle the same way). */
+#define V9X_RS690_TEXFMT_XRGB8888       5ul
 
 /* Texture filter, addressing (both axes) and how the texel meets the
  * interpolated colour: REPLACE takes the texel, MODULATE multiplies the

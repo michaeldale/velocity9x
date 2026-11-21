@@ -485,6 +485,12 @@ static void test_texture(void)
     CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_ADDR_0) == 0x01000040ul);
     CHECK(list_value(&list, V9X_RS690_US_ALU_ALPHA_INST_0) == 0x40040509ul);
 
+    /* XRGB8888: ARGB8888's layout, alpha swizzle ONE (11:9 = 5). */
+    texture.format = V9X_RS690_TEXFMT_XRGB8888;
+    CHECK(build_texture(&texture, &list) == V9X_STATUS_OK);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT1_0) == 0x0000aa0cul);
+    CHECK(list_value(&list, V9X_RS690_TX_FORMAT2_0) == 31ul);
+
     /* A wider pitch than the row: the pitch field follows the pitch. */
     base_texture(&texture);
     texture.pitch_bytes = 128ul;
@@ -568,7 +574,7 @@ static void test_texture(void)
 
     /* Unknown format, filter, addressing, combine. */
     base_texture(&texture);
-    texture.format = 5ul;
+    texture.format = 6ul;
     CHECK(build_texture(&texture, &list) == V9X_STATUS_UNSUPPORTED);
     base_texture(&texture);
     texture.filter = 2ul;
@@ -1117,7 +1123,7 @@ static void test_state(void)
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
     base_state(&state);
     state.textured = 1ul;
-    state.texture.format = 5ul;
+    state.texture.format = 6ul;
     CHECK(v9x_rs690_build_3d_state(&state, &list) == V9X_STATUS_UNSUPPORTED);
     base_state(&state);
     state.target.bytes_per_pixel = 1ul;

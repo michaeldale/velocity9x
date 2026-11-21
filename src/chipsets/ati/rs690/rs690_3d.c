@@ -161,6 +161,9 @@
  * Z5Y6X5 6), a8r8g8b8 (X, Y, Z, W, W8Z8Y8X8 0Ch). */
 #define V9X_RS690_TXFMT1_RGB565         0x0000aa06ul
 #define V9X_RS690_TXFMT1_ARGB8888       0x0000a60cul
+/* x8r8g8b8: (X, Y, Z, ONE, W8Z8Y8X8 0Ch), the alpha swizzle ONE as
+ * r5g6b5's. */
+#define V9X_RS690_TXFMT1_XRGB8888       0x0000aa0cul
 /* a1r5g5b5 (X, Y, Z, W, W1Z5Y5X5 0Bh), R300TexFormats; B4G4R4A4 (X, Y, Z,
  * W, W4Z4Y4X4 0Ah), Mesa r300_translate_texformat. */
 #define V9X_RS690_TXFMT1_ARGB1555       0x0000a60bul
@@ -761,6 +764,9 @@ static v9x_status v9x_rs690_add_texture(v9x_u32 fb_gpu_base, v9x_u32 fb_bytes,
     } else if (texture->format == V9X_RS690_TEXFMT_ARGB8888) {
         bytes_per_texel = 4ul;
         card_format = V9X_RS690_TXFMT1_ARGB8888;
+    } else if (texture->format == V9X_RS690_TEXFMT_XRGB8888) {
+        bytes_per_texel = 4ul;
+        card_format = V9X_RS690_TXFMT1_XRGB8888;
     } else if (texture->format == V9X_RS690_TEXFMT_ARGB1555) {
         bytes_per_texel = 2ul;
         card_format = V9X_RS690_TXFMT1_ARGB1555;
