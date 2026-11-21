@@ -1,0 +1,19 @@
+{
+    "Name":  "x1300",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  52,
+    "BootAfter":  53,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  52,
+    "Desktop":  true,
+    "AnswerSeconds":  4,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "1002:7146",
+    "AdapterMismatch":  false
+}
