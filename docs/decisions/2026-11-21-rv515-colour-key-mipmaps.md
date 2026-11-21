@@ -68,10 +68,21 @@ draw has been checked by eye on this card.
 
 ## Boot 47: the HAL with XRGB8888 and the 32-byte chains
 
-- `V9XD32` at 800x600x16: `Result=PASS`, `Failures=0`. T22X, the
-  XRGB8888 texture that failed on boot 46, now draws all four pixels
-  right (`T22XOk=0x0F`) after `d244e7a3` offered the format in the shared
-  RS690 HAL. Not rerun at 32 bpp.
+- `V9XD32` at 800x600x16 and 800x600x32: `Result=PASS`, `Failures=0`
+  both times. T22X, the XRGB8888 texture that failed on boot 46, now
+  draws all four pixels right (`T22XOk=0x0F`) after `d244e7a3` offered
+  the format in the shared RS690 HAL.
+- `V9XDDP` at 800x600x16 (`Result=COMPLETE`), against boot 46's run at
+  the same depth: every `*Ok` key is the same except
+  `Tex8X8888HalvesOk`, 0 to 1 (XRGB8888). 51 keys still read 0, against
+  52. The mip keys did not move: in every `TexM_*` case the bilinear
+  (`_lin`) draw reads black (`L=0`, `R=0`) and the trilinear one fails,
+  while nearest and mip-nearest pass for plain, chained and gapped
+  textures alike; `ChainLinOk`, `MipGapOk` and `MipTriOk` stay 0. That
+  failure is the same on boot 46 and on the RS690, so the 32-byte rows
+  neither caused nor fixed it. V9XR53D's bilinear tests pass on this card,
+  so the fault is in the path V9XDDP takes, not bilinear sampling as such.
+  Not investigated. V9XDD2.INI writes no `Result=` line on either run.
 - Forsaken (`ForsakenHW.exe`), left for about 100 s from launch, then
   closed with WM_CLOSE. `V9XTRACE` (`V9XSNA5.INI`) after it shows:
   - driver and HAL both `44a4cf1b`, `EngineType=18`;
@@ -88,7 +99,7 @@ draw has been checked by eye on this card.
 ## Not done
 
 - A person looking at 3DMark and a game: asked of the owner in chat.
-- V9XD32 at 32 bpp on the `44a4cf1b` HAL.
+- Why V9XDDP's bilinear draws read black on both ATI R300-class chips.
 - The RS690 has not been rerun against the shared-code changes
   (`row_align` defaults to its own 64; XRGB8888 is new for it too). No
   RS690 machine is reachable.
