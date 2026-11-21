@@ -959,6 +959,231 @@ static void rs_close(DWORD code)
     ExitProcess(code);
 }
 
+/* Nonzero when the command line holds name (si_mmio_probe_win32.c's). */
+static int rv_switch(const char *name)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(name);
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        int index = 0;
+
+        while (index < length && line[index] == name[index]) {
+            ++index;
+        }
+        if (index == length) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* How many of RV_SAMPLE_READS reads of RBBM_STATUS show GUI_ACTIVE. */
+#define RV_SAMPLE_READS 16u
+
+static DWORD rv_busy_samples(DWORD *last)
+{
+    DWORD busy = 0u;
+    DWORD index;
+    DWORD value = 0u;
+
+    for (index = 0u; index < RV_SAMPLE_READS; ++index) {
+        value = rs_read_register(V9X_RS690_RBBM_STATUS);
+        if ((value & 0x80000000ul) != 0ul) {
+            ++busy;
+        }
+    }
+    *last = value;
+    return busy;
+}
+
+/*
+ * /watch: RV_WATCH_READS reads of RBBM_STATUS with nothing written. How
+ * many showed GUI_ACTIVE, how many GA_BUSY (bit 26, Linux r300d.h), the
+ * longest busy run, the number of busy/idle changes, and the first busy
+ * value. Takes a second or two of DIOC round trips.
+ */
+#define RV_WATCH_READS 2000u
+#define RV_GA_BUSY     0x04000000ul
+
+static void rv_watch(const char *prefix)
+{
+    char key[64];
+    DWORD index;
+    DWORD value;
+    DWORD busy = 0u;
+    DWORD ga = 0u;
+    DWORD run = 0u;
+    DWORD longest = 0u;
+    DWORD changes = 0u;
+    DWORD first_busy = 0u;
+    DWORD start_tick = GetTickCount();
+    int was_busy = 0;
+
+    for (index = 0u; index < RV_WATCH_READS; ++index) {
+        int is_busy;
+
+        value = rs_read_register(V9X_RS690_RBBM_STATUS);
+        is_busy = (value & 0x80000000ul) != 0ul;
+        if (is_busy) {
+            ++busy;
+            ++run;
+            if (run > longest) {
+                longest = run;
+            }
+            if (first_busy == 0u) {
+                first_busy = value;
+            }
+        } else {
+            run = 0u;
+        }
+        if ((value & RV_GA_BUSY) != 0ul) {
+            ++ga;
+        }
+        if (index != 0u && is_busy != was_busy) {
+            ++changes;
+        }
+        was_busy = is_busy;
+    }
+    rs_write_decimal(rs_key(key, prefix, "Reads"), RV_WATCH_READS);
+    rs_write_decimal(rs_key(key, prefix, "Ms"), GetTickCount() - start_tick);
+    rs_write_decimal(rs_key(key, prefix, "Busy"), busy);
+    rs_write_decimal(rs_key(key, prefix, "GaBusy"), ga);
+    rs_write_decimal(rs_key(key, prefix, "LongestBusyRun"), longest);
+    rs_write_decimal(rs_key(key, prefix, "Changes"), changes);
+    rs_write_hex(rs_key(key, prefix, "FirstBusyValue"), first_busy);
+}
+
+/*
+ * /bisect: the R500-fixed init list in chunks of RV_BISECT_CHUNK writes,
+ * each chunk its own run ending in a wait for idle. After each chunk:
+ * the wait's result, how many of 16 RBBM_STATUS reads were busy, the last
+ * read, and DSTCACHE_CTLSTAT. Then VAP_INDEX_OFFSET alone. The first chunk
+ * after which the engine stays busy names the write that does it.
+ */
+#define RV_BISECT_CHUNK 8u
+
+static void rv_bisect_init(DWORD pipe_select)
+{
+    struct v9x_rs690_3d_list init;
+    struct v9x_rs690_3d_list chunk;
+    char base[24];
+    char key[64];
+    char number[12];
+    DWORD start;
+    DWORD index;
+    DWORD wait_index;
+    DWORD busy;
+    DWORD last;
+
+    (void)v9x_rs690_build_3d_init(
+        pipe_select, rs_read_register(V9X_RS690_RB2D_DSTCACHE_MODE), &init);
+    busy = rv_busy_samples(&last);
+    rs_write_decimal("BisectStartBusy", busy);
+    rs_write_hex("BisectStartRbbm", last);
+    for (start = 0u; start < init.count; start += RV_BISECT_CHUNK) {
+        chunk.count = 0u;
+        for (index = start;
+             index < init.count && index < start + RV_BISECT_CHUNK;
+             ++index) {
+            chunk.offsets[chunk.count] = init.offsets[index];
+            chunk.values[chunk.count] = init.values[index];
+            ++chunk.count;
+        }
+        rs_begin();
+        (void)rv_add_list(&chunk);
+        wait_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+        lstrcpyA(base, "Bisect");
+        rs_decimal(number, start);
+        lstrcatA(base, number);
+        if (!rs_run()) {
+            rs_write_hex(rs_key(key, base, "Wait"), RS_TIMEOUT);
+        } else {
+            rs_write_hex(rs_key(key, base, "Wait"),
+                         rs_result_buffer.ops[wait_index].result);
+        }
+        rs_write_hex(rs_key(key, base, "FirstOffset"), init.offsets[start]);
+        busy = rv_busy_samples(&last);
+        rs_write_decimal(rs_key(key, base, "Busy"), busy);
+        rs_write_hex(rs_key(key, base, "Rbbm"), last);
+        rs_write_hex(rs_key(key, base, "DstCache"),
+                     rs_read_register(V9X_RS690_DSTCACHE_CTLSTAT));
+    }
+    rs_begin();
+    rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
+    rs_add(RS_OP_MMIO_WRITE32, RV_R500_VAP_INDEX_OFFSET, 0u, 0u);
+    wait_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_write_hex("BisectVapIndexWait",
+                 rs_run() ? rs_result_buffer.ops[wait_index].result :
+                            RS_TIMEOUT);
+    busy = rv_busy_samples(&last);
+    rs_write_decimal("BisectEndBusy", busy);
+    rs_write_hex("BisectEndRbbm", last);
+}
+
+/* /readafter=XXXX's register offset (four hex digits), or 0. */
+static DWORD rv_readafter_offset(void)
+{
+    static const char name[] = "/readafter=";
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(name);
+    DWORD value = 0u;
+    int digit;
+
+    for (; line != 0 && *line != '\0'; ++line) {
+        int index = 0;
+
+        while (index < length && line[index] == name[index]) {
+            ++index;
+        }
+        if (index != length) {
+            continue;
+        }
+        line += length;
+        for (digit = 0; digit < 4; ++digit) {
+            char c = line[digit];
+
+            if (c >= '0' && c <= '9') {
+                value = value * 16u + (DWORD)(c - '0');
+            } else if (c >= 'a' && c <= 'f') {
+                value = value * 16u + (DWORD)(c - 'a' + 10);
+            } else if (c >= 'A' && c <= 'F') {
+                value = value * 16u + (DWORD)(c - 'A' + 10);
+            } else {
+                return 0u;
+            }
+        }
+        return value;
+    }
+    return 0u;
+}
+
+/*
+ * /readafter=XXXX: the R500-fixed init (in one run, ending idle), a watch,
+ * one read of register XXXX, and a watch again. Which read, if any,
+ * leaves GA_BUSY set.
+ */
+static void rv_read_after_init(DWORD pipe_select, DWORD offset)
+{
+    struct v9x_rs690_3d_list init;
+    DWORD wait_index;
+
+    (void)v9x_rs690_build_3d_init(
+        pipe_select, rs_read_register(V9X_RS690_RB2D_DSTCACHE_MODE), &init);
+    rs_begin();
+    (void)rv_add_list(&init);
+    rs_add(RS_OP_WAIT_FIFO, 1u, 0u, 0u);
+    rs_add(RS_OP_MMIO_WRITE32, RV_R500_VAP_INDEX_OFFSET, 0u, 0u);
+    wait_index = rs_add(RS_OP_WAIT_IDLE, 0u, 0u, 0u);
+    rs_write_hex("ReadAfterInitWait",
+                 rs_run() ? rs_result_buffer.ops[wait_index].result :
+                            RS_TIMEOUT);
+    rv_watch("BeforeRead");
+    rs_write_hex("ReadAfterOffset", offset);
+    rs_write_hex("ReadAfterValue", rs_read_register(offset));
+    rv_watch("AfterRead");
+}
+
 void WINAPI V9xRv5153dProbeEntry(void)
 {
     static const char header[] = "[Rv5153dProbe]\r\n";
@@ -1031,8 +1256,10 @@ void WINAPI V9xRv5153dProbeEntry(void)
                  rs_read_register(V9X_RS690_RBBM_STATUS));
     pipe_select = rs_read_register(V9X_RS690_GB_PIPE_SELECT);
     rs_write_hex("GbPipeSelect", pipe_select);
-    rs_write_hex("GbTileConfigAtStart",
-                 rs_read_register(V9X_RS690_GB_TILE_CONFIG));
+    /* GB_TILE_CONFIG is never read: on this card a read of it after the
+     * 3D init leaves GA_BUSY set for good (/readafter=4018 on M-5CAPM3,
+     * boot 43), and a second run of this tool on the same boot would be
+     * after the init. /readafter can still read it on purpose. */
     rs_write_hex("VapCntlStatusAtStart",
                  rs_read_register(V9X_RS690_VAP_CNTL_STATUS));
     if (v9x_rs690_cp_off(csq) == 0ul) {
@@ -1045,6 +1272,21 @@ void WINAPI V9xRv5153dProbeEntry(void)
     if (rs_fb_gpu_base == 0ul || pipe_select == 0xfffffffful) {
         rs_write("Result", "REFUSED-FB-BASE");
         rs_close(3u);
+    }
+    if (rv_switch("/watch")) {
+        rv_watch("Watch");
+        rs_write("Result", "WATCH-ONLY");
+        rs_close(0u);
+    }
+    if (rv_switch("/bisect")) {
+        rv_bisect_init(pipe_select);
+        rs_write("Result", "BISECT-ONLY");
+        rs_close(0u);
+    }
+    if (rv_readafter_offset() != 0u) {
+        rv_read_after_init(pipe_select, rv_readafter_offset());
+        rs_write("Result", "READAFTER-ONLY");
+        rs_close(0u);
     }
 
     /* The 3D init list once, through the R500 fixup, then the R500 line
@@ -1065,8 +1307,6 @@ void WINAPI V9xRv5153dProbeEntry(void)
     }
     rs_write_hex("InitWaitBefore", rs_result_buffer.ops[before_index].result);
     rs_write_hex("InitWaitAfter", rs_result_buffer.ops[after_index].result);
-    rs_write_hex("GbTileConfigAfterInit",
-                 rs_read_register(V9X_RS690_GB_TILE_CONFIG));
     rs_write_hex("VapCntlStatusAfterInit",
                  rs_read_register(V9X_RS690_VAP_CNTL_STATUS));
 
