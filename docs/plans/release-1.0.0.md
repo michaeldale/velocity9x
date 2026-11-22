@@ -162,3 +162,40 @@ Dated entries, appended as work is measured.
   fails and hangs on released 0.56.2 (2026-11-19); not run today. The
   86Box Trio64's 134 ms windowed presents. The Mach64 VT2 guest's 8 bpp
   desktop hides three probes.
+
+### 2026-11-23: B4 closed, B8 in part
+
+No new machine online; the same nine as on 2026-11-21. Evidence in
+`docs/probe/1.0-b4-b8-2026-11-23/`.
+
+- **B4, closed by measurement.** 3DMark 2001 SE (all tests) on the
+  HD 4600 from a fresh `reset`: `FilterMinSeen` 6h to 1Eh, so DirectX 8
+  programs now reach MIPNEAREST and MIPLINEAR; no trilinear was asked
+  for; no engine timeout
+  ([issue](../issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)). The
+  picture was not looked at.
+- **B8, in part.** The release probes cannot be the two programs: since
+  980724ab (2026-10-27) each takes a named mutex and answers
+  `Result=BUSY` while another holds it, because two probes once read each
+  other's pixels as failures. Measured on the 86Box ViRGE/DX guest: of
+  three started together, three rounds, only V9XGLP ran. So each machine
+  ran 3DMark 2001 SE's benchmark (Direct3D 8, exclusive full screen) and,
+  during it, V9XGLP, V9XWPRS and V9XR3DP one after another:
+  - **R7E (`ati`, GCN 3):** 3DMark completed its run (852, recorded, not
+    compared) with the probes run 3-5 minutes into it; each probe's
+    verdict identical to its solo run on 2026-11-21; `EngineIdleTimeouts`,
+    `EngineResets` and every flip-wait timeout 0; `FlipHandled=7191`.
+    `DrawsIntoPresented=18` is cumulative since boot 82 and not
+    attributed to this run. The `key ALT+B` that started it returned
+    "ambiguous input target", yet the benchmark ran; how is not known.
+  - **HD 4600:** the probes' verdicts identical to their solo runs and
+    the counters 0, but 3DMark stopped its own run with "display window
+    lost focus" once the first probe window opened, so the two drew
+    together only briefly.
+  - Still owed for B8: a Direct3D program that keeps drawing in a window
+    (Half-Life `-window` on the HD 4600) beside a probe, and two Direct3D
+    programs in one run.
+- **RIVA 128ZX:** the fixed V9XFBCMP passes (second run `Differ=0`; the
+  first read 458 with the screen still changing).
+- **86Box guests** stop with the session that started them; restart them
+  before a run (the ViRGE/DX guest was restarted and set to 16 bpp).

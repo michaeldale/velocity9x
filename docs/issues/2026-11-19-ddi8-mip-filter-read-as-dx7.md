@@ -1,7 +1,9 @@
 # DDI 8: the MIPFILTER stage state is read with DirectX 7's numbering, so DirectX 8 programs lose mipmapping (speckled distant textures)
 
-Date: 2026-11-19. Status: fix written and host-tested; not yet run on
-hardware. Seen on the HD 4600 (i5-4570) in 3DMark 2001 SE.
+Date: 2026-11-19. Status: fixed in 4b0aa6ba (shipped in 0.57.0);
+confirmed on hardware 2026-11-23 by the counter (HD 4600, below). The
+picture was not looked at. Seen on the HD 4600 (i5-4570) in 3DMark
+2001 SE.
 
 ## What was seen
 
@@ -53,3 +55,23 @@ first and failed six checks against a stub. `run-checks` passes.
 
 3DMark 2001 SE on the HD 4600: `FilterMinSeen` should gain a MIP bit
 (3-6), and the road and grass should stop sparkling in an OBS capture.
+
+## Confirmed, 2026-11-23
+
+The i5-4570 on the 1.0 baseline's `intel-gma` set (`ac9aa76b-dirty`,
+which carries 4b0aa6ba), restarted by `reset` (boot 297) so that nothing
+else had drawn. 3DMark 2001 SE Pro, all 21 tests, 1024x768x32 with
+compressed textures, no d3d8 proxy in its folders (`D3D8.PRX` in both,
+inactive). Score 4778 (recorded, not compared). Then V9XTRACE (the
+package's, `Ok=1`):
+
+- `FilterMinSeen=0x0000001E`: NEAREST, LINEAR, MIPNEAREST and MIPLINEAR
+  (1-4). The 2026-11-19 run read `0x00000006`. LINEARMIPNEAREST and
+  LINEARMIPLINEAR (5, 6) were not seen: 3DMark asked for no trilinear
+  filter, so that mapping is still unexercised on hardware.
+- `MipLevelsMax=11`, `D3dMipChainLevels=8`, `FilterMagSeen=0x00000006`.
+- `EngineFifoTimeouts`, `EngineIdleTimeouts`, `EngineResets` and
+  `DrawsIntoPresented` all 0.
+
+Nobody looked at the road and grass; the OBS check is not done.
+Evidence: `docs/probe/1.0-b4-b8-2026-11-23/hd4600-after-3dm2001.INI`.
