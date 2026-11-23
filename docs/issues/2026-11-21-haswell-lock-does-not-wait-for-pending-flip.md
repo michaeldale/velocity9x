@@ -1,6 +1,7 @@
 # HD 4600: a Lock of the back buffer right after a vsync flip does not wait for the flip, so CPU writes land in the page still on screen
 
-Date: 2026-11-21. Status: fixed in source 2026-11-23 and measured on the
+Date: 2026-11-21. Status: fixed and closed 2026-11-23, measured on the HD 4600
+and the Oland 6610 (below). Earlier status: fixed in source and measured on the
 HD 4600 (below); not yet run on another family. Found by dispbench's new
 DB3D check `FlipSafety`, not by a program.
 
@@ -138,3 +139,22 @@ and none of the non-Intel machines online today is on the LAN.
 
 Evidence: `docs/probe/1.0-b1-b3-b12-2026-11-23/flipsafety-hd4600/` and
 `hd4600-after-flipsafety.INI`.
+
+## Another family, 2026-11-23: the Oland
+
+Step 3, on W9QI0DAD (Radeon Oland XT `1002:6610`, GCN), the same
+command at `VSync=0`
+([record](../decisions/2026-11-23-1.0-b1-oland-flipsafety.md)):
+
+| Build | Lock: early / judged | Draw: early / judged |
+|---|---|---|
+| released 0.59.0, 16 bpp | 114 / 114 | 0 / 119 |
+| released 0.59.0, 32 bpp | 117 / 117 | 0 / 119 |
+| the fix, 16 bpp | 0 / 119 | 0 / 119 |
+| the fix, 32 bpp | 0 / 119 | 0 / 119 |
+
+`LockFlipWaited=240`, `LockFlipWaitTimeouts=0`, `DrawsIntoPresented=0`.
+The gap was in the shared Lock path, as the title's "HD 4600" undersold;
+measured on two families before and after. Status: fixed, closed.
+
+Evidence: `docs/probe/1.0-b1-oland-2026-11-23/`.

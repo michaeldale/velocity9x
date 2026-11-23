@@ -49,7 +49,7 @@ Fix, or measure and document, before the first release candidate.
 
 | # | Item | State on 2026-11-21 | Done when |
 |---|---|---|---|
-| B1 | A write Lock of the back buffer does not wait for a pending flip ([issue](../issues/2026-11-21-haswell-lock-does-not-wait-for-pending-flip.md)) | Measured on the HD 4600; likely every family; not fixed | dispbench FlipSafety judges Lock as it does draws, on the HD 4600 and one non-Intel card |
+| B1 | A write Lock of the back buffer does not wait for a pending flip ([issue](../issues/2026-11-21-haswell-lock-does-not-wait-for-pending-flip.md)) | Closed 2026-11-23: fixed, FlipSafety `held` on the HD 4600 and the Oland 6610 | dispbench FlipSafety judges Lock as it does draws, on the HD 4600 and one non-Intel card |
 | B2 | The `ati` gamma hook writes Mach64 DAC offsets into other chips' register windows ([issue](../issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)) | Found by reading | The hook is per engine; a ramp measured on the Rage 128 and one Evergreen-or-later part, or refused there |
 | B3 | Engine-placed render targets are never freed ([issue](../issues/2026-11-15-placed-render-targets-never-freed.md)) | Found by reading; seven engines | A create/destroy loop in a probe leaves the heap where it started on two engines |
 | B4 | DirectX 8 MIPFILTER read with DirectX 7's numbering ([issue](../issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)) | The index says host-tested, not run; the 0.57.0 notes name a DDI 8 mip fix, so this may be a stale line | The record says which |
@@ -226,3 +226,13 @@ comparison exists
   machines.
 - B1's issue said "every family", but only the HD 4600 was measured on
   either side of the fix.
+
+### 2026-11-23, evening: B1 closed on the Oland
+
+W9QI0DAD's Oland 6610 is on the LAN, so dispbench reached it
+([record](../decisions/2026-11-23-1.0-b1-oland-flipsafety.md)). FlipSafety
+Lock on released 0.59.0: 114 of 114 and 117 of 117 judged writes early at
+16 and 32 bpp, so the gap was the shared Lock path, not Intel's. On the
+fix (`713bc38a-dirty`, the code of `6a1c80d0`): 0 of 119 at both depths,
+`LockFlipWaited=240`, no timeout; release probes as on boot 123. **B1
+closed.** The machine's `VSync=2` was set to 0 for the runs and restored.
