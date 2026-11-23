@@ -64,6 +64,31 @@ not implemented. The 2026-10-23 and 2026-10-24 Tux Racer records note
 both as stubs in passing. This record is the first to show a shipping
 build calling them in the field.
 
+## Second field report: Minecraft on the HD 2500, 2026-11-23
+
+Report V9X-JVGQM2 on 0.59.0 (`6899f1cd`), the HD 2500 (8086:0152) of
+GitHub issue 29, Windows 98 SE. Description: "minecraft opengl didn't
+work". The log's Minecraft sessions (`JAVA.EXE` from JRE 1.6.0_03,
+854x480, 24-bit depth) call `glGenLists`, `glNewList`, `glEndList`,
+`glCallLists` and `glDeleteLists`, all stubs, plus `glCopyTexSubImage2D`
+(slot 326), also a stub. No texgen.
+
+The last session's counters at detach: `stub-calls=553`, `paths
+untextured=1748/96500 hw=0/0 cpu=0/0`, `hwtex creates=0 uploads=0`,
+`alpha-dropped=680`, with 21 `glTexImage2D` calls in the census. Not one
+textured triangle was drawn. An earlier session drew one textured batch
+(`hw=1/9`, one 128 KiB upload), most likely the title logo.
+
+Reading, not checked against the game: Minecraft compiles its terrain
+chunks and its font into display lists, so with `glCallLists` drawing
+nothing the world and the text never appear, and only the untextured
+draws made outside lists reach the screen. That fits the counters. No
+frame was sent.
+
+This is the second shipping game in the field that needs display lists.
+`docs/plans/release-1.0.0.md` keeps them out of 1.0; they are the
+first OpenGL item for 1.1.
+
 ## Next
 
 1. Ask the tester what Tux Racer shows on 0.51.0.

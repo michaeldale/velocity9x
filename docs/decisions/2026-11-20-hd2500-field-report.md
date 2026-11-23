@@ -40,6 +40,25 @@ lot...", with one screenshot
   write-combining are not confirmed from the machine's own files.
 - OpenGL, Glide and 3DMark 2000.
 
+## Report V9X-JVGQM2, 2026-11-23
+
+The owner then sent a V9XTRACE report on 0.59.0 (`6899f1cd`), with
+`V9XHW.INI`, `V9XBOOT.INI`, a snapshot and `V9XGL.LOG`. Description:
+"minecraft opengl didn't work", "gpu clock is not showing". From the
+machine's own files:
+
+- `Direct3D=hardware-gen7`, `Direct3DMode=hardware`: Direct3D is on the
+  engine, not a fallback.
+- `RenderClock=rp0-granted`, `RpStateCap=00070D15`: RP0 is 15h, 21 x
+  50 MHz = 1050 MHz, the HD 2500's maximum, and it was granted.
+  `ClockStatus=unavailable` is hardcoded for every Intel chip
+  (`intel_hw16.c`), so the clock is set and only its readout is missing.
+  Cosmetic; left for 1.1.
+- 1440x900x32 through VBE, `PatWrite=ok`, `MtrrWrite=refused`,
+  `StolenBytes=10000000` (256 MiB), `ColourLayout=565-auto`.
+- Minecraft: display-list stubs, no textured triangle drawn. Recorded in
+  `docs/issues/2026-11-15-tux-racer-display-lists-and-texgen-are-stubs.md`.
+
 ## Also in the issue
 
 The same owner attached a V9XSURV `/rom` of a GeForce 9500 GT, `10DE:0640`

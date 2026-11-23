@@ -92,7 +92,11 @@ measurement on the release candidate or stays a named known issue.
 - **Feature gaps:** YUV surfaces and overlays, DPMS beyond S3, a
   hardware cursor, banked-only VBE modes, the Bochs DISPI interface,
   VMware SVGA II, stencil and more blend factors in the CPU rasterizer,
-  OpenGL display lists and texgen, the 3DCIF gaps, 8 bpp gamma.
+  OpenGL display lists and texgen (first for 1.1: Tux Racer and
+  Minecraft need them in the field, reports V9X-VK1M80 and
+  V9X-JVGQM2), the 3DCIF gaps, 8 bpp gamma, a GPU clock readout on
+  Intel (`ClockStatus=unavailable` on every Intel chip; the RP0 request
+  itself is made and reported, `RenderClock=rp0-granted`).
 - **Parked work:** the Rage 128 AGP ring, Gen4 ring flips, Gen3 batch
   cost, the Doom 3 ARB path, PAL8 on the Rage Pro.
 - **Performance:** the GCN drain, copy and flip-wait records of
