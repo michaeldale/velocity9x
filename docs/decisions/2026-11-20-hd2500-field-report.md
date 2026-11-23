@@ -59,6 +59,34 @@ machine's own files:
 - Minecraft: display-list stubs, no textured triangle drawn. Recorded in
   `docs/issues/2026-11-15-tux-racer-display-lists-and-texgen-are-stubs.md`.
 
+## Issue 29 attachments of 2026-11-21 and 2026-11-23
+
+Read 2026-11-23, saved in `docs\probe\hd2500-field-report-2026-11-20\`
+as `owner-2026-11-21-*` and `owner-2026-11-23-*`. All on 0.59.0
+(`6899f1cd`).
+
+- `V9XBOOT.TXT` and `V9XHW.TXT` repeat what V9X-JVGQM2's copies show
+  (above). One more line read: the BIOS uses all eight MTRR pairs and
+  covers the aperture with an explicit uncached pair (`Mtrr2=e0000000
+  e0000800`), so `MtrrWrite=refused` (`r=11`) and the aperture is
+  write-combined through the PAT (`PatWrite=ok pages=00004000`), the
+  route of `2026-10-28-haswell-pat-write-combining.md`. Nothing new.
+- The Advanced tab shows "Write combining (MTRR)" greyed and unticked.
+  In 0.59.0 that box was a placeholder, always unticked
+  (`settings_propsheet.c` at `6899f1cd`), so it says nothing about this
+  machine; 0.60.0 replaced it with the NOWC switch. "Core clock:
+  Unavailable" is the Intel readout deferred to 1.1.
+- The Minecraft screenshot shows 1.7.2 windowed at 17 fps with textured
+  terrain chunks, under a launcher "Setup" window with "Check compatible"
+  ticked. 0.59.0's ICD stubs `glGenLists`, `glNewList` and `glCallLists`,
+  and V9X-JVGQM2's session on the same build drew no textured triangle;
+  1.7.x keeps its terrain in display lists (from knowledge of the game,
+  not checked here). So this frame was most likely not drawn by our ICD.
+  The desktop's "Minecraft9x" shortcut may be a pack carrying its own
+  `opengl32.dll`; not checked. The display-list item stays as recorded.
+  What would settle it: which `opengl32.dll` the game loads, or a
+  `V9XGL.LOG` of that session.
+
 ## Also in the issue
 
 The same owner attached a V9XSURV `/rom` of a GeForce 9500 GT, `10DE:0640`
