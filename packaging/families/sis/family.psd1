@@ -134,6 +134,11 @@
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy)'
+        # The package's Status line (MANIFEST.TXT, the release README's
+        # Tested column): what the latest release check measured, and its
+        # record. Changed only together with a new record.
+        TestedStatus = 'not booted by a release check from 0.42.0 to the 0.61.0 tree'
+        CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 
     Floppy = @{

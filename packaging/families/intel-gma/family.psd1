@@ -550,6 +550,14 @@
     Package = @{
         ModesSummary = '640x480 and native 1024x576 at 8/16 bpp and 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flips, engine blits, Gen3 and Haswell Direct3D)'
+        # The package's Status line (MANIFEST.TXT, the release README's
+        # Tested column): what the latest release check measured, and its
+        # record. Changed only together with a new record.
+        TestedStatus = 'release probes pass on the HD 4600, HD 3000, GM965 and GMA 950 (2026-11-21 to 23, 0.61.0 tree); other chips not run'
+        CheckRecord = @(
+            'docs/decisions/2026-11-21-1.0-baseline-checks.md'
+            'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'
+        )
     }
 
     Floppy = @{

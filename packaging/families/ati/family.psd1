@@ -1047,6 +1047,8 @@
             # The RV515 row's hook body: _TEXT has no room (rv515_engine16.c).
             @{ Name = 'rv515_engine16'; Path = 'src\chipsets\ati\rv515\rv515_engine16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'ati_hw16';Path = 'src\chipsets\ati\ati_hw16.c' }
+            # The gamma hook's body: _TEXT has no room (ati_gamma16.c).
+            @{ Name = 'ati_gamma16'; Path = 'src\chipsets\ati\ati_gamma16.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'vbe16'; Path = 'src\display16\hw\vbe16.c' }
             @{ Name = 'enable16'; Path = 'src\display16\enable16.c' }
             @{ Name = 'display_component'; Path = 'src\display16\display_component.c' }
@@ -1107,6 +1109,15 @@
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flip, CPU blits only)'
+        # The package's Status line (MANIFEST.TXT, the release README's
+        # Tested column): what the latest release check measured, and its
+        # record. Changed only together with a new record.
+        TestedStatus = 'release probes pass on the R7E, X1300 and HD 7660D; the Oland 6610 and 6611 fail only V9XD32 T19; the Mach64 VT2 (86Box) boots at 8 bpp (2026-11-21 to 23, 0.61.0 tree); Rage, Rage 128 and other chips not run'
+        CheckRecord = @(
+            'docs/decisions/2026-11-21-1.0-baseline-checks.md'
+            'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'
+            'docs/decisions/2026-11-23-1.0-b1-oland-flipsafety.md'
+        )
     }
 
     Floppy = @{

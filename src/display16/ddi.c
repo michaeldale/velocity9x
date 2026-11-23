@@ -1198,14 +1198,15 @@ static void v9x_gamma_log(void)
                               line, V9X_DIAG_ESC_INI);
 }
 
-/* A family hook, and a device that names the register window it writes
- * through: the ATI family's tier-0 VT2, VT3 and VT4 have none, and claiming
- * gamma there would accept ramps that change nothing. */
+/* A family hook, the family's word that the hook's table is this device's
+ * DAC, and a device that names the register window it writes through: the
+ * ATI family's tier-0 VT2, VT3 and VT4 have no window, and claiming gamma
+ * there would accept ramps that change nothing. */
 static WORD v9x_gamma_hardware(void)
 {
     const V9X_HW16_DEVICE *device;
 
-    if (v9x_hw16.load_gamma == 0) {
+    if (v9x_hw16.load_gamma == 0 || v9x_hw16.gamma_device == 0) {
         return 0u;
     }
     /* GDI asks for the caps before Enable has scanned PCI, when the active
@@ -1216,7 +1217,8 @@ static WORD v9x_gamma_hardware(void)
     }
     device = v9x_hw16_active_device();
     return device != 0 &&
-           device->fill_engine_descriptor != 0;
+           device->fill_engine_descriptor != 0 &&
+           v9x_hw16.gamma_device(device) != 0u;
 }
 
 static WORD v9x_gamma_available(void)

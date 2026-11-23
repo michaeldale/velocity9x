@@ -249,6 +249,11 @@
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flip, CPU blits only)'
+        # The package's Status line (MANIFEST.TXT, the release README's
+        # Tested column): what the latest release check measured, and its
+        # record. Changed only together with a new record.
+        TestedStatus = 'release probes pass on an HD 4600 (2026-11-21, 0.61.0 tree); no other card run'
+        CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 
     Floppy = @{

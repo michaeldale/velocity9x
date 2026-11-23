@@ -37,6 +37,76 @@ static unsigned int hw16_failures = 0u;
  * pointed at by the device list, and the S3 register readers are named by the
  * family ops. Nothing here is called.
  */
+/*
+ * Stand-ins for the ati rows' engine descriptors, by class as the driver
+ * has them: the Mobility-M and its Rage Pro aliases share one, the Rage
+ * IIC and its Rage II aliases another, each later engine its own, and the
+ * VT2, VT3 and VT4 none. The gamma test tells the rows apart by them.
+ */
+static void v9x_stub_engine(unsigned long framebuffer_linear_base,
+                            unsigned long *control_linear_base,
+                            unsigned long *mapped_aperture_bytes,
+                            unsigned long *engine_type,
+                            unsigned long *engine_caps,
+                            unsigned long *gtt_linear_base,
+                            unsigned long *ring_linear_base,
+                            unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    *control_linear_base = 0ul;
+    *mapped_aperture_bytes = 0ul;
+    *engine_type = 0ul;
+    *engine_caps = 0ul;
+    *gtt_linear_base = 0ul;
+    *ring_linear_base = 0ul;
+    *ring_bytes = 0ul;
+}
+
+static void v9x_stub_mobility_engine(unsigned long framebuffer_linear_base,
+                                     unsigned long *control_linear_base,
+                                     unsigned long *mapped_aperture_bytes,
+                                     unsigned long *engine_type,
+                                     unsigned long *engine_caps,
+                                     unsigned long *gtt_linear_base,
+                                     unsigned long *ring_linear_base,
+                                     unsigned long *ring_bytes)
+{
+    v9x_stub_engine(framebuffer_linear_base, control_linear_base,
+                    mapped_aperture_bytes, engine_type, engine_caps,
+                    gtt_linear_base, ring_linear_base, ring_bytes);
+    *engine_type = 1ul;
+}
+
+static void v9x_stub_rage_iic_engine(unsigned long framebuffer_linear_base,
+                                     unsigned long *control_linear_base,
+                                     unsigned long *mapped_aperture_bytes,
+                                     unsigned long *engine_type,
+                                     unsigned long *engine_caps,
+                                     unsigned long *gtt_linear_base,
+                                     unsigned long *ring_linear_base,
+                                     unsigned long *ring_bytes)
+{
+    v9x_stub_engine(framebuffer_linear_base, control_linear_base,
+                    mapped_aperture_bytes, engine_type, engine_caps,
+                    gtt_linear_base, ring_linear_base, ring_bytes);
+    *engine_type = 2ul;
+}
+
+static void v9x_stub_other_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
+{
+    v9x_stub_engine(framebuffer_linear_base, control_linear_base,
+                    mapped_aperture_bytes, engine_type, engine_caps,
+                    gtt_linear_base, ring_linear_base, ring_bytes);
+    *engine_type = 3ul;
+}
+
 const V9X_HW16_DEVICE v9x_virge_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
@@ -74,10 +144,10 @@ const V9X_HW16_DEVICE v9x_mach64_vt2_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 const V9X_HW16_DEVICE v9x_rage_mobility_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_rage_iic_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_rage_iic_engine
 };
 /* The ATI aliases: the VT2's, the Rage IIC's and the Mobility-M's.
  * Stubs on the same terms as the Trio64's. */
@@ -88,139 +158,139 @@ const V9X_HW16_DEVICE v9x_mach64_vt4_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 const V9X_HW16_DEVICE v9x_ati_4754_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_rage_iic_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4755_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_rage_iic_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4756_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_rage_iic_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4759_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_rage_iic_engine
 };
 const V9X_HW16_DEVICE v9x_ati_475a_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_rage_iic_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c54_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c47_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4742_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4744_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4747_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4749_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4750_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4751_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_474c_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_474d_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_474e_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_474f_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4752_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4753_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c42_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c44_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c49_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c50_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c51_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c4e_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c52_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_ati_4c53_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_mobility_engine
 };
 const V9X_HW16_DEVICE v9x_rage128_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_evergreen_cedar_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_evergreen_caicos_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_vi_carrizo_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_cik_mullins_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_si_oland_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_rs690_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_r600_rv630_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_r600_rv610_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_rv280_9250_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_rv280_9200se_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_rv280_9200_5961_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_rv280_9200_5962_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_rv515_x1300_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 const V9X_HW16_DEVICE v9x_si_oland_6611_device = {
-    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write)
 {
@@ -430,6 +500,18 @@ unsigned short v9x_active_width = 0u;
 #define v9x_hw16 v9x_hw16_vbe
 #include "../../src/chipsets/generic/vbe/vbe_hw16.c"
 #undef v9x_hw16
+
+/* ati_gamma16.c's register write, which ati_hw16.c's hook calls; the
+ * tests below ask which rows claim gamma and never write a ramp. */
+unsigned short v9x_ati_load_gamma_leaf(volatile unsigned char *registers,
+                                       unsigned long register_bytes,
+                                       const unsigned char *table)
+{
+    (void)registers;
+    (void)register_bytes;
+    (void)table;
+    return 0u;
+}
 
 #define v9x_hw16 v9x_hw16_ati
 #include "../../src/chipsets/ati/ati_hw16.c"
@@ -652,9 +734,58 @@ static void test_pci_miss_strategies_are_exclusive(void)
     }
 }
 
+/*
+ * Gamma is claimed only where the family's hook writes the table the device
+ * scans out through. A family with load_gamma must say which devices those
+ * are, and in the ati family only the Mach64-class rows (the Rage IIC and
+ * the Mobility-M, and the aliases that share their descriptors) have the
+ * DAC at 04C0h that its hook writes; the Rage 128, Evergreen and GCN rows
+ * do not (docs\issues\2026-11-09-ati-gamma-hook-writes-mach64-dac-on-
+ * evergreen.md).
+ */
+static void test_gamma_only_where_the_hook_writes_the_dac(void)
+{
+    unsigned int table_index;
+    unsigned int index;
+    unsigned int claimed = 0u;
+
+    for (table_index = 0u; table_index < V9X_HW16_TABLE_COUNT; ++table_index) {
+        const V9X_HW16_OPS *ops = v9x_hw16_tables[table_index].ops;
+
+        HCHECK(ops->family_id,
+               (ops->load_gamma == 0) == (ops->gamma_device == 0));
+    }
+
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rage_mobility_device) != 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rage_iic_device) != 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_ati_4c52_device) != 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_ati_4755_device) != 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rage128_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_evergreen_cedar_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_evergreen_trinity_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_oland_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_oland_6611_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_vi_carrizo_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rs690_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rv280_9250_device) == 0u);
+
+    /* Every row that claims it names a register window to write through. */
+    for (index = 0u; index < v9x_hw16_ati.device_count; ++index) {
+        const V9X_HW16_DEVICE *device = v9x_hw16_ati.devices[index];
+
+        if (v9x_hw16_ati.gamma_device(device) != 0u) {
+            HCHECK("ati", device->fill_engine_descriptor != 0);
+            ++claimed;
+        }
+    }
+    /* The Rage IIC, the Mobility-M and their 27 aliases. */
+    HCHECK("ati", claimed == 29u);
+}
+
 unsigned int v9x_run_hw16_mode_tests(void)
 {
     hw16_failures = 0u;
+    test_gamma_only_where_the_hook_writes_the_dac();
     test_mode_tables_match_manifests();
     test_device_lists_cover_every_manifest_id();
     test_mode_pitches_are_packed();

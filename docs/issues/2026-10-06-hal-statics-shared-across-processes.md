@@ -60,3 +60,17 @@ and usable by, every other DirectDraw process:
 ## Status 2026-11-08 (audit)
 
 The sharing is by design and measured. The build marks every V9XHAL.DLL section shared (`scripts/build-ddraw-hal-dll.ps1`), and on the i5-4570 a flip offset left by V9XDDP was seen by Half-Life ([record](../decisions/2026-10-20-haswell-pipelined-gdi-rule.md)). Still open: list the statics that hold per-process pointers or handles, and run two Direct3D processes at once.
+
+## 2026-11-23: a fault with two programs on the Oland
+
+UT2004 (Direct3D 8, windowed) with the release probes run beside it on
+the Oland 6610: DDHELP faulted in V9XHAL.DLL inside DestroySurface,
+reading another process's texture pointer from a GCN draw held in the
+shared statics
+([issue](2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)).
+The first measured failure of the kind this record predicted.
+
+Fixed the same day: the pending DrawPrimitives2 run is drawn only by its
+owner process; the case passes on the Oland and the HD 4600
+([record](../decisions/2026-11-23-1.0-b8-dp2-run-owner.md)). The list of
+statics holding per-process pointers is still not written.

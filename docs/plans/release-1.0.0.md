@@ -50,16 +50,16 @@ Fix, or measure and document, before the first release candidate.
 | # | Item | State on 2026-11-21 | Done when |
 |---|---|---|---|
 | B1 | A write Lock of the back buffer does not wait for a pending flip ([issue](../issues/2026-11-21-haswell-lock-does-not-wait-for-pending-flip.md)) | Closed 2026-11-23: fixed, FlipSafety `held` on the HD 4600 and the Oland 6610 | dispbench FlipSafety judges Lock as it does draws, on the HD 4600 and one non-Intel card |
-| B2 | The `ati` gamma hook writes Mach64 DAC offsets into other chips' register windows ([issue](../issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)) | Found by reading | The hook is per engine; a ramp measured on the Rage 128 and one Evergreen-or-later part, or refused there |
+| B2 | The `ati` gamma hook writes Mach64 DAC offsets into other chips' register windows ([issue](../issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)) | Closed 2026-11-23: only the Mach64-class rows claim gamma; refused on the Rage 128 (host test) and the Oland (measured) | The hook is per engine; a ramp measured on the Rage 128 and one Evergreen-or-later part, or refused there |
 | B3 | Engine-placed render targets are never freed ([issue](../issues/2026-11-15-placed-render-targets-never-freed.md)) | Found by reading; seven engines | A create/destroy loop in a probe leaves the heap where it started on two engines |
 | B4 | DirectX 8 MIPFILTER read with DirectX 7's numbering ([issue](../issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)) | The index says host-tested, not run; the 0.57.0 notes name a DDI 8 mip fix, so this may be a stale line | The record says which |
 | B5 | Full-screen DOS box and return ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)) | Run on the GMA 950, the HD 4600 and the 86Box ViRGE/DX; issue 16's reporter fails on `vbe` too | A round trip on one physical S3 card, one `ati` Radeon and `vbe`; the reporter's case explained |
 | B6 | A square follows the cursor over a full-screen game with the desktop copy ([issue](../issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)) | The reporter confirms `NOSHADOW.TXT` removes it; not fixed | Fixed, and confirmed by the reporter or reproduced on the R3E or R7E |
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI` | Explained from the files, or the row marked Experimental |
-| B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Untested | Two probes run together on one Intel and one `ati` machine, recorded |
+| B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
 | B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | Untested on any machine | Measured on one laptop; fixed, or a README line saying what happens |
 | B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | Release checks install by file rename, never from the archive | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
-| B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Hardcoded in `scripts/build-active-package.ps1` | The line states the package's tier and its check record |
+| B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Known issue in 0.60.0 | Every log the driver writes by default is bounded, listed in one place |
 | B13 | The updater's rollback, and an update taken on physical hardware | STATUS.md says not exercised, as of 0.23.0; unchecked since | 0.60.0 to the release candidate through Check for updates on one machine; one rollback from the backup |
 
@@ -236,3 +236,32 @@ Lock on released 0.59.0: 114 of 114 and 117 of 117 judged writes early at
 fix (`713bc38a-dirty`, the code of `6a1c80d0`): 0 of 119 at both depths,
 `LockFlipWaited=240`, no timeout; release probes as on boot 123. **B1
 closed.** The machine's `VSync=2` was set to 0 for the runs and restored.
+
+### 2026-11-23, night: B2 and B11 done, B8 fails on the Oland
+
+On W9QI0DAD's Oland 6610, `a92e01f3-dirty`, release probes as on
+boot 123 ([record](../decisions/2026-11-23-1.0-b2-gamma-b11-status.md)).
+
+- **B2, closed.** Only the Mach64-class rows claim gamma; the Oland
+  accepted and wrote a ramp before and refuses it after. The Rage 128
+  refuses by host test; the Rage XL keeps gamma, not re-run.
+- **B11, done but the tier.** Each package's Status line comes from its
+  family manifest and names its check record; the tier waits on
+  decision 3.
+- **B8, a failure.** UT2004 windowed with the release probes beside it:
+  V9XWPRS's DirectDraw half failed, then DDHELP faulted in the HAL
+  inside DestroySurface, running a GCN draw with another process's
+  texture pointer
+  ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)).
+  Restarted clean. Owed: the fix, the same run again, the HD 4600 run.
+
+### 2026-11-23, late: B8 closed
+
+The pending DrawPrimitives2 run is drawn only by the process that queued
+it ([record](../decisions/2026-11-23-1.0-b8-dp2-run-owner.md)). UT2004
+windowed with V9XWPRS, V9XGLP and V9XR3DP beside it: no DDHELP fault,
+every probe passes, on the Oland 6610 (boot 131) and the HD 4600 (boot
+299, every release probe passing there too); the runs other processes
+flushed are dropped and counted (98 and 111). **B8 closed.** Closing
+UT2004 mid-benchmark faults in UT2004 itself, with or without the probes;
+recorded on its 1.1 issue.

@@ -6157,9 +6157,32 @@ static void v9x_d3d_dp2_draw_run(void)
 void v9x_d3d_dp2_flush_pending(void)
 {
     V9X_FPU_AREA fpu;
+    const V9X_D3D_CONTEXT *owner = v9x_d3d_dp2_batch_sink.context;
 
     if (v9x_d3d_dp2_run.pending == 0ul) {
         v9x_d3d_dp2_snapshot_valid = 0;
+        return;
+    }
+    /*
+     * Only the process that queued the run draws it. The triangles are
+     * copies, but the state they draw under - the context and its snapshot
+     * - names that process's surfaces, texture objects among them, and
+     * those are in its private arena. DDHELP cleaning up after a process
+     * calls DestroySurface, which flushes here; drawing then read a texture
+     * pointer DDHELP cannot see and faulted in v9x_d3d_vi_resolve_texture
+     * (the Oland, UT2004 beside the release probes, 2026-11-23,
+     * docs\issues\2026-11-23-ddhelp-destroysurface-runs-another-process-
+     * draw.md), as the T&L batch did before v9x_d3d_tnl_pending checked
+     * its pid. A DrawPrimitives2 call from another process drops it too.
+     * The owner loses those triangles; nothing else can draw them.
+     */
+    if (owner == 0 || owner->pid != GetCurrentProcessId()) {
+        v9x_d3d_dp2_run.pending = 0ul;
+        v9x_d3d_dp2_run.record_count = 0ul;
+        v9x_d3d_dp2_snapshot_valid = 0;
+        if (v9x_hal != 0) {
+            ++v9x_hal->d3d_diagnostics.dp2_foreign_dropped;
+        }
         return;
     }
     /* Callers include Flip, Lock and Blt, which do not save the

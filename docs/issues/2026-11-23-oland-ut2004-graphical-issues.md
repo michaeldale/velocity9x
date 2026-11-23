@@ -32,3 +32,20 @@ deferred to 1.1. Nothing measured.
 Michael's description of what is wrong, and where; a botmatch with OBS
 frames on the current build; the d3d8 proxy log and `V9XPS.LOG` for the
 run; the same scene on the HD 4600 for comparison.
+
+## 2026-11-23: UT2004 faults when closed mid-benchmark
+
+Seen while testing B8 on `a92e01f3-dirty` plus the DrawPrimitives2
+owner check (boots 131 and 132). UT2004 windowed, a `dm-rankin`
+botmatch with `-benchmark -seconds=150`, then its window closed by
+`WM_CLOSE` (the agent's `close-window`) about 110 s in: UT2004 shows
+its own Critical Error, "General protection fault!", history
+`CMainLoopDtor <- MainLoop <- FMallocWindows::Free <-
+FMallocWindows::Realloc <- 676F4C57 0 FArray <- FArray::Realloc <-
+0*2 <- FMallocWindows::Free`. The same with no other program running
+(the control), so it is not the probes beside it. UT2004 also had not
+exited on its own 240 s after `-seconds=150` ran out. Whether the
+driver has any part in it is not known; not seen when closed from its
+menu on 2026-11-20. Evidence:
+`docs/probe/1.0-b8-fix-oland-2026-11-23/` (`ut-after-close.png`,
+`control/after-close.png`).

@@ -21,9 +21,32 @@ build identifier so exact guest-tested binaries remain traceable.
   A program that locked the back buffer straight after a vsync `Flip`
   wrote into the page still on screen; draws and copies already waited.
   Measured on the HD 4600 with dispbench's FlipSafety check: 93 of 93
-  locks early before, 0 of 119 after, at 16 and 32 bpp. Not yet run on
-  another family
+  locks early before, 0 of 119 after, at 16 and 32 bpp; on the Oland
+  6610, 114 of 114 and 117 of 117 early on 0.59.0, 0 of 119 after
   ([issue](docs/issues/2026-11-21-haswell-lock-does-not-wait-for-pending-flip.md)).
+- **`ati` package: gamma ramps only on the Mach64-class cards.** The
+  driver accepted a gamma ramp on every ATI card with an engine and
+  wrote it into the Mach64 DAC's registers, which on the Rage 128,
+  Radeons, Evergreen and GCN are something else: brightness sliders did
+  nothing there, and 768 bytes went to an unknown register. Now only the
+  Rage II and Rage Pro classes (Rage IIC, Rage XL, Mobility-M and their
+  aliases) claim gamma; elsewhere `SetDeviceGammaRamp` fails, as on the
+  `vbe` package. On the Oland 6610: accepted and written before, refused
+  after ([issue](docs/issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)).
+- **Every package: two Direct3D programs at once no longer crash
+  DirectDraw's helper.** A program's pending triangles were drawn by
+  whichever process next touched DirectDraw, under state naming the
+  first program's textures; on the Oland, UT2004 with a second program
+  beside it made `DDHELP.EXE` fault in `V9XHAL.DLL` and left the screen
+  unreadable. Only the process that queued them draws them now; anywhere
+  else they are dropped. The same case passes on the Oland and the
+  HD 4600
+  ([issue](docs/issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)).
+- **Every package: the README's Tested column says what was checked.**
+  It read "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" for every
+  package; now each names the cards its last release check ran on and
+  the record
+  ([issue](docs/issues/2026-08-30-package-status-string-is-hardcoded.md)).
 - **Radeon HD 2000 and later, GeForce 210, Rage 128, Matrox and
   Radeon 9250: offscreen render targets give their video memory back.**
   Each OpenGL back buffer or Direct3D render target these engines placed

@@ -4137,6 +4137,15 @@ typedef struct v9x_d3d_diagnostics {
      */
     DWORD lock_flip_waited;
     DWORD lock_flip_wait_timeouts;
+
+    /*
+     * Pending DrawPrimitives2 runs discarded because a process other than
+     * the one that queued them asked for the flush: their state names that
+     * process's surfaces, which no other process can read
+     * (docs\issues\2026-11-23-ddhelp-destroysurface-runs-another-process-
+     * draw.md). Appended 2026-11-23 within ABI 2026112001.
+     */
+    DWORD dp2_foreign_dropped;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

@@ -252,6 +252,11 @@
     Package = @{
         ModesSummary = '640x480, 800x600, 1024x768 at 8/16 bpp and 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flip, engine fill and copy)'
+        # The package's Status line (MANIFEST.TXT, the release README's
+        # Tested column): what the latest release check measured, and its
+        # record. Changed only together with a new record.
+        TestedStatus = 'on 86Box only (2026-11-21, 0.61.0 tree): the Millennium boots; V9XFBCMP, V9XWPRS and V9XGLP pass; Glide and the render interface do not open; no physical Matrox card run'
+        CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 
     Floppy = @{

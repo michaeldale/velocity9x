@@ -1,7 +1,7 @@
 # Every package claims "GUEST ACTIVATION NOT YET TESTED", including ones activated on guests
 
 Filed: 2026-08-30
-Status: open
+Status: closed 2026-11-23 (below)
 Affects: `scripts\build-active-package.ps1:250`, and therefore every
 `MANIFEST.TXT` and every generated `releases\<version>\README.md`.
 
@@ -44,3 +44,13 @@ Deliberately not done as part of cutting 0.6.5: changing what goes inside the
 published artifacts, on the same run that publishes them, is how a release ends
 up not being the thing that was audited. The 0.6.5 release notes state the
 actual guest testing instead.
+
+## Fixed, 2026-11-23
+
+Each `family.psd1` carries `Package.TestedStatus` and
+`Package.CheckRecord`; `build-active-package.ps1` writes them as the
+Status line and refuses a family without them; `check-tree.ps1` checks
+the same and refuses the old literal
+([record](../decisions/2026-11-23-1.0-b2-gamma-b11-status.md)). The
+per-card tier the 1.0 plan wants in the line waits on its decision 3.
+Status: closed.

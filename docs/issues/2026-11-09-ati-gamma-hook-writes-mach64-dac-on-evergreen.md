@@ -1,6 +1,6 @@
 # The ati family's gamma hook writes Mach64 DAC offsets into Evergreen registers
 
-Date: 2026-11-09. Status: open. Found by reading while reviewing the
+Date: 2026-11-09. Status: closed 2026-11-23 (below). Found by reading while reviewing the
 HD 5570's first run
 ([GitHub issue 16](https://github.com/michaeldale/velocity9x/issues/16)).
 Not reproduced, not measured on any card.
@@ -72,3 +72,16 @@ rows whose palette is not known stop claiming gamma by setting a flag
 the gate reads, so `SetDeviceGammaRamp` returns FALSE there, as the
 VBE family does. The table logic stays in host-testable C; the hook only
 writes registers.
+
+## Fixed, 2026-11-23
+
+`V9X_HW16_OPS.gamma_device` (appended): the ati family claims gamma only
+on the rows whose engine descriptor is the Mobility-M's or the Rage
+IIC's (the Rage Pro and Rage II classes and their 27 aliases); every
+other row refuses `SetDeviceGammaRamp`. Host test in
+`tests/host/test_hw16_modes.c` (failed 9 checks against the old claim).
+On the Oland 6610: accepted and written (2 writes) before, refused after
+(`SetError=0x32`, `PRIMARYGAMMA` gone)
+([record](../decisions/2026-11-23-1.0-b2-gamma-b11-status.md)). Not run
+on the Rage XL; a DC_LUT or Rage 128 palette writer is 1.1 work.
+Status: closed.

@@ -418,6 +418,22 @@ if ($familyManifest.Id -eq 'intel-gma') {
     Set-Content -LiteralPath (Join-Path $outputDir 'V9X3D.BAT') -Value $switchLines -Encoding Ascii
 }
 
+# The Status line says what a release check measured on this package and
+# where it is recorded, from the family's own manifest, so that changing the
+# claim means editing that manifest beside a record. It used to be one
+# literal for every family, which understated some and could never be
+# right (docs\issues\2026-08-30-package-status-string-is-hardcoded.md).
+$testedStatus = [string]$familyManifest.Package.TestedStatus
+$checkRecords = @($familyManifest.Package.CheckRecord | Where-Object { $_ })
+if (-not $testedStatus -or $checkRecords.Count -eq 0) {
+    throw "Family '$($familyManifest.Id)' has no Package.TestedStatus or Package.CheckRecord."
+}
+foreach ($record in $checkRecords) {
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $record) -PathType Leaf)) {
+        throw "Family '$($familyManifest.Id)': CheckRecord '$record' does not exist."
+    }
+}
+
 $manifest = @(
     "Velocity9x active display bring-up package",
     "Version: $ProductVersion",
@@ -449,7 +465,7 @@ $manifest = @(
     "Window inventory: V9XWND.EXE writes GDI-free C:\V9XDIAG\V9XWND.INI",
     "Reports: V9XUPD.EXE /REPORT (Send report... on the Advanced tab) runs V9XTRACE.EXE and sends C:\V9XDIAG files to michaeldale.com.au on request; both are installed in the system directory",
     "Preflight: V9XSTAGE.EXE (no mode change and no installation)",
-    "Status: HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED",
+    "Status: $testedStatus. Record: $($checkRecords -join ', ')",
     "",
     "Read FIRSTBOOT.TXT, INSTALL.TXT, and RECOVER.TXT before selecting the INF."
 )

@@ -527,6 +527,18 @@ typedef struct v9x_hw16_ops {
     unsigned short (*load_gamma)(volatile unsigned char *registers,
                                  unsigned long register_bytes,
                                  const unsigned char *table);
+
+    /*
+     * Whether load_gamma's table is the one `device` scans out through.
+     * APPENDED 2026-11-23, NULL in every family without load_gamma. A
+     * family with load_gamma must name it: one family can hold chips with
+     * different DACs, and the ati hook writes the Mach64 DAC at 04C0h,
+     * which on the Rage 128, Radeon, Evergreen and GCN rows is some other
+     * register (docs\issues\2026-11-09-ati-gamma-hook-writes-mach64-dac-
+     * on-evergreen.md). Where it answers 0 the driver claims no gamma ramp
+     * and SetDeviceGammaRamp fails, as on the vbe family.
+     */
+    unsigned short (*gamma_device)(const V9X_HW16_DEVICE *device);
 } V9X_HW16_OPS;
 
 /* Defined once per family binary, in src\chipsets\<vendor>\*_hw16.c. */

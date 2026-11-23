@@ -2036,6 +2036,34 @@ foreach ($armer in @('V9XARM.BAT', 'V9XARM5.BAT', 'V9XARM6.BAT')) {
         throw "$armer must refuse an arm file whose IntelIncomplete is 1."
     }
 }
+
+# ---------------------------------------------------------------------------
+# Every package's Status line comes from its family manifest and names a
+# record that exists. One literal for every family claimed the same thing of
+# all eight packages for three months
+# (docs\issues\2026-08-30-package-status-string-is-hardcoded.md).
+# ---------------------------------------------------------------------------
+foreach ($familyFile in Get-ChildItem -Path (
+        Join-Path $repoRoot 'packaging\families') -Recurse -Filter 'family.psd1') {
+    $familyData = Import-PowerShellDataFile -LiteralPath $familyFile.FullName
+    $status = [string]$familyData.Package.TestedStatus
+    $records = @($familyData.Package.CheckRecord | Where-Object { $_ })
+    if (-not $status -or $records.Count -eq 0) {
+        throw "$($familyData.Id): Package.TestedStatus and Package.CheckRecord are required."
+    }
+    if ($status -match '[|\r\n]') {
+        throw "$($familyData.Id): Package.TestedStatus may not hold '|' or a line break (it fills a README table cell)."
+    }
+    foreach ($record in $records) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $record) -PathType Leaf)) {
+            throw "$($familyData.Id): Package.CheckRecord '$record' does not exist."
+        }
+    }
+}
+if ((Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\build-active-package.ps1') -Raw) -match
+        'GUEST ACTIVATION NOT YET TESTED') {
+    throw 'build-active-package.ps1 writes the old fixed Status line again.'
+}
 # ---------------------------------------------------------------------------
 # The chip's Direct3D word, against its engine capability and its source.
 #

@@ -428,6 +428,11 @@
     Package = @{
         ModesSummary = '640x480, 800x600 and 1024x768 at 8/16/32 bpp, 1280x1024 at 8/16 bpp, 640x400 at 8 bpp, 60 Hz'
         HalDescription = 'V9XHAL.DLL (vidmem + flip + per-chip engine blit)'
+        # The package's Status line (MANIFEST.TXT, the release README's
+        # Tested column): what the latest release check measured, and its
+        # record. Changed only together with a new record.
+        TestedStatus = 'on 86Box only (2026-11-21, 0.61.0 tree): release probes pass on the Trio64; the ViRGE/DX fails Glide FogTable and needs a 16 bpp desktop for Direct3D; no physical S3 card run'
+        CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 
     Floppy = @{
