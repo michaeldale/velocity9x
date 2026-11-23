@@ -4128,6 +4128,15 @@ typedef struct v9x_d3d_diagnostics {
      * 2026-11-07 within ABI 2026102002.
      */
     DWORD flip_unsynced_held;
+    /*
+     * Locks of the buffer the last flip released, while that flip was
+     * pending, that waited for it as a Blt does (v9x_lock_flip_guard;
+     * docs\issues\2026-11-21-haswell-lock-does-not-wait-for-pending-
+     * flip.md), and the waits that ran out. Appended 2026-11-23 within
+     * ABI 2026112001.
+     */
+    DWORD lock_flip_waited;
+    DWORD lock_flip_wait_timeouts;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

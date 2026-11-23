@@ -602,7 +602,8 @@ void v9x_d3d_place_flip_forget(void)
  * block. Returns 1 when it freed one.
  *
  * Recognised by the signature the placement leaves and the heap never does:
- * a texture, mip level or Z buffer whose lpVidMemHeap is NULL, whose
+ * a texture, mip level, Z buffer or offscreen render target whose
+ * lpVidMemHeap is NULL, whose
  * dwReserved1 holds a block start, and whose fpVidMem lies within the
  * alignment that start was rounded up across. A surface DirectDraw placed has
  * its heap set and is ignored, and so is every later surface of a list, whose
@@ -624,8 +625,15 @@ int v9x_d3d_place_release(V9X_DDHAL_DESTROYSURFACEDATA *data, DWORD align)
     }
     global = surface->lpGbl;
     block = global->dwReserved1;
+    /* 3DDEVICE: an offscreen render target an engine placed for its pitch
+     * (d3d_eg.c, d3d_vi.c and others) has the same signature and leaked
+     * its block when only the other three were freed (V9XRTLK on the
+     * Oland, 2026-11-23). A flip chain's surfaces carry no block in
+     * dwReserved1, and a surface DirectDraw placed has its heap set, so
+     * neither passes the checks below. */
     if ((surface->ddsCaps & (V9X_DDSCAPS_MIPMAP | V9X_DDSCAPS_ZBUFFER |
-                             V9X_DDSCAPS_TEXTURE)) == 0ul ||
+                             V9X_DDSCAPS_TEXTURE |
+                             V9X_DDSCAPS_3DDEVICE)) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
         block == 0ul || global->dwBlockSizeX != 0ul ||
         global->fpVidMem < block ||

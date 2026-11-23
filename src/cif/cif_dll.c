@@ -36,6 +36,7 @@
 
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/diag_log.h"
 #include "cif_api.h"
 #include "cif_vertex.h"
 #include "cif_state.h"
@@ -262,22 +263,41 @@ static CRITICAL_SECTION v9x_cif_lock;
 
 /* ---- the log --------------------------------------------------------- */
 
+/* One line, appended. The file rolls over to V9XCIF.OLD at
+ * V9X_DIAG_LOG_LIMIT (diag_log.h). */
 static void v9x_cif_log(const char *text)
 {
     HANDLE file;
     char line[480];
+    char old_path[MAX_PATH];
     DWORD written;
     int length;
 
     CreateDirectoryA(V9X_DIAG_DIR, 0);
+    length = wsprintfA(line, "%lu t=%lu %s\r\n", ++v9x_cif_sequence,
+                       GetTickCount(), text);
     file = CreateFileA(V9X_DIAG_CIF_LOG, GENERIC_WRITE, FILE_SHARE_READ, 0,
                        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
+    if (v9x_diag_log_must_roll(GetFileSize(file, 0), (v9x_u32)length,
+                               V9X_DIAG_LOG_LIMIT)) {
+        /* Renamed aside, or emptied when the rename fails, so the file
+         * stays bounded either way. */
+        CloseHandle(file);
+        if (v9x_diag_log_old_path(V9X_DIAG_CIF_LOG, old_path,
+                                  sizeof(old_path))) {
+            DeleteFileA(old_path);
+            MoveFileA(V9X_DIAG_CIF_LOG, old_path);
+        }
+        file = CreateFileA(V9X_DIAG_CIF_LOG, GENERIC_WRITE, FILE_SHARE_READ,
+                           0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (file == INVALID_HANDLE_VALUE) {
+            return;
+        }
+    }
     SetFilePointer(file, 0, 0, FILE_END);
-    length = wsprintfA(line, "%lu t=%lu %s\r\n", ++v9x_cif_sequence,
-                       GetTickCount(), text);
     WriteFile(file, line, (DWORD)length, &written, 0);
     CloseHandle(file);
 }

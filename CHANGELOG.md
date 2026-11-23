@@ -17,6 +17,25 @@ build identifier so exact guest-tested binaries remain traceable.
   HD 5770 have not been run on it; why a group hangs the card is not
   known
   ([issue](docs/issues/2026-11-22-caicos-hd7470-hangs-in-direct3d-from-0.56.1.md)).
+- **Every package: a Lock of the back buffer waits for a pending flip.**
+  A program that locked the back buffer straight after a vsync `Flip`
+  wrote into the page still on screen; draws and copies already waited.
+  Measured on the HD 4600 with dispbench's FlipSafety check: 93 of 93
+  locks early before, 0 of 119 after, at 16 and 32 bpp. Not yet run on
+  another family
+  ([issue](docs/issues/2026-11-21-haswell-lock-does-not-wait-for-pending-flip.md)).
+- **Radeon HD 2000 and later, GeForce 210, Rage 128, Matrox and
+  Radeon 9250: offscreen render targets give their video memory back.**
+  Each OpenGL back buffer or Direct3D render target these engines placed
+  was never freed; on the Oland 20 of them lost 24.6 MB until restart.
+  Now 0 on the Oland and the HD 7660D; the other engines take the same
+  code and were not run
+  ([issue](docs/issues/2026-11-15-placed-render-targets-never-freed.md)).
+- **Every package: the diagnostic logs are bounded.** `V9XGL.LOG`,
+  `V9XGLIDE.LOG`, `V9XGLD3.LOG`, `V9XCIF.LOG`, `V9XD7.LOG` and
+  `V9XPS.LOG` are renamed to `.OLD` at 2 MiB instead of growing without
+  limit (64 MB seen on the X1300). The first rename keeps the old log
+  whole, once.
 
 ## 0.60.0 - 2026-11-21
 

@@ -40,6 +40,14 @@ foreach ($name in @('gl_icd', 'gl_surface', 'gl_state', 'gl_matrix', 'gl_prim', 
     if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
     $objects += $object
 }
+# The log's roll-over rule, shared with the other appended logs and
+# host-tested in tests\host\test_diag_log.c.
+$source = Join-Path $repoRoot 'src\common\diag_log.c'
+$object = Join-Path $output 'diag_log.obj'
+& $compiler '-bt=nt' '-bd' '-zq' '-wx' '-we' '-zl' '-s' '-ox' `
+    "-i=$(Join-Path $repoRoot 'include')" "-fo=$object" $source
+if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $source" }
+$objects += $object
 
 $dll = Join-Path $output 'v9xgl.dll'
 $mapFile = Join-Path $output 'v9xgl.map'

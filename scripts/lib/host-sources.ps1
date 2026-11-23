@@ -52,6 +52,8 @@ function Get-V9xHostSourceNames {
         'src\common\donewait.c',
         'src\common\drawnote.c',
         'src\common\trace_fold.c',
+        # When an appended diagnostic log rolls over to .OLD.
+        'src\common\diag_log.c',
         'src\common\diag_identity.c',
         'src\common\i9xx_cover.c',
         'src\common\i9xx_depth.c',
@@ -408,6 +410,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_donewait.c',
         'tests\host\test_drawnote.c',
         'tests\host\test_trace_fold.c',
+        'tests\host\test_diag_log.c',
         'tests\host\test_diag_identity.c',
         'tests\host\test_i9xx_cover.c',
         'tests\host\test_i9xx_depth.c',

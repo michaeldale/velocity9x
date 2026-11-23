@@ -145,9 +145,10 @@ New in 0.59.0:
   draws something wrong at the top of the screen that its owner says
   affects the draw distance; Quake 3 is darker than on period cards and
   its brightness setting does little. Neither is traced yet.
-- **Glide 3 log:** `C:\V9XDIAG\V9XGLD3.LOG` keeps growing while a Glide 3
-  game runs (64 MB after one evening on the X1300). Delete it if it gets
-  large.
+- **Diagnostic logs:** before 0.61.0, `C:\V9XDIAG\V9XGLD3.LOG` and the
+  other appended logs grew without limit (64 MB after one evening on the
+  X1300). From 0.61.0 each is renamed to `.OLD` at 2 MiB; the first such
+  rename keeps the old, large log once, and it can be deleted.
 - **Incoming:** the same exception at 465973 inside the game was seen
   once on the X1300, in its attract loop, and not again.
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts

@@ -203,3 +203,23 @@ No new machine online; the same nine as on 2026-11-21. Evidence in
   first read 458 with the screen still changing).
 - **86Box guests** stop with the session that started them; restart them
   before a run (the ViRGE/DX guest was restarted and set to 16 bpp).
+
+### 2026-11-23, later: B1, B3 and B12 fixed
+
+One build, `713bc38a-dirty`, installed on the HD 4600, the Oland 6611
+(M-BXMFA8) and the HD 7660D (M-D7TFW4); release probes unchanged where a
+comparison exists
+([record](../decisions/2026-11-23-1.0-b1-b3-b12-checks.md)).
+
+- **B1, fixed; half done.** A Lock of the retiring buffer waits for the
+  flip. FlipSafety `held` on the HD 4600 at 16 and 32 bpp. Owed: the same
+  check on one non-Intel card (dispbench needs a LAN address).
+- **B3, closed.** Placed render targets are freed. V9XRTLK: the Oland lost
+  24.6 MB in 20 rounds before, 0 after; the HD 7660D 0. Two engines, as
+  the row asks.
+- **B12, closed.** The six appended logs roll over to `.OLD` at 2 MiB,
+  listed in `include/velocity9x/diagpaths.h` with every other file the
+  driver writes and why it does not grow. Seen rolling on all three
+  machines.
+- B1's issue said "every family", but only the HD 4600 was measured on
+  either side of the fix.

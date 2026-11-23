@@ -61,6 +61,9 @@ $sources = @(
     # Whether a trace ring event is appended or counted on the entry
     # already there: pure, and host-tested in tests\host\test_trace_fold.c.
     "src\common\trace_fold.c",
+    # When V9XD7.LOG and V9XPS.LOG roll over to .OLD: pure, and
+    # host-tested in tests\host\test_diag_log.c.
+    "src\common\diag_log.c",
     # The trace snapshot's process table and text copies: pure, and
     # host-tested in tests\host\test_diag_identity.c.
     "src\common\diag_identity.c",

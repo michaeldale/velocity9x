@@ -246,6 +246,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-20 HD 2500 field report: the issue 29 owner's 3DMark 2001 SE completes on 0.59.0, 2696 (one screenshot, settings partly hidden, no diagnostics); the same owner's GeForce 9500 GT (G96, 10DE:0640) survey saved, not claimed](2026-11-20-hd2500-field-report.md)
 - [2026-11-20 Oland 6611 (HD 8570 / R7 240) on M-BXMFA8: V9XSIMM reads six CUs, two RBs, a 4 KiB row and BAR0 at VRAM's start, as on the 6610, so the 6610's row claims it; vsync.c and resources.c to LEAFCODE for the ati _TEXT budget; the PCI scan table to 56 ids](2026-11-20-oland-6611-survey.md)
 - [2026-11-20 Five sibling ids claimed from the Linux tables without a survey: Matrox 051F and 051E (AGP), Radeon 9200 5961 and 5962, HD 3000 0122; none run](2026-11-20-bus-siblings-claimed-unrun.md)
+- [2026-11-23 1.0 blockers B1, B3 and B12 fixed and measured: a back-buffer Lock waits for a pending flip (FlipSafety 0 early on the HD 4600), placed render targets are freed (24.6 MB lost before, 0 after on the Oland; 0 on the HD 7660D), appended logs roll over to .OLD at 2 MiB; release probes unchanged on three machines](2026-11-23-1.0-b1-b3-b12-checks.md)
 - [2026-11-18 HD 4600 batch size and indexed pieces: the core cut Haswell batches at 64 triangles and declined indexed calls past one slot; batches a slot long and indexed calls in slot-sized pieces take the i5-4570's 3DMark 2001 SE from 3388 to 3888](2026-11-18-haswell-batch-size-and-indexed-pieces.md)
 
 ## Matrox

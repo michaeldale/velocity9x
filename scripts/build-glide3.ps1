@@ -35,7 +35,8 @@ $entries = Get-V9xGlide3Entries -RepoRoot $repoRoot
 $sources = @('src\glide3\glide3_dll.c', 'src\glide3\glide3_layout.c',
     'src\glide\glide_core.c', 'src\glide\glide_surface.c',
     'src\glide\glide_vertex.c', 'src\glide\glide_texmem.c',
-    'src\glide\glide_texfmt.c', 'src\glide\glide_state.c')
+    'src\glide\glide_texfmt.c', 'src\glide\glide_state.c',
+    'src\common\diag_log.c')
 $objects = @()
 foreach ($relative in $sources) {
     $source = Join-Path $repoRoot $relative

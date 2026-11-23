@@ -21,6 +21,22 @@
  *
  * No <windows.h>, no includes: string literals only, so this header is legal
  * everywhere from the wcc -mc driver to a real-mode DOS tool.
+ *
+ * How big each file the driver writes by default can get (audited
+ * 2026-11-23 for the 1.0 plan's B12):
+ *
+ *   - Appended line by line, rolled over to <name>.OLD at 2 MiB by the rule
+ *     in diag_log.h: V9XGL.LOG, V9XGLIDE.LOG, V9XGLD3.LOG, V9XCIF.LOG, and
+ *     the HAL's V9XD7.LOG and V9XPS.LOG (also capped in lines per boot).
+ *   - Keyed INIs written with WritePrivateProfileString (V9XBOOT.INI,
+ *     V9XHW.INI, V9XMODES.INI, the INTEL*.TXT files and the rest): bounded
+ *     by their key sets.
+ *   - Rewritten whole each time (CREATE_ALWAYS or _lcreat): V9XTRACE.INI,
+ *     with its fault context appended once per flush; INTELEVT.TXT; the
+ *     engines' single-record CP, DMA, clock and fault files; V9XFRAME.PPM.
+ *   - A fixed set of names: V9XGRAB0.BMP to V9XGRAB9.BMP.
+ *
+ * The tools under tools\diag write only when run, and are not covered.
  */
 #ifndef VELOCITY9X_DIAGPATHS_H
 #define VELOCITY9X_DIAGPATHS_H

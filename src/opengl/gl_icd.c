@@ -34,6 +34,7 @@
 #include <windows.h>
 #include "velocity9x/build.h"
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/diag_log.h"
 #include "gl_state.h"
 #include "gl_surface.h"
 #include "gl_prim.h"
@@ -601,23 +602,41 @@ static DWORD v9x_gl_tls = 0xfffffffful;
 static V9X_GL_CONTEXT v9x_gl_contexts[V9X_GL_CONTEXTS_MAX];
 
 /* One line, appended: sequence, process, text. Open/append/close each time
- * so a process that dies mid-run leaves everything it logged. */
+ * so a process that dies mid-run leaves everything it logged. The file
+ * rolls over to V9XGL.OLD at V9X_DIAG_LOG_LIMIT (diag_log.h). */
 void v9x_gl_log(const char *text)
 {
     HANDLE file;
     /* The longest text (the tsc entry line, under 480) plus the prefix. */
     char line[520];
+    char old_path[MAX_PATH];
     DWORD written;
     int length;
 
+    length = wsprintfA(line, "%lu pid=%08lX %s\r\n", ++v9x_gl_sequence,
+                       GetCurrentProcessId(), text);
     file = CreateFileA(V9X_DIAG_GL_LOG, GENERIC_WRITE, FILE_SHARE_READ, 0,
                        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
     }
+    if (v9x_diag_log_must_roll(GetFileSize(file, 0), (v9x_u32)length,
+                               V9X_DIAG_LOG_LIMIT)) {
+        /* Renamed aside, or emptied when the rename fails, so the file
+         * stays bounded either way. */
+        CloseHandle(file);
+        if (v9x_diag_log_old_path(V9X_DIAG_GL_LOG, old_path,
+                                  sizeof(old_path))) {
+            DeleteFileA(old_path);
+            MoveFileA(V9X_DIAG_GL_LOG, old_path);
+        }
+        file = CreateFileA(V9X_DIAG_GL_LOG, GENERIC_WRITE, FILE_SHARE_READ, 0,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (file == INVALID_HANDLE_VALUE) {
+            return;
+        }
+    }
     SetFilePointer(file, 0, 0, FILE_END);
-    length = wsprintfA(line, "%lu pid=%08lX %s\r\n", ++v9x_gl_sequence,
-                       GetCurrentProcessId(), text);
     WriteFile(file, line, (DWORD)length, &written, 0);
     CloseHandle(file);
 }

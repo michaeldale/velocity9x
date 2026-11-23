@@ -572,6 +572,7 @@ static int v9x_can_set_display_start(void)
  * first in this file. */
 static void v9x_note_blt_flip_pending(void);
 static void v9x_note_lock_flip_pending(void);
+static int v9x_lock_flip_guard(const V9X_DD_SURFACE_LCL *surface, int wait);
 
 #define V9X_FLIP_IDLE          0ul
 #define V9X_FLIP_WAIT_BLANK    1ul   /* issued mid-frame: done at next blank */
@@ -1767,6 +1768,13 @@ static DWORD v9x_lock_body(V9X_DDHAL_LOCKDATA *data)
      * covered both (review of 3340476).
      */
     v9x_note_lock_flip_pending();
+    if (!v9x_lock_flip_guard(
+            (const V9X_DD_SURFACE_LCL *)data->lpDDSurface,
+            (data->dwFlags & V9X_DDLOCK_DONOTWAIT) == 0ul)) {
+        data->ddRVal = V9X_DDERR_WASSTILLDRAWING;
+        v9x_trace_exit(V9X_TRACE_LOCK, data->ddRVal);
+        return V9X_DDHAL_DRIVER_HANDLED;
+    }
     /* Serialize CPU access after asynchronous engine work. DDRAW still
      * computes and returns the actual surface pointer. */
     if ((v9x_engine_status_validated() &&
@@ -2110,6 +2118,40 @@ static int v9x_blt_flip_guard(DWORD destination_offset, int wait)
         ++v9x_hal->d3d_diagnostics.blt_flip_waited;
         if (waited == V9X_FLIP_WAIT_TIMEOUT) {
             ++v9x_hal->d3d_diagnostics.blt_flip_wait_timeouts;
+        }
+    }
+    return 1;
+}
+
+/*
+ * The Blt rule above, for a Lock. A Lock of the buffer the last flip
+ * released, while that flip is pending, hands the CPU the page still on
+ * screen: dispbench's FlipSafety measured writes landing within 0-11 % of a
+ * refresh after the blank on the HD 4600 (2026-11-21), where draws and
+ * engine clears waited. DirectDraw expects such a Lock to answer
+ * DDERR_WASSTILLDRAWING, which DDLOCK_WAIT callers never see because
+ * DirectDraw retries. So it waits when the caller lets it, and otherwise
+ * answers still drawing; a wait that runs out goes ahead, as the Blt and
+ * draw rules do. 1 to go ahead, 0 for DDERR_WASSTILLDRAWING. Every other
+ * surface is untouched.
+ */
+static int v9x_lock_flip_guard(const V9X_DD_SURFACE_LCL *surface, int wait)
+{
+    int waited;
+
+    if (v9x_hal == 0 || surface == 0 || !v9x_flip_pending() ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        v9x_surface_offset(surface) != v9x_present_retiring) {
+        return 1;
+    }
+    if (!wait) {
+        return 0;
+    }
+    waited = v9x_flip_wait_done();
+    if (waited != V9X_FLIP_WAIT_NONE) {
+        ++v9x_hal->d3d_diagnostics.lock_flip_waited;
+        if (waited == V9X_FLIP_WAIT_TIMEOUT) {
+            ++v9x_hal->d3d_diagnostics.lock_flip_wait_timeouts;
         }
     }
     return 1;

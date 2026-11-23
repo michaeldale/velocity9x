@@ -1,7 +1,7 @@
 # HD 4600: a Lock of the back buffer right after a vsync flip does not wait for the flip, so CPU writes land in the page still on screen
 
-Date: 2026-11-21. Status: open; measured on the HD 4600 (i5-4570,
-W9QI5A83), cause read in the source, not fixed. Found by dispbench's new
+Date: 2026-11-21. Status: fixed in source 2026-11-23 and measured on the
+HD 4600 (below); not yet run on another family. Found by dispbench's new
 DB3D check `FlipSafety`, not by a program.
 
 ## What was measured
@@ -106,3 +106,35 @@ backup (40,086 bytes) and run-bench now restores it whatever happens.
    confirm the gap is shared.
 4. Update V9XTRACE.EXE on W9QI5A83 so the counters can be read beside the
    check.
+
+## Fixed, 2026-11-23
+
+`v9x_lock_flip_guard` (`ddhal_core.c`), called from `v9x_lock_body`:
+a Lock of a video-memory surface whose offset is `v9x_present_retiring`,
+while `v9x_flip_pending()`, waits in `v9x_flip_wait_done()`, or answers
+`DDERR_WASSTILLDRAWING` under `DDLOCK_DONOTWAIT`. Waits and timeouts are
+counted in `lock_flip_waited` and `lock_flip_wait_timeouts`, appended to
+`V9X_D3D_DIAGNOSTICS` within ABI 2026112001 and written by V9XTRACE as
+`LockFlipWaited` and `LockFlipWaitTimeouts`. `run-checks.ps1` passes.
+
+On W9QI5A83, boot 298, the `intel-gma` set of `713bc38a-dirty` installed
+by `run-release-checks.ps1` (every release probe verdict as in 0.60.0),
+`VSync=0`, dispbench `381b802` (step 2's command above):
+
+| Run | Lock: early / judged | Draw: early / judged |
+|---|---|---|
+| 16 bpp | 0 / 119 (`held`) | 0 / 118 (`held`) |
+| 32 bpp | 0 / 119 (`held`) | 0 / 119 (`held`) |
+
+V9XTRACE after both runs: `LockFlipPending=240`, `LockFlipWaited=240`,
+`LockFlipWaitTimeouts=0`, `DrawsIntoPresented=0`, engine timeouts and
+resets 0. DB3D could not read the HAL counters itself (`HalCounters=
+skipped`: it reads ABI 2026102002's layout).
+
+Not measured: whether the extra wait changes a program's frame rate, and
+the Flip-return lateness in "Not explained" above. Step 3, a machine of
+another family, is still owed: dispbench reaches a machine by address,
+and none of the non-Intel machines online today is on the LAN.
+
+Evidence: `docs/probe/1.0-b1-b3-b12-2026-11-23/flipsafety-hd4600/` and
+`hd4600-after-flipsafety.INI`.

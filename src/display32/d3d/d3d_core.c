@@ -39,6 +39,7 @@
 #include "d3d_handles.h"
 #include "d3d_tnl.h"
 #include "velocity9x/diag_identity.h"
+#include "velocity9x/diag_log.h"
 
 
 #if V9X_C3_SERVE_D3D_CALLBACKS2
@@ -6201,12 +6202,15 @@ static DWORD v9x_d3d_ddi7_ops_logged[3];   /* opcodes below 96 */
 
 static DWORD v9x_d3d_ps_log_lines;
 
-/* One line, a tag and four hex words, appended to path. */
+/* One line, a tag and four hex words, appended to path. The line caps
+ * count per boot, so across boots the file rolls over to .OLD at
+ * V9X_DIAG_LOG_LIMIT (diag_log.h). */
 static void v9x_d3d_log_line(const char *path, const char *tag, DWORD a,
                              DWORD b, DWORD c, DWORD d)
 {
     static const char digits[] = "0123456789ABCDEF";
     char line[96];
+    char old_path[MAX_PATH];
     DWORD words[4];
     DWORD length = 0ul;
     DWORD written;
@@ -6233,6 +6237,21 @@ static void v9x_d3d_log_line(const char *path, const char *tag, DWORD a,
                        OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
     if (file == INVALID_HANDLE_VALUE) {
         return;
+    }
+    if (v9x_diag_log_must_roll(GetFileSize(file, 0), length,
+                               V9X_DIAG_LOG_LIMIT)) {
+        /* Renamed aside, or emptied when the rename fails, so the file
+         * stays bounded either way. */
+        CloseHandle(file);
+        if (v9x_diag_log_old_path(path, old_path, sizeof(old_path))) {
+            DeleteFileA(old_path);
+            MoveFileA(path, old_path);
+        }
+        file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (file == INVALID_HANDLE_VALUE) {
+            return;
+        }
     }
     SetFilePointer(file, 0l, 0, FILE_END);
     WriteFile(file, line, length, &written, 0);
