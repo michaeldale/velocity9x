@@ -1,0 +1,19 @@
+{
+    "Name":  "vm-mach64vt2",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  172,
+    "BootAfter":  173,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  172,
+    "Desktop":  true,
+    "AnswerSeconds":  1,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "1002:5654",
+    "AdapterMismatch":  false
+}

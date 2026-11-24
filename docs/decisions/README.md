@@ -253,6 +253,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-11-24 B10, the s3 package by Have Disk on a fresh 86Box ViRGE/DX: released 0.60.0 installs with no V9XDISP.DRV prompt and starts at 1024x768x16; the Display Properties tab never registered (cause corrected in the next record), now registered at every logon](2026-11-24-1.0-b10-have-disk-s3.md)
 - [2026-11-24 B10, ati on an 86Box Mach64 VT2 and matrox on a Millennium by Have Disk: one model each, enable-ok at 1024x768x16; vbe on a ViRGE/DX stops at fail-hardware-vbe-mode; the tab: DESK.CPL seeds its Tag from OEMCPL.INF and moves a failed display page under Settings, Advanced; fixed and verified on a fresh install](2026-11-24-1.0-b10-have-disk-ati-matrox.md)
 - [2026-11-24 B5 and B9 on 86Box: the full-screen DOS box round trip passes on vbe, matrox and ati (Mach64 VT2); vbe passes B10 on a Millennium; after Stand By the s3 and ati screens stay off where the vendors' drivers recover](2026-11-24-1.0-b5-b9-86box.md)
+- [2026-11-24 1.0 gate item 2 on four 86Box guests (Trio64, Trio32, Millennium, Mach64 VT2) on main: no probe verdict moved since the baseline; the Trio32's owed 16 bpp run done (FBCMP and WPRS pass)](2026-11-24-1.0-86box-gate-checks.md)
 - [2026-11-18 HD 4600 batch size and indexed pieces: the core cut Haswell batches at 64 triangles and declined indexed calls past one slot; batches a slot long and indexed calls in slot-sized pieces take the i5-4570's 3DMark 2001 SE from 3388 to 3888](2026-11-18-haswell-batch-size-and-indexed-pieces.md)
 
 ## Matrox

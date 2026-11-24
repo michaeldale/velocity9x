@@ -320,5 +320,12 @@ only since 2026-08-11) and sends no 4F10h; cause not found, filed. A
 laptop is still owed. The `-VesaTrace` lines now carry the VESA function
 and BX (trace builds only).
 
+Gate item 2 measured on main on four 86Box guests (Trio64, Trio32,
+Millennium, Mach64 VT2; the ViRGE/DX guest was in use):
+no probe verdict moved since the baseline, and the Trio32's owed 16 bpp
+run passes V9XFBCMP and V9XWPRS
+([record](../decisions/2026-11-24-1.0-86box-gate-checks.md)). It is
+repeated on the release candidate.
+
 **Decision 1 settled (Michael, 2026-11-23):** a refresh-rate choice is
 parked until a release after 1.1.
