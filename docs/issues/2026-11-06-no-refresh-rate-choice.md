@@ -31,3 +31,8 @@ suite. The settings page needs a way back if the monitor loses sync.
 On one VBE 3.0 machine with a CRT or EDID monitor, a mode set at a chosen
 rate, with the monitor's own on-screen display reporting it, and a host
 test pinning the CVT output against the VESA spreadsheet values.
+
+## Decision, 2026-11-23
+
+Michael: parked until a release after 1.1. Not a 1.0 or 1.1 item; the
+video BIOS's timing stays. Recorded in the 1.0 plan's decisions.

@@ -44,6 +44,11 @@
 
 #include "velocity9x/diagpaths.h"
 
+/* settings_propsheet.c: the Display Properties tab's shell registration,
+ * an export of this DLL. */
+void CALLBACK V9xRegisterPage(HWND owner, HINSTANCE instance, LPSTR command,
+                              int show);
+
 #define V9X_INVENTORY_PATH    V9X_DIAG_MODES_INI
 #define V9X_INVENTORY_SECTION "Velocity9xModes"
 #define V9X_SYNC_REPORT_PATH  V9X_DIAG_SYNC_INI
@@ -855,6 +860,14 @@ void CALLBACK V9xSyncModes(HWND owner, HINSTANCE instance, LPSTR command,
     }
     v9x_sync_write("Build", V9X_BUILD_ID);
     v9x_sync_write("DryRun", v9x_dry_run != 0u ? "1" : "0");
+
+    /* The Display Properties tab, which a Have Disk install leaves
+     * unregistered (V9xRegisterPage says why). It writes only when the
+     * handler or its Tag is missing or wrong, and before the mode work so
+     * that a failure there cannot skip it. */
+    if (v9x_dry_run == 0u) {
+        V9xRegisterPage(0, 0, 0, 0);
+    }
 
     if (!v9x_load_inventory()) {
         return;

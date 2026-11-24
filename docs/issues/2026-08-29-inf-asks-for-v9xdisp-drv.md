@@ -71,3 +71,10 @@ before - see `docs\issues\...win9x-inf` history and the OEM`<n>`.INF
 proliferation note - so it stays as it is until the question above is answered
 and, if needed, the fault reproduces in a guest where an INF can be iterated
 safely.
+
+## 2026-11-24: not reproduced
+
+Released 0.60.0's `s3` package by Have Disk on a fresh 86Box
+ViRGE/DX guest copied every file without asking for `V9XDISP.DRV`
+([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)). The
+reporter's case (the `vbe` package on Pineview) is still unexplained.

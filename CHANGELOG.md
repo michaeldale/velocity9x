@@ -42,6 +42,13 @@ build identifier so exact guest-tested binaries remain traceable.
   else they are dropped. The same case passes on the Oland and the
   HD 4600
   ([issue](docs/issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)).
+- **Every package: the Velocity9x tabs appear in Display Properties
+  after a Have Disk install.** Windows' installer left the tabs'
+  registration with a check value the shell rejects, and the one-time
+  repair never ran, so a fresh install showed no Velocity9x tab. The
+  repair now runs at every logon and writes only when it is needed.
+  Measured on a fresh 86Box ViRGE/DX guest
+  ([record](docs/decisions/2026-11-24-1.0-b10-have-disk-s3.md)).
 - **Every package: the README's Tested column says what was checked.**
   It read "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" for every
   package; now each names the cards its last release check ran on and

@@ -58,7 +58,7 @@ Fix, or measure and document, before the first release candidate.
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI` | Explained from the files, or the row marked Experimental |
 | B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
 | B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | Untested on any machine | Measured on one laptop; fixed, or a README line saying what happens |
-| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | Release checks install by file rename, never from the archive | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
+| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); seven packages and INSTALL.TXT owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
 | B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Known issue in 0.60.0 | Every log the driver writes by default is bounded, listed in one place |
 | B13 | The updater's rollback, and an update taken on physical hardware | STATUS.md says not exercised, as of 0.23.0; unchecked since | 0.60.0 to the release candidate through Check for updates on one machine; one rollback from the backup |
@@ -108,8 +108,10 @@ measurement on the release candidate or stays a named known issue.
 
 ## Decisions owed (Michael)
 
-1. **Refresh rate choice.** Left out above. 60 Hz only matters on a CRT,
-   and the VBE 3.0 CRTC builder is host-tested and unused
+1. **Refresh rate choice. Decided 2026-11-23 (Michael): parked until a
+   release after 1.1.** Not in 1.0 or 1.1; modes stay at the video BIOS's
+   timing. 60 Hz only matters on a CRT, and the VBE 3.0 CRTC builder is
+   host-tested and unused
    ([issue](../issues/2026-11-06-no-refresh-rate-choice.md)).
 2. **Windows versions.** Proposed: Windows 98 SE supported; Windows 98
    first edition (the RIVA 128ZX machine), Windows 95 (S3 VLB only) and
@@ -265,3 +267,20 @@ every probe passes, on the Oland 6610 (boot 131) and the HD 4600 (boot
 flushed are dropped and counted (98 and 111). **B8 closed.** Closing
 UT2004 mid-benchmark faults in UT2004 itself, with or without the probes;
 recorded on its 1.1 issue.
+
+### 2026-11-24: B10 started, the s3 package
+
+Released 0.60.0's `s3` zip by Have Disk on clones of the 86Box S3
+reference VM, which never had the driver
+([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)): one model
+offered, no `V9XDISP.DRV` prompt, first boot `enable-ok` at 1024x768x16
+(no 16-colour boot). But no Display Properties tab: the installer's Tag
+is rejected by the shell and the RunOnce repair never runs. Fixed in
+source (`V9xSyncModes` registers the page at every logon) and verified
+on a fresh clone. Owed for B10: the other seven packages (no clean
+guest with an agent exists for `vbe`, `ati` or `matrox` yet; the
+physical ones need a clean machine), the release candidate's zips, and
+INSTALL.TXT, which still reads as the bring-up text.
+
+**Decision 1 settled (Michael, 2026-11-23):** a refresh-rate choice is
+parked until a release after 1.1.

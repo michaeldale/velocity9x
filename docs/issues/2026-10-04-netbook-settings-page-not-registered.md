@@ -39,3 +39,14 @@ present: 48,128 bytes before the deploy and 50,688 after.
 Read `HKLM\...\Controls Folder\Display\shellex\PropertySheetHandlers`
 on the netbook. If the key is absent, run `V9xRegisterPage` once, with
 Michael's agreement, since it writes persistent shell registration.
+
+## Cause found and fixed, 2026-11-24
+
+A Have Disk install on a fresh 86Box ViRGE/DX guest reproduced it. The
+installer writes the handler key with a Tag of its own (0xDD2532C1)
+that the shell rejects, and the RunOnce `V9xRegisterPage` value is gone
+before the first boot, so the first Display Properties deletes the key.
+`V9xSyncModes` (the Run key, every logon) now calls `V9xRegisterPage`,
+which writes only when the Tag is missing or wrong; on a fresh install
+the tabs appear after the first logon and stay
+([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)).

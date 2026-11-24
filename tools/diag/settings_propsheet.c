@@ -1717,6 +1717,16 @@ static const struct v9x_factory_vtbl v9x_factory_vtbl_instance = {
  * The INF runs this through RunOnce at the first boot after the install:
  *
  *     rundll32.exe v9xsetp.dll,V9xRegisterPage
+ *
+ * That alone does not work on a Have Disk install. Windows' installer
+ * writes the handler key from the INF with a Tag of its own, which the
+ * shell does not accept (0xDD2532C1 where the machine's is 0x3EEABBC9),
+ * and the RunOnce value is gone before the next boot; the first Display
+ * Properties then deletes the key and shows no tab (the 86Box ViRGE/DX,
+ * 2026-11-23, docs\issues\2026-11-07-first-install-stays-at-16-colours.md
+ * and 2026-10-04-netbook-settings-page-not-registered.md). So
+ * V9xSyncModes, which the Run key starts at every logon, calls this too,
+ * and it writes only when the key or its Tag is missing or wrong.
  */
 #define V9X_HANDLERS_KEY \
     "Software\\Microsoft\\Windows\\CurrentVersion\\Controls Folder\\Display" \
@@ -1811,6 +1821,23 @@ void CALLBACK V9xRegisterPage(HWND owner, HINSTANCE instance, LPSTR command,
         return;
     }
     tag = seed + v9x_clsid_words(V9X_PAGE_CLSID_TEXT);
+
+    /* Already registered with this machine's Tag: nothing to write. Since
+     * V9xSyncModes calls this at every logon, that is the usual case. */
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, V9X_HANDLERS_KEY "\\" V9X_PAGE_NAME,
+                      0ul, KEY_READ, &key) == ERROR_SUCCESS) {
+        DWORD stored = 0ul;
+        DWORD type = 0ul;
+        DWORD size = sizeof(stored);
+        LONG read = RegQueryValueExA(key, "Tag", 0, &type, (BYTE *)&stored,
+                                     &size);
+
+        RegCloseKey(key);
+        if (read == ERROR_SUCCESS && type == REG_DWORD &&
+            size == sizeof(stored) && stored == tag) {
+            return;
+        }
+    }
 
     if (RegCreateKeyExA(HKEY_LOCAL_MACHINE,
                         V9X_HANDLERS_KEY "\\" V9X_PAGE_NAME, 0ul, 0,

@@ -108,3 +108,11 @@ If hypothesis 1 holds, consider having the INF claim function 1 with an
 install that loads no driver, so the New Hardware wizard settles it
 harmlessly. That needs measuring on the netbook first: a second Display
 class devnode could change how Windows 98 handles multiple monitors.
+
+## 2026-11-24: not reproduced on the s3 package
+
+Released 0.60.0's `s3` package by Have Disk on an 86Box ViRGE/DX
+guest that never had the driver: the stored depth stayed 16 bpp and the
+first boot was `enable-ok` at 1024x768x16
+([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)). Says
+nothing about `intel-gma` on the Eee PCs; still open there.
