@@ -1,64 +1,76 @@
-VELOCITY9X BRING-UP PACKAGE - READ FIRST
+VELOCITY9X - INSTALLING THE DRIVER
 
 @FAMILY_SUMMARY@
-It is an engineering bring-up build, not a release driver.
-V9XSET.EXE is a read-only settings/status panel and is safe to open before
-installation. It exposes no hardware programming controls in this build.
-V9XSETP.DLL adds the same read-only status as a "Velocity9x" tab inside the
-native Display Properties dialog. It is copied and registered by the INF.
-V9XGL.DLL is the OpenGL 1.1 driver. The INF copies it and registers it under
-OpenGLDrivers; OpenGL programs then use it on a High Color desktop the card
-can draw into, and Windows' own software OpenGL everywhere else.
-@GLIDE@
-V9XSTAGE.EXE is an optional one-click preflight. It loads the VxD lifecycle
-probe and asks the DRV only for GDIINFO/mode validation; it never sets a mode.
-V9XGDI.EXE is the post-boot framebuffer test. Run it only after the new desktop
-appears; it draws GDI primitives and checks tolerant pixel readback.
-V9XFIX.BAT stages corrected driver files through WININIT.INI when an installed
-bring-up build is too unstable to update through Display Properties.
 
-PREREQUISITES
+Velocity9x is a display driver for Windows 98 SE. It replaces the driver
+Windows uses for your display adapter and adds DirectDraw, Direct3D and
+OpenGL acceleration.
 
-1. Shut down Windows 98 completely.
-2. Make a cold copy of the active VM hard-disk image and NVR/CMOS files.
-3. Confirm the VM can boot the existing Standard PCI Graphics Adapter (VGA).
-4. Configure COM1 capture on the host and start it.
-5. Mount this package directory as the VM's folder CD-ROM (or copy it in).
+BEFORE YOU START
+
+1. Close every program.
+2. Make sure you can get back to a working desktop if the new driver does
+   not start: know how to reach Safe Mode (F8 before Windows starts), and
+   keep a backup of anything you cannot lose. RECOVER.TXT, in this folder,
+   has the steps for going back.
+3. Copy this whole folder to the machine's hard disk, for example C:\V9X.
+   Windows reads the driver files from it during the install.
 
 INSTALL
 
-1. Boot Windows 98 normally.
-2. Open Control Panel, System, Device Manager.
-3. Expand Display adapters and open the fitted display adapter.
+1. Open Control Panel, System, Device Manager.
+2. Expand Display adapters and open the fitted display adapter.
    Intel graphics appear twice. If Display adapters lists "Standard PCI
    Graphics Adapter" and "Standard PCI Graphics Adapter (VGA)", open the
    one ending "(VGA)". Do not install on the other, or on an "(Unknown
    Device)": the driver cannot start there and Windows stays at 16
    colours.
-4. Select Driver, Update Driver, then choose a specific driver/location.
-5. Use Have Disk and browse to this package directory.
+3. Select Driver, then Update Driver.
+4. Choose "Display a list of all the drivers in a specific location".
+5. Choose Have Disk and browse to this folder.
 @MODEL_SELECTION@
-7. Let Windows copy the driver files, but do not accept a different device ID.
-8. Shut down fully when prompted. Do not use a warm restart for the first test.
-9. Start COM1 capture, then cold-start the VM once.
+7. Let Windows copy the files. If it offers a model for a different card,
+   cancel: this package does not support it.
+8. Restart when Windows asks.
 
-EXPECTED SERIAL CHECKPOINTS
-
-V9X-MINI init build=<id>
-V9X-MINI defaults-ok callbacks=0 build=<id>
-V9X-DRV load build=<id>
-V9X-DRV enable-query mode=@DEFAULT_MODE@
-V9X-DRV lfb=0x........ bytes=0x........
-V9X-DRV enable-ok mode=@DEFAULT_MODE@ lfb-mapped
-
-The bytes figure is the off-screen heap size the driver established: read
-from the chip where the family can, and from the VBE 4F00h report where it
-cannot, so it states the card's real memory rather than an assumed 4 MiB.
+AFTER THE RESTART
 
 @MODES_AFTER_FIRST_BOOT@
 
-V9XMSW.EXE exercises live switching: /set:WxHxB, /cycle:N for resolution and
-/depth:N to alternate 8 and 16 bpp.
+Display Properties gains two tabs, Velocity9x and Velocity9x Advanced.
+The first shows the card, video memory, mode and which acceleration is in
+use, and has "Check for updates..." and "Copy report". The second holds
+the driver's settings. The tabs appear once the logon that follows the
+install has finished; if Display Properties was opened in the first few
+seconds and shows neither, they appear after the next restart.
 
-If the desktop does not appear, stop after the single boot attempt and follow
-RECOVER.TXT. Do not repeatedly reboot a failed image.
+@GLIDE@
+
+V9XGL.DLL is the OpenGL 1.1 driver. OpenGL programs use it on a desktop
+the card can draw into, and Windows' own software OpenGL everywhere else.
+
+IF SOMETHING GOES WRONG
+
+If Windows does not reach a desktop, do not keep restarting. Follow
+RECOVER.TXT. If the desktop appears but something draws wrongly, use
+"Send report..." on the Velocity9x Advanced tab, or "Copy report" on the
+Velocity9x tab, and describe what you saw.
+
+The driver writes what it found at each boot to C:\V9XDIAG. Those files
+are what a report contains; a report is sent only when you choose
+"Send report...".
+
+FOR TESTERS
+
+The folder also carries test programs. None is needed to use the driver.
+
+  V9XSET.EXE     status panel, safe to run before installing
+  V9XSTAGE.EXE   preflight: loads the driver without installing it or
+                 changing the mode
+  V9XGDI.EXE     drawing and pixel readback test, after the desktop is up
+  V9XMSW.EXE     mode switching: /set:WxHxB, /cycle:N, /depth:N
+  V9XFIX.BAT     stages driver files through WININIT.INI when an
+                 installed build is too unstable to update normally
+
+At boot the driver writes progress lines to COM1, ending with
+"V9X-DRV enable-ok mode=@DEFAULT_MODE@" on a good first boot.

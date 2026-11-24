@@ -6,6 +6,12 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.61.0 - not yet released
 
+- **Every package: INSTALL.TXT is written for users.** It was the
+  bring-up text ("not a release driver", cold-copy the VM disk, capture
+  COM1). It now covers what to have ready, the Have Disk steps, the
+  Velocity9x tabs and how to send a report; the serial checkpoints and
+  test programs moved to a section for testers. FIRSTBOOT.TXT and
+  RECOVER.TXT are unchanged.
 - **Radeon HD 7470 (and by the same code the HD 5450, HD 5570 and
   HD 5770): the first Direct3D program no longer hangs the machine.**
   0.56.1 began flushing the Evergreen engine's caches once per group of

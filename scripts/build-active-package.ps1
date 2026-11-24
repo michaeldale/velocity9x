@@ -219,21 +219,18 @@ $defaultModeParts = $defaultMode -split ','
 $defaultModeText = '{0}x{1}x{2}' -f $defaultModeParts[1], $defaultModeParts[2],
     $defaultModeParts[0]
 $modesLines = @(
-    ("The first boot uses the configured or default mode ({0} unless" -f
+    ("The first boot uses the mode set in the registry, or {0} if none is" -f
         $defaultModeText)
-    'the registry says otherwise). After it passes, Display Properties offers:'
+    'set. Display Properties, Settings, then offers:'
     $familyManifest.Package.ModesSummary
 )
 if ($miniVddVbeCollect) {
     $modesLines += @(
         ''
-        'This family also discovers the modes the video BIOS itself reports:'
-        'after the first successful boot the driver merges them into its'
-        'runtime table, writes the validated inventory C:\V9XDIAG\V9XMODES.INI, and'
-        'the per-boot synchronizer mirrors it into Display Properties, so the'
-        'offered list grows past the baseline above on capable cards. The'
-        'panel EDID, where readable, selects the fallback mode; it never'
-        'overrides a mode you chose.'
+        'The driver also reads the modes the card''s video BIOS reports. After'
+        'the first boot it adds the ones it can use to that list, so a capable'
+        'card offers more than the modes above. Where the panel''s EDID can be'
+        'read, it picks the fallback mode; it never overrides a mode you chose.'
     )
 }
 # The Glide paragraph follows Package.GlideWrappers, so a 3dfx package does not
