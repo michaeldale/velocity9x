@@ -4,6 +4,29 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## Unreleased
+
+- **`intel-gma` package, Gen3: GDI screen-to-screen copies on the
+  blitter.** A window dragged or scrolled is a `SRCCOPY` the DIB Engine
+  did by reading uncached video memory; the blitter now does it, waiting
+  for each copy before BitBlt returns. On the GMA 950 netbook at
+  800x600x32 the copies ran 13 to 47 times faster and matched the DIB
+  Engine's own drawing pixel for pixel; an overlapping copy goes in bands,
+  and a long scroll as several streams, so Internet Explorer's scrolls no
+  longer fall back to the CPU. Fills and text stay on the CPU: text on the
+  blitter was built and measured 3 to 5 times slower. `GdiAccel=0` in
+  SYSTEM.INI turns the copies off
+  ([plan](docs/plans/gen3-gdi-blitter.md),
+  [record](docs/decisions/2026-11-24-gen3-gdi-copies-and-text-on-the-netbook.md),
+  [scrolls](docs/decisions/2026-11-24-ddi-census-ie-on-the-netbook.md)).
+- **`intel-gma` package, Gen3: the hardware cursor.** A monochrome pointer
+  shape is shown by the display engine's 64x64 cursor instead of being
+  drawn into the screen; the I-beam and colour cursors stay in software.
+  On the netbook by eye. `HwCursor=0` in SYSTEM.INI turns it off
+  ([plan](docs/plans/gen3-hardware-cursor.md)).
+- Both measured on the GMA 950 only; the GMA 900, 3150 and 3100 run the
+  same code unmeasured.
+
 ## 0.60.0 - 2026-11-21
 
 - **`ati` package: the ATI Radeon X1300 (RV515, `1002:7146`)**, on the

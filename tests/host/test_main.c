@@ -276,6 +276,12 @@ unsigned int v9x_run_i9xx_ring_tests(void);
 /* tests\host\test_i9xx_blt.c: DirectDraw 2D blit builders and allowlist. */
 unsigned int v9x_run_i9xx_blt_tests(void);
 
+/* tests\host\test_i9xx_gdi.c: GDI copies on the blitter, bands and stream. */
+unsigned int v9x_run_i9xx_gdi_tests(void);
+
+/* tests\host\test_i9xx_cursor.c: the hardware cursor's shape and registers. */
+unsigned int v9x_run_i9xx_cursor_tests(void);
+
 /* tests\host\test_i9xx_arm.c: one-shot Phase 4 arm contract. */
 unsigned int v9x_run_i9xx_arm_tests(void);
 
@@ -1618,6 +1624,8 @@ int main(int argc, char **argv)
     failures += v9x_run_intel_g4_tests();
     failures += v9x_run_i9xx_ring_tests();
     failures += v9x_run_i9xx_blt_tests();
+    failures += v9x_run_i9xx_gdi_tests();
+    failures += v9x_run_i9xx_cursor_tests();
     failures += v9x_run_i9xx_arm_tests();
     failures += v9x_run_i9xx_3d_tests();
     failures += v9x_run_i9xx_fs_tests();

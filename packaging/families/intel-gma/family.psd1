@@ -2,7 +2,7 @@
     SchemaVersion = 1
     Id = 'intel-gma'
     DisplayName = 'Intel GMA and HD Graphics'
-    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM, GMA 3100 on G33/G31 and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips and DirectDraw blits on the Gen3 engine. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring, page flips on plane A, Direct3D on the Gen4 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
+    Description = 'Intel GMA 950 on 945GSE, GMA 900 on 915GM, GMA 3100 on G33/G31 and GMA 3150 on Pineview: VBE display; hardware Direct3D, ring page flips, DirectDraw blits and GDI screen copies on the Gen3 engine, and a hardware cursor. GMA X3100 on GM965: VBE display; DirectDraw blits on the ring. HD Graphics on Ironlake: VBE display; DirectDraw blits on the ring, page flips on plane A, Direct3D on the Gen4 engine. HD Graphics 4600 (Haswell): VBE display; hardware Direct3D and OpenGL on the render engine, page flips on plane A, DirectDraw blits on the BCS ring. HD Graphics 4000 (Ivy Bridge): VBE display; hardware Direct3D on the render engine, page flips on plane A, DirectDraw blits on the BCS ring.'
 
     Chips = @(
         @{
@@ -512,6 +512,20 @@
             @{ Name = 'sswitch16'; Path = 'src\display16\sswitch16.c'; CodeSegment = 'SSWCODE' }
             @{ Name = 'dd16'; Path = 'src\display16\dd16.c' }
             @{ Name = 'gdi_accel'; Path = 'src\display16\gdi_accel.c' }
+            # GDI screen-to-screen copies on the Gen3 blitter
+            # (docs\plans\gen3-gdi-blitter.md): the band plan and stream, the
+            # 2D packets and decoder the HAL's blits use, the breadcrumb
+            # builder, and gdi_accel.c's arm that submits them. LEAFCODE, as
+            # _TEXT and I9XXCODE are full; they call each other near and
+            # multiply 16-bit only (leaf16.h).
+            @{ Name = 'i9xx_blt'; Path = 'src\chipsets\intel\i9xx_blt.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'i9xx_flip'; Path = 'src\chipsets\intel\i9xx_flip.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'i9xx_gdi'; Path = 'src\chipsets\intel\i9xx_gdi.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'gdi_gen3'; Path = 'src\display16\gdi_gen3.c'; CodeSegment = 'LEAFCODE' }
+            # The Gen3 hardware cursor (docs\plans\gen3-hardware-cursor.md):
+            # its policy and the module that applies it, LEAFCODE likewise.
+            @{ Name = 'i9xx_cursor'; Path = 'src\chipsets\intel\i9xx_cursor.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'cursor16'; Path = 'src\display16\cursor16.c'; CodeSegment = 'LEAFCODE' }
         )
         Defines = @('V9X_INTEL_GMA_FAMILY', 'V9X_I9XX_FIRST_WRITE_EXECUTOR',
                     # Phase 5's sequencer and its submit path. Both are now

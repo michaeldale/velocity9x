@@ -105,10 +105,11 @@ v9x_status V9X_I9XX_FAR v9x_i9xx_sandbox_calculate(
      * a comment: the target size and the reserve size are separate constants,
      * and a future mode change that grows one without the other would
      * otherwise silently place the texture and its guard - or part of the
-     * target - in the published DirectDraw heap.
+     * target - in the published DirectDraw heap. The bound is the hardware
+     * cursor's image, which takes the reserve's last pages.
      */
     if (layout->depth_guard_offset + V9X_I9XX_SANDBOX_PAGE_BYTES >
-            reserve_offset + V9X_I9XX_GTT_RESERVE_BYTES) {
+            reserve_offset + V9X_I9XX_CURSOR_RESERVE_OFFSET) {
         v9x_i9xx_zero_layout(layout);
         return V9X_STATUS_INSUFFICIENT_MEMORY;
     }
@@ -178,7 +179,7 @@ v9x_u16 v9x_i9xx_sequence_reached(v9x_u32 observed, v9x_u32 expected)
     return (v9x_s32)(observed - expected) >= 0 ? V9X_TRUE : V9X_FALSE;
 }
 
-v9x_status v9x_i9xx_ring_plan(
+v9x_status V9X_I9XX_FAR v9x_i9xx_ring_plan(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 command_dwords, struct v9x_i9xx_ring_plan *plan)
 {

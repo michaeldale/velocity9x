@@ -239,6 +239,10 @@ function Get-V9xHostSourceNames {
         'src\chipsets\intel\i9xx_ring.c',
         # DirectDraw 2D blit builders and allowlist; the HAL submits them.
         'src\chipsets\intel\i9xx_blt.c',
+        # GDI screen-to-screen copies: bands and stream; gdi_gen3.c submits.
+        'src\chipsets\intel\i9xx_gdi.c',
+        # The hardware cursor: shape, position, registers; cursor16.c writes.
+        'src\chipsets\intel\i9xx_cursor.c',
         # One-shot Phase 4 arm contract and packet CRC.
         'src\chipsets\intel\i9xx_arm.c',
         'src\chipsets\intel\i9xx_float.c',
@@ -428,6 +432,8 @@ function Get-V9xHostSourceNames {
         'tests\host\test_intel_g4.c',
         'tests\host\test_i9xx_ring.c',
         'tests\host\test_i9xx_blt.c',
+        'tests\host\test_i9xx_gdi.c',
+        'tests\host\test_i9xx_cursor.c',
         'tests\host\test_i9xx_arm.c',
         'tests\host\test_i9xx_3d.c',
         'tests\host\test_i9xx_fs.c',

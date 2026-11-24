@@ -188,6 +188,16 @@
 #define V9X_I9XX_DEPTH_PITCH             ((v9x_u32)1280ul)
 #define V9X_I9XX_DEPTH_BYTES             ((v9x_u32)0x00050000ul)
 /*
+ * The hardware cursor's 64x64 ARGB image (velocity9x\i9xx_cursor.h): the
+ * reserve's last 16 KiB, above the depth buffer's guard page, where the
+ * layout ended with 0x4000 bytes unused. Four whole pages, page aligned, as
+ * a physical cursor base must be (i915: 4 KiB on i915/i945). The layout's
+ * bound in i9xx_ring.c keeps everything else below it.
+ */
+#define V9X_I9XX_CURSOR_IMAGE_BYTES      ((v9x_u32)0x00004000ul)
+#define V9X_I9XX_CURSOR_RESERVE_OFFSET \
+    (V9X_I9XX_GTT_RESERVE_BYTES - V9X_I9XX_CURSOR_IMAGE_BYTES)
+/*
  * The clear value: FAR, so a first draw at any depth passes a LESS test.
  *
  * 0xFFFF doubled into a dword, because the clear is an XY_COLOR_BLT and the
@@ -1008,7 +1018,9 @@ v9x_u16 v9x_i9xx_sequence_reached(v9x_u32 observed, v9x_u32 expected);
 v9x_status v9x_i9xx_ring_free_space(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 *free_bytes);
-v9x_status v9x_i9xx_ring_plan(
+/* Far: the 16-bit driver's GDI copies (gdi_gen3.c, in LEAFCODE) plan their
+ * submission with it, and it lives in I9XXCODE. */
+v9x_status V9X_I9XX_FAR v9x_i9xx_ring_plan(
     v9x_u32 head, v9x_u32 tail, v9x_u32 ring_bytes,
     v9x_u32 command_dwords, struct v9x_i9xx_ring_plan *plan);
 v9x_status v9x_i9xx_build_mi_probe(v9x_u32 *stream, v9x_u32 capacity,

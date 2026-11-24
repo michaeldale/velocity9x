@@ -47,6 +47,9 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-27 GDI acceleration: what comes after the merge](2026-08-27-gdi-accel-next-steps.md)
 - [2026-09-06 CrystalMark Retro on the 86Box Trio64 guest: text on against text off](2026-09-06-crystalmark-86box-trio64-text.md)
 - [2026-09-06 GDI acceleration, build 005: text on the Trio64](2026-09-06-gdi-accel-005-text.md)
+- [2026-11-24 Gen3 GDI on the GMA 950 netbook: screen copies on the blitter 13 to 47 times faster, text on the blitter 3 to 5 times slower](2026-11-24-gen3-gdi-copies-and-text-on-the-netbook.md)
+- [2026-11-24 Internet Explorer on the GMA 950 netbook: 3.3 % of the time in the display driver, most of it 20 scrolls past 128 bands the blitter refused](2026-11-24-ddi-census-ie-on-the-netbook.md)
+- [2026-11-24 The GMA 950 netbook with copies past 128 bands as several streams: no large scroll left on the CPU](2026-11-24-ddi-census-netbook-multi-stream-copies.md)
 
 ## DirectDraw HAL
 

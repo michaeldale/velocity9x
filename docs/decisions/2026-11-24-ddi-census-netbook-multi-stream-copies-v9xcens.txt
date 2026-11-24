@@ -1,0 +1,87 @@
+Velocity9x DDI census, V9XCENS build 0fade419
+measured for 163.6 s; the CPU's clock counter runs at 1663 MHz
+
+==== While measuring ====
+In the display driver: 10.625 s, 6.49 % of the time measured
+
+By entry point, most time first:
+  entry                   calls          ms   % of time   us/call
+  StretchDIBits            7315        9310       5.69    1272.8
+  BitBlt                  25672        1157       0.71      45.1
+  ExtTextOut               9117         108       0.07      11.9
+  DibToDevice              1142          14       0.01      13.1
+  ColorInfo               30050          12       0.01       0.4
+  DibBlt                     81           5       0.00      74.0
+  BitmapBits                811           5       0.00       6.6
+  RealizeObject            6290           5       0.00       0.8
+  Output                   1647           3       0.00       2.4
+  SelectBitmap             8976           1       0.00       0.2
+  GetCharWidth                3           0       0.00       0.3
+
+BitBlt by kind, most time first (* = on the blitter):
+  kind               operation      calls  kilopixels          ms   us/call
+  screen -> screen   SRCCOPY    *      267       87170         682    2555.2
+  memory -> screen   SRCCOPY          1395       12478         144     103.6
+  pattern -> memory  PATCOPY         10246        9464         113      11.1
+  pattern -> screen  PATCOPY         11858       14059          99       8.4
+  memory -> screen   SRCAND            470         123          41      88.0
+  memory -> screen   SRCINVERT         450         115          37      83.7
+  screen -> memory   SRCCOPY             3         151          24    8246.3
+  memory -> screen   PSDPxax             8          13           4     510.0
+  memory -> memory   SRCCOPY           358         189           3       8.4
+  memory -> memory   SRCINVERT         173          46           2      16.8
+  pattern -> memory  WHITENESS         168          49           1       8.3
+  pattern -> screen  PATINVERT          64           2           1      17.8
+  pattern -> memory  BLACKNESS         164          42           0       3.8
+  memory -> screen   MERGEPAINT          4           1           0      87.8
+  pattern -> memory  PATINVERT          31           2           0      11.0
+  memory -> memory   SRCAND             11           5           0      18.6
+  memory -> memory   MERGEPAINT          2           1           0      22.0
+
+Not timed (too deeply nested): 0
+
+==== Since Windows started ====
+In the display driver: 10.794 s
+
+By entry point, most time first:
+  entry                   calls          ms   % of time   us/call
+  StretchDIBits            7418        9345      86.58    1259.9
+  BitBlt                  28968        1210      11.22      41.8
+  ExtTextOut              13684         121       1.13       8.9
+  DibToDevice              1462          73       0.68      50.5
+  ColorInfo               34568          13       0.13       0.4
+  DibBlt                    187           8       0.08      45.6
+  BitmapBits                999           7       0.07       7.3
+  RealizeObject            7604           6       0.06       0.8
+  Output                   1789           4       0.04       2.6
+  SelectBitmap            10098           2       0.02       0.2
+  GetCharWidth                4           0       0.00       1.5
+  Pixel                       1           0       0.00       1.0
+
+BitBlt by kind, most time first (* = on the blitter):
+  kind               operation      calls  kilopixels          ms   us/call
+  screen -> screen   SRCCOPY    *      274       87173         682    2491.2
+  memory -> screen   SRCCOPY          1467       12587         145      99.4
+  pattern -> memory  PATCOPY         11297        9517         117      10.4
+  pattern -> screen  PATCOPY         13314       15849         111       8.4
+  memory -> screen   SRCAND            527         142          47      90.9
+  memory -> screen   SRCINVERT         475         121          39      83.8
+  screen -> memory   SRCCOPY             3         151          24    8246.3
+  memory -> screen   MERGEPAINT         46          40          13     286.4
+  memory -> screen   PSDPxax            20          34          10     538.4
+  memory -> memory   SRCINVERT         234          63           5      23.3
+  memory -> memory   SRCCOPY           639         552           5       7.9
+  pattern -> screen  PATINVERT         128           3           2      16.4
+  pattern -> memory  WHITENESS         230          80           1       8.1
+  pattern -> memory  BLACKNESS         220          63           0       4.2
+  memory -> memory   SRCAND             27          10           0      15.1
+  memory -> memory   MERGEPAINT         14           9           0      25.1
+  pattern -> memory  PATINVERT          31           2           0      11.0
+  memory -> memory   ROP 22              3          13           0     113.0
+  memory -> screen   SRCPAINT            1           1           0     311.0
+  screen -> screen   SRCCOPY            14           0           0      11.2
+  memory -> memory   DSPDxax             4           4           0      34.5
+
+Not timed (too deeply nested): 0
+
+result: OK

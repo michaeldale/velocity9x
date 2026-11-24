@@ -18,7 +18,11 @@
  * families moved it for the same reason. src\common\vsync.c followed in
  * the ati family when the RV280 9200 and Oland 6611 rows took it 243 bytes
  * past (2026-11-20), with src\common\resources.c, which nothing in that
- * image calls.
+ * image calls. The intel-gma family's Gen3 GDI copies and hardware cursor
+ * went there from the start (2026-11-24), with _TEXT 517 bytes short of
+ * its budget and I9XXCODE full: src\display16\gdi_gen3.c and cursor16.c,
+ * and the pure C they call near, src\chipsets\intel\i9xx_gdi.c,
+ * i9xx_blt.c, i9xx_flip.c and i9xx_cursor.c.
  *
  * Open Watcom's compact model compiles every C call near, and a near call
  * cannot cross a segment (velocity9x\intel16.h says why that is a wild
