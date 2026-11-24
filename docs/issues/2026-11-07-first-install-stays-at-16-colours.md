@@ -116,3 +116,11 @@ guest that never had the driver: the stored depth stayed 16 bpp and the
 first boot was `enable-ok` at 1024x768x16
 ([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)). Says
 nothing about `intel-gma` on the Eee PCs; still open there.
+
+## 2026-11-25: not reproduced on 0.60.0 either
+
+The same netbook procedure with released 0.60.0: from `vga.drv` at
+4 bpp, Have Disk on function 0 set the stored depth to 8 bpp before the
+restart, and the first boot was `enable-ok` at 640x480x8
+([record](../decisions/2026-11-25-1.0-b10-have-disk-intel-gma-netbook.md)).
+Still open for the Eee PCs; the reporter's files are still owed.

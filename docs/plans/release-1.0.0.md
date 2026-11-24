@@ -58,7 +58,7 @@ Fix, or measure and document, before the first release candidate.
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI` | Explained from the files, or the row marked Experimental |
 | B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
 | B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | 2026-11-24 on 86Box (Stand By pauses the emulator, no power loss): `vbe` and `matrox` come back; `s3` and `ati` (Mach64 VT2) now come back too ([record](../decisions/2026-11-24-standby-monitor-power-s3-ati.md), [issue](../issues/2026-11-24-s3-ati-screen-off-after-standby-86box.md)); Radeons not run; no laptop yet | Measured on one laptop; fixed, or a README line saying what happens |
-| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; `ati` and `matrox` done the same day on 86Box Mach64 VT2 and Millennium, the tab's cause corrected (DESK.CPL's OEMCPL.INF seed); `vbe` stops at `fail-hardware-vbe-mode` on a ViRGE/DX and passes on a Millennium (VBE LFB, enable-ok 1024x768x16); `intel-gma`, `nvidia`, `sis`, `3dfx` owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
+| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; `ati` and `matrox` done the same day on 86Box Mach64 VT2 and Millennium, the tab's cause corrected (DESK.CPL's OEMCPL.INF seed); `vbe` stops at `fail-hardware-vbe-mode` on a ViRGE/DX and passes on a Millennium (VBE LFB, enable-ok 1024x768x16); `intel-gma` 2026-11-25 on the GMA 950 netbook from Windows' VGA driver, not a never-had-it machine (one model, enable-ok 640x480x8; [record](../decisions/2026-11-25-1.0-b10-have-disk-intel-gma-netbook.md)); `nvidia`, `sis`, `3dfx` owed (physical cards) | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
 | B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Closed 2026-11-23: six logs roll over at 2 MiB, all listed in `diagpaths.h` | Every log the driver writes by default is bounded, listed in one place |
 | B13 | The updater's rollback, and an update taken on physical hardware | STATUS.md says not exercised, as of 0.23.0; unchecked since | 0.60.0 to the release candidate through Check for updates on one machine; one rollback from the backup |
@@ -350,3 +350,19 @@ Trio64 under Windows 95 and the RIVA 128ZX remote-help machine under
 Windows 98. There is no 86Box guest of 95, 98 or Me and no Windows Me
 machine, and Claude sessions have no Windows media, so the guests or
 machines for B14 come from Michael.
+
+### 2026-11-25: B10 `intel-gma` on the netbook
+
+No 86Box card takes the `intel-gma`, `nvidia`, `sis` or `3dfx` INFs (the
+`3dfx` INF claims only the VSA-100, `121A:0009`). The GMA 950 netbook was
+put back on Windows' VGA driver and given released 0.60.0 by Have Disk
+([record](../decisions/2026-11-25-1.0-b10-have-disk-intel-gma-netbook.md)):
+one model, no `V9XDISP.DRV` prompt, stored depth 8 bpp before the
+restart, first boot `enable-ok` at 640x480x8, tabs present, 1024x576x16
+by V9XMSW. The machine has had the driver since September, so its old
+INF, files and tab key were present; the tab result says nothing about a
+fresh Intel machine. `GLIDE2X.DLL` and `GLIDE3X.DLL` were not replaced
+over a newer dev build while the other six files were; cause not found.
+Owed for B10: `nvidia`, `sis` and `3dfx` on physical cards that never had
+the driver, `intel-gma` on such a machine if one appears, and the release
+candidate's zips.
