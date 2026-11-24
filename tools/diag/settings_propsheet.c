@@ -1704,27 +1704,42 @@ static const struct v9x_factory_vtbl v9x_factory_vtbl_instance = {
  *
  *     Tag = seed + w0 + w1
  *
- * where the seed is a per-machine constant and w0/w1 are the first eight
- * characters of the handler's own CLSID text read as two little-endian
- * DWORDs. Only the sum of w0 and w1 is ever needed, so that is what
- * v9x_clsid_words returns.
+ * where w0/w1 are the first eight characters of the handler's own CLSID
+ * text read as two little-endian DWORDs (only their sum is ever needed, so
+ * that is what v9x_clsid_words returns) and the seed is the sum of six
+ * DWORDs of %WINDIR%\INF\OEMCPL.INF's WIN32_FIND_DATA: the size high and
+ * low words and the creation and last-write FILETIMEs. That is DESK.CPL
+ * 4.10.2222's own check (the function that reads "Tag" calls
+ * GetWindowsDirectoryA, appends "\INF\OEMCPL.INF", zeroes the find data,
+ * calls FindFirstFileA and adds exactly those fields; disassembly in
+ * docs\decisions\2026-11-24-1.0-b10-have-disk-ati-matrox.md).
  *
- * The seed is not published anywhere, but it is recoverable by inverting the
- * same expression over any handler Windows has already accepted - Windows
- * ships two on a stock install, and they agree. Reading it back from a
- * working neighbour is the whole trick.
+ * The seed used to be read back from a neighbour handler instead. That is
+ * wrong straight after a driver install: the installer rewrites every
+ * handler's Tag, neighbours included, with a seed DESK.CPL does not use
+ * (0x62B0E514 where OEMCPL.INF gives 0xC4754D1C on the 86Box clones), so
+ * the inverted seed reproduced the installer's bad Tag and the check below
+ * found nothing to do.
+ *
+ * A handler whose Tag fails is not simply dropped. DESK.CPL re-tags it if
+ * it belongs to no display device, and otherwise moves it into that
+ * device's driver key (Class\Display\<n>\shellex\PropertySheetHandlers),
+ * where its pages show under Settings, Advanced instead of as top-level
+ * tabs. That is what happened to this page on a Have Disk install; the
+ * copy there is removed below so the pages do not appear twice once the
+ * top-level key is right again.
  *
  * The INF runs this through RunOnce at the first boot after the install:
  *
  *     rundll32.exe v9xsetp.dll,V9xRegisterPage
  *
  * That alone does not work on a Have Disk install. Windows' installer
- * writes the handler key from the INF with a Tag of its own, which the
- * shell does not accept (0xDD2532C1 where the machine's is 0x3EEABBC9),
- * and the RunOnce value is gone before the next boot; the first Display
- * Properties then deletes the key and shows no tab (the 86Box ViRGE/DX,
- * 2026-11-23, docs\issues\2026-11-07-first-install-stays-at-16-colours.md
- * and 2026-10-04-netbook-settings-page-not-registered.md). So
+ * writes the handler key from the INF with a Tag DESK.CPL does not accept
+ * (0xDD2653C1 where OEMCPL.INF gives 0x3EEABBC9), and the RunOnce value is
+ * gone before the next boot; the first Display Properties then moves the
+ * page under Settings, Advanced (the 86Box ViRGE/DX, Mach64 VT2 and
+ * Millennium, 2026-11-23/24,
+ * docs\issues\2026-10-04-netbook-settings-page-not-registered.md). So
  * V9xSyncModes, which the Run key starts at every logon, calls this too,
  * and it writes only when the key or its Tag is missing or wrong.
  */
@@ -1733,6 +1748,8 @@ static const struct v9x_factory_vtbl v9x_factory_vtbl_instance = {
     "\\shellex\\PropertySheetHandlers"
 #define V9X_APPROVED_KEY \
     "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved"
+#define V9X_DISPLAY_CLASS_KEY \
+    "System\\CurrentControlSet\\Services\\Class\\Display"
 #define V9X_PAGE_NAME  "Velocity9x"
 #define V9X_PAGE_TITLE "Velocity9x Settings Page"
 #define V9X_PAGE_CLSID_TEXT "{91925DA2-2EF0-4E20-B4E9-A53ED37E14B1}"
@@ -1750,61 +1767,70 @@ static DWORD v9x_clsid_words(const char *clsid)
     return low + high;
 }
 
-static BOOL v9x_page_seed(DWORD *seed)
+/* DESK.CPL's seed. DESK.CPL zeroes the find data before FindFirstFileA, so
+ * a missing OEMCPL.INF gives a seed of 0 there; return 0 here likewise. */
+static DWORD v9x_page_seed(void)
 {
-    HKEY handlers;
-    DWORD index = 0ul;
-    BOOL found = FALSE;
+    char path[MAX_PATH + 32];
+    WIN32_FIND_DATAA found;
+    HANDLE search;
+    UINT length;
 
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, V9X_HANDLERS_KEY, 0ul, KEY_READ,
-                      &handlers) != ERROR_SUCCESS) {
-        return FALSE;
+    length = GetWindowsDirectoryA(path, MAX_PATH);
+    if (length == 0u || length >= MAX_PATH) {
+        return 0ul;
     }
-    while (!found) {
-        char name[128];
-        char clsid[64];
-        HKEY handler;
-        DWORD length = sizeof(name);
-        DWORD type = 0ul;
-        DWORD size;
-        DWORD tag = 0ul;
+    lstrcatA(path, "\\INF\\OEMCPL.INF");
+    search = FindFirstFileA(path, &found);
+    if (search == INVALID_HANDLE_VALUE) {
+        return 0ul;
+    }
+    FindClose(search);
 
-        if (RegEnumKeyExA(handlers, index, name, &length, 0, 0, 0, 0) !=
+    return found.nFileSizeHigh + found.nFileSizeLow +
+           found.ftCreationTime.dwLowDateTime +
+           found.ftCreationTime.dwHighDateTime +
+           found.ftLastWriteTime.dwLowDateTime +
+           found.ftLastWriteTime.dwHighDateTime;
+}
+
+/* Remove this page from any display driver key DESK.CPL moved it into
+ * (see above). Only our own subkey is touched. */
+static void v9x_remove_moved_page(void)
+{
+    HKEY display;
+    DWORD index = 0ul;
+
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, V9X_DISPLAY_CLASS_KEY, 0ul,
+                      KEY_READ, &display) != ERROR_SUCCESS) {
+        return;
+    }
+    for (;;) {
+        char name[64];
+        char path[160];
+        HKEY handlers;
+        DWORD length = sizeof(name);
+
+        if (RegEnumKeyExA(display, index, name, &length, 0, 0, 0, 0) !=
                 ERROR_SUCCESS) {
             break;
         }
         ++index;
-        /* Never seed from our own entry: a stale Tag would reproduce itself. */
-        if (lstrcmpiA(name, V9X_PAGE_NAME) == 0) {
-            continue;
-        }
-        if (RegOpenKeyExA(handlers, name, 0ul, KEY_READ, &handler) !=
+        lstrcpyA(path, name);
+        lstrcatA(path, "\\shellex\\PropertySheetHandlers");
+        if (RegOpenKeyExA(display, path, 0ul, KEY_ALL_ACCESS, &handlers) !=
                 ERROR_SUCCESS) {
             continue;
         }
-        size = sizeof(clsid);
-        if (RegQueryValueExA(handler, 0, 0, &type, (BYTE *)clsid, &size) ==
-                ERROR_SUCCESS && type == REG_SZ && size > 8ul) {
-            clsid[sizeof(clsid) - 1] = '\0';
-            size = sizeof(tag);
-            type = 0ul;
-            if (RegQueryValueExA(handler, "Tag", 0, &type, (BYTE *)&tag,
-                                 &size) == ERROR_SUCCESS &&
-                    type == REG_DWORD && size == sizeof(tag)) {
-                *seed = tag - v9x_clsid_words(clsid);
-                found = TRUE;
-            }
-        }
-        RegCloseKey(handler);
+        RegDeleteKeyA(handlers, V9X_PAGE_NAME);
+        RegCloseKey(handlers);
     }
-    RegCloseKey(handlers);
-    return found;
+    RegCloseKey(display);
 }
 
 void CALLBACK V9xRegisterPage(HWND owner, HINSTANCE instance, LPSTR command,
                               int show)
 {
-    DWORD seed = 0ul;
     DWORD tag;
     DWORD disposition;
     HKEY key;
@@ -1814,13 +1840,8 @@ void CALLBACK V9xRegisterPage(HWND owner, HINSTANCE instance, LPSTR command,
     (void)command;
     (void)show;
 
-    /* No accepted neighbour means no recoverable seed. Writing a handler
-     * without a valid Tag would leave a key the shell deletes again, so
-     * leave the registry alone instead. */
-    if (!v9x_page_seed(&seed)) {
-        return;
-    }
-    tag = seed + v9x_clsid_words(V9X_PAGE_CLSID_TEXT);
+    v9x_remove_moved_page();
+    tag = v9x_page_seed() + v9x_clsid_words(V9X_PAGE_CLSID_TEXT);
 
     /* Already registered with this machine's Tag: nothing to write. Since
      * V9xSyncModes calls this at every logon, that is the usual case. */

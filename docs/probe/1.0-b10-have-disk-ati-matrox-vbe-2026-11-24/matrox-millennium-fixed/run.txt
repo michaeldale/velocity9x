@@ -1,0 +1,36 @@
+clean: V9XDISP.DRV False, V9XDIAG False
+after copy Tag=0x3EEABBC9
+before restart: BPP=16 Res=1024,768
+30s Tag=0x3EEABBC9 sync=False devicecopy=absent
+33s Tag=0x3EEABBC9 sync=False devicecopy=absent
+36s Tag=0x3EEABBC9 sync=False devicecopy=absent
+39s Tag=0x3EEABBC9 sync=False devicecopy=absent
+42s Tag=0x3EEABBC9 sync=False devicecopy=absent
+46s Tag=0x3EEABBC9 sync=True devicecopy=absent
+49s Tag=0x3EEABBC9 sync=True devicecopy=absent
+52s Tag=0x3EEABBC9 sync=True devicecopy=absent
+55s Tag=0x3EEABBC9 sync=True devicecopy=absent
+58s Tag=0x3EEABBC9 sync=True devicecopy=absent
+61s Tag=0x3EEABBC9 sync=True devicecopy=absent
+64s Tag=0x3EEABBC9 sync=True devicecopy=absent
+68s Tag=0x3EEABBC9 sync=True devicecopy=absent
+71s Tag=0x3EEABBC9 sync=True devicecopy=absent
+74s Tag=0x3EEABBC9 sync=True devicecopy=absent
+77s Tag=0x3EEABBC9 sync=True devicecopy=absent
+80s Tag=0x3EEABBC9 sync=True devicecopy=absent
+83s Tag=0x3EEABBC9 sync=True devicecopy=absent
+86s Tag=0x3EEABBC9 sync=True devicecopy=absent
+89s Tag=0x3EEABBC9 sync=True devicecopy=absent
+92s Tag=0x3EEABBC9 sync=True devicecopy=absent
+95s Tag=0x3EEABBC9 sync=True devicecopy=absent
+98s Tag=0x3EEABBC9 sync=True devicecopy=absent
+101s Tag=0x3EEABBC9 sync=True devicecopy=absent
+104s Tag=0x3EEABBC9 sync=True devicecopy=absent
+108s Tag=0x3EEABBC9 sync=True devicecopy=absent
+111s Tag=0x3EEABBC9 sync=True devicecopy=absent
+114s Tag=0x3EEABBC9 sync=True devicecopy=absent
+117s Tag=0x3EEABBC9 sync=True devicecopy=absent
+120s Tag=0x3EEABBC9 sync=True devicecopy=absent
+after Display Properties Tag=0x3EEABBC9
+
+[exited with code 0]

@@ -1,0 +1,215 @@
+string b'Controls Folder' at 75c2174a
+string b'Controls Folder' at 75c21852
+string b'Controls Folder' at 75c2189a
+string b'Controls Folder' at 75c218e2
+string b'PropertySheetHandlers' at 75c21902
+string b'Controls Folder' at 75c21942
+string b'PropertySheetHandlers' at 75c21961
+string b'Tag\x00' at 75c21978
+string b'PropertySheetHandlers' at 75c219db
+string b'PropertySheetHandlers' at 75c219ff
+string b'Controls Folder' at 75c21da2
+string b'Controls Folder' at 75c22676
+string b'Controls Folder' at 75c227b2
+
+=== ref to 75c21978 (b'Tag\x00') at 75c246c0
+75c245c0  je       0x75c245d7
+75c245c2  push     -4
+75c245c4  push     ebx
+75c245c5  call     esi
+75c245c7  mov      ecx, dword ptr [0x75c37b10]
+75c245cd  cmp      eax, ecx
+75c245cf  je       0x75c245d7
+75c245d1  push     ecx
+75c245d2  push     -4
+75c245d4  push     ebx
+75c245d5  call     edi
+75c245d7  push     ebx
+75c245d8  call     0x75c244c2
+75c245dd  pop      edi
+75c245de  pop      esi
+75c245df  xor      eax, eax
+75c245e1  pop      ebx
+75c245e2  leave    
+75c245e3  ret      0xc
+75c245e6  sub      esp, 0x50
+75c245e9  push     0x43
+75c245eb  call     dword ptr [0x75c213f0]
+75c245f1  test     eax, eax
+75c245f3  jne      0x75c2461b
+75c245f5  lea      eax, [esp]
+75c245f9  push     0x50
+75c245fb  push     eax
+75c245fc  push     0
+75c245fe  call     0x75c24830
+75c24603  test     eax, eax
+75c24605  je       0x75c2461b
+75c24607  push     0x75c218b8
+75c2460c  call     0x75c2461f
+75c24611  push     0x75c21918
+75c24616  call     0x75c2461f
+75c2461b  add      esp, 0x50
+75c2461e  ret      
+75c2461f  push     ebp
+75c24620  mov      ebp, esp
+75c24622  sub      esp, 0x3b0
+75c24628  push     ebx
+75c24629  push     esi
+75c2462a  push     edi
+75c2462b  lea      eax, [ebp - 0x3b0]
+75c24631  push     0x104
+75c24636  push     eax
+75c24637  call     dword ptr [0x75c21210]
+75c2463d  lea      eax, [ebp - 0x3b0]
+75c24643  push     0x75c21988
+75c24648  push     eax
+75c24649  call     dword ptr [0x75c211f4]
+75c2464f  push     0x50
+75c24651  xor      eax, eax
+75c24653  pop      ecx
+75c24654  lea      edi, [ebp - 0x1a8]
+75c2465a  rep stosd dword ptr es:[edi], eax
+75c2465c  lea      eax, [ebp - 0x1a8]
+75c24662  push     eax
+75c24663  lea      eax, [ebp - 0x3b0]
+75c24669  push     eax
+75c2466a  call     dword ptr [0x75c21204]
+75c24670  cmp      eax, -1
+75c24673  je       0x75c2467c
+75c24675  push     eax
+75c24676  call     dword ptr [0x75c211fc]
+75c2467c  mov      eax, dword ptr [ebp - 0x18c]
+75c24682  mov      ecx, dword ptr [ebp - 0x188]
+75c24688  lea      esi, [eax + ecx]
+75c2468b  lea      eax, [ebp - 8]
+75c2468e  add      esi, dword ptr [ebp - 0x1a4]
+75c24694  push     eax
+75c24695  push     dword ptr [ebp + 8]
+75c24698  add      esi, dword ptr [ebp - 0x1a0]
+75c2469e  push     0x80000002
+75c246a3  add      esi, dword ptr [ebp - 0x194]
+75c246a9  add      esi, dword ptr [ebp - 0x190]
+75c246af  call     dword ptr [0x75c21030]
+75c246b5  test     eax, eax
+75c246b7  jne      0x75c247d7
+75c246bd  xor      ebx, ebx
+75c246bf  mov      edi, 0x75c21978
+75c246c4  mov      dword ptr [ebp - 0x10], ebx
+75c246c7  lea      eax, [ebp - 0x2ac]
+75c246cd  push     0x104
+75c246d2  push     eax
+75c246d3  push     dword ptr [ebp - 0x10]
+75c246d6  push     dword ptr [ebp - 8]
+75c246d9  call     dword ptr [0x75c21020]
+75c246df  test     eax, eax
+75c246e1  jne      0x75c247ce
+75c246e7  lea      eax, [ebp - 4]
+75c246ea  push     eax
+75c246eb  lea      eax, [ebp - 0x2ac]
+75c246f1  push     eax
+75c246f2  push     dword ptr [ebp - 8]
+75c246f5  call     dword ptr [0x75c21030]
+75c246fb  test     eax, eax
+75c246fd  jne      0x75c247a8
+75c24703  cmp      byte ptr [ebp - 0x2ac], 0x7b
+75c2470a  mov      byte ptr [ebp - 0x68], bl
+75c2470d  mov      dword ptr [ebp - 0xc], 0x50
+75c24714  jne      0x75c24729
+75c24716  lea      eax, [ebp - 0x2ac]
+75c2471c  push     eax
+75c2471d  lea      eax, [ebp - 0x68]
+75c24720  push     eax
+75c24721  call     dword ptr [0x75c211e0]
+75c24727  jmp      0x75c2473d
+75c24729  lea      eax, [ebp - 0xc]
+75c2472c  push     eax
+75c2472d  lea      eax, [ebp - 0x68]
+75c24730  push     eax
+75c24731  push     ebx
+75c24732  push     ebx
+75c24733  push     ebx
+75c24734  push     dword ptr [ebp - 4]
+75c24737  call     dword ptr [0x75c21018]
+75c2473d  mov      eax, dword ptr [ebp - 0x68]
+75c24740  mov      dword ptr [ebp - 0x14], ebx
+75c24743  add      eax, esi
+75c24745  mov      dword ptr [ebp - 0xc], 4
+75c2474c  add      eax, dword ptr [ebp - 0x64]
+75c2474f  mov      dword ptr [ebp - 0x18], eax
+75c24752  lea      eax, [ebp - 0xc]
+75c24755  push     eax
+75c24756  lea      eax, [ebp - 0x14]
+75c24759  push     eax
+75c2475a  push     ebx
+75c2475b  push     ebx
+75c2475c  push     edi
+75c2475d  push     dword ptr [ebp - 4]
+75c24760  call     dword ptr [0x75c21018]
+75c24766  mov      eax, dword ptr [ebp - 0x14]
+75c24769  cmp      eax, dword ptr [ebp - 0x18]
+75c2476c  je       0x75c247a8
+75c2476e  push     dword ptr [ebp + 8]
+75c24771  lea      eax, [ebp - 0x3b0]
+75c24777  push     eax
+75c24778  lea      eax, [ebp - 0x68]
+75c2477b  push     eax
+75c2477c  lea      eax, [ebp - 0x2ac]
+75c24782  push     eax
+75c24783  call     0x75c24de1
+75c24788  cmp      eax, ebx
+75c2478a  jne      0x75c247b0
+75c2478c  lea      eax, [ebp - 0x18]
+75c2478f  push     4
+75c24791  push     eax
+75c24792  push     4
+75c24794  push     ebx
+75c24795  push     edi
+75c24796  push     dword ptr [ebp - 4]
+75c24799  call     dword ptr [0x75c2102c]
+75c2479f  push     dword ptr [ebp - 4]
+75c247a2  call     dword ptr [0x75c21034]
+75c247a8  inc      dword ptr [ebp - 0x10]
+75c247ab  jmp      0x75c246c7
+75c247b0  push     dword ptr [ebp - 4]
+75c247b3  call     dword ptr [0x75c21034]
+75c247b9  lea      eax, [ebp - 0x2ac]
+75c247bf  push     eax
+75c247c0  push     dword ptr [ebp - 8]
+75c247c3  call     dword ptr [0x75c21024]
+75c247c9  jmp      0x75c246c4
+75c247ce  push     dword ptr [ebp - 8]
+75c247d1  call     dword ptr [0x75c21034]
+75c247d7  pop      edi
+75c247d8  pop      esi
+75c247d9  pop      ebx
+75c247da  leave    
+75c247db  ret      4
+75c247de  mov      edx, dword ptr [esp + 8]
+75c247e2  mov      eax, dword ptr [esp + 4]
+75c247e6  test     edx, edx
+75c247e8  jle      0x75c24801
+75c247ea  mov      cl, byte ptr [eax]
+75c247ec  test     cl, cl
+75c247ee  je       0x75c247f8
+75c247f0  cmp      cl, 0x2c
+75c247f3  je       0x75c247f8
+75c247f5  inc      eax
+75c247f6  jmp      0x75c247ea
+75c247f8  cmp      byte ptr [eax], 0
+75c247fb  je       0x75c247fe
+75c247fd  inc      eax
+75c247fe  dec      edx
+75c247ff  jne      0x75c247ea
+75c24801  cmp      byte ptr [eax], 0x20
+75c24804  jne      0x75c24809
+75c24806  inc      eax
+75c24807  jmp      0x75c24801
+75c24809  mov      cl, byte ptr [eax]
+75c2480b  test     cl, cl
+75c2480d  jne      0x75c24813
+75c2480f  xor      eax, eax
+75c24811  jmp      0x75c2482d
+75c24813  mov      edx, dword ptr [esp + 0xc]
+75c24817  cmp      cl, 0x2c
+75c2481a  je       0x75c24827
+75c2481c  mov      byte ptr [edx], cl

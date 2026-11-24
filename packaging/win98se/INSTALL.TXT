@@ -40,9 +40,8 @@ AFTER THE RESTART
 Display Properties gains two tabs, Velocity9x and Velocity9x Advanced.
 The first shows the card, video memory, mode and which acceleration is in
 use, and has "Check for updates..." and "Copy report". The second holds
-the driver's settings. The tabs appear once the logon that follows the
-install has finished; if Display Properties was opened in the first few
-seconds and shows neither, they appear after the next restart.
+the driver's settings. If they appear under Settings, Advanced instead,
+they move back to the top after the next restart.
 
 @GLIDE@
 

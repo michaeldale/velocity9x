@@ -58,7 +58,7 @@ Fix, or measure and document, before the first release candidate.
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI` | Explained from the files, or the row marked Experimental |
 | B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
 | B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | Untested on any machine | Measured on one laptop; fixed, or a README line saying what happens |
-| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; seven packages owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
+| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; `ati` and `matrox` done the same day on 86Box Mach64 VT2 and Millennium, the tab's cause corrected (DESK.CPL's OEMCPL.INF seed); `vbe` installs but stops at `fail-hardware-vbe-mode` on a ViRGE/DX; `vbe` on an LFB BIOS, `intel-gma`, `nvidia`, `sis`, `3dfx` owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
 | B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Closed 2026-11-23: six logs roll over at 2 MiB, all listed in `diagpaths.h` | Every log the driver writes by default is bounded, listed in one place |
 | B13 | The updater's rollback, and an update taken on physical hardware | STATUS.md says not exercised, as of 0.23.0; unchecked since | 0.60.0 to the release candidate through Check for updates on one machine; one rollback from the backup |
@@ -287,6 +287,24 @@ the first section of RECOVER.TXT (restore the cold VM backup); the
 family descriptions at the top of each INSTALL.TXT come from the
 manifests and are engineering text; the support tier (decision 2) is
 not in it yet.
+
+### 2026-11-24, later: B10 for ati, matrox and vbe; the tab's real cause
+
+Fresh 86Box clones with the card changed
+([record](../decisions/2026-11-24-1.0-b10-have-disk-ati-matrox.md)):
+`ati` on a Mach64 VT2 and `matrox` on a Millennium install by Have Disk
+with one model each, no `V9XDISP.DRV` prompt, and `enable-ok` at
+1024x768x16. `vbe` installs on a ViRGE/DX but stops at
+`fail-hardware-vbe-mode` (desktop 640x480), consistent with the open
+linear-frame-buffer gap; `vbe` on a card with an LFB BIOS is still owed.
+The logon repair above did not help on these clones: DESK.CPL seeds the
+Tag from `OEMCPL.INF`, not from the neighbours, and on a failed Tag moves
+a display driver's page under Settings, Advanced. Fixed (seed from
+OEMCPL.INF, moved copy removed) and verified on a fresh Millennium
+install and the cleanup path. One Millennium boot hung at the logo after
+a WININIT staging, cause unknown. Owed for B10: `intel-gma`, `nvidia`,
+`sis` and `3dfx` (no 86Box card for them), `vbe` on an LFB BIOS, and the
+release candidate's zips.
 
 **Decision 1 settled (Michael, 2026-11-23):** a refresh-rate choice is
 parked until a release after 1.1.

@@ -50,3 +50,18 @@ before the first boot, so the first Display Properties deletes the key.
 which writes only when the Tag is missing or wrong; on a fresh install
 the tabs appear after the first logon and stay
 ([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)).
+
+## Cause corrected, later on 2026-11-24
+
+The paragraph above is wrong about whose Tag it was. On Mach64 VT2 and
+Millennium clones the logon repair ran and changed nothing: the bad Tag
+was `V9xRegisterPage`'s own, from the INF's RunOnce during the install,
+seeded from neighbour handlers that carried a seed DESK.CPL does not use.
+DESK.CPL seeds from `%WINDIR%\INF\OEMCPL.INF` (size and file times) and,
+on a failed Tag, moves a display driver's handler into its driver key,
+so the page shows under Settings, Advanced, not nowhere. `V9xRegisterPage`
+now uses DESK.CPL's seed and removes a moved copy; verified on a fresh
+Millennium install
+([record](../decisions/2026-11-24-1.0-b10-have-disk-ati-matrox.md)).
+Whether the netbook's tab sat under Settings, Advanced in October was
+not looked at.

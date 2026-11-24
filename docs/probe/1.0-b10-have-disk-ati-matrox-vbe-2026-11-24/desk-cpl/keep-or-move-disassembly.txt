@@ -1,0 +1,204 @@
+str 75c21988: b'\\INF\\OEMCPL.INF'
+str 75c21980: b'OEMCPL'
+str 75c219c8: b'DISPLAY'
+str 75c219d0: b'%s\\shellex\\PropertySheetHandlers'
+str 75c219f4: b'%s\\shellex\\PropertySheetHandlers\\%s'
+
+=== code 75c24de1
+75c24de1  push     ebp
+75c24de2  mov      ebp, esp
+75c24de4  sub      esp, 0x20c
+75c24dea  push     ebx
+75c24deb  push     esi
+75c24dec  push     edi
+75c24ded  mov      edi, dword ptr [ebp + 0xc]
+75c24df0  push     dword ptr [ebp + 0x10]
+75c24df3  lea      eax, [ebp - 0x20c]
+75c24df9  xor      ebx, ebx
+75c24dfb  push     0x104
+75c24e00  push     eax
+75c24e01  push     0x75c2197c
+75c24e06  push     edi
+75c24e07  push     0x75c21980
+75c24e0c  mov      dword ptr [ebp - 4], ebx
+75c24e0f  call     dword ptr [0x75c211ec]   ; KERNEL32.dll!GetPrivateProfileStringA
+75c24e15  test     eax, eax
+75c24e17  je       0x75c24ec6
+75c24e1d  mov      esi, dword ptr [0x75c2120c]   ; KERNEL32.dll!lstrcmpiA
+75c24e23  push     0x75c21918
+75c24e28  push     dword ptr [ebp + 0x14]
+75c24e2b  call     esi
+75c24e2d  test     eax, eax
+75c24e2f  jne      0x75c24e47
+75c24e31  lea      eax, [ebp - 0x20c]
+75c24e37  push     0x75c219c4
+75c24e3c  push     eax
+75c24e3d  call     esi
+75c24e3f  test     eax, eax
+75c24e41  je       0x75c24f08
+75c24e47  lea      eax, [ebp - 0x108]
+75c24e4d  push     eax
+75c24e4e  lea      eax, [ebp - 0x20c]
+75c24e54  push     ebx
+75c24e55  push     eax
+75c24e56  call     0x75c24b7c
+75c24e5b  mov      esi, eax
+75c24e5d  cmp      esi, ebx
+75c24e5f  je       0x75c24e92
+75c24e61  mov      dword ptr [ebp - 4], 1
+75c24e68  lea      eax, [ebp - 0x108]
+75c24e6e  push     eax
+75c24e6f  push     edi
+75c24e70  push     dword ptr [ebp + 8]
+75c24e73  call     0x75c24d6c
+75c24e78  lea      eax, [ebp - 0x108]
+75c24e7e  push     eax
+75c24e7f  lea      eax, [ebp - 0x20c]
+75c24e85  push     esi
+75c24e86  push     eax
+75c24e87  call     0x75c24b7c
+75c24e8c  mov      esi, eax
+75c24e8e  cmp      esi, ebx
+75c24e90  jne      0x75c24e68
+75c24e92  cmp      dword ptr [ebp - 4], ebx
+75c24e95  jne      0x75c24f05
+75c24e97  lea      eax, [ebp - 0x108]
+75c24e9d  push     eax
+75c24e9e  push     ebx
+75c24e9f  push     0x75c219c8
+75c24ea4  call     0x75c24b7c
+75c24ea9  test     eax, eax
+75c24eab  je       0x75c24f05
+75c24ead  lea      eax, [ebp - 0x108]
+75c24eb3  push     eax
+75c24eb4  push     edi
+75c24eb5  push     dword ptr [ebp + 8]
+75c24eb8  call     0x75c24d6c
+75c24ebd  mov      dword ptr [ebp - 4], 1
+75c24ec4  jmp      0x75c24f05
+75c24ec6  lea      eax, [ebp - 0x108]
+75c24ecc  push     eax
+75c24ecd  push     ebx
+75c24ece  push     edi
+75c24ecf  call     0x75c24c4a
+75c24ed4  mov      esi, eax
+75c24ed6  cmp      esi, ebx
+75c24ed8  je       0x75c24f05
+75c24eda  mov      dword ptr [ebp - 4], 1
+75c24ee1  lea      eax, [ebp - 0x108]
+75c24ee7  push     eax
+75c24ee8  push     edi
+75c24ee9  push     dword ptr [ebp + 8]
+75c24eec  call     0x75c24d6c
+75c24ef1  lea      eax, [ebp - 0x108]
+75c24ef7  push     eax
+75c24ef8  push     esi
+75c24ef9  push     edi
+75c24efa  call     0x75c24c4a
+75c24eff  mov      esi, eax
+75c24f01  cmp      esi, ebx
+75c24f03  jne      0x75c24ee1
+75c24f05  mov      eax, dword ptr [ebp - 4]
+75c24f08  pop      edi
+75c24f09  pop      esi
+75c24f0a  pop      ebx
+75c24f0b  leave    
+75c24f0c  ret      0x10
+
+=== code 75c24c4a
+75c24c4a  push     ebp
+75c24c4b  mov      ebp, esp
+75c24c4d  sub      esp, 0x15c
+75c24c53  push     ebx
+75c24c54  push     esi
+75c24c55  mov      esi, 0x104
+75c24c5a  push     edi
+75c24c5b  push     esi
+75c24c5c  push     dword ptr [ebp + 0x10]
+75c24c5f  push     dword ptr [ebp + 0xc]
+75c24c62  call     0x75c24830
+75c24c67  test     eax, eax
+75c24c69  je       0x75c24d54
+75c24c6f  mov      edi, dword ptr [0x75c21020]   ; ADVAPI32.dll!RegEnumKeyA
+75c24c75  push     dword ptr [ebp + 0x10]
+75c24c78  lea      eax, [ebp - 0x15c]
+75c24c7e  push     0x75c219d0
+75c24c83  push     eax
+75c24c84  call     dword ptr [0x75c213c4]   ; USER32.dll!wsprintfA
+75c24c8a  add      esp, 0xc
+75c24c8d  lea      eax, [ebp - 4]
+75c24c90  push     eax
+75c24c91  lea      eax, [ebp - 0x15c]
+75c24c97  push     eax
+75c24c98  push     0x80000002
+75c24c9d  call     dword ptr [0x75c21030]   ; ADVAPI32.dll!RegOpenKeyA
+75c24ca3  test     eax, eax
+75c24ca5  jne      0x75c24d16
+75c24ca7  xor      ebx, ebx
+75c24ca9  lea      eax, [ebp - 0x15c]
+75c24caf  push     esi
+75c24cb0  push     eax
+75c24cb1  push     ebx
+75c24cb2  push     dword ptr [ebp - 4]
+75c24cb5  call     edi
+75c24cb7  test     eax, eax
+75c24cb9  jne      0x75c24d0d
+75c24cbb  and      byte ptr [ebp - 0x58], al
+75c24cbe  cmp      byte ptr [ebp - 0x15c], 0x7b
+75c24cc5  mov      dword ptr [ebp - 8], 0x50
+75c24ccc  jne      0x75c24ce1
+75c24cce  lea      eax, [ebp - 0x15c]
+75c24cd4  push     eax
+75c24cd5  lea      eax, [ebp - 0x58]
+75c24cd8  push     eax
+75c24cd9  call     dword ptr [0x75c211e0]   ; KERNEL32.dll!lstrcpyA
+75c24cdf  jmp      0x75c24cf9
+75c24ce1  lea      eax, [ebp - 8]
+75c24ce4  push     eax
+75c24ce5  lea      eax, [ebp - 0x58]
+75c24ce8  push     eax
+75c24ce9  lea      eax, [ebp - 0x15c]
+75c24cef  push     eax
+75c24cf0  push     dword ptr [ebp - 4]
+75c24cf3  call     dword ptr [0x75c2101c]   ; ADVAPI32.dll!RegQueryValueA
+75c24cf9  push     dword ptr [ebp + 8]
+75c24cfc  lea      eax, [ebp - 0x58]
+75c24cff  push     eax
+75c24d00  call     dword ptr [0x75c2120c]   ; KERNEL32.dll!lstrcmpiA
+75c24d06  test     eax, eax
+75c24d08  je       0x75c24d5d
+75c24d0a  inc      ebx
+75c24d0b  jmp      0x75c24ca9
+75c24d0d  push     dword ptr [ebp - 4]
+75c24d10  call     dword ptr [0x75c21034]   ; ADVAPI32.dll!RegCloseKey
+75c24d16  lea      eax, [ebp - 0x15c]
+75c24d1c  push     esi
+75c24d1d  push     eax
+75c24d1e  push     dword ptr [ebp + 0x10]
+75c24d21  call     0x75c24940
+75c24d26  test     eax, eax
+75c24d28  je       0x75c24d3d
+75c24d2a  push     dword ptr [ebp + 8]
+75c24d2d  lea      eax, [ebp - 0x15c]
+75c24d33  push     eax
+75c24d34  call     0x75c24a74
+75c24d39  test     eax, eax
+75c24d3b  jne      0x75c24d66
+75c24d3d  inc      dword ptr [ebp + 0xc]
+75c24d40  push     esi
+75c24d41  push     dword ptr [ebp + 0x10]
+75c24d44  push     dword ptr [ebp + 0xc]
+75c24d47  call     0x75c24830
+75c24d4c  test     eax, eax
+75c24d4e  jne      0x75c24c75
+75c24d54  xor      eax, eax
+75c24d56  pop      edi
+75c24d57  pop      esi
+75c24d58  pop      ebx
+75c24d59  leave    
+75c24d5a  ret      0xc
+75c24d5d  push     dword ptr [ebp - 4]
+75c24d60  call     dword ptr [0x75c21034]   ; ADVAPI32.dll!RegCloseKey
+75c24d66  mov      eax, dword ptr [ebp + 0xc]
+75c24d69  inc      eax
+75c24d6a  jmp      0x75c24d56
