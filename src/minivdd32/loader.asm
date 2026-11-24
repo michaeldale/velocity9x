@@ -1,9 +1,9 @@
 ; Velocity9x first boot-loadable Windows 9x mini-VDD.
 ;
 ; This stage verifies the master VDD ABI, installs legacy VESA and Windows 98
-; monitor-power callbacks, and emits bounded COM1 diagnostics. It advertises
-; D0 only because the VESA BIOS resume path can blank an S3 ViRGE display
-; without reliably restoring the active high-resolution framebuffer.
+; monitor-power callbacks, and emits bounded COM1 diagnostics. S3 builds, and
+; ati builds on a Mach64, advertise monitor D0-D3; everything else D0 only.
+; The caps callback says why.
 
 ; .586p, not .386p, for CPUID and RDMSR in the memory-type inspection below.
 ; Nothing here executes either instruction without first proving at run time
@@ -175,6 +175,16 @@ V9xAtiChipIds   dw V9X_ATI_RAGE_IIC_ID, 4754h, 4755h, 4756h, 4759h, 475ah
                 dw 4c44h, 4c49h, 4c50h, 4c51h, 4c4eh, 4c52h, 4c53h
 V9xAtiMmioBase   dd 0
 V9xAtiMmioLinear dd 0
+ENDIF
+
+IFDEF V9X_ATI_DPMS
+; The Mach64 VT2 and its VT3/VT4 aliases, which have no MMIO window above
+; and so are not in V9xAtiChipIds; V9xMini_Ati_Find_Crtc checks both lists.
+V9X_ATI_VT_COUNT        equ 3
+V9xAtiVtIds     dw 5654h, 5655h, 5656h
+; The Mach64 CRTC_GEN_CNTL port, block I/O base + 1Ch, or 0 when no Mach64
+; with a block I/O BAR was found at Device_Init.
+V9xAtiCrtcGenCntlPort dd 0
 ENDIF
 
 IFDEF V9X_R128_MMIO
@@ -1623,6 +1633,139 @@ V9xMini_Dpms_Done:
 ENDIF
 EndProc V9xMini_Set_Dpms
 
+IFDEF V9X_ATI_DPMS
+; The Mach64's monitor power, for the ati family only: V9xMini_Set_Dpms stays a
+; bare ret outside S3 builds, so its callers call this beside it, and the VESA
+; post hook calls it with D0 after every 4F02h mode set.
+;
+; CRTC_GEN_CNTL bit 2 disables horizontal sync and bit 3 vertical sync
+; (xf86-video-mach64 atiregs.h; ATIMach64SetDPMSMode in atimach64.c maps
+; standby to HSYNC_DIS, suspend to VSYNC_DIS, off to both, and on to
+; neither). Reached as a dword at block I/O base + 1Ch: CRTC_GEN_CNTL is
+; block index 07h, and atiprobe.c takes block I/O whenever BAR1 is present.
+; Without this D0, an APM Stand By left the 86Box Mach64 VT2 dark
+; (docs\decisions\2026-11-24-standby-monitor-power-s3-ati.md); later Radeons
+; keep their sync controls elsewhere and are not found here.
+V9X_M64_BLOCK_CRTC_GEN_CNTL equ 1ch
+V9X_M64_CRTC_HSYNC_DIS      equ 04h
+V9X_M64_CRTC_VSYNC_DIS      equ 08h
+V9X_ATI_PCI_ADDRESS         equ 0cf8h  ; PCI configuration mechanism 1
+V9X_ATI_PCI_DATA            equ 0cfch
+V9X_ATI_PCI_ENABLE          equ 80000000h
+V9X_ATI_PCI_COMMAND         equ 04h
+V9X_ATI_PCI_BAR1            equ 14h
+V9X_ATI_PCI_BUS_MAX         equ 16     ; bus 0-15, as V9xMini_Find_Adapter
+V9X_ATI_VENDOR              equ 1002h
+
+; Entry: CL = the SR0D bits of V9xMini_Set_Dpms (00h D0, 10h D1, 40h D2,
+; 50h D3). All registers and flags are preserved.
+BeginProc V9xMini_Ati_Set_Dpms
+    pushfd
+    pushad
+    mov     edx, V9xAtiCrtcGenCntlPort
+    test    edx, edx
+    jz      short V9xMini_Ati_Dpms_Done
+
+    ; SR0D bit 4 (D1, standby) is horizontal sync off, bit 6 (D2, suspend)
+    ; vertical sync off; D3 sets both.
+    xor     ebx, ebx
+    test    cl, 10h
+    jz      short V9xMini_Ati_Dpms_V
+    or      bl, V9X_M64_CRTC_HSYNC_DIS
+V9xMini_Ati_Dpms_V:
+    test    cl, 40h
+    jz      short V9xMini_Ati_Dpms_Write
+    or      bl, V9X_M64_CRTC_VSYNC_DIS
+V9xMini_Ati_Dpms_Write:
+    in      eax, dx
+    and     eax, NOT (V9X_M64_CRTC_HSYNC_DIS OR V9X_M64_CRTC_VSYNC_DIS)
+    or      eax, ebx
+    out     dx, eax
+
+V9xMini_Ati_Dpms_Done:
+    popad
+    popfd
+    ret
+EndProc V9xMini_Ati_Set_Dpms
+
+; Device_Init: find the first Mach64-class function (V9xAtiVtIds or
+; V9xAtiChipIds) with I/O decoding on and an I/O BAR1, and record its
+; CRTC_GEN_CNTL port. Reads config space only; no BAR sizing. A port that
+; reads all ones is not decoding and is not recorded.
+BeginProc V9xMini_Ati_Find_Crtc
+    pushad
+    mov     ebx, V9X_ATI_PCI_ENABLE
+
+V9xMini_Ati_Find_Next_Fn:
+    mov     eax, ebx
+    mov     dx, V9X_ATI_PCI_ADDRESS
+    out     dx, eax
+    mov     dx, V9X_ATI_PCI_DATA
+    in      eax, dx
+    cmp     ax, V9X_ATI_VENDOR
+    jne     short V9xMini_Ati_Find_Skip
+    shr     eax, 16
+
+    xor     ecx, ecx
+V9xMini_Ati_Find_Vt:
+    cmp     ax, V9xAtiVtIds[ecx*2]
+    je      short V9xMini_Ati_Find_Match
+    inc     ecx
+    cmp     ecx, V9X_ATI_VT_COUNT
+    jb      short V9xMini_Ati_Find_Vt
+    xor     ecx, ecx
+V9xMini_Ati_Find_Chip:
+    cmp     ax, V9xAtiChipIds[ecx*2]
+    je      short V9xMini_Ati_Find_Match
+    inc     ecx
+    cmp     ecx, V9X_ATI_CHIP_COUNT
+    jb      short V9xMini_Ati_Find_Chip
+
+V9xMini_Ati_Find_Skip:
+    add     ebx, 100h
+    cmp     ebx, V9X_ATI_PCI_ENABLE + (V9X_ATI_PCI_BUS_MAX shl 16)
+    jb      short V9xMini_Ati_Find_Next_Fn
+    jmp     short V9xMini_Ati_Find_None
+
+V9xMini_Ati_Find_Match:
+    lea     eax, [ebx + V9X_ATI_PCI_COMMAND]
+    mov     dx, V9X_ATI_PCI_ADDRESS
+    out     dx, eax
+    mov     dx, V9X_ATI_PCI_DATA
+    in      eax, dx
+    test    al, 1                      ; I/O space decoding
+    jz      short V9xMini_Ati_Find_Skip
+    lea     eax, [ebx + V9X_ATI_PCI_BAR1]
+    mov     dx, V9X_ATI_PCI_ADDRESS
+    out     dx, eax
+    mov     dx, V9X_ATI_PCI_DATA
+    in      eax, dx
+    test    al, 1                      ; an I/O BAR
+    jz      short V9xMini_Ati_Find_Skip
+    and     eax, 0fffch
+    jz      short V9xMini_Ati_Find_Skip
+    add     eax, V9X_M64_BLOCK_CRTC_GEN_CNTL
+    mov     edx, eax
+    in      eax, dx
+    cmp     eax, 0ffffffffh
+    je      short V9xMini_Ati_Find_Skip
+    mov     V9xAtiCrtcGenCntlPort, edx
+    mov     esi, OFFSET32 V9xMiniAtiDpmsFoundLine
+    mov     ecx, V9xMiniAtiDpmsFoundLineLength
+    call    V9xMini_Serial_Write
+    jmp     short V9xMini_Ati_Find_Done
+
+V9xMini_Ati_Find_None:
+    mov     esi, OFFSET32 V9xMiniAtiDpmsNoneLine
+    mov     ecx, V9xMiniAtiDpmsNoneLineLength
+    call    V9xMini_Serial_Write
+
+V9xMini_Ati_Find_Done:
+    popad
+    ret
+EndProc V9xMini_Ati_Find_Crtc
+ENDIF
+
 ; Windows 98 DDK SET_MONITOR_POWER_STATE callback.
 ; Entry: [ESP+4] devnode, [ESP+8] CM_POWERSTATE_D0..D3.
 ; Exit:  EAX = CR_SUCCESS when handled, CR_DEFAULT for an unknown state.
@@ -1642,6 +1785,9 @@ BeginProc MiniVDD_SetMonitorPowerState
 V9xMini_Set_Monitor_D0:
     xor     ecx, ecx
     call    V9xMini_Set_Dpms
+IFDEF V9X_ATI_DPMS
+    call    V9xMini_Ati_Set_Dpms
+ENDIF
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     eax, V9X_I9XX_EVENT_KIND_DPMS
     xor     ebx, ebx
@@ -1662,6 +1808,9 @@ V9xMini_Set_Monitor_D3:
     mov     ecx, 50h
 V9xMini_Set_Monitor_Low_Power:
     call    V9xMini_Set_Dpms
+IFDEF V9X_ATI_DPMS
+    call    V9xMini_Ati_Set_Dpms
+ENDIF
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     eax, V9X_I9XX_EVENT_KIND_DPMS
     movzx   ebx, cx
@@ -1674,10 +1823,50 @@ ENDIF
     ret
 EndProc MiniVDD_SetMonitorPowerState
 
-; Windows 98 DDK GET_MONITOR_POWER_STATE_CAPS callback. Resume through the
-; Win98 VESA fallback is not reliable for this driver, so advertise D0 only.
+; Windows 98 DDK GET_MONITOR_POWER_STATE_CAPS callback.
+;
+; S3 builds advertise D0-D3, because their V9xMini_Set_Dpms has a body: Windows
+; then calls SET_MONITOR_POWER_STATE low before an APM Stand By and D0 after
+; the resume, and the D0 write clears the SR0D/CR56 sync-disable bits that
+; something outside our hooks sets across the suspend. Advertising D0 only
+; (2026-08-11) left those bits set and the screen off after Stand By on the
+; 86Box ViRGE/DX; D0-D3 brought it back there, and a monitor off/on cycle too
+; (docs\decisions\2026-11-24-standby-monitor-power-s3-ati.md).
+;
+; ati builds advertise D0-D3 when V9xMini_Ati_Find_Crtc found a Mach64 to
+; write; on a Radeon, which it does not find, they keep D0 only. With D0-D3
+; and no D0 body the 86Box Mach64 VT2 stayed dark (same record).
+;
+; Every other family keeps D0 only: its Set_Dpms is a bare ret, so a D0 call
+; would restore nothing. -MonitorPowerTrial advertises D0-D3 in any family
+; but ati, as an instrument.
 BeginProc MiniVDD_GetMonitorPowerStateCaps
+IFDEF V9X_S3_DPMS
+    mov     eax, 0000000fh
+ELSEIFDEF V9X_ATI_DPMS
+    ; D0-D3 only when a Mach64's CRTC_GEN_CNTL was found to write.
     mov     eax, 00000001h
+    cmp     V9xAtiCrtcGenCntlPort, 0
+    je      short V9xMini_Caps_Done
+    mov     eax, 0000000fh
+ELSEIFDEF V9X_MONITOR_POWER_TRIAL
+    mov     eax, 0000000fh
+ELSE
+    mov     eax, 00000001h
+ENDIF
+V9xMini_Caps_Done:
+IFDEF V9X_VESA_TRACE
+    ; Which caps Windows was given, and when it asked.
+    pushfd
+    pushad
+    mov     edi, OFFSET32 V9xMiniCapsTraceAt
+    call    V9xMini_Vesa_Trace_Hex16
+    mov     esi, OFFSET32 V9xMiniCapsTraceLine
+    mov     ecx, V9xMiniCapsTraceLineLength
+    call    V9xMini_Serial_Write
+    popad
+    popfd
+ENDIF
     ret
 EndProc MiniVDD_GetMonitorPowerStateCaps
 
@@ -1769,6 +1958,9 @@ V9xMini_Vesa_D3:
     mov     ecx, 50h
 V9xMini_Vesa_Apply:
     call    V9xMini_Set_Dpms
+IFDEF V9X_ATI_DPMS
+    call    V9xMini_Ati_Set_Dpms
+ENDIF
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     eax, V9X_I9XX_EVENT_KIND_DPMS
     movzx   ebx, byte ptr [ebp.Client_BH]
@@ -1811,6 +2003,20 @@ IFDEF V9X_VESA_TRACE
     popad
     popfd
 ENDIF
+IFDEF V9X_ATI_DPMS
+    ; A VBE mode set means the display is wanted on: clear the Mach64's sync
+    ; disables after it. Windows re-enables the display through 4F02h after
+    ; every APM resume, but called SET_MONITOR_POWER_STATE across Stand By on
+    ; one 86Box Mach64 boot in four, and the BIOS mode set leaves the bits as
+    ; they are (docs\decisions\2026-11-24-standby-monitor-power-s3-ati.md).
+    cmp     dx, 4f02h
+    jne     short V9xMini_Vesa_Post_Not_Mode
+    push    ecx
+    xor     ecx, ecx
+    call    V9xMini_Ati_Set_Dpms
+    pop     ecx
+V9xMini_Vesa_Post_Not_Mode:
+ENDIF
     cmp     dx, 4f10h
     jne     short V9xMini_Vesa_Post_Done
     push    eax
@@ -1822,6 +2028,9 @@ ENDIF
     push    ecx
     xor     ecx, ecx
     call    V9xMini_Set_Dpms
+IFDEF V9X_ATI_DPMS
+    call    V9xMini_Ati_Set_Dpms
+ENDIF
 IFDEF V9X_INTEL_MMIO_FINGERPRINT
     mov     eax, V9X_I9XX_EVENT_KIND_DPMS
     xor     ebx, ebx
@@ -7463,6 +7672,11 @@ IFDEF V9X_SCREEN_SWITCH_HOOKS
     MiniVDDDispatch POST_HIRES_TO_VGA, TracePostHiResToVGA
     MiniVDDDispatch PRE_VGA_TO_HIRES, TracePreVGAToHiRes
     MiniVDDDispatch POST_VGA_TO_HIRES, TracePostVGAToHiRes
+ENDIF
+
+IFDEF V9X_ATI_DPMS
+    ; Before the table-size test: the VESA hooks call the ATI body too.
+    call    V9xMini_Ati_Find_Crtc
 ENDIF
 
     ; Power callbacks were added to the Windows 98 (4.1) dispatch table.

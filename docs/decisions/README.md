@@ -31,6 +31,7 @@ A decision record is a dated finding or choice, with the evidence that produced 
 - [2026-08-10 Display Properties settings page](2026-08-10-display-properties-settings-page.md)
 - [2026-08-10 Dynamic mode switching (build modesw-1)](2026-08-10-dynamic-mode-switching.md)
 - [2026-08-11 Monitor power management boundary (2026-08-11)](2026-08-11-monitor-power-management.md)
+- [2026-11-24 Stand By on 86Box: s3 advertises monitor D0-D3 again, ati clears the Mach64 sync disables after every mode set; both screens come back](2026-11-24-standby-monitor-power-s3-ati.md)
 - [2026-08-14 S3 Trio64 conservative framebuffer bring-up](2026-08-14-trio64-bringup.md)
 - [2026-08-20 32-bpp and 1280x1024 mode matrix, both S3 chips](2026-08-20-high-depth-mode-matrix.md)
 

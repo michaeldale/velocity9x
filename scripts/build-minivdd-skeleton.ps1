@@ -81,6 +81,10 @@ param(
     # cannot be hooked without breaking the transition, and these two are the
     # only callbacks of ours left that might be reached on that path.
     [switch]$VesaTrace,
+    # -MonitorPowerTrial advertises monitor D0-D3 instead of D0 only, to see
+    # whether Windows calls SET_MONITOR_POWER_STATE across an APM Stand By.
+    # An instrument: the 2026-08-11 decision withholds the low states.
+    [switch]$MonitorPowerTrial,
     # Which family's baseline VBE mode numbers become the generated rescue-probe
     # list. The mini-VDD image itself is family-independent apart from this list
     # and the -DisableVbeCollect gate, which is why the parameter is optional:
@@ -137,6 +141,9 @@ $objectPath = Join-Path $outputDir "loader.obj"
 $vxdPath = Join-Path $outputDir "v9xmini.vxd"
 $mapPath = Join-Path $outputDir "v9xmini.map"
 $s3Dpms = ($Family -eq 's3') -and (-not $NoDpms)
+# The Mach64's CRTC_GEN_CNTL sync bits, written only by the ati family image
+# (V9xMini_Ati_Set_Dpms says why it is a separate proc).
+$atiDpms = ($Family -eq 'ati') -and (-not $NoDpms)
 $intelMmio = ($Family -eq 'intel-gma')
 # The Rage Mobility-M's register BAR map for its Direct3D engine.
 $atiMmio = ($Family -eq 'ati')
@@ -238,6 +245,14 @@ if (-not $NoInt10Guard) {
         "V9xMiniInt10GuardLineLength equ `$ - V9xMiniInt10GuardLine"
     )
 }
+if ($atiDpms) {
+    $buildIncludeLines += @(
+        "V9xMiniAtiDpmsFoundLine db `"V9X-MINI ati-dpms mach64 build=$vxdBuildId`", 13, 10",
+        "V9xMiniAtiDpmsFoundLineLength equ `$ - V9xMiniAtiDpmsFoundLine",
+        "V9xMiniAtiDpmsNoneLine db `"V9X-MINI ati-dpms none build=$vxdBuildId`", 13, 10",
+        "V9xMiniAtiDpmsNoneLineLength equ `$ - V9xMiniAtiDpmsNoneLine"
+    )
+}
 if (-not $s3Dpms) {
     $buildIncludeLines += @(
         "V9xMiniDpmsDisabledLine db `"V9X-MINI dpms-guarded family=$Family build=$vxdBuildId`", 13, 10",
@@ -259,7 +274,10 @@ if ($VesaTrace) {
         "V9xMiniVesaPostLine db `"V9X-MINI vesa-post-entry dx=0000 bx=0000`", 13, 10",
         "V9xMiniVesaPostLineLength equ `$ - V9xMiniVesaPostLine",
         "V9xMiniVesaPostDxAt equ V9xMiniVesaPostLine + 28",
-        "V9xMiniVesaPostBxAt equ V9xMiniVesaPostLine + 36"
+        "V9xMiniVesaPostBxAt equ V9xMiniVesaPostLine + 36",
+        "V9xMiniCapsTraceLine db `"V9X-MINI monitor-caps 0000`", 13, 10",
+        "V9xMiniCapsTraceLineLength equ `$ - V9xMiniCapsTraceLine",
+        "V9xMiniCapsTraceAt equ V9xMiniCapsTraceLine + 22"
     )
 }
 if ($ScreenSwitchQuiet) {
@@ -436,6 +454,9 @@ if ($VgaReturn) {
 if ($s3Dpms) {
     $assemblerArguments = @("-DV9X_S3_DPMS") + $assemblerArguments
 }
+if ($atiDpms) {
+    $assemblerArguments = @("-DV9X_ATI_DPMS") + $assemblerArguments
+}
 if ($intelMmio) {
     $assemblerArguments = @("-DV9X_INTEL_MMIO_FINGERPRINT") + $assemblerArguments
     $assemblerArguments = @("-DV9X_I9XX_FIRST_WRITE_EXECUTOR") + $assemblerArguments
@@ -481,6 +502,9 @@ if ($NoScreenSwitch) {
 }
 if ($VesaTrace) {
     $assemblerArguments = @("-DV9X_VESA_TRACE") + $assemblerArguments
+}
+if ($MonitorPowerTrial) {
+    $assemblerArguments = @("-DV9X_MONITOR_POWER_TRIAL") + $assemblerArguments
 }
 if ($ScreenSwitchTrace -or $ScreenSwitchQuiet) {
     # Both of these dispatch a callback the observer hooks also dispatch, and

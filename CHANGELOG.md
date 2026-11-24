@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 0.61.0 - not yet released
 
+- **S3 and ATI Mach64: the screen comes back after Stand By, and the
+  monitor can sleep again.** Before, the screen stayed off after a
+  resume. The S3 driver now tells Windows it supports the monitor's
+  low-power states, so Windows asks it to turn the monitor back on. On a
+  Mach64 the driver also turns the monitor back on whenever the display
+  mode is set, which Windows does after every resume. Measured on 86Box
+  only, on a ViRGE/DX and a Mach64 VT2: Stand By and resume, and a
+  monitor off/on cycle, bring the desktop back. No physical card was run,
+  and Radeons are unchanged
+  ([issue](docs/issues/2026-11-24-s3-ati-screen-off-after-standby-86box.md)).
 - **Every package: INSTALL.TXT is written for users.** It was the
   bring-up text ("not a release driver", cold-copy the VM disk, capture
   COM1). It now covers what to have ready, the Have Disk steps, the

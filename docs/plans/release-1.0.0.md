@@ -57,7 +57,7 @@ Fix, or measure and document, before the first release candidate.
 | B6 | A square follows the cursor over a full-screen game with the desktop copy ([issue](../issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)) | The reporter confirms `NOSHADOW.TXT` removes it; not fixed | Fixed, and confirmed by the reporter or reproduced on the R3E or R7E |
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI` | Explained from the files, or the row marked Experimental |
 | B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
-| B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | 2026-11-24 on 86Box (Stand By pauses the emulator, no power loss): `vbe` and `matrox` come back; `s3` and `ati` leave the screen off where the vendors' drivers do not ([issue](../issues/2026-11-24-s3-ati-screen-off-after-standby-86box.md)); no laptop yet | Measured on one laptop; fixed, or a README line saying what happens |
+| B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | 2026-11-24 on 86Box (Stand By pauses the emulator, no power loss): `vbe` and `matrox` come back; `s3` and `ati` (Mach64 VT2) now come back too ([record](../decisions/2026-11-24-standby-monitor-power-s3-ati.md), [issue](../issues/2026-11-24-s3-ati-screen-off-after-standby-86box.md)); Radeons not run; no laptop yet | Measured on one laptop; fixed, or a README line saying what happens |
 | B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; `ati` and `matrox` done the same day on 86Box Mach64 VT2 and Millennium, the tab's cause corrected (DESK.CPL's OEMCPL.INF seed); `vbe` stops at `fail-hardware-vbe-mode` on a ViRGE/DX and passes on a Millennium (VBE LFB, enable-ok 1024x768x16); `intel-gma`, `nvidia`, `sis`, `3dfx` owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
 | B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Closed 2026-11-23: six logs roll over at 2 MiB, all listed in `diagpaths.h` | Every log the driver writes by default is bounded, listed in one place |
@@ -321,6 +321,17 @@ bring it back. Windows calls none of our monitor-power callbacks (D0
 only since 2026-08-11) and sends no 4F10h; cause not found, filed. A
 laptop is still owed. The `-VesaTrace` lines now carry the VESA function
 and BX (trace builds only).
+
+B9 later the same evening
+([record](../decisions/2026-11-24-standby-monitor-power-s3-ati.md)): with
+monitor D0-D3 advertised, Windows calls low before Stand By and D0 after
+Resume. `s3` builds now advertise them, and the ViRGE/DX desktop comes
+back after Stand By and after a monitor off/on cycle; the 2026-08-11 lost
+display did not reproduce. `ati` now has a Mach64 D0 (CRTC_GEN_CNTL bits
+2-3), run on the callbacks and after every VBE mode set, because Windows
+called the callbacks on only one Mach64 boot in four; the VT2 desktop
+comes back after Stand By (twice) and a monitor cycle. Physical cards and
+Radeons are not run.
 
 Gate item 2 measured on main on four 86Box guests (Trio64, Trio32,
 Millennium, Mach64 VT2; the ViRGE/DX guest was in use):

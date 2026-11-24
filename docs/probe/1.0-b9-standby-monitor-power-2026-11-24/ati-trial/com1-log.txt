@@ -1,0 +1,189 @@
+V9X-MINI init build=6f5ce760
+V9X-MINI power-callbacks-ok callbacks=4 build=6f5ce760
+V9X-MINI dpms-guarded family=ati build=6f5ce760
+V9X-MINI advfunc-shield on build=6f5ce760
+V9X-MINI int10-guard on build=6f5ce760
+V9X-MINI vbe-collect start build=6f5ce760
+V9X-MINI vbe-call fn=4f00 arg=0000
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0100
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0101
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0110
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0111
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0112
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=006a
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0102
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0103
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0113
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0114
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0115
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0104
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0105
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0116
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0117
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0118
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0107
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0119
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=011a
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=011b
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0202
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=010d
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=010e
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=010f
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0212
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0213
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0214
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0215
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0222
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0223
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0224
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0225
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f15 arg=0000
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f15 arg=0000
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-status ptr=0725:0022 self=0001 listed=0020 queried=0020 cached=001d failed=0003 overflow=0000 probed=0000 flags=0107
+V9X-MINI vbe-collect done
+VV9X-MINI regdd-called
+V9X-MINI vram-asked
+V9X-MINI regdd-called
+VV9X-MINI init build=pwrtriat
+V9X-MINI power-callbacks-ok callbacks=4 build=pwrtriat
+V9X-MINI dpms-guarded family=ati build=pwrtriat
+V9X-MINI advfunc-shield on build=pwrtriat
+V9X-MINI int10-guard on build=pwrtriat
+V9X-MINI vbe-collect start build=pwrtriat
+V9X-MINI vbe-call fn=4f00 arg=0000
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0100
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0101
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0110
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0111
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0112
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=006a
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0102
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0103
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0113
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0114
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0115
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0104
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0105
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0116
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0117
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0118
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0107
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0119
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=011a
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=011b
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0202
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=010d
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=010e
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=010f
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0212
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0213
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0214
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0215
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0222
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0223
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0224
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f01 arg=0225
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f15 arg=0000
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-call fn=4f15 arg=0000
+V9X-MINI vbe-call ret=004f
+V9X-MINI vbe-status ptr=0725:0022 self=0001 listed=0020 queried=0020 cached=001d failed=0003 overflow=0000 probed=0000 flags=0107
+V9X-MINI vbe-collect done
+VV9X-MINI regdd-called
+V9X-MINI vesa-support-entry ax=4f02 bx=4117
+V9X-MINI vesa-post-entry dx=4f02 bx=4117
+V9X-MINI vram-asked
+V9X-MINI vesa-support-entry ax=4f06 bx=0001
+V9X-MINI vesa-post-entry dx=4f06 bx=0800
+V9X-MINI regdd-called
+V9X-MINI monitor-power low
+V9X-MINI monitor-power D0
+V9X-MINI monitor-power low
+V9X-MINI monitor-power D0
+V9X-MINI vesa-support-entry ax=4f15 bx=7c00
+V9X-MINI vesa-post-entry dx=4f15 bx=0202
+V9X-MINI vesa-support-entry ax=4f15 bx=7c01
+V9X-MINI vesa-post-entry dx=4f15 bx=7c01
+V9X-MINI vesa-support-entry ax=4f15 bx=1500
+V9X-MINI vesa-post-entry dx=4f15 bx=0202
+V9X-MINI vesa-support-entry ax=4f15 bx=1501
+V9X-MINI vesa-post-entry dx=4f15 bx=1501
+V9X-MINI vesa-support-entry ax=4f02 bx=4117
+V9X-MINI vesa-post-entry dx=4f02 bx=4117
+V9X-MINI vram-asked
+V9X-MINI vesa-support-entry ax=4f06 bx=0001
+V9X-MINI vesa-post-entry dx=4f06 bx=0800
+V9X-MINI vesa-support-entry ax=4f02 bx=4117
+V9X-MINI vesa-post-entry dx=4f02 bx=4117
+V9X-MINI vram-asked
+V9X-MINI vesa-support-entry ax=4f06 bx=0001
+V9X-MINI vesa-post-entry dx=4f06 bx=0800
+V

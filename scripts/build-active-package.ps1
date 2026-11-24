@@ -41,6 +41,9 @@ param(
     # no dispatch entry. They are the only callbacks of ours that might still be
     # reached on the DOS-box path.
     [switch]$VesaTrace,
+    # Advertise monitor D0-D3 from the mini-VDD; an instrument for the Stand By
+    # issue, see build-minivdd-skeleton.ps1.
+    [switch]$MonitorPowerTrial,
     # The caller has already run build-shared-components.ps1 with this
     # BuildId; build-all-packages.ps1 does, once for every family.
     [switch]$SkipShared
@@ -86,7 +89,7 @@ $miniVddVbeCollect = ($familyManifest.Build.MiniVddVbeCollect -ne $false)
     -DisableVbeCollect:(-not $miniVddVbeCollect) -ModeSweep:$ModeSweep `
     -VgaReturn:$VgaReturn -NoDpms:$NoDpms -NoScreenSwitch:$NoScreenSwitch `
     -ScreenSwitchTrace:$ScreenSwitchTrace -ScreenSwitchQuiet:$ScreenSwitchQuiet `
-    -VesaTrace:$VesaTrace
+    -VesaTrace:$VesaTrace -MonitorPowerTrial:$MonitorPowerTrial
 & (Join-Path $PSScriptRoot "build-settings.ps1") -BuildId $BuildId `
     -ModesSummary $familyManifest.Package.ModesSummary
 & (Join-Path $PSScriptRoot "build-settings-page.ps1") -BuildId $BuildId `

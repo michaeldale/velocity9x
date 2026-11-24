@@ -1,6 +1,7 @@
 # s3 and ati: after Stand By the screen stays off (86Box)
 
-Date: 2026-11-24. Status: open, cause not found. Found on 86Box only.
+Date: 2026-11-24. Status: fixed on 86Box for `s3` and `ati` (Mach64 VT2)
+the same day (see the end); physical cards not run. Found on 86Box only.
 
 ## Symptom
 
@@ -35,3 +36,27 @@ calls D0 on resume and the screen returns, and whether that brings back
 the 2026-08-11 monitor-timeout blank. B9 still needs a laptop.
 
 Record: [2026-11-24-1.0-b5-b9-86box.md](../decisions/2026-11-24-1.0-b5-b9-86box.md).
+
+## 2026-11-24, later: s3 fixed on 86Box, ati open
+
+86Box reads the ViRGE as asleep while SR0D & 50h or CR56 & 06h is set,
+the Mach64 while CRTC_GEN_CNTL & 0Ch is set. With monitor D0-D3
+advertised (an instrument build), Windows calls low before Stand By and
+D0 after Resume on both cards. On the ViRGE the S3 D0 body clears the
+bits and the desktop returns; `s3` builds now advertise D0-D3. On the
+Mach64 our D0 writes nothing and the screen stays off, so the bits are set
+by something outside our hooks, still not identified.
+[Record](../decisions/2026-11-24-standby-monitor-power-s3-ati.md).
+
+## 2026-11-24, evening: ati fixed on 86Box
+
+The Mach64 now has a D0 body (CRTC_GEN_CNTL bits 2-3 through block I/O
+BAR1 + 1Ch). Windows called the monitor callbacks across Stand By on one
+Mach64 boot in four, so the D0 also runs after every VBE 4F02h mode set,
+which is how the display driver re-enables after each resume. Stand By
+twice and a monitor cycle on the VT2: desktop back each time.
+[Record](../decisions/2026-11-24-standby-monitor-power-s3-ati.md).
+
+Still open: physical cards (S3, Mach64 class), Radeons (other registers;
+not run after Stand By), what sets the bits across Stand By, and why the
+Mach64 boots differ. B9 still needs a laptop.
