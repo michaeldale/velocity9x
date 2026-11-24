@@ -28,3 +28,14 @@ picture is unknown.
 On one laptop (the netbook or the Gateway), a suspend and resume through
 the Start menu returns to an intact desktop, and a DirectDraw program
 started after it runs; the record says whether the mode had been lost.
+
+## 2026-11-24: 86Box
+
+Stand By on 86Box pauses the emulator, so the card keeps its power and
+the mode cannot be lost there. `vbe` and `matrox` (Millennium) come back
+to the desktop and V9XWPRS passes after the resume. `s3` (ViRGE/DX) and
+`ati` (Mach64 VT2) leave the screen off while S3's and ATI's own drivers
+bring it back
+([issue](2026-11-24-s3-ati-screen-off-after-standby-86box.md),
+[record](../decisions/2026-11-24-1.0-b5-b9-86box.md)). The laptop run
+in the acceptance is still owed.

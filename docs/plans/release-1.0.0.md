@@ -53,12 +53,12 @@ Fix, or measure and document, before the first release candidate.
 | B2 | The `ati` gamma hook writes Mach64 DAC offsets into other chips' register windows ([issue](../issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)) | Closed 2026-11-23: only the Mach64-class rows claim gamma; refused on the Rage 128 (host test) and the Oland (measured) | The hook is per engine; a ramp measured on the Rage 128 and one Evergreen-or-later part, or refused there |
 | B3 | Engine-placed render targets are never freed ([issue](../issues/2026-11-15-placed-render-targets-never-freed.md)) | Closed 2026-11-23: freed; V9XRTLK leaks 0 on the Oland and the HD 7660D | A create/destroy loop in a probe leaves the heap where it started on two engines |
 | B4 | DirectX 8 MIPFILTER read with DirectX 7's numbering ([issue](../issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)) | Closed 2026-11-23: fixed in 0.57.0 (`4b0aa6ba`); 3DMark 2001 SE on the HD 4600 reaches MIPNEAREST and MIPLINEAR | The record says which |
-| B5 | Full-screen DOS box and return ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)) | Run on the GMA 950, the HD 4600 and the 86Box ViRGE/DX; issue 16's reporter fails on `vbe` too | A round trip on one physical S3 card, one `ati` Radeon and `vbe`; the reporter's case explained |
+| B5 | Full-screen DOS box and return ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)) | Run on the GMA 950, the HD 4600 and the 86Box ViRGE/DX; issue 16's reporter fails on `vbe` too; 2026-11-24: passes on 86Box with `vbe` (Millennium), `matrox` and `ati` (Mach64 VT2, not a Radeon) | A round trip on one physical S3 card, one `ati` Radeon and `vbe`; the reporter's case explained |
 | B6 | A square follows the cursor over a full-screen game with the desktop copy ([issue](../issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)) | The reporter confirms `NOSHADOW.TXT` removes it; not fixed | Fixed, and confirmed by the reporter or reproduced on the R3E or R7E |
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI` | Explained from the files, or the row marked Experimental |
 | B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
-| B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | Untested on any machine | Measured on one laptop; fixed, or a README line saying what happens |
-| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; `ati` and `matrox` done the same day on 86Box Mach64 VT2 and Millennium, the tab's cause corrected (DESK.CPL's OEMCPL.INF seed); `vbe` installs but stops at `fail-hardware-vbe-mode` on a ViRGE/DX; `vbe` on an LFB BIOS, `intel-gma`, `nvidia`, `sis`, `3dfx` owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
+| B9 | Suspend and resume ([issue](../issues/2026-11-06-no-mode-restore-after-resume.md)) | 2026-11-24 on 86Box (Stand By pauses the emulator, no power loss): `vbe` and `matrox` come back; `s3` and `ati` leave the screen off where the vendors' drivers do not ([issue](../issues/2026-11-24-s3-ati-screen-off-after-standby-86box.md)); no laptop yet | Measured on one laptop; fixed, or a README line saying what happens |
+| B10 | The install path: Have Disk from the released zip, the 16-colour first install ([issue](../issues/2026-11-07-first-install-stays-at-16-colours.md)), the V9XDISP.DRV prompt ([issue](../issues/2026-08-29-inf-asks-for-v9xdisp-drv.md)) | `s3` done 2026-11-24 (released 0.60.0 zip on a fresh 86Box ViRGE/DX: enable-ok; the missing Display Properties tab found and fixed); INSTALL.TXT rewritten for users 2026-11-24; `ati` and `matrox` done the same day on 86Box Mach64 VT2 and Millennium, the tab's cause corrected (DESK.CPL's OEMCPL.INF seed); `vbe` stops at `fail-hardware-vbe-mode` on a ViRGE/DX and passes on a Millennium (VBE LFB, enable-ok 1024x768x16); `intel-gma`, `nvidia`, `sis`, `3dfx` owed | One Have Disk install per package from the signed zip, on a guest or machine that has never had the driver |
 | B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Closed 2026-11-23: six logs roll over at 2 MiB, all listed in `diagpaths.h` | Every log the driver writes by default is bounded, listed in one place |
 | B13 | The updater's rollback, and an update taken on physical hardware | STATUS.md says not exercised, as of 0.23.0; unchecked since | 0.60.0 to the release candidate through Check for updates on one machine; one rollback from the backup |
@@ -305,6 +305,20 @@ install and the cleanup path. One Millennium boot hung at the logo after
 a WININIT staging, cause unknown. Owed for B10: `intel-gma`, `nvidia`,
 `sis` and `3dfx` (no 86Box card for them), `vbe` on an LFB BIOS, and the
 release candidate's zips.
+
+### 2026-11-24, evening: B5, B9 and B10 `vbe` on 86Box
+
+([record](../decisions/2026-11-24-1.0-b5-b9-86box.md)) B10: `vbe` by Have
+Disk on a fresh Millennium clone reaches `enable-ok` at 1024x768x16 on
+the BIOS's linear frame buffer. B5: the full-screen DOS box round trip
+passes on `vbe`, `matrox` and `ati` (Mach64 VT2); the physical S3 card,
+a Radeon and the reporter's case are still owed. B9: on 86Box Stand By
+pauses the emulator, so no power is lost; `vbe` and `matrox` come back,
+`s3` and `ati` leave the scanout off while S3's and ATI's own drivers
+bring it back. Windows calls none of our monitor-power callbacks (D0
+only since 2026-08-11) and sends no 4F10h; cause not found, filed. A
+laptop is still owed. The `-VesaTrace` lines now carry the VESA function
+and BX (trace builds only).
 
 **Decision 1 settled (Michael, 2026-11-23):** a refresh-rate choice is
 parked until a release after 1.1.

@@ -252,10 +252,14 @@ if ($intelMmio) {
 }
 if ($VesaTrace) {
     $buildIncludeLines += @(
-        "V9xMiniVesaEntryLine db `"V9X-MINI vesa-support-entry`", 13, 10",
+        "V9xMiniVesaEntryLine db `"V9X-MINI vesa-support-entry ax=0000 bx=0000`", 13, 10",
         "V9xMiniVesaEntryLineLength equ `$ - V9xMiniVesaEntryLine",
-        "V9xMiniVesaPostLine db `"V9X-MINI vesa-post-entry`", 13, 10",
-        "V9xMiniVesaPostLineLength equ `$ - V9xMiniVesaPostLine"
+        "V9xMiniVesaEntryAxAt equ V9xMiniVesaEntryLine + 31",
+        "V9xMiniVesaEntryBxAt equ V9xMiniVesaEntryLine + 39",
+        "V9xMiniVesaPostLine db `"V9X-MINI vesa-post-entry dx=0000 bx=0000`", 13, 10",
+        "V9xMiniVesaPostLineLength equ `$ - V9xMiniVesaPostLine",
+        "V9xMiniVesaPostDxAt equ V9xMiniVesaPostLine + 28",
+        "V9xMiniVesaPostBxAt equ V9xMiniVesaPostLine + 36"
     )
 }
 if ($ScreenSwitchQuiet) {

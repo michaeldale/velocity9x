@@ -1681,6 +1681,30 @@ BeginProc MiniVDD_GetMonitorPowerStateCaps
     ret
 EndProc MiniVDD_GetMonitorPowerStateCaps
 
+IFDEF V9X_VESA_TRACE
+; AX as four ASCII hex digits at EDI, for the VESA trace lines. Its own copy:
+; V9xMini_Hex16 assembles away in builds without the VBE collection.
+; Clobbers EAX, EBX, ECX and EDI; the callers save everything.
+BeginProc V9xMini_Vesa_Trace_Hex16
+    mov     ebx, eax
+    mov     ecx, 4
+V9xMini_Vesa_Trace_Hex16_Next:
+    rol     bx, 4
+    mov     al, bl
+    and     al, 0Fh
+    add     al, '0'
+    cmp     al, '9'
+    jbe     short V9xMini_Vesa_Trace_Hex16_Store
+    add     al, 'a' - '9' - 1
+V9xMini_Vesa_Trace_Hex16_Store:
+    mov     [edi], al
+    inc     edi
+    dec     ecx
+    jnz     short V9xMini_Vesa_Trace_Hex16_Next
+    ret
+EndProc V9xMini_Vesa_Trace_Hex16
+ENDIF
+
 ; Handle VESA DPMS Set Display Power State before the video BIOS sees it.
 ; Legacy master VDDs use this route when their dispatch table predates the
 ; Windows 98 4.1 monitor-power entries.  Carry set means fully handled.
@@ -1700,6 +1724,13 @@ IFDEF V9X_VESA_TRACE
     pushfd
     pushad
 
+    ; The function and BX in the line: "some VESA call arrived" is not
+    ; enough to tell a DPMS call from a mode query.
+    mov     edi, OFFSET32 V9xMiniVesaEntryAxAt
+    call    V9xMini_Vesa_Trace_Hex16
+    mov     ax, [ebp.Client_BX]
+    mov     edi, OFFSET32 V9xMiniVesaEntryBxAt
+    call    V9xMini_Vesa_Trace_Hex16
     mov     esi, OFFSET32 V9xMiniVesaEntryLine
     mov     ecx, V9xMiniVesaEntryLineLength
     call    V9xMini_Serial_Write
@@ -1767,6 +1798,12 @@ IFDEF V9X_VESA_TRACE
     pushfd
     pushad
 
+    mov     ax, dx
+    mov     edi, OFFSET32 V9xMiniVesaPostDxAt
+    call    V9xMini_Vesa_Trace_Hex16
+    mov     ax, [ebp.Client_BX]
+    mov     edi, OFFSET32 V9xMiniVesaPostBxAt
+    call    V9xMini_Vesa_Trace_Hex16
     mov     esi, OFFSET32 V9xMiniVesaPostLine
     mov     ecx, V9xMiniVesaPostLineLength
     call    V9xMini_Serial_Write

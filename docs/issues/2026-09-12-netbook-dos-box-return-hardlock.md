@@ -218,3 +218,13 @@ repainted, commands before, during and after the trip ran in order, live
 switches to 640x480 and back worked, and V9XD32 passed. Status: fixed on
 the GMA 950, the HD 4600 and the 86Box ViRGE/DX
 ([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+
+## 2026-11-24: vbe, matrox and ati on 86Box
+
+The same round trip (`echo AAA` windowed, `echo BBB` in full screen,
+`echo CCC` after the return, `exit`) passes on 86Box with `vbe` and
+`matrox` on a Millennium and `ati` on a Mach64 VT2: the desktop comes
+back repainted with the three lines in order
+([record](../decisions/2026-11-24-1.0-b5-b9-86box.md)). Still owed for
+1.0: a physical S3 card, an `ati` Radeon, and issue 16's reporter's
+`vbe` failure.
