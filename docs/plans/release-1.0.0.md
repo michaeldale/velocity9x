@@ -62,6 +62,7 @@ Fix, or measure and document, before the first release candidate.
 | B11 | Every package README reads "HOST-AUDITED; GUEST ACTIVATION NOT YET TESTED" ([issue](../issues/2026-08-30-package-status-string-is-hardcoded.md)) | Check record done 2026-11-23 (each family's manifest); the tier waits on decision 3 | The line states the package's tier and its check record |
 | B12 | `C:\V9XDIAG\V9XGLD3.LOG` grows without limit; the other diagnostic logs unaudited | Closed 2026-11-23: six logs roll over at 2 MiB, all listed in `diagpaths.h` | Every log the driver writes by default is bounded, listed in one place |
 | B13 | The updater's rollback, and an update taken on physical hardware | STATUS.md says not exercised, as of 0.23.0; unchecked since | 0.60.0 to the release candidate through Check for updates on one machine; one rollback from the backup |
+| B14 | Every Windows 9x supported (decision 2): Windows 95, 98 and Me have no measured configuration beyond a Trio64 on VLB under 95 installed by hand without the mini-VDD, the RIVA 128ZX machine on 98, and one Me reporter | Decided 2026-11-24; nothing measured | On each of 95, 98 and Me: a Have Disk install, the boot, the release probes and the DOS box round trip on at least one card, recorded; what fails is fixed or named in the README; the README's "Will it run on Windows 95 or Windows Me?" answer rewritten from those records |
 
 Not blockers, but re-run for the record before 1.0: the RV630/RV610
 constant-Z after the first CP start, the R3E's first-clear timeout, the
@@ -113,9 +114,10 @@ measurement on the release candidate or stays a named known issue.
    timing. 60 Hz only matters on a CRT, and the VBE 3.0 CRTC builder is
    host-tested and unused
    ([issue](../issues/2026-11-06-no-refresh-rate-choice.md)).
-2. **Windows versions.** Proposed: Windows 98 SE supported; Windows 98
-   first edition (the RIVA 128ZX machine), Windows 95 (S3 VLB only) and
-   Windows Me (one reporter) stated as run, not supported.
+2. **Windows versions. Decided 2026-11-24 (Michael): support all of
+   Windows 9x** - Windows 95, Windows 98, Windows 98 SE and Windows Me.
+   (Proposed before: 98 SE supported, the others stated as run.) What
+   that commits 1.0 to is blocker B14.
 3. **Tier of each card.** The list under Shape is a first reading.
 4. **Length of the soak**, and whether 0.61.0 is the first candidate or
    one more ordinary release.
@@ -329,3 +331,11 @@ repeated on the release candidate.
 
 **Decision 1 settled (Michael, 2026-11-23):** a refresh-rate choice is
 parked until a release after 1.1.
+
+**Decision 2 settled (Michael, 2026-11-24):** every Windows 9x is
+supported: 95, 98, 98 SE and Me. That adds blocker B14 (an install,
+boot, probes and DOS box run on each). Machines that exist: the 486 VLB
+Trio64 under Windows 95 and the RIVA 128ZX remote-help machine under
+Windows 98. There is no 86Box guest of 95, 98 or Me and no Windows Me
+machine, and Claude sessions have no Windows media, so the guests or
+machines for B14 come from Michael.
