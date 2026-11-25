@@ -75,6 +75,8 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_NV50_TEXTURE *texture)
     texture->mip_address = 0ul;
     texture->mip_levels = 0ul;
     texture->mip_tile_mode = 0ul;
+    texture->cube_levels = 0ul;
+    texture->cube_tile_mode = 0ul;
 }
 
 /* Room for a two-unit draw's two entries. */
@@ -357,15 +359,36 @@ static void test_texture(void)
     /* A cube: the same texture's TIC turned into its tiled copy's cube
      * (nv50_d3d.h), wrap or not; then back to an ordinary texture. */
     texture.cube_address = 0x20400000ul;
+    texture.cube_levels = 1ul;
+    texture.cube_tile_mode = 0x40ul;
     CHECK(map(&draw, &texture, &state, &specular) ==
           V9X_D3D_NV50_REFUSE_NONE);
-    v9x_nv50_d3d_tic_cube(0x20400000ul, V9X_NV50_D3D_CUBE_TILE_MODE,
-                          expect_tic, expect_tsc);
+    v9x_nv50_d3d_tic_cube(0x20400000ul, 0x40ul, expect_tic, expect_tsc);
     for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
         CHECK(tic[index] == expect_tic[index]);
         CHECK(tsc[index] == expect_tsc[index]);
     }
+    /* A cube of seven levels: the TIC names all seven either way (its
+     * layers are a whole chain apart); a plain filter keeps the view on
+     * level 0, a mip filter opens all seven. */
+    texture.cube_levels = 7ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          tic[7] == 0ul && (tic[5] >> 28) == 6ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          tic[7] == (6ul << 4) && (tsc[1] & 0xc0ul) == 0xc0ul &&
+          (tic[2] & 0x0000c000ul) == 0x0000c000ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    /* A DXT cube needs no pooled chain: its tiled copy is the cube's. */
+    texture.format = V9X_NV50_D3D_TEX_DXT1;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    texture.format = V9X_NV50_D3D_TEX_B8G8R8A8;
     texture.cube_address = 0ul;
+    texture.cube_levels = 0ul;
+    texture.cube_tile_mode = 0ul;
 
     /* A mipmapped texture with a pooled chain: a mip min filter samples
      * the chain (nearest between levels for MIPNEAREST and MIPLINEAR,

@@ -4146,6 +4146,19 @@ typedef struct v9x_d3d_diagnostics {
      * draw.md). Appended 2026-11-23 within ABI 2026112001.
      */
     DWORD dp2_foreign_dropped;
+
+    /*
+     * The GT218's texture pool (d3d_nv50.c, the tiled copies of mipmapped
+     * and DXT textures): its usable bytes, the bytes its records hold now
+     * and at most since the pool was last laid out, and the textures that
+     * got no copy (no room, or every record taken) - a mipmapped one then
+     * samples level 0, a DXT one is not drawn. Appended 2026-11-25 within
+     * ABI 2026112001.
+     */
+    DWORD nv50_pool_size;
+    DWORD nv50_pool_used;
+    DWORD nv50_pool_peak;
+    DWORD nv50_pool_refused;
 } V9X_D3D_DIAGNOSTICS;
 
 #define V9X_D3D_LOCK_KIND_PRIMARY  0u  /* the primary surface            */

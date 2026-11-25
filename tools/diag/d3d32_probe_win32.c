@@ -3677,7 +3677,7 @@ static void d32_d3d89(void)
 #define D32_T19_SIDE 64ul
 #define D32_T19_TEXELS 8l
 #define D32_T19_STAGES 4ul
-#define D32_T19_PROGRAMS 21ul
+#define D32_T19_PROGRAMS 22ul
 #define D32_T19_GUARD 0xa5a5a5a5ul
 /* Judging margins, step 5a's: a pixel centre within 1/16 pixel of an
  * edge, a lookup within 1/64 texel of a texel boundary and a texkill
@@ -4061,16 +4061,29 @@ static DWORD d32_t19_normal_stages;
  * texel. The judge decodes the blocks itself: 565 widened by repeating the
  * top bits, the thirds (2a + b) / 3 rounded down. Without the format the
  * program is skipped, not counted. Nature in 3DMark 2001 SE draws its
- * distant terrain and mountains with DXT1 and DXT3.
+ * distant terrain and mountains with DXT1 and DXT3. DXT5 (added for the
+ * GeForce 210, whose Car Chase ground went white on DXTC) has per block
+ * two 8-bit alpha ends, the first the larger so all eight values are
+ * interpolated, ((8 - i) a0 + (i - 1) a1) / 7 for index i of 2 to 7, and
+ * a 3-bit index a texel.
  */
 #define D32_D3DFMT_DXT1 0x31545844ul
 #define D32_D3DFMT_DXT3 0x33545844ul
+#define D32_D3DFMT_DXT5 0x35545844ul
 #define D32_T19_DXT_BLOCKS 2l
 
 static D32_OBJECT *d32_t19_dxt1;
 static D32_OBJECT *d32_t19_dxt3;
-/* The DXT kind (1 or 3) stage 0 holds while a program is judged, or 0. */
+static D32_OBJECT *d32_t19_dxt5;
+/* The DXT kind (1, 3 or 5) stage 0 holds while a program is judged, or 0. */
 static DWORD d32_t19_dxt_kind;
+
+/* The texture of DXT kind 1, 3 or 5, or null. */
+static D32_OBJECT *d32_t19_dxt_object(DWORD kind)
+{
+    return kind == 1ul ? d32_t19_dxt1 : kind == 3ul ? d32_t19_dxt3
+                                                   : d32_t19_dxt5;
+}
 
 /*
  * Step 5c's cube: 8x8, two levels, A8R8G8B8, managed, made with
@@ -4168,6 +4181,12 @@ static const D32_T19_PROGRAM d32_t19_programs[D32_T19_PROGRAMS] = {
         D32_PT_TEX, D32_PT_TO_T(0),
         D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_T_A(0),
         D32_PT_END }, 3ul },
+    /* Dxt5: its interpolated alpha shown the same way. */
+    { "Dxt5", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
+        D32_PT_VER11,
+        D32_PT_TEX, D32_PT_TO_T(0),
+        D32_PT_MUL, D32_PT_TO_R(0), D32_PT_T(0), D32_PT_T_A(0),
+        D32_PT_END }, 5ul },
     /* The fixed-function rows (d32_t19_fixed), each program what its
      * stage states mean. */
     { "FfDot3", 0ul, D32_T19_FOG_NONE, 0ul, 0ul, {
@@ -4578,6 +4597,36 @@ static DWORD d32_t19_dxt_alpha4(long x, long y)
     return (DWORD)((x * 3l + y * 5l + x / 4l * 7l + y / 4l) & 15l);
 }
 
+/* DXT5: block (bx, by)'s alpha ends, a0 above a1, and texel (x, y)'s
+ * 3-bit alpha index. */
+static void d32_t19_dxt5_ends(long bx, long by, DWORD *a0, DWORD *a1)
+{
+    *a0 = (DWORD)(200l + bx * 30l + by * 10l);
+    *a1 = (DWORD)(20l + bx * 15l + by * 25l);
+}
+
+static DWORD d32_t19_dxt5_index(long x, long y)
+{
+    return (DWORD)((x * 5l + y * 3l + x / 4l + y / 4l * 2l) & 7l);
+}
+
+/* Texel (x, y)'s DXT5 alpha, decoded. */
+static DWORD d32_t19_dxt5_alpha(long x, long y)
+{
+    DWORD a0;
+    DWORD a1;
+    DWORD i = d32_t19_dxt5_index(x, y);
+
+    d32_t19_dxt5_ends(x / 4l, y / 4l, &a0, &a1);
+    if (i == 0ul) {
+        return a0;
+    }
+    if (i == 1ul) {
+        return a1;
+    }
+    return ((8ul - i) * a0 + (i - 1ul) * a1) / 7ul;
+}
+
 /* A 565 colour as 8-bit channels, the top bits repeated below. */
 static void d32_t19_565(DWORD c, DWORD rgb[3])
 {
@@ -4612,6 +4661,8 @@ static DWORD d32_t19_dxt_texel(DWORD kind, long x, long y)
     }
     if (kind == 3ul) {
         alpha = d32_t19_dxt_alpha4(x, y) * 17ul;
+    } else if (kind == 5ul) {
+        alpha = d32_t19_dxt5_alpha(x, y);
     }
     return (alpha << 24) | (out[0] << 16) | (out[1] << 8) | out[2];
 }
@@ -5149,8 +5200,10 @@ static HRESULT d32_t19_lum_texture(D32_OBJECT *device, DWORD kind,
 }
 
 /* A DXT texture, one level, its blocks written through LockRect: for
- * DXT3 eight bytes of 4-bit alphas, low nibble first, then the colour
- * block - two 565 colours and 2-bit indices, texel 0 in the low bits. */
+ * DXT3 eight bytes of 4-bit alphas, low nibble first, for DXT5 the two
+ * alpha ends and 48 bits of 3-bit indices, texel 0 in the low bits; then
+ * the colour block - two 565 colours and 2-bit indices, texel 0 in the
+ * low bits. */
 static HRESULT d32_t19_dxt_texture(D32_OBJECT *device, DWORD kind,
                                    D32_OBJECT **texture)
 {
@@ -5164,8 +5217,9 @@ static HRESULT d32_t19_dxt_texture(D32_OBJECT *device, DWORD kind,
     *texture = 0;
     hr = ((d32_d3d8_create_texture_fn)device->vtbl[D3DDEV8_CREATE_TEXTURE])(
         device, (UINT)D32_T19_TEXELS, (UINT)D32_T19_TEXELS, 1u, 0ul,
-        kind == 1ul ? D32_D3DFMT_DXT1 : D32_D3DFMT_DXT3, D32_D3DPOOL_MANAGED,
-        texture);
+        kind == 1ul ? D32_D3DFMT_DXT1 : kind == 3ul ? D32_D3DFMT_DXT3
+                                                    : D32_D3DFMT_DXT5,
+        D32_D3DPOOL_MANAGED, texture);
     if (hr != 0 || *texture == 0) {
         *texture = 0;
         return hr != 0 ? hr : (HRESULT)0x80004005ul;
@@ -5176,7 +5230,8 @@ static HRESULT d32_t19_dxt_texture(D32_OBJECT *device, DWORD kind,
     if (hr != 0 || locked.pBits == 0) {
         return hr != 0 ? hr : (HRESULT)0x80004005ul;
     }
-    d32_hx(kind == 1ul ? "T19Dxt1Pitch" : "T19Dxt3Pitch",
+    d32_hx(kind == 1ul ? "T19Dxt1Pitch" : kind == 3ul ? "T19Dxt3Pitch"
+                                                      : "T19Dxt5Pitch",
            (DWORD)locked.Pitch);
     for (by = 0l; by < D32_T19_DXT_BLOCKS; ++by) {
         for (bx = 0l; bx < D32_T19_DXT_BLOCKS; ++bx) {
@@ -5195,6 +5250,35 @@ static HRESULT d32_t19_dxt_texture(D32_OBJECT *device, DWORD kind,
                                                 by * 4l + y) << 4));
                     }
                 }
+                block += 8;
+            } else if (kind == 5ul) {
+                DWORD a0;
+                DWORD a1;
+                DWORD low = 0ul;    /* texels 0-7's indices, 24 bits */
+                DWORD high = 0ul;   /* texels 8-15's */
+
+                d32_t19_dxt5_ends(bx, by, &a0, &a1);
+                for (y = 0l; y < 4l; ++y) {
+                    for (x = 0l; x < 4l; ++x) {
+                        DWORD i = d32_t19_dxt5_index(bx * 4l + x,
+                                                     by * 4l + y);
+                        long n = y * 4l + x;
+
+                        if (n < 8l) {
+                            low |= i << (3l * n);
+                        } else {
+                            high |= i << (3l * (n - 8l));
+                        }
+                    }
+                }
+                block[0] = (BYTE)a0;
+                block[1] = (BYTE)a1;
+                block[2] = (BYTE)low;
+                block[3] = (BYTE)(low >> 8);
+                block[4] = (BYTE)(low >> 16);
+                block[5] = (BYTE)high;
+                block[6] = (BYTE)(high >> 8);
+                block[7] = (BYTE)(high >> 16);
                 block += 8;
             }
             d32_t19_dxt_ends(bx, by, &c0, &c1);
@@ -5350,8 +5434,7 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         d32_line(key, "skip-no-q8w8v8u8");
         return 1ul;
     }
-    if ((p->dxt == 1ul && d32_t19_dxt1 == 0) ||
-        (p->dxt == 3ul && d32_t19_dxt3 == 0)) {
+    if (p->dxt != 0ul && d32_t19_dxt_object(p->dxt) == 0) {
         d32_line(key, "skip-no-dxt");
         return 1ul;
     }
@@ -5433,8 +5516,7 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         d32_t19_key(p->name, "SetDxtHr",
                     (DWORD)((d32_set_texture_fn)
                             device->vtbl[D3DDEV8_SET_TEXTURE])(
-                        device, 0ul,
-                        p->dxt == 1ul ? d32_t19_dxt1 : d32_t19_dxt3));
+                        device, 0ul, d32_t19_dxt_object(p->dxt)));
     }
     if (fixed != 0) {
         /* No shader: the row's stage states, the factor, and the bump
@@ -5736,6 +5818,18 @@ static DWORD d32_ps11(void)
             goto release;
         }
     }
+    hr = ((d32_d3d8_check_format_fn)d3d->vtbl[D3D8_CHECK_DEVICE_FORMAT])(
+        d3d, 0u, D32_D3DDEVTYPE_HAL, mode.Format, 0ul, D32_D3DRTYPE_TEXTURE,
+        D32_D3DFMT_DXT5);
+    d32_hx("T19Dxt5CheckHr", (DWORD)hr);
+    if (hr == 0) {
+        hr = d32_t19_dxt_texture(device, 5ul, &d32_t19_dxt5);
+        d32_hx("T19Dxt5Hr", (DWORD)hr);
+        if (hr != 0) {
+            reason = "no-dxt5";
+            goto release;
+        }
+    }
     /* The luminance bump maps, each where the driver publishes it. */
     for (stage = 0ul; stage < 2ul; ++stage) {
         hr = ((d32_d3d8_check_format_fn)d3d->vtbl[D3D8_CHECK_DEVICE_FORMAT])(
@@ -5828,6 +5922,10 @@ release:
     if (d32_t19_dxt3 != 0) {
         ((d32_release_fn)d32_t19_dxt3->vtbl[COM_RELEASE])(d32_t19_dxt3);
         d32_t19_dxt3 = 0;
+    }
+    if (d32_t19_dxt5 != 0) {
+        ((d32_release_fn)d32_t19_dxt5->vtbl[COM_RELEASE])(d32_t19_dxt5);
+        d32_t19_dxt5 = 0;
     }
     for (stage = 0ul; stage < 2ul; ++stage) {
         if (d32_t19_lum[stage] != 0) {

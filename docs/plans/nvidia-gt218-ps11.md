@@ -148,12 +148,19 @@ first, then placement and Lock/Unlock to match.
 **Step 7 done 2026-11-25** ([record](../decisions/2026-11-25-gt218-dxt.md)):
 tiled copies in the texture pool, the probe skipped (pitch-linear DXT
 not measured); T19 Dxt1 and Dxt3 pass, 3DMark 2001 SE runs on DXTC.
-DXT cubes are not placed.
+DXT cubes and cube levels the same day, with T19 Dxt5
+([record](../decisions/2026-11-25-gt218-cube-levels-dxt-pool-counters.md));
+Car Chase's ground whitens on DXTC, cause open
+([issue](../issues/2026-11-25-gt218-car-chase-ground-white-on-dxtc.md)).
 
 ### 8. 3DMark 2001 SE Nature
 
 The HD 4600's end point. **Gate:** Nature runs, its Image Quality frame
 inspected (the grab needs flips, or a windowed run).
+**Step 8 done 2026-11-25, by substitution:** W9QI0DAD's 3DMark is not
+Pro and has no Image Quality test, so HDMI frames of Nature stand in
+(lake, mountains, trees; [record](../decisions/2026-11-25-gt218-cube-levels-dxt-pool-counters.md)).
+No pixel comparison against a reference was made.
 
 ## Costs and risks
 

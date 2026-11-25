@@ -177,18 +177,26 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
 /*
  * Cube maps. The sampler reads a cube only block-linear (Mesa's nv50_tex.c
  * builds a pitch TIC as 2D only), so the HAL keeps a tiled copy of each
- * cube's level 0: six faces in tile mode V9X_NV50_D3D_CUBE_TILE_MODE, one
- * layer each.
+ * cube: six layers, each one face's whole chain.
  *
- * v9x_nv50_d3d_cube_layout: a face of side texels of bytes each - its row
- * pitch on the 64-byte GOB, its rows on the 8-row block, and the layer
- * stride, one face rounded up to the 512-byte tile, which the sampler
- * steps by itself (nv50_miptree.c's layer_stride). 0 for a side of 0 or a
- * texel size other than 2 or 4.
+ * v9x_nv50_d3d_cube_layout: one layer, as nv50_miptree.c lays an array's -
+ * the face's chain as v9x_nv50_d3d_mip_layout (edge 1, texels of 2 or 4
+ * bytes) or v9x_nv50_d3d_dxt_layout (edge 4, blocks of 8 or 16) lays it,
+ * and the layer stride, that chain rounded up to level 0's tile, which the
+ * sampler steps by itself (layer_stride). 0 for a side of 0, a cell size
+ * the edge does not take, or no or too many levels.
  *
  * v9x_nv50_d3d_tic_cube: a pitch TIC from v9x_nv50_d3d_texture, for the
  * same format and size, turned into the cube at address (the tiled
- * window's VM address), and its TSC clamped in all three coordinates.
+ * window's VM address) with level 0's tile mode, its view on level 0 and
+ * its TSC clamped in all three coordinates.
+ *
+ * v9x_nv50_d3d_tic_levels: a block-linear TIC told the resource has levels
+ * 0 to resource_last (word 5, which the sampler also steps a cube's layers
+ * by), its view opened to levels 0 to view_last, and for a view past level
+ * 0 its TSC given the mip filter (nearest, or linear between levels when
+ * mip_linear) and the LOD clamp 0 to view_last. tic_mip and a cube's TIC
+ * of more than one level both end with it.
  */
 /*
  * Mipmaps (docs\plans\nvidia-gt218-mipmaps.md): a pitch TIC has no levels,
@@ -225,10 +233,13 @@ void v9x_nv50_d3d_tic_mip(v9x_u32 address, v9x_u32 tile_mode,
                           v9x_u32 last_level, v9x_u32 mip_linear,
                           v9x_u32 *tic, v9x_u32 *tsc);
 
-#define V9X_NV50_D3D_CUBE_TILE_MODE  0x10ul
 #define V9X_NV50_D3D_CUBE_FACES      6ul
-int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 bytes, v9x_u32 *pitch,
-                             v9x_u32 *rows, v9x_u32 *layer_bytes);
+int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 levels, v9x_u32 bytes,
+                             v9x_u32 edge, v9x_u32 *offsets,
+                             v9x_u32 *pitches, v9x_u32 *rows,
+                             v9x_u32 *tile_modes, v9x_u32 *layer_bytes);
+void v9x_nv50_d3d_tic_levels(v9x_u32 resource_last, v9x_u32 view_last,
+                             v9x_u32 mip_linear, v9x_u32 *tic, v9x_u32 *tsc);
 void v9x_nv50_d3d_tic_cube(v9x_u32 address, v9x_u32 tile_mode, v9x_u32 *tic,
                            v9x_u32 *tsc);
 

@@ -2001,6 +2001,10 @@ void __stdcall V9xTraceDumpEntry(void)
     v9x_write_uint("LockFlipWaitTimeouts",
                    snapshot.d3d.lock_flip_wait_timeouts);
     v9x_write_uint("Dp2ForeignDropped", snapshot.d3d.dp2_foreign_dropped);
+    v9x_write_uint("Nv50PoolSize", snapshot.d3d.nv50_pool_size);
+    v9x_write_uint("Nv50PoolUsed", snapshot.d3d.nv50_pool_used);
+    v9x_write_uint("Nv50PoolPeak", snapshot.d3d.nv50_pool_peak);
+    v9x_write_uint("Nv50PoolRefused", snapshot.d3d.nv50_pool_refused);
     v9x_write_uint("IndexedEngineCalls", snapshot.d3d.indexed_engine_calls);
     v9x_write_uint("IndexedEngineDeclined",
                    snapshot.d3d.indexed_engine_declined);

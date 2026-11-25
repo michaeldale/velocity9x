@@ -433,6 +433,8 @@ static void v9x_d3d_nv50_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->has_key = 0ul;
     texture->key = 0ul;
     texture->cube_address = 0ul;
+    texture->cube_levels = 0ul;
+    texture->cube_tile_mode = 0ul;
     texture->mip_address = 0ul;
     texture->mip_levels = 0ul;
     texture->mip_tile_mode = 0ul;
@@ -625,31 +627,63 @@ static int v9x_d3d_nv50_shadow_flush(V9X_D3D_NV50_SHADOW *shadow)
  * Cube maps (step 6 of docs\plans\nvidia-gt218-ps11.md). The sampler
  * reads a cube only block-linear, so a cube's surfaces are placed linear,
  * as every texture here, for the runtime's Locks and Blts, and beside them
- * in the same heap block a tiled copy of level 0 holds the six faces as the
- * layers the cube TIC samples (nv50_d3d.h). Each part is in row-block
- * units of its own (nv50_rblock.h), as a Z buffer and its colour shadow
- * are. The copy is brought up to date before a draw samples it, after the
- * cube was created or any of its surfaces written (surface_written). Only
- * level 0 is sampled, as for every texture on this path.
+ * in the same heap block a tiled copy holds the six faces as the layers
+ * the cube TIC samples, each layer a face's whole chain (nv50_d3d.h). Each
+ * part is in row-block units of its own (nv50_rblock.h), as a Z buffer and
+ * its colour shadow are. The copy is brought up to date before a draw
+ * samples it, after the cube was created or any of its surfaces written
+ * (surface_written). DXT cubes go the same way in 4 x 4 blocks, as the
+ * pool's DXT copies do.
  *
  * The cube is known by its +X top's offset, in a table of
  * V9X_D3D_NV50_CUBES; HAL statics are shared by every process, as video
  * memory is.
  */
 #define V9X_D3D_NV50_CUBES           64ul
+#define V9X_D3D_NV50_COPY_CELL       4ul    /* A8R8G8B8's bytes */
 
 typedef struct v9x_d3d_nv50_cube {
     DWORD base;                 /* +X top's offset; 0 for a free slot */
     DWORD linear_end;           /* past the linear part's last byte */
     DWORD side;
-    DWORD bytes;                /* per texel: 2 or 4 */
-    DWORD face_offset[V9X_NV50_D3D_CUBE_FACES];  /* each face's level 0 */
-    DWORD face_pitch;
+    DWORD bytes;                /* a cell's: a texel's, or a DXT block's */
+    DWORD edge;                 /* a cell's side in texels: 1, or 4 */
+    DWORD levels;
+    /* Per level: +X's linear offset, the step to the next face, its row
+     * pitch; its offset in a tiled layer and its tile mode. */
+    DWORD linear_level[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    DWORD linear_slice[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    DWORD linear_pitch[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 tiled_level[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 modes[V9X_NV50_D3D_MIP_LEVELS_MAX];
     DWORD tiled_offset;
     DWORD layer_bytes;
     DWORD dirty;
     DWORD release_window;       /* v9x_d3d_place_release's, as a Z's */
 } V9X_D3D_NV50_CUBE;
+
+/* A level of width x height texels in the 2D engine's copy pixels: its
+ * texels, or for DXT (edge 4) its rows of blocks, each row's bytes as
+ * A8R8G8B8 pixels - tiling being a matter of bytes and rows. */
+static void v9x_d3d_nv50_copy_cells(DWORD width, DWORD height, DWORD edge,
+                                    DWORD bytes, DWORD *across, DWORD *down)
+{
+    *across = width;
+    *down = height;
+    if (edge > 1ul) {
+        *across = (width + edge - 1ul) / edge * bytes /
+                  V9X_D3D_NV50_COPY_CELL;
+        *down = (height + edge - 1ul) / edge;
+    }
+}
+
+/* The 502D format a copy of bytes-sized cells runs in: R5G6B5 for 16-bit
+ * texels, A8R8G8B8 for 32-bit ones and DXT blocks, the bytes kept
+ * whatever the texture's own format. */
+static DWORD v9x_d3d_nv50_copy_format(DWORD bytes)
+{
+    return bytes == 2ul ? V9X_502D_FORMAT_R5G6B5 : V9X_502D_FORMAT_A8R8G8B8;
+}
 
 static V9X_D3D_NV50_CUBE v9x_d3d_nv50_cubes[V9X_D3D_NV50_CUBES];
 
@@ -683,11 +717,9 @@ static void v9x_d3d_nv50_cube_written(DWORD offset)
 }
 
 /*
- * The six faces' level 0 from their linear surfaces into the tiled
- * layers, one 502D copy each, in one kick after everything before it (as
- * a shadow's load). A 32-bit cube is copied as A8R8G8B8, which keeps the
- * top byte; a 16-bit one as R5G6B5, the same 16 bits whatever the
- * texture's own format.
+ * Every face's every level from its linear surface into its place in the
+ * tiled layers, one 502D copy each, in one kick after everything before it
+ * (as a shadow's load).
  */
 static int v9x_d3d_nv50_cube_copy(V9X_D3D_NV50_CUBE *cube)
 {
@@ -700,8 +732,11 @@ static int v9x_d3d_nv50_cube_copy(V9X_D3D_NV50_CUBE *cube)
     DWORD scratch_base;
     DWORD generation;
     DWORD face;
-    DWORD format = cube->bytes == 4ul ? V9X_502D_FORMAT_A8R8G8B8
-                                      : V9X_502D_FORMAT_R5G6B5;
+    DWORD level;
+    DWORD edge;
+    DWORD across;
+    DWORD down;
+    DWORD format = v9x_d3d_nv50_copy_format(cube->bytes);
     int ok;
 
     if (cube->dirty == 0ul) {
@@ -713,21 +748,29 @@ static int v9x_d3d_nv50_cube_copy(V9X_D3D_NV50_CUBE *cube)
     }
     v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
     for (face = 0ul; face < V9X_NV50_D3D_CUBE_FACES; ++face) {
-        linear.address = cube->face_offset[face];
-        linear.pitch = cube->face_pitch;
-        linear.width = cube->side;
-        linear.height = cube->side;
-        linear.tile_mode = 0ul;
-        linear.tiled = 0ul;
-        tiled.address = V9X_NV50_VM_TILED + cube->tiled_offset +
-                        face * cube->layer_bytes;
-        tiled.pitch = 0ul;
-        tiled.width = cube->side;
-        tiled.height = cube->side;
-        tiled.tile_mode = V9X_NV50_D3D_CUBE_TILE_MODE;
-        tiled.tiled = 1ul;
-        v9x_nv50_push_2d_surface_blit(&push, &linear, &tiled, format, 0ul,
-                                      0ul, 0ul, 0ul, cube->side, cube->side);
+        edge = cube->side;
+        for (level = 0ul; level < cube->levels; ++level) {
+            v9x_d3d_nv50_copy_cells(edge, edge, cube->edge, cube->bytes,
+                                    &across, &down);
+            linear.address = cube->linear_level[level] +
+                             face * cube->linear_slice[level];
+            linear.pitch = cube->linear_pitch[level];
+            linear.width = across;
+            linear.height = down;
+            linear.tile_mode = 0ul;
+            linear.tiled = 0ul;
+            tiled.address = V9X_NV50_VM_TILED + cube->tiled_offset +
+                            face * cube->layer_bytes +
+                            cube->tiled_level[level];
+            tiled.pitch = 0ul;
+            tiled.width = across;
+            tiled.height = down;
+            tiled.tile_mode = cube->modes[level];
+            tiled.tiled = 1ul;
+            v9x_nv50_push_2d_surface_blit(&push, &linear, &tiled, format,
+                                          0ul, 0ul, 0ul, 0ul, across, down);
+            edge = edge > 1ul ? edge >> 1 : 1ul;
+        }
     }
     if (push.overflow != 0ul) {
         return 0;
@@ -766,7 +809,6 @@ static int v9x_d3d_nv50_cube_copy(V9X_D3D_NV50_CUBE *cube)
  */
 #define V9X_D3D_NV50_MIPS            512ul
 #define V9X_D3D_NV50_POOL_ALIGN      512ul
-#define V9X_D3D_NV50_COPY_CELL       4ul    /* A8R8G8B8's bytes */
 
 typedef struct v9x_d3d_nv50_mip {
     DWORD base;                 /* level 0's offset; 0 for a free slot */
@@ -815,6 +857,9 @@ static int v9x_d3d_nv50_pool_range(DWORD *start, DWORD *end)
         }
         v9x_d3d_nv50_pool_start = *start;
         v9x_d3d_nv50_pool_end = *end;
+        v9x_hal->d3d_diagnostics.nv50_pool_size = *end - *start;
+        v9x_hal->d3d_diagnostics.nv50_pool_used = 0ul;
+        v9x_hal->d3d_diagnostics.nv50_pool_peak = 0ul;
     }
     return 1;
 }
@@ -904,8 +949,7 @@ static int v9x_d3d_nv50_mip_copy(V9X_D3D_NV50_MIP *mip)
     DWORD height = mip->height;
     DWORD across;
     DWORD down;
-    DWORD format = mip->bytes == 2ul ? V9X_502D_FORMAT_R5G6B5
-                                     : V9X_502D_FORMAT_A8R8G8B8;
+    DWORD format = v9x_d3d_nv50_copy_format(mip->bytes);
     int ok;
 
     if (mip->dirty == 0ul) {
@@ -917,15 +961,8 @@ static int v9x_d3d_nv50_mip_copy(V9X_D3D_NV50_MIP *mip)
     }
     v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
     for (level = 0ul; level < mip->levels; ++level) {
-        /* The level in copy pixels: its texels, or for DXT its rows of
-         * blocks, each row's bytes as A8R8G8B8 pixels. */
-        across = width;
-        down = height;
-        if (mip->edge > 1ul) {
-            across = (width + mip->edge - 1ul) / mip->edge * mip->bytes /
-                     V9X_D3D_NV50_COPY_CELL;
-            down = (height + mip->edge - 1ul) / mip->edge;
-        }
+        v9x_d3d_nv50_copy_cells(width, height, mip->edge, mip->bytes,
+                                &across, &down);
         linear.address = mip->linear[level];
         linear.pitch = mip->linear_pitch[level];
         linear.width = across;
@@ -1002,6 +1039,7 @@ static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
         }
     }
     if (slot == 0) {
+        ++v9x_hal->d3d_diagnostics.nv50_pool_refused;
         return;
     }
     if (edge > 1ul) {
@@ -1016,10 +1054,12 @@ static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
                                        rows, slot->modes, &total);
     }
     if (!laid) {
+        ++v9x_hal->d3d_diagnostics.nv50_pool_refused;
         return;
     }
     offset = v9x_d3d_nv50_pool_take(total);
     if (offset == 0ul) {
+        ++v9x_hal->d3d_diagnostics.nv50_pool_refused;
         return;
     }
     for (index = 0ul; index < levels; ++index) {
@@ -1036,6 +1076,12 @@ static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
                        ~(V9X_D3D_NV50_POOL_ALIGN - 1ul);
     slot->dirty = 1ul;
     slot->base = slot->linear[0];
+    v9x_hal->d3d_diagnostics.nv50_pool_used += slot->pool_bytes;
+    if (v9x_hal->d3d_diagnostics.nv50_pool_used >
+        v9x_hal->d3d_diagnostics.nv50_pool_peak) {
+        v9x_hal->d3d_diagnostics.nv50_pool_peak =
+            v9x_hal->d3d_diagnostics.nv50_pool_used;
+    }
 }
 
 /* ddhal_internal.h: every dirty shadow back to its target. */
@@ -1619,6 +1665,8 @@ static int v9x_d3d_nv50_draw_shader(const V9X_R3D_DRAW *draw,
                 return 0;
             }
             resolved.cube_address = V9X_NV50_VM_TILED + cube->tiled_offset;
+            resolved.cube_levels = cube->levels;
+            resolved.cube_tile_mode = cube->modes[0];
             cubes |= 1ul << stage;
         }
         reason = v9x_d3d_nv50_map_unit(&shader->texture[stage], &resolved,
@@ -2004,7 +2052,7 @@ static DWORD v9x_d3d_nv50_cube_face(DWORD caps2)
  * as before this step.
  */
 static DWORD v9x_d3d_nv50_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
-                                      DWORD bytes)
+                                      DWORD bytes, DWORD cell_edge)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     v9x_u32 level_offsets[V9X_D3D_NV50_LEVELS_MAX];
@@ -2012,8 +2060,10 @@ static DWORD v9x_d3d_nv50_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
     v9x_u32 level_pitches[V9X_D3D_NV50_LEVELS_MAX];
     v9x_u32 offsets[V9X_NV50_D3D_CUBE_FACES * V9X_D3D_NV50_LEVELS_MAX];
     v9x_u32 pitches[V9X_NV50_D3D_CUBE_FACES * V9X_D3D_NV50_LEVELS_MAX];
-    v9x_u32 tiled_pitch;
-    v9x_u32 tiled_rows;
+    v9x_u32 tiled_offsets[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 tiled_pitches[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 tiled_rows[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 tiled_modes[V9X_NV50_D3D_MIP_LEVELS_MAX];
     v9x_u32 layer_bytes;
     v9x_u32 linear_offset;
     v9x_u32 tiled_offset;
@@ -2031,19 +2081,25 @@ static DWORD v9x_d3d_nv50_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
     DWORD level;
 
     if (data->dwSCnt % V9X_NV50_D3D_CUBE_FACES != 0ul || levels == 0ul ||
-        levels > V9X_D3D_NV50_LEVELS_MAX || unit == 0ul ||
+        levels > V9X_D3D_NV50_LEVELS_MAX ||
+        levels > V9X_NV50_D3D_MIP_LEVELS_MAX || unit == 0ul ||
         side != (DWORD)list[0]->lpGbl->wHeight ||
         side > V9X_D3D_NV50_TEXTURE_SIDE_MAX ||
-        !v9x_nv50_d3d_cube_layout(side, bytes, &tiled_pitch, &tiled_rows,
-                                  &layer_bytes)) {
+        !v9x_nv50_d3d_cube_layout(side, levels, bytes, cell_edge,
+                                  tiled_offsets, tiled_pitches, tiled_rows,
+                                  tiled_modes, &layer_bytes)) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
+    /* Each level's rows in cells (texels, or DXT blocks), on 64 bytes;
+     * each face on 256. */
     for (level = 0ul; level < levels; ++level) {
         DWORD edge = (side >> level) != 0ul ? side >> level : 1ul;
+        DWORD across = (edge + cell_edge - 1ul) / cell_edge;
+        DWORD down = across;
 
-        level_pitches[level] = (edge * bytes + V9X_D3D_NV50_PITCH_ALIGN -
+        level_pitches[level] = (across * bytes + V9X_D3D_NV50_PITCH_ALIGN -
                                 1ul) & ~(V9X_D3D_NV50_PITCH_ALIGN - 1ul);
-        slices[level] = (level_pitches[level] * edge +
+        slices[level] = (level_pitches[level] * down +
                          V9X_D3D_NV50_SURFACE_ALIGN - 1ul) &
                         ~(V9X_D3D_NV50_SURFACE_ALIGN - 1ul);
         level_offsets[level] = linear_bytes;
@@ -2110,10 +2166,15 @@ static DWORD v9x_d3d_nv50_create_cube(V9X_DDHAL_CREATESURFACEDATA *data,
     slot->linear_end = linear_offset + linear_bytes;
     slot->side = side;
     slot->bytes = bytes;
-    for (face = 0ul; face < V9X_NV50_D3D_CUBE_FACES; ++face) {
-        slot->face_offset[face] = linear_offset + face * slices[0];
+    slot->edge = cell_edge;
+    slot->levels = levels;
+    for (level = 0ul; level < levels; ++level) {
+        slot->linear_level[level] = linear_offset + level_offsets[level];
+        slot->linear_slice[level] = slices[level];
+        slot->linear_pitch[level] = level_pitches[level];
+        slot->tiled_level[level] = tiled_offsets[level];
+        slot->modes[level] = tiled_modes[level];
     }
-    slot->face_pitch = level_pitches[0];
     slot->tiled_offset = tiled_offset;
     slot->layer_bytes = layer_bytes;
     slot->dirty = 1ul;
@@ -2160,13 +2221,12 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
         (v9x_d3d_nv50_caps2(surface) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
         format = v9x_d3d_nv50_format_of(surface, &bytes);
-        /* A DXT cube is not placed: its tiled copy is not built, so
-         * DirectDraw places it and its draws are refused. */
-        if (format == V9X_D3D_NV50_TEXTURE_UNKNOWN ||
-            V9X_NV50_D3D_TEX_IS_DXT(format)) {
+        if (format == V9X_D3D_NV50_TEXTURE_UNKNOWN) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
-        return v9x_d3d_nv50_create_cube(data, bytes);
+        return v9x_d3d_nv50_create_cube(
+            data, bytes,
+            V9X_NV50_D3D_TEX_IS_DXT(format) ? V9X_NV50_D3D_DXT_EDGE : 1ul);
     }
     if (data->dwSCnt > V9X_D3D_NV50_LEVELS_MAX) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -2418,6 +2478,11 @@ static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
             mip = v9x_d3d_nv50_mip_at(offset);
             if (mip != 0) {
                 mip->base = 0ul;
+                if (v9x_hal->d3d_diagnostics.nv50_pool_used >=
+                    mip->pool_bytes) {
+                    v9x_hal->d3d_diagnostics.nv50_pool_used -=
+                        mip->pool_bytes;
+                }
             }
             /* A cube's +X top holds the block: forgotten with it. Its other
              * surfaces carry no block and free nothing. */

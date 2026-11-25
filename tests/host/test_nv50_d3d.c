@@ -457,30 +457,56 @@ static void test_dxt(void)
           (tic[5] & 0xfffful) == 64ul && tic[7] == 0ul && tsc[2] == 0ul);
 }
 
-/* Cube maps (step 6 of docs\plans\nvidia-gt218-ps11.md): the tiled copy's
- * layout and the TIC that samples it, as Mesa's nv50_miptree.c and
- * nv50_tex.c lay out and describe a block-linear cube of one level. */
+/* Cube maps (step 6 of docs\plans\nvidia-gt218-ps11.md, levels and DXT
+ * after step 7): the tiled copy's layout and the TIC that samples it, as
+ * Mesa's nv50_miptree.c lays out an array of six layers and nv50_tex.c
+ * describes a block-linear cube. */
 static void test_cube(void)
 {
     v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
     v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
-    v9x_u32 pitch = 0ul;
-    v9x_u32 rows = 0ul;
+    v9x_u32 offsets[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 rows[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 modes[V9X_NV50_D3D_MIP_LEVELS_MAX];
     v9x_u32 layer = 0ul;
 
-    /* 64 texels of 4 bytes: 256-byte rows, 64 rows (a whole number of
-     * 8-row blocks), 16 KiB a face, already on the 512-byte tile. */
-    CHECK(v9x_nv50_d3d_cube_layout(64ul, 4ul, &pitch, &rows, &layer));
-    CHECK(pitch == 256ul && rows == 64ul && layer == 16384ul);
-    /* 4 texels of 2 bytes: one 64-byte GOB row, 8 rows, 512 bytes. */
-    CHECK(v9x_nv50_d3d_cube_layout(4ul, 2ul, &pitch, &rows, &layer));
-    CHECK(pitch == 64ul && rows == 8ul && layer == 512ul);
-    /* 20 texels of 4 bytes: 80 bytes to 128, 20 rows to 24: 3072 bytes,
-     * six tiles. */
-    CHECK(v9x_nv50_d3d_cube_layout(20ul, 4ul, &pitch, &rows, &layer));
-    CHECK(pitch == 128ul && rows == 24ul && layer == 3072ul);
-    CHECK(!v9x_nv50_d3d_cube_layout(0ul, 4ul, &pitch, &rows, &layer));
-    CHECK(!v9x_nv50_d3d_cube_layout(16ul, 3ul, &pitch, &rows, &layer));
+    /* One level of 64 texels of 4 bytes: 256-byte rows, mode 40h (64-row
+     * blocks), 16 KiB, a whole number of 4 KiB tiles. */
+    CHECK(v9x_nv50_d3d_cube_layout(64ul, 1ul, 4ul, 1ul, offsets, pitches,
+                                   rows, modes, &layer));
+    CHECK(pitches[0] == 256ul && rows[0] == 64ul && modes[0] == 0x40ul &&
+          layer == 16384ul);
+    /* 4 texels of 2 bytes: one GOB row, mode 0, 4 rows, 256 bytes. */
+    CHECK(v9x_nv50_d3d_cube_layout(4ul, 1ul, 2ul, 1ul, offsets, pitches,
+                                   rows, modes, &layer));
+    CHECK(pitches[0] == 64ul && rows[0] == 4ul && layer == 256ul);
+    /* 20 texels of 4 bytes: 80 bytes to 128, mode 30h, 20 rows to 32:
+     * 4096 bytes, two 2 KiB tiles. */
+    CHECK(v9x_nv50_d3d_cube_layout(20ul, 1ul, 4ul, 1ul, offsets, pitches,
+                                   rows, modes, &layer));
+    CHECK(pitches[0] == 128ul && rows[0] == 32ul && modes[0] == 0x30ul &&
+          layer == 4096ul);
+    /* A chain of seven from 64: each level as v9x_nv50_d3d_mip_layout lays
+     * it, 22,784 bytes, the layer stride rounded up to level 0's 4 KiB
+     * tile. */
+    CHECK(v9x_nv50_d3d_cube_layout(64ul, 7ul, 4ul, 1ul, offsets, pitches,
+                                   rows, modes, &layer));
+    CHECK(offsets[1] == 16384ul && offsets[2] == 20480ul &&
+          offsets[6] == 22528ul && modes[1] == 0x30ul && modes[3] == 0x10ul);
+    CHECK(layer == 24576ul);
+    /* DXT1 of 16: 4 x 4 blocks of 8 bytes, one GOB row of 4 rows. */
+    CHECK(v9x_nv50_d3d_cube_layout(16ul, 1ul, 8ul, 4ul, offsets, pitches,
+                                   rows, modes, &layer));
+    CHECK(pitches[0] == 64ul && rows[0] == 4ul && layer == 256ul);
+    CHECK(!v9x_nv50_d3d_cube_layout(0ul, 1ul, 4ul, 1ul, offsets, pitches,
+                                    rows, modes, &layer));
+    CHECK(!v9x_nv50_d3d_cube_layout(16ul, 1ul, 3ul, 1ul, offsets, pitches,
+                                    rows, modes, &layer));
+    CHECK(!v9x_nv50_d3d_cube_layout(16ul, 1ul, 4ul, 4ul, offsets, pitches,
+                                    rows, modes, &layer));
+    CHECK(!v9x_nv50_d3d_cube_layout(16ul, 1ul, 4ul, 2ul, offsets, pitches,
+                                    rows, modes, &layer));
 
     /* The pitch TIC turned into a block-linear cube: word 0 kept; word 1
      * the copy's address; word 2 Mesa's 10001000h base with border and
@@ -501,6 +527,19 @@ static void test_cube(void)
     /* A cube's coordinates are clamped whatever the stage's mode. */
     CHECK(tsc[0] == (0x00024000ul | 2ul | (2ul << 3) | (2ul << 6)));
     CHECK(tsc[1] == 0x00000062ul);
+    /* A cube of seven levels read at level 0: word 5 names the resource's
+     * last level (the layers are a whole chain apart), the view stays on
+     * level 0 and the TSC keeps MIP_NONE. */
+    v9x_nv50_d3d_tic_levels(6ul, 0ul, 1ul, tic, tsc);
+    CHECK(tic[5] == (0x60000000ul | 0x00010000ul | 64ul));
+    CHECK(tic[7] == 0ul && tsc[1] == 0x00000062ul && tsc[2] == 0ul);
+    /* Read between levels: the view's range in word 7, the mip filter and
+     * LOD clamp in the TSC; the rest of the cube TIC kept. */
+    v9x_nv50_d3d_tic_levels(6ul, 6ul, 1ul, tic, tsc);
+    CHECK(tic[5] == (0x60000000ul | 0x00010000ul | 64ul));
+    CHECK(tic[7] == (6ul << 4));
+    CHECK(tic[2] == (0xd0001000ul | 0x0000c000ul | 0x00400000ul));
+    CHECK((tsc[1] & 0xc0ul) == 0xc0ul && tsc[2] == (0x600ul << 12));
 }
 
 static void base_state(struct v9x_nv50_d3d_state *state)

@@ -581,7 +581,7 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
  * on the NV50 class: tile mode into word 2 as (mode & F0h) << 18, word 3
  * 300000h, word 4 bit 31 with the width, word 5 the height with a depth of
  * one cube (array size 6 divided by six) and last level 0, word 6
- * 3000000h, word 7 zero.
+ * 3000000h, word 7 zero; v9x_nv50_d3d_tic_levels then opens the levels.
  */
 #define V9X_NV50_CUBE_GOB_BYTES      64ul
 #define V9X_NV50_CUBE_BLOCK_ROWS(m)  (4ul << (((m) >> 4) & 0xful))
@@ -702,36 +702,61 @@ void v9x_nv50_d3d_tic_mip(v9x_u32 address, v9x_u32 tile_mode,
              ((tile_mode & 0xf0ul) << V9X_NV50_TIC2_TILE_SHIFT);
     tic[3] = V9X_NV50_TIC3_BLOCKLINEAR;
     tic[4] = V9X_NV50_TIC4_WIDTH_FLAG | width;
-    tic[5] = (last_level << V9X_NV50_TIC5_LAST_SHIFT) |
-             V9X_NV50_TIC5_DEPTH_ONE | height;
+    tic[5] = V9X_NV50_TIC5_DEPTH_ONE | height;
     tic[6] = V9X_NV50_TIC6_SAMPLES_ONE;
+    v9x_nv50_d3d_tic_levels(last_level, last_level, mip_linear, tic, tsc);
+}
+
+void v9x_nv50_d3d_tic_levels(v9x_u32 resource_last, v9x_u32 view_last,
+                             v9x_u32 mip_linear, v9x_u32 *tic, v9x_u32 *tsc)
+{
+    /* Word 5 bits 31:28: the resource's last level (nv50_tex.c writes
+     * mt->base.base.last_level there, not the view's). The sampler steps
+     * a cube's layers by the chain this describes: left 0 on a two-level
+     * cube, T19's Cube read 911 pixels wrong (W9QI0DAD boot 156). */
+    tic[5] = (tic[5] & ~(0xful << V9X_NV50_TIC5_LAST_SHIFT)) |
+             (resource_last << V9X_NV50_TIC5_LAST_SHIFT);
     /* The view's level range, (last_level << 4) | first_level, which
      * nv50_tex.c writes for every 3D class past NV50_3D_CLASS - the GT218's
      * among them; 0 there, as on the NV50 class itself, clamps the view to
      * level 0 (V9XD32 T21 read level 0 at every size, W9QI0DAD boot 148). */
-    tic[7] = last_level << V9X_NV50_TIC7_LAST_SHIFT;
+    tic[7] = view_last << V9X_NV50_TIC7_LAST_SHIFT;
+    if (view_last == 0ul) {
+        return;     /* level 0 alone: the TSC keeps its MIP_NONE */
+    }
     tsc[1] = (tsc[1] & ~V9X_NV50_TSC1_MIP_MASK) |
              (mip_linear != 0ul ? V9X_NV50_TSC1_MIP_LINEAR
                                 : V9X_NV50_TSC1_MIP_NEAREST);
-    tsc[2] = (last_level * V9X_NV50_LOD_ONE) << V9X_NV50_TSC2_MAX_LOD_SHIFT;
+    tsc[2] = (view_last * V9X_NV50_LOD_ONE) << V9X_NV50_TSC2_MAX_LOD_SHIFT;
 }
 
-int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 bytes, v9x_u32 *pitch,
-                             v9x_u32 *rows, v9x_u32 *layer_bytes)
+/* A cube's layer: one face's chain laid out as a 2D chain, the stride
+ * that chain rounded up to level 0's tile (nv50_miptree.c's layer_stride
+ * for an array). */
+int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 levels, v9x_u32 bytes,
+                             v9x_u32 edge, v9x_u32 *offsets,
+                             v9x_u32 *pitches, v9x_u32 *rows,
+                             v9x_u32 *tile_modes, v9x_u32 *layer_bytes)
 {
-    v9x_u32 block_rows =
-        V9X_NV50_CUBE_BLOCK_ROWS(V9X_NV50_D3D_CUBE_TILE_MODE);
-    v9x_u32 tile_bytes = V9X_NV50_CUBE_GOB_BYTES * block_rows;
-    v9x_u32 face;
+    v9x_u32 total = 0ul;
+    v9x_u32 tile_bytes;
+    int laid;
 
-    if (side == 0ul || (bytes != 2ul && bytes != 4ul)) {
+    if (edge == V9X_NV50_D3D_DXT_EDGE) {
+        laid = v9x_nv50_d3d_dxt_layout(side, side, levels, bytes, offsets,
+                                       pitches, rows, tile_modes, &total);
+    } else if (edge == 1ul) {
+        laid = v9x_nv50_d3d_mip_layout(side, side, levels, bytes, offsets,
+                                       pitches, rows, tile_modes, &total);
+    } else {
+        laid = 0;
+    }
+    if (!laid) {
         return 0;
     }
-    *pitch = (side * bytes + V9X_NV50_CUBE_GOB_BYTES - 1ul) &
-             ~(V9X_NV50_CUBE_GOB_BYTES - 1ul);
-    *rows = (side + block_rows - 1ul) / block_rows * block_rows;
-    face = *pitch * *rows;
-    *layer_bytes = (face + tile_bytes - 1ul) / tile_bytes * tile_bytes;
+    tile_bytes = V9X_NV50_CUBE_GOB_BYTES *
+                 V9X_NV50_CUBE_BLOCK_ROWS(tile_modes[0]);
+    *layer_bytes = (total + tile_bytes - 1ul) / tile_bytes * tile_bytes;
     return 1;
 }
 

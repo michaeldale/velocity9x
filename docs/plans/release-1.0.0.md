@@ -98,6 +98,11 @@ measurement on the release candidate or stays a named known issue.
   V9X-JVGQM2), the 3DCIF gaps, 8 bpp gamma, a GPU clock readout on
   Intel (`ClockStatus=unavailable` on every Intel chip; the RP0 request
   itself is made and reported, `RenderClock=rp0-granted`).
+- **GitHub PR 32** (Gen3 GDI screen-to-screen copies on the blitter and
+  a hardware cursor, intel-gma): left for 1.1, decided 2026-11-25
+  (Michael). Not run on hardware as submitted, touches the shared 16-bit
+  GDI and DOS-box paths, and leaves intel-gma's `_TEXT` 135 bytes short
+  of its budget.
 - **To test for 1.1:** UT2004's graphical issues on the Oland
   ([issue](../issues/2026-11-23-oland-ut2004-graphical-issues.md)),
   reported, not yet described or measured.

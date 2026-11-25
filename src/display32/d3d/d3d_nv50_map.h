@@ -51,6 +51,10 @@ typedef struct v9x_d3d_nv50_texture {
     v9x_u32 mip_address;
     v9x_u32 mip_levels;
     v9x_u32 mip_tile_mode;
+    /* A cube's tiled copy: its levels per face and level 0's tile mode
+     * (nv50_d3d.h's cube layout). Read with cube_address. */
+    v9x_u32 cube_levels;
+    v9x_u32 cube_tile_mode;
 } V9X_D3D_NV50_TEXTURE;
 
 #define V9X_D3D_NV50_REFUSE_NONE            0ul
