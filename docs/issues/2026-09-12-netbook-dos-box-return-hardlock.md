@@ -228,3 +228,12 @@ back repainted with the three lines in order
 ([record](../decisions/2026-11-24-1.0-b5-b9-86box.md)). Still owed for
 1.0: a physical S3 card, an `ati` Radeon, and issue 16's reporter's
 `vbe` failure.
+
+## 2026-11-25: the Oland R7 250 returns
+
+The same trip on W9QI0DAD's Oland (`ati`, B8-fix set, 1024x768x32):
+the agent answered throughout, the desktop came back repainted with
+AAA, BBB and CCC in order, `exit` was clean, and V9XWPRS and V9XD32
+afterwards read as on 2026-11-23. The full-screen screen was not
+captured ([record](../decisions/2026-11-25-1.0-b5-oland-dos-box.md)).
+Still owed: a physical S3 card and issue 16's reporter's `vbe` failure.
