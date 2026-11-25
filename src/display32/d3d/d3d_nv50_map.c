@@ -250,6 +250,30 @@ static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
     if (texture->cube_address != 0ul) {
         v9x_nv50_d3d_tic_cube(texture->cube_address,
                               V9X_NV50_D3D_CUBE_TILE_MODE, tic, tsc);
+        return V9X_D3D_NV50_REFUSE_NONE;
+    }
+    /* A mipmapped texture whose chain the HAL copied into the pool, read
+     * through it when the stage filters between levels: nearest between
+     * them for MIPNEAREST and MIPLINEAR, linear for the LINEARMIP pair
+     * (D3DFILTER's names: the level, then the texel within it). A plain
+     * filter reads level 0, linear or tiled alike. */
+    if (texture->mip_address != 0ul && texture->mip_levels > 1ul) {
+        v9x_u32 between;
+
+        switch (sampler->min_filter) {
+        case V9X_R3D_FILTER_MIPNEAREST:
+        case V9X_R3D_FILTER_MIPLINEAR:
+            between = 0ul;
+            break;
+        case V9X_R3D_FILTER_LINEARMIPNEAREST:
+        case V9X_R3D_FILTER_LINEARMIPLINEAR:
+            between = 1ul;
+            break;
+        default:
+            return V9X_D3D_NV50_REFUSE_NONE;
+        }
+        v9x_nv50_d3d_tic_mip(texture->mip_address, texture->mip_tile_mode,
+                             texture->mip_levels - 1ul, between, tic, tsc);
     }
     return V9X_D3D_NV50_REFUSE_NONE;
 }

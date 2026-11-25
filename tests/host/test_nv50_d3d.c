@@ -331,6 +331,74 @@ static void test_texture(void)
                      (0ul << 24) | (7ul << 27)));
 }
 
+/* Mipmaps (docs\plans\nvidia-gt218-mipmaps.md): Mesa's nv50_miptree.c
+ * tiled layout with nv50_tex_choose_tile_dims, and the 2D block-linear TIC
+ * with a mip filter and its LOD clamp. */
+static void test_mip(void)
+{
+    v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 offsets[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 rows[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 modes[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 total = 0ul;
+
+    /* V9XD32 T21's 32x32 RGB565 chain of six: each level's pitch on the
+     * 64-byte GOB; its block the smallest of 4 to 64 rows covering twice
+     * its height (32 rows -> 64 -> mode 30h, 32-row blocks; 16 -> 20h;
+     * 8 -> 10h; 4, 2 and 1 -> 0, 4-row blocks); levels back to back. */
+    CHECK(v9x_nv50_d3d_mip_layout(32ul, 32ul, 6ul, 2ul, offsets, pitches,
+                                  rows, modes, &total));
+    CHECK(modes[0] == 0x30ul && modes[1] == 0x20ul && modes[2] == 0x10ul &&
+          modes[3] == 0ul && modes[4] == 0ul && modes[5] == 0ul);
+    CHECK(pitches[0] == 64ul && pitches[5] == 64ul);
+    CHECK(rows[0] == 32ul && rows[1] == 16ul && rows[2] == 8ul &&
+          rows[3] == 4ul && rows[4] == 4ul && rows[5] == 4ul);
+    CHECK(offsets[0] == 0ul && offsets[1] == 2048ul &&
+          offsets[2] == 3072ul && offsets[3] == 3584ul &&
+          offsets[4] == 3840ul && offsets[5] == 4096ul);
+    CHECK(total == 4352ul);
+    /* 256x128 ARGB8888, two levels: 1024-byte rows; 128 rows -> 256 ->
+     * mode 40h, 64-row blocks; 64 rows -> 128 -> 40h as well. */
+    CHECK(v9x_nv50_d3d_mip_layout(256ul, 128ul, 2ul, 4ul, offsets, pitches,
+                                  rows, modes, &total));
+    CHECK(modes[0] == 0x40ul && modes[1] == 0x40ul);
+    CHECK(pitches[0] == 1024ul && pitches[1] == 512ul);
+    CHECK(rows[0] == 128ul && rows[1] == 64ul);
+    CHECK(offsets[1] == 131072ul && total == 131072ul + 32768ul);
+    CHECK(!v9x_nv50_d3d_mip_layout(0ul, 8ul, 1ul, 4ul, offsets, pitches,
+                                   rows, modes, &total));
+    CHECK(!v9x_nv50_d3d_mip_layout(8ul, 8ul,
+                                   V9X_NV50_D3D_MIP_LEVELS_MAX + 1ul, 4ul,
+                                   offsets, pitches, rows, modes, &total));
+
+    /* The pitch TIC turned into the chain: TWO_D (4000h) block-linear,
+     * level 0's tile mode, last level 5 in word 5; MIPNEAREST (80h) and
+     * the maximum LOD 5.0 in 4.8 fixed point at word 2 bit 12. */
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B5G6R5, 0x4000ul, 64ul,
+                               32ul, 32ul, V9X_NV50_D3D_WRAP_REPEAT, 0ul,
+                               0ul, tic, tsc));
+    v9x_nv50_d3d_tic_mip(0x20456000ul, 0x30ul, 5ul, 0ul, tic, tsc);
+    CHECK(tic[0] == 0x3a712495ul);
+    CHECK(tic[1] == 0x20456000ul);
+    CHECK(tic[2] == (0xd0001000ul | 0x00004000ul | 0x00c00000ul));
+    CHECK(tic[3] == 0x00300000ul);
+    CHECK(tic[4] == (0x80000000ul | 32ul));
+    CHECK(tic[5] == (0x50000000ul | 0x00010000ul | 32ul));
+    /* Word 7 on the GT218's class (past NV50_3D_CLASS in nv50_tex.c): the
+     * view's last level << 4 and first level 0. Left 0, as the NV50 class
+     * has it, the sampler read level 0 at every size (V9XD32 T21,
+     * W9QI0DAD boot 148). */
+    CHECK(tic[6] == 0x03000000ul && tic[7] == (5ul << 4));
+    CHECK(tsc[0] == 0x00024000ul);
+    CHECK(tsc[1] == (0x01ul | 0x10ul | 0x80ul));
+    CHECK(tsc[2] == (0x500ul << 12));
+    /* Linear between levels: C0h. */
+    v9x_nv50_d3d_tic_mip(0x20456000ul, 0x30ul, 5ul, 1ul, tic, tsc);
+    CHECK((tsc[1] & 0xc0ul) == 0xc0ul);
+}
+
 /* Cube maps (step 6 of docs\plans\nvidia-gt218-ps11.md): the tiled copy's
  * layout and the TIC that samples it, as Mesa's nv50_miptree.c and
  * nv50_tex.c lay out and describe a block-linear cube of one level. */
@@ -937,6 +1005,7 @@ unsigned int v9x_run_nv50_d3d_tests(void)
     test_fp2();
     test_texture();
     test_cube();
+    test_mip();
     test_state();
     test_vertex();
     test_shader();

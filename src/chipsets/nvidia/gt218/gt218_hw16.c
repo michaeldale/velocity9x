@@ -82,10 +82,10 @@ unsigned long v9x_gt218_reserve_video_memory(unsigned long usable_bytes,
 {
     v9x_gt218_reserve_at = v9x_gt218_reserve_start(usable_bytes,
                                                    visible_bytes);
-    if (v9x_gt218_reserve_at == 0ul) {
-        return usable_bytes;
-    }
-    return v9x_gt218_reserve_at;
+    /* Below the reserve, where it fits, the 32 MiB tiled texture pool the
+     * HAL finds between the heap's end and the reserve
+     * (docs\plans\nvidia-gt218-mipmaps.md). */
+    return v9x_gt218_heap_end(usable_bytes, visible_bytes);
 }
 
 static unsigned long v9x_gt218_reserve_offset(void)

@@ -2017,6 +2017,9 @@ static DWORD d32_t21_judge(const D32_SURFACE_DESC *desc)
         d32_line("T21Result", "SKIP-NO-MIP-CAPS");
         return 0ul;
     }
+    /* Written either way: a failure counted in Failures alone was not
+     * found for months on the GT218 (docs\plans\nvidia-gt218-mipmaps.md). */
+    d32_line("T21Result", ok == 0xful ? "PASS" : "FAIL");
     return ok != 0xful ? 1ul : 0ul;
 }
 

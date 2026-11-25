@@ -573,6 +573,95 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
 #define V9X_NV50_TIC4_WIDTH_FLAG     0x80000000ul
 #define V9X_NV50_TIC6_SAMPLES_ONE    0x03000000ul
 
+/* Mesa's nv50_tex_choose_tile_dims for a 2D level of ny rows: its helper
+ * on twice the rows, height 128 down to 8 "tiles" as modes 40h to 0. */
+static v9x_u32 v9x_nv50_d3d_mip_tile_mode(v9x_u32 ny)
+{
+    v9x_u32 twice = ny * 2ul;
+
+    if (twice > 64ul) {
+        return 0x40ul;
+    }
+    if (twice > 32ul) {
+        return 0x30ul;
+    }
+    if (twice > 16ul) {
+        return 0x20ul;
+    }
+    if (twice > 8ul) {
+        return 0x10ul;
+    }
+    return 0ul;
+}
+
+int v9x_nv50_d3d_mip_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
+                            v9x_u32 bytes, v9x_u32 *offsets,
+                            v9x_u32 *pitches, v9x_u32 *rows,
+                            v9x_u32 *tile_modes, v9x_u32 *total)
+{
+    v9x_u32 level;
+    v9x_u32 block;
+
+    if (width == 0ul || height == 0ul || levels == 0ul ||
+        levels > V9X_NV50_D3D_MIP_LEVELS_MAX ||
+        (bytes != 2ul && bytes != 4ul)) {
+        return 0;
+    }
+    *total = 0ul;
+    for (level = 0ul; level < levels; ++level) {
+        tile_modes[level] = v9x_nv50_d3d_mip_tile_mode(height);
+        block = V9X_NV50_CUBE_BLOCK_ROWS(tile_modes[level]);
+        pitches[level] = (width * bytes + V9X_NV50_CUBE_GOB_BYTES - 1ul) &
+                         ~(V9X_NV50_CUBE_GOB_BYTES - 1ul);
+        rows[level] = (height + block - 1ul) / block * block;
+        offsets[level] = *total;
+        *total += pitches[level] * rows[level];
+        width = width > 1ul ? width >> 1 : 1ul;
+        height = height > 1ul ? height >> 1 : 1ul;
+    }
+    return 1;
+}
+
+/* The mip TIC: nv50_tex.c's block-linear PIPE_TEXTURE_2D (TWO_D) with the
+ * last level in word 5 bits 31:28 (the NV50 class's view last_level); the
+ * TSC's mip filter G80_TSC_1_MIP_FILTER_NEAREST / _LINEAR and its LOD
+ * clamp in word 2, MIN_LOD_CLAMP bits 11:0 and MAX_LOD_CLAMP bits 23:12,
+ * both 4.8 fixed point. */
+#define V9X_NV50_TIC2_TYPE_TWO_D     0x00004000ul
+#define V9X_NV50_TIC5_LAST_SHIFT     28u
+#define V9X_NV50_TIC7_LAST_SHIFT     4u
+#define V9X_NV50_TSC1_MIP_MASK       0x000000c0ul
+#define V9X_NV50_TSC1_MIP_NEAREST    0x00000080ul
+#define V9X_NV50_TSC1_MIP_LINEAR     0x000000c0ul
+#define V9X_NV50_TSC2_MAX_LOD_SHIFT  12u
+#define V9X_NV50_LOD_ONE             0x100ul
+
+void v9x_nv50_d3d_tic_mip(v9x_u32 address, v9x_u32 tile_mode,
+                          v9x_u32 last_level, v9x_u32 mip_linear,
+                          v9x_u32 *tic, v9x_u32 *tsc)
+{
+    v9x_u32 width = tic[4];
+    v9x_u32 height = tic[5] & 0xfffful;
+
+    tic[1] = address;
+    tic[2] = V9X_NV50_TIC2_BASE_CUBE | V9X_NV50_TIC2_TYPE_TWO_D |
+             ((tile_mode & 0xf0ul) << V9X_NV50_TIC2_TILE_SHIFT);
+    tic[3] = V9X_NV50_TIC3_BLOCKLINEAR;
+    tic[4] = V9X_NV50_TIC4_WIDTH_FLAG | width;
+    tic[5] = (last_level << V9X_NV50_TIC5_LAST_SHIFT) |
+             V9X_NV50_TIC5_DEPTH_ONE | height;
+    tic[6] = V9X_NV50_TIC6_SAMPLES_ONE;
+    /* The view's level range, (last_level << 4) | first_level, which
+     * nv50_tex.c writes for every 3D class past NV50_3D_CLASS - the GT218's
+     * among them; 0 there, as on the NV50 class itself, clamps the view to
+     * level 0 (V9XD32 T21 read level 0 at every size, W9QI0DAD boot 148). */
+    tic[7] = last_level << V9X_NV50_TIC7_LAST_SHIFT;
+    tsc[1] = (tsc[1] & ~V9X_NV50_TSC1_MIP_MASK) |
+             (mip_linear != 0ul ? V9X_NV50_TSC1_MIP_LINEAR
+                                : V9X_NV50_TSC1_MIP_NEAREST);
+    tsc[2] = (last_level * V9X_NV50_LOD_ONE) << V9X_NV50_TSC2_MAX_LOD_SHIFT;
+}
+
 int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 bytes, v9x_u32 *pitch,
                              v9x_u32 *rows, v9x_u32 *layer_bytes)
 {

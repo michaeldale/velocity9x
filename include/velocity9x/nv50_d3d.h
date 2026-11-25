@@ -181,6 +181,31 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
  * same format and size, turned into the cube at address (the tiled
  * window's VM address), and its TSC clamped in all three coordinates.
  */
+/*
+ * Mipmaps (docs\plans\nvidia-gt218-mipmaps.md): a pitch TIC has no levels,
+ * so the HAL keeps a tiled copy of each mipmapped chain.
+ *
+ * v9x_nv50_d3d_mip_layout: the chain's layout as Mesa's nv50_miptree.c
+ * lays a 2D texture out tiled - each level's pitch on the 64-byte GOB, its
+ * tile mode (the block height, nv50_tex_choose_tile_dims: the smallest of
+ * 4 to 64 rows covering twice the level's height) and its rows on that
+ * block, the levels back to back; total the chain's bytes. 0 for a zero
+ * side, a texel size other than 2 or 4, or no or too many levels.
+ *
+ * v9x_nv50_d3d_tic_mip: a pitch TIC from v9x_nv50_d3d_texture turned into
+ * the chain at address with level 0's tile mode and last_level, and its
+ * TSC given the mip filter (nearest, or linear between levels when
+ * mip_linear) and the LOD clamp 0 to last_level.
+ */
+#define V9X_NV50_D3D_MIP_LEVELS_MAX  12ul
+int v9x_nv50_d3d_mip_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
+                            v9x_u32 bytes, v9x_u32 *offsets,
+                            v9x_u32 *pitches, v9x_u32 *rows,
+                            v9x_u32 *tile_modes, v9x_u32 *total);
+void v9x_nv50_d3d_tic_mip(v9x_u32 address, v9x_u32 tile_mode,
+                          v9x_u32 last_level, v9x_u32 mip_linear,
+                          v9x_u32 *tic, v9x_u32 *tsc);
+
 #define V9X_NV50_D3D_CUBE_TILE_MODE  0x10ul
 #define V9X_NV50_D3D_CUBE_FACES      6ul
 int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 bytes, v9x_u32 *pitch,

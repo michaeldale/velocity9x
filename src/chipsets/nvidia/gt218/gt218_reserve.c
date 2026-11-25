@@ -24,3 +24,21 @@ unsigned long v9x_gt218_reserve_start(unsigned long usable_bytes,
     }
     return start;
 }
+
+unsigned long v9x_gt218_heap_end(unsigned long usable_bytes,
+                                 unsigned long visible_bytes)
+{
+    unsigned long reserve = v9x_gt218_reserve_start(usable_bytes,
+                                                    visible_bytes);
+
+    if (reserve == 0ul) {
+        return usable_bytes;
+    }
+    /* The pool below the reserve, both on 2 MiB boundaries, where it
+     * leaves the screen whole. */
+    if (reserve >= V9X_GT218_POOL_BYTES &&
+        reserve - V9X_GT218_POOL_BYTES >= visible_bytes) {
+        return reserve - V9X_GT218_POOL_BYTES;
+    }
+    return reserve;
+}

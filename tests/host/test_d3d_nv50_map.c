@@ -72,6 +72,9 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_NV50_TEXTURE *texture)
     texture->has_key = 0ul;
     texture->key = 0ul;
     texture->cube_address = 0ul;
+    texture->mip_address = 0ul;
+    texture->mip_levels = 0ul;
+    texture->mip_tile_mode = 0ul;
 }
 
 /* Room for a two-unit draw's two entries. */
@@ -363,6 +366,38 @@ static void test_texture(void)
         CHECK(tsc[index] == expect_tsc[index]);
     }
     texture.cube_address = 0ul;
+
+    /* A mipmapped texture with a pooled chain: a mip min filter samples
+     * the chain (nearest between levels for MIPNEAREST and MIPLINEAR,
+     * linear for the LINEARMIP pair); a plain filter keeps level 0. */
+    texture.mip_address = 0x20600000ul;
+    texture.mip_levels = 6ul;
+    texture.mip_tile_mode = 0x30ul;
+    draw.texture.min_filter = V9X_R3D_FILTER_MIPNEAREST;
+    draw.texture.mag_filter = V9X_R3D_FILTER_NEAREST;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B8G8R8A8, 0x00200000ul,
+                               256ul, 64ul, 32ul, V9X_NV50_D3D_WRAP_REPEAT,
+                               0ul, 0ul, expect_tic, expect_tsc));
+    v9x_nv50_d3d_tic_mip(0x20600000ul, 0x30ul, 5ul, 0ul, expect_tic,
+                         expect_tsc);
+    for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+        CHECK(tic[index] == expect_tic[index]);
+        CHECK(tsc[index] == expect_tsc[index]);
+    }
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK((tsc[1] & 0xc0ul) == 0xc0ul && tic[1] == 0x20600000ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(tic[1] == 0x00200000ul && (tsc[1] & 0xc0ul) == 0x40ul);
+    draw.texture.mag_filter = V9X_R3D_FILTER_LINEAR;
+    texture.mip_address = 0ul;
+    texture.mip_levels = 0ul;
+    texture.mip_tile_mode = 0ul;
 
     /* DECAL and COPY replace; MODULATEALPHA modulates. */
     draw.texture.op = V9X_R3D_TEXOP_DECAL;

@@ -55,4 +55,19 @@
 unsigned long v9x_gt218_reserve_start(unsigned long usable_bytes,
                                       unsigned long visible_bytes);
 
+/*
+ * The tiled texture pool for mipmapped textures
+ * (docs\plans\nvidia-gt218-mipmaps.md): V9X_GT218_POOL_BYTES directly below
+ * the reserve, off the heap as the reserve is, Michael's choice of size on
+ * 2026-11-25. The HAL finds it between the heap's end (fb.vram_bytes) and
+ * the reserve.
+ *
+ * v9x_gt218_heap_end: where the heap ends - the pool's start when the pool
+ * fits above the visible screen, else the reserve's start, else (no
+ * reserve) the whole mapping.
+ */
+#define V9X_GT218_POOL_BYTES 0x02000000ul
+unsigned long v9x_gt218_heap_end(unsigned long usable_bytes,
+                                 unsigned long visible_bytes);
+
 #endif

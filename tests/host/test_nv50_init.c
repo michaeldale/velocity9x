@@ -220,6 +220,15 @@ static void test_reserve(void)
     /* Outside the 512 MiB the channel's identity VM maps. */
     CHECK(v9x_gt218_reserve_start(0x20000000ul, 0ul) == 0x1fe00000ul);
     CHECK(v9x_gt218_reserve_start(0x20200000ul, 0ul) == 0ul);
+
+    /* The heap's end: 32 MiB below the reserve for the tiled texture pool
+     * (docs\plans\nvidia-gt218-mipmaps.md) where it fits above the
+     * screen; at the reserve where it does not; the whole mapping when
+     * there is no reserve. */
+    CHECK(v9x_gt218_heap_end(0x08000000ul, 0x00180000ul) == 0x05e00000ul);
+    CHECK(v9x_gt218_heap_end(0x02800000ul, 0x00300000ul) == 0x00600000ul);
+    CHECK(v9x_gt218_heap_end(0x02000000ul, 0x00300000ul) == 0x01e00000ul);
+    CHECK(v9x_gt218_heap_end(0x000c0000ul, 0ul) == 0x000c0000ul);
 }
 
 /* nv50_rblock.c: the row block nouveau's nv50_fb_vram_rblock computes,

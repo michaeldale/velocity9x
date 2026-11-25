@@ -26,6 +26,7 @@
 #include "velocity9x/nv50_d3d.h"
 #include "velocity9x/nv50_ps11.h"
 #include "velocity9x/nv50_rblock.h"
+#include "velocity9x/gt218_reserve.h"
 
 /* Triangles one batch takes: at the widest vertex (18 words) 2,048 fill
  * 110,592 of the push area's 196,608 words, with room for the setup and
@@ -398,6 +399,11 @@ static int v9x_d3d_nv50_ready(void)
            v9x_hal->engine.reserve_offset != 0ul;
 }
 
+/* A mipmapped texture's pooled chain, brought up to date, into texture's
+ * mip fields (the mip section below). */
+static void v9x_d3d_nv50_resolve_mip(DWORD offset,
+                                     V9X_D3D_NV50_TEXTURE *texture);
+
 /* The bound texture's level 0 as the map takes it. */
 static void v9x_d3d_nv50_resolve_texture(const V9X_R3D_TEXTURE *sampler,
                                          V9X_D3D_NV50_TEXTURE *texture)
@@ -411,6 +417,9 @@ static void v9x_d3d_nv50_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     texture->has_key = 0ul;
     texture->key = 0ul;
     texture->cube_address = 0ul;
+    texture->mip_address = 0ul;
+    texture->mip_levels = 0ul;
+    texture->mip_tile_mode = 0ul;
     if (surface == 0 || surface->lpGbl == 0 ||
         (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
         (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
@@ -429,6 +438,9 @@ static void v9x_d3d_nv50_resolve_texture(const V9X_R3D_TEXTURE *sampler,
     if ((surface->dwFlags & V9X_DDRAWISURF_HASCKEYSRCBLT) != 0ul) {
         texture->has_key = 1ul;
         texture->key = surface->ddckCKSrcBltLow;
+    }
+    if (texture->format != V9X_D3D_NV50_TEXTURE_UNKNOWN) {
+        v9x_d3d_nv50_resolve_mip(offset, texture);
     }
 }
 
@@ -711,6 +723,268 @@ static int v9x_d3d_nv50_cube_copy(V9X_D3D_NV50_CUBE *cube)
         cube->dirty = 0ul;
     }
     return ok;
+}
+
+/*
+ * Mipmaps (docs\plans\nvidia-gt218-mipmaps.md). A pitch TIC has no
+ * levels, so a mipmapped texture's whole chain is copied into a tiled
+ * layout (v9x_nv50_d3d_mip_layout) in the texture pool, and the sampler
+ * reads that. The pool is the 32 MiB the 16-bit side leaves between the
+ * heap's end and the engine reserve (gt218_reserve.h). Only its whole
+ * row-block units are used, so the tiled kind shares no row block with
+ * the linear heap below or the channel above. Blocks are taken first-fit
+ * on the 512-byte tile and given back when the texture goes. A texture
+ * that finds no room keeps sampling level 0, as before.
+ *
+ * Each record is known by its level 0's offset; its levels' linear
+ * surfaces stay where DirectDraw's runtime writes them, and any write to
+ * one of them marks the copy stale (surface_written).
+ */
+#define V9X_D3D_NV50_MIPS            512ul
+#define V9X_D3D_NV50_POOL_ALIGN      512ul
+
+typedef struct v9x_d3d_nv50_mip {
+    DWORD base;                 /* level 0's offset; 0 for a free slot */
+    DWORD levels;
+    DWORD width;
+    DWORD height;
+    DWORD bytes;
+    DWORD linear[V9X_NV50_D3D_MIP_LEVELS_MAX];      /* each level's offset */
+    DWORD linear_pitch[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 offsets[V9X_NV50_D3D_MIP_LEVELS_MAX];   /* in the tiled chain */
+    v9x_u32 modes[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    DWORD pool_offset;          /* the chain's offset in video memory */
+    DWORD pool_bytes;
+    DWORD dirty;
+} V9X_D3D_NV50_MIP;
+
+static V9X_D3D_NV50_MIP v9x_d3d_nv50_mips[V9X_D3D_NV50_MIPS];
+/* The pool's usable range as last worked out; a different heap end or
+ * reserve (a new mapping) forgets every record. */
+static DWORD v9x_d3d_nv50_pool_start;
+static DWORD v9x_d3d_nv50_pool_end;
+
+/* The pool's whole row-block units between the heap's end and the
+ * reserve, or 0 when there is no pool. */
+static int v9x_d3d_nv50_pool_range(DWORD *start, DWORD *end)
+{
+    DWORD unit = v9x_nv50_rblock_unit_now();
+    DWORD heap_end = v9x_hal->fb.vram_bytes;
+    DWORD reserve = v9x_hal->engine.reserve_offset;
+    DWORD index;
+
+    if (unit == 0ul || reserve <= heap_end ||
+        reserve - heap_end < V9X_GT218_POOL_BYTES) {
+        return 0;
+    }
+    *start = (heap_end + unit - 1ul) / unit * unit;
+    *end = reserve / unit * unit;
+    if (*end <= *start) {
+        return 0;
+    }
+    if (*start != v9x_d3d_nv50_pool_start ||
+        *end != v9x_d3d_nv50_pool_end) {
+        for (index = 0ul; index < V9X_D3D_NV50_MIPS; ++index) {
+            v9x_d3d_nv50_mips[index].base = 0ul;
+        }
+        v9x_d3d_nv50_pool_start = *start;
+        v9x_d3d_nv50_pool_end = *end;
+    }
+    return 1;
+}
+
+/* bytes from the pool, first fit on the tile: the lowest gap between the
+ * blocks the records hold. 0 when nothing fits. */
+static DWORD v9x_d3d_nv50_pool_take(DWORD bytes)
+{
+    DWORD start;
+    DWORD end;
+    DWORD candidate;
+    DWORD index;
+    int moved;
+
+    if (!v9x_d3d_nv50_pool_range(&start, &end)) {
+        return 0ul;
+    }
+    bytes = (bytes + V9X_D3D_NV50_POOL_ALIGN - 1ul) &
+            ~(V9X_D3D_NV50_POOL_ALIGN - 1ul);
+    candidate = start;
+    do {
+        moved = 0;
+        for (index = 0ul; index < V9X_D3D_NV50_MIPS; ++index) {
+            const V9X_D3D_NV50_MIP *mip = &v9x_d3d_nv50_mips[index];
+
+            if (mip->base != 0ul && candidate < mip->pool_offset +
+                                                    mip->pool_bytes &&
+                mip->pool_offset < candidate + bytes) {
+                candidate = mip->pool_offset + mip->pool_bytes;
+                moved = 1;
+            }
+        }
+    } while (moved && candidate + bytes <= end);
+    if (candidate + bytes > end) {
+        return 0ul;
+    }
+    return candidate;
+}
+
+/* The record whose level 0 is at offset, or null. */
+static V9X_D3D_NV50_MIP *v9x_d3d_nv50_mip_at(DWORD offset)
+{
+    DWORD n;
+
+    for (n = 0ul; offset != 0ul && n < V9X_D3D_NV50_MIPS; ++n) {
+        if (v9x_d3d_nv50_mips[n].base == offset) {
+            return &v9x_d3d_nv50_mips[n];
+        }
+    }
+    return 0;
+}
+
+/* A write at offset: the record holding a level there needs a new copy. */
+static void v9x_d3d_nv50_mip_written(DWORD offset)
+{
+    DWORD n;
+    DWORD level;
+
+    for (n = 0ul; n < V9X_D3D_NV50_MIPS; ++n) {
+        V9X_D3D_NV50_MIP *mip = &v9x_d3d_nv50_mips[n];
+
+        if (mip->base == 0ul) {
+            continue;
+        }
+        for (level = 0ul; level < mip->levels; ++level) {
+            if (mip->linear[level] == offset) {
+                mip->dirty = 1ul;
+            }
+        }
+    }
+}
+
+/* Each level from its linear surface into its place in the chain, one
+ * 502D copy each in its own tile mode, in one kick (as the cubes). */
+static int v9x_d3d_nv50_mip_copy(V9X_D3D_NV50_MIP *mip)
+{
+    struct v9x_nv50_surface linear;
+    struct v9x_nv50_surface tiled;
+    struct v9x_nv50_push push;
+    volatile DWORD *area;
+    volatile DWORD *scratch;
+    DWORD area_words;
+    DWORD scratch_base;
+    DWORD generation;
+    DWORD level;
+    DWORD width = mip->width;
+    DWORD height = mip->height;
+    DWORD format = mip->bytes == 4ul ? V9X_502D_FORMAT_A8R8G8B8
+                                     : V9X_502D_FORMAT_R5G6B5;
+    int ok;
+
+    if (mip->dirty == 0ul) {
+        return 1;
+    }
+    if (!v9x_nv50_3d_begin(&area, &area_words, &scratch, &scratch_base,
+                           &generation)) {
+        return 0;
+    }
+    v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
+    for (level = 0ul; level < mip->levels; ++level) {
+        linear.address = mip->linear[level];
+        linear.pitch = mip->linear_pitch[level];
+        linear.width = width;
+        linear.height = height;
+        linear.tile_mode = 0ul;
+        linear.tiled = 0ul;
+        tiled.address = V9X_NV50_VM_TILED + mip->pool_offset +
+                        mip->offsets[level];
+        tiled.pitch = 0ul;
+        tiled.width = width;
+        tiled.height = height;
+        tiled.tile_mode = mip->modes[level];
+        tiled.tiled = 1ul;
+        v9x_nv50_push_2d_surface_blit(&push, &linear, &tiled, format, 0ul,
+                                      0ul, 0ul, 0ul, width, height);
+        width = width > 1ul ? width >> 1 : 1ul;
+        height = height > 1ul ? height >> 1 : 1ul;
+    }
+    if (push.overflow != 0ul) {
+        return 0;
+    }
+    v9x_d3d_nv50_resolving = 1;
+    ok = v9x_nv50_3d_submit(push.count);
+    v9x_d3d_nv50_resolving = 0;
+    if (ok) {
+        mip->dirty = 0ul;
+    }
+    return ok;
+}
+
+static void v9x_d3d_nv50_resolve_mip(DWORD offset,
+                                     V9X_D3D_NV50_TEXTURE *texture)
+{
+    V9X_D3D_NV50_MIP *mip = v9x_d3d_nv50_mip_at(offset);
+
+    /* A copy that cannot be made leaves the texture on level 0. */
+    if (mip == 0 || !v9x_d3d_nv50_mip_copy(mip)) {
+        return;
+    }
+    texture->mip_address = V9X_NV50_VM_TILED + mip->pool_offset;
+    texture->mip_levels = mip->levels;
+    texture->mip_tile_mode = mip->modes[0];
+}
+
+/*
+ * A mipmapped chain just placed level by level (each level's surface at
+ * its own offset and pitch): a record and a block of the pool for its
+ * tiled copy, stale until the first draw copies it. Nothing when the
+ * chain has one level, there is no pool or no room, or every record is
+ * taken: the texture then samples level 0.
+ */
+static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
+                                    DWORD bytes)
+{
+    V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
+    V9X_D3D_NV50_MIP *slot = 0;
+    v9x_u32 pitches[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 rows[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 total;
+    DWORD levels = data->dwSCnt;
+    DWORD offset;
+    DWORD index;
+
+    if (levels < 2ul || levels > V9X_NV50_D3D_MIP_LEVELS_MAX) {
+        return;
+    }
+    for (index = 0ul; index < V9X_D3D_NV50_MIPS; ++index) {
+        if (v9x_d3d_nv50_mips[index].base == 0ul) {
+            slot = &v9x_d3d_nv50_mips[index];
+            break;
+        }
+    }
+    if (slot == 0 ||
+        !v9x_nv50_d3d_mip_layout((v9x_u32)list[0]->lpGbl->wWidth,
+                                 (v9x_u32)list[0]->lpGbl->wHeight, levels,
+                                 bytes, slot->offsets, pitches, rows,
+                                 slot->modes, &total)) {
+        return;
+    }
+    offset = v9x_d3d_nv50_pool_take(total);
+    if (offset == 0ul) {
+        return;
+    }
+    for (index = 0ul; index < levels; ++index) {
+        slot->linear[index] = v9x_surface_offset(list[index]);
+        slot->linear_pitch[index] = (DWORD)list[index]->lpGbl->lPitch;
+    }
+    slot->levels = levels;
+    slot->width = (DWORD)list[0]->lpGbl->wWidth;
+    slot->height = (DWORD)list[0]->lpGbl->wHeight;
+    slot->bytes = bytes;
+    slot->pool_offset = offset;
+    slot->pool_bytes = (total + V9X_D3D_NV50_POOL_ALIGN - 1ul) &
+                       ~(V9X_D3D_NV50_POOL_ALIGN - 1ul);
+    slot->dirty = 1ul;
+    slot->base = slot->linear[0];
 }
 
 /* ddhal_internal.h: every dirty shadow back to its target. */
@@ -1897,6 +2171,11 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                            rows) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
+    /* A mipmapped texture also gets its chain's tiled copy in the pool. */
+    if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
+        data->dwSCnt > 1ul) {
+        v9x_d3d_nv50_mip_create(data, bytes);
+    }
     ++v9x_hal->d3d_diagnostics.texture_placed;
     data->ddRVal = V9X_DD_OK;
     return V9X_DDHAL_DRIVER_HANDLED;
@@ -1913,6 +2192,7 @@ static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
         data != 0 ? (const V9X_DD_SURFACE_LCL *)data->lpDDSurface : 0;
     V9X_D3D_NV50_SHADOW *shadow;
     V9X_D3D_NV50_CUBE *cube;
+    V9X_D3D_NV50_MIP *mip;
     DWORD offset;
 
     if (surface != 0 && surface->lpGbl != 0 &&
@@ -1926,6 +2206,12 @@ static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
                 shadow->used = 0ul;
                 (void)v9x_d3d_place_release(data, shadow->release_window);
                 return;
+            }
+            /* A mipmapped texture's level 0: its pool block is given back
+             * (each level frees its own heap block below). */
+            mip = v9x_d3d_nv50_mip_at(offset);
+            if (mip != 0) {
+                mip->base = 0ul;
             }
             /* A cube's +X top holds the block: forgotten with it. Its other
              * surfaces carry no block and free nothing. */
@@ -1954,6 +2240,7 @@ static void v9x_d3d_nv50_surface_written(const V9X_DD_SURFACE_LCL *surface)
     if (offset != 0xfffffffful) {
         v9x_d3d_nv50_release_target(offset, 1);
         v9x_d3d_nv50_cube_written(offset);
+        v9x_d3d_nv50_mip_written(offset);
     }
 }
 

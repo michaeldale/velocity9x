@@ -44,6 +44,13 @@ typedef struct v9x_d3d_nv50_texture {
      * cube layout), sampled in place of the linear face at offset; 0 for
      * any other texture. */
     v9x_u32 cube_address;
+    /* A mipmapped texture with a tiled copy of its chain in the pool
+     * (docs\plans\nvidia-gt218-mipmaps.md): the copy's VM address, its
+     * level count and level 0's tile mode; mip_address 0 for any other.
+     * Read only when the stage's min filter is a mip filter. */
+    v9x_u32 mip_address;
+    v9x_u32 mip_levels;
+    v9x_u32 mip_tile_mode;
 } V9X_D3D_NV50_TEXTURE;
 
 #define V9X_D3D_NV50_REFUSE_NONE            0ul
