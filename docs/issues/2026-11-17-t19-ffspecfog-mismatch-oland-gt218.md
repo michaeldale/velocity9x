@@ -68,3 +68,8 @@ FfSpecFog at 0 mismatches and a worst channel error of 1. Both runs drew
 X8R8G8B8. The GT218 is host-tested only
 ([record](../decisions/2026-11-25-t19-specular-saturate-before-fog.md)).
 Status: fixed on the Oland; the R5G6B5 run and the GT218 not rerun.
+
+Later the same day, R5G6B5 on the Oland (desktop at 16 bpp): T19 passes
+in both V9XD32 runs, FfSpecFog 0 mismatches, worst channel 9 as on most
+rows at that depth. Status: fixed on the Oland at both depths; the
+GT218 host-tested only.

@@ -39,3 +39,15 @@ bring it back
 ([issue](2026-11-24-s3-ati-screen-off-after-standby-86box.md),
 [record](../decisions/2026-11-24-1.0-b5-b9-86box.md)). The laptop run
 in the acceptance is still owed.
+
+## 2026-11-25: the Oland R7 250, a desktop on APM
+
+Stand By and resume on W9QI0DAD, `ati`, 1024x768x32: the desktop came
+back with the mode kept, and V9XWPRS, V9XD32 and V9XFBCMP pass after it
+without a restart. The resume takes minutes and looks like a hang; a
+first run was power-cycled before the agent was asked. Windows' own VGA
+driver resumes the same way, slowly. Our driver leaves the monitor lit
+in Stand By (D0 only, by the 2026-08-11 decision). Nothing of ours
+restored anything; the mode was not lost here
+([record](../decisions/2026-11-25-1.0-b9-standby-oland.md)). The laptop
+run is still owed.

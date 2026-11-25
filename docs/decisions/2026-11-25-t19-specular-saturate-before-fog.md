@@ -73,7 +73,19 @@ the first clean V9XD32 on this card in the records.
 
 Both runs drew T19 at X8R8G8B8 (`T19DisplayFormat=0x16`). The desktop
 is 32 bpp, and V9XD32's `/bpp16` does not change T19's format. So the
-R5G6B5 case (3 bad pixels in the issue) was not rerun.
+R5G6B5 case (3 bad pixels in the issue) needed its own run, below.
+
+### R5G6B5, later the same day
+
+Boot 137 again, the desktop switched live to 1024x768x16 by
+`V9XMSW /set:1024x768x16`, then V9XD32 from `C:\V9XREL` (the copy the
+release checks put there) run default and `/bpp16`, and the desktop
+switched back to 32 bpp. T19 drew R5G6B5 (`T19DisplayFormat=0x17`).
+Both runs: `Failures=0`, `Result=PASS`; FfSpecFog 0 mismatches. Its
+worst channel error, 9, is the 5:6:5 tolerance itself, but it is what
+almost every T19 row reaches at this depth (Push, FourTex, Dxt1, FfSpec,
+FfTwo: 9 each), so it is the format's rounding and not this row's.
+Before the fix this case had 3 bad pixels. Evidence: `desktop16/`.
 
 ## Not run
 
@@ -84,7 +96,6 @@ R5G6B5 case (3 bad pixels in the issue) was not rerun.
   advertises no pixel shaders, so T19 is `SKIP-NO-PS` and its specular
   rows are not judged there
   ([`../probe/r3e-b6-t19-2026-11-25/`](../probe/r3e-b6-t19-2026-11-25/)).
-- The R5G6B5 T19 run on the Oland, which needs the desktop at 16 bpp.
 
 Evidence: [`../probe/t19-specfog-oland-2026-11-25/`](../probe/t19-specfog-oland-2026-11-25/)
 (`release/oland/` the probe reports, `release-checks-summary.md` the
