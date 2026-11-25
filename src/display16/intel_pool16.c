@@ -37,6 +37,9 @@
  * mini-VDD checks the device again. */
 #define V9X_POOL_DEVICE       0x27AEu
 #define V9X_POOL_DEVICE_GM965 0x2A02u
+/* And the 915GM's GMA 900, the 945's design with its GTT in BAR3 too
+ * (docs\decisions\2026-11-26-gma900-m8z30st-release-probes.md). */
+#define V9X_POOL_DEVICE_GMA900 0x2592u
 /* And the HD 4600, gated to the i5-4570 by the mini-VDD's subsystem check
  * (docs\plans\intel-haswell-system-memory-textures.md, decision 3). */
 #define V9X_POOL_DEVICE_HSW   0x0412u
@@ -192,6 +195,7 @@ void V9X_LEAF_FAR v9x_intel_pool_setup(unsigned short device_id)
     WritePrivateProfileString(V9X_POOL_SECTION, 0, 0, V9X_DIAG_INTELGTT_TXT);
 
     if (device_id != V9X_POOL_DEVICE && device_id != V9X_POOL_DEVICE_GM965 &&
+        device_id != V9X_POOL_DEVICE_GMA900 &&
         device_id != V9X_POOL_DEVICE_HSW) {
         v9x_pool_result("not-gated-device", 0ul);
         return;

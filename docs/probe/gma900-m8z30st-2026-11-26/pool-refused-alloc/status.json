@@ -1,0 +1,19 @@
+{
+    "Name":  "gma900",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  3,
+    "BootAfter":  4,
+    "Installed":  8,
+    "Error":  "3DMark: dialog \u00273DMark Error\u0027 appeared (screen in 3dmark-stuck.png)",
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  3,
+    "Desktop":  true,
+    "AnswerSeconds":  7,
+    "ThreeDMark":  "stopped: dialog \u00273DMark Error\u0027 appeared",
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "8086:2592, 8086:2792",
+    "AdapterMismatch":  false
+}

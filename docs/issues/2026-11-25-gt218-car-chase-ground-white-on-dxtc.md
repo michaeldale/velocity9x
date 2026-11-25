@@ -1,7 +1,9 @@
 # GeForce 210, 3DMark 2001 SE Car Chase High Detail: the ground near the robots draws near-white once 3DMark uses compressed textures
 
 Date: 2026-11-25. Machine: W9QI0DAD (GT218 `10DE:0A65`, Windows 98 SE,
-1024x768x16). Status: open, cause not found.
+1024x768x16). Status: open, cause not found. Deferred to 1.1
+(Michael, 2026-11-26): he expects the white ground may be how the scene
+draws with DXTC anyway. Not checked against another driver.
 
 ## What is seen
 

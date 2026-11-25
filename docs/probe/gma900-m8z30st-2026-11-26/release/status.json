@@ -1,0 +1,19 @@
+{
+    "Name":  "gma900",
+    "Family":  "intel-gma",
+    "Baseline":  false,
+    "BootBefore":  2,
+    "BootAfter":  3,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  2,
+    "Desktop":  true,
+    "AnswerSeconds":  6,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "8086:2592, 8086:2792",
+    "AdapterMismatch":  false
+}

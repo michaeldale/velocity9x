@@ -1,0 +1,8 @@
+[IntelPool]
+PhysPages=0007F767
+StateBefore=00000002
+MappedBytes=04000000
+PlanOffset=00800000
+PlanBytes=02000000
+Result=kept
+Reason=00000000

@@ -684,7 +684,7 @@ const V9X_HW16_DEVICE v9x_gma950_device = {
  * The 915GM's GMA 900. Its BARs, stolen-memory decode, BSM and VBE size match
  * the 945GSE's in the one survey there is
  * (docs\probe\references\lenovo-3000-c100-915gm-vgasurv-2026-10-07.ini);
- * nothing here has run on one.
+ * the engine has run on two since (M-NGMX0T, M-8Z30ST).
  */
 const V9X_HW16_DEVICE v9x_gma900_device = {
     0x8086u, 0x2592u,
@@ -698,11 +698,20 @@ const V9X_HW16_DEVICE v9x_gma900_device = {
     v9x_gma900_fill_engine,
     2u,
     0u,
-    0ul,
+    /*
+     * 64 MiB of GMADR, as the GMA 950's row and for its reason: the texture
+     * pool's 32 MiB sits above the 8 MiB stolen run. Same design, same fix:
+     * 3DMark 2000 ran out of video memory here without the pool
+     * (docs\decisions\2026-11-26-gma900-m8z30st-release-probes.md).
+     */
+    0x04000000ul,
     0,
     /* Write-combined, as the GMA 950, PAT included. */
     1u,
-    v9x_i9xx_write_combine
+    v9x_i9xx_write_combine,
+    0u,
+    /* The texture pool intel_pool16.c mapped at Enable, if any. */
+    v9x_gma950_engine_pool
 };
 
 /*

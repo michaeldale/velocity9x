@@ -1,0 +1,6 @@
+[+0:06] agent 0.19.0, boot 3, desktop True
+[+0:38] display card present: 8086:2592, 8086:2792
+[+0:48] probes in place: sent 0 of 7
+[+1:45] 3DMark started after 1 start input(s)
+[+2:22] 3DMark +0.6 min: FlipHandled 17
+[+3:16] ERROR: 3DMark: dialog '3DMark Error' appeared (screen in 3dmark-stuck.png)

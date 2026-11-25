@@ -687,6 +687,7 @@ IFDEF V9X_INTEL_MMIO_FINGERPRINT
 ; aperture page i is allocation page i (measured, Phase 2 record).
 V9X_I9XX_POOL_DEVICE   equ 27ae8086h     ; the gate: MICHAEL-NETBOOK's 945GSE
 V9X_I9XX_POOL_DEVICE_GM965 equ 2a028086h ; and every GM965
+V9X_I9XX_POOL_DEVICE_GMA900 equ 25928086h ; and the 915GM, GTT in BAR3
 ; Haswell, gated to the i5-4570 (Dell subsystem 1028:05A4) by decision 3 of
 ; docs\plans\intel-haswell-system-memory-textures.md. Its GTT is
 ; V9xHswGttLinear, mapped by HSW_ENGINE_OPEN; its pool entries are junk
@@ -2170,11 +2171,26 @@ V9xMini_I9xx_Gtt_Map:
     jz      short V9xMini_I9xx_Gtt_Map_Window
     add     edx, V9X_I9XX_MMIO_BYTES
     cmp     eax, edx
-    je      short V9xMini_I9xx_Gtt_In_Bar0
+    je      short V9xMini_I9xx_Gtt_Adjacent
     ; Ironlake: the GTT at BAR0 + 2 MiB, and the same 965 fences.
     add     edx, V9X_I9XX_GEN5_GTT_OFFSET - V9X_I9XX_MMIO_BYTES
     cmp     eax, edx
     jne     short V9xMini_I9xx_Gtt_Map_Window
+    jmp     short V9xMini_I9xx_Gtt_In_Bar0
+    ; BAR0 + 512 KiB is the GM965's GTT inside its 1 MiB BAR0, but the
+    ; 915GM's BIOS places its own BAR3 there too (BAR0 D0000000, BAR3
+    ; D0080000, M-8Z30ST, docs\decisions\2026-11-26-gma900-m8z30st-release-
+    ; probes.md). A Gen3 GTT is its BAR3, config 1Ch; on Gen4 and Gen5 1Ch
+    ; is the 64-bit GMADR's upper half, zero, so it never matches there.
+V9xMini_I9xx_Gtt_Adjacent:
+    push    eax
+    mov     eax, V9X_I9XX_POOL_CFG_IGD + 1Ch
+    call    V9xMini_I9xx_Pool_Igd_Config
+    and     eax, 0fffffff0h
+    mov     edx, eax
+    pop     eax
+    cmp     eax, edx
+    je      short V9xMini_I9xx_Gtt_Map_Window
 V9xMini_I9xx_Gtt_In_Bar0:
     mov     V9xI9xxGttInBar0, 1
 V9xMini_I9xx_Gtt_Map_Window:
@@ -5634,8 +5650,12 @@ V9xMini_I9xx_Pool_Alloc_Not_Hsw:
     ; pool-decisions.md; measured on TOMMOHP, opened to the design by
     ; Michael's decision). The same PTE serves both: every frame Windows
     ; 98 hands out is below 4 GiB, so Gen4's address bits 35:32 are zero.
+    ; The 915GM's GMA 900 is the 945's design, GTT in BAR3 as there.
+    cmp     eax, V9X_I9XX_POOL_DEVICE_GMA900
+    je      short V9xMini_I9xx_Pool_Alloc_Bar3
     cmp     eax, V9X_I9XX_POOL_DEVICE
     jne     short V9xMini_I9xx_Pool_Alloc_Gm965
+V9xMini_I9xx_Pool_Alloc_Bar3:
     mov     edx, 2
     cmp     V9xI9xxGttInBar0, 0
     jne     V9xMini_I9xx_Pool_Alloc_Refused
