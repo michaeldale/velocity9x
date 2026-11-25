@@ -92,7 +92,7 @@ the README is the later one.
 | ATI 3DCIF | Every package; ATI's eight SDK demos on the Rage IIC, Rage XL and GMA 950; Assault Rigs and Wipeout draw their textures (0.18.5) ([plan](plans/ati-3dcif-wrapper.md)) | Not run on any card added since. No mipmaps, tiled textures, meshes or TLVERTEX ([issue](issues/2026-10-14-3dcif-unimplemented-features.md)) |
 | 16-bit colour layout | 5:5:5 by default on the ViRGE, on ATI's Rage II and Rage Pro classes and on the RIVA 128ZX; 5:6:5 elsewhere; the settings page overrides | The GMA 950's video BIOS has no 5:5:5 modes |
 | Write-combining | Rage 128 Pro, GMA 950/900/3150, Ironlake, SiS 6326, the Radeon HD 5450 to 7660D (0.41.0), the HD 4600 and `vbe` through the page attribute table where an MTRR is refused | Measured on Trinity only among the Radeon HD parts |
-| Updates and reports | Check for updates and Send report on the settings page, since 0.15.0. One update taken end to end, 0.18.0 to 0.18.1 on the 86Box Mach64 VT2 ([probe](probe/86box-mach64vt2-update-0.18.0-to-0.18.1-2026-10-15/README.md)) | As of 0.23.0: not run on physical hardware; rollback from the backup not exercised |
+| Updates and reports | Check for updates and Send report on the settings page, since 0.15.0. One update taken end to end, 0.18.0 to 0.18.1 on the 86Box Mach64 VT2 ([probe](probe/86box-mach64vt2-update-0.18.0-to-0.18.1-2026-10-15/README.md)) | 2026-11-25: 0.59.0 to 0.60.0 on a physical GeForce 210, and a rollback from its backup by WININIT rename ([record](decisions/2026-11-25-1.0-b13-update-rollback-gt218.md)); RECOVER.TXT's Safe Mode steps not run by hand |
 
 No card has a hardware cursor. GDI is accelerated on the S3, Matrox,
 Voodoo4 and RIVA 128ZX cards and drawn by the CPU on the rest.
