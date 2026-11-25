@@ -79,7 +79,11 @@ R5G6B5 case (3 bad pixels in the issue) was not rerun.
 
 - The GT218: its card is no longer fitted in any machine. The fix is
   host-tested only.
-- Carrizo and Mullins share `vi_shader.c`. They are not run.
+- Carrizo shares `vi_shader.c` and was not run. Mullins (M-JJN1ZZ)
+  ran the fix later the same day. Its V9XD32 passes as before, but it
+  advertises no pixel shaders, so T19 is `SKIP-NO-PS` and its specular
+  rows are not judged there
+  ([`../probe/r3e-b6-t19-2026-11-25/`](../probe/r3e-b6-t19-2026-11-25/)).
 - The R5G6B5 T19 run on the Oland, which needs the desktop at 16 bpp.
 
 Evidence: [`../probe/t19-specfog-oland-2026-11-25/`](../probe/t19-specfog-oland-2026-11-25/)

@@ -65,3 +65,8 @@ The release probes read as before. Not yet confirmed by the reporter or
 run on the R3E or R7E
 ([record](../decisions/2026-11-25-1.0-b6-oland-cursor-square.md)).
 Status: fixed, awaiting the reporter.
+
+Later the same day the fix ran on the R3E (M-JJN1ZZ): V9XCURSQ reads
+the arrow over the game, as on the fixed Oland, and the release probes
+are as at 0.55.0. The old driver was not run there, so the square was
+not reproduced on the R3E.
