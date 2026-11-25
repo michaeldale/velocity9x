@@ -137,6 +137,15 @@ builders it compiles in, logging each batch to `C:\V9XDIAG\ATIRX.TXT`
 before executing it. Unlike the other ATI tools it **writes the engine**,
 off-screen at VRAM 2 MiB inside guards.
 
+`cursq_probe_win32.c` is `V9XCURSQ.EXE`, built by
+`scripts/build-cursq-probe.ps1`: a full-screen DirectDraw game that never
+hides the cursor. At 320x240x16 and 640x480x16 it flips a solid green chain,
+and blits and locks a single primary, moving the cursor every frame; then it
+reads every buffer back and judges what lies under the cursor (an arrow, or a
+solid cursor-sized square). It writes `C:\V9XDIAG\V9XCURSQ.INI`, the screen
+shadow's event log before and after, and `V9XCSQ<n>.PPM` images. See
+[2026-11-25 B6 on the Oland](../../docs/decisions/2026-11-25-1.0-b6-oland-cursor-square.md).
+
 Removed on 2026-09-12, recoverable from git history: `dos_box_test_win32.c`,
 `io_trace_win32.c`, `matrox_mmio_query.asm` and their six build scripts. No
 document referenced them.

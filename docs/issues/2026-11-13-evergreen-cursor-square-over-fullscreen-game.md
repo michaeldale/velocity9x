@@ -39,3 +39,29 @@ screen.
 - Ours: the shadow is shared with `vbe` and the other `ati` rows, so if
   it is the shadow, a full-screen DirectDraw game that keeps GDI's
   cursor should show it on any of them (Carrizo, R3E, or a `vbe` guest).
+
+## 2026-11-25: reproduced on the Oland, and it is the shadow
+
+A new probe, V9XCURSQ, behaves like a full-screen DirectDraw game that
+never hides the cursor. On W9QI0DAD's Oland (`ati`), at 640x480x16 with
+a flip chain, it found a 36x40 solid box at the cursor in the buffer at
+offset 0: the arrow on the black GDI had drawn there. It came back the
+same on a second boot. With `NOSHADOW.TXT` the box is gone, leaving the
+arrow over the game and some of the software cursor's own background
+blocks. The cause: the shadow copies the cursor's rectangle out of
+itself on every cursor move, while in exclusive mode the HAL has stopped
+keeping the shadow in step with the screen
+([record](../decisions/2026-11-25-1.0-b6-oland-cursor-square.md)).
+Status: reproduced, cause found, not fixed.
+
+## 2026-11-25, later: fixed on the Oland
+
+While a process holds exclusive mode, the HAL now says so in
+`V9X_DD_SHARED.shadow_hold`. The shadow then reads the cursor's
+rectangle back from the frame buffer before the cursor is saved under
+or drawn. On boot 136 V9XCURSQ reads the arrow over the game (57 % of
+its box, verdict CURSOR, exit 0), where it read a 95 % square before.
+The release probes read as before. Not yet confirmed by the reporter or
+run on the R3E or R7E
+([record](../decisions/2026-11-25-1.0-b6-oland-cursor-square.md)).
+Status: fixed, awaiting the reporter.

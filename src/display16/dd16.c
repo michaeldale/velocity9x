@@ -793,7 +793,8 @@ static void v9x_dd_refresh_framebuffer(void)
     /* Where the HAL marks what its engine copies leave stale; cleared. */
     v9x_shadow16_attach_stale(&shared->shadow_stale, shared->shadow_log,
                               &shared->shadow_log_count,
-                              &shared->shadow_direction_set);
+                              &shared->shadow_direction_set,
+                              &shared->shadow_hold);
 #endif
     shared->fb.flags |= V9X_DD_FB_VALID;
 
@@ -1182,7 +1183,7 @@ void FAR PASCAL V9xDdInvalidate(void)
         /* Disable frees the shadow right after this. */
         v9x_dd_shared->shadow_linear = 0ul;
 #ifdef V9X_SCREEN_SHADOW
-        v9x_shadow16_attach_stale(0, 0, 0, 0);
+        v9x_shadow16_attach_stale(0, 0, 0, 0, 0);
 #endif
 #ifdef V9X_TDFX_FAMILY
         v9x_hwc_restamp();

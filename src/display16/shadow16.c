@@ -91,6 +91,10 @@ static DWORD FAR *v9x_shadow_log_count;
  * (V9X_DD_SHARED.shadow_direction_set). */
 static DWORD FAR *v9x_shadow_direction_set;
 
+/* The HAL's word that a process holds exclusive mode and GDI is off the
+ * screen (V9X_DD_SHARED.shadow_hold); null until dd16.c attaches it. */
+static DWORD FAR *v9x_shadow_hold;
+
 /* Append one event. No lock: the log is diagnostic, and an event lost to
  * the mouse interrupt or the HAL writing at the same moment costs a line. */
 static void v9x_shadow_note(WORD kind, WORD detail,
@@ -212,6 +216,39 @@ static void v9x_shadow_overlap_stale(const struct v9x_shadow_rect *rect)
     }
 }
 
+/*
+ * While a process holds exclusive mode the HAL stops keeping the shadow in
+ * step with the primary, and the application's picture is in the frame
+ * buffer only. The cursor's rectangle is then read back from the frame
+ * buffer before the DIB Engine saves the pixels under the cursor or draws
+ * it, so the copy out that follows carries the application's picture with
+ * the cursor on it. Without this every cursor move copied a cursor-sized
+ * square of the stale desktop over a full-screen game (B6,
+ * docs\decisions\2026-11-25-1.0-b6-oland-cursor-square.md). Hiding the
+ * cursor instead would take the pointer from games that use Windows' own.
+ *
+ * Not while a drawing bracket is open: its drawing is in the shadow only,
+ * and a read-back would undo it. Interrupt time; reads the bus.
+ */
+static void v9x_shadow_fetch_cursor_if_held(const struct v9x_shadow_rect *rect)
+{
+    struct v9x_shadow_dirty one;
+
+    if (v9x_shadow_hold == 0 || *v9x_shadow_hold == 0ul ||
+        v9x_shadow_drew != V9X_FALSE) {
+        return;
+    }
+    /* Clipped to the screen, as a copy of the cursor is. */
+    v9x_shadow_dirty_clear(&one);
+    v9x_shadow_dirty_add_rect(&one, rect, v9x_shadow_width,
+                              v9x_shadow_height);
+    if (one.pending == V9X_FALSE) {
+        return;
+    }
+    v9x_shadow_note(V9X_SHADOW_EVENT_OVERLAP, 1u, &one.rect);
+    v9x_shadow_fetch(&one.rect);
+}
+
 static void v9x_shadow_copy(const struct v9x_shadow_rect *rect)
 {
     struct v9x_shadow_span span;
@@ -318,7 +355,7 @@ void V9X_LEAF_FAR v9x_shadow16_flush_all(void)
 
 void V9X_LEAF_FAR v9x_shadow16_attach_stale(
     struct v9x_shadow_dirty FAR *stale, struct v9x_shadow_event FAR *log,
-    DWORD FAR *log_count, DWORD FAR *direction_set)
+    DWORD FAR *log_count, DWORD FAR *direction_set, DWORD FAR *hold)
 {
     if (stale != 0) {
         v9x_shadow_dirty_clear(stale);
@@ -327,6 +364,7 @@ void V9X_LEAF_FAR v9x_shadow16_attach_stale(
     v9x_shadow_log = log;
     v9x_shadow_log_count = log_count;
     v9x_shadow_direction_set = direction_set;
+    v9x_shadow_hold = hold;
 }
 
 static WORD v9x_shadow_begin_access(void FAR *device,
@@ -354,6 +392,7 @@ static WORD v9x_shadow_begin_access(void FAR *device,
                                v9x_cursor_hot_y, v9x_cursor_width,
                                v9x_cursor_height, &cursor);
         v9x_shadow_overlap_stale(&cursor);
+        v9x_shadow_fetch_cursor_if_held(&cursor);
         v9x_shadow_dirty_add_rect(&v9x_shadow_pending, &cursor,
                                   v9x_shadow_width, v9x_shadow_height);
         ++v9x_shadow_pending.depth;
@@ -398,6 +437,7 @@ static WORD v9x_shadow_end_access(void FAR *device, WORD flags)
                                v9x_cursor_hot_y, v9x_cursor_width,
                                v9x_cursor_height, &cursor);
         v9x_shadow_overlap_stale(&cursor);
+        v9x_shadow_fetch_cursor_if_held(&cursor);
     }
 
     /* The DIB Engine first, because ending the access is also where it puts
@@ -510,6 +550,7 @@ static void v9x_shadow_cursor_overlap(short x, short y, short hot_x,
 
     v9x_shadow_cursor_rect(x, y, hot_x, hot_y, width, height, &rect);
     v9x_shadow_overlap_stale(&rect);
+    v9x_shadow_fetch_cursor_if_held(&rect);
 }
 
 static void v9x_shadow_before_set_cursor(void FAR *shape)

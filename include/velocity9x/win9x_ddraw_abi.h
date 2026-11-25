@@ -4721,6 +4721,19 @@ typedef struct v9x_dd_shared {
      * back: by the DIB Engine (access, Output) and the mouse interrupt
      * (cursor). Diagnostic, read by V9XFBCMP. Appended 2026-11-12. */
     DWORD shadow_direction_set;
+    /*
+     * Nonzero while a process holds exclusive mode and has not flipped
+     * back to the GDI surface: GDI is off the screen, and the HAL no longer
+     * keeps the shadow in step with what applications write to the
+     * primary (v9x_present_gdi_may_draw in src\display32\ddhal_core.c).
+     * Written by the HAL, read by shadow16.c at interrupt time, which then
+     * reads the cursor's rectangle back from the frame buffer before the
+     * DIB Engine saves under or draws the cursor, so the cursor drawn over
+     * a full-screen game carries the game's pixels and not a square of the
+     * stale desktop (docs\decisions\2026-11-25-1.0-b6-oland-cursor-square.md).
+     * Appended 2026-11-25 within ABI 2026112001.
+     */
+    DWORD shadow_hold;
 } V9X_DD_SHARED;
 
 #pragma pack(pop)

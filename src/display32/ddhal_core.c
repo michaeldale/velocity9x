@@ -721,6 +721,22 @@ int v9x_present_gdi_may_draw(void)
 }
 
 /*
+ * Tell the 16-bit screen shadow whether GDI is off the screen
+ * (V9X_DD_SHARED.shadow_hold). While it is, the shadow is not kept in
+ * step with the primary (v9x_shadow_for below), so its cursor copies would
+ * carry the stale desktop onto the application's picture; shadow16.c reads
+ * the cursor's rectangle back from the frame buffer instead. Called after
+ * every change to the two flags above.
+ */
+static void v9x_present_publish_hold(void)
+{
+    if (v9x_hal == 0) {
+        return;
+    }
+    v9x_hal->shadow_hold = v9x_present_gdi_may_draw() ? 0ul : 1ul;
+}
+
+/*
  * The vbe screen shadow, the HAL's half (option B of
  * docs\plans\vbe-shadow-framebuffer.md).
  *
@@ -1368,6 +1384,7 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
         v9x_present_offset = offset;
         /* The application's own buffer is on screen again, not GDI's. */
         v9x_present_gdi_flipped = 0;
+        v9x_present_publish_hold();
         v9x_draw_note_flip(&v9x_present_draw_note);
         v9x_present_trace(V9X_PRESENT_TRACE_FLIP_ACCEPTED, 0xfffffffful,
                           offset);
@@ -1660,6 +1677,7 @@ DWORD __stdcall V9xHalFlipToGDISurface(V9X_DDHAL_FLIPTOGDIDATA *data)
         }
         /* GDI may draw now, until the next accepted flip. */
         v9x_present_gdi_flipped = 1;
+        v9x_present_publish_hold();
     }
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_FLIPTOGDI, data->ddRVal);
@@ -1698,6 +1716,7 @@ DWORD __stdcall V9xHalSetExclusiveMode(
      * after the drain above, so a refused leave keeps the old state. */
     v9x_present_exclusive = data->dwEnterExcl != 0ul ? 1 : 0;
     v9x_present_gdi_flipped = 0;
+    v9x_present_publish_hold();
     data->ddRVal = V9X_DD_OK;
     v9x_trace_exit(V9X_TRACE_SETEXCLUSIVE, data->ddRVal);
     return V9X_DDHAL_DRIVER_HANDLED;
@@ -2834,6 +2853,9 @@ DWORD __stdcall DriverInit(DWORD context)
         }
     }
     v9x_hal = shared;
+    /* A game's own mode change arrives here inside exclusive mode, with a
+     * block the 16-bit side has just filled: the hold goes into it too. */
+    v9x_present_publish_hold();
     v9x_hal_tsc = v9x_detect_tsc();
     /* The fault filter, kept beneath the program's own (ddhal_watch.c), and
      * this process's watch record if it attached before any v9x_hal. */

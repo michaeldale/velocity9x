@@ -38,12 +38,13 @@ DWORD V9X_LEAF_FAR v9x_shadow16_linear(void);
 void V9X_LEAF_FAR v9x_shadow16_flush_all(void);
 
 /* Where the HAL marks what its engine copies left stale
- * (V9X_DD_SHARED.shadow_stale), cleared here, and the event log beside it
- * (shadow_log, shadow_log_count); nulls to detach. dd16.c attaches them
- * with shadow_linear and detaches them with the block. */
+ * (V9X_DD_SHARED.shadow_stale), cleared here, the event log beside it
+ * (shadow_log, shadow_log_count), and the HAL's word that GDI is off the
+ * screen (shadow_hold); nulls to detach. dd16.c attaches them with
+ * shadow_linear and detaches them with the block. */
 void V9X_LEAF_FAR v9x_shadow16_attach_stale(
     struct v9x_shadow_dirty FAR *stale, struct v9x_shadow_event FAR *log,
-    DWORD FAR *log_count, DWORD FAR *direction_set);
+    DWORD FAR *log_count, DWORD FAR *direction_set, DWORD FAR *hold);
 
 /* The screen PDEVICE's deBeginAccess and deEndAccess while the shadow is
  * active. */
