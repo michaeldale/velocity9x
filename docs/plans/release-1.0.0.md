@@ -118,7 +118,38 @@ measurement on the release candidate or stays a named known issue.
    Windows 9x** - Windows 95, Windows 98, Windows 98 SE and Windows Me.
    (Proposed before: 98 SE supported, the others stated as run.) What
    that commits 1.0 to is blocker B14.
-3. **Tier of each card.** The list under Shape is a first reading.
+3. **Tier of each card. Decided 2026-11-25 (Michael), card by card:**
+   - *Supported, by the Shape rule* (in the check fleet, probes passing
+     recently): GMA 950, HD 4600, HD 3000 `0112`, GMA X3100, GMA
+     4500MHD (its two-unit REPLACE and DECAL failures go to the README's
+     known issues), Oland XT `6610`, R3E, R7E, HD 7660D, X1200 (RS690),
+     X1300.
+   - *Supported, on a 1.0 run still owed:* the A8U4I5 card-swap round
+     (Rage 128 Pro, Rage XL, Rage IIC, Trio64, ViRGE/DX, Trio3D,
+     Millennium, Millennium II, Mystique, SiS 6326, Voodoo4), which
+     Michael will do on the release candidate; and the remote-help cards
+     outside the fleet (GMA 900, GMA 3150, HD 4000 mobile, Radeon 9250,
+     HD 7470, Rage Mobility-M), Supported if they pass on the candidate,
+     Experimental if not, so they join the release-check list.
+   - *Supported on their last run, the card no longer fitted:* Ironlake
+     `0042`, HD 4000 `0162`, HD 2600 XT, HD 2400 Pro, HD 5450, GeForce
+     210. These do not meet the Shape rule (no 1.0 build run); the
+     README says when each last ran.
+   - *Supported, other evidence:* the `vbe` package; HD 5770 (drops to
+     Experimental only if B7 is a real fault); the field reports G45,
+     Q45 and HD 2500 (no diagnostic files of ours); Oland 6611 (our
+     probes on one build, no game); Mach64 VT2 (emulator only). The
+     README states the evidence beside each.
+   - *Experimental:* RIVA 128ZX (3DMark 2000's draws mostly refused,
+     one Glide probe failure).
+   - *Recognised:* GMA 3100, Ironlake mobile `0046`, HD 3000 `0122`,
+     HD 5570, Radeon 9200 `5961`/`5962`, Mystique AGP and Millennium II
+     AGP; nothing has run on any of them.
+
+   So the Shape section's definition of Supported is wider in practice:
+   for 1.0 it means "Michael stands behind it", with the evidence named
+   beside each card. B11 and gate item 6 can now be written from this
+   list.
 4. **Length of the soak**, and whether 0.61.0 is the first candidate or
    one more ordinary release.
 
