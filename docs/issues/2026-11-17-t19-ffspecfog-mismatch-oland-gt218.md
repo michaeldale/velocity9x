@@ -73,3 +73,8 @@ Later the same day, R5G6B5 on the Oland (desktop at 16 bpp): T19 passes
 in both V9XD32 runs, FfSpecFog 0 mismatches, worst channel 9 as on most
 rows at that depth. Status: fixed on the Oland at both depths; the
 GT218 host-tested only.
+
+The same evening on the GeForce 210 (W9QI0DAD, boot 144, R5G6B5):
+FfSpecFog 0 mismatches, against 3 at 0.53.1. Status: **fixed on both
+chips** that showed it. T19 still fails there on Cube and Normal, the
+cube-map rows this path never drew.

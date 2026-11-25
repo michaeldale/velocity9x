@@ -87,10 +87,30 @@ almost every T19 row reaches at this depth (Push, FourTex, Dxt1, FfSpec,
 FfTwo: 9 each), so it is the format's rounding and not this row's.
 Before the fix this case had 3 bad pixels. Evidence: `desktop16/`.
 
+### The GeForce 210, the same evening
+
+The GT218 went back into W9QI0DAD in place of the Oland. Main's `nvidia`
+package went on by Have Disk: one model, "Velocity9x NVIDIA GeForce
+210", no file prompt, boot 143 `enable-ok`, files hash-matched. Then
+`run-release-checks.ps1` reinstalled it, boot 144, 8 of 8, at
+1024x768x16. It ran from a scratchpad copy of the machine list with
+`w9gt218` switched on and `oland` off, since both point at
+10.0.1.172.
+
+T19 drew R5G6B5. FfSpecFog: **0 mismatches**, worst channel 9 (3 bad
+pixels at 0.53.1). Every other verdict is the same as at 0.53.1, the
+last run with this card here: V9XD32 `Failures=2`, Cube and Normal
+wrong on every pixel (1,053 and 1,040), as then. Cube maps were never
+finished on this path: `draw_shader` refuses a sampled cube stage
+([2026-11-15-gt218-draw-shader-ddi8.md](2026-11-15-gt218-draw-shader-ddi8.md),
+step 6). DXT1/3 and the luminance bump rows are skipped as not offered.
+V9XGLP, V9XGLIDP (0 failures, as at 0.53.1; the README's "the Glide 2
+probe's texture checks fail" for this card is out of date), V9XR3DP,
+V9XWPRS and V9XFBCMP pass. Evidence:
+[`../probe/gt210-main-w9qi0dad-2026-11-25/`](../probe/gt210-main-w9qi0dad-2026-11-25/).
+
 ## Not run
 
-- The GT218: its card is no longer fitted in any machine. The fix is
-  host-tested only.
 - Carrizo shares `vi_shader.c` and was not run. Mullins (M-JJN1ZZ)
   ran the fix later the same day. Its V9XD32 passes as before, but it
   advertises no pixel shaders, so T19 is `SKIP-NO-PS` and its specular
