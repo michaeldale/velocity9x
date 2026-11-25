@@ -220,7 +220,13 @@ static v9x_u32 v9x_nv50_d3d_fp_tail(struct v9x_nv50_sh *sh, v9x_u32 specular,
             v9x_nv50_sh_interp(
                 sh, lit,
                 V9X_NV50_SH_V(V9X_NV50_D3D_V_SPECULAR + index * 4ul), w);
-            v9x_nv50_sh_fadd(sh, V9X_NV50_SH_SHORT, V9X_NV50_SH_R(index),
+            /* Saturated, as Direct3D's specular add is, and so long: the
+             * short form has no SAT. The export would clamp it anyway,
+             * but fog comes first; unsaturated, a sum over 1 came out
+             * too bright under fog (V9XD32 T19 FfSpecFog, docs\decisions\
+             * 2026-11-25-t19-specular-saturate-before-fog.md). */
+            v9x_nv50_sh_fadd(sh, V9X_NV50_SH_LONG,
+                             V9X_NV50_SH_SAT(V9X_NV50_SH_R(index)),
                              V9X_NV50_SH_R(index), lit);
         }
         if (used < V9X_NV50_D3D_R_SPECULAR + 3ul) {

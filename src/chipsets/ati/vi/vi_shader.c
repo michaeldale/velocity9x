@@ -731,12 +731,19 @@ v9x_u32 v9x_vi_shader_d3d_ps_built(const struct v9x_vi_d3d_ps *ps,
             colour = 4ul;
         }
     }
+    /* The specular add saturates, as Direct3D's does: the sum's minimum
+     * with the inline 1.0. The export would clamp it anyway, but fog
+     * comes first; unclamped, a sum over 1 came out too bright under fog
+     * (V9XD32 T19 FfSpecFog on the Oland, docs\decisions\
+     * 2026-11-25-t19-specular-saturate-before-fog.md). */
     if (ps->specular != 0ul) {
         count += v9x_vi_interp(spare, 2ul, 3ul, out + count);
         for (chan = 0ul; chan < 3ul; ++chan) {
             out[count++] = v9x_vi_vop2(V9X_VI_VOP2_ADD_F32, colour + chan,
                                        V9X_VI_VGPR(spare + chan),
                                        colour + chan);
+            out[count++] = v9x_vi_vop2(V9X_VI_VOP2_MIN_F32, colour + chan,
+                                       V9X_VI_FLOAT_1, colour + chan);
         }
     }
     /* colour = fog + f (colour - fog), each channel a v_mac. */

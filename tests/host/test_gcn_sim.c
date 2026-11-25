@@ -162,6 +162,33 @@ static void test_built_shaders(void)
     CHECK(run(&sim, code, count));
     CHECK(sim.killed && !sim.exported && sim.done);
 
+    /* Modulate with specular under fog: Direct3D saturates the specular
+     * add before fog. Blue is 1.0 x 0.6 + 0.7 = 1.3, so 1.0 fogged at
+     * f = 0.25 towards 0 is 0.25, not 0.325 (V9XD32 T19 FfSpecFog, too
+     * green on the Oland: docs\issues\2026-11-17-t19-ffspecfog-mismatch-
+     * oland-gt218.md). */
+    memset(&ps, 0, sizeof(ps));
+    ps.op = V9X_VI_PS_MODULATE;
+    ps.specular = 1ul;
+    ps.fog = 1ul;
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        ps.fog_colour[chan] = bits(fog_rgb[chan]);
+    }
+    count = v9x_vi_shader_d3d_ps_built(&ps, code);
+    CHECK(count != 0ul && count <= V9X_VI_D3D_PS_DWORDS_MAX);
+    inputs(&sim, 0.25f);
+    sim.attr[2][2] = 0.7f;
+    CHECK(run(&sim, code, count));
+    for (chan = 0ul; chan < 3ul; ++chan) {
+        float colour = texel_value[chan] * sim.attr[0][chan] +
+                       sim.attr[2][chan];
+        float expect;
+
+        colour = colour > 1.0f ? 1.0f : colour;
+        expect = fog_rgb[chan] + 0.25f * (colour - fog_rgb[chan]);
+        CHECK(NEAR(sim.mrt0[chan], expect));
+    }
+
     /* DX5 MODULATE on a texture with alpha keeps the texel's alpha: the
      * diffuse alpha, 0.3 here, does not enter it (docs\issues\2026-11-17-
      * oland-nature-tree-leaves-missing-most-frames.md, Nature's leaves).
@@ -330,6 +357,7 @@ static void test_two_units(void)
         for (chan = 0ul; chan < 3ul; ++chan) {
             if (ps.specular != 0ul) {
                 expect[chan] += sim.attr[2][chan];
+                expect[chan] = expect[chan] > 1.0f ? 1.0f : expect[chan];
             }
             if (ps.fog != 0ul) {
                 expect[chan] = fog_rgb[chan] + f * (expect[chan] -

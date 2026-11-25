@@ -475,7 +475,7 @@ static void test_texture_shaders(void)
 static void test_specular_shaders(void)
 {
     /* Gouraud: colour v2-v5, specular into v6-v8. */
-    static const v9x_u32 gouraud_add[9] = {
+    static const v9x_u32 gouraud_add[12] = {
         0xd4180800ul,   /* v_interp_p1_f32 v6, v0, attr2.x */
         0xd4190801ul,   /* v_interp_p2_f32 v6, v1, attr2.x */
         0xd41c0900ul,   /* v_interp_p1_f32 v7, v0, attr2.y */
@@ -483,8 +483,11 @@ static void test_specular_shaders(void)
         0xd4200a00ul,   /* v_interp_p1_f32 v8, v0, attr2.z */
         0xd4210a01ul,   /* v_interp_p2_f32 v8, v1, attr2.z */
         0x02040506ul,   /* v_add_f32 v2, v6, v2 */
+        0x140404f2ul,   /* v_min_f32 v2, 1.0, v2 */
         0x02060707ul,   /* v_add_f32 v3, v7, v3 */
-        0x02080908ul    /* v_add_f32 v4, v8, v4 */
+        0x140606f2ul,   /* v_min_f32 v3, 1.0, v3 */
+        0x02080908ul,   /* v_add_f32 v4, v8, v4 */
+        0x140808f2ul    /* v_min_f32 v4, 1.0, v4 */
     };
     v9x_u32 plain[48];
     v9x_u32 out[48];
@@ -505,25 +508,27 @@ static void test_specular_shaders(void)
     CHECK(v9x_vi_shader_modulate_ps(plain) == count);
     CHECK(memcmp(out, plain, count * sizeof(v9x_u32)) == 0);
 
-    /* With specular: the plain shader's words up to its export, the nine
-     * above, then the export and s_endpgm. */
+    /* With specular: the plain shader's words up to its export, the
+     * twelve above (each sum saturated by a v_min_f32 with the inline
+     * 1.0), then the export and s_endpgm. */
     count = v9x_vi_shader_d3d_ps(V9X_VI_PS_COLOUR, 1, out);
-    CHECK(count == V9X_VI_GOURAUD_PS_DWORDS + 9ul);
+    CHECK(count == V9X_VI_GOURAUD_PS_DWORDS + 12ul);
     (void)v9x_vi_shader_gouraud_ps(plain);
     CHECK(memcmp(out, plain, 10ul * sizeof(v9x_u32)) == 0);
     CHECK(memcmp(out + 10, gouraud_add, sizeof(gouraud_add)) == 0);
-    CHECK(memcmp(out + 19, plain + 10, 7ul * sizeof(v9x_u32)) == 0);
+    CHECK(memcmp(out + 22, plain + 10, 7ul * sizeof(v9x_u32)) == 0);
 
     /* Texture: the texel in v4-v7, specular into v8-v10. */
     count = v9x_vi_shader_d3d_ps(V9X_VI_PS_TEXTURE, 1, out);
-    CHECK(count == V9X_VI_TEXTURE_PS_DWORDS + 9ul);
+    CHECK(count == V9X_VI_TEXTURE_PS_DWORDS + 12ul);
     CHECK(out[12] == 0xd4200800ul);     /* v_interp_p1_f32 v8, v0, attr2.x */
     CHECK(out[18] == 0x02080908ul);     /* v_add_f32 v4, v8, v4 */
-    CHECK(out[20] == 0x020c0d0aul);     /* v_add_f32 v6, v10, v6 */
+    CHECK(out[19] == 0x140808f2ul);     /* v_min_f32 v4, 1.0, v4 */
+    CHECK(out[22] == 0x020c0d0aul);     /* v_add_f32 v6, v10, v6 */
 
     /* Modulate: diffuse in v8-v11, specular into v12-v14. */
     count = v9x_vi_shader_d3d_ps(V9X_VI_PS_MODULATE, 1, out);
-    CHECK(count == V9X_VI_MODULATE_PS_DWORDS + 9ul);
+    CHECK(count == V9X_VI_MODULATE_PS_DWORDS + 12ul);
     CHECK(out[24] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
     CHECK(out[30] == 0x0208090cul);     /* v_add_f32 v4, v12, v4 */
 }
@@ -635,7 +640,7 @@ static void test_built_shaders(void)
     /* With specular: into v12-v14 and added to v8-v10. */
     ps.specular = 1ul;
     count = v9x_vi_shader_d3d_ps_built(&ps, out);
-    CHECK(count == 33ul + 9ul);
+    CHECK(count == 33ul + 12ul);
     CHECK(out[26] == 0xd4300800ul);     /* v_interp_p1_f32 v12, v0, attr2.x */
     CHECK(out[32] == 0x0210110cul);     /* v_add_f32 v8, v12, v8 */
 }

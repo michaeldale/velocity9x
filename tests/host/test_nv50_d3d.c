@@ -201,9 +201,11 @@ static void test_fp(void)
                   &sh, 12ul);
 
     /* MODULATE with specular and fog: texel times diffuse, specular's
-     * colour added, then (colour - fog) * f + fog with f the specular
-     * alpha and the fog colour and its negation constants. The last fmad
-     * is long and ends the program. */
+     * colour added and saturated (long: the short form has no SAT), then
+     * (colour - fog) * f + fog with f the specular alpha and the fog
+     * colour and its negation constants. Unsaturated, a sum over 1 came
+     * out too bright under fog (V9XD32 T19 FfSpecFog on the GT218). The
+     * last fmad is long and ends the program. */
     v9x_nv50_sh_init(&sh, expect_words, V9X_NV50_D3D_FP_WORDS_MAX);
     expect_prologue(&sh);
     v9x_nv50_sh_interp(&sh, R(8), V(0x24ul), R(4));
@@ -215,7 +217,8 @@ static void test_fp(void)
     for (index = 0ul; index < 3ul; ++index) {
         v9x_nv50_sh_interp(&sh, R(12ul + index), V(0x14ul + index * 4ul),
                            R(4));
-        v9x_nv50_sh_fadd(&sh, SHORT, R(index), R(index), R(12ul + index));
+        v9x_nv50_sh_fadd(&sh, LONG, V9X_NV50_SH_SAT(R(index)), R(index),
+                         R(12ul + index));
     }
     v9x_nv50_sh_interp(&sh, R(15), V(0x20ul), R(4));
     for (index = 0ul; index < 3ul; ++index) {
@@ -713,6 +716,7 @@ static void test_fp2(void)
             if (c.specular != 0ul) {
                 for (k = 0ul; k < 3ul; ++k) {
                     colour[k] += fp2_attribute(fragment, 1ul, k);
+                    colour[k] = colour[k] > 1.0f ? 1.0f : colour[k];
                 }
             }
             if (c.fog != 0ul) {

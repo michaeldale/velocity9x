@@ -53,3 +53,18 @@ checked.
 - Tracing: compute the expected pixel by hand from the row's inputs,
   compare it with the reference interpreter's output for the core's
   program, then with each chip's output.
+
+## 2026-11-25: traced and fixed
+
+Only green was off, and red and blue were exact. A fog-factor error
+would move all three, so the cause was the colour going into fog: about
+1.025 in green at the first bad pixel. Both back ends added the specular
+colour without saturating before fog: GCN's built pixel shader
+(`vi_shader.c`) and the GT218's program tail (`nv50_d3d.c`). Evergreen
+and RV515 already saturate, and the core's own program writes
+`add_sat`. Both are fixed, with host tests that failed first. On the
+Oland (boot 137) V9XD32 passes at its default and `/bpp16` runs, with
+FfSpecFog at 0 mismatches and a worst channel error of 1. Both runs drew
+X8R8G8B8. The GT218 is host-tested only
+([record](../decisions/2026-11-25-t19-specular-saturate-before-fog.md)).
+Status: fixed on the Oland; the R5G6B5 run and the GT218 not rerun.
