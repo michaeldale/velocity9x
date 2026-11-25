@@ -1,0 +1,19 @@
+{
+    "Name":  "w9gt218",
+    "Family":  "nvidia",
+    "Baseline":  false,
+    "BootBefore":  144,
+    "BootAfter":  145,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  144,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "10DE:0A65",
+    "AdapterMismatch":  false
+}

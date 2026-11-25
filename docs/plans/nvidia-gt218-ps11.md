@@ -131,6 +131,14 @@ formats Q8W8V8U8 and V8U8 (and L6V5U5 / X8L8V8U8 only if T19's FfBemL
 rows pass, as on Haswell).
 **Gate:** T19 with cubes and the FfBem rows.
 
+**Cubes done 2026-11-25** ([record](../decisions/2026-11-25-gt218-cube-maps.md)):
+a tiled level-0 copy of each cube beside its linear surfaces, the
+block-linear cube TIC, and the direction projected before the fetch (the
+GT218 does not divide by the major axis). T19 Cube passes on W9QI0DAD.
+**Signed formats done the same day**: Q8W8V8U8 and V8U8 as SNORM; T19
+passes whole (Cube, Normal, Bem, FfBem, FfBem3). L6V5U5 and X8L8V8U8 are
+not claimed. **Step 6 done.**
+
 ### 7. DXT
 
 DXT1/3/5 TIC formats. Whether Tesla samples compressed textures from a

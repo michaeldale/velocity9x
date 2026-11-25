@@ -375,17 +375,36 @@ static void v9x_nv50_ps11_uv(V9X_NV50_PS11_GEN *gen, v9x_u32 stage,
     v9x_nv50_sh_mov(&gen->sh, S, R(t + 1ul), R(tc + 1ul));
 }
 
-/* A lookup on stage with count coordinates already in t onwards. */
+/*
+ * A lookup on stage with count coordinates already in t onwards. A cube's
+ * direction is first divided by its largest magnitude: the GT218's cube
+ * fetch maps each face coordinate c to (c + 1) / 2 as given and does not
+ * divide (measured on W9QI0DAD with V9XD32 T19 Cube, 2026-11-25: 1,049 of
+ * 1,053 pixels fit that, 67 the divided form;
+ * docs\decisions\2026-11-25-gt218-cube-maps.md).
+ */
 static void v9x_nv50_ps11_lookup(V9X_NV50_PS11_GEN *gen, v9x_u32 stage,
                                  v9x_u32 count, v9x_u32 t)
 {
+    struct v9x_nv50_sh *sh = &gen->sh;
     v9x_u32 cube = (gen->desc->cube & (1ul << stage)) != 0ul ? 1ul : 0ul;
+    v9x_u32 work = R(V9X_NV50_PS11_R_WORK);
+    v9x_u32 c;
 
     if ((gen->desc->unbound & (1ul << stage)) != 0ul) {
         v9x_nv50_ps11_empty(gen, t);
         return;
     }
-    v9x_nv50_sh_tex_n(&gen->sh, R(t), stage, stage, 0xful,
+    if (cube != 0ul) {
+        v9x_nv50_sh_fmax(sh, work, V9X_NV50_SH_ABS(R(t)),
+                         V9X_NV50_SH_ABS(R(t + 1ul)));
+        v9x_nv50_sh_fmax(sh, work, work, V9X_NV50_SH_ABS(R(t + 2ul)));
+        v9x_nv50_sh_rcp(sh, L, work, work);
+        for (c = 0ul; c < 3ul; ++c) {
+            v9x_nv50_sh_fmul(sh, L, R(t + c), R(t + c), work);
+        }
+    }
+    v9x_nv50_sh_tex_n(sh, R(t), stage, stage, 0xful,
                       cube != 0ul ? 3ul : count, cube);
 }
 

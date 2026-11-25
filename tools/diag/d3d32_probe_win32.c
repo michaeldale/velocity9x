@@ -4780,6 +4780,14 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
     DWORD guard = narrow ? d32_t19_through_565(D32_T19_GUARD) : D32_T19_GUARD;
     DWORD tolerance = narrow ? D32_T19_TOLERANCE_565 : D32_T19_TOLERANCE;
     const char *name = d32_t19_programs[program].name;
+    /* A pixel dump of one row, named as Row= under [T19Dump] in
+     * C:\V9XDIAG\T19DUMP.INI: each judged pixel's x, y, got, want and set
+     * 1's coordinates times 1000, to C:\V9XDIAG\V9XT19D.TXT. For tracing a
+     * mismatch the first and last bad pixel cannot place. */
+    HANDLE dump = INVALID_HANDLE_VALUE;
+    char dump_row[32];
+    char dump_line[96];
+    DWORD dump_written;
     DWORD kill_set = d32_t19_programs[program].kill_set;
     DWORD fog = d32_t19_programs[program].fog;
     V9X_PS11_PIXEL pixel;
@@ -4820,6 +4828,12 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
     int lookup_unjudged;
     int got_guard;
 
+    GetPrivateProfileStringA("T19Dump", "Row", "", dump_row,
+                             sizeof(dump_row), "C:\\V9XDIAG\\T19DUMP.INI");
+    if (dump_row[0] != '\0' && lstrcmpiA(dump_row, name) == 0) {
+        dump = CreateFileA("C:\\V9XDIAG\\V9XT19D.TXT", GENERIC_WRITE, 0, 0,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    }
     d32_t19_key(name, "FpuStatus", (DWORD)d32_fpu_status());
     d32_t19_key(name, "FpuControl", (DWORD)d32_fpu_control());
     for (i = 0ul; i < 3ul; ++i) {
@@ -4972,6 +4986,15 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
             if (!in && error != 0ul) {
                 ++outside_drawn;
             }
+            if (dump != INVALID_HANDLE_VALUE && in) {
+                int length = wsprintfA(
+                    dump_line, "%lu %lu %08lX %08lX %ld %ld %ld\r\n", x, y,
+                    got, want, d32_t19_to_long(pixel.tc[1][0] * 1000.0f),
+                    d32_t19_to_long(pixel.tc[1][1] * 1000.0f),
+                    d32_t19_to_long(pixel.tc[1][2] * 1000.0f));
+
+                WriteFile(dump, dump_line, (DWORD)length, &dump_written, 0);
+            }
             if (error > tolerance) {
                 ++bad;
                 if (first_bad == 0xfffffffful) {
@@ -4989,6 +5012,9 @@ static const char *d32_t19_judge(DWORD program, const V9X_PS11_PROGRAM *parsed,
         }
     }
 
+    if (dump != INVALID_HANDLE_VALUE) {
+        CloseHandle(dump);
+    }
     d32_t19_key(name, "Inside", inside);
     d32_t19_key(name, "Outside", outside);
     d32_t19_key(name, "OutsideDrawn", outside_drawn);

@@ -40,6 +40,10 @@ typedef struct v9x_d3d_nv50_texture {
     v9x_u32 offset;
     v9x_u32 has_key;
     v9x_u32 key;
+    /* A cube map: the VM address of its tiled level-0 copy (nv50_d3d.h's
+     * cube layout), sampled in place of the linear face at offset; 0 for
+     * any other texture. */
+    v9x_u32 cube_address;
 } V9X_D3D_NV50_TEXTURE;
 
 #define V9X_D3D_NV50_REFUSE_NONE            0ul

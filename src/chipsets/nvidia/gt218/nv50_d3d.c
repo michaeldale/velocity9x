@@ -85,10 +85,14 @@
 /* TIC word 0 fields (g80_texture.xml.h, g80_defs.xml.h): UNORM in all
  * four types, then the sources of X Y Z W. */
 #define V9X_NV50_TIC0_UNORM          0x00012480ul
+/* SNORM (1) in the R, G, B and A data types (bits 6, 9, 12 and 15,
+ * g80_texture.xml.h), which UNORM above holds as 2. */
+#define V9X_NV50_TIC0_SNORM          0x00009240ul
 #define V9X_NV50_TIC0_X_SHIFT        18u
 #define V9X_NV50_TIC0_Y_SHIFT        21u
 #define V9X_NV50_TIC0_Z_SHIFT        24u
 #define V9X_NV50_TIC0_W_SHIFT        27u
+#define V9X_NV50_TIC_SOURCE_ZERO     0ul
 #define V9X_NV50_TIC_SOURCE_R        2ul
 #define V9X_NV50_TIC_SOURCE_G        3ul
 #define V9X_NV50_TIC_SOURCE_B        4ul
@@ -98,6 +102,7 @@
 #define V9X_NV50_TIC_SIZES_A4B4G4R4  0x12ul
 #define V9X_NV50_TIC_SIZES_A1B5G5R5  0x14ul
 #define V9X_NV50_TIC_SIZES_B5G6R5    0x15ul
+#define V9X_NV50_TIC_SIZES_G8R8      0x18ul
 /* Pitch layout, normalized coordinates, 2D, as phase 3's texture ran. */
 #define V9X_NV50_TIC2_PITCH_2D       0xd005d000ul
 #define V9X_NV50_TIC5_DEPTH_ONE      0x00010000ul
@@ -497,14 +502,36 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
     case V9X_NV50_D3D_TEX_B4G4R4A4:
         sizes = V9X_NV50_TIC_SIZES_A4B4G4R4;
         break;
+    case V9X_NV50_D3D_TEX_Q8W8V8U8:
+        /* Mesa's R8G8B8A8_SNORM row: U V W Q in memory order to X Y Z W,
+         * signed in all four types. */
+        tic[0] = V9X_NV50_TIC_SIZES_A8B8G8R8 | V9X_NV50_TIC0_SNORM |
+                 (V9X_NV50_TIC_SOURCE_R << V9X_NV50_TIC0_X_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_G << V9X_NV50_TIC0_Y_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_B << V9X_NV50_TIC0_Z_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_A << V9X_NV50_TIC0_W_SHIFT);
+        sizes = 0ul;
+        break;
+    case V9X_NV50_D3D_TEX_V8U8:
+        /* Mesa's R8G8_SNORM row: U V to X Y, then zero and one, as the
+         * Oland and the HD 4600 read V8U8. */
+        tic[0] = V9X_NV50_TIC_SIZES_G8R8 | V9X_NV50_TIC0_SNORM |
+                 (V9X_NV50_TIC_SOURCE_R << V9X_NV50_TIC0_X_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_G << V9X_NV50_TIC0_Y_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_ZERO << V9X_NV50_TIC0_Z_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_ONE << V9X_NV50_TIC0_W_SHIFT);
+        sizes = 0ul;
+        break;
     default:
         return 0;
     }
-    tic[0] = sizes | V9X_NV50_TIC0_UNORM |
-             (V9X_NV50_TIC_SOURCE_B << V9X_NV50_TIC0_X_SHIFT) |
-             (V9X_NV50_TIC_SOURCE_G << V9X_NV50_TIC0_Y_SHIFT) |
-             (V9X_NV50_TIC_SOURCE_R << V9X_NV50_TIC0_Z_SHIFT) |
-             (alpha << V9X_NV50_TIC0_W_SHIFT);
+    if (sizes != 0ul) {
+        tic[0] = sizes | V9X_NV50_TIC0_UNORM |
+                 (V9X_NV50_TIC_SOURCE_B << V9X_NV50_TIC0_X_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_G << V9X_NV50_TIC0_Y_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_R << V9X_NV50_TIC0_Z_SHIFT) |
+                 (alpha << V9X_NV50_TIC0_W_SHIFT);
+    }
     tic[1] = address;
     tic[2] = V9X_NV50_TIC2_PITCH_2D;
     tic[3] = pitch;
@@ -523,6 +550,66 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
                                 : V9X_NV50_TSC1_MIN_NEAREST) |
              V9X_NV50_TSC1_MIP_NONE;
     return 1;
+}
+
+/*
+ * Cube maps (nv50_d3d.h). The block-linear sizes are Mesa's
+ * nv50_resource.h for a tile mode with no Z: NV50_TILE_SIZE_X 64 bytes,
+ * NV50_TILE_SIZE_Y 4 << mode[7:4] rows, and NV50_TILE_SIZE their product.
+ * The TIC words are nv50_tex.c's block-linear path for PIPE_TEXTURE_CUBE
+ * on the NV50 class: tile mode into word 2 as (mode & F0h) << 18, word 3
+ * 300000h, word 4 bit 31 with the width, word 5 the height with a depth of
+ * one cube (array size 6 divided by six) and last level 0, word 6
+ * 3000000h, word 7 zero.
+ */
+#define V9X_NV50_CUBE_GOB_BYTES      64ul
+#define V9X_NV50_CUBE_BLOCK_ROWS(m)  (4ul << (((m) >> 4) & 0xful))
+#define V9X_NV50_TIC2_BASE_CUBE      0xd0001000ul /* TIC2_PITCH_2D less
+                                                     LAYOUT_PITCH and the
+                                                     2D_NO_MIPMAP type */
+#define V9X_NV50_TIC2_TYPE_CUBEMAP   0x0000c000ul
+#define V9X_NV50_TIC2_TILE_SHIFT     18u
+#define V9X_NV50_TIC3_BLOCKLINEAR    0x00300000ul
+#define V9X_NV50_TIC4_WIDTH_FLAG     0x80000000ul
+#define V9X_NV50_TIC6_SAMPLES_ONE    0x03000000ul
+
+int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 bytes, v9x_u32 *pitch,
+                             v9x_u32 *rows, v9x_u32 *layer_bytes)
+{
+    v9x_u32 block_rows =
+        V9X_NV50_CUBE_BLOCK_ROWS(V9X_NV50_D3D_CUBE_TILE_MODE);
+    v9x_u32 tile_bytes = V9X_NV50_CUBE_GOB_BYTES * block_rows;
+    v9x_u32 face;
+
+    if (side == 0ul || (bytes != 2ul && bytes != 4ul)) {
+        return 0;
+    }
+    *pitch = (side * bytes + V9X_NV50_CUBE_GOB_BYTES - 1ul) &
+             ~(V9X_NV50_CUBE_GOB_BYTES - 1ul);
+    *rows = (side + block_rows - 1ul) / block_rows * block_rows;
+    face = *pitch * *rows;
+    *layer_bytes = (face + tile_bytes - 1ul) / tile_bytes * tile_bytes;
+    return 1;
+}
+
+void v9x_nv50_d3d_tic_cube(v9x_u32 address, v9x_u32 tile_mode, v9x_u32 *tic,
+                           v9x_u32 *tsc)
+{
+    v9x_u32 width = tic[4];
+    v9x_u32 height = tic[5] & 0xfffful;
+
+    tic[1] = address;
+    tic[2] = V9X_NV50_TIC2_BASE_CUBE | V9X_NV50_TIC2_TYPE_CUBEMAP |
+             ((tile_mode & 0xf0ul) << V9X_NV50_TIC2_TILE_SHIFT);
+    tic[3] = V9X_NV50_TIC3_BLOCKLINEAR;
+    tic[4] = V9X_NV50_TIC4_WIDTH_FLAG | width;
+    tic[5] = V9X_NV50_TIC5_DEPTH_ONE | height;
+    tic[6] = V9X_NV50_TIC6_SAMPLES_ONE;
+    tic[7] = 0ul;
+    /* The faces' coordinates are on [0, 1]: clamped, the bilinear filter
+     * does not wrap to the opposite edge of the face. */
+    tsc[0] = V9X_NV50_TSC0_BASE | V9X_NV50_D3D_WRAP_CLAMP |
+             (V9X_NV50_D3D_WRAP_CLAMP << 3) | (V9X_NV50_D3D_WRAP_CLAMP << 6);
 }
 
 /* The fog colour and its negation as buffer 2's first eight words. */

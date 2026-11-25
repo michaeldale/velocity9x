@@ -147,6 +147,11 @@ v9x_u32 v9x_nv50_d3d_ps_start(v9x_u32 slot);
 #define V9X_NV50_D3D_TEX_B4G4R4A4    3ul
 #define V9X_NV50_D3D_TEX_B8G8R8A8    4ul
 #define V9X_NV50_D3D_TEX_B8G8R8X8    5ul
+/* The signed bump formats only a pixel shader stage reads (step 6 of
+ * docs\plans\nvidia-gt218-ps11.md): D3DFMT_Q8W8V8U8 and D3DFMT_V8U8, U in
+ * the low byte. */
+#define V9X_NV50_D3D_TEX_Q8W8V8U8    6ul
+#define V9X_NV50_D3D_TEX_V8U8        7ul
 
 /* Sampler address modes and filters (G80_TSC_WRAP_*, _FILTER_*). */
 #define V9X_NV50_D3D_WRAP_REPEAT     0ul
@@ -159,6 +164,29 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
                          v9x_u32 width, v9x_u32 height, v9x_u32 wrap,
                          v9x_u32 mag_linear, v9x_u32 min_linear,
                          v9x_u32 *tic, v9x_u32 *tsc);
+
+/*
+ * Cube maps. The sampler reads a cube only block-linear (Mesa's nv50_tex.c
+ * builds a pitch TIC as 2D only), so the HAL keeps a tiled copy of each
+ * cube's level 0: six faces in tile mode V9X_NV50_D3D_CUBE_TILE_MODE, one
+ * layer each.
+ *
+ * v9x_nv50_d3d_cube_layout: a face of side texels of bytes each - its row
+ * pitch on the 64-byte GOB, its rows on the 8-row block, and the layer
+ * stride, one face rounded up to the 512-byte tile, which the sampler
+ * steps by itself (nv50_miptree.c's layer_stride). 0 for a side of 0 or a
+ * texel size other than 2 or 4.
+ *
+ * v9x_nv50_d3d_tic_cube: a pitch TIC from v9x_nv50_d3d_texture, for the
+ * same format and size, turned into the cube at address (the tiled
+ * window's VM address), and its TSC clamped in all three coordinates.
+ */
+#define V9X_NV50_D3D_CUBE_TILE_MODE  0x10ul
+#define V9X_NV50_D3D_CUBE_FACES      6ul
+int v9x_nv50_d3d_cube_layout(v9x_u32 side, v9x_u32 bytes, v9x_u32 *pitch,
+                             v9x_u32 *rows, v9x_u32 *layer_bytes);
+void v9x_nv50_d3d_tic_cube(v9x_u32 address, v9x_u32 tile_mode, v9x_u32 *tic,
+                           v9x_u32 *tsc);
 
 /*
  * One draw's state. The target is pitch-linear (or tiled, through its

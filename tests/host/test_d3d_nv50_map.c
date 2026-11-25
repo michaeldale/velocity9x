@@ -71,6 +71,7 @@ static void base_texture(V9X_R3D_DRAW *draw, V9X_D3D_NV50_TEXTURE *texture)
     texture->offset = 0x00200000ul;
     texture->has_key = 0ul;
     texture->key = 0ul;
+    texture->cube_address = 0ul;
 }
 
 /* Room for a two-unit draw's two entries. */
@@ -350,6 +351,19 @@ static void test_texture(void)
         CHECK(tsc[index] == expect_tsc[index]);
     }
 
+    /* A cube: the same texture's TIC turned into its tiled copy's cube
+     * (nv50_d3d.h), wrap or not; then back to an ordinary texture. */
+    texture.cube_address = 0x20400000ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    v9x_nv50_d3d_tic_cube(0x20400000ul, V9X_NV50_D3D_CUBE_TILE_MODE,
+                          expect_tic, expect_tsc);
+    for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+        CHECK(tic[index] == expect_tic[index]);
+        CHECK(tsc[index] == expect_tsc[index]);
+    }
+    texture.cube_address = 0ul;
+
     /* DECAL and COPY replace; MODULATEALPHA modulates. */
     draw.texture.op = V9X_R3D_TEXOP_DECAL;
     CHECK(map(&draw, &texture, &state, &specular) ==
@@ -462,6 +476,31 @@ static void test_texture(void)
           V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT);
     CHECK(map(&draw, 0, &state, &specular) ==
           V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT);
+    /* A signed texture only a shader stage reads: refused by the
+     * fixed-function map (the core draws it through draw_shader), taken
+     * by the shader path's unit, with the format's own TIC. */
+    base_texture(&draw, &texture);
+    texture.format = V9X_NV50_D3D_TEX_Q8W8V8U8;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT);
+    {
+        v9x_u32 unit_tic[V9X_NV50_3D_TIC_WORDS];
+        v9x_u32 unit_tsc[V9X_NV50_3D_TSC_WORDS];
+        v9x_u32 want_tic[V9X_NV50_3D_TIC_WORDS];
+        v9x_u32 want_tsc[V9X_NV50_3D_TSC_WORDS];
+
+        CHECK(v9x_d3d_nv50_map_unit(&draw.texture, &texture, unit_tic,
+                                    unit_tsc) == V9X_D3D_NV50_REFUSE_NONE);
+        CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_Q8W8V8U8, 0x00200000ul,
+                                   256ul, 64ul, 32ul,
+                                   V9X_NV50_D3D_WRAP_REPEAT, 1ul, 1ul,
+                                   want_tic, want_tsc));
+        CHECK(unit_tic[0] == want_tic[0]);
+        /* V8U8 at two bytes a texel: a 256-byte pitch holds 64 texels. */
+        texture.format = V9X_NV50_D3D_TEX_V8U8;
+        CHECK(v9x_d3d_nv50_map_unit(&draw.texture, &texture, unit_tic,
+                                    unit_tsc) == V9X_D3D_NV50_REFUSE_NONE);
+    }
     base_texture(&draw, &texture);
     texture.pitch = 200ul;
     CHECK(map(&draw, &texture, &state, &specular) ==

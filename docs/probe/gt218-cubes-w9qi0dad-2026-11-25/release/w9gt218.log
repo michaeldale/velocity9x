@@ -1,0 +1,13 @@
+[+0:00] agent 0.19.0, boot 144, desktop True
+[+0:02] display card present: 10DE:0A65
+[+0:17] staged 8 files; resetting
+[+0:49] reset: boot 144 -> 145
+[+0:49] logon dialog cancelled
+[+0:51] installed: 8 of 8
+[+0:55] probes in place: sent 7 of 7
+[+1:01] V9XD32 default exit=1
+[+1:32] V9XGLP.EXE exit=0
+[+1:34] V9XGLIDP.EXE exit=0
+[+1:35] V9XR3DP.EXE exit=0
+[+1:47] V9XWPRS.EXE exit=0
+[+1:49] V9XFBCMP.EXE exit=0

@@ -127,27 +127,22 @@ static void interpreter_texel(void *user, v9x_u32 stage, v9x_u32 count,
 /* ---- The comparison ----------------------------------------------- */
 
 /* The model's sampler: 2D reads u and v; 3D three coordinates; a cube
- * three, over their largest magnitude, as test_i9xx_ps11.c's. */
+ * three, taken as they come. The GT218's cube fetch does not divide by the
+ * largest magnitude: it maps a face coordinate c to (c + 1) / 2 as given,
+ * so the program must project the direction first. Measured on W9QI0DAD
+ * (V9XD32 T19 Cube, 2026-11-25): with the direction passed unscaled, 1,049
+ * of 1,053 pixels match (c + 1) / 2 and 67 the divided form
+ * (docs\decisions\2026-11-25-gt218-cube-maps.md). This model divided until
+ * then, which is how the unscaled translator passed it. */
 static void sim_texel(v9x_u32 unit, v9x_u32 argc, v9x_u32 cube,
                       const float *coords, float rgba[4])
 {
     float c[3];
-    float largest;
     v9x_u32 k;
 
+    (void)cube;
     for (k = 0ul; k < 3ul; ++k) {
         c[k] = k < argc ? coords[k] : 0.0f;
-    }
-    if (cube != 0ul) {
-        largest = (float)fabs((double)c[0]);
-        for (k = 1ul; k < 3ul; ++k) {
-            if ((float)fabs((double)c[k]) > largest) {
-                largest = (float)fabs((double)c[k]);
-            }
-        }
-        for (k = 0ul; k < 3ul; ++k) {
-            c[k] /= largest;
-        }
     }
     texel(unit, argc, c, rgba);
 }

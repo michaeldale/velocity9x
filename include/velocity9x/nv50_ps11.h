@@ -27,9 +27,12 @@
  * (r0 - fog) f + fog, f the specular alpha (v1.w), where the Direct3D core
  * leaves the fog factor: Gen3's and Haswell's rule (i9xx_ps11.h).
  *
- * Cube lookups pass the direction as computed: the interpreter divides it
- * by its largest magnitude first, which a cube sampler does not need
- * (Mesa's nv50 cube path passes it unscaled too). Not measured here.
+ * Cube lookups divide the direction by its largest magnitude first, as
+ * the interpreter does: the GT218's cube fetch maps each face coordinate c
+ * to (c + 1) / 2 as given and does not divide. Measured on W9QI0DAD with
+ * V9XD32 T19 Cube (2026-11-25): the unscaled direction fit that on 1,049 of
+ * 1,053 pixels (docs\decisions\2026-11-25-gt218-cube-maps.md). This comment
+ * said before, unmeasured, that the division was not needed.
  */
 #ifndef VELOCITY9X_NV50_PS11_H
 #define VELOCITY9X_NV50_PS11_H

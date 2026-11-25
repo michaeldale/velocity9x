@@ -315,6 +315,66 @@ static void test_texture(void)
     CHECK(tic[0] == 0x3a712488ul);
     CHECK(!v9x_nv50_d3d_texture(0ul, 0x4000ul, 64ul, 16ul, 16ul, 0ul, 0ul,
                                 0ul, tic, tsc));
+
+    /* The signed formats (step 6), Mesa's nv50_formats.c rows: Q8W8V8U8
+     * as R8G8B8A8_SNORM (A8B8G8R8 sizes, SNORM 1 in all four types, R G B
+     * A to X Y Z W: U V W Q in memory order); V8U8 as R8G8_SNORM (G8R8
+     * sizes, R G to X Y, zero and one float to Z and W). */
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_Q8W8V8U8, 0x4000ul, 64ul,
+                               8ul, 8ul, 0ul, 0ul, 0ul, tic, tsc));
+    CHECK(tic[0] == (0x08ul | 0x9240ul | (2ul << 18) | (3ul << 21) |
+                     (4ul << 24) | (5ul << 27)));
+    CHECK(tic[2] == 0xd005d000ul && tic[3] == 64ul);
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_V8U8, 0x4000ul, 64ul, 8ul,
+                               8ul, 0ul, 0ul, 0ul, tic, tsc));
+    CHECK(tic[0] == (0x18ul | 0x9240ul | (2ul << 18) | (3ul << 21) |
+                     (0ul << 24) | (7ul << 27)));
+}
+
+/* Cube maps (step 6 of docs\plans\nvidia-gt218-ps11.md): the tiled copy's
+ * layout and the TIC that samples it, as Mesa's nv50_miptree.c and
+ * nv50_tex.c lay out and describe a block-linear cube of one level. */
+static void test_cube(void)
+{
+    v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 pitch = 0ul;
+    v9x_u32 rows = 0ul;
+    v9x_u32 layer = 0ul;
+
+    /* 64 texels of 4 bytes: 256-byte rows, 64 rows (a whole number of
+     * 8-row blocks), 16 KiB a face, already on the 512-byte tile. */
+    CHECK(v9x_nv50_d3d_cube_layout(64ul, 4ul, &pitch, &rows, &layer));
+    CHECK(pitch == 256ul && rows == 64ul && layer == 16384ul);
+    /* 4 texels of 2 bytes: one 64-byte GOB row, 8 rows, 512 bytes. */
+    CHECK(v9x_nv50_d3d_cube_layout(4ul, 2ul, &pitch, &rows, &layer));
+    CHECK(pitch == 64ul && rows == 8ul && layer == 512ul);
+    /* 20 texels of 4 bytes: 80 bytes to 128, 20 rows to 24: 3072 bytes,
+     * six tiles. */
+    CHECK(v9x_nv50_d3d_cube_layout(20ul, 4ul, &pitch, &rows, &layer));
+    CHECK(pitch == 128ul && rows == 24ul && layer == 3072ul);
+    CHECK(!v9x_nv50_d3d_cube_layout(0ul, 4ul, &pitch, &rows, &layer));
+    CHECK(!v9x_nv50_d3d_cube_layout(16ul, 3ul, &pitch, &rows, &layer));
+
+    /* The pitch TIC turned into a block-linear cube: word 0 kept; word 1
+     * the copy's address; word 2 Mesa's 10001000h base with border and
+     * normalized coordinates as the pitch TIC has them, CUBEMAP (C000h)
+     * and two GOBs a block (tile mode 10h, (10h & F0h) << 18); words 3-6
+     * Mesa's block-linear values, depth one cube, one level. */
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_B8G8R8A8, 0x4000ul, 256ul,
+                               64ul, 64ul, V9X_NV50_D3D_WRAP_REPEAT, 1ul,
+                               1ul, tic, tsc));
+    v9x_nv50_d3d_tic_cube(0x20123400ul, 0x10ul, tic, tsc);
+    CHECK(tic[0] == 0x2a712488ul);
+    CHECK(tic[1] == 0x20123400ul);
+    CHECK(tic[2] == (0xd0001000ul | 0x0000c000ul | 0x00400000ul));
+    CHECK(tic[3] == 0x00300000ul);
+    CHECK(tic[4] == (0x80000000ul | 64ul));
+    CHECK(tic[5] == (0x00010000ul | 64ul));
+    CHECK(tic[6] == 0x03000000ul && tic[7] == 0ul);
+    /* A cube's coordinates are clamped whatever the stage's mode. */
+    CHECK(tsc[0] == (0x00024000ul | 2ul | (2ul << 3) | (2ul << 6)));
+    CHECK(tsc[1] == 0x00000062ul);
 }
 
 static void base_state(struct v9x_nv50_d3d_state *state)
@@ -876,6 +936,7 @@ unsigned int v9x_run_nv50_d3d_tests(void)
     test_fp();
     test_fp2();
     test_texture();
+    test_cube();
     test_state();
     test_vertex();
     test_shader();

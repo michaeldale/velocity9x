@@ -133,10 +133,19 @@ static int v9x_d3d_nv50_op(v9x_u32 op, v9x_u32 *program_op)
 static v9x_u32 v9x_d3d_nv50_bytes_per_texel(v9x_u32 format)
 {
     if (format == V9X_NV50_D3D_TEX_B8G8R8A8 ||
-        format == V9X_NV50_D3D_TEX_B8G8R8X8) {
+        format == V9X_NV50_D3D_TEX_B8G8R8X8 ||
+        format == V9X_NV50_D3D_TEX_Q8W8V8U8) {
         return 4ul;
     }
     return 2ul;
+}
+
+/* A signed bump format: only a pixel shader stage reads one, and the core
+ * sends a fixed-function stage that has one through draw_shader. */
+static int v9x_d3d_nv50_format_signed(v9x_u32 format)
+{
+    return format == V9X_NV50_D3D_TEX_Q8W8V8U8 ||
+           format == V9X_NV50_D3D_TEX_V8U8;
 }
 
 /* A float's bits for ref / 255, the alpha test's reference. */
@@ -234,6 +243,13 @@ static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
                               texture->pitch, texture->width,
                               texture->height, wrap, mag, min, tic, tsc)) {
         return V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT;
+    }
+    /* A cube is sampled from its tiled copy, which the HAL keeps (the
+     * sampler reads no pitch cube); the linear face above only gave the
+     * format and size. */
+    if (texture->cube_address != 0ul) {
+        v9x_nv50_d3d_tic_cube(texture->cube_address,
+                              V9X_NV50_D3D_CUBE_TILE_MODE, tic, tsc);
     }
     return V9X_D3D_NV50_REFUSE_NONE;
 }
@@ -378,6 +394,9 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
             const V9X_R3D_TEXTURE *unit =
                 index == 0ul ? &draw->texture : &draw->texture1;
 
+            if (v9x_d3d_nv50_format_signed(texture[index].format)) {
+                return V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT;
+            }
             reason = v9x_d3d_nv50_map_texture(
                 draw, unit, &texture[index], 0,
                 tic + index * V9X_NV50_3D_TIC_WORDS,
@@ -402,6 +421,9 @@ v9x_u32 v9x_d3d_nv50_map_draw(const V9X_R3D_DRAW *draw,
         return V9X_D3D_NV50_REFUSE_NONE;
     }
     if (draw->texture.object != 0) {
+        if (texture != 0 && v9x_d3d_nv50_format_signed(texture->format)) {
+            return V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT;
+        }
         reason = v9x_d3d_nv50_map_texture(draw, &draw->texture, texture,
                                           &program_op, tic, tsc);
         if (reason != V9X_D3D_NV50_REFUSE_NONE) {
