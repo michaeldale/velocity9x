@@ -211,16 +211,28 @@ static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
     v9x_u32 mag;
     v9x_u32 min;
 
+    v9x_u32 dxt;
+
     if (texture == 0 || texture->format == V9X_D3D_NV50_TEXTURE_UNKNOWN) {
         return V9X_D3D_NV50_REFUSE_TEXTURE_FORMAT;
     }
+    dxt = V9X_NV50_D3D_TEX_IS_DXT(texture->format) ? 1ul : 0ul;
     if (texture->width == 0ul || texture->height == 0ul ||
         texture->width > V9X_D3D_NV50_TEXTURE_SIDE_MAX ||
-        texture->height > V9X_D3D_NV50_TEXTURE_SIDE_MAX ||
-        (texture->pitch % V9X_D3D_NV50_PITCH_ALIGN) != 0ul ||
-        texture->pitch <
-            texture->width * v9x_d3d_nv50_bytes_per_texel(texture->format) ||
-        (texture->offset % V9X_D3D_NV50_SURFACE_ALIGN) != 0ul) {
+        texture->height > V9X_D3D_NV50_TEXTURE_SIDE_MAX) {
+        return V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE;
+    }
+    /* DXT is sampled only from the pool's tiled copy, its linear level
+     * never; one with no copy (no room in the pool) is not drawn. */
+    if (dxt != 0ul) {
+        if (texture->mip_address == 0ul || texture->mip_levels == 0ul) {
+            return V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE;
+        }
+    } else if ((texture->pitch % V9X_D3D_NV50_PITCH_ALIGN) != 0ul ||
+               texture->pitch < texture->width *
+                                    v9x_d3d_nv50_bytes_per_texel(
+                                        texture->format) ||
+               (texture->offset % V9X_D3D_NV50_SURFACE_ALIGN) != 0ul) {
         return V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE;
     }
     if (program_op != 0 && !v9x_d3d_nv50_op(sampler->op, program_op)) {
@@ -257,23 +269,28 @@ static v9x_u32 v9x_d3d_nv50_map_texture(const V9X_R3D_DRAW *draw,
      * them for MIPNEAREST and MIPLINEAR, linear for the LINEARMIP pair
      * (D3DFILTER's names: the level, then the texel within it). A plain
      * filter reads level 0, linear or tiled alike. */
-    if (texture->mip_address != 0ul && texture->mip_levels > 1ul) {
-        v9x_u32 between;
+    if (texture->mip_address != 0ul && (texture->mip_levels > 1ul || dxt)) {
+        v9x_u32 between = 0ul;
+        v9x_u32 last = texture->mip_levels - 1ul;
 
         switch (sampler->min_filter) {
         case V9X_R3D_FILTER_MIPNEAREST:
         case V9X_R3D_FILTER_MIPLINEAR:
-            between = 0ul;
             break;
         case V9X_R3D_FILTER_LINEARMIPNEAREST:
         case V9X_R3D_FILTER_LINEARMIPLINEAR:
             between = 1ul;
             break;
         default:
-            return V9X_D3D_NV50_REFUSE_NONE;
+            /* Level 0 alone: tiled for DXT, the linear level otherwise. */
+            if (dxt == 0ul) {
+                return V9X_D3D_NV50_REFUSE_NONE;
+            }
+            last = 0ul;
+            break;
         }
         v9x_nv50_d3d_tic_mip(texture->mip_address, texture->mip_tile_mode,
-                             texture->mip_levels - 1ul, between, tic, tsc);
+                             last, between, tic, tsc);
     }
     return V9X_D3D_NV50_REFUSE_NONE;
 }

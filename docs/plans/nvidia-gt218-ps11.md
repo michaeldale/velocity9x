@@ -145,6 +145,10 @@ DXT1/3/5 TIC formats. Whether Tesla samples compressed textures from a
 pitch-linear surface or needs block-linear placement is unmeasured: probe
 first, then placement and Lock/Unlock to match.
 **Gate:** T19 Dxt1 rows, 3DMark 2001 SE's texture tests.
+**Step 7 done 2026-11-25** ([record](../decisions/2026-11-25-gt218-dxt.md)):
+tiled copies in the texture pool, the probe skipped (pitch-linear DXT
+not measured); T19 Dxt1 and Dxt3 pass, 3DMark 2001 SE runs on DXTC.
+DXT cubes are not placed.
 
 ### 8. 3DMark 2001 SE Nature
 

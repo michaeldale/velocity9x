@@ -152,6 +152,15 @@ v9x_u32 v9x_nv50_d3d_ps_start(v9x_u32 slot);
  * the low byte. */
 #define V9X_NV50_D3D_TEX_Q8W8V8U8    6ul
 #define V9X_NV50_D3D_TEX_V8U8        7ul
+/* DXT1, DXT3 and DXT5 (step 7): 4 x 4 blocks of 8, 16 and 16 bytes. The
+ * sampler reads them block-linear only, from the HAL's tiled copy (the
+ * mipmaps below, a chain of one level or more). */
+#define V9X_NV50_D3D_TEX_DXT1        8ul
+#define V9X_NV50_D3D_TEX_DXT3        9ul
+#define V9X_NV50_D3D_TEX_DXT5        10ul
+#define V9X_NV50_D3D_TEX_IS_DXT(f)   ((f) >= V9X_NV50_D3D_TEX_DXT1 && \
+                                      (f) <= V9X_NV50_D3D_TEX_DXT5)
+#define V9X_NV50_D3D_DXT_EDGE        4ul
 
 /* Sampler address modes and filters (G80_TSC_WRAP_*, _FILTER_*). */
 #define V9X_NV50_D3D_WRAP_REPEAT     0ul
@@ -192,6 +201,12 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
  * block, the levels back to back; total the chain's bytes. 0 for a zero
  * side, a texel size other than 2 or 4, or no or too many levels.
  *
+ * v9x_nv50_d3d_dxt_layout: the same for a DXT chain, as nv50_miptree.c
+ * lays a compressed one: each level counted in 4 x 4 blocks (a part block
+ * whole) of block_bytes, 8 or 16, the tile mode chosen on its rows of
+ * blocks. width and height are level 0's texels; pitches and rows are in
+ * bytes and rows of blocks.
+ *
  * v9x_nv50_d3d_tic_mip: a pitch TIC from v9x_nv50_d3d_texture turned into
  * the chain at address with level 0's tile mode and last_level, and its
  * TSC given the mip filter (nearest, or linear between levels when
@@ -200,6 +215,10 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
 #define V9X_NV50_D3D_MIP_LEVELS_MAX  12ul
 int v9x_nv50_d3d_mip_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
                             v9x_u32 bytes, v9x_u32 *offsets,
+                            v9x_u32 *pitches, v9x_u32 *rows,
+                            v9x_u32 *tile_modes, v9x_u32 *total);
+int v9x_nv50_d3d_dxt_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
+                            v9x_u32 block_bytes, v9x_u32 *offsets,
                             v9x_u32 *pitches, v9x_u32 *rows,
                             v9x_u32 *tile_modes, v9x_u32 *total);
 void v9x_nv50_d3d_tic_mip(v9x_u32 address, v9x_u32 tile_mode,

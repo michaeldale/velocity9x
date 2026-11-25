@@ -399,6 +399,43 @@ static void test_texture(void)
     texture.mip_levels = 0ul;
     texture.mip_tile_mode = 0ul;
 
+    /* DXT (step 7): only from the pool's tiled copy. With none it is not
+     * drawn; with one level a plain filter reads it tiled at level 0;
+     * with a chain a mip filter reads the chain. The linear level's
+     * pitch, a linear size here, is not checked. */
+    texture.format = V9X_NV50_D3D_TEX_DXT5;
+    texture.pitch = 3ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_TEXTURE_SHAPE);
+    texture.mip_address = 0x20700000ul;
+    texture.mip_levels = 1ul;
+    texture.mip_tile_mode = 0x20ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+          V9X_D3D_NV50_REFUSE_NONE);
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_DXT5, 0x00200000ul, 3ul,
+                               64ul, 32ul, V9X_NV50_D3D_WRAP_REPEAT, 1ul, 1ul,
+                               expect_tic, expect_tsc));
+    v9x_nv50_d3d_tic_mip(0x20700000ul, 0x20ul, 0ul, 0ul, expect_tic,
+                         expect_tsc);
+    for (index = 0ul; index < V9X_NV50_3D_TIC_WORDS; ++index) {
+        CHECK(tic[index] == expect_tic[index]);
+        CHECK(tsc[index] == expect_tsc[index]);
+    }
+    texture.mip_levels = 5ul;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          tic[7] == 0ul && tsc[2] == 0ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEARMIPLINEAR;
+    CHECK(map(&draw, &texture, &state, &specular) ==
+              V9X_D3D_NV50_REFUSE_NONE &&
+          tic[7] == (4ul << 4) && (tsc[1] & 0xc0ul) == 0xc0ul);
+    draw.texture.min_filter = V9X_R3D_FILTER_LINEAR;
+    texture.format = V9X_NV50_D3D_TEX_B8G8R8A8;
+    texture.pitch = 256ul;
+    texture.mip_address = 0ul;
+    texture.mip_levels = 0ul;
+    texture.mip_tile_mode = 0ul;
+
     /* DECAL and COPY replace; MODULATEALPHA modulates. */
     draw.texture.op = V9X_R3D_TEXOP_DECAL;
     CHECK(map(&draw, &texture, &state, &specular) ==

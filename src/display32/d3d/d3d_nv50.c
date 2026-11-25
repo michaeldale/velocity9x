@@ -41,7 +41,8 @@
  * guard band (V9X_D3D_NV50_GUARD) and the scissor keeps every pixel on
  * the target (step 5 of docs\plans\nvidia-gt218-ps11.md, docs\decisions\
  * 2026-11-15-gt218-guard-band-two-stages.md). Until then the core clipped
- * every triangle and moved its vertices for one stage. */
+ * every triangle and moved its vertices for one stage. DXT1/3/5 from the
+ * pool's tiled copies (step 7). */
 static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
     16ul,           /* target_bits_per_pixel */
     32704ul,        /* target_pitch_max */
@@ -65,7 +66,8 @@ static const V9X_D3D_ENGINE_LIMITS v9x_d3d_nv50_limits = {
     /* DDI 6 programs are told the band (coordinate_limit less a pixel),
      * far inside the measured one, so the runtime stops clipping their
      * triangles on the CPU, as on Gen3 and the HD 4600. */
-    1ul             /* guard_band_ddi6 */
+    1ul,            /* guard_band_ddi6 */
+    1ul             /* dxt_textures */
 };
 
 /*
@@ -188,6 +190,20 @@ static DWORD v9x_d3d_nv50_format_of(const V9X_DD_SURFACE_LCL *surface,
         if (d3d == V9X_D3DFMT_V8U8) {
             *bytes_out = 2ul;
             return V9X_NV50_D3D_TEX_V8U8;
+        }
+        /* DXT, bytes a 4 x 4 block's. The premultiplied DXT2 and DXT4 are
+         * not published. */
+        if (d3d == V9X_D3DFMT_DXT1) {
+            *bytes_out = 8ul;
+            return V9X_NV50_D3D_TEX_DXT1;
+        }
+        if (d3d == V9X_D3DFMT_DXT3) {
+            *bytes_out = 16ul;
+            return V9X_NV50_D3D_TEX_DXT3;
+        }
+        if (d3d == V9X_D3DFMT_DXT5) {
+            *bytes_out = 16ul;
+            return V9X_NV50_D3D_TEX_DXT5;
         }
         return V9X_D3D_NV50_TEXTURE_UNKNOWN;
     }
@@ -739,16 +755,26 @@ static int v9x_d3d_nv50_cube_copy(V9X_D3D_NV50_CUBE *cube)
  * Each record is known by its level 0's offset; its levels' linear
  * surfaces stay where DirectDraw's runtime writes them, and any write to
  * one of them marks the copy stale (surface_written).
+ *
+ * DXT (step 7 of docs\plans\nvidia-gt218-ps11.md) goes the same way, one
+ * level or a chain: Mesa's nv50 lays compressed textures out only
+ * block-linear, so the sampler is never pointed at a linear DXT level.
+ * Whether it could read one pitch-linear was not measured. Its cells are
+ * 4 x 4 blocks; the 2D engine copies a row of blocks as A8R8G8B8 pixels
+ * of the same bytes, tiling being a matter of bytes and rows. A DXT
+ * texture with no record is not drawn.
  */
 #define V9X_D3D_NV50_MIPS            512ul
 #define V9X_D3D_NV50_POOL_ALIGN      512ul
+#define V9X_D3D_NV50_COPY_CELL       4ul    /* A8R8G8B8's bytes */
 
 typedef struct v9x_d3d_nv50_mip {
     DWORD base;                 /* level 0's offset; 0 for a free slot */
     DWORD levels;
     DWORD width;
     DWORD height;
-    DWORD bytes;
+    DWORD bytes;                /* a cell's: a texel's, or a DXT block's */
+    DWORD edge;                 /* a cell's side in texels: 1, or 4 */
     DWORD linear[V9X_NV50_D3D_MIP_LEVELS_MAX];      /* each level's offset */
     DWORD linear_pitch[V9X_NV50_D3D_MIP_LEVELS_MAX];
     v9x_u32 offsets[V9X_NV50_D3D_MIP_LEVELS_MAX];   /* in the tiled chain */
@@ -876,8 +902,10 @@ static int v9x_d3d_nv50_mip_copy(V9X_D3D_NV50_MIP *mip)
     DWORD level;
     DWORD width = mip->width;
     DWORD height = mip->height;
-    DWORD format = mip->bytes == 4ul ? V9X_502D_FORMAT_A8R8G8B8
-                                     : V9X_502D_FORMAT_R5G6B5;
+    DWORD across;
+    DWORD down;
+    DWORD format = mip->bytes == 2ul ? V9X_502D_FORMAT_R5G6B5
+                                     : V9X_502D_FORMAT_A8R8G8B8;
     int ok;
 
     if (mip->dirty == 0ul) {
@@ -889,21 +917,30 @@ static int v9x_d3d_nv50_mip_copy(V9X_D3D_NV50_MIP *mip)
     }
     v9x_nv50_push_init(&push, (v9x_u32 *)area, area_words);
     for (level = 0ul; level < mip->levels; ++level) {
+        /* The level in copy pixels: its texels, or for DXT its rows of
+         * blocks, each row's bytes as A8R8G8B8 pixels. */
+        across = width;
+        down = height;
+        if (mip->edge > 1ul) {
+            across = (width + mip->edge - 1ul) / mip->edge * mip->bytes /
+                     V9X_D3D_NV50_COPY_CELL;
+            down = (height + mip->edge - 1ul) / mip->edge;
+        }
         linear.address = mip->linear[level];
         linear.pitch = mip->linear_pitch[level];
-        linear.width = width;
-        linear.height = height;
+        linear.width = across;
+        linear.height = down;
         linear.tile_mode = 0ul;
         linear.tiled = 0ul;
         tiled.address = V9X_NV50_VM_TILED + mip->pool_offset +
                         mip->offsets[level];
         tiled.pitch = 0ul;
-        tiled.width = width;
-        tiled.height = height;
+        tiled.width = across;
+        tiled.height = down;
         tiled.tile_mode = mip->modes[level];
         tiled.tiled = 1ul;
         v9x_nv50_push_2d_surface_blit(&push, &linear, &tiled, format, 0ul,
-                                      0ul, 0ul, 0ul, width, height);
+                                      0ul, 0ul, 0ul, across, down);
         width = width > 1ul ? width >> 1 : 1ul;
         height = height > 1ul ? height >> 1 : 1ul;
     }
@@ -934,14 +971,15 @@ static void v9x_d3d_nv50_resolve_mip(DWORD offset,
 }
 
 /*
- * A mipmapped chain just placed level by level (each level's surface at
- * its own offset and pitch): a record and a block of the pool for its
- * tiled copy, stale until the first draw copies it. Nothing when the
- * chain has one level, there is no pool or no room, or every record is
- * taken: the texture then samples level 0.
+ * A mipmapped chain, or any DXT texture, just placed level by level (each
+ * level's surface at its own offset and pitch): a record and a block of
+ * the pool for its tiled copy, stale until the first draw copies it.
+ * Nothing when a texel chain has one level, there is no pool or no room,
+ * or every record is taken: the texture then samples level 0, or for DXT
+ * is not drawn. bytes and edge are a cell's (the record's).
  */
 static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
-                                    DWORD bytes)
+                                    DWORD bytes, DWORD edge)
 {
     V9X_DD_SURFACE_LCL **list = (V9X_DD_SURFACE_LCL **)data->lplpSList;
     V9X_D3D_NV50_MIP *slot = 0;
@@ -951,8 +989,10 @@ static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
     DWORD levels = data->dwSCnt;
     DWORD offset;
     DWORD index;
+    int laid;
 
-    if (levels < 2ul || levels > V9X_NV50_D3D_MIP_LEVELS_MAX) {
+    if (levels < (edge > 1ul ? 1ul : 2ul) ||
+        levels > V9X_NV50_D3D_MIP_LEVELS_MAX) {
         return;
     }
     for (index = 0ul; index < V9X_D3D_NV50_MIPS; ++index) {
@@ -961,11 +1001,21 @@ static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
             break;
         }
     }
-    if (slot == 0 ||
-        !v9x_nv50_d3d_mip_layout((v9x_u32)list[0]->lpGbl->wWidth,
-                                 (v9x_u32)list[0]->lpGbl->wHeight, levels,
-                                 bytes, slot->offsets, pitches, rows,
-                                 slot->modes, &total)) {
+    if (slot == 0) {
+        return;
+    }
+    if (edge > 1ul) {
+        laid = v9x_nv50_d3d_dxt_layout((v9x_u32)list[0]->lpGbl->wWidth,
+                                       (v9x_u32)list[0]->lpGbl->wHeight,
+                                       levels, bytes, slot->offsets, pitches,
+                                       rows, slot->modes, &total);
+    } else {
+        laid = v9x_nv50_d3d_mip_layout((v9x_u32)list[0]->lpGbl->wWidth,
+                                       (v9x_u32)list[0]->lpGbl->wHeight,
+                                       levels, bytes, slot->offsets, pitches,
+                                       rows, slot->modes, &total);
+    }
+    if (!laid) {
         return;
     }
     offset = v9x_d3d_nv50_pool_take(total);
@@ -980,6 +1030,7 @@ static void v9x_d3d_nv50_mip_create(V9X_DDHAL_CREATESURFACEDATA *data,
     slot->width = (DWORD)list[0]->lpGbl->wWidth;
     slot->height = (DWORD)list[0]->lpGbl->wHeight;
     slot->bytes = bytes;
+    slot->edge = edge;
     slot->pool_offset = offset;
     slot->pool_bytes = (total + V9X_D3D_NV50_POOL_ALIGN - 1ul) &
                        ~(V9X_D3D_NV50_POOL_ALIGN - 1ul);
@@ -2089,6 +2140,8 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     v9x_u32 pitches[V9X_D3D_NV50_LEVELS_MAX];
     v9x_u32 rows[V9X_D3D_NV50_LEVELS_MAX];
     DWORD bytes = 0ul;
+    DWORD format;
+    DWORD edge = 1ul;
     DWORD width;
     DWORD height;
     DWORD level;
@@ -2106,8 +2159,11 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
     /* A cube's list is six faces' chains, longer than one chain may be. */
     if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
         (v9x_d3d_nv50_caps2(surface) & V9X_DDSCAPS2_CUBEMAP) != 0ul) {
-        if (v9x_d3d_nv50_format_of(surface, &bytes) ==
-            V9X_D3D_NV50_TEXTURE_UNKNOWN) {
+        format = v9x_d3d_nv50_format_of(surface, &bytes);
+        /* A DXT cube is not placed: its tiled copy is not built, so
+         * DirectDraw places it and its draws are refused. */
+        if (format == V9X_D3D_NV50_TEXTURE_UNKNOWN ||
+            V9X_NV50_D3D_TEX_IS_DXT(format)) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
         }
         return v9x_d3d_nv50_create_cube(data, bytes);
@@ -2141,11 +2197,17 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
         rows[0] = height;
     } else if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
                (surface->ddsCaps & V9X_DDSCAPS_ZBUFFER) == 0ul) {
+        format = v9x_d3d_nv50_format_of(surface, &bytes);
         if (width > V9X_D3D_NV50_TEXTURE_SIDE_MAX ||
             height > V9X_D3D_NV50_TEXTURE_SIDE_MAX ||
-            v9x_d3d_nv50_format_of(surface, &bytes) ==
-                V9X_D3D_NV50_TEXTURE_UNKNOWN) {
+            format == V9X_D3D_NV50_TEXTURE_UNKNOWN) {
             return V9X_DDHAL_DRIVER_NOTHANDLED;
+        }
+        /* DXT in rows of blocks, a part block whole: the rows the CPU
+         * writes, here on 64 bytes for the 2D engine's copy (the Lock
+         * below hands the CPU them packed). */
+        if (V9X_NV50_D3D_TEX_IS_DXT(format)) {
+            edge = V9X_NV50_D3D_DXT_EDGE;
         }
         for (level = 0ul; level < data->dwSCnt; ++level) {
             const V9X_DD_SURFACE_LCL *member = list[level];
@@ -2160,9 +2222,10 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                 (DWORD)member->lpGbl->wHeight != height) {
                 return V9X_DDHAL_DRIVER_NOTHANDLED;
             }
-            pitches[level] = (width * bytes + V9X_D3D_NV50_PITCH_ALIGN - 1ul) &
+            pitches[level] = ((width + edge - 1ul) / edge * bytes +
+                              V9X_D3D_NV50_PITCH_ALIGN - 1ul) &
                              ~(V9X_D3D_NV50_PITCH_ALIGN - 1ul);
-            rows[level] = height;
+            rows[level] = (height + edge - 1ul) / edge;
         }
     } else {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
@@ -2171,14 +2234,154 @@ static DWORD v9x_d3d_nv50_create_surface(V9X_DDHAL_CREATESURFACEDATA *data)
                            rows) != 0ul) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    /* A mipmapped texture also gets its chain's tiled copy in the pool. */
+    /* A mipmapped or DXT texture also gets its tiled copy in the pool. */
     if ((surface->ddsCaps & V9X_DDSCAPS_TEXTURE) != 0ul &&
-        data->dwSCnt > 1ul) {
-        v9x_d3d_nv50_mip_create(data, bytes);
+        (data->dwSCnt > 1ul || edge > 1ul)) {
+        v9x_d3d_nv50_mip_create(data, bytes, edge);
     }
     ++v9x_hal->d3d_diagnostics.texture_placed;
     data->ddRVal = V9X_DD_OK;
     return V9X_DDHAL_DRIVER_HANDLED;
+}
+
+/*
+ * DXT levels and the CPU, as the HD 4600's (d3d_hsw.c). Whatever writes a
+ * DXT level - the Direct3D 8 runtime uploading a managed texture, or
+ * DirectDraw's own Blt - writes its rows of blocks back to back from the
+ * address Lock hands out, whatever lPitch says (the 4570, boot 156). This
+ * engine keeps those rows on 64 bytes for the 2D engine's copy, so a level
+ * whose rows are narrower is pointed, for the lock's length, at a packed
+ * copy in the locking process's memory; Unlock writes it back at the
+ * level's pitch and points the level home. The pool's copy is then stale
+ * (surface_written). Locks come and go under the Win16 lock, a few at a
+ * time; HAL statics are shared by every process, the copy is the locking
+ * process's own.
+ */
+#define V9X_D3D_NV50_DXT_LOCKS       8ul
+
+typedef struct v9x_d3d_nv50_dxt_lock {
+    const V9X_DD_SURFACE_LCL *surface;
+    DWORD process;
+    DWORD home;
+    BYTE *packed;
+} V9X_D3D_NV50_DXT_LOCK;
+
+static V9X_D3D_NV50_DXT_LOCK v9x_d3d_nv50_dxt_locks[V9X_D3D_NV50_DXT_LOCKS];
+
+/* An engine-placed DXT level whose packed rows are narrower than its
+ * pitch: its rows of blocks and their bytes; 0 for any other surface. */
+static int v9x_d3d_nv50_dxt_level(const V9X_DD_SURFACE_LCL *surface,
+                                  DWORD *rows, DWORD *row_bytes)
+{
+    DWORD bytes = 0ul;
+
+    if (surface == 0 || surface->lpGbl == 0 ||
+        (surface->ddsCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (surface->ddsCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        surface->lpGbl->fpVidMem == 0ul ||
+        surface->lpGbl->dwBlockSizeX != 0ul ||
+        surface->lpGbl->lPitch <= 0l ||
+        !V9X_NV50_D3D_TEX_IS_DXT(v9x_d3d_nv50_format_of(surface, &bytes))) {
+        return 0;
+    }
+    *rows = ((DWORD)surface->lpGbl->wHeight + V9X_NV50_D3D_DXT_EDGE - 1ul) /
+            V9X_NV50_D3D_DXT_EDGE;
+    *row_bytes = ((DWORD)surface->lpGbl->wWidth + V9X_NV50_D3D_DXT_EDGE -
+                  1ul) / V9X_NV50_D3D_DXT_EDGE * bytes;
+    return *rows != 0ul && *row_bytes < (DWORD)surface->lpGbl->lPitch;
+}
+
+static void v9x_d3d_nv50_lock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    V9X_D3D_NV50_DXT_LOCK *slot = 0;
+    const BYTE *from;
+    DWORD rows;
+    DWORD row_bytes;
+    DWORD pitch;
+    DWORD n;
+    DWORD row;
+    DWORD i;
+
+    if (!v9x_d3d_nv50_dxt_level(surface, &rows, &row_bytes)) {
+        return;
+    }
+    for (n = 0ul; n < V9X_D3D_NV50_DXT_LOCKS; ++n) {
+        if (v9x_d3d_nv50_dxt_locks[n].surface == surface) {
+            return;     /* already pointed at its packed copy */
+        }
+        if (slot == 0 && v9x_d3d_nv50_dxt_locks[n].surface == 0) {
+            slot = &v9x_d3d_nv50_dxt_locks[n];
+        }
+    }
+    if (slot == 0) {
+        return;
+    }
+    slot->packed = (BYTE *)VirtualAlloc(0, rows * row_bytes,
+                                        MEM_COMMIT | MEM_RESERVE,
+                                        PAGE_READWRITE);
+    if (slot->packed == 0) {
+        return;
+    }
+    pitch = (DWORD)surface->lpGbl->lPitch;
+    from = (const BYTE *)surface->lpGbl->fpVidMem;
+    for (row = 0ul; row < rows; ++row) {
+        for (i = 0ul; i < row_bytes; ++i) {
+            slot->packed[row * row_bytes + i] = from[row * pitch + i];
+        }
+    }
+    slot->surface = surface;
+    slot->process = GetCurrentProcessId();
+    slot->home = surface->lpGbl->fpVidMem;
+    surface->lpGbl->fpVidMem = (DWORD)slot->packed;
+}
+
+/* Puts a locked DXT level home, its rows written back at its pitch when
+ * write_back; nonzero when it was one. */
+static int v9x_d3d_nv50_dxt_unlock(const V9X_DD_SURFACE_LCL *surface,
+                                   int write_back)
+{
+    V9X_D3D_NV50_DXT_LOCK *slot = 0;
+    BYTE *to;
+    DWORD rows;
+    DWORD row_bytes;
+    DWORD pitch;
+    DWORD n;
+    DWORD row;
+    DWORD i;
+
+    for (n = 0ul; n < V9X_D3D_NV50_DXT_LOCKS; ++n) {
+        if (surface != 0 && v9x_d3d_nv50_dxt_locks[n].surface == surface) {
+            slot = &v9x_d3d_nv50_dxt_locks[n];
+            break;
+        }
+    }
+    if (slot == 0) {
+        return 0;
+    }
+    surface->lpGbl->fpVidMem = slot->home;
+    /* The copy lives in the process that locked; from another one only
+     * the address can be put back. */
+    if (slot->process == GetCurrentProcessId()) {
+        if (write_back &&
+            v9x_d3d_nv50_dxt_level(surface, &rows, &row_bytes)) {
+            pitch = (DWORD)surface->lpGbl->lPitch;
+            to = (BYTE *)slot->home;
+            for (row = 0ul; row < rows; ++row) {
+                for (i = 0ul; i < row_bytes; ++i) {
+                    to[row * pitch + i] = slot->packed[row * row_bytes + i];
+                }
+            }
+        }
+        (void)VirtualFree(slot->packed, 0ul, MEM_RELEASE);
+    }
+    slot->surface = 0;
+    slot->packed = 0;
+    return 1;
+}
+
+static void v9x_d3d_nv50_unlock_surface(const V9X_DD_SURFACE_LCL *surface)
+{
+    (void)v9x_d3d_nv50_dxt_unlock(surface, 1);
 }
 
 /*
@@ -2195,6 +2398,9 @@ static void v9x_d3d_nv50_destroy_surface(V9X_DDHAL_DESTROYSURFACEDATA *data)
     V9X_D3D_NV50_MIP *mip;
     DWORD offset;
 
+    /* Destroyed while locked: a DXT level is pointed home first, so the
+     * release below finds the block it placed. */
+    (void)v9x_d3d_nv50_dxt_unlock(surface, 0);
     if (surface != 0 && surface->lpGbl != 0 &&
         surface->lpGbl->fpVidMem != 0ul) {
         offset = v9x_surface_offset(surface);
@@ -2258,8 +2464,8 @@ const V9X_D3D_ENGINE_OPS v9x_d3d_engine_nv50 = {
     0,                                  /* draw_indexed */
     0,                                  /* draw_tnl */
     0,                                  /* tnl_available */
-    0,                                  /* lock_surface */
-    0,                                  /* unlock_surface */
+    v9x_d3d_nv50_lock_surface,          /* lock_surface: DXT levels */
+    v9x_d3d_nv50_unlock_surface,        /* unlock_surface */
     v9x_d3d_nv50_draw_shader,           /* draw_shader: step 4 */
     v9x_d3d_nv50_surface_written
 };

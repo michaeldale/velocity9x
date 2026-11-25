@@ -399,6 +399,64 @@ static void test_mip(void)
     CHECK((tsc[1] & 0xc0ul) == 0xc0ul);
 }
 
+/* DXT (step 7 of docs\plans\nvidia-gt218-ps11.md): nv50_miptree.c's tiled
+ * layout counted in 4 x 4 blocks, and Mesa's DXTn_RGBA TIC rows. */
+static void test_dxt(void)
+{
+    v9x_u32 tic[V9X_NV50_3D_TIC_WORDS];
+    v9x_u32 tsc[V9X_NV50_3D_TSC_WORDS];
+    v9x_u32 offsets[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 pitches[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 rows[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 modes[V9X_NV50_D3D_MIP_LEVELS_MAX];
+    v9x_u32 total = 0ul;
+
+    /* A 64x64 DXT1 chain of seven: 16, 8, 4, 2, 1, 1, 1 blocks a side, 8
+     * bytes each; rows of 128 bytes, then the 64-byte GOB; the tile mode
+     * chosen on rows of blocks (16 -> 20h, 8 -> 10h, fewer -> 0). */
+    CHECK(v9x_nv50_d3d_dxt_layout(64ul, 64ul, 7ul, 8ul, offsets, pitches,
+                                  rows, modes, &total));
+    CHECK(pitches[0] == 128ul && pitches[1] == 64ul && pitches[6] == 64ul);
+    CHECK(modes[0] == 0x20ul && modes[1] == 0x10ul && modes[2] == 0ul &&
+          modes[6] == 0ul);
+    CHECK(rows[0] == 16ul && rows[1] == 8ul && rows[2] == 4ul &&
+          rows[6] == 4ul);
+    CHECK(offsets[1] == 2048ul && offsets[2] == 2560ul &&
+          offsets[3] == 2816ul && offsets[6] == 3584ul);
+    CHECK(total == 3840ul);
+    /* One level of 16x8 DXT5: 4 x 2 blocks of 16 bytes, one GOB row of 4
+     * rows. */
+    CHECK(v9x_nv50_d3d_dxt_layout(16ul, 8ul, 1ul, 16ul, offsets, pitches,
+                                  rows, modes, &total));
+    CHECK(pitches[0] == 64ul && rows[0] == 4ul && modes[0] == 0ul &&
+          total == 256ul);
+    /* Halved in texels, then rounded up to blocks: a 12x12 level 1 is 6x6,
+     * two blocks a side, not 3 >> 1. */
+    CHECK(v9x_nv50_d3d_dxt_layout(12ul, 12ul, 2ul, 8ul, offsets, pitches,
+                                  rows, modes, &total));
+    CHECK(offsets[1] == 256ul && total == 512ul);
+    CHECK(!v9x_nv50_d3d_dxt_layout(16ul, 16ul, 1ul, 4ul, offsets, pitches,
+                                   rows, modes, &total));
+    CHECK(!v9x_nv50_d3d_dxt_layout(0ul, 16ul, 1ul, 8ul, offsets, pitches,
+                                   rows, modes, &total));
+
+    /* DXT1, DXT23 and DXT45 sizes (24h-26h), UNORM, R G B A to X Y Z W. */
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_DXT1, 0ul, 0ul, 64ul, 64ul,
+                               0ul, 1ul, 1ul, tic, tsc));
+    CHECK(tic[0] == (0x24ul | 0x12480ul | (2ul << 18) | (3ul << 21) |
+                     (4ul << 24) | (5ul << 27)));
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_DXT3, 0ul, 0ul, 64ul, 64ul,
+                               0ul, 1ul, 1ul, tic, tsc));
+    CHECK((tic[0] & 0x3ful) == 0x25ul);
+    CHECK(v9x_nv50_d3d_texture(V9X_NV50_D3D_TEX_DXT5, 0ul, 0ul, 64ul, 64ul,
+                               0ul, 1ul, 1ul, tic, tsc));
+    CHECK((tic[0] & 0x3ful) == 0x26ul);
+    /* Then the tiled chain as any mipmap, the size in texels. */
+    v9x_nv50_d3d_tic_mip(0x20460000ul, 0x20ul, 0ul, 0ul, tic, tsc);
+    CHECK(tic[4] == (0x80000000ul | 64ul) &&
+          (tic[5] & 0xfffful) == 64ul && tic[7] == 0ul && tsc[2] == 0ul);
+}
+
 /* Cube maps (step 6 of docs\plans\nvidia-gt218-ps11.md): the tiled copy's
  * layout and the TIC that samples it, as Mesa's nv50_miptree.c and
  * nv50_tex.c lay out and describe a block-linear cube of one level. */
@@ -1006,6 +1064,7 @@ unsigned int v9x_run_nv50_d3d_tests(void)
     test_texture();
     test_cube();
     test_mip();
+    test_dxt();
     test_state();
     test_vertex();
     test_shader();

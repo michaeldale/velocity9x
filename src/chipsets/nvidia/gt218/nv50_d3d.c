@@ -103,6 +103,11 @@
 #define V9X_NV50_TIC_SIZES_A1B5G5R5  0x14ul
 #define V9X_NV50_TIC_SIZES_B5G6R5    0x15ul
 #define V9X_NV50_TIC_SIZES_G8R8      0x18ul
+/* G80_TIC_0_COMPONENTS_SIZES_DXT1, _DXT23 and _DXT45 (g80_texture.xml.h),
+ * Mesa's nv50_formats.c rows for DXT1_RGBA, DXT3_RGBA and DXT5_RGBA. */
+#define V9X_NV50_TIC_SIZES_DXT1      0x24ul
+#define V9X_NV50_TIC_SIZES_DXT23     0x25ul
+#define V9X_NV50_TIC_SIZES_DXT45     0x26ul
 /* Pitch layout, normalized coordinates, 2D, as phase 3's texture ran. */
 #define V9X_NV50_TIC2_PITCH_2D       0xd005d000ul
 #define V9X_NV50_TIC5_DEPTH_ONE      0x00010000ul
@@ -522,6 +527,22 @@ int v9x_nv50_d3d_texture(v9x_u32 format, v9x_u32 address, v9x_u32 pitch,
                  (V9X_NV50_TIC_SOURCE_ONE << V9X_NV50_TIC0_W_SHIFT);
         sizes = 0ul;
         break;
+    case V9X_NV50_D3D_TEX_DXT1:
+    case V9X_NV50_D3D_TEX_DXT3:
+    case V9X_NV50_D3D_TEX_DXT5:
+        /* Mesa's DXTn_RGBA rows: the decoded block is R G B A, read in
+         * that order, UNORM. DXT1's punch-through alpha is its A. */
+        tic[0] = (format == V9X_NV50_D3D_TEX_DXT1 ? V9X_NV50_TIC_SIZES_DXT1
+                  : format == V9X_NV50_D3D_TEX_DXT3
+                      ? V9X_NV50_TIC_SIZES_DXT23
+                      : V9X_NV50_TIC_SIZES_DXT45) |
+                 V9X_NV50_TIC0_UNORM |
+                 (V9X_NV50_TIC_SOURCE_R << V9X_NV50_TIC0_X_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_G << V9X_NV50_TIC0_Y_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_B << V9X_NV50_TIC0_Z_SHIFT) |
+                 (V9X_NV50_TIC_SOURCE_A << V9X_NV50_TIC0_W_SHIFT);
+        sizes = 0ul;
+        break;
     default:
         return 0;
     }
@@ -594,31 +615,64 @@ static v9x_u32 v9x_nv50_d3d_mip_tile_mode(v9x_u32 ny)
     return 0ul;
 }
 
-int v9x_nv50_d3d_mip_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
-                            v9x_u32 bytes, v9x_u32 *offsets,
-                            v9x_u32 *pitches, v9x_u32 *rows,
-                            v9x_u32 *tile_modes, v9x_u32 *total)
+/* A chain whose levels are counted in cells of edge x edge texels and
+ * bytes each (a texel, or a DXT block): nv50_miptree.c's nblocksx and
+ * nblocksy, the level's texels halved and then rounded up to cells. */
+static void v9x_nv50_d3d_cell_layout(v9x_u32 width, v9x_u32 height,
+                                     v9x_u32 levels, v9x_u32 edge,
+                                     v9x_u32 bytes, v9x_u32 *offsets,
+                                     v9x_u32 *pitches, v9x_u32 *rows,
+                                     v9x_u32 *tile_modes, v9x_u32 *total)
 {
     v9x_u32 level;
     v9x_u32 block;
+    v9x_u32 across;
+    v9x_u32 down;
 
-    if (width == 0ul || height == 0ul || levels == 0ul ||
-        levels > V9X_NV50_D3D_MIP_LEVELS_MAX ||
-        (bytes != 2ul && bytes != 4ul)) {
-        return 0;
-    }
     *total = 0ul;
     for (level = 0ul; level < levels; ++level) {
-        tile_modes[level] = v9x_nv50_d3d_mip_tile_mode(height);
+        across = (width + edge - 1ul) / edge;
+        down = (height + edge - 1ul) / edge;
+        tile_modes[level] = v9x_nv50_d3d_mip_tile_mode(down);
         block = V9X_NV50_CUBE_BLOCK_ROWS(tile_modes[level]);
-        pitches[level] = (width * bytes + V9X_NV50_CUBE_GOB_BYTES - 1ul) &
+        pitches[level] = (across * bytes + V9X_NV50_CUBE_GOB_BYTES - 1ul) &
                          ~(V9X_NV50_CUBE_GOB_BYTES - 1ul);
-        rows[level] = (height + block - 1ul) / block * block;
+        rows[level] = (down + block - 1ul) / block * block;
         offsets[level] = *total;
         *total += pitches[level] * rows[level];
         width = width > 1ul ? width >> 1 : 1ul;
         height = height > 1ul ? height >> 1 : 1ul;
     }
+}
+
+int v9x_nv50_d3d_mip_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
+                            v9x_u32 bytes, v9x_u32 *offsets,
+                            v9x_u32 *pitches, v9x_u32 *rows,
+                            v9x_u32 *tile_modes, v9x_u32 *total)
+{
+    if (width == 0ul || height == 0ul || levels == 0ul ||
+        levels > V9X_NV50_D3D_MIP_LEVELS_MAX ||
+        (bytes != 2ul && bytes != 4ul)) {
+        return 0;
+    }
+    v9x_nv50_d3d_cell_layout(width, height, levels, 1ul, bytes, offsets,
+                             pitches, rows, tile_modes, total);
+    return 1;
+}
+
+int v9x_nv50_d3d_dxt_layout(v9x_u32 width, v9x_u32 height, v9x_u32 levels,
+                            v9x_u32 block_bytes, v9x_u32 *offsets,
+                            v9x_u32 *pitches, v9x_u32 *rows,
+                            v9x_u32 *tile_modes, v9x_u32 *total)
+{
+    if (width == 0ul || height == 0ul || levels == 0ul ||
+        levels > V9X_NV50_D3D_MIP_LEVELS_MAX ||
+        (block_bytes != 8ul && block_bytes != 16ul)) {
+        return 0;
+    }
+    v9x_nv50_d3d_cell_layout(width, height, levels, V9X_NV50_D3D_DXT_EDGE,
+                             block_bytes, offsets, pitches, rows, tile_modes,
+                             total);
     return 1;
 }
 
