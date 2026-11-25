@@ -1112,11 +1112,12 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'release probes pass on the R7E, X1300 and HD 7660D; the Oland 6610 and 6611 fail only V9XD32 T19; the Mach64 VT2 (86Box) boots at 8 bpp (2026-11-21 to 23, 0.61.0 tree); Rage, Rage 128 and other chips not run'
+        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro, Rage XL, Rage IIC, Radeon 9250, HD 7470 and Rage Mobility-M with their candidate run owed; HD 2600 XT, HD 2400 Pro and HD 5450 on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, Radeon 9200 5961 and 5962'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'
             'docs/decisions/2026-11-23-1.0-b1-oland-flipsafety.md'
+            'docs/decisions/2026-11-25-t19-specular-saturate-before-fog.md'
         )
     }
 

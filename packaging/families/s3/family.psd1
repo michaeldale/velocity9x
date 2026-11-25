@@ -431,7 +431,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'on 86Box only (2026-11-21, 0.61.0 tree): release probes pass on the Trio64; the ViRGE/DX fails Glide FogTable and needs a 16 bpp desktop for Direct3D; no physical S3 card run'
+        TestedStatus = 'Supported, the candidate run owed: Trio64, ViRGE/DX and Trio3D. On 86Box only (2026-11-21, 0.61.0 tree): release probes pass on the Trio64; the ViRGE/DX fails Glide FogTable and needs a 16 bpp desktop for Direct3D; no physical S3 card run'
         CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 
