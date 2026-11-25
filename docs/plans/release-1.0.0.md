@@ -402,3 +402,23 @@ over a newer dev build while the other six files were; cause not found.
 Owed for B10: `nvidia`, `sis` and `3dfx` on physical cards that never had
 the driver, `intel-gma` on such a machine if one appears, and the release
 candidate's zips.
+
+### 2026-11-26: B11 closed, the README carries the tiers, the GMA 900 run
+
+- **GMA 900 (remote-help card outside the fleet):** a second 915GM,
+  M-8Z30ST, passes every release probe on the 0.61.0 tree, pixel shader
+  1.1 included. 3DMark 2000 ran out of video memory until the texture
+  pool was opened to the 915GM, which needed the mini-VDD to stop
+  reading the 915's BAR3 as a Gen4 GTT; then it completes
+  ([record](../decisions/2026-11-26-gma900-m8z30st-release-probes.md)).
+  It joins the release-check machine list; its 1.0 run is still the
+  candidate's.
+- **B11 closed:** every family's Status line names its cards' tiers.
+- **Gate item 6, in part:** the README's six card tables have a 1.0
+  tier column from decision 3, with the last run of each card no longer
+  fitted. Owed: the "from 0.x" claims inside the rows, checked against
+  each card's last run.
+- **Waiting on Michael:** B9 (a laptop someone can wake), B10 `sis` and
+  `3dfx` (86Box emulates neither the SiS 6326 nor the Voodoo4), B14
+  (no Windows 95 or Me guest or install media here), B5's physical S3
+  card, and the A8U4I5 card-swap round.
