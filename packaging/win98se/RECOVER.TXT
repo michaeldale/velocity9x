@@ -25,9 +25,17 @@ and OEM.INF (the old INF). If Windows does not reach a desktop after the
 update restart:
 
 1. Press F8 before Windows starts and choose Safe Mode Command Prompt Only.
-2. Copy the old files back, for example:
+2. Copy the old files back. Every program file in the folder came from
+   C:\WINDOWS\SYSTEM, the Glide and 3DCIF DLLs among them, so copy them all
+   by type, for example:
       CD C:\V9XDIAG\UPDATE\BACKUP\V0_15_0
-      COPY V9X*.* C:\WINDOWS\SYSTEM
+      COPY *.DRV C:\WINDOWS\SYSTEM
+      COPY *.VXD C:\WINDOWS\SYSTEM
+      COPY *.DLL C:\WINDOWS\SYSTEM
+      COPY *.EXE C:\WINDOWS\SYSTEM
+   "File not found" for a type the folder does not hold is harmless. A
+   file that is new in the update has no old copy and stays. Do not copy
+   OEM.INF or REGISTRY.REG into SYSTEM.
 3. Restart. Once the desktop is back, double-click REGISTRY.REG in the same
    folder to restore the old display settings, and restart again.
 
