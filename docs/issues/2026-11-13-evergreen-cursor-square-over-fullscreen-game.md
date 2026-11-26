@@ -75,3 +75,15 @@ not reproduced on the R3E.
 
 Stays open under 1.0 blocker B6. Fixed on 2026-11-25 and measured with
 V9XCURSQ on the Oland and R3E; blocker B6 waits on the reporter.
+
+## 2026-11-26, later: still there at 320x240 on an HD 5450
+
+The HD 5450 (Cedar) in W9QI0DAD, on the 0.61.0 tree with the fix, has
+a 320x240x16 mode, which the Oland and R3E do not. V9XCURSQ: 320x240
+flip **SQUARE** (box 168,120-204,160, 95 %, the arrow on the stale
+black), exit 2; 640x480 flip and blit show the arrow over the game, as
+on the fixed Oland. The reporter's Bug! ran at 320x240, so the fix does
+not cover their case yet. The 320 case is also the probe's first, so
+mode and order are not separated; cause not found
+([record](../decisions/2026-11-26-1.0-hd5450-evergreen-check.md)).
+Status: open, B6.
