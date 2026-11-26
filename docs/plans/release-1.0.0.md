@@ -172,10 +172,10 @@ on one machine whose run is owed, by machine:
    that commits 1.0 to is blocker B14.
 3. **Tier of each card. Decided 2026-11-25 (Michael), card by card:**
    - *Supported, by the Shape rule* (in the check fleet, probes passing
-     recently): GMA 950, HD 4600, HD 3000 `0112`, GMA X3100, GMA
-     4500MHD (its two-unit REPLACE and DECAL failures go to the README's
-     known issues), Oland XT `6610`, R3E, R7E, HD 7660D, X1200 (RS690),
-     X1300.
+     recently): GMA 950, HD 4600, HD 3000 `0112`, GMA X3100, Oland XT
+     `6610`, R3E, R7E, HD 7660D, X1300. (The GMA 4500MHD, whose
+     two-unit REPLACE and DECAL failures go to the README's known
+     issues, and the X1200 (RS690) were here until 2026-11-26.)
    - *Supported, on a 1.0 run still owed:* the A8U4I5 card-swap round
      (Rage 128 Pro, Rage XL, Rage IIC, Trio64, ViRGE/DX, Trio3D,
      Millennium, Millennium II, Mystique, SiS 6326, Voodoo4), which
@@ -186,7 +186,9 @@ on one machine whose run is owed, by machine:
    - *Supported on their last run, the card no longer fitted:* Ironlake
      `0042`, HD 4000 `0162`, HD 2600 XT, HD 2400 Pro, HD 5450, GeForce
      210. These do not meet the Shape rule (no 1.0 build run); the
-     README says when each last ran.
+     README says when each last ran. The X1200 (RS690) and GMA 4500MHD
+     joined this group on 2026-11-26 (Michael): their machines went
+     offline after 0.51.0 and 0.57.0.
    - *Supported, other evidence:* the `vbe` package; HD 5770 (drops to
      Experimental only if B7 is a real fault); the field reports G45,
      Q45 and HD 2500 (no diagnostic files of ours); Oland 6611 (our
@@ -513,7 +515,8 @@ introduction says a "from 0.x" dates a feature, not a check. Two of
 decision 3's "in the check fleet, probes passing recently" cards have
 not run since: the X1200 (RS690) last ran 0.51.0 on 2026-11-14 and its
 machine has been offline since; the GMA 4500MHD last ran 0.57.0 on
-2026-11-19, offline since. Both need the candidate, as the "1.0 run
-owed" rows do, or a tier the README states as "on its last run". The
-"1.0 run owed" rows get their date from that run. Desk work; nothing
-run.
+2026-11-19, offline since. **Decided (Michael, 2026-11-26): both stay
+Supported on their last run**, stated so in the README, as the cards
+no longer fitted are; a run on the candidate is welcome if either
+machine returns. The "1.0 run owed" rows get their date from that run.
+Desk work; nothing run.
