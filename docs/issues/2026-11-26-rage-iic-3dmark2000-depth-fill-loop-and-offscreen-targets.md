@@ -107,3 +107,6 @@ Still open: what wedges the engine in Image Quality 1 (and 3DMark 2000);
 the depth fill answering `WASSTILLDRAWING` forever on a quarantined
 core, where it should fail or fall back; whether a screen read during
 Rage II drawing should be made safe in the driver.
+
+Left for a later release (Michael, 2026-11-26): not a regression;
+README known issue in 1.0.
