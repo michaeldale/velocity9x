@@ -218,9 +218,8 @@ New in 0.59.0:
   ([issue](docs/issues/2026-10-03-a8u4i5-hard-lock-on-additive-sprites.md)),
   and skips pieces whose texture does not fit, leaving holes
   ([issue](docs/issues/2026-10-03-rage-iic-texture-fit-skips.md)).
-  Its off-screen Direct3D render targets stay empty, 3DMark 2000 and
-  3DMark 99 stop partway in a loop of depth fills, and Half-Life's
-  Direct3D timedemo, which ran in October, locks the machine
+  Its off-screen Direct3D render targets stay empty, and 3DMark 2000
+  and 3DMark 99 stop partway when the engine wedges
   ([issue](docs/issues/2026-11-26-rage-iic-3dmark2000-depth-fill-loop-and-offscreen-targets.md)).
   Assault Rigs' menu shows boxes in 3DCIF
   ([issue](docs/issues/2026-10-16-assault-rigs-menu-boxes.md)).

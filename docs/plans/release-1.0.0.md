@@ -593,3 +593,14 @@ Half-Life's Direct3D timedemo locks the machine (a regression;
 power-cycled), and 3DMark 99 runs 24 of 26 tests and stops at Image
 Quality in the same fill loop. Whether these hold the Rage IIC's 1.0
 tier is Michael's call.
+
+### 2026-11-26, night: the Rage IIC investigated
+
+([issue](../issues/2026-11-26-rage-iic-3dmark2000-depth-fill-loop-and-offscreen-targets.md))
+The 3DMark stall is the engine wedging (a wait-for-idle timeout whose
+reset fails and quarantines the core), after which every depth fill
+answers "still drawing" forever. Released 0.10.0 does the same, so it
+is not a regression. The Half-Life lock goes with the agent's VNC
+server: with it stopped Half-Life runs on both 0.10.0 and the 0.61.0
+tree (5.2 fps); with it running both lock. Michael's 1.0 decision on
+the Rage IIC is to be revisited with this.

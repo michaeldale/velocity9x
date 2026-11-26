@@ -59,3 +59,51 @@ release.
 
 Evidence: `../probe/rageiic-1.0-2026-11-26/half-life-d3d/` and
 `3dmark99/`.
+
+## 2026-11-26, night: what the depth-fill loop is, and the Half-Life lock
+
+Temporary diagnostic builds (not committed; the patch is kept outside
+the repository) traced each depth fill and the Mach64 core. 3DMark 99
+Max with only its Image Quality tests reproduces the stall in about a
+minute, after 23 draws.
+
+**The loop.** Every depth fill in the stall takes one path: the engine
+fill is declined because the shared Mach64 core is quarantined, the
+render drain then fails at once (`wait_idle` returns
+`INVALID_ARGUMENT` on a quarantined core, uncounted), and
+`v9x_depthfill_body` answers `DDERR_WASSTILLDRAWING`, which the runtime
+retries forever. `FIFO_STAT` reads `0000FFFF`: all sixteen entries
+occupied, the engine wedged.
+
+**Why the core is quarantined.** Not a FIFO error: a history of the
+last 64 register writes, frozen at the first FIFO error, never froze.
+It froze instead at a wait-for-idle timeout with the FIFO empty and the
+engine still busy (`v9x_m64_wait` then ran `v9x_m64_reset_replay`,
+which failed and quarantined the core). The writes before it: one
+Rage II trapezoid (DST_Y_X x 16, y 159, three pixels wide, one row,
+`DST_BRES_LNTH` `80128001`), the 2D mode switch, and a 256x256 depth
+fill at (0,0) with `FFFF` (`DST_HEIGHT_WIDTH` `01000100`). Nothing in
+those writes is out of range; what wedges the engine is not found.
+
+**Not a regression.** Released 0.10.0 (3 October, which holds the build
+Half-Life ran on) stops at Image Quality 1 the same way.
+
+**The Half-Life lock goes with the agent's VNC server.**
+
+| Build | `V9XVNC.EXE` | Half-Life Direct3D mwd5 |
+|---|---|---|
+| 0.61.0 tree | running | machine locked |
+| 0.10.0 | running | machine locked |
+| 0.10.0 | stopped | 394 frames, 5.233 fps |
+| 0.61.0 tree | stopped | 394 frames, 5.199 fps |
+
+October's runs (5.57 fps) had an agent without VNC. So the "regression"
+was the test machine: the VNC server reading the screen while the Rage
+II draws. With VNC stopped, 3DMark 99 Image Quality on the 0.61.0 tree
+still wedged the engine, and this time the machine locked instead of
+looping. Each lock needed a power cycle (boots 704, 710, 712, 714).
+
+Still open: what wedges the engine in Image Quality 1 (and 3DMark 2000);
+the depth fill answering `WASSTILLDRAWING` forever on a quarantined
+core, where it should fail or fall back; whether a screen read during
+Rage II drawing should be made safe in the driver.
