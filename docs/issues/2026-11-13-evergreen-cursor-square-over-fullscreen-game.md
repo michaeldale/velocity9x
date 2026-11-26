@@ -86,4 +86,7 @@ on the fixed Oland. The reporter's Bug! ran at 320x240, so the fix does
 not cover their case yet. The 320 case is also the probe's first, so
 mode and order are not separated; cause not found
 ([record](../decisions/2026-11-26-1.0-hd5450-evergreen-check.md)).
-Status: open, B6.
+Status: open. Left for 1.1 (Michael, 2026-11-26): B6 is closed for
+1.0 with 640x480 fixed, and the README names the 320x240 square as a
+known issue. First step for 1.1: run V9XCURSQ with 640x480 first, to
+separate the mode from the probe's case order.

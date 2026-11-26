@@ -133,7 +133,7 @@ New in 0.59.0:
   them. On an HD 5570, one reporter sees a small flickering square
   follow the mouse over a full-screen game; reproduced on an R7 250 and
   fixed in the 0.61.0 tree at 640x480, but on an HD 5450 the square is
-  still there in 320x240 modes
+  still there in 320x240 modes; left for 1.1
   ([issue](docs/issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)).
   The same reporter's Quake 2 "Angle" crosshair draws as one dot
   ([issue](docs/issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md)).
