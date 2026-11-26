@@ -128,3 +128,8 @@ A probe that, during a 3DMark 2001 SE load, compares the physical
 frames in the reservation's page-table entries against the 440BX GART
 entries for the same pages. Then: the ring back as the transport, and
 the 32 MiB map run under PIO.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Parked work,
+listed in the 1.0 plan.

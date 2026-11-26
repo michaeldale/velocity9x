@@ -216,3 +216,8 @@ With the sky drawn on the pool and the dragon's stages drawn, nothing
 white is left in the netbook's frames. **Closed 2026-11-12** at
 Michael's word. A full run on the netbook's panel has not been watched
 since these fixes.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Closed on 2026-11-12 as recorded above; this moves its index
+line to Closed.

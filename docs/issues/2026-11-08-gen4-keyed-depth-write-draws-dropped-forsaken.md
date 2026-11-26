@@ -151,3 +151,10 @@ This is a regression check only. V9XD32's colour-key test (T20) draws
 with depth off, so it never reaches the two-pass path. Forsaken is still
 the only thing that has. There is no earlier probe run on this machine
 to compare against.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. The fix is
+measured on the GM45's menu only; Forsaken gameplay on the GM45 and a
+keyed title on the GM965 are in the plan's re-run list.

@@ -22,3 +22,10 @@ The Rage XL now keys in hardware
 ([record](../decisions/2026-10-14-rage-xl-texture-colour-key.md)). Gen3's
 fragment program has a texture kill, and the ViRGE rewrites keyed texels
 to alpha 0. Either would serve here; not yet chosen.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Still
+failing at the last netbook V9XDDP
+(docs/probe/gen3-guard-band-step3-2026-11-04/, ColorKeyHalvesOk=0); no
+fix in the tree. Named in the README's GMA 950 entry.

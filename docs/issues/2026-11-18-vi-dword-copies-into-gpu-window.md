@@ -35,3 +35,8 @@ through the GPU. How fast that path is per byte was not measured.
 The first two are local to `vi_cp.c` and `d3d_vi.c`. Their gate: the same
 V9XPROF run, with these two loops' shares before and after, plus V9XD32
 and a 3DMark 2001 SE run without a stall.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Performance
+work, listed in the 1.0 plan.

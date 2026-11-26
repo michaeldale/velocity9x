@@ -61,3 +61,9 @@ mapped to a module), and whether the pool can be excluded.
 - Candidate test, needs Michael: disable the failed Sierra composite
   device in Device Manager, or run on the AR8132 ethernet with the WG111v2
   unplugged, and count boots without a stop.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Twice in
+about 90 boots, not reproduced, Velocity9x not excluded. Named in the
+README's list of faults seen once and not reproduced.

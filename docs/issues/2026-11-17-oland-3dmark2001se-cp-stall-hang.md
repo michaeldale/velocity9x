@@ -388,3 +388,8 @@ M-XP7053's R7E (GCN 3), on the released 0.54.0 `ati` files (boot 72):
 with `EngineIdleTimeouts` 0 before and after and nothing refused
 ([record](../decisions/2026-11-17-carrizo-0.54.0-modulate-alpha-and-ring.md)).
 One run. Mullins (GCN 2) still owed.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed by 1101edcb, with three clean 3DMark 2001 SE runs after
+it, as recorded above.

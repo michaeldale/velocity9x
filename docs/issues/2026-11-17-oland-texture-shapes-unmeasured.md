@@ -38,3 +38,8 @@ Extend V9XD32 T19, or V9XSICP's BC probe, with:
 
 Run each at both desktop depths, then on the GT218 and the HD 4600 for
 comparison.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A gap in probe
+coverage with no defect seen; listed in the 1.0 plan.

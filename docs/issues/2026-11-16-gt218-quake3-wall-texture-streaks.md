@@ -51,3 +51,8 @@ of a streaked view, is the first measurement.
 
 Evidence: `build/driver-results/w9qi0dad-obs-2026-11-16/sheet3.png`,
 `c3_streak.png`, `c3_crop.png`.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues.
+Unmeasured; the README's GeForce 210 entry names it.

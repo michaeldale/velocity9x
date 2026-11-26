@@ -76,3 +76,8 @@ BIOS read first. The acceptance below (the netbook) is still open.
 The netbook offers and sets 1024x600 (its panel), recorded with the BIOS
 dump before and after, and no change on a machine whose table is not
 recognised.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A feature gap,
+listed in the 1.0 plan.

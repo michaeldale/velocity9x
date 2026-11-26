@@ -94,3 +94,10 @@ build.
 ## Evidence
 
 `docs/probe/caicos-0.56-ab-2026-11-22/`.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The per-batch close is in the 0.61.0 tree (a165d31f, in the
+0.61.0 changelog) and V9XD32 passed on this card at 32 and 16 bpp with
+it. The HD 5450, HD 5570 and HD 5770 remain unrun on it; the README's
+tiers say so (last run 0.33.0, Recognised, a reporter's runs).

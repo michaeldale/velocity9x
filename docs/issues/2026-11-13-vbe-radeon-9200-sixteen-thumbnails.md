@@ -404,3 +404,8 @@ the desktop stayed at 1024x768.
 Still on the machine, not addressed: the second head's devnode keeps
 our driver, and the leftover SiS, WinVBE and QEMU-row class keys
 remain. They no longer break the display.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed in 0.53.0 and confirmed on the reporter's Radeon 9250, as
+recorded above.

@@ -58,3 +58,8 @@ rasterizer to accept system-memory targets and a HAL system-to-video blit,
 and it touches the HAL every family shares. Full-screen software GL on
 `vbe` probably presents the same way; that is the first thing to measure
 when the work starts.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Already in
+the README's known issues.

@@ -36,3 +36,8 @@ On one machine whose BIOS reports 4F10h, Windows' monitor power-down puts
 the monitor into stand-by (its power light), and a key wakes it with the
 desktop intact; on a BIOS without 4F10h, nothing changes and the boot
 record says so.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan.

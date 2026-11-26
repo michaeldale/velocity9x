@@ -91,3 +91,7 @@ machine of the four whose BIOS refused `4F11h` produced a complete report.
 `docs\issues\2026-09-28-survey-4f11-writes-to-ds-zero.md` has the evidence and
 the fix. This stays open until a report from one of those machines, on a
 binary with the fix, comes back carrying `[Result] Complete=yes`.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The same fault; the E460's 2026-10-18 report is complete.

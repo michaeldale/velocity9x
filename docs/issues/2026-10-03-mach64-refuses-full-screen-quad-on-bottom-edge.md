@@ -43,3 +43,10 @@ single level. Quake 2 on the Rage XL never binds a texture over 256 (0
 INVALID draws), so the fix has not been seen on hardware. Quake 1, the
 likely source, is not installed here.
 `docs/decisions/2026-10-04-rage-xl-small-textures-sync-version-and-oversize.md`.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. The ICD fix
+is host-tested only; a game binding a texture over 256 on a Mach64 is in
+the plan's re-run list.

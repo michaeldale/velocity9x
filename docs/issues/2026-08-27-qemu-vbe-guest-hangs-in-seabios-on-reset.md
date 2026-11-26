@@ -170,3 +170,8 @@ makes it the right instrument for "is the screen actually wrong?".
 
 The exact working command line is recorded in the Stage 1 handoff and was
 captured from the running process during this investigation.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Explained above as QEMU's and SeaBIOS's reset, not a Velocity9x
+fault.

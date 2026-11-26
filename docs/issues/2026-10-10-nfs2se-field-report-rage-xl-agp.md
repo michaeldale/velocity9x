@@ -93,3 +93,9 @@ which.
   exits. Whether ours should do the same is a design question, not
   decided here.
 - The 16 % refusals on run 1 (format `0204`) are not yet matched to a state.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. One
+reporter, never reproduced, no later evidence. Named in the README's
+Mach64-class entry.

@@ -42,3 +42,9 @@ during a 3DMark run (the evidence record's fields, sampled not just at a
 stall), and note whether the register ever leads the write pointer
 outside a stall. Carrizo and Mullins (same code path) are worth the same
 sample once their owners bring them online.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". The read is
+avoided since 1101edcb and no fault has been seen since; finding why the
+register reads past wptr is listed in the 1.0 plan.

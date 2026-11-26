@@ -91,3 +91,9 @@ engine.
 - The next physical run should first confirm `BUS_CNTL` bit 27 is set with
   the read-only fingerprint. It should then exercise DirectDraw fills alone
   before Direct3D.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The three causes are fixed as recorded above; the remaining lock
+is followed in
+2026-09-30-gateway-intermittent-black-screen-probe-lock.md.

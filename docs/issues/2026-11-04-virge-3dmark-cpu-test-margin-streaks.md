@@ -44,3 +44,8 @@ Grab the three pages with `V9XTRACE -grab` during the CPU test and compare
 them with the same grab on a card that shows black. If the margins differ
 only by what the pages held at creation, decide whether surface creation
 should clear flip-chain pages, and measure the cost.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Named in
+the README's ViRGE entry.

@@ -51,3 +51,9 @@ in Stand By (D0 only, by the 2026-08-11 decision). Nothing of ours
 restored anything; the mode was not lost here
 ([record](../decisions/2026-11-25-1.0-b9-standby-oland.md)). The laptop
 run is still owed.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open under 1.0 blocker B9. Measured on 86Box and the Oland R7 250
+(see blocker B9 in the 1.0 plan); stays open under B9 until a laptop is
+measured.

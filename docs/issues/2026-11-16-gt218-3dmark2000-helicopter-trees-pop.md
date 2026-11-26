@@ -64,3 +64,10 @@ Daniel reported the same helicopter popping on his HD 5450 in October,
 only under 3DMark's "Pentium III" CPU optimisation. That fits vertex
 alpha as the variable. This helicopter test has not been re-run on the
 fix, so the issue stays open until it is.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. The likely
+cure (448e2f2d) is in; the Helicopter test has not been re-run on the
+GeForce 210. The README's GeForce 210 entry names it until it is.

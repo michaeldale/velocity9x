@@ -227,3 +227,9 @@ Host decoder tests validate the software's rules. They cannot establish that har
 ## Status 2026-11-08 (audit)
 
 The store-only round trip passed on hardware in intel86 (2026-09-19): `HwsSelfTest=1`, then 575,868 batches with no timeout, late arrival or abandonment, and the drain never found rendering outstanding at a Flip ([record](../decisions/2026-09-19-intel86-the-completion-channel-works-and-the-flicker-is-not-unfinished-drawing.md)). H4 and H5 are not addressed. Final Reality has not been recorded running flicker-free; see [the state of play](2026-09-19-the-flicker-state-of-play.md).
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. As
+2026-09-19-the-flicker-state-of-play.md: in the plan's re-run list.

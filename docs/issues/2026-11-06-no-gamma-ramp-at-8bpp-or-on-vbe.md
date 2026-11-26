@@ -31,3 +31,8 @@ The ramp-times-palette arithmetic belongs in host-tested C.
 At 8 bpp on one guest, `SetDeviceGammaRamp` returns TRUE and a read of the
 DAC shows the ramped palette; a game's brightness slider changes the
 picture.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan (8 bpp gamma).

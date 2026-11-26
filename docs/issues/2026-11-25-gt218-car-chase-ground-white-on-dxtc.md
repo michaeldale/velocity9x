@@ -69,3 +69,9 @@ A T19 or T21 row with a DXT1 chain of three or more levels, judged at a
 size that reads levels 0 and 1. Failing that, a log line per DXT create
 (format, size, levels, pool offset) and per draw that samples one, read
 at the 18 s mark.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Deferred
+to 1.1 by Michael on 2026-11-25; the README's GeForce 210 entry names
+it.

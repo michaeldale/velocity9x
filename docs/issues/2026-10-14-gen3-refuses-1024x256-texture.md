@@ -34,3 +34,10 @@ Evidence: `docs/probe/netbook-gma950-3dcif-2026-10-14/`.
 
 Direct3D titles that make 1024-wide textures on this machine would see
 the same refusal.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Worked
+around in ATI3DCIF.DLL only; a Direct3D title asking for the same shape
+would still be refused. Not re-tested since the texture pool. Named in
+the README's GMA 950 entry.

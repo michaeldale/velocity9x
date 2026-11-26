@@ -49,3 +49,9 @@ or reports video memory (the field report's hardware section,
   the second boot.
 - Which other families would gain from a measured key: only the matrox
   family walks its memory today.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Still so:
+only `mga_hw16.c` touches VramMeasuredBytes, and the settings page does
+not read it. Named in the README's Matrox entry.

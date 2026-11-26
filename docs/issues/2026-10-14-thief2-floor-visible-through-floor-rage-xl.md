@@ -52,3 +52,8 @@ The symptom fits depth handling more than missing triangles. Candidates:
    copy shows the dark scene.
 2. A census of the DX5 path's Z state per batch (ZENABLE, ZFUNC,
    ZWRITEENABLE and the clears). No such counter exists yet.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Named in
+the README's Mach64-class entry.

@@ -68,3 +68,8 @@ will look wrong on the emulator and not on the card. A regression seen only on
 ## Status 2026-11-08 (audit)
 
 The physical ViRGE/DX passes `D3DZWriteMaskOk` (2026-11-04, [record](../decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)), as the Trio3D/2X did: two silicon parts against the emulator. `docs/probe/expectations/virge-dx-86box.txt` accepts the key and its raw value as varying run to run on 86Box. The emulator-side mechanism is not established, and nothing was reported upstream.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. An emulator fault: the physical ViRGE/DX passes D3DZWriteMaskOk
+(decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md).

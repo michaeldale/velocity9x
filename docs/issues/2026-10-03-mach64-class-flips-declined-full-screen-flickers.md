@@ -55,3 +55,9 @@ part that misbehaves. DxDiag's full-screen test was not rerun.
   chips measured.
 - Ask the reporter for a V9XTRACE snapshot taken right after a
   flickering test, to confirm `FlipDeclined` is non-zero.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed and seen on the Rage XL PCI
+(decisions/2026-10-04-rage-xl-page-flips.md). Other Mach64-class parts
+share the hook and are covered by the A8U4I5 round.

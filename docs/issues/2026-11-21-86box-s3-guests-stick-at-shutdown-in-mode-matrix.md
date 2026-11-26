@@ -57,3 +57,10 @@ logs. The per-mode reports are in `build/driver-results/mode-matrix-s3-*`
 Loop restarts on one S3 guest without the `/accel` phase
 (`-SkipAccel`), then with it, and count. If it stops again, capture the
 COM1 pipe during the shutdown.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Not
+reproduced. Named in the README's list of faults seen once and not
+reproduced; a recurrence on the release candidate's 86Box runs reopens
+the investigation.

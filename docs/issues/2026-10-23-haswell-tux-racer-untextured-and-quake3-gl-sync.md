@@ -140,3 +140,8 @@ now the limit
 ## Status 2026-11-08 (audit)
 
 On 2026-10-23, draws outside the GDI primary stopped waiting for the engine ([record](../decisions/2026-10-23-haswell-gl-draws-run-on.md)). Michael judged Quake 3 and Tux Racer good enough. The remaining cost is tracked in [the batch-cost plan](../plans/intel-haswell-batch-cost.md), where write-combining was done on 2026-10-28. Still not done: Re-Volt, and Tux and Quake 3 on a 32 bpp desktop.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Both fixes were measured on the i5-4570. Re-Volt's tyres and a
+32 bpp run were never done and are listed after 1.0 in the 1.0 plan.

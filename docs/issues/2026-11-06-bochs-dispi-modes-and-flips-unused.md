@@ -30,3 +30,8 @@ not the PCI id alone).
 
 On a QEMU guest, a custom 1280x800 mode sets, and V9XDDP's flip checks show
 flips taken rather than declined.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan.

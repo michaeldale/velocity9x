@@ -37,3 +37,8 @@ registers.
 Under 3dfx's driver: idle past 15 minutes, then read the card before any
 input. Under Velocity9x, whose mini-VDD reports D0-only power capability,
 the same test says whether our driver is exposed.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Seen under 3dfx's own driver and not reproduced by our
+preflight; not a Velocity9x fault.

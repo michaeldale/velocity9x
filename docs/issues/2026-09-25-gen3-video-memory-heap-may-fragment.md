@@ -115,3 +115,9 @@ of 3DMark2001 SE then 3DMark2000: `MipTreeAllocs` 28,431,
 what they saw "3D pattern corruption"; the image has not been seen, so
 whether the declines are the cause is open. Recorded in
 [2026-10-11 3DMark2000 pattern corruption](2026-10-11-3dmark2000-pattern-corruption-gma900.md).
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". The Gen3 texture
+pool (GMA 950, GM965, GMA 900) now holds textures; fragmentation of the
+local heap was never measured and is listed in the 1.0 plan.

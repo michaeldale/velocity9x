@@ -64,3 +64,9 @@ series. The confirmed black-screen lock remains unreproduced and open;
 no lock repair is claimed. The final fixed HAL remains installed on the
 responsive host. The original broad probe and diagnostic transition probe
 are separately staged for further controlled testing.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues.
+Intermittent, unexplained, and the Gateway is offline. Named in the
+README's list of faults seen once and not reproduced.

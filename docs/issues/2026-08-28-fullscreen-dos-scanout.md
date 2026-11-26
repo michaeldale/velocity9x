@@ -96,3 +96,8 @@ compatible id. Neither claim is measured.
 Pass is a clean desktop on return. A clean desktop that still hangs later
 narrows the freeze to the devnode; a band that persists says the stride was not the
 whole of it, and the next suspect is the display start rather than 4F06h.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open under 1.0 blocker B5. The stride fix was never run on the HP
+Mini 110; stays with blocker B5 and the reporter's `vbe` case.

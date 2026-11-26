@@ -47,3 +47,8 @@ way.
 - Log the state values of a menu frame: the census logs pointers, not
   values. Look for a texture op, alpha or composite state the menu sets
   and the label draws depend on.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Named in
+the README's 3DCIF entry.

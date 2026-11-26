@@ -75,3 +75,8 @@ package's, `Ok=1`):
 
 Nobody looked at the road and grass; the OBS check is not done.
 Evidence: `docs/probe/1.0-b4-b8-2026-11-23/hd4600-after-3dm2001.INI`.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Blocker B4 was closed on 2026-11-23 on the HD 4600's measurement
+recorded above.

@@ -52,3 +52,10 @@ failed the depth test, or was never drawn, over the whole height.
 - Whether the depth fill ran, or was declined, for that clear.
 - The pixel values in the band.
 - Whether the band follows the window's width.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. A fix is
+on branch `rv280-geomscan` (boot 39), unmerged. It merges before the
+freeze or waits for 1.1; the README's Radeon 9250 entry names the band
+until then.

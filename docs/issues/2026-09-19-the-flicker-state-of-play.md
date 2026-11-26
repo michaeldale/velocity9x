@@ -259,3 +259,10 @@ read as a result:
 A seventh - the DSPARB field layout - was wrong in a way that read as NO
 result, and cost one capture instead of a conclusion. That is the failure
 mode to aim for.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. efd2fa90's
+held unsynced flip likely covers it; Final Reality has not been watched
+since 2026-10-01. In the plan's re-run list.

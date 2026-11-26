@@ -56,3 +56,8 @@ premultiplied copy cannot carry it, since 1555 has one alpha bit.
 First count how many distinct vertex alphas Quake 2's particle batches
 carry. Then choose a candidate and write its ATIRX scene before touching
 the policy.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Still
+refused; named in the README's Mach64-class entry.

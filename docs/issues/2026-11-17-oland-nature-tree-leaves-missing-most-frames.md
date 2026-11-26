@@ -96,3 +96,9 @@ trees in leaf, with nothing refused. Record:
 
 Status: fixed on the Oland. The GeForce 210, Evergreen and R600-class
 maps fold MODULATE the same way and are not changed or measured.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed and seen on the Oland. The GeForce 210 took the same
+MODULATE texel-alpha fix in 448e2f2d (its Helicopter re-run is in the
+re-run list).

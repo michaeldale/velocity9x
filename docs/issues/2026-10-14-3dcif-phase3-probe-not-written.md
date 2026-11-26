@@ -24,3 +24,8 @@ Phase 2 took without a measurement are still unchecked:
 - exclusive bottom-right corners for the viewport and scissor.
 
 The probe is the place to measure them.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Part of the
+3DCIF gaps listed in the 1.0 plan.

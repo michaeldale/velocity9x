@@ -46,3 +46,8 @@ caller drained in this run was not counted.
 Each of these needs its own measurement. The first gate would be the
 same V9XPROF run, with `poll_fence`'s share and 3DMark's frame time
 recorded before and after.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Performance
+work, listed in the 1.0 plan.

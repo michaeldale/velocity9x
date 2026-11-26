@@ -649,3 +649,9 @@ drawn from it needs revisiting.
   deferred until the flicker is closed.
 - The 117 texture creates a frame (76,006 in 650 frames, one Lock each):
   a cost, not a fault; noted for later.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. As
+2026-09-19-the-flicker-state-of-play.md: in the plan's re-run list.

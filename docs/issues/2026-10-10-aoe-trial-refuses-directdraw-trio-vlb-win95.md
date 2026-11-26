@@ -131,3 +131,9 @@ Not yet established:
   reporter either way.
 - Whether OSR2 (the reporter's 4.00.950B) behaves as retail 950 does here.
 - Which DirectX the reporter has.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Reproduced with Microsoft's driver, so it is Windows 95's
+DirectDraw. Blocker B14's Windows 95 answer in the README can carry the
+workaround.

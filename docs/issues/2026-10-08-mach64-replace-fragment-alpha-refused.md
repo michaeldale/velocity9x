@@ -49,3 +49,10 @@ is in the core's Direct3D-op mapping, not one engine, so the title's
 ## Status 2026-11-08 (audit)
 
 Since 61b58b8a (2026-10-24) the ICD rewrites REPLACE/FRAGMENT on RGB565 as MODULATE with white vertex colours that keep their alpha. On the i5-4570 this cleared Tux Racer's refusals and V9XGLP's ReplaceRgbBlend checks. GLQuake `-nomtex +gl_texsort 0` has not been re-run on the Rage XL or the GMA 950. The core's Direct3D-op mapping is unchanged.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. The
+MODULATE rewrite (61b58b8a) is measured on the i5-4570 only; GLQuake
+-nomtex on the Rage XL and the GMA 950 is in the plan's re-run list.

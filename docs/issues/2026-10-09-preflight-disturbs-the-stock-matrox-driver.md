@@ -34,3 +34,9 @@ Date: 2026-10-09. A8U4I5, MGA-2064W, boot 354, Microsoft's inbox
 Run `V9XSTAGE` only where the active driver is `vga.drv` or Velocity9x, or
 follow it with a warm restart before measuring anything under the stock
 driver.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A test tool's
+interaction with Microsoft's Matrox driver, not a fault of the installed
+driver; listed in the 1.0 plan.

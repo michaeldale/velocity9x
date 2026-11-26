@@ -38,3 +38,8 @@ The OpenGL ICD's missing 1.1 features are tracked separately
 
 The host tests for each item, and V9XD32 on a VBE guest with the stencil
 and multi-stage checks passing instead of being refused.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan.

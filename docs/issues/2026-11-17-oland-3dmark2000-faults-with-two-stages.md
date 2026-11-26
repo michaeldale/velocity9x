@@ -58,3 +58,8 @@ On the GT218 the same layout was 28h-aligned at a different address,
 listing offsets are `.text`-relative, with `.text` at 00401000.
 
 Evidence: [`../probe/oland-two-stages-w9qi0dad-2026-11-17/`](../probe/oland-two-stages-w9qi0dad-2026-11-17/).
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Explained above as 3DMark 2000's own keyframe over-read; the
+README's known issues name it.

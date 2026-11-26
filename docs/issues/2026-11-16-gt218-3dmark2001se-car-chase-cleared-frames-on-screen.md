@@ -86,3 +86,8 @@ partial frame is not excluded. Evidence:
 
 Evidence: `build/driver-results/w9qi0dad-obs-2026-11-16/sheet1.png`
 (2 fps contact sheet) and `c1_seq.png` (12 consecutive frames).
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed and measured (boot 44) as recorded above; GeForce 210 page
+flips are in every release from 0.53.1.

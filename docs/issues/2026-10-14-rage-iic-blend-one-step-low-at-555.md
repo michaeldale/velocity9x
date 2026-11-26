@@ -40,3 +40,8 @@ draws the BlendModulate case into a 1555 target, sweeping SCALE_3D_CNTL
 bits 0-3 one at a time and together, and reads each result back. Record
 which bit, if any, gives `03E0`, and what it does to the other V9XDDP
 keys, before `rage2_draw.c` sets it.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Named in
+the README's Mach64-class entry.

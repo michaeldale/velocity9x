@@ -60,3 +60,9 @@ twice and a monitor cycle on the VT2: desktop back each time.
 Still open: physical cards (S3, Mach64 class), Radeons (other registers;
 not run after Stand By), what sets the bits across Stand By, and why the
 Mach64 boots differ. B9 still needs a laptop.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The fault was reproduced on 86Box and the fix measured there the
+same day for `s3` (ViRGE/DX) and `ati` (Mach64 VT2). Standby on physical
+hardware stays with blocker B9.

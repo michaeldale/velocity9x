@@ -54,3 +54,7 @@ The fix is the one above: `V9X_DDSCAPS_3DDEVICE` added to the caps
 The HD 7660D was not run before the fix. `d3d_r6.c`, `d3d_nv50.c`,
 `d3d_r128.c`, `d3d_mga.c` and `d3d_rv280.c` take the same path and were
 not run. Evidence: `docs/probe/1.0-b1-b3-b12-2026-11-23/*-V9XRTLK*.INI`.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Blocker B3 was closed on 2026-11-23 on the measurements above.

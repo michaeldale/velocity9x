@@ -203,3 +203,9 @@ unchanged. Not run on any card.
 ## Status 2026-11-08 (audit)
 
 The Trio64V2 now clears SR1A bit 5 after every mode set (69bb160c) and publishes `Sr1aFound`/`Sr1aLeft`/`BlankPedestal` in `V9XHW.INI`. No Trio64V2 is in the fleet, so it is unmeasured. The plain Trio64 has no documented control and is left alone; the Trio64V+, Trio 3D/2X, Trio3D and ViRGE are unchanged.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. The
+Trio64V2's SR1A change is untested on a card; in the plan's re-run list.

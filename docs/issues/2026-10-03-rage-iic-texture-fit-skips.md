@@ -30,3 +30,9 @@ Capture several `R2Last` sets from Half-Life and Quake 2 runs. Replay
 them in a host test (`test_rage2_setup.c`). Classify each as a real limit
 of the fit (texel range, gradient field width), which is drawn degraded or
 split further, or as a defect, which gets a failing test first.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Still
+skipped (14,617 pieces a Half-Life run); named in the README's
+Mach64-class entry.

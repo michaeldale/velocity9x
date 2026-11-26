@@ -74,3 +74,8 @@ Fixed the same day: the pending DrawPrimitives2 run is drawn only by its
 owner process; the case passes on the Oland and the HD 4600
 ([record](../decisions/2026-11-23-1.0-b8-dp2-run-owner.md)). The list of
 statics holding per-process pointers is still not written.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Blocker B8 was closed on 2026-11-23
+(issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md).

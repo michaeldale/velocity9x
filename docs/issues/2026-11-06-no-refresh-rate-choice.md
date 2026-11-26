@@ -36,3 +36,8 @@ test pinning the CVT output against the VESA spreadsheet values.
 
 Michael: parked until a release after 1.1. Not a 1.0 or 1.1 item; the
 video BIOS's timing stays. Recorded in the 1.0 plan's decisions.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Decision 1 of
+the 1.0 plan parks it until after 1.1.

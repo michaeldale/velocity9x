@@ -70,3 +70,9 @@ the sweep on the next boot. A "swept once, do not sweep again" latch in
   does not reproduce.
 - `docs\decisions\2026-08-28-pineview-vbe-mode-list.md` - why the sweep gains
   nothing here.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". The suspect mode
+sweep is an opt-in build flag, not shipped, and the Pineview TOMMO33 has
+run `intel-gma` since boot 12. The cause is listed in the 1.0 plan.

@@ -154,3 +154,10 @@ drawn wrongly rather than not drawn. Quake 2's crosshairs are small
 pictures with transparent pixels, so alpha test or very small textures
 on the Evergreen GL path are the first place to look; not checked. No
 log came with this report.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The
+dropped textures are fixed and confirmed by the reporter. Quake 2's
+"Angle" crosshair drawing as one dot on the HD 5570 has no cause and is
+named in the README's HD 5000 entry.

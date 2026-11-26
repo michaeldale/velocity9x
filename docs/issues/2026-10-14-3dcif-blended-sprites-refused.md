@@ -42,3 +42,8 @@ needs texel alpha times vertex alpha.
 
 Not watched on the monitor: which sprites these are, and how much of
 each demo they cover.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Part of the
+3DCIF gaps listed in the 1.0 plan.

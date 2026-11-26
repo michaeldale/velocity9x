@@ -69,3 +69,9 @@ leads above still stand.
 The HAL's first runs, boots 7 and 8: V9XD32's depth checks (T3, T5, T8)
 pass through `d3d_r6.c`
 ([record](../decisions/2026-11-13-rv630-direct3d-hal-first-light.md)).
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The HD
+2600 XT and HD 2400 Pro are no longer fitted, so no re-run is possible
+for 1.0; the README's entry stays.

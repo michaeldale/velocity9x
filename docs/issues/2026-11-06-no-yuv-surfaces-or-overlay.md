@@ -33,3 +33,8 @@ A host test pins the conversion against BT.601 values. On one guest, a
 player that asks for YUY2 or an overlay plays a clip through it, with the
 HAL's counters showing the YUV blits and the CPU time compared with the
 present path.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan.

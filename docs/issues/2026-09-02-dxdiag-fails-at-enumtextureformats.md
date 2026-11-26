@@ -97,3 +97,8 @@ the missing 565 format was never the cause and next-step 1 - finding out what
 step 44 actually asks for - is the remaining route.
 
 Record: [`../decisions/2026-09-02-software-rgb565-textures.md`](../decisions/2026-09-02-software-rgb565-textures.md).
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The S3D
+path still offers no 565 texture; named in the README's S3 entry.

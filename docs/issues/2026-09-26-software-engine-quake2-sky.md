@@ -48,3 +48,8 @@ measured the engines agreeing on depth only for its own values.
 A V9XGLP scene: a far quad drawn by the fallback (a masked draw forces
 it), then an equal-depth quad drawn by Gen3 with LEQUAL, at several
 depths near 1; read back which one shows.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. No longer visible; the cause was never measured and a recurrence
+reopens it.

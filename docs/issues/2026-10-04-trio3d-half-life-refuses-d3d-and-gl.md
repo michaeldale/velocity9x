@@ -66,3 +66,8 @@ them would draw ZRGB1555 into a 5:6:5 surface
 3. Driving HL here: its menu ignores injected mouse moves until a focusing
    click, keys work only with focus; `valve\autoexec.cfg` is now an empty
    file left by this investigation.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Named in
+the README's S3 entry.

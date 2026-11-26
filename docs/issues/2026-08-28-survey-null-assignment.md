@@ -163,3 +163,8 @@ the gate bans a bare `int86` to INT 10h so the omission cannot recur. Full
 write-up: `docs\issues\2026-09-28-survey-4f11-writes-to-ds-zero.md`. Neither
 issue closes until a report from a machine that showed it comes back without
 the message.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Re-run on the ThinkPad E460 on 2026-10-18, complete, and four
+more BIOSes (issues/2026-09-28-survey-4f11-writes-to-ds-zero.md).

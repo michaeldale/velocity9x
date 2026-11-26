@@ -166,3 +166,9 @@ from outside leaves `V9XD32.EXE=5` under `[Velocity9x.Direct3DDdi]` in
 SYSTEM.INI, and every later run of the probe then "restores" that 5.
 The DDI 8 tests are skipped (`T19Result=SKIP-NO-PS`, `RunDdi=5`) until
 the line is taken out by hand, across restarts.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Not
+reproduced in six trials. Named in the README's list of faults seen once
+and not reproduced.

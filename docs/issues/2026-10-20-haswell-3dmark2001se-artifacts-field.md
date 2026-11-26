@@ -200,3 +200,8 @@ Still open:
   four Pro tests that registration added, and which test it is was not
   read.
 - Other chips' DirectX 8 paths take the same fix. None has run it.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The
+diagonal cut and the stripe are named in the README's HD 4600 entry.

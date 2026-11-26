@@ -98,3 +98,8 @@ first OpenGL item for 1.1.
 3. Confirm what the 0.61 source keeps in lists and texgen, then
    implement Phase 6 display lists and texgen, test first
    (`test_gl_dlist.c`, `test_gl_texgen.c`).
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan as the first OpenGL work for 1.1.

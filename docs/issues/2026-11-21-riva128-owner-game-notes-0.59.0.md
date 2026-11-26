@@ -94,3 +94,9 @@ Per title, a windowed run with V9XTRACE snapshots before and after,
 reading the refusal counters and the blend pairs the game sent. Thief
 (boot 36 recipe) and GLQuake first, since each shows the lightmap fault
 alone. Read the installed build's identity before the first run.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The RIVA
+128ZX is Experimental for 1.0 (decision 3); the README's RIVA 128ZX
+entry links this record.

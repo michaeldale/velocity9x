@@ -156,3 +156,9 @@ that breaks its blend, and what clears it?**
 ## Status 2026-11-08 (audit)
 
 Mip selection no longer differs (third round). The warm-boot explanation in the fourth round was refuted on 2026-09-05: a power cycle does not clear the bad blend state, and the card later flipped to good on its own ([record](../decisions/2026-09-05-a-register-capture-of-both-trio3d-blend-states.md)); CR32 bit 7 and CR3E bits 1-3 differed between one capture of each, unconfirmed. Even in the good state partial alpha is wrong: the source term saturates ([record](../decisions/2026-09-04-the-halfa-cells-were-right.md)).
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The mip
+difference is resolved; the blend state that comes and goes is named in
+the README's S3 entry.

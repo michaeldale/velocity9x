@@ -41,3 +41,8 @@ and precedes the first `fcomp`. None of them was run.
 ## Status 2026-11-08 (audit)
 
 The core's check moved into the render core (`r3d_clip.c`, e4024a03), and `test_r3d_clip.c` covers it with a NaN. Each new engine since has added its own static copy, about fifteen in all (HSW, i9xx, R128, RS690, SiS, tdfx, Mach64, Rage II, MGA, the r3d line and validate code, soft, zfixed). To-do items 1-5 stand, over the larger set.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Code health with
+no defect seen, listed in the 1.0 plan.

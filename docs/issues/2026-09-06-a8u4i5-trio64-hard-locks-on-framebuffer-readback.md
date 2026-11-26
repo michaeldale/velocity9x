@@ -132,3 +132,8 @@ write-combining matters here is the open question above; this lock does not
 answer it. Not tried: the same drag with `GdiAccel=0`, or without the
 MTRR. Michael's reading is the same as this issue's: the board (or a fast
 P3 in it), not the driver.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. As recorded above: it happens under Microsoft's driver, so it is
+the board or slot.

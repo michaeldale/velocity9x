@@ -45,3 +45,8 @@ That would happen if:
 The V9XGL.LOG `paths`, `refused` and `hwno` counters for a GLQuake
 session, plus a probe scene that draws a 64x64 REPEAT texture with
 coordinates past 1 and reads it back, would separate these.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Never
+investigated; named in the README's GMA 950 entry.

@@ -88,3 +88,9 @@ source left at 1024x768, which is right, the fitter scaling the frame to
 1920x1080 source under a 1024-pixel plane, did not reproduce from either a
 headless boot or a hotplug; the sequence that produced it is unknown. The
 fix's write path is still unexercised on hardware.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The fix is
+on branch `hsw-panel-fit`, not run on hardware. It merges before the
+freeze or waits for 1.1; until then the README's HD 4600 entry names it.

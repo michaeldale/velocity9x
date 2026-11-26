@@ -74,3 +74,9 @@ difference image no longer shows the rectangle.
   the blitter's early "idle" fixed in 7c02ad42
   ([2026-10-21-haswell-gl-present-at-32-bpp-half-width.md](2026-10-21-haswell-gl-present-at-32-bpp-half-width.md)),
   which the HD 4000 shares. Not run.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The floor patch is fixed and measured. The wall emblem and runs
+on the GMA 900 and HD 4000 are untested and listed after 1.0 in the 1.0
+plan.

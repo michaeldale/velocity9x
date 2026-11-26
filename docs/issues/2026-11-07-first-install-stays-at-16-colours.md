@@ -124,3 +124,10 @@ The same netbook procedure with released 0.60.0: from `vga.drv` at
 restart, and the first boot was `enable-ok` at 640x480x8
 ([record](../decisions/2026-11-25-1.0-b10-have-disk-intel-gma-netbook.md)).
 Still open for the Eee PCs; the reporter's files are still owed.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open under 1.0 blocker B10. Not reproduced by Have Disk installs
+on our GMA 950 (0.39.0, released 0.60.0) or on the other packages' B10
+installs. Stays open under blocker B10 until the reporter's files arrive
+or B10 closes.

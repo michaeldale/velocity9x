@@ -553,3 +553,9 @@ and `frames-boot243-16bit.png`.
 
 The D3D8 logging proxy (`d3d8log3`, measurement only) and the real
 `d3d8.dll` as `D3DR.DLL` are in `C:\UT2004Demo\System` on the machine.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Each fix above was measured. Two things carry on: whether the
+reflections look right (not judged), and Gen3 drawing a doubled single
+stage as MODULATE, which is listed after 1.0 in the 1.0 plan.

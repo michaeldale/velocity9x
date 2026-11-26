@@ -41,3 +41,8 @@ fit both pictures. That is a reading, not a finding.
    V9XTRACE snapshot for lost textures (`counters hwtex lost=`), refused
    draws and presents.
 2. The same with `NOWC.TXT` (write-combining off) and on 0.29.0.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Already in
+the README's known issues.

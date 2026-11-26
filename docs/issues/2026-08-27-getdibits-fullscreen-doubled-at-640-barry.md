@@ -34,3 +34,9 @@ pitch (2560) reproduces the observed geometry exactly.
 
 Agent screenshots of BARRY at 640x480 are misleading (they cost real time
 during the acceleration investigation). No end-user-visible symptom is known.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". An
+agent-screenshot artefact with no user-visible symptom; listed in the
+1.0 plan with the tools.

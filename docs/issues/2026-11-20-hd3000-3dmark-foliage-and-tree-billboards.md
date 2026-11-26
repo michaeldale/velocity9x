@@ -51,3 +51,9 @@ processing.
 
 Run 3DMark 2000 Helicopter and 2001 SE Nature with `V9XTRACE -grab` on
 M-NZHWBR, and read the draw states behind the bad pixels.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Nothing
+measured since the owner's screenshots; the README's HD 3000 entry names
+it.

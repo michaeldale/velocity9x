@@ -44,3 +44,9 @@ Boot 144's unexplained restart may be related.
 - Idle power management turning the adapter off. Test: leave the desktop
   idle with no 3D session and poll the agent each minute.
 - Something Quake 2's exit leaves armed, firing later.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A test machine
+dropping off the network, not seen since and possibly the RAM fault
+later fixed by a slot move; listed in the 1.0 plan.

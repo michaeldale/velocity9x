@@ -189,3 +189,7 @@ intel-gma set.
 Gen3 already had this answer (`v9x_d3d_i9xx_unplaced`) and is not
 changed. Not checked: Ivy Bridge, which shares `d3d_hsw.c` and so takes
 the same answer, unmeasured there.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed and measured as recorded above.

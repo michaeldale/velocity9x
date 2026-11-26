@@ -59,3 +59,8 @@ Matrox's driver runs a non-standard total.
 to Velocity9x (its `[-...\MODES]` line removes the vendor's extra mode keys;
 verified by re-export on boot 360). Import with `REGEDIT /s`, then warm
 restart. Both are specific to A8U4I5's class key.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The picture looks the same under Microsoft's driver, so it is
+the capture path or the card, not Velocity9x.

@@ -69,3 +69,8 @@ memory DirectDraw has handed to someone else. Nothing measured shows it.
    any copy was found lost during the menu itself.
 3. Read back one CPU-path texture (its level 0) while the menu shows, to
    tell a wrong texture from a wrong draw.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Named in
+the README's Matrox entry.

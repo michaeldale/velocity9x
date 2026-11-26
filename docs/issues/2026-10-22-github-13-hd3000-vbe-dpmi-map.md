@@ -62,3 +62,8 @@ untested on any machine; the cause of the refusal is unknown.
   the switch to 256 colours.
 - The version the settings page reports.
 - A boot record from a build with the change above.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The retry
+is untested and the cause unknown; the README's `vbe` entry names it.

@@ -137,3 +137,9 @@ There are no details, machine or capture yet.
   in 3DMark.
 - Ivy Bridge (HD 4000): it shares the vsync-off code of entries 1-2,
   and has not been run.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Listed in the
+1.0 plan's "Not in 1.0" as probe coverage work. Added to the index on
+this re-read; it was missing.

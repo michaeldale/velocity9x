@@ -166,3 +166,9 @@ has none.
 ## Status 2026-11-08 (audit)
 
 Boot 47 (16bce7db) programs the NV3 CLIP object from the scissor. V9XR3DP's scissored draw read `ScissorOk=1`, with exclusive right and bottom edges. What is still refused is a hardware limit (no channel mask) plus CPU texture levels.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The engine
+draws since boot 42. The refusals that remain (a write mask other than
+RGB, CPU texture levels) are named in the README's RIVA 128ZX entry.

@@ -52,3 +52,8 @@ is one click away.
 
 The tab control reported nine items with eight visible, the last also titled
 "Settings". Also not understood.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Listed in the
+1.0 plan with the other settings-page items.

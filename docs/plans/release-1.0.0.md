@@ -70,6 +70,30 @@ Rage 128's 3DMark 2000 hang (0.32.0, one run in two), the three
 unreproduced hard locks on A8U4I5 and the Gateway. Each either gets a
 measurement on the release candidate or stays a named known issue.
 
+From the issue re-read of 2026-11-26 (gate item 4), fixes in source or
+on one machine whose run is owed, by machine:
+
+- GeForce 210: 3DMark 2000's Helicopter trees
+  ([issue](../issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md)).
+- GM45 and GM965: Forsaken gameplay, and a colour-keyed title on the
+  GM965 ([issue](../issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)).
+- GMA 950 netbook: Final Reality's Robots watched on the panel for the
+  flicker ([issue](../issues/2026-09-19-the-flicker-state-of-play.md)),
+  GLQuake `-nomtex`
+  ([issue](../issues/2026-10-08-mach64-replace-fragment-alpha-refused.md)).
+- A8U4I5 round: GLQuake `-nomtex` and a texture over 256 on the Rage XL
+  ([issue](../issues/2026-10-03-mach64-refuses-full-screen-quad-on-bottom-edge.md));
+  Final Reality and 1024x768x32 on the ViRGE/DX
+  ([issue](../issues/2026-09-20-final-reality-renders-green-speckle-on-the-virge.md),
+  [issue](../issues/2026-08-30-virge-1024x768x32-xfree86-limit.md));
+  a live mode switch repaint and the black level on the Trio64
+  ([issue](../issues/2026-08-20-live-mode-switch-no-repaint-barry.md),
+  [issue](../issues/2026-08-23-s3-pedestal-black-level.md)).
+- Guests: Doom95 on the 86Box ViRGE
+  ([issue](../issues/2026-08-15-doom95-low-resolution-modes.md)), the
+  QEMU `vbe` guest's 1024x768x16 scanout
+  ([issue](../issues/2026-08-27-vbe-1024x768x16-scanout-stripes.md)).
+
 ## The gate for the 1.0 build
 
 1. `run-checks.ps1` green from a clean tree.
@@ -111,6 +135,29 @@ measurement on the release candidate or stays a named known issue.
 - **Performance:** the GCN drain, copy and flip-wait records of
   2026-11-18, OpenGL throughput, Direct3D core throughput.
 - **New chips:** GitHub issues 20, 27, 28 and 30; Cayman; Caicos 6779.
+- **From the issue re-read of 2026-11-26** (each record says why):
+  - *Feature gaps:* the Intel BIOSes' missing panel modes, the `vbe`
+    8-bit DAC; the 3DCIF records (blended sprites, the Phase 3 probe,
+    the unimplemented primitives, Gen3 flicker and speed, a tester's
+    Rage Pro).
+  - *Probe coverage:* the faults the 0.57.0 probes missed
+    ([issue](../issues/2026-11-19-release-probes-missed.md)), the
+    Oland's unjudged texture shapes, V9XDDP `/mixed` and `/zprivate`;
+    untested leftovers: Quake 3's wall emblem and the GMA 900 and HD 4000
+    menus (GitHub issue 11), Re-Volt's tyres and Tux Racer at 32 bpp on
+    the HD 4600, Gen3's doubled single stage drawn as MODULATE.
+  - *Investigations with no user-visible fault:* the Oland's ring
+    pointer read past wptr (avoided since 1101edcb), Gen3 local-heap
+    fragmentation (the texture pool holds textures now), the Pineview's
+    load failure after the survey, the Trio64's unisolated drag lock
+    with text acceleration (off by default), A8U4I5 dropping off the
+    network, one Rage XL AGP OpenGL session on the CPU.
+  - *Code health and performance:* NaN checks in fifteen copies, Gen3
+    culling in software, heap restriction masks for engineless
+    families.
+  - *Tools and the settings page:* V9XTRACE's exit flush, FlipPixelOk,
+    agent screenshots at 640x480, V9XSTAGE under Microsoft's Matrox
+    driver, the settings page's data gaps and its stale-revision read.
 
 ## Decisions owed (Michael)
 
@@ -422,3 +469,22 @@ candidate's zips.
   `3dfx` (86Box emulates neither the SiS 6326 nor the Voodoo4), B14
   (no Windows 95 or Me guest or install media here), B5's physical S3
   card, and the A8U4I5 card-swap round.
+
+### 2026-11-26, later: gate item 4, the issue re-read
+
+Every open record in `docs/issues/` re-read (134 in the index, and one
+the index had missed): each has a "1.0 re-read, 2026-11-26" section and
+the index's Open list is split by outcome. 35 closed, each on a cited
+run, measurement or explanation (among them the Caicos hang, fixed in
+the 0.61.0 tree; the T19 specular fix; the GT218 flips; the survey's
+DS:0 writes; four found not to be ours). 43 stay as known issues, all
+linked from the README's known issues, which gained entries for the
+Rage XL and IIC, the S3D cards, the Millennium II, the GMA 900 and a
+"seen once, not reproduced" list. 13 need a run on the release
+candidate, listed by machine under the blockers. 39 moved after 1.0
+into "Not in 1.0". Five stay with blockers B5, B6, B9 and B10.
+
+Desk work, from the records and a search of `docs/` for later evidence;
+nothing re-run. Two README lines were stale and are corrected: the
+HD 5570 cursor square (fixed in the 0.61.0 tree, reporter owed) and the
+Oland's T19 mismatch (fixed 2026-11-25).

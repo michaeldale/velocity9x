@@ -313,3 +313,10 @@ does); that is the remaining gap.
   refused the draw, which would leave the grey back quad halved
   everywhere, 404040h on the solid side too). That needs 0.47.0 on a
   Gen4 machine again.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The
+alpha-test draws are fixed and measured as above. Incoming's Start Game
+fault (also seen once on the X1300) has no cause and stays in the
+README's known issues.

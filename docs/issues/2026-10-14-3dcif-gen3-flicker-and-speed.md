@@ -28,3 +28,8 @@ Here, though, the application owns the flip chain, not the DLL.
 Name the demos and what each does wrong, by eye. Then read the flip path
 on Gen3 for these chains: whether `Flip` waits for the retrace, and how
 many buffers each demo creates.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Part of the
+3DCIF gaps listed in the 1.0 plan.

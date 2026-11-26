@@ -49,3 +49,8 @@ driver has any part in it is not known; not seen when closed from its
 menu on 2026-11-20. Evidence:
 `docs/probe/1.0-b8-fix-oland-2026-11-23/` (`ut-after-close.png`,
 `control/after-close.png`).
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+under "To test for 1.1" in the 1.0 plan.

@@ -34,3 +34,8 @@ lock was in the first draw, its texture upload, or the first swap.
   thrashing texture memory (974 `hwtex create` failures,
   `DDERR_OUTOFVIDEOMEMORY`, 800x585 back and depth buffers on an 8 MB
   card). A lock inside that eviction churn is a candidate, unproved.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues.
+Unreproduced; named in the README's list of faults seen once.

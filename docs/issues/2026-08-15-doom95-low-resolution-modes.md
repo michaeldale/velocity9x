@@ -118,3 +118,10 @@ Not re-run: Doom95 itself, at 640x400 or 320x200; the ViRGE guest this
 record was found on; and any family other than sis. The 2026-08-15 crash
 under `DDSCL_ALLOWMODEX` was DirectDraw's own ModeX path, which this
 change does not touch.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. The
+refresh-rate fix is measured by probe (22 of 22 modes); Doom95 itself is
+in the plan's re-run list.

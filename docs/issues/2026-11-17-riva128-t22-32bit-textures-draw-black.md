@@ -39,3 +39,8 @@ success, but nothing visible was drawn.
 
 V9XTRACE snapshots before and after `V9XD32 /bpp16`, comparing the
 refusal counters, and the texture formats the HAL enumerates.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The RIVA
+128ZX is Experimental for 1.0; the README's entry links this record.

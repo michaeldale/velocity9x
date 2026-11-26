@@ -78,3 +78,8 @@ The same evening on the GeForce 210 (W9QI0DAD, boot 144, R5G6B5):
 FfSpecFog 0 mismatches, against 3 at 0.53.1. Status: **fixed on both
 chips** that showed it. T19 still fails there on Cube and Normal, the
 cube-map rows this path never drew.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed and measured on both cards on 2026-11-25, as recorded
+above.

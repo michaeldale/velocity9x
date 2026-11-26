@@ -31,3 +31,8 @@ switch itself is a BIOS call (or the 4F0Ah protected-mode entry).
 
 One guest with a VBE 1.2 card (86Box) reaches the desktop at 8 and 16 bpp
 on the banked path, and the boot record names the path taken.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan.

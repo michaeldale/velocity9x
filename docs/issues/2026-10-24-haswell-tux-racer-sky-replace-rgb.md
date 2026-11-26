@@ -99,3 +99,8 @@ whether the sky looks right is not checked.
 ## Status 2026-11-08 (audit)
 
 Wording only: the 4570 run showed the sky's batches drawn in `V9XGL.LOG`; nobody looked at the picture, so "seen fixed" in the index overstated it. No later run.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. The rewritten batches are drawn on the i5-4570, per the log. The
+picture was never looked at; a report of a wrong sky reopens it.

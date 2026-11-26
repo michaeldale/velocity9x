@@ -505,3 +505,8 @@ TEXTURE_TIMES_ITRGB_DELTA0 (7) is untested in a game.
 ## Status 2026-11-08 (audit)
 
 The Glide refusals were unwritten oow, fixed 2026-10-11; the reporter's later session (V9X-N1A23B) refused 0 draws at Gen3. The "before the video" exits on 0.16.0 were a missing CD, and the Steam build runs on the reporter's GMA 900. Still open: why the retail build ends after the intro on the 915GM, and why its intro frames are half blank there; the reporter's re-run is owed ([field reports](../decisions/2026-10-19-gma900-field-reports-gta-deus-ex.md)).
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Not
+reproduced on the 945GSE; named in the README's GMA 900 entry.

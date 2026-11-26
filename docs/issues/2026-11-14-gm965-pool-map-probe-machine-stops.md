@@ -127,3 +127,12 @@ this boot against the one fault of the unstaged one. A fault at one run
 in twenty would have shown in thirty with about four chances in five; a
 rarer one is not excluded. Whatever it was belongs to that first run or
 to the unstaged binary, and is still not identified.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The
+texture pool has been on for the GM965 since, and mapped cleanly on
+boots 56-58
+(decisions/2026-11-14-intel-gm965-texture-pool-driver-first-boot.md).
+The one stop is unexplained and is named in the README's list of faults
+seen once and not reproduced.

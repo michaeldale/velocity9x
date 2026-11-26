@@ -64,3 +64,8 @@ difference is worth isolating first: same call, same guest, one faults and one
 does not. After that, whether the display driver's escape path leaves a 16-bit
 selector or KRNL386's profile cache in a state the next profile write trips
 over.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A diagnostic
+tool's fault, not the driver's; listed in the 1.0 plan.

@@ -22,3 +22,8 @@ subkey whose instance has a `Driver` value naming the Velocity9x display
 class entry, or whose devnode is started. It belongs in the same file and
 the host-testable part of it, if there is one. Check it on a machine with
 two Enum keys for one id before claiming it.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Found by
+reading; listed in the 1.0 plan with the other settings-page items.

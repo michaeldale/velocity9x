@@ -114,3 +114,10 @@ until the screendump check exists.
    Cheap, and it converts this class of fault from invisible to failing.
 2. Only then re-run the `vbe` live-switch matrix, and see whether the stripes
    recur with something watching for them.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. QEMU guest
+only, not run since 2026-08; the QEMU guest runs in gate item 2 and the
+mode matrix settles it there.

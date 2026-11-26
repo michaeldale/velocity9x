@@ -31,3 +31,9 @@ hardware path. The card works; this session did not use it.
 Ask the reporter for the desktop mode and the tab settings during the
 Quake 1 run, and a V9XTRACE snapshot right after it. If it reproduces,
 reproduce it on a Rage Pro-class card here.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". One reporter
+session, never reproduced, and the picture was right; listed in the 1.0
+plan.

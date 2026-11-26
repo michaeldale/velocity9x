@@ -237,3 +237,8 @@ AAA, BBB and CCC in order, `exit` was clean, and V9XWPRS and V9XD32
 afterwards read as on 2026-11-23. The full-screen screen was not
 captured ([record](../decisions/2026-11-25-1.0-b5-oland-dos-box.md)).
 Still owed: a physical S3 card and issue 16's reporter's `vbe` failure.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open under 1.0 blocker B5. Stays with blocker B5 (the physical S3
+card and the reporter's case).

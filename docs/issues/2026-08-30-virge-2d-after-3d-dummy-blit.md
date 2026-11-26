@@ -88,3 +88,9 @@ existing Direct3D pixel ladder with a 2D fill deliberately issued between
 every draw, with and without the prefix, and see whether anything differs.
 If 86Box shows nothing either way, the question waits for physical ViRGE
 silicon, which this project does not currently have.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed for HAL fills and measured
+(decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md). The
+GDI path has shown no fault and is not measured.

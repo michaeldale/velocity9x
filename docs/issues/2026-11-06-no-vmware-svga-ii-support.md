@@ -20,3 +20,8 @@ pointer. No 3D (SVGA3D is a separate project).
 
 A VMware (or QEMU `-vga vmware`) guest reaches the desktop on the family at
 two depths, with DirectDraw fills and copies on the FIFO and V9XDDP run.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
+in the 1.0 plan.

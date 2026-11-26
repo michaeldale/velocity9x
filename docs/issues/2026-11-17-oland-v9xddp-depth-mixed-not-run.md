@@ -47,3 +47,8 @@ Run `V9XDDP /mixed` and `V9XDDP /zprivate` on the Oland once each.
   HAL draw. It tests Lock of a tiled Z buffer: Carrizo needed Lock to
   detile its Z buffer before this passed.
 - `/zprivate` tests depth through a private device.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A gap in probe
+coverage with no defect seen; listed in the 1.0 plan.

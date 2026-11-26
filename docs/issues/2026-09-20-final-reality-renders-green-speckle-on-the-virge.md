@@ -72,3 +72,10 @@ stops applications aborting and it makes missing geometry **silent**. The
 counter is the only thing standing between that and an unexplained hole, so
 a large `BatchesEngineRefused` must be treated as a defect and not as
 background.
+
+## 1.0 re-read, 2026-11-26
+
+Re-run owed on the release candidate (the 1.0 plan's re-run list); if
+the run does not settle it, it becomes a README known issue. Parked on
+86Box and never re-run; the ViRGE path has changed since. In the plan's
+re-run list for the ViRGE/DX.

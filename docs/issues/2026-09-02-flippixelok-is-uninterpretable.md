@@ -80,3 +80,9 @@ Every hardware-flipped run read 0: Rage IIC boot 142, the Rage XL PCI with
 vsync on, and the SiS. A `FlipPixelOk=1` is therefore a sign the flips
 were emulated, not a pass.
 See [2026-10-05 SiS 6326 page flips](../decisions/2026-10-05-sis6326-page-flips.md).
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". An instrument
+defect (FlipPixelOk=1 marks emulated flips), not a driver fault; listed
+in the 1.0 plan with the tools.

@@ -810,3 +810,9 @@ that hook, the desktop came back repainted (boots 684-685). The August
 file write inside the VDD's callback is the probable hang. Not run on
 any Intel machine yet
 ([record](../decisions/2026-11-10-dos-box-return-screen-switch-hook.md)).
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Explained as recorded above; the full-screen DOS round trip is
+followed in 2026-09-12-netbook-dos-box-return-hardlock.md under blocker
+B5.

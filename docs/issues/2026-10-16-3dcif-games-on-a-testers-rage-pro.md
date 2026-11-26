@@ -159,3 +159,9 @@ meet a 5:6:5 display on an ATI card set to 5:5:5.
 ## Status 2026-11-08 (audit)
 
 On 2026-10-16, A8U4I5's Rage XL ran the keyed-draw fix in Formula 1: the race drew textured, with 3 % of triangles refused, all of them blended draws under the alpha mask ([gap](2026-10-14-3dcif-blended-sprites-refused.md)). The tester has not re-run either game. A8U4I5 now carries a Rage 128 Pro.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". The keyed-draw
+fix is measured on the Rage XL; what remains is in the 3DCIF gaps listed
+in the 1.0 plan.

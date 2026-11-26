@@ -94,3 +94,8 @@ is not reaching the screen on these cards.
 
 - That ATI or SiS cards show the same flash (only 765 and 775 were
   reported).
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Already in
+the README's known issues.

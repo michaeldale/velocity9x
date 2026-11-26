@@ -235,3 +235,8 @@ fix owed is that: an unsynced Gen3 flip stays pending until the blank
 that takes it, so no Blt, Lock or draw reaches the buffer still being
 scanned, rather than being treated as done when written. Then measure
 with `VSync=2` on the panel. The netbook is left on `VSync=0`.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. Fixed by efd2fa90 and watched on the panel with no flicker
+either way (decisions/2026-11-07-gen3-unsynced-flip-held.md).

@@ -78,3 +78,9 @@ Released 0.60.0's `s3` package by Have Disk on a fresh 86Box
 ViRGE/DX guest copied every file without asking for `V9XDISP.DRV`
 ([record](../decisions/2026-11-24-1.0-b10-have-disk-s3.md)). The
 reporter's case (the `vbe` package on Pineview) is still unexplained.
+
+## 1.0 re-read, 2026-11-26
+
+Closed. No B10 Have Disk install asked for V9XDISP.DRV (s3, ati and
+matrox on 86Box, intel-gma on the netbook, nvidia twice on the GeForce
+210).

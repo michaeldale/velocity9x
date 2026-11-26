@@ -28,3 +28,10 @@ Next: either fold vertex fog into the colour in the core for every batch
 on an engine without hardware fog, which the factor makes possible; or
 claim fog only where it is drawn. Measure against Hellbender before
 dropping its caps.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The claim
+is still made and the ViRGE/DX failed FogTable on boot 664
+(decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md). Named
+in the README's ViRGE entry.

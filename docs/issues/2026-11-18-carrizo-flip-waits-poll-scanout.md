@@ -39,3 +39,8 @@ for vertical blank. Two things are not known:
 - Cache the scanout's live state across a flip's polls, since the CRTC
   and graphics enable do not change between them. Then rerun the same
   V9XPROF profile and compare this share.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Performance
+work, listed in the 1.0 plan.

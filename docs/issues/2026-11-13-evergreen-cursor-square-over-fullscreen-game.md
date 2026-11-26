@@ -70,3 +70,8 @@ Later the same day the fix ran on the R3E (M-JJN1ZZ): V9XCURSQ reads
 the arrow over the game, as on the fixed Oland, and the release probes
 are as at 0.55.0. The old driver was not run there, so the square was
 not reproduced on the R3E.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open under 1.0 blocker B6. Fixed on 2026-11-25 and measured with
+V9XCURSQ on the Oland and R3E; blocker B6 waits on the reporter.

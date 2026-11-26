@@ -87,6 +87,9 @@ New in 0.59.0:
   screen is slow to read (about 70 ms for a small window on a Radeon R3E,
   1.5 s at 800x600 on one GTX 970)
   ([issue](docs/issues/2026-11-11-vbe-soft-gl-back-buffer-in-video-memory.md)).
+  On one reporter's HD 3000 laptop `vbe` could not map the 16 MB frame
+  buffer; a smaller retry is in but untested
+  ([issue](docs/issues/2026-10-22-github-13-hd3000-vbe-dpmi-map.md)).
 - **Full-screen DOS on cards other than the GMA 950, HD 4600 and S3
   ViRGE/DX:** the 0.45.0 fix is in every package but has not been run
   on them. If the desktop does not come back, keep DOS windowed. On the
@@ -98,10 +101,26 @@ New in 0.59.0:
   Starting a Half-Life multiplayer game in OpenGL can leave the screen
   stuck; press Escape and resume
   ([issue](docs/issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)).
-- **HD 4600:** 3DMark 2001 SE's Nature draws its distant terrain white.
+  The GMA 950 and GMA 900 draw a colour-keyed texture's key colour
+  ([issue](docs/issues/2026-10-15-gen3-draws-the-colour-key.md)) and
+  refuse a 1024x256 texture
+  ([issue](docs/issues/2026-10-14-gen3-refuses-1024x256-texture.md));
+  GLQuake draws white beside its status bar
+  ([issue](docs/issues/2026-10-09-glquake-white-beside-status-bar.md)).
+- **GMA 900:** one reporter's retail Carmageddon II exits after its
+  intro; not reproduced on a GMA 950
+  ([issue](docs/issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)).
+- **HD 4600:** 3DMark 2001 SE's Nature draws its distant terrain white,
+  and a diagonal cut and one Pro-test stripe remain from a tester's
+  report ([issue](docs/issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md)).
+  On the VGA port into a 1080p screen, a boot with no display connected
+  can leave games drawn twice across
+  ([issue](docs/issues/2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)).
 - **HD 3000:** new in 0.58.0 and run on one machine. Not yet looked at:
   3DMark 2001 SE's Nature frames, cube maps with mipmaps, a Glide game,
-  full-screen Quake 3, and leaving a full-screen DOS box.
+  full-screen Quake 3, and leaving a full-screen DOS box. Its owner sees
+  holes in Nature's mountain and brown blocks for 3DMark 2000's trees
+  ([issue](docs/issues/2026-11-20-hd3000-3dmark-foliage-and-tree-billboards.md)).
 - **GMA 4500MHD, Incoming demo:** Start Game can fault (exception at
   465973 after the pilot-name screen), and the game is slow with some
   render faults its reporter still sees; the cause is not found
@@ -109,8 +128,11 @@ New in 0.59.0:
 - **`ati` HD 5000-7000 and HD 2600 XT:** the desktop copy above is on by
   the same design as on the R3E and R7E but has not been measured on
   them. On an HD 5570, one reporter sees a small flickering square
-  follow the mouse over a full-screen game; not reproduced here
+  follow the mouse over a full-screen game; reproduced on an R7 250 and
+  fixed in the 0.61.0 tree, the reporter's confirmation owed
   ([issue](docs/issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)).
+  The same reporter's Quake 2 "Angle" crosshair draws as one dot
+  ([issue](docs/issues/2026-11-11-evergreen-gl-nonsquare-mip-textures-dropped.md)).
 - **HD 2600 XT and HD 2400 Pro:** after the driver first starts the
   command processor on a boot, the depth buffer can hold one constant
   value, so 3D draws in the wrong order until the next restart
@@ -123,6 +145,9 @@ New in 0.59.0:
   32 bpp ten of V9XD32's pixel shader checks draw wrong (older than
   0.54.0; at 16 bpp three do). In Quake 3 a wall texture can turn
   into streaks ([issue](docs/issues/2026-11-16-gt218-quake3-wall-texture-streaks.md)).
+  In 3DMark 2001 SE's Car Chase High the ground by the robots draws
+  near-white once DXT textures are used; left for 1.1
+  ([issue](docs/issues/2026-11-25-gt218-car-chase-ground-white-on-dxtc.md)).
   Not yet working: a
   Lock of a depth buffer, 24-bit depth with stencil, cube maps, `texm3x3`
   shaders and some texture formats (3DMark 2001 SE leaves parts of its
@@ -154,11 +179,13 @@ New in 0.59.0:
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts
   sometimes times out and is skipped; later frames draw.
 - **RIVA 128ZX:** not finished. Most of 3DMark 2000 is refused and not
-  drawn, and one Glide 2 probe check fails.
-- **Oland XT:** V9XD32's specular-with-fog check is a few pixels too
-  green, as on the GeForce 210, cause not traced
-  ([issue](docs/issues/2026-11-17-t19-ffspecfog-mismatch-oland-gt218.md));
-  3DMark 2000 can crash in its own code (one run in three on any card
+  drawn, and one Glide 2 probe check fails. 32-bit textures draw black
+  ([issue](docs/issues/2026-11-17-riva128-t22-32bit-textures-draw-black.md)),
+  write masks other than RGB are refused
+  ([issue](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)),
+  and its owner lists wrong lightmaps, seams and low frame rates in
+  several games ([issue](docs/issues/2026-11-21-riva128-owner-game-notes-0.59.0.md)).
+- **Oland XT:** 3DMark 2000 can crash in its own code (one run in three on any card
   here). Texture shapes the probes do not cover yet: non-square DXT
   chains, DXT cube maps
   ([issue](docs/issues/2026-11-17-oland-texture-shapes-unmeasured.md)).
@@ -167,6 +194,54 @@ New in 0.59.0:
   the likely cure, unmeasured); on the Rage 128, 3DMark 2000
   hung once in two runs, and on the Ironlake one early frame draws a piece
   of hillside over the helicopter (0.32.0).
+- **Rage XL and Rage IIC:** on the Rage XL, Thief II shows a floor
+  through a floor
+  ([issue](docs/issues/2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)),
+  and one reporter's Rage XL AGP ran NFS II SE blind
+  ([issue](docs/issues/2026-10-10-nfs2se-field-report-rage-xl-agp.md)).
+  The Rage IIC blends one step low at 5:5:5
+  ([issue](docs/issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md)),
+  refuses texel-times-vertex alpha (Quake 2's particles)
+  ([issue](docs/issues/2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md))
+  and alpha-tested additive sprites (Half-Life's HUD numbers), which
+  locked the machine when drawn
+  ([issue](docs/issues/2026-10-03-a8u4i5-hard-lock-on-additive-sprites.md)),
+  and skips pieces whose texture does not fit, leaving holes
+  ([issue](docs/issues/2026-10-03-rage-iic-texture-fit-skips.md)).
+  Assault Rigs' menu shows boxes in 3DCIF
+  ([issue](docs/issues/2026-10-16-assault-rigs-menu-boxes.md)).
+- **S3 ViRGE and Trio3D:** the 3D engine offers only 1555 and 4444
+  textures, so DxDiag's Direct3D test and Incoming fail
+  ([issue](docs/issues/2026-09-02-dxdiag-fails-at-enumtextureformats.md),
+  [issue](docs/issues/2026-09-05-incoming-refuses-the-hal-texture-formats.md)).
+  The ViRGE claims vertex fog it does not draw
+  ([issue](docs/issues/2026-10-15-virge-claims-vertex-fog-it-does-not-draw.md))
+  and leaves stale streaks round 3DMark 2000's CPU test
+  ([issue](docs/issues/2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)).
+  On the Trio3D/2X, 3DMark 99 shows black sprite boxes and magenta
+  panels and partial alpha saturates
+  ([issue](docs/issues/2026-09-03-3dmark99-on-the-trio3d-after-the-stride-fix.md),
+  [issue](docs/issues/2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md)).
+  Half-Life refuses Direct3D and OpenGL on the 2 MB Trio3D
+  ([issue](docs/issues/2026-10-04-trio3d-half-life-refuses-d3d-and-gl.md)).
+- **Matrox Millennium II:** Half-Life's OpenGL Multiplayer menu is
+  corrupt ([issue](docs/issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)),
+  and the Velocity9x settings page shows 4 MB of its 8
+  ([issue](docs/issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)).
+- **Seen once, not reproduced:** a hard lock on a Rage XL at UT99's
+  first OpenGL frame
+  ([issue](docs/issues/2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md));
+  intermittent black-screen locks on a Rage Mobility-M laptop
+  ([issue](docs/issues/2026-09-30-gateway-intermittent-black-screen-probe-lock.md));
+  on the GMA 950 netbook, a fatal exception 0E at a restart and a USB
+  bug check at an idle desktop
+  ([issue](docs/issues/2026-11-14-netbook-fatal-exception-0e-at-agent-reset.md),
+  [issue](docs/issues/2026-11-13-netbook-usb-bugcheck-fe-at-idle.md));
+  a GM965 that stopped for hours in the first texture-pool mapping test
+  and carried on
+  ([issue](docs/issues/2026-11-14-gm965-pool-map-probe-machine-stops.md));
+  86Box Trio64 and ViRGE/DX guests stuck at "Windows is shutting down"
+  ([issue](docs/issues/2026-11-21-86box-s3-guests-stick-at-shutdown-in-mode-matrix.md)).
 
 ### Recent releases
 

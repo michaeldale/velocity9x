@@ -21,3 +21,8 @@ fails or is not offered.
 On one guest whose BIOS reports a switchable DAC, the boot record shows
 the granted width, and a 256-step grey ramp at 8 bpp shows 256 distinct
 levels in a capture.
+
+## 1.0 re-read, 2026-11-26
+
+Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". A feature gap,
+listed in the 1.0 plan.

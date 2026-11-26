@@ -76,3 +76,11 @@ frame, yet the lock came tens of seconds in), or an interaction with page
 flipping. The next step is to find the moment: periodic snapshots or
 screenshots during a locking run, or a record of the last batches that
 survives the reset.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. The lock
+is avoided by refusing the class
+(decisions/2026-10-03-rage-iic-alpha-test.md), so Half-Life's HUD
+numbers are missing on the Rage IIC. Named in the README's Mach64-class
+entry.

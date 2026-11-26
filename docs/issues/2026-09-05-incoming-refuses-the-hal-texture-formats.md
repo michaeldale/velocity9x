@@ -57,3 +57,8 @@ because every Trio3D result is.
 
 3DMark 99 and Final Reality both run on this path, so whatever Incoming asks
 for, those two do not.
+
+## 1.0 re-read, 2026-11-26
+
+Stays open for 1.0 and is named in the README's known issues. Still so;
+named in the README's S3 entry.
