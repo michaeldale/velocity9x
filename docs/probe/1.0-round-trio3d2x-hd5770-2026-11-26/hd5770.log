@@ -1,0 +1,22 @@
+[+0:06] agent 0.19.0, boot 191, desktop True
+[+0:38] display card present: 1002:68B8
+[+3:44] staged 8 files; resetting
+[+4:23] reset: boot 191 -> 192
+[+5:15] installed: 8 of 8
+[+6:42] probes in place: sent 7 of 7
+[+7:40] 3DMark started after 1 start input(s)
+[+8:19] 3DMark +0.6 min: FlipHandled 5125
+[+9:10] 3DMark +1.5 min: FlipHandled 9144
+[+10:02] 3DMark +2.4 min: FlipHandled 17020
+[+10:56] 3DMark +3.3 min: FlipHandled 21641
+[+11:49] 3DMark +4.1 min: FlipHandled 28391
+[+12:40] 3DMark +5.0 min: FlipHandled 44358
+[+13:01] 3DMark finished in 5.4 min, last FlipHandled 44358
+[+22:46] 3DMark counters: draws +2092213, into presented +0, refused batches +0, engine stalls +0, FilterMagSeen 0x6
+[+23:36] V9XD32 default exit=0
+[+24:00] V9XD32 bpp16 exit=0
+[+24:29] V9XGLP.EXE exit=0
+[+24:45] V9XGLIDP.EXE exit=0
+[+24:58] V9XR3DP.EXE exit=0
+[+25:13] V9XWPRS.EXE exit=0
+[+25:24] V9XFBCMP.EXE exit=0

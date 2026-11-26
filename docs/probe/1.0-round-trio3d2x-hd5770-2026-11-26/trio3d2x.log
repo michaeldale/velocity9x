@@ -1,0 +1,7 @@
+[+0:00] agent 0.19.0, boot 699, desktop True
+[+0:04] display card present: 5333:8A13
+[+0:18] staged 8 files; resetting
+[+1:27] reset: boot 699 -> 700
+[+1:42] installed: 8 of 8
+[+1:42] probes in place: sent 0 of 7
+[+3:50] ERROR: 3DMark: the start input did not leave the welcome dialog (screen in 3dmark-stuck.png)

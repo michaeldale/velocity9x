@@ -1,0 +1,19 @@
+{
+    "Name":  "trio3d2x",
+    "Family":  "s3",
+    "Baseline":  false,
+    "BootBefore":  699,
+    "BootAfter":  700,
+    "Installed":  8,
+    "Error":  "3DMark: the start input did not leave the welcome dialog (screen in 3dmark-stuck.png)",
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  699,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  "stopped: the start input did not leave the welcome dialog",
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "5333:8A13",
+    "AdapterMismatch":  false
+}
