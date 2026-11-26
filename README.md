@@ -202,6 +202,10 @@ New in 0.59.0:
 - **Rage XL and Rage IIC:** on the Rage XL, Thief II shows a floor
   through a floor
   ([issue](docs/issues/2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)),
+  V9XD32's additive blend draws nothing and its 32-bit textures draw
+  black ([issue](docs/issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md)),
+  GLQuake with `-nomtex +gl_texsort 0` shows only lightmaps, as on the
+  GMA 950,
   and one reporter's Rage XL AGP ran NFS II SE blind
   ([issue](docs/issues/2026-10-10-nfs2se-field-report-rage-xl-agp.md)).
   The Rage IIC blends one step low at 5:5:5
@@ -409,7 +413,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 |---|---|---|---|---|
 | ATI Mach64 VT2 | `ati` | Supported, on an emulator only (last run 2026-11-24) | none | 2D through the BIOS, on an emulator |
 | ATI Rage IIC and the Rage II class | `ati` | Supported; 1.0 run owed | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
-| ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Supported; 1.0 run owed | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF. Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
+| ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Supported (Rage XL run 2026-11-26); 1.0 run owed | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF; on the 0.61.0 tree (2026-11-26) every release probe passes but two V9XD32 tests, and 3DMark 2000 runs ([record](docs/decisions/2026-11-26-1.0-ragexl-a8u4i5.md)). Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Supported; 1.0 run owed | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
 | ATI Radeon 9250 (RV280, `1002:5960`), from 0.53.0 | `ati` | Supported; 1.0 run owed | R200, by register writes, command processor off | Direct3D at 16 and 32 bpp with 16-bit Z; OpenGL; the Glide 2 probe; DirectDraw fills and copies on the 2D engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000 and Quake 2. One tester's card through remote help; modes from the VBE; the second head is not claimed. 3DCIF not run |
 | ATI Radeon 9200 (RV280, `1002:5961`, `1002:5962`), from 0.60.0 | `ati` | Recognised | R200, by register writes, command processor off | The Radeon 9250 path unchanged. Claimed from the Linux tables without a survey; not run on one ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)) |

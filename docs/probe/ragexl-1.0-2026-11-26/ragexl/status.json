@@ -1,0 +1,19 @@
+{
+    "Name":  "ragexl",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  695,
+    "BootAfter":  696,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  695,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  "finished in 8.4 min, last FlipHandled 1648",
+    "Counters":  "draws +121341, into presented +0, refused batches +155, engine stalls +0, FilterMagSeen 0x6",
+    "CounterFlags":  "",
+    "Adapter":  "1002:4752",
+    "AdapterMismatch":  false
+}

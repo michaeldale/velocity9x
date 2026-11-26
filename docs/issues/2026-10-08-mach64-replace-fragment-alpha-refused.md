@@ -73,3 +73,11 @@ Not pursued for 1.0 (2026-11-26): the fault needs both `-nomtex` and
 `gl_texsort 0`; GLQuake's default `gl_texsort 1` draws the same room
 correctly (the 2026-10-08 table). The README names it; finding the
 cause is listed for 1.1 in the 1.0 plan.
+
+## 2026-11-26: the Rage XL run
+
+GLQuake `-nomtex +gl_texsort 0` on the Rage XL (0.61.0 tree): no
+batch refused (October 111,915), `alpha-dropped=11954`, and the walls
+show only their lightmaps, as on the GMA 950; the multitexture
+control is textured ([record](../decisions/2026-11-26-1.0-ragexl-a8u4i5.md)).
+The Rage XL run this record owed is done; the fault stays for 1.1.

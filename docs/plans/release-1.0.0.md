@@ -79,9 +79,7 @@ on one machine whose run is owed, by machine:
   GM965 ([issue](../issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)).
 - GMA 950 netbook: Final Reality's Robots watched on the panel for the
   flicker ([issue](../issues/2026-09-19-the-flicker-state-of-play.md)).
-- A8U4I5 round: GLQuake `-nomtex` and a texture over 256 on the Rage XL
-  ([issue](../issues/2026-10-03-mach64-refuses-full-screen-quad-on-bottom-edge.md));
-  Final Reality and 1024x768x32 on the ViRGE/DX
+- A8U4I5 round (the Rage XL's GLQuake runs done 2026-11-26): Final Reality and 1024x768x32 on the ViRGE/DX
   ([issue](../issues/2026-09-20-final-reality-renders-green-speckle-on-the-virge.md),
   [issue](../issues/2026-08-30-virge-1024x768x32-xfree86-limit.md));
   a live mode switch repaint and the black level on the Trio64
@@ -546,3 +544,15 @@ run 2026-11-26. **B6 is not done:** this card has 320x240, and there
 V9XCURSQ still finds the stale-desktop square; 640x480 is fixed.
 Michael closed B6 for 1.0 on this: the 320x240 square is a README known
 issue and its fix goes to 1.1.
+
+### 2026-11-26, night: the A8U4I5 round starts, Rage XL
+
+The Rage XL first ([record](../decisions/2026-11-26-1.0-ragexl-a8u4i5.md)).
+Its devnode had been left on ATI's driver and Windows on a 16-colour
+mode; both set back through the agent. On the 0.61.0 tree every
+release probe passes except V9XD32's T20 (additive blend draws
+nothing) and T22 (32-bit textures draw black), neither run on a
+Mach64 before ([issue](../issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md));
+3DMark 2000 runs to its score. The owed GLQuake `-nomtex` run: no
+batch refused (October 111,915) and no invalid draw, but lightmaps
+only, the GMA 950's 1.1 fault. Tier for 1.0 not settled by this run.

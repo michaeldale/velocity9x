@@ -50,3 +50,12 @@ Re-run owed on the release candidate (the 1.0 plan's re-run list); if
 the run does not settle it, it becomes a README known issue. The ICD fix
 is host-tested only; a game binding a texture over 256 on a Mach64 is in
 the plan's re-run list.
+
+## 2026-11-26: re-run on the Rage XL
+
+GLQuake `+gl_texsort 0 +timedemo demo1` on the 0.61.0 tree, with and
+without `-nomtex`: `draw-invalid=0` and `hw-refused=0` in both, where
+October refused the console's 512x256 draws. Whether a texture over
+256 was bound was not read from the log, so the fit itself is
+inferred, not seen ([record](../decisions/2026-11-26-1.0-ragexl-a8u4i5.md)).
+Status: closed, on that reading.
