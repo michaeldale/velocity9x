@@ -579,3 +579,14 @@ later release; the two failures are README known issues in 1.0.
   ([issue](../issues/2026-11-26-trio3d2x-3dmark2000-engine-timeouts.md)).
   `BitsPerPixel` drifted to 4 and then 8 across the swaps; each card
   needs it checked.
+
+### 2026-11-26, night: Rage IIC
+
+The third card of the A8U4I5 round
+([record](../decisions/2026-11-26-1.0-rageiic-a8u4i5.md)). Every
+release probe passes but V9XD32's T4 and T16: off-screen render
+targets get neither the clear (`E_NOTIMPL`) nor the draws. 3DMark
+2000 at 640x480 stops after 1,340 flips in a loop of depth fills
+([issue](../issues/2026-11-26-rage-iic-3dmark2000-depth-fill-loop-and-offscreen-targets.md)).
+Both first runs on the card. Whether these hold the Rage IIC's 1.0
+tier is Michael's call.

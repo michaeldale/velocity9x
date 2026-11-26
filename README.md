@@ -218,6 +218,9 @@ New in 0.59.0:
   ([issue](docs/issues/2026-10-03-a8u4i5-hard-lock-on-additive-sprites.md)),
   and skips pieces whose texture does not fit, leaving holes
   ([issue](docs/issues/2026-10-03-rage-iic-texture-fit-skips.md)).
+  Its off-screen Direct3D render targets stay empty, and 3DMark 2000
+  stops partway in a loop of depth fills
+  ([issue](docs/issues/2026-11-26-rage-iic-3dmark2000-depth-fill-loop-and-offscreen-targets.md)).
   Assault Rigs' menu shows boxes in 3DCIF
   ([issue](docs/issues/2026-10-16-assault-rigs-menu-boxes.md)).
 - **S3 ViRGE and Trio3D:** the 3D engine offers only 1555 and 4444
@@ -414,7 +417,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 1.0 tier | 3D engine | Tested on hardware |
 |---|---|---|---|---|
 | ATI Mach64 VT2 | `ati` | Supported, on an emulator only (last run 2026-11-24) | none | 2D through the BIOS, on an emulator |
-| ATI Rage IIC and the Rage II class | `ati` | Supported; 1.0 run owed | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF |
+| ATI Rage IIC and the Rage II class | `ati` | Supported (run 2026-11-26); 1.0 run owed | Rage II, setup on the CPU | Rage IIC AGP: Direct3D, OpenGL, Glide 2 and 3, 3DCIF; on the 0.61.0 tree (2026-11-26) every release probe passes but V9XD32's two off-screen target tests, and 3DMark 2000 stops partway ([record](docs/decisions/2026-11-26-1.0-rageiic-a8u4i5.md)) |
 | ATI Rage XL, Rage Pro, Rage Mobility (Rage Pro class) | `ati` | Supported (Rage XL run 2026-11-26); 1.0 run owed | Mach64 | Rage XL PCI: Direct3D (including DirectX 8), OpenGL, Glide 2 and 3, 3DCIF; on the 0.61.0 tree (2026-11-26) every release probe passes but two V9XD32 tests, and 3DMark 2000 runs ([record](docs/decisions/2026-11-26-1.0-ragexl-a8u4i5.md)). Rage Mobility-M: Direct3D and OpenGL, on one Gateway laptop |
 | ATI Rage 128 Pro (`1002:5046`) | `ati` | Supported; 1.0 run owed | Rage 128 (CCE) | Direct3D at 16 and 32 bpp with 16-bit Z, OpenGL, Glide 2 and 3; DirectDraw and page flips on the engine; GDI by the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL) and Diablo II (Glide). One Rage Fury Pro, 32 MiB AGP, of which 16 MiB is used |
 | ATI Radeon 9250 (RV280, `1002:5960`), from 0.53.0 | `ati` | Supported; 1.0 run owed | R200, by register writes, command processor off | Direct3D at 16 and 32 bpp with 16-bit Z; OpenGL; the Glide 2 probe; DirectDraw fills and copies on the 2D engine and page flips; GDI by the CPU into a copy of the desktop. 3DMark 2000 and Quake 2. One tester's card through remote help; modes from the VBE; the second head is not claimed. 3DCIF not run |
