@@ -203,7 +203,8 @@ New in 0.59.0:
   through a floor
   ([issue](docs/issues/2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)),
   V9XD32's additive blend draws nothing and its 32-bit textures draw
-  black ([issue](docs/issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md)),
+  black, left for a later release
+  ([issue](docs/issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md)),
   GLQuake with `-nomtex +gl_texsort 0` shows only lightmaps, as on the
   GMA 950,
   and one reporter's Rage XL AGP ran NFS II SE blind

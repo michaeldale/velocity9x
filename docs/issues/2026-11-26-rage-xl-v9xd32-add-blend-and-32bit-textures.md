@@ -1,7 +1,9 @@
 # Rage XL: V9XD32's additive blend draws nothing and its 32-bit textures draw black
 
 Date: 2026-11-26. Machine: A8U4I5, Rage XL PCI (`1002:4752`), the 0.61.0
-tree's `ati` set, 800x600x16. Status: open, cause not looked at. First
+tree's `ati` set, 800x600x16. Status: open, cause not looked at. Left
+for a later release with the other Rage XL improvements (Michael,
+2026-11-26); a README known issue in 1.0. First
 runs of these two tests on a Mach64; no earlier result to compare.
 
 ## What is seen

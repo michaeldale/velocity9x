@@ -127,6 +127,11 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **Rage XL improvements:** V9XD32 T20's additive blend and T22's
+  32-bit textures, with the rest of the Mach64 work (the GLQuake
+  `-nomtex` lightmaps among it); left for a later release, decided
+  2026-11-26 (Michael)
+  ([issue](../issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md)).
 - **B6 at 320x240:** the cursor square over a full-screen game remains
   in 320x240 modes (V9XCURSQ on the HD 5450; 640x480 is fixed); left
   for 1.1, decided 2026-11-26 (Michael)
@@ -555,4 +560,5 @@ nothing) and T22 (32-bit textures draw black), neither run on a
 Mach64 before ([issue](../issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md));
 3DMark 2000 runs to its score. The owed GLQuake `-nomtex` run: no
 batch refused (October 111,915) and no invalid draw, but lightmaps
-only, the GMA 950's 1.1 fault. Tier for 1.0 not settled by this run.
+only, the GMA 950's 1.1 fault. Michael: the Rage XL's fixes go to a
+later release; the two failures are README known issues in 1.0.
