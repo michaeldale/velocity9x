@@ -26,6 +26,8 @@ Nothing here is measured until the Progress section says so.
    interfaces, no new default behaviour. Unmerged branches
    (`rv280-geomscan`, `ati-cayman`, `wip-caicos-6779`, `hsw-panel-fit`,
    the Doom 3 worktree) merge before the freeze or wait for 1.1.
+   `rv280-geomscan` and `hsw-panel-fit` wait for 1.1 (Michael,
+   2026-11-26).
 2. **Three tiers**, in the README's card tables and each package's
    `INSTALL.TXT`:
    - *Supported:* in the 1.0 check fleet, every release probe passing on
@@ -123,6 +125,10 @@ on one machine whose run is owed, by machine:
   (Michael). Not run on hardware as submitted, touches the shared 16-bit
   GDI and DOS-box paths, and leaves intel-gma's `_TEXT` 135 bytes short
   of its budget.
+- **Branches `rv280-geomscan` and `hsw-panel-fit`:** left for 1.1,
+  decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
+  HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
+  branches are not merged before the freeze.
 - **To test for 1.1:** UT2004's graphical issues on the Oland
   ([issue](../issues/2026-11-23-oland-ut2004-graphical-issues.md)),
   reported, not yet described or measured. GLQuake `-nomtex
