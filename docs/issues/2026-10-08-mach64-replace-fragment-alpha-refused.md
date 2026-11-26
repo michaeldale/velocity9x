@@ -68,3 +68,8 @@ their alpha as RGB565, so the rewritten pass covers the base texture
 instead of darkening it. Stays open as a README known issue (GMA 950,
 GLQuake `-nomtex` only); the Rage XL run is still owed in the A8U4I5
 round ([record](../decisions/2026-11-26-1.0-reruns-gt218-netbook-gm965.md)).
+
+Not pursued for 1.0 (2026-11-26): the fault needs both `-nomtex` and
+`gl_texsort 0`; GLQuake's default `gl_texsort 1` draws the same room
+correctly (the 2026-10-08 table). The README names it; finding the
+cause is listed for 1.1 in the 1.0 plan.

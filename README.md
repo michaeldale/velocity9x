@@ -107,7 +107,8 @@ New in 0.59.0:
   ([issue](docs/issues/2026-10-14-gen3-refuses-1024x256-texture.md));
   GLQuake draws white beside its status bar
   ([issue](docs/issues/2026-10-09-glquake-white-beside-status-bar.md)),
-  and with `-nomtex` its walls show only their lighting, no texture
+  and with `-nomtex +gl_texsort 0` (not the default) its walls show
+  only their lighting, no texture
   ([issue](docs/issues/2026-10-08-mach64-replace-fragment-alpha-refused.md)).
 - **GMA 900:** one reporter's retail Carmageddon II exits after its
   intro; not reproduced on a GMA 950

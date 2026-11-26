@@ -125,7 +125,11 @@ on one machine whose run is owed, by machine:
   of its budget.
 - **To test for 1.1:** UT2004's graphical issues on the Oland
   ([issue](../issues/2026-11-23-oland-ut2004-graphical-issues.md)),
-  reported, not yet described or measured.
+  reported, not yet described or measured. GLQuake `-nomtex
+  +gl_texsort 0` on the GMA 950: walls show only their lightmaps
+  ([issue](../issues/2026-10-08-mach64-replace-fragment-alpha-refused.md));
+  GLQuake's default `gl_texsort 1` draws correctly, so 1.0 names it as a
+  known issue and the cause waits for 1.1 (decided 2026-11-26).
 - **Parked work:** the Rage 128 AGP ring, Gen4 ring flips, Gen3 batch
   cost, the Doom 3 ARB path, PAL8 on the Rage Pro.
 - **Performance:** the GCN drain, copy and flip-wait records of
