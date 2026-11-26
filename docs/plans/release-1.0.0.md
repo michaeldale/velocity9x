@@ -503,3 +503,17 @@ Oland's T19 mismatch (fixed 2026-11-25).
 - Not run: Doom95 on the 86Box ViRGE, and the QEMU `vbe` guest, which
   boots but carries a September driver and cannot restart reliably;
   both left for gate item 2.
+
+### 2026-11-26, night: gate item 6 written
+
+Every README row whose tier is not "1.0 run owed" and does not already
+say "last run on" now carries its last run's date (17 rows), taken from
+the release-check folders, this plan and the machine records; the table
+introduction says a "from 0.x" dates a feature, not a check. Two of
+decision 3's "in the check fleet, probes passing recently" cards have
+not run since: the X1200 (RS690) last ran 0.51.0 on 2026-11-14 and its
+machine has been offline since; the GMA 4500MHD last ran 0.57.0 on
+2026-11-19, offline since. Both need the candidate, as the "1.0 run
+owed" rows do, or a tier the README states as "on its last run". The
+"1.0 run owed" rows get their date from that run. Desk work; nothing
+run.
