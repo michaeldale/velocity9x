@@ -588,5 +588,8 @@ release probe passes but V9XD32's T4 and T16: off-screen render
 targets get neither the clear (`E_NOTIMPL`) nor the draws. 3DMark
 2000 at 640x480 stops after 1,340 flips in a loop of depth fills
 ([issue](../issues/2026-11-26-rage-iic-3dmark2000-depth-fill-loop-and-offscreen-targets.md)).
-Both first runs on the card. Whether these hold the Rage IIC's 1.0
+Both first runs on the card. Then two programs that ran in October:
+Half-Life's Direct3D timedemo locks the machine (a regression;
+power-cycled), and 3DMark 99 runs 24 of 26 tests and stops at Image
+Quality in the same fill loop. Whether these hold the Rage IIC's 1.0
 tier is Michael's call.

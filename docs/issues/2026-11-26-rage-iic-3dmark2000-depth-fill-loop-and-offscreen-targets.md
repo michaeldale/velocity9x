@@ -35,3 +35,27 @@ the clear or the draws.
 Evidence: [`../probe/rageiic-1.0-2026-11-26/`](../probe/rageiic-1.0-2026-11-26/)
 (`rageiic/v9xd32-bpp16-V9XD32.TXT`, `3dmark-640-stall/`). Record:
 [decision](../decisions/2026-11-26-1.0-rageiic-a8u4i5.md).
+
+## 2026-11-26, later: Half-Life and 3DMark 99, which ran in October
+
+Michael asked for a program that worked on this card in an older
+release.
+
+- **Half-Life Direct3D** (`hl.exe -d3d -w 640 -h 480 -full -console
+  -condebug +timedemo mwd5`, the October command, which ran at
+  4.29 fps on our driver,
+  [record](../decisions/2026-10-03-rage-iic-half-life-d3d-against-ati.md)): the
+  machine locked during the demo; the console log ends at "Playing
+  demo"; Michael power-cycled it (boot 704 to 705). No fault record was
+  written. **A regression from October.**
+- **3DMark 99 Max**, its default 800x600x16, Z16, triple buffer: 24 of
+  26 tests ran with nothing refused and no engine timeout (Trilinear
+  Filtering drawn correctly), then at Image Quality 1 it stopped in
+  the same loop as 3DMark 2000: `FlipHandled` and `M64Draws` still at
+  1,730 and 146,731 for 24 s while the trace ring filled with
+  `DDBLT_DEPTHFILL` Blts. Killed. In October 3DMark 99 was judged
+  "looking good" by eye but its score was never read, so whether Image
+  Quality finished then is not known.
+
+Evidence: `../probe/rageiic-1.0-2026-11-26/half-life-d3d/` and
+`3dmark99/`.
