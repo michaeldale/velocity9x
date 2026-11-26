@@ -71,3 +71,14 @@ Re-run owed on the release candidate (the 1.0 plan's re-run list); if
 the run does not settle it, it becomes a README known issue. The likely
 cure (448e2f2d) is in; the Helicopter test has not been re-run on the
 GeForce 210. The README's GeForce 210 entry names it until it is.
+
+## 2026-11-26: re-run, trees steady
+
+3DMark 2000 on the GeForce 210 (W9QI0DAD, boot 158, the 0.61.0 tree,
+`VSync=1` for the run), recorded through OBS. In 48 consecutive capture
+frames of Game 1 low detail, mission time 9.7 to 11.2, where the
+recording above saw the pop, every foreground and ridge tree is present
+at full strength in every frame; no engine timeouts. Closed. Only that
+span was reviewed frame by frame, and the old recording's unsynced flips
+are not excluded as a contributor
+([record](../decisions/2026-11-26-1.0-reruns-gt218-netbook-gm965.md)).

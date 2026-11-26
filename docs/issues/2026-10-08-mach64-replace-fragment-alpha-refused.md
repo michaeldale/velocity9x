@@ -56,3 +56,15 @@ Re-run owed on the release candidate (the 1.0 plan's re-run list); if
 the run does not settle it, it becomes a README known issue. The
 MODULATE rewrite (61b58b8a) is measured on the i5-4570 only; GLQuake
 -nomtex on the Rage XL and the GMA 950 is in the plan's re-run list.
+
+## 2026-11-26: GMA 950 re-run, nothing refused, the picture wrong
+
+GLQuake `-nomtex +gl_texsort 0 +timedemo demo1` on the netbook (released
+0.60.0): 0 of 1,256,219 batches refused, 43.9 fps. But the screen shows
+the world as grey lighting only, with no wall or floor texture; the same
+demo with multitexture draws textured, lit walls. The ICD counts
+`alpha-dropped=23572`. Reading, not measured: the RGBA lightmaps lose
+their alpha as RGB565, so the rewritten pass covers the base texture
+instead of darkening it. Stays open as a README known issue (GMA 950,
+GLQuake `-nomtex` only); the Rage XL run is still owed in the A8U4I5
+round ([record](../decisions/2026-11-26-1.0-reruns-gt218-netbook-gm965.md)).

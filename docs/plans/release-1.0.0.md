@@ -73,14 +73,10 @@ measurement on the release candidate or stays a named known issue.
 From the issue re-read of 2026-11-26 (gate item 4), fixes in source or
 on one machine whose run is owed, by machine:
 
-- GeForce 210: 3DMark 2000's Helicopter trees
-  ([issue](../issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md)).
 - GM45 and GM965: Forsaken gameplay, and a colour-keyed title on the
   GM965 ([issue](../issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)).
 - GMA 950 netbook: Final Reality's Robots watched on the panel for the
-  flicker ([issue](../issues/2026-09-19-the-flicker-state-of-play.md)),
-  GLQuake `-nomtex`
-  ([issue](../issues/2026-10-08-mach64-replace-fragment-alpha-refused.md)).
+  flicker ([issue](../issues/2026-09-19-the-flicker-state-of-play.md)).
 - A8U4I5 round: GLQuake `-nomtex` and a texture over 256 on the Rage XL
   ([issue](../issues/2026-10-03-mach64-refuses-full-screen-quad-on-bottom-edge.md));
   Final Reality and 1024x768x32 on the ViRGE/DX
@@ -488,3 +484,18 @@ Desk work, from the records and a search of `docs/` for later evidence;
 nothing re-run. Two README lines were stale and are corrected: the
 HD 5570 cursor square (fixed in the 0.61.0 tree, reporter owed) and the
 Oland's T19 mismatch (fixed 2026-11-25).
+
+### 2026-11-26, evening: three of the owed runs
+
+([record](../decisions/2026-11-26-1.0-reruns-gt218-netbook-gm965.md))
+
+- **GeForce 210, 3DMark 2000 Helicopter trees:** steady in 48
+  consecutive frames where the pop was seen; closed.
+- **GMA 950, GLQuake `-nomtex`:** nothing refused now, but the walls
+  show only their lightmaps (the multitexture control draws correctly);
+  a README known issue. The Rage XL run stays with the A8U4I5 round.
+- **GM965, the 915 GTT fix:** all release probes pass and the GTT record
+  matches boot 59's; the change leaves the GM965 as it was.
+- Not run: Doom95 on the 86Box ViRGE, and the QEMU `vbe` guest, which
+  boots but carries a September driver and cannot restart reliably;
+  both left for gate item 2.

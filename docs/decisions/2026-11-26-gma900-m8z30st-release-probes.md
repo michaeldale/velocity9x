@@ -101,8 +101,14 @@ are whole and textured (`pool/grabs-sheet.png`).
 ## Not shown
 
 - Any game, and 3DMark 2001 SE.
-- The GM965 and Ironlake on the changed GTT capture.
+- The GM965 and Ironlake on the changed GTT capture (the GM965 since,
+  below).
 - The event capture on the 915GM with Gen3's offsets.
 - A full-screen DOS box with the pool mapped (owed on the GMA 950 too).
 - The B10 Have Disk install on this machine (the owner's own install of
   0.60.0 worked; how it went was not seen).
+
+Later the same day the GM965 ran the change: release probes pass and its
+GTT record matches its 2026-11-14 one
+([record](2026-11-26-1.0-reruns-gt218-netbook-gm965.md)). Ironlake stays
+unrun; the card is gone.

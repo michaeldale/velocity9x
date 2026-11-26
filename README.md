@@ -106,7 +106,9 @@ New in 0.59.0:
   refuse a 1024x256 texture
   ([issue](docs/issues/2026-10-14-gen3-refuses-1024x256-texture.md));
   GLQuake draws white beside its status bar
-  ([issue](docs/issues/2026-10-09-glquake-white-beside-status-bar.md)).
+  ([issue](docs/issues/2026-10-09-glquake-white-beside-status-bar.md)),
+  and with `-nomtex` its walls show only their lighting, no texture
+  ([issue](docs/issues/2026-10-08-mach64-replace-fragment-alpha-refused.md)).
 - **GMA 900:** one reporter's retail Carmageddon II exits after its
   intro; not reproduced on a GMA 950
   ([issue](docs/issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)).
@@ -138,10 +140,7 @@ New in 0.59.0:
   value, so 3D draws in the wrong order until the next restart
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
 - **GeForce 210:** page flips from 0.53.1; whether they tear has not been
-  checked. In 3DMark 2000's helicopter test trees pop in and out
-  ([issue](docs/issues/2026-11-16-gt218-3dmark2000-helicopter-trees-pop.md));
-  0.54.0's MODULATE alpha fix is the likely cure but that test has not
-  been rerun. 3DMark 2001 SE's Nature draws its lake flat grey-blue. At
+  checked. 3DMark 2001 SE's Nature draws its lake flat grey-blue. At
   32 bpp ten of V9XD32's pixel shader checks draw wrong (older than
   0.54.0; at 16 bpp three do). In Quake 3 a wall texture can turn
   into streaks ([issue](docs/issues/2026-11-16-gt218-quake3-wall-texture-streaks.md)).
