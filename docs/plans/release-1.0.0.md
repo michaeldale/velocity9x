@@ -129,6 +129,10 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **GeForce 210 with vsync forced off:** frames flash black because an
+  unsynced NV50 flip is not held while the old buffer is scanned; left
+  for 1.1, decided 2026-11-26 (Michael)
+  ([issue](../issues/2026-11-26-gt218-vsync-off-clears-scanned-buffer.md)).
 - **To test for 1.1:** UT2004's graphical issues on the Oland
   ([issue](../issues/2026-11-23-oland-ut2004-graphical-issues.md)),
   reported, not yet described or measured. GLQuake `-nomtex

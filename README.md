@@ -140,8 +140,12 @@ New in 0.59.0:
   command processor on a boot, the depth buffer can hold one constant
   value, so 3D draws in the wrong order until the next restart
   ([issue](docs/issues/2026-11-13-rv630-depth-constant-z.md)).
-- **GeForce 210:** page flips from 0.53.1; whether they tear has not been
-  checked. 3DMark 2001 SE's Nature draws its lake flat grey-blue. At
+- **GeForce 210:** page flips from 0.53.1. With vsync forced off
+  (`VSync=2`) frames flash black or half black, because the buffer just
+  flipped away is drawn into while still on screen; with vsync on, the
+  default, frames are whole; left for 1.1
+  ([issue](docs/issues/2026-11-26-gt218-vsync-off-clears-scanned-buffer.md)).
+  3DMark 2001 SE's Nature draws its lake flat grey-blue. At
   32 bpp ten of V9XD32's pixel shader checks draw wrong (older than
   0.54.0; at 16 bpp three do). In Quake 3 a wall texture can turn
   into streaks ([issue](docs/issues/2026-11-16-gt218-quake3-wall-texture-streaks.md)).
