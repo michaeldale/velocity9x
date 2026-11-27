@@ -79,3 +79,14 @@ Re-run owed on the release candidate (the 1.0 plan's re-run list); if
 the run does not settle it, it becomes a README known issue. Parked on
 86Box and never re-run; the ViRGE path has changed since. In the plan's
 re-run list for the ViRGE/DX.
+
+## 2026-11-27: not on the silicon; closed
+
+Final Reality 1.01 (Direct3D On-board Accelerator, 2D tests off) on
+the physical ViRGE/DX in A8U4I5, the 0.61.0 tree's `s3` set, ran to its
+results (3D 1.23 Reality marks). OBS captures of the card's output,
+the walls-and-road scene among them, show no green speckle; across the
+run no batch was refused and no triangle declined. **Closed**: the
+speckle was the 86Box `Win86SE` guest's and is not seen on the card.
+The guest was not re-run. Record:
+[decision](../decisions/2026-11-27-1.0-virgedx-a8u4i5.md).

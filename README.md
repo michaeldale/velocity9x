@@ -234,7 +234,9 @@ New in 0.59.0:
   ([issue](docs/issues/2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)).
   On the Trio3D/2X, 3DMark 99 shows black sprite boxes and magenta
   panels and partial alpha saturates, and 3DMark 2000 runs with engine
-  timeouts ([issue](docs/issues/2026-11-26-trio3d2x-3dmark2000-engine-timeouts.md))
+  timeouts ([issue](docs/issues/2026-11-26-trio3d2x-3dmark2000-engine-timeouts.md));
+  the ViRGE/DX's 3DMark 2000 has them at 640x480 and not at 800x600
+  ([issue](docs/issues/2026-11-27-virgedx-3dmark2000-640x480-engine-timeouts.md))
   ([issue](docs/issues/2026-09-03-3dmark99-on-the-trio3d-after-the-stride-fix.md),
   [issue](docs/issues/2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md)).
   Half-Life refuses Direct3D and OpenGL on the 2 MB Trio3D
@@ -451,7 +453,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 1.0 tier | 3D engine | Tested on hardware |
 |---|---|---|---|---|
 | S3 Trio32/64 | `s3` | Supported; 1.0 run owed | none | GDI and DirectDraw on the 8514/A engine, on PCI and on a VLB 486 under Windows 95 |
-| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | Supported (Trio3D/2X run 2026-11-26); 1.0 run owed | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path); on the 0.61.0 tree (2026-11-26) the Trio3D/2X fails only V9XD32 T21 and the Glide half blend and fog table among the release probes, and 3DMark 2000 completes at 640x480 ([record](docs/decisions/2026-11-26-1.0-trio3d2x-hd5770.md)). ViRGE/DX: GDI on the engine; Direct3D and OpenGL tested on an emulator and, from 0.36.0, on one physical card (3DMark 2000 at 800x600x16) |
+| S3 ViRGE/DX, Trio3D/2X, Trio3D | `s3` | Supported (Trio3D/2X run 2026-11-26, ViRGE/DX 2026-11-27); 1.0 run owed | S3D | Trio3D/2X and Trio3D: Direct3D (a narrow path); on the 0.61.0 tree (2026-11-26) the Trio3D/2X fails only V9XD32 T21 and the Glide half blend and fog table among the release probes, and 3DMark 2000 completes at 640x480 ([record](docs/decisions/2026-11-26-1.0-trio3d2x-hd5770.md)). ViRGE/DX: GDI on the engine; Direct3D and OpenGL tested on an emulator and, from 0.36.0, on one physical card; on the 0.61.0 tree (2026-11-27) its release probes fail only as the emulator's do, 3DMark 2000 and Final Reality complete, and 1024x768x32 displays correctly ([record](docs/decisions/2026-11-27-1.0-virgedx-a8u4i5.md)) |
 
 #### Matrox
 

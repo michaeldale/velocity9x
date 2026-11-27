@@ -24,3 +24,11 @@ Run again with V9XTRACE grabbing (the runner's `-ThreeDMark` path, once
 it can start 3DMark at 640x480) or with OBS on the monitor, and read
 which test the counters move in. Record:
 [decision](../decisions/2026-11-26-1.0-trio3d2x-hd5770.md).
+
+## 2026-11-27: the ViRGE/DX times out at 640x480 too, not at 800x600
+
+The ViRGE/DX, on the same S3D path, ran 3DMark 2000 with 45 engine idle
+timeouts and resets at 640x480x16 and none at 800x600x16 on the same
+boot ([issue](2026-11-27-virgedx-3dmark2000-640x480-engine-timeouts.md)).
+The Trio3D/2X's 51 may be the same 640x480 effect; it has not been run
+at 800x600.

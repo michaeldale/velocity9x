@@ -79,10 +79,9 @@ on one machine whose run is owed, by machine:
   GM965 ([issue](../issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)).
 - GMA 950 netbook: Final Reality's Robots watched on the panel for the
   flicker ([issue](../issues/2026-09-19-the-flicker-state-of-play.md)).
-- A8U4I5 round (the Rage XL's GLQuake runs done 2026-11-26): Final Reality and 1024x768x32 on the ViRGE/DX
-  ([issue](../issues/2026-09-20-final-reality-renders-green-speckle-on-the-virge.md),
-  [issue](../issues/2026-08-30-virge-1024x768x32-xfree86-limit.md));
-  a live mode switch repaint and the black level on the Trio64
+- A8U4I5 round (the Rage XL's GLQuake runs done 2026-11-26; the
+  ViRGE/DX's Final Reality and 1024x768x32 done 2026-11-27, both issues
+  closed): a live mode switch repaint and the black level on the Trio64
   ([issue](../issues/2026-08-20-live-mode-switch-no-repaint-barry.md),
   [issue](../issues/2026-08-23-s3-pedestal-black-level.md)).
 - Guests: Doom95 on the 86Box ViRGE
@@ -668,3 +667,19 @@ fault as the SiS 6326's
 or engine reset, its grabbed frames whole. **Decided (Michael,
 2026-11-27): the Rage 128 Pro's T22X goes to a later release**, as the
 SiS 6326's did; it stays a README known issue in 1.0.
+
+### 2026-11-27: ViRGE/DX, and two owed re-runs closed
+
+The seventh card of the A8U4I5 round
+([record](../decisions/2026-11-27-1.0-virgedx-a8u4i5.md)).
+`BitsPerPixel=4` cleared again. V9XD32 fails T20, T21 and T22 exactly
+as the 86Box guest does; all three tests are newer than November's
+PASS on this card, so none is a regression. 3DMark 2000 by hand runs
+to its score at 640x480 with 45 engine idle timeouts and at 800x600
+with none
+([issue](../issues/2026-11-27-virgedx-3dmark2000-640x480-engine-timeouts.md));
+the Trio3D/2X's 51 were also at 640x480. The two owed re-runs: Final
+Reality runs clean on the silicon (the September speckle was 86Box's),
+and 1024x768x32 displays correctly on a monitor through OBS, against
+XFree86's ViRGE limit; both issues closed. Whether the 640x480
+timeouts hold the ViRGE/DX's 1.0 tier is Michael's call.
