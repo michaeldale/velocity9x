@@ -6,6 +6,19 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 1.1.0 - not yet released
 
+- **Ironlake (HD Graphics, `8086:0042` and `0046`): DirectDraw and
+  Direct3D get the BIOS's 128 MiB, not 16.** The driver mapped 16 MiB
+  of the aperture, so the heap stopped there; at 1366x768x32 the
+  screen buffers and depth buffer left almost no room for textures,
+  which made the issue 28 laptop slow at that size. The heap now runs up
+  to the engine's reserve near the top of the 128 MiB. Not yet run on an
+  Ironlake
+  ([record](docs/decisions/2026-11-28-ironlake-heap-and-settings-blits.md)).
+- **Settings page: DirectDraw on the GMA 950 to Ironlake reads "Engine
+  fill and copy".** It said "CPU fill and copy" on every one of them:
+  their engine blits without the capability bits the page read. The
+  page now counts the engine's ring as the HAL does
+  ([record](docs/decisions/2026-11-28-ironlake-heap-and-settings-blits.md)).
 - **Intel GMA X4500 on the G41 (`8086:2E32`), `intel-gma` package:**
   claimed on the G45's path from one owner's DOS survey (GitHub
   issue 34), whose BARs and BIOS match the G45's. Before, the package

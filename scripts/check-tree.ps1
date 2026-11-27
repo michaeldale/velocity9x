@@ -2170,6 +2170,18 @@ if ($statusText -notmatch '\(raw_caps & V9X_DD_ENGINE_CAP_D3D\) != 0ul' -or
            'as a Direct3D engine. Chips that grant the capability at ' +
            'runtime keep a not-advertised word.')
 }
+# And the DirectDraw sentence must count the Gen3-type engine's blits. Its
+# descriptors (GMA 950 to Ironlake) set no SOLID_FILL or SCREEN_COPY bit:
+# the HAL routes fills and copies by engine type to eng_i9xx.c, which uses
+# the ring whenever it is up. Reading only the bits called every such chip
+# "CPU fill and copy" (GitHub issue 28, an Ironlake laptop, 2026-11-19).
+if ($statusText -notmatch 'V9X_DD_ENGINE_TYPE_INTEL_GEN3' -or
+    $statusText -notmatch 'v9x_find_text\(stamp, "ring="\)') {
+    throw ('settings_status.c must report the Gen3-type engine''s ' +
+           'DirectDraw fills and copies as the engine''s when the stamp ' +
+           'names a ring, not from the SOLID_FILL and SCREEN_COPY bits ' +
+           'alone, which that engine never sets.')
+}
 # The Advanced tab writes keys the driver reads under its own literals. A
 # typo on either side writes a key nothing reads, and nothing else notices.
 $propsheetText = Get-Content -Raw -LiteralPath (

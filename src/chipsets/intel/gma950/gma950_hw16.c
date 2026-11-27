@@ -826,9 +826,19 @@ const V9X_HW16_DEVICE v9x_ilk_hd_device = {
     v9x_ilk_fill_engine,
     2u,
     0u,
-    0ul,
+    /*
+     * 128 MiB of GMADR, not the family's 16: Ironlake's BIOS reserves 128
+     * MiB (GGC 0380; VBE 4F00h reports 134,152,192 bytes on the Aspire
+     * 4740 of GitHub issue 28), and with 16 mapped the heap stopped at 16,
+     * leaving little for textures at 1366x768x32. The reserve was already
+     * placed from the VBE figure, at the top (v9x_gma950_ring_reserve), so
+     * the heap now runs to it as on the HD 4600's 64 MiB. That laptop's
+     * INTELGTT.TXT shows GTT entries 0-7FFEh linear from BSM, which covers
+     * it. A power of two so one MTRR still covers the mapping.
+     */
+    0x08000000ul,
     0,
-    /* Write-combined, as the GMA 950: the family's 16 MiB of the 256 MiB
+    /* Write-combined, as the GMA 950: the mapping above, of the 256 MiB
      * GMADR at D0000000, under the UC default with pairs 5-7 free on
      * W9QI2F4F; ring, batch and vertex writes drain before RING_TAIL in the
      * shared Gen3/Gen4 submit (docs\decisions\2026-10-25-ironlake-write-
@@ -858,7 +868,9 @@ const V9X_HW16_DEVICE v9x_ilk_hd_mobile_device = {
     v9x_ilk_fill_engine,
     2u,
     0u,
-    0ul,
+    /* 128 MiB, as the desktop's row above; this is the laptop whose GTT
+     * capture that rests on. */
+    0x08000000ul,
     0,
     /* Write-combined, as the desktop's. Its BIOS uses all eight MTRR
      * pairs (MtrrWrite=refused, NO_SLOT), so it is the PAT route here. */

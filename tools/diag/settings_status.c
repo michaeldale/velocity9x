@@ -838,15 +838,39 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
             char stamp[64];
             char raw_text[16];
             const char *caps_text;
+            const char *type_text;
+            const char *ring_text;
             DWORD caps = 0ul;
             DWORD raw_caps = 0ul;
+            DWORD stamp_type = 0ul;
+            DWORD stamp_ring = 0ul;
             int have_caps = 0;
+            int gen3_ring = 0;
 
             GetPrivateProfileStringA("Velocity9xHardware", "EngineStamp", "",
                                      stamp, sizeof(stamp), V9X_DIAG_HW_INI);
             caps_text = v9x_find_text(stamp, "caps=");
             if (caps_text != 0) {
                 have_caps = v9x_parse_hex32(caps_text, &caps);
+            }
+
+            /*
+             * The Gen3-type engine (GMA 950 to Ironlake) blits without a
+             * bit: its descriptors set no SOLID_FILL or SCREEN_COPY, and
+             * the HAL routes fills and copies by engine type to
+             * eng_i9xx.c, which uses the ring whenever it is up and the
+             * CPU otherwise. So for that type the stamp's ring= decides.
+             * Reading the bits alone called every such chip "CPU fill and
+             * copy" (GitHub issue 28, an Ironlake laptop).
+             */
+            type_text = v9x_find_text(stamp, "type=");
+            ring_text = v9x_find_text(stamp, "ring=");
+            if (type_text != 0 && ring_text != 0 &&
+                v9x_parse_hex32(type_text, &stamp_type) &&
+                v9x_parse_hex32(ring_text, &stamp_ring) &&
+                stamp_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 &&
+                stamp_ring != 0ul) {
+                gen3_ring = 1;
             }
 
             /*
@@ -897,8 +921,10 @@ void v9x_settings_collect(V9X_SETTINGS_STATUS *status,
                 /* Short enough for the 174-unit row on the standard-size
                  * page: surfaces and the blank wait are every family's and
                  * go unsaid; what varies is who blits and whether it flips. */
-                int fill = (caps & V9X_DD_ENGINE_CAP_SOLID_FILL) != 0ul;
-                int copy = (caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) != 0ul;
+                int fill = gen3_ring ||
+                           (caps & V9X_DD_ENGINE_CAP_SOLID_FILL) != 0ul;
+                int copy = gen3_ring ||
+                           (caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) != 0ul;
                 int flip = (caps & V9X_DD_ENGINE_CAP_FLIP) != 0ul;
 
                 v9x_append(status->directdraw, sizeof(status->directdraw),
