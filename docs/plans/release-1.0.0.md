@@ -633,3 +633,16 @@ ships none, and a 3DMark freeze watch that counted only accepted flips.
 The `3dfx` package is now booted (gate item 2). **Decided (Michael,
 2026-11-27): the Voodoo4's T22 goes to a later release**; it stays a
 README known issue in 1.0.
+
+### 2026-11-27: SiS 6326, the first `sis` boot of the 1.0 work
+
+The fifth card of the A8U4I5 round
+([record](../decisions/2026-11-27-1.0-sis6326-a8u4i5.md)), card 2
+(rev 0B, 4 MiB). It came up in VGA on the Voodoo4's files until the
+runner installed the `sis` set. Every release probe passes but
+V9XD32's T22 X8R8G8B8 texture, which draws black while A8R8G8B8 passes
+([issue](../issues/2026-11-27-sis6326-v9xd32-x8r8g8b8-texture-draws-black.md));
+the first T22 run on the card. Its first 3DMark 2000 run, by hand at
+640x480, completes (1,633 flips, no engine reset) and draws correctly.
+The `sis` package is now booted (gate item 2); whether T22X holds the
+SiS 6326's 1.0 tier is Michael's call.
