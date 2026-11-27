@@ -1,0 +1,19 @@
+{
+    "Name":  "rage128pro",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  727,
+    "BootAfter":  728,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  727,
+    "Desktop":  false,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  "finished in 6.9 min, last FlipHandled 5161",
+    "Counters":  "draws +268303, into presented +0, refused batches +0, engine stalls +0, FilterMagSeen 0x6",
+    "CounterFlags":  "",
+    "Adapter":  "1002:5046",
+    "AdapterMismatch":  false
+}

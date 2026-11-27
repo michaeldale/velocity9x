@@ -650,3 +650,17 @@ the first T22 run on the card. Its first 3DMark 2000 run, by hand at
 The `sis` package is now booted (gate item 2). **Decided (Michael,
 2026-11-27): the SiS 6326's T22X goes to a later release**; it stays a
 README known issue in 1.0.
+
+### 2026-11-27: Rage 128 Pro
+
+The sixth card of the A8U4I5 round
+([record](../decisions/2026-11-27-1.0-rage128pro-a8u4i5.md)). Bound
+through the Rage XL's class key (`Display\0007`; the `ati` files serve
+both), it came up in VGA on the SiS files until the runner installed
+the `ati` set. Every release probe passes but V9XD32's T22 X8R8G8B8
+texture, black at every DDI level while A8R8G8B8 passes, the same
+fault as the SiS 6326's
+([issue](../issues/2026-11-27-rage128pro-v9xd32-x8r8g8b8-texture-draws-black.md)).
+3DMark 2000 at its defaults runs to its score with no refusal, stall
+or engine reset, its grabbed frames whole. Whether T22X holds the
+Rage 128 Pro's 1.0 tier is Michael's call.
