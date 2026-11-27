@@ -2,11 +2,13 @@
 
 Date: 2026-11-20
 
-Status: **Phase 0 done from one DOS survey; nothing else started.** GitHub
-issue 29: the owner whose HD 2500 runs 0.59.0
+Status: **Phases 0 to 2 done; Phase 3 not started.** GitHub issues 29
+and 30: the owner whose HD 2500 runs 0.59.0
 (`docs\decisions\2026-11-20-hd2500-field-report.md`) also has this card,
-256 MiB, in the same ASRock B75M R2.0 board. They are reached through
-GitHub comments only, not remote help.
+256 MiB, in the same ASRock B75M R2.0 board. Since 2026-11-28 the machine
+is on remote help as M-Z2T02D, with the 9500 GT as the boot adapter on
+Microsoft's Standard VGA driver. Phase 2's probe:
+`docs\decisions\2026-11-28-g96-register-probe.md`.
 
 ## Why this card, and why not as an alias
 

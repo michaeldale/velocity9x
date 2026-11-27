@@ -80,6 +80,11 @@
 #define V9X_PCI_DEVICES      32ul
 #define V9X_PCI_CONFIG_BYTES 256ul
 #define V9X_GT218_ID         0x0a6510deul
+/* GeForce 9500 GT (docs\plans\nvidia-g96-geforce9500gt.md, Phase 2): the
+ * default pass only; the other modes' offsets and windows are the
+ * GT218's and unchecked on a G96. */
+#define V9X_G96_ID           0x064010deul
+#define V9X_NV50_CHIPSET_GT218 0xa8ul
 
 #define V9X_ST_GT218           0x00000001ul
 #define V9X_ST_BASE_INVALID    0x00000002ul
@@ -544,17 +549,19 @@ static void v9x_publish_pramin(void)
     }
 }
 
-/* The first GT218 on buses 0-7, function 0; 0 if none. */
+/* The first GT218 or G96 on buses 0-7, function 0; 0 if none. */
 static DWORD v9x_find_gt218(void)
 {
     DWORD bus;
     DWORD slot;
     DWORD config;
+    DWORD id;
 
     for (bus = 0ul; bus < V9X_PCI_BUSES; ++bus) {
         for (slot = 0ul; slot < V9X_PCI_DEVICES; ++slot) {
             config = V9X_PCI_ENABLE | (bus << 16) | (slot << 11);
-            if (v9x_config_read(config, 0ul) == V9X_GT218_ID) {
+            id = v9x_config_read(config, 0ul);
+            if (id == V9X_GT218_ID || id == V9X_G96_ID) {
                 return config;
             }
         }
@@ -1178,9 +1185,17 @@ void __stdcall V9xNv50MmioEntry(void)
     v9x_optional(v9x_pgraph, sizeof(v9x_pgraph) / sizeof(v9x_pgraph[0]),
                  enable, V9X_NV50_ENABLE_PGRAPH, "PgraphCapture",
                  "PGRAPH-CAPTURE-FAILED");
-    v9x_optional(v9x_copy, sizeof(v9x_copy) / sizeof(v9x_copy[0]),
-                 enable, V9X_NV50_ENABLE_CE, "CopyCapture",
-                 "COPY-CAPTURE-FAILED");
+    /* The copy engine is the GT215's; a G96 has none (nouveau
+     * nv96_chipset), and its PMC_ENABLE bits mean other engines there
+     * (subdev\mc\g84.c), so 104000h is not read on it. */
+    if (((v9x_result.boot0 >> V9X_NV50_CHIPSET_SHIFT) &
+         V9X_NV50_CHIPSET_MASK) == V9X_NV50_CHIPSET_GT218) {
+        v9x_optional(v9x_copy, sizeof(v9x_copy) / sizeof(v9x_copy[0]),
+                     enable, V9X_NV50_ENABLE_CE, "CopyCapture",
+                     "COPY-CAPTURE-FAILED");
+    } else {
+        v9x_text("Report", "CopyCapture", "skipped-no-copy-engine");
+    }
 
     /* The window's first KiB. */
     v9x_request_pramin(0ul, V9X_PRAMIN_DENSE_BYTES, 4ul);

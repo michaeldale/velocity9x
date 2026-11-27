@@ -11,9 +11,13 @@
 ;
 ; The caller names the device by its configuration address; the VxD reads
 ; the id and BAR0 itself and refuses anything that is not PCI 10DE:0A65
-; with a 16 MiB-aligned memory BAR0. Once BAR0 is mapped, PMC_BOOT_0
-; (BAR0 + 0) must name chipset A8h in bits 28:20, nouveau's chipset field
-; and its number for the GT218, or nothing else is read.
+; (GT218) or 10DE:0640 (G96, GeForce 9500 GT, docs\plans\
+; nvidia-g96-geforce9500gt.md Phase 2) with a 16 MiB-aligned memory BAR0.
+; Once BAR0 is mapped, PMC_BOOT_0 (BAR0 + 0) must name chipset A8h or 96h
+; in bits 28:20, nouveau's chipset field, or nothing else is read. The
+; register list is the GT218's; on the G96 every unit in it exists
+; (nouveau nv96_chipset) except the GT215 copy engine, which
+; V9XN5MM.EXE does not ask for there.
 ;
 ; Offsets are accepted only inside N5Windows below. Offsets come from Linux
 ; nouveau (nvkm: subdev\mc, subdev\fb\ramnv50.c, subdev\bar\nv50.c,
@@ -73,6 +77,7 @@ N5_WR_PAGE              equ 1000h
 N5_WR_PATTERN           equ 0a5000000h
 N5_ST_WRITE_DONE        equ 00000400h
 N5_ID                   equ 0a6510deh ; device 0A65h, vendor 10DEh
+N5_ID_G96               equ 064010deh ; GeForce 9500 GT, device 0640h
 N5_CFG_REVISION         equ 08h
 N5_CFG_BAR0             equ 10h
 N5_CFG_BAR1             equ 14h
@@ -94,6 +99,7 @@ N5_BASE_ALIGN           equ 00ffffffh
 N5_BAR_IO               equ 00000001h
 N5_BOOT_CHIPSET_MASK    equ 1ff00000h
 N5_BOOT_CHIPSET_GT218   equ 0a800000h
+N5_BOOT_CHIPSET_G96     equ 09600000h
 N5_OFFSET_MAX           equ 256
 
 ; Status bits returned to the publisher.
@@ -534,6 +540,8 @@ BeginProc N5_Capture
     mov     N5Result[8], eax
     cmp     eax, N5_ID
     je      short N5_Capture_Check_Base
+    cmp     eax, N5_ID_G96
+    je      short N5_Capture_Check_Base
     or      N5Result[4], N5_ST_NOT_GT218
     jmp     N5_Capture_Done
 
@@ -556,13 +564,17 @@ N5_Capture_Check_Base:
     mov     N5Mmio, eax
     or      N5Result[4], N5_ST_MMIO_MAPPED
 
-    ; PMC_BOOT_0: chipset A8h. A window that decodes anything else is
-    ; never sampled.
+    ; PMC_BOOT_0: chipset A8h, or 96h for the G96. A window that decodes
+    ; anything else is never sampled. The id is not paired with the
+    ; chipset: either id with either chipset is a Tesla behind BAR0.
     mov     edx, [eax]
     mov     N5Result[20], edx
     and     edx, N5_BOOT_CHIPSET_MASK
     cmp     edx, N5_BOOT_CHIPSET_GT218
+    je      short N5_Capture_Identity
+    cmp     edx, N5_BOOT_CHIPSET_G96
     jne     N5_Capture_Done
+N5_Capture_Identity:
     or      N5Result[4], N5_ST_IDENTITY_MATCH
 
     cmp     N5Request, N5_DIOC_FBWRITE
