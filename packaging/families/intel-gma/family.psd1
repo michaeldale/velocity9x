@@ -200,6 +200,15 @@
             Audit = @{ Required = @(); Forbidden = @() }
             Objects = @('gma950_hw16')
             MapSymbols = @('v9x_g45_x4500_device')
+
+            # The G41's GMA X4500: the same G4x GT and BAR form, from one
+            # DOS survey (GitHub issue 34); nothing has run on one:
+            # docs\decisions\2026-11-28-g41-gma-x4500-from-a-survey.md.
+            Aliases = @(
+                @{ DeviceId = '2E32'
+                   Name = 'Intel GMA X4500 (G41)'
+                   DeviceDesc = 'Velocity9x Intel GMA X4500 (G41)' }
+            )
         }
         @{
             # The Q45's GMA 4500 (G4x), unmeasured, as the G45 above.
@@ -568,7 +577,7 @@
         Include = $false
         Folder = 'INTELGMA'
         Order = 4
-        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166, 8086:0152, 8086:0112 or 8086:0122 exactly'
+        HardwareIdHint = 'PCI 8086:27AE, 8086:2592, 8086:A011, 8086:29C2, 8086:2A02, 8086:2E22, 8086:2E32, 8086:2E12, 8086:2A42, 8086:0042, 8086:0046, 8086:0412, 8086:041E, 8086:0162, 8086:0166, 8086:0152, 8086:0112 or 8086:0122 exactly'
     }
 
     Vm = @{

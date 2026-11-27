@@ -74,6 +74,7 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x8086u, 0x29C2u, v9x_intel_gma_backend }, /* intel-gma / gma3100-g33 */
     { 0x8086u, 0x2A02u, v9x_intel_gma_backend }, /* intel-gma / gma-x3100-gm965 */
     { 0x8086u, 0x2E22u, v9x_intel_gma_backend }, /* intel-gma / gma-x4500-g45 */
+    { 0x8086u, 0x2E32u, v9x_intel_gma_backend }, /* intel-gma / gma-x4500-g45 alias */
     { 0x8086u, 0x2E12u, v9x_intel_gma_backend }, /* intel-gma / gma-4500-q45 */
     { 0x8086u, 0x2A42u, v9x_intel_gma_backend }, /* intel-gma / gma-4500mhd-gm45 */
     { 0x8086u, 0x0042u, v9x_intel_gma_backend }, /* intel-gma / hd-ironlake */

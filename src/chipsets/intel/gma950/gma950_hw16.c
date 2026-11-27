@@ -912,6 +912,34 @@ const V9X_HW16_DEVICE v9x_q45_gma4500_device = {
 };
 
 /*
+ * The G45's alias: the G41's GMA X4500, 8086:2E32. An entry of its own
+ * because the PCI scan matches one per id and V9XHW.INI names the part the
+ * machine has. From one DOS survey (GitHub issue 34, an Acer board with a
+ * Pentium E5800): BAR0 64-bit at FE400000, BAR2 64-bit prefetchable at
+ * D0000000, an "Eaglelake" VGA BIOS with 32 MiB by VBE, as the G45's
+ * survey. Nothing has run on one; the engine and the GTT at BAR0 + 2 MiB
+ * are the G45's (Linux intel-gtt.c groups the G41 under IS_G4X).
+ */
+const V9X_HW16_DEVICE v9x_g41_x4500_device = {
+    0x8086u, 0x2e32u,
+    "Intel GMA X4500 (G41)",
+    "8086", "2E32",
+    "intel-gen3-mmio-fingerprint-v1",
+    "vbe-lfb",
+    "directdraw-fill-blt",
+    "hardware-gen4",
+    0,
+    v9x_g4x_fill_engine,
+    2u,
+    0u,
+    0ul,
+    0,
+    /* Write-combined, as the GM965 (see the G45 above). Not run. */
+    1u,
+    v9x_i9xx_write_combine
+};
+
+/*
  * The GM45's GMA 4500MHD (also the GS45's and GL40's). Config space and VBE
  * from an HP t5740's survey (docs\probe\references\hp-t5740-gl40-vgasurv-
  * 2026-11-04-d9d7aeb9.ini): the G45's BAR layout, GMS 64 MiB, a Cantiga

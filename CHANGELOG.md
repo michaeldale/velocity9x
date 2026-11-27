@@ -6,6 +6,12 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 1.1.0 - not yet released
 
+- **Intel GMA X4500 on the G41 (`8086:2E32`), `intel-gma` package:**
+  claimed on the G45's path from one owner's DOS survey (GitHub
+  issue 34), whose BARs and BIOS match the G45's. Before, the package
+  did not bind it. Not run on one
+  ([record](docs/decisions/2026-11-28-g41-gma-x4500-from-a-survey.md)).
+
 ## 1.0.0 - 2026-11-27
 
 1.0 supports Windows 98 SE only. Each card in the README carries a 1.0

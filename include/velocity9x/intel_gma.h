@@ -45,6 +45,10 @@
  */
 #define V9X_PCI_DEVICE_GMA_X4500_G45     ((v9x_u16)0x2e22u)
 #define V9X_PCI_DEVICE_GMA4500_Q45       ((v9x_u16)0x2e12u)
+/* The G45's alias, the G41's GMA X4500: the same G4x GT, two 64-bit BARs
+ * and an "Eaglelake" BIOS, from one DOS survey (GitHub issue 34,
+ * docs\decisions\2026-11-28-g41-gma-x4500-from-a-survey.md); not run. */
+#define V9X_PCI_DEVICE_GMA_X4500_G41     ((v9x_u16)0x2e32u)
 /*
  * G4x mobile (Cantiga), function 0: the GM45's, GS45's and GL40's GMA
  * 4500MHD. The G45's path, on the G45's BAR layout and Linux grouping the
