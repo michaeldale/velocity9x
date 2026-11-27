@@ -255,7 +255,7 @@ New in 0.59.0:
   particles and sprites (3DMark 2000's smoke and explosions) draw as
   white boxes, and V9XD32's 32-bit textures draw black. On the 4 MB
   Mystique, 3DMark 2000 at 640x480 leaves large areas of the Adventure
-  test black
+  test black, left for a later release
   ([issue](docs/issues/2026-11-27-mystique-3dmark2000-adventure-areas-missing.md)).
 - **3dfx Voodoo4:** V9XD32's 32-bit textures draw black, as they did in
   0.17.0, left for a later release

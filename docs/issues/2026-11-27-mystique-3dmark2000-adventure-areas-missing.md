@@ -3,7 +3,8 @@
 Date: 2026-11-27. Machine: A8U4I5, Matrox Mystique (MGA-1064SG,
 `102B:051A`, revision 02, 4 MiB), the 0.61.0 tree's `matrox` set.
 Status: open, cause not confirmed. The first 3DMark 2000 run on the
-card.
+card. Left for a later release (Michael, 2026-11-27); a README known
+issue in 1.0.
 
 ## What is seen
 
