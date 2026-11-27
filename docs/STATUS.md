@@ -1,10 +1,9 @@
 # Current status and next work
 
-Reviewed on 2026-11-10 against the changelog, the README's card tables,
-the 0.44.0 release-check record and the plan and issue indexes. That was
-a desk review: no machine was run for it. Rows carried over from the
-2026-10-20/21 review are marked "as of 0.23.0" where nothing later was
-found to confirm or change them.
+Reviewed on 2026-11-27 against the checkout at `bdd303fe` (the 0.61.0
+tree, to be released as 1.0.0), the [1.0 plan](plans/release-1.0.0.md),
+the README's card tables and the 2026-11-21 to 11-27 run records. A
+desk review: no machine was run for it.
 Update this page when a default, a validation result or the next step
 changes; the dated decision records and issues are the history.
 [PLAN.md](../PLAN.md) is the original planning baseline, not the current
@@ -12,115 +11,104 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.44.0](../releases/0.44.0/README.md), built from
-`24ecd14e` on 2026-11-08 and tagged `v0.44.0`: colour-keyed Direct3D
-geometry that writes depth is drawn in two passes on Gen4 and Ironlake.
-The checkout is 0.45.0, unreleased.
+The latest release is [0.60.0](../releases/0.60.0/README.md), built from
+`b3996f07`. The checkout is 0.61.0, unreleased; its next release is
+1.0.0, with no release candidate and no soak (plan, decision 4).
 
-Its release checks ran on six machines from a clean tree
-([record](decisions/2026-11-08-0.44.0-release-checks.md)): the HD 4600,
-the GMA 950 netbook, the Rage 128 Pro, the GMA 4500MHD, the RIVA 128ZX
-and the Radeon R3E. No verdict regressed against 0.43.0. The RIVA 128ZX
-fails one Glide 2 check (BlendHalf) and V9XD32 at 16 bpp, as before. The
-HD 7660D and RS690 machines were listed and not recorded.
+1.0 supports **Windows 98 SE only** (plan, B14). Windows 95, 98 first
+edition and Me install by design and are not supported.
 
-Every archive's own README still reads "HOST-AUDITED; GUEST ACTIVATION
-NOT YET TESTED"
-([issue](issues/2026-08-30-package-status-string-is-hardcoded.md)); the
-release checks install by file rename, not by Have Disk from the archive.
+Where the 1.0 gate stands:
 
-Not run on a release since the one named:
-- the HD 5450 (Cedar): 0.33.0, the tester's card is no longer installed;
-- the GMA X4500 and 4500 (G45, Q45): a reporter's run on 0.28.0;
-- the Rage Mobility-M: 0.9.1;
-- the HD 5570 (Redwood): never
-  ([record](decisions/2026-11-07-redwood-row-unmeasured.md)).
+| Gate item | State |
+|---|---|
+| 1. `run-checks.ps1` green from a clean tree | Passed on `389c37a6` (2026-11-27). Any later code change needs it again |
+| 2. Every package booted and probed | Done: `intel-gma`, `ati` and `nvidia` on the release-check fleet and remote-help machines; `s3` on the ViRGE/DX and Trio3D/2X, `matrox` on the Mystique and Millennium, `sis` and `3dfx` in A8U4I5; `vbe`, `s3` and the Mach64 VT2 on the 86Box and QEMU guests |
+| 3. B10's Have Disk installs and B13's update | B10 closed. B13: an update and a rollback on a GeForce 210 (0.59.0 to 0.60.0); the step to 1.0.0 through Check for updates is owed once it is published |
+| 4. The issue index re-read | Done 2026-11-26 |
+| 5. This page | This rewrite |
+| 6. The README's tables carry the tiers | Written 2026-11-26; see below for the "1.0 run owed" cells |
+
+Blockers B1 to B14 are closed or decided for 1.0; only B13's last step
+remains. B5 (a full-screen DOS box round trip on a physical S3 card),
+the Trio64 and Millennium II runs, and the re-runs the issue re-read
+listed were left for a later release on 2026-11-27 (Michael).
+
+The README marks several cards "1.0 run owed": Supported on the last
+run, to be run again before 1.0. With the re-runs skipped, those runs
+will not happen; the cells still say owed.
 
 ## Target coverage
 
-One physical machine per card unless the row says otherwise. A8U4I5 is
-the Pentium III test box whose card is swapped. "The netbook" is an HP
-Mini 110 (Atom N280, 945GSE). The README's
-[card tables](../README.md#supported-cards) carry the same coverage per
-interface and are kept current with each release; where the two differ,
-the README is the later one.
+The README's [card tables](../README.md#supported-cards) are the
+per-card record: tier, last run and what was tested, with links to the
+records. This section only counts them. A8U4I5 is the Pentium III test
+box whose card is swapped; most other machines are testers' reached
+through remote help.
 
-| Target | Recorded coverage | Boundary |
-|---|---|---|
-| Intel GMA 950 (`8086:27AE`) | The netbook: Direct3D on Gen3 with asynchronous submission, ring flips and the 1,024-pixel guard band ([record](decisions/2026-11-04-gen3-guard-band-step3.md)), DirectDraw on the blitter at 8, 16 and 32 bpp, 24-bit Z, OpenGL with two texture units and a CPU fallback for refused draws, Glide 2 and 3 (NFS II SE, Carmageddon II, Rollcage), DirectX 8 through DDI 6, and 3DCIF's SDK demos ([GMA 950 3DCIF](probe/netbook-gma950-3dcif-2026-10-14/README.md)). From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off | Modes are the video BIOS's: 640x480 and 1024x576 on the netbook. GDI is drawn by the CPU. No emulator runs the engine. Dragothic's sky draws white ([issue](issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)). Half-Life OpenGL can stick when a multiplayer game starts ([issue](issues/2026-10-26-gma950-hl-gl-multiplayer-start-stuck.md)). A colour-keyed texture's key colour is drawn ([issue](issues/2026-10-15-gen3-draws-the-colour-key.md)). A reporter's embedded board on an external VGA monitor hard-locked with the flip on; fixed in 0.18.3 and confirmed ([issue 6](issues/2026-10-14-github-6-gma950-embedded-hard-lock-on-3d.md)) |
-| Intel GMA 900 (`8086:2592`, 915GM) | A tester's Acer through remote help (`M-NGMX0T`): V9XDDP and V9XD32 at 16 and 32 bpp with Z16 and Z24, and 3DMark 2001 SE at 16 bpp on 0.21.0 ([record](decisions/2026-10-20-gma900-tommo33-0.21.0.md)); the heap build reads the same. Claimed from a user's survey with the GMA 950's engine ([record](decisions/2026-10-08-intel-915gm-gma900-support.md)) | As of 0.23.0. The 0.40.0 vertex-refusal fix was measured on the GMA 950, not here. A second 915GM (Acer) runs GTA and Deus Ex on 0.19.0 with no fault ([record](decisions/2026-10-19-gma900-field-reports-gta-deus-ex.md)). A reporter sees Carmageddon II exit after its intro ([issue](issues/2026-10-10-carmageddon2-exits-after-intro-gma900.md)). A reporter's Eee PC 701 stayed at 16 colours on a first install ([issue](issues/2026-11-07-first-install-stays-at-16-colours.md)) |
-| Intel GMA 3100 (`8086:29C2`, G33/G31) | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board | Nothing has run on one |
-| Intel GMA 3150 (`8086:A011`, Pineview) | A tester's Lenovo netbook (Atom N455) through remote help (`M-BWCR7F`), released in 0.22.0: Direct3D on the Gen3 engine, with V9XDDP failing only what the netbook fails; V9XD32 at 16 and 32 bpp with Z16 and Z24; all nine BIOS modes switch live; 3DMark 2000 at 1024x600x16 (755) and 800x600x32 (851) with no draw refused; the BIOS's DPLL, panel and DSPFW words and its VBT captured (CxSR left off); V9XGLP including two texture units; V9XGLIDP; DirectDraw and flips; the panel's native 1024x600 through VBE ([first run](decisions/2026-10-20-pineview-tommo33-gen3-first-run.md), [plan](plans/intel-pineview-gma3150.md)) | As of 0.23.0. No game beyond 3DMark 2000. The VBT is captured, not decoded. `A001` (desktop parts) not claimed. An Acer NAV50 whose BIOS describes no 1024x600 mode would stay at 800x600 ([record](decisions/2026-08-28-pineview-vbe-mode-list.md)) |
-| Intel GMA X3100 (`8086:2A02`, GM965) | A tester's HP laptop (Core 2 Duo T7250) through remote help (`M-KYHT4Q`), released in 0.23.0: DirectDraw on the blitter; Direct3D on the Gen4 engine, V9XD32 at 16 and 32 bpp with Z16 and Z24, mip chains, colour key, two draws in flight; OpenGL with two texture units (V9XGLP); the Glide 2 probe and a Glide 3 session; 3DMark 2000 at default and at 640x480x32 with 32-bit Z, and Quake 2 on the ICD ([record](decisions/2026-10-21-gm965-direct3d.md), [plan](plans/intel-gen4-gen5-bringup.md)) | The alpha test with depth writes hangs the engine and is refused, so Direct3D does not draw it. From 0.44.0 a colour key with depth writes is drawn in two passes; that was measured on the GM45, not on this machine ([issue](issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)). Most flips are register writes: ring flips tore 3DMark's frames and are parked on a branch. Modes are the video BIOS's, to 1024x768, scaled to the 1280x800 panel. Quake 2 needs `s_initsound 0` on this laptop |
-| Intel GMA X4500 (`8086:2E22`, G45), GMA 4500 (`8086:2E12`, Q45) | Built from the two issue 3 surveys and the G45 PRM: the GM965's path with the GTT at BAR0 + 2 MiB and G4x's PIPELINE_SELECT and 6-dword depth buffer; renderer "Velocity9x GMA 4500" ([record](decisions/2026-10-23-g4x-gma4500-from-surveys.md)). Issue 3's reporter ran Direct3D, OpenGL and Glide on both machines on 0.28.0, 3DMark 2000 1942 (G45) and 1760 (Q45) ([report](decisions/2026-11-04-g4x-g45-q45-field-report.md)) | No G4x desktop part in the fleet and no diagnostic files from the report; nothing after 0.28.0 has run on either |
-| Intel GMA 4500MHD (`8086:2A42`, GM45/GS45/GL40) | Claimed from one survey of an HP t5740 (GitHub issue 22, [record](decisions/2026-11-04-gm45-gl40-from-a-survey.md)). Since 2026-11-08 that machine is reached through remote help (`M-6B21TJ`): the Direct3D, OpenGL and Glide 2 probes pass, Forsaken's menu draws with no refusal on the 0.44.0 code, and it is in the release checks ([audit](decisions/2026-11-08-w9qi3dab-gm45-gl40-audit.md)) | Forsaken's gameplay not run. Two-unit REPLACE and DECAL fail in V9XGLP, as on the GMA X3100 and Ironlake; V9XGLP's PASS does not count them. The BIOS has no mode for the reporter's 1920x1080 monitor ([issue](issues/2026-11-06-intel-vbios-mode-table-lacks-panel-modes.md)) |
-| Intel HD Graphics (`8086:0042`, Ironlake) | A tester's Clarkdale H55 board (i3-540) through remote help (`M-J0F0SJ`), released in 0.24.0: DirectDraw fills and copies on the render ring ([record](decisions/2026-10-22-ironlake-igma-2d.md)); page flips on plane A, 23 of 23 taken ([record](decisions/2026-10-22-ironlake-igma-flips.md)); Direct3D on the Gen4 engine with Gen5 encodings, V9XD32 PASS at 16 and 32 bpp with Z16 and Z24, OpenGL and Glide probes pass, 3DMark 2000 runs to its score ([record](decisions/2026-10-22-ironlake-direct3d.md)) | That machine has run a Quadro FX 550 with the IGD disabled since 2026-11-05 ([audit](decisions/2026-11-05-w9qi2f4f-quadro-fx550-audit.md)), so no Ironlake is reachable; last run on 0.32.0. No game run. One 3DMark Game 1 frame shows hillside across the helicopter. ESR reports an instruction error after every 3D run, cause not found. No ring flips. No EDID from Windows ([record](decisions/2026-10-22-ironlake-edid-gmbus.md)). Any DOS VM switches the CRT to the VGA plane until the next mode set |
-| Intel HD Graphics 4000 (`8086:0162`, Ivy Bridge) | A tester's MSI B75MA-P45 desktop (i5-3570K, CRT) through remote help (`M-C71087`), released in 0.23.0: the HD 4600's path with Ivy Bridge's MT forcewake, PRI_LINOFF panning, Gen7 state words and PIPE_CONTROL rules; DirectDraw blits on the BCS ring at 8, 16 and 32 bpp; 46 of 46 flips latched; V9XD32 at 16 and 32 bpp and Z24; 3DMark 2000 at default (1910); V9XGLP, V9XR3DP, V9XGLIDP and a Glide 3 session ([Direct3D](decisions/2026-10-21-ivybridge-direct3d.md), [GL and Glide](decisions/2026-10-21-ivybridge-gl-glide.md), [plan](plans/intel-ivybridge-gen7.md)) | From 0.36.0 Ivy Bridge draws one texture stage per pass: two stages hard-locked the mobile part in 3DMark 2000 ([issue](issues/2026-11-05-ivb-mobile-hang-in-3dmark2000-game1.md)); that build has not run on this desktop, which has been offline. No game. 3DCIF not run. i915's IVB L3 workarounds are not written. Restart it with `reset`: the agent's `reboot` locked it |
-| Intel HD Graphics 4000 mobile (`8086:0166`) | A tester's Lenovo laptop (i7-3632QM, 1366x768 LVDS) through remote help (`M-ZJQ2DX`), released in 0.36.0: the desktop HD 4000's path behind the panel fitter; Direct3D at 16 and 32 bpp with Z16 and Z24, the OpenGL and Glide 2 probes, DirectDraw on the blitter, page flips, 3DMark 2000 ([audit](decisions/2026-11-05-w9qi75e0-ivb-mobile-audit.md), [plan](plans/intel-ivybridge-mobile-0166.md)) | Nobody has looked at the panel. The pairing of stages that stops Gen7 is not found. Its Optimus GeForce is left alone |
-| Intel HD Graphics 4600 (`8086:0412`, Haswell) | One Dell i5-4570, released in 0.19.0 and in every release check since: DirectDraw on the BCS blitter at 8, 16 and 32 bpp; Direct3D with two texture stages, indexed draws, hardware culling and the guard band, DDI 7 by default; DirectX 8 and 9 programs get DDI 8 with pixel shader 1.1 (0.34.0, [record](decisions/2026-10-30-haswell-ddi8-ps11-record.md)); OpenGL with two texture units and transform and lighting on the card (0.32.0, [plan](plans/hardware-tnl.md)); the Glide 2 probe; a heap to 30.8 MiB; draws left running ([plan](plans/intel-haswell-pipelined-submission.md)); write-combining through the page attribute table (0.33.0). 3DMark 2000 and 2001 SE, Half-Life (Direct3D and OpenGL), Quake 3 | Modes are the video BIOS's. GDI is drawn by the CPU. 3DMark 2001 SE's Nature draws its distant terrain white (parked). The full-screen DOS box returns to the desktop from 0.45.0 (2026-11-10, [record](decisions/2026-11-10-dos-box-return-screen-switch-hook.md)); before, it froze ([issue](issues/2026-09-12-netbook-dos-box-return-hardlock.md)). The Direct3D T&L device is built and not offered. 3DCIF is not supported on it. Pipelined submission's gates 6-7 (concurrent processes, close at Disable) not run. Field reports on testers' HD 4600s are open ([Tux Racer](issues/2026-10-24-haswell-tux-racer-sky-replace-rgb.md), [3DMark 2001 SE](issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md)) |
-| ATI Rage XL PCI (Rage Pro class) | A8U4I5: Direct3D on the Mach64 engine, page flips, OpenGL with `GL_SGIS_multitexture`, DirectX 8, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([555](decisions/2026-10-14-rage-xl-555-desktop.md), [3DCIF](probe/a8u4i5-rage-xl-3dcif-2026-10-14/README.md)) | As of 0.23.0. No CPU fallback: a refused draw is not drawn. 3DCIF's texel-times-vertex-alpha sprites are refused ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)). GDI is drawn by the CPU |
-| ATI Rage Mobility-M (`4C4D`) | One Gateway Solo 2150: Direct3D and OpenGL on the Mach64 engine (0.9.1, [plan](plans/ati-rage-mobility-hardware-3d.md)) | Not run since the Rage Pro class changed: the 5:5:5 desktop reaches it by design and has not booted on it. Intermittent hard lock under the broad probe ([issue](issues/2026-09-30-gateway-intermittent-black-screen-probe-lock.md)) |
-| ATI Rage IIC (`4757`) | A8U4I5: Direct3D on the Rage II trapezoid engine with CPU setup, page flips, OpenGL, Glide 2 and 3, 3DCIF's SDK demos, and the 5:5:5 desktop by default ([desktop](decisions/2026-10-14-rage-iic-555-desktop.md), [Glide](decisions/2026-10-14-rage-iic-555-textures-and-glide.md), [plan](plans/ati-rage-iic-hardware-3d.md)) | As of 0.23.0. Texel times vertex alpha is refused ([issue](issues/2026-10-03-rage-iic-texel-times-vertex-alpha-refused.md)). The blend reads back one step low at 5:5:5 ([issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md)) |
-| ATI Rage 128 Pro (`5046`) | A8U4I5, a Rage Fury Pro, 32 MiB AGP, in the release checks: DirectDraw fill and copy on the 2D engine and flips through CRTC_OFFSET (0.26.0); Direct3D on the CCE at 16 and 32 bpp with Z16, OpenGL, Glide 2 and 3 (0.28.0, [Direct3D](decisions/2026-10-23-rage128-direct3d-through-the-cce.md), [render interface](decisions/2026-10-23-rage128-render-interface.md)); the frame buffer write-combined (0.29.0, [record](decisions/2026-10-24-rage128-write-combining.md)); a refused draw goes to the CPU. 3DMark 2000, Half-Life (Direct3D and OpenGL), Diablo II (Glide). ATI's own driver measured as the reference ([record](decisions/2026-10-22-rage128-ati-baseline-and-tier0.md), [plan](plans/ati-rage128.md)) | GDI on the CPU. The CCE is fed by CPU PIO with one texture unit: the AGP ring corrupted 3DMark 2001 SE's data and is parked, cause unknown ([issue](issues/2026-10-25-rage128-32mib-map-corrupts.md)). 16 of 32 MiB mapped; no engine reset in the driver; the other Rage 128 ids unbound. 3DMark 2000 hung once in two runs on 0.32.0, not rerun. About half of ATI's 3DMark 2000 score ([plan](plans/d3d-core-throughput.md)) |
-| ATI Radeon X1200 IGP (`1002:791F`, RS690) | A tester's Sempron machine through remote help (`M-GB8KRE`), released in 0.37.0: DirectDraw on the 2D engine ([probe](decisions/2026-11-04-rs690-2d-write-probe.md)), page flips ([record](decisions/2026-11-05-rs690-flips.md)), Direct3D by register writes at 16 and 32 bpp with Z16, one texture stage, specular, fog, colour keys and mipmaps ([first boot](decisions/2026-11-05-rs690-d3d-hal-first-boot.md)); Rollcage and 3DMark 2000 ([record](decisions/2026-11-06-rs690-rollcage-and-idle-wait.md)); from 0.38.0 the OpenGL and Glide 2 probes pass on the 3D engine ([plan](plans/ati-rs690-x1200.md)) | 3DMark 2000's Game 1 tints some distant terrain red ([issue](issues/2026-11-06-rs690-3dmark2000-pink-terrain.md)). 16 MiB of the 128 MiB carve-out used. Modes from the VBE. 3DCIF not run. Listed for the 0.44.0 checks and not recorded. Why an idle wait is needed between 2D and 3D work is not known ([issue](issues/2026-11-05-rs690-t15-heap-words-zeroed-once.md)) |
-| AMD Radeon HD 5450 (`1002:68F9`, Cedar) | A tester's card through remote help (`M-BXMFA8`), released in 0.32.0: DirectDraw on the DMA engine and page flips; Direct3D and OpenGL on the CP through AMD's microcode at 16 and 32 bpp with Z16; the Glide 2 probe; 3DMark 2000 and Quake 3 ([Quake 3](decisions/2026-10-27-cedar-opengl-quake3.md), [plans](plans/ati-evergreen-cedar-3d.md)) | The card is no longer installed: nothing after 0.33.0 has run on one. The owner saw trees vanish and reappear in 3DMark 2000's Helicopter test (0.33.0). Write-combining since 0.41.0 unmeasured here |
-| AMD Radeon HD 5770 (`1002:68B8`, Juniper), HD 7470 (`1002:6778`, Caicos) | Two testers' machines through remote help, released in 0.34.0: the Evergreen engine with each part's own CP microcode and 40-bit GPU addresses; V9XD32 at 16 and 32 bpp, OpenGL, the Glide 2 probe, Quake 3 (49.3 fps on the HD 5770 at 1024x768x32, 34.6 on the HD 7470) ([Juniper](decisions/2026-11-01-juniper-bring-up.md), [Caicos](decisions/2026-11-01-caicos-direct3d-quake3.md), [plan](plans/ati-evergreen-juniper-caicos.md)) | The cards move between the two machines; neither was in the 0.44.0 checks. Vblank pacing unmeasured. 3DMark not run on the HD 7470. Write-combining since 0.41.0 unmeasured on both ([carry-over](plans/release-0.42.0-carryover.md)) |
-| AMD Radeon HD 5570 (`1002:68D9`, Redwood) | Recognised from 0.40.0 from one reporter's survey: the HD 5770's path with Redwood's numbers | Nothing has run on one ([record](decisions/2026-11-07-redwood-row-unmeasured.md)) |
-| AMD Radeon HD 7660D (`1002:9901`, Trinity) | A tester's A10-5700 machine through remote help (`M-D7TFW4`), released in 0.35.0: DMA fill, copy and flips; the CP on Aruba microcode; Direct3D and OpenGL on the Cayman module, V9XD32 at 32 and 16 bpp; 3DMark 2000 and Quake 3 at 1280x1024x32; the Glide 2 probe (0.41.0); write-combining measured ([record](decisions/2026-11-08-trinity-write-combining.md), [plan](plans/ati-trinity-hd7660d.md)) | Listed for the 0.44.0 checks and not recorded. Flip counters read zero. Modes from the VBE |
-| AMD Radeon R7E (`1002:9874`, Carrizo, GCN 3) | A tester's HP machine (GX-420GI) through remote help (`M-XP7053`), released in 0.33.0: DirectDraw on SDMA and page flips; Direct3D at 16 and 32 bpp with Z16 and OpenGL on the GCN 3 engine through AMD's microcode; 3DMark 2000 and Quake 3 ([3DMark](decisions/2026-10-29-carrizo-3dmark2000.md), [Quake 3](decisions/2026-10-29-carrizo-opengl-quake3.md), [plans](plans/ati-carrizo-gfx8-3d.md)) | Glide not run. Not in the 0.44.0 checks. Modes from the VBE, 16 and 32 bpp only |
-| AMD Radeon R3E (`1002:9854`, Mullins, GCN 2) | A tester's machine (GX-412HC) through remote help (`M-JJN1ZZ`), released in 0.41.0 and in the release checks: DirectDraw on SDMA and page flips; Direct3D at 16 and 32 bpp on the R7E's path with GCN 2 shaders; OpenGL and the Glide 2 probe on the engine; 3DMark 2000 to its score ([record](decisions/2026-11-08-mullins-3dmark2000.md), [plan](plans/ati-mullins-gfx7.md)) | No game installed. The first OpenGL or Glide clear after a program starts sometimes times out and is skipped. `GB_ADDR_CONFIG` reads 0 after gpu_init, unexplained. 3DCIF not run. GDI by the CPU |
-| ATI Mach64 VT2 (`5654`) | Emulator tier-0 | No physical validation. The [16-bpp scanout defect](issues/2026-08-16-tier0-defects-deferred.md) was recorded on the emulator |
-| S3 ViRGE/DX | Extensive 86Box regression, including Direct3D and OpenGL on the S3D. On silicon: GDI, text and DOS-box checks ([record](decisions/2026-09-06-advfunc-shield-ships.md)); since 2026-11-04 Direct3D and OpenGL in A8U4I5, released in 0.36.0: V9XDDP 197 of 227 (no check 86Box passes fails), V9XGLP PASS, 3DMark 2000 at 800x600x16, and the mip filter swap it found fixed ([record](decisions/2026-11-04-virge-dx-silicon-3d-and-mip-filter-swap.md)) | The Glide probe fails; 2 of V9XD32's failures unattributed; CPU-test margins streaked ([issue](issues/2026-11-04-virge-3dmark-cpu-test-margin-streaks.md)); no game run on silicon. A shutdown flash on the Trio64V+ and V2/DX is with a tester as two test builds ([carry-over](plans/release-0.42.0-carryover.md)) |
-| S3 Trio3D/2X and Trio3D (`8A13`, `8904`) | Physical hardware Direct3D: Final Reality and 3DMark 99 ([0.7.0](../CHANGELOG.md)); the Trio3D on the ViRGE path ([record](decisions/2026-10-04-trio3d-8904-on-the-virge-path.md)) | Half-Life refuses Direct3D and OpenGL on the 2 MiB Trio3D ([issue](issues/2026-10-04-trio3d-half-life-refuses-d3d-and-gl.md)) |
-| S3 Trio64 / Trio32 | Two physical machines: PCI GDI acceleration ([record](decisions/2026-08-27-crystalmark-barry-accelerated.md)), and VLB under Windows 95 ([handover](handoffs/2026-08-22-vlb-manual-select-handover.md)); a Trio32 guest. The Trio64V+ installs under its own name from 0.39.0 | VLB Win95 runs without the mini-VDD. Text acceleration stays off: it hung physical Trio64; on 2026-11-04 the card drew 425 accelerated strings through five DOS boxes, then locked on a drag, not isolated ([issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md)) |
-| Matrox Millennium II (MGA-2164W) | A8U4I5: Direct3D on the MGA 3D engine, measured register by register; GDI and DirectDraw on the engine; all 8 MiB walked ([D3D](decisions/2026-10-10-mga2164w-d3d-engine.md), [plan](plans/matrox-mga2164w-hardware-3d.md)); OpenGL and Glide on the engine where exact and the CPU otherwise (0.20.0, [plan](plans/matrox-mga2164w-render-interface.md)) | The chip cannot blend: Half-Life's sprites are keyed and its lighting stippled. Fog, specular, 4444 and filtering are refused. Half-Life OpenGL's Multiplayer menu is corrupt every time ([issue](issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)). The settings page shows 4 MB ([issue](issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)) |
-| Matrox Mystique (MGA-1064SG, `102B:051A`) | A8U4I5, one revision 02 card, 4 MiB, released in 0.20.0: Direct3D, OpenGL and Glide as on the Millennium II with 16-bit depth only; GDI, DirectDraw and page flips on the engine; Half-Life ([Direct3D](decisions/2026-10-19-mystique-direct3d.md), [OpenGL and Glide](decisions/2026-10-19-mystique-opengl-glide.md), [plan](plans/matrox-mystique.md)) | The Mystique 220 (1164SG) shares the id with the opposite BAR order and has not run. ARGB4444 stays off the engine |
-| Matrox Millennium (MGA-2064W) | A8U4I5 and an 86Box guest: modes to 1600x1200 at 8, 16 and 32 bpp; GDI fills, copies and text, DirectDraw and page flips on the engine ([plan](plans/matrox-millennium-family.md)) | No 3D engine: Direct3D is the CPU rasterizer. The captured desktop looks soft under both drivers ([issue](issues/2026-10-09-mga2064w-capture-looks-soft.md)) |
-| NVIDIA RIVA 128ZX (`12D2:0018`, NV3) | A tester's STB card on Windows 98 first edition through remote help (`M-7V636C`), released unfinished in 0.35.0 and in the release checks: DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips, a 5:5:5 desktop at 16 bpp; Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; Half-Life, Unreal Tournament, Thief; OpenGL, Glide and 3DCIF on the NV3 engine from 0.39.0 ([plans](plans/nvidia-riva128-d3d.md)) | Not finished. Almost all of 3DMark 2000's draws were refused; not rerun since 0.39.0 refuses a texture with no room at creation. The Glide 2 probe fails BlendHalf and V9XD32 fails one check at 16 bpp. A write mask other than RGB and CPU texture levels are refused ([issue](issues/2026-11-07-riva128-render-interface-has-no-engine.md)). No OpenGL or Glide game run. Monitor check owed |
-| SiS 6326 (`1039:6326`) | A8U4I5: DirectDraw and page flips on the 2D engine; Direct3D and OpenGL on the 3D engine, with no check failing that SiS's driver passes ([plan](plans/sis-6326-hardware-3d.md)); the frame buffer write-combined (0.34.0) | GDI is drawn by the CPU. No CPU fallback for refused draws. One of two cards hard-locked the machine and is parked |
-| 3dfx Voodoo4 4500 (VSA-100) | A8U4I5, PCI and AGP: DirectDraw and GDI fill and copy on the 2D engine; Direct3D and OpenGL on the 3D engine; 3dfx's own Glide runs and exits cleanly ([Glide](decisions/2026-10-12-glide-games-run-on-3dfx-glide-and-exit-cleanly.md), [OpenGL](decisions/2026-10-13-voodoo4-opengl-and-subpixel-correction.md)) | As of 0.23.0. Fog, specular, trilinear, 32-bit colour, the second TMU and hardware flips are not used. A Voodoo5 binds and is untested |
-| Generic VESA (`vbe`) | QEMU and 86Box; tier-0 on a physical GMA 950 and Trio3D, and as the first step on most of the remote-help machines above. Writes the screen write-combined from 0.39.0, through the page attribute table from 0.43.0 where the BIOS's ranges refuse: the i5-4570 goes 66 to 11,357 MB/s ([issue](issues/2026-11-08-vbe-no-pat-write-combining.md)) | Software drawing. Have Disk permits unlisted cards, whose behaviour is unmeasured. Screen-to-screen copies stay slow ([plan](plans/vbe-shadow-framebuffer.md)). A 16 MiB mapping is refused on a reporter's HD 3000 ([issue](issues/2026-10-22-github-13-hd3000-vbe-dpmi-map.md)). AMD CPUs unmeasured for the page attribute table route |
+**Supported, run on the 0.61.0 tree (2026-11-21 to 11-27):** GMA 900,
+GMA 950, GMA X3100, HD 3000 (`0112`), HD 4600; Mach64 VT2 (86Box only),
+Rage IIC, Rage XL, Rage 128 Pro, Radeon X1300, HD 5450, HD 5770,
+HD 7660D, Oland XT, Oland 6611 (probes only), R3E, R7E; ViRGE/DX,
+Trio3D/2X; Millennium, Mystique; GeForce 210; SiS 6326; Voodoo4; `vbe`.
+
+**Supported on an older run, not repeated for 1.0:** GMA 3150, GMA
+4500MHD (0.57.0, offline), Ironlake (0.32.0, card gone), HD 4000
+(0.56.0, card gone), HD 4000 mobile, Radeon 9250, X1200 (0.51.0,
+offline), HD 2600 XT and HD 2400 Pro (cards gone), HD 7470; Trio32/64;
+Millennium II.
+
+**Supported on a field report only:** GMA X4500 and 4500 (G45, Q45),
+HD 2500 (Ivy Bridge GT1).
+
+**Experimental:** RIVA 128ZX (V9XD32 T21 and T22 and the Glide
+BlendHalf fail, as on 21 November).
+
+**Recognised, never run:** GMA 3100, Ironlake mobile, HD 3000 `0122`,
+Radeon 9200 (`5961`, `5962`), HD 5570, Mystique AGP and Millennium II
+AGP, and the close relatives the README lists (other Trio models, the
+rest of the Rage II and Rage Pro lines, the Voodoo5, the HD 4400).
 
 ## Interfaces
 
 | Interface | State | Limit |
 |---|---|---|
-| Direct3D HAL (DirectX 5 to 7) | Every card above with a 3D engine; the CPU rasterizer elsewhere (default in `vbe` at 16 bpp, opt-in otherwise). DDI 7 is the HD 4600's default | Only what each engine draws exactly. A refused draw goes to the CPU on the GMA 950, the two Matrox 3D chips and the Rage 128 Pro; elsewhere it is not drawn |
-| DirectX 8 (DDI 6) | Rage XL, GMA 950 and GMA 900: DxDiag and 3DMark 2001 SE to a score. On the HD 4600, DDI 8 with pixel shader 1.1 (0.34.0) | Not run on the other cards. No stencil. No Direct3D 9 device |
-| OpenGL 1.1 ICD | Every 3D engine and the CPU rasterizer; `GL_ARB_multitexture` (0.25.0) and `GL_SGIS_multitexture` where the engine has two units; `GL_EXT_compiled_vertex_array` (0.38.0); transform and lighting on the HD 4600 (0.32.0) | Display lists, evaluators, feedback and selection not implemented ([inventory](plans/opengl-1.1-requirements.md)). Runs at roughly half Direct3D's speed on the older cards ([plan](plans/opengl-performance.md)) |
-| Glide 2 and 3 | Every package but `3dfx`, which runs 3dfx's own; games on the GMA 950, Rage XL, Rage IIC and Rage 128 Pro; the Glide 2 probe on most others (README table) | Render interface version 8 since 0.32.0: wrappers from 0.23.0 or earlier do not work. Not run on the SiS, the R7E, the Trio3D or the Rage Mobility-M; fails on the ViRGE/DX |
-| ATI 3DCIF | Every package; ATI's eight SDK demos on the Rage IIC, Rage XL and GMA 950; Assault Rigs and Wipeout draw their textures (0.18.5) ([plan](plans/ati-3dcif-wrapper.md)) | Not run on any card added since. No mipmaps, tiled textures, meshes or TLVERTEX ([issue](issues/2026-10-14-3dcif-unimplemented-features.md)) |
-| 16-bit colour layout | 5:5:5 by default on the ViRGE, on ATI's Rage II and Rage Pro classes and on the RIVA 128ZX; 5:6:5 elsewhere; the settings page overrides | The GMA 950's video BIOS has no 5:5:5 modes |
-| Write-combining | Rage 128 Pro, GMA 950/900/3150, Ironlake, SiS 6326, the Radeon HD 5450 to 7660D (0.41.0), the HD 4600 and `vbe` through the page attribute table where an MTRR is refused | Measured on Trinity only among the Radeon HD parts |
-| Updates and reports | Check for updates and Send report on the settings page, since 0.15.0. One update taken end to end, 0.18.0 to 0.18.1 on the 86Box Mach64 VT2 ([probe](probe/86box-mach64vt2-update-0.18.0-to-0.18.1-2026-10-15/README.md)) | 2026-11-25: 0.59.0 to 0.60.0 on a physical GeForce 210, and a rollback from its backup by WININIT rename ([record](decisions/2026-11-25-1.0-b13-update-rollback-gt218.md)); RECOVER.TXT's Safe Mode steps not run by hand |
+| Direct3D HAL (DirectX 5 to 7) | Every card with a 3D engine; the CPU rasterizer elsewhere (default in `vbe` at 16 bpp, opt-in otherwise) | Only what each engine draws exactly. A refused draw goes to the CPU on the GMA 950; elsewhere it is not drawn (README, Direct3D) |
+| DirectX 8 (DDI 6) | Offered to the programs that need it; DxDiag and 3DMark 2001 SE to a score on the Rage XL, GMA 950 and GMA 900. DDI 8 with pixel shader 1.1 on the HD 4600, HD 3000 and Oland | No stencil. No Direct3D 9 device |
+| OpenGL 1.1 ICD | Every 3D engine and the CPU rasterizer; `GL_ARB_multitexture` and `GL_SGIS_multitexture` where the engine has two units; `GL_EXT_compiled_vertex_array`; lighting on the HD 4600 only | Display lists, evaluators, feedback, selection and texgen not implemented ([inventory](plans/opengl-1.1-requirements.md)); first for 1.1 |
+| Glide 2 and 3 | Every package but `3dfx`, which runs 3dfx's own | Wrappers from 0.23.0 or earlier do not work. The half blend fails on the engines that cannot blend (Trio3D/2X, RIVA 128ZX, the Matrox cards) |
+| ATI 3DCIF | Every package; ATI's eight SDK demos on the Rage IIC, Rage XL and GMA 950 | No mipmaps, tiled textures, meshes or TLVERTEX ([issue](issues/2026-10-14-3dcif-unimplemented-features.md)) |
+| Updates and reports | Check for updates and Send report on the settings page | One physical update and rollback (B13, [record](decisions/2026-11-25-1.0-b13-update-rollback-gt218.md)); RECOVER.TXT's Safe Mode steps not run by hand |
 
-No card has a hardware cursor. GDI is accelerated on the S3, Matrox,
-Voodoo4 and RIVA 128ZX cards and drawn by the CPU on the rest.
+No card has a hardware cursor.
 
-## Open work, in order
+## Left for after 1.0
 
-Priority is a judgement; [issues/README.md](issues/README.md) lists every
-open record and [plans/README.md](plans/README.md) every plan. Rows below
-the rule marked "carried" are from the 2026-10-20 list and were not
-re-checked.
+The plan's [Not in 1.0](plans/release-1.0.0.md#not-in-10) list is the
+full record, with who decided what. In short:
 
-| Priority | Next step | Acceptance evidence |
-|---|---|---|
-| The full-screen DOS box | Returning from one froze the desktop on every card measured; since 2026-11-10 the driver hooks INT 2Fh 4001h/4002h as the DDK samples do, and the 86Box ViRGE/DX, the HD 4600 and the netbook's GMA 950 come back repainted; the netbook's round trip is recorded, an S3 card's only on 86Box, not silicon ([record](decisions/2026-11-10-dos-box-return-screen-switch-hook.md), [return](issues/2026-09-12-netbook-dos-box-return-hardlock.md), [entry](issues/2026-08-28-dos-box-entry-hang-gma950.md)) | A round trip on the netbook and one S3 card, recorded |
-| RIVA 128ZX, unfinished | 3DMark 2000 rerun on the 0.39.0 texture-room change; BlendHalf and the 16 bpp V9XD32 check ([plan](plans/nvidia-riva128-d3d.md)) | 3DMark 2000's refusals counted on the current build; both probe checks explained |
-| What 0.41.0 left unmeasured | Write-combining on Cedar, Juniper, Redwood and Caicos; 3DCIF on the R3E; `GB_ADDR_CONFIG` on Mullins; the S3 shutdown flash with a tester ([carry-over](plans/release-0.42.0-carryover.md)) | Each item struck in the carry-over list |
-| Gen4 keyed depth writes beyond the menu | 0.44.0's two-pass draw ran on the GM45's Forsaken menu only ([issue](issues/2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)) | Forsaken's gameplay on the GM45; one keyed title on the GM965 |
-| The ati gamma hook on newer parts | It writes Mach64 DAC offsets on every row with an engine descriptor; found by reading ([issue](issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)) | A ramp measured on one Evergreen-or-later part and on the Rage 128 |
-| The HD 5570 | The Redwood row is unmeasured; a test request to the GitHub issue 16 reporter is owed ([record](decisions/2026-11-07-redwood-row-unmeasured.md)) | V9XDDP and V9XD32 from one card |
-| `vbe` screen-to-screen copies | The shadow frame buffer plan, three decisions owed ([plan](plans/vbe-shadow-framebuffer.md)) | The decisions taken and its first measurement |
-| Rage 128 on the AGP ring | Parked: the ring corrupts 3DMark 2001 SE's data ([issue](issues/2026-10-25-rage128-32mib-map-corrupts.md)) | The page-table against GART probe run |
-| Direct3D throughput in the core | Measuring ([plan](plans/d3d-core-throughput.md)) | The plan's own |
-| Carried: a 3DCIF game | The SDK demos run. A tester ran Formula 1 and Tomb Raider on 0.18.0 ([issue](issues/2026-10-16-3dcif-games-on-a-testers-rage-pro.md)); the keyed-draw fix makes F1 draw textured on A8U4I5's Rage XL; F1's quad and rectangle strips are skipped | A census and a decision record for one game on the Rage XL |
-| Carried: 3DCIF follow-ups, parked | The blended-sprite decision ([issue](issues/2026-10-14-3dcif-blended-sprites-refused.md)), the Phase 3 readback probe ([issue](issues/2026-10-14-3dcif-phase3-probe-not-written.md)), Gen3 flicker and speed ([issue](issues/2026-10-14-3dcif-gen3-flicker-and-speed.md)), Gen3's 1024x256 refusal ([issue](issues/2026-10-14-gen3-refuses-1024x256-texture.md)) | Each issue's own next step |
-| Carried: the Rage IIC blend at 5:5:5, parked | A SCALE_3D_CNTL low-nibble sweep in the ATIRX scene tool | The [issue](issues/2026-10-14-rage-iic-blend-one-step-low-at-555.md) names the bit, or rules the nibble out |
-| Carried: the GMA 950 draws a colour-keyed texture's key colour | Found by the ColorKeyHalves check; reproduces on the netbook ([issue](issues/2026-10-15-gen3-draws-the-colour-key.md)) | The check passes on the netbook |
-| Carried: Intel video memory beyond 8 MiB (DVMT) | The system-memory texture pool ([plan](plans/intel-gen3-system-memory-textures.md)): decisions taken and Phase 0 measured on the netbook 2026-11-12 ([record](decisions/2026-11-12-intel-gen3-texture-pool-phase0.md)); pool policy host-tested; the Gen3 map is 64 MiB; Phase 2 passed ([record](decisions/2026-11-12-intel-gen3-texture-pool-phase2.md)); Phase 3 passed: the netbook driver has a 32 MiB texture heap in system RAM, every probe passes, 3DMark 2001 SE completes ([record](decisions/2026-11-12-intel-gen3-texture-pool-phase3.md)); Half-Life, Quake 2 and Serious Sam run on it, Serious Sam with no failed creates or evictions ([record](decisions/2026-11-12-intel-gen3-texture-pool-games.md)) | A DOS box with the pool mapped (Michael at the machine); then the GMA 3150 and G33. The GMA 900 has the pool since 2026-11-26 (M-8Z30ST, 3DMark 2000 finishes; [record](decisions/2026-11-26-gma900-m8z30st-release-probes.md)). The Dragothic sky draws with the pool ([issue](issues/2026-11-07-gma950-3dmark2001se-dragothic-sky-white.md)) |
-| Carried: probe outputs that say what produced them | V9XR3DP's and V9XGLP's INIs named no driver build and no time on 2026-10-20. The 0.44.0 release checks compare each report's `Build=` line, so part of this may be done; not checked per probe | Each probe's output carries its file name, probe build, driver and HAL build and a timestamp, checked on one guest |
-| Carried: Gen3 mip level selection on the 945 layout | The 945GSE and the GMA 3150 read level 2 where Direct3D's nearest level is 1 (V9XDDP ChainB, ChainC, ChainRows); the 915GM, placed stacked, does not ([record](decisions/2026-10-20-pineview-tommo33-gen3-first-run.md)) | The cause named: level-1 placement or the sampler's LOD rule |
-| Carried: HAL statics across processes | The HAL's static data is shared by every DirectDraw process ([issue](issues/2026-10-06-hal-statics-shared-across-processes.md)); two concurrent Direct3D processes are untested | A design for per-process state, or a record that the sharing is safe |
-| Carried: S3 text acceleration on the physical Trio64 | The DOS-box shield is verified (2026-11-04); the lock on a drag is not isolated ([issue](issues/2026-09-06-text-acceleration-hangs-physical-trio64.md)) | The drag lock reproduced with text acceleration off, or attributed to it |
+- **1.1 first:** OpenGL display lists and texgen (Tux Racer and
+  Minecraft need them in the field); GitHub PR 32 (Gen3 blitter copies
+  and a hardware cursor); branches `rv280-geomscan` and `hsw-panel-fit`.
+- **Parked branches:** `ati-cayman`, `wip-caicos-6779`, the Doom 3
+  worktree.
+- **Windows 95, 98 first edition and Me**; Stand By on a laptop.
+- **B5 on a physical S3 card**, and the Trio64's live mode switch
+  repaint and black level.
+- **Card defects found in the 1.0 round, left for later:** the
+  Mystique's black Adventure areas, the ViRGE/DX's 640x480 engine
+  timeouts, black X8R8G8B8 or 32-bit textures in V9XD32 on the
+  Rage 128 Pro, SiS 6326 and Voodoo4, the Millennium's shifted analogue
+  picture, and the Rage IIC's and Trio3D/2X's V9XD32 failures recorded in
+  their rows.
+- **Re-runs skipped for 1.0:** Forsaken on the GM45 and GM965, Final
+  Reality on the GMA 950 netbook, Doom95 and the `vbe` 1024x768x16
+  scanout on the guests, and the record re-runs (RV630/RV610 constant Z,
+  the R3E's first clear, the Rage 128's 3DMark 2000 hang, the
+  unreproduced hard locks).
+- **Feature gaps:** YUV surfaces and overlays, DPMS beyond S3, banked-only
+  VBE modes, the Bochs DISPI interface, VMware SVGA II, stencil, 8 bpp
+  gamma, an Intel GPU clock readout.
+
+Every open issue is in [issues/README.md](issues/README.md) and every
+plan in [plans/README.md](plans/README.md).

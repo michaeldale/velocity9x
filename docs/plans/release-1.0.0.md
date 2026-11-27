@@ -797,3 +797,11 @@ through Check for updates once it is published.
 detached worktree, `git status` empty before and after): every step
 from check-tree to the family packages, all eight families built.
 Code changes after this commit need the gate again before 1.0.0.
+
+### 2026-11-27: gate item 5, STATUS.md rewritten
+
+`docs/STATUS.md` rewritten against `bdd303fe`, the tree that becomes
+1.0.0: the gate table, the cards counted by tier from the README, the
+interfaces, and what is left for after 1.0. Desk review; no machine
+run. The README's "1.0 run owed" cells still say owed although those
+runs were skipped.
