@@ -4639,6 +4639,46 @@ static void d32_t19_565(DWORD c, DWORD rgb[3])
     rgb[2] = (b << 3) | (b >> 2);
 }
 
+/*
+ * NVIDIA's DXT1 colour decode, as rgbcx.h (Rich Geldreich, MIT/public
+ * domain) gives it for bc1_approx_mode NVidia: the thirds of red and blue
+ * from the raw 5-bit ends, ((2 v0 + v1) * 22) / 8, and of green from the
+ * widened 8-bit ends, (256 c0 + d / 4 + 128 + 80 d) / 256 with d = c1 -
+ * c0. The GeForce 9500 GT (G96) draws it exactly where the rule above it
+ * is up to 4 off (M-Z2T02D, docs\decisions\2026-11-28-g96-dxt-decode.md);
+ * the GeForce 210 matches the rule above. Set only for a second judging.
+ */
+static DWORD d32_t19_dxt_nv;
+
+static DWORD d32_t19_nv5(DWORD v0, DWORD v1)
+{
+    return ((2ul * v0 + v1) * 22ul) / 8ul;
+}
+
+static DWORD d32_t19_nv6(DWORD c0, DWORD c1)
+{
+    long d = (long)c1 - (long)c0;
+
+    /* C division truncates toward zero, as rgbcx's int arithmetic does. */
+    return (DWORD)((256l * (long)c0 + d / 4l + 128l + d * 80l) / 256l);
+}
+
+/* Thirds 2 (k = 2) and 3 (k = 3) by NVIDIA's rule, into out. */
+static void d32_t19_dxt_nv_third(DWORD c0, DWORD c1, DWORD k, DWORD out[3])
+{
+    DWORD a[3];
+    DWORD b[3];
+    DWORD near0 = k == 2ul;
+
+    d32_t19_565(c0, a);
+    d32_t19_565(c1, b);
+    out[0] = near0 ? d32_t19_nv5((c0 >> 11) & 31ul, (c1 >> 11) & 31ul)
+                   : d32_t19_nv5((c1 >> 11) & 31ul, (c0 >> 11) & 31ul);
+    out[1] = near0 ? d32_t19_nv6(a[1], b[1]) : d32_t19_nv6(b[1], a[1]);
+    out[2] = near0 ? d32_t19_nv5(c0 & 31ul, c1 & 31ul)
+                   : d32_t19_nv5(c1 & 31ul, c0 & 31ul);
+}
+
 /* Texel (x, y) of the DXT `kind` texture as A8R8G8B8, decoded. */
 static DWORD d32_t19_dxt_texel(DWORD kind, long x, long y)
 {
@@ -4658,6 +4698,9 @@ static DWORD d32_t19_dxt_texel(DWORD kind, long x, long y)
         out[k] = index == 0ul ? a[k] : index == 1ul ? b[k] :
                  index == 2ul ? (2ul * a[k] + b[k]) / 3ul
                               : (a[k] + 2ul * b[k]) / 3ul;
+    }
+    if (d32_t19_dxt_nv != 0ul && index >= 2ul) {
+        d32_t19_dxt_nv_third(c0, c1, index, out);
     }
     if (kind == 3ul) {
         alpha = d32_t19_dxt_alpha4(x, y) * 17ul;
@@ -5611,6 +5654,22 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
         verdict = d32_t19_judge(program, &parsed, &judged, vertex,
                                 (const BYTE *)locked.pBits,
                                 (DWORD)locked.Pitch, format);
+        /* A DXT mismatch is judged again by NVIDIA's DXT1 colour decode
+         * (d32_t19_dxt_nv): the same image, every pixel, the second set
+         * of keys after a Rejudge line. Either decode is the card's, not
+         * the driver's, so either passes. */
+        if (p->dxt != 0ul && lstrcmpA(verdict, "mismatch") == 0) {
+            wsprintfA(key, "T19%sRejudge", p->name);
+            d32_line(key, "nv-decode");
+            d32_t19_dxt_nv = 1ul;
+            verdict = d32_t19_judge(program, &parsed, &judged, vertex,
+                                    (const BYTE *)locked.pBits,
+                                    (DWORD)locked.Pitch, format);
+            d32_t19_dxt_nv = 0ul;
+            if (lstrcmpA(verdict, "pass") == 0) {
+                verdict = "pass-nv-decode";
+            }
+        }
     }
     if (lock_hr == 0) {
         ((d32_d3d8_surf_unlock_fn)back->vtbl[D3DSURF8_UNLOCK_RECT])(back);
@@ -5654,7 +5713,8 @@ static DWORD d32_t19_program(D32_OBJECT *device, DWORD program,
     d32_t19_dxt_kind = 0ul;
     wsprintfA(key, "T19%sVerdict", p->name);
     d32_line(key, verdict);
-    return lstrcmpA(verdict, "pass") == 0 ? 1ul : 0ul;
+    return (lstrcmpA(verdict, "pass") == 0 ||
+            lstrcmpA(verdict, "pass-nv-decode") == 0) ? 1ul : 0ul;
 }
 
 /* T19 itself; the count it adds to the run's failures, 0 or 1. */

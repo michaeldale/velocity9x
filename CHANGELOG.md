@@ -17,11 +17,17 @@ build identifier so exact guest-tested binaries remain traceable.
   the chip's own 3D class (NV84_3D), with the Z buffer kept at 24 bits
   because that class has no 16-bit Z: the Direct3D probe passes at 16
   and 32 bpp, pixel shader 1.1 included, except its 16-bit precision
-  check and the DXT textures, whose colours come back up to 4 levels
-  off. No game run yet
+  check. Its DXT colours differ from the GeForce 210's by up to 4
+  levels: the card decodes DXT1 by NVIDIA's own rule, which it matches
+  pixel for pixel. No game run yet
   ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md),
   [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md),
-  [Direct3D](docs/decisions/2026-11-28-g96-direct3d.md)).
+  [Direct3D](docs/decisions/2026-11-28-g96-direct3d.md),
+  [DXT](docs/decisions/2026-11-28-g96-dxt-decode.md)).
+- **V9XD32: a DXT mismatch is judged again by NVIDIA's DXT1 colour
+  decode** (as rgbcx models it), and passes as `pass-nv-decode` when the
+  whole image matches it; the first judging is unchanged
+  ([record](docs/decisions/2026-11-28-g96-dxt-decode.md)).
 
 - **Ironlake (HD Graphics, `8086:0042` and `0046`): DirectDraw and
   Direct3D get the BIOS's 128 MiB, not 16.** The driver mapped 16 MiB
