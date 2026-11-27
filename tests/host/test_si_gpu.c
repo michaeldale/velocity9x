@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "velocity9x/si_gpu_init.h"
+#include "velocity9x/si_gfx_microcode.h"
 #include "velocity9x/si_3d.h"
 #include "velocity9x/si_clear_state.h"
 #include "velocity9x/vi_shader.h"
@@ -111,6 +112,452 @@ static void test_gpu_init(void)
         CHECK(ops[index].offset != 0x08020ul);
         CHECK(ops[index].offset != 0x0c32cul && ops[index].offset != 0x0c330ul);
     }
+}
+
+/* FNV-1a over every entry's offset, clear and set, low byte first. */
+static v9x_u32 ops_hash(v9x_u32 count)
+{
+    v9x_u32 hash = 0x811c9dc5ul;
+    v9x_u32 index;
+    v9x_u32 word;
+    v9x_u32 value;
+    v9x_u32 byte;
+
+    for (index = 0ul; index < count; ++index) {
+        for (word = 0ul; word < 3ul; ++word) {
+            value = word == 0ul ? ops[index].offset :
+                    word == 1ul ? ops[index].clear : ops[index].set;
+            for (byte = 0ul; byte < 4ul; ++byte) {
+                hash ^= (value >> (byte * 8ul)) & 0xfful;
+                hash *= 0x01000193ul;
+            }
+        }
+    }
+    return hash;
+}
+
+/* A full die of chip: nothing fused off, the given row. */
+static void full_config(struct v9x_si_gpu_config *config, v9x_u32 chip,
+                        v9x_u32 noofcols)
+{
+    memset(config, 0, sizeof(*config));
+    config->chip = chip;
+    config->mc_arb_ramcfg = noofcols << 6;
+}
+
+/* The entries for offset in order, up to max; returns how many. */
+static v9x_u32 find_all(v9x_u32 count, v9x_u32 offset,
+                        const struct v9x_vi_reg_seq **found, v9x_u32 max)
+{
+    v9x_u32 index;
+    v9x_u32 n = 0ul;
+
+    for (index = 0ul; index < count; ++index) {
+        if (ops[index].offset == offset) {
+            if (n < max) {
+                found[n] = &ops[index];
+            }
+            ++n;
+        }
+    }
+    return n;
+}
+
+/* The index of the first entry at offset whose set is value, from start;
+ * count if none. */
+static v9x_u32 find_write(v9x_u32 count, v9x_u32 start, v9x_u32 offset,
+                          v9x_u32 value)
+{
+    v9x_u32 index;
+
+    for (index = start; index < count; ++index) {
+        if (ops[index].offset == offset && ops[index].set == value) {
+            return index;
+        }
+    }
+    return count;
+}
+
+/* Ids to chips; shapes; GRBM_GFX_INDEX's select. */
+static void test_si_chips(void)
+{
+    v9x_u32 engines = 0ul;
+    v9x_u32 arrays = 0ul;
+
+    CHECK(v9x_si_chip_for_device(0x6610ul) == V9X_SI_CHIP_OLAND);
+    CHECK(v9x_si_chip_for_device(0x6611ul) == V9X_SI_CHIP_OLAND);
+    CHECK(v9x_si_chip_for_device(0x682cul) == V9X_SI_CHIP_VERDE);
+    CHECK(v9x_si_chip_for_device(0x6808ul) == V9X_SI_CHIP_PITCAIRN);
+    CHECK(v9x_si_chip_for_device(0x6780ul) == V9X_SI_CHIP_TAHITI);
+    CHECK(v9x_si_chip_for_device(0x6798ul) == V9X_SI_CHIP_NONE);
+    CHECK(v9x_si_chip_for_device(0ul) == V9X_SI_CHIP_NONE);
+
+    CHECK(v9x_si_chip_shape(V9X_SI_CHIP_OLAND, &engines, &arrays) ==
+          V9X_STATUS_OK && engines == 1ul && arrays == 1ul);
+    CHECK(v9x_si_chip_shape(V9X_SI_CHIP_VERDE, &engines, &arrays) ==
+          V9X_STATUS_OK && engines == 1ul && arrays == 2ul);
+    CHECK(v9x_si_chip_shape(V9X_SI_CHIP_PITCAIRN, &engines, &arrays) ==
+          V9X_STATUS_OK && engines == 2ul && arrays == 2ul);
+    CHECK(v9x_si_chip_shape(V9X_SI_CHIP_TAHITI, &engines, &arrays) ==
+          V9X_STATUS_OK && engines == 2ul && arrays == 2ul);
+    CHECK(v9x_si_chip_shape(V9X_SI_CHIP_COUNT, &engines, &arrays) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+    CHECK(v9x_si_chip_shape(V9X_SI_CHIP_OLAND, 0, &arrays) ==
+          V9X_STATUS_INVALID_ARGUMENT);
+
+    /* INSTANCE_BROADCAST (30), SH_INDEX 15:8, SE_INDEX 23:16. */
+    CHECK(v9x_si_grbm_select(0ul, 0ul) == 0x40000000ul);
+    CHECK(v9x_si_grbm_select(0ul, 1ul) == 0x40000100ul);
+    CHECK(v9x_si_grbm_select(1ul, 0ul) == 0x40010000ul);
+    CHECK(v9x_si_grbm_select(1ul, 1ul) == 0x40010100ul);
+}
+
+/* The Oland's list through the general path, from its measured inputs, is
+ * the 144 entries that ran on W9QI0DAD, entry for entry (FNV-1a of the
+ * list built from the 2026-11-28 tree before the other chips joined). */
+static void test_oland_unchanged(void)
+{
+    struct v9x_si_gpu_config config;
+    v9x_u32 count;
+
+    count = v9x_si_gpu_init_ops(ops, SI_OPS_MAX);
+    CHECK(count == 144ul);
+    CHECK(ops_hash(count) == 0x105ccc15ul);
+
+    full_config(&config, V9X_SI_CHIP_OLAND, 2ul);
+    config.mc_arb_ramcfg = 0x000012a1ul;
+    config.cu_disable[0][0] = 0xffc00000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(count == 144ul);
+    CHECK(ops_hash(count) == 0x105ccc15ul);
+
+    CHECK(v9x_si_gpu_init_ops_for(0, ops, SI_OPS_MAX) == 0ul);
+    config.chip = V9X_SI_CHIP_COUNT;
+    CHECK(v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX) == 0ul);
+}
+
+/* Tahiti, the whole die (W9000's 32 CUs, eight RBs), a 4 KiB row. */
+static void test_tahiti_full(void)
+{
+    struct v9x_si_gpu_config config;
+    const struct v9x_vi_reg_seq *entry;
+    const struct v9x_vi_reg_seq *found[8];
+    v9x_u32 count;
+    v9x_u32 at;
+    v9x_u32 se;
+    v9x_u32 sh;
+
+    full_config(&config, V9X_SI_CHIP_TAHITI, 2ul);
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(count != 0ul && count <= V9X_VI_GPU_INIT_OPS_MAX);
+
+    /* TAHITI_GB_ADDR_CONFIG_GOLDEN 12011003h: ROW_SIZE 2 for 4 KiB,
+     * NUM_SHADER_ENGINES (13:12) 1 for two. The same to HDP and both DMA
+     * engines. */
+    entry = find_last(count, 0x098f8ul);
+    CHECK(entry != 0 && entry->set == 0x22011003ul &&
+          entry->clear == 0xfffffffful);
+    entry = find_last(count, 0x02f48ul);
+    CHECK(entry != 0 && entry->set == 0x22011003ul);
+    entry = find_last(count, 0x0d8b8ul);
+    CHECK(entry != 0 && entry->set == 0x22011003ul);
+
+    /* Tile mode 0: depth micro tiling (2), 2D thin (4) at 5:2,
+     * P8_32x32_8x16 (10) at 10:6, 64 B split, bank height 4 (2) at 17:16,
+     * macro aspect 2 (1) at 19:18, 16 banks (3) at 21:20. */
+    entry = find_last(count, 0x09910ul);
+    CHECK(entry != 0 && entry->set == 0x00360292ul);
+    /* Modes 4, 8 and 13, the ones Direct3D uses: 1D depth, linear
+     * aligned, 1D thin, at Oland's indices. */
+    entry = find_last(count, 0x09910ul + 4ul * 4ul);
+    CHECK(entry != 0 && entry->set == (2ul | (2ul << 2) | (10ul << 6)));
+    entry = find_last(count, 0x09910ul + 8ul * 4ul);
+    CHECK(entry != 0 && entry->set == (1ul << 2));
+    entry = find_last(count, 0x09910ul + 13ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 2) & 0xful) == 2ul);
+    /* Mode 3 takes the row: 4 KiB is 6 at 13:11. */
+    entry = find_last(count, 0x09910ul + 3ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 11) & 7ul) == 6ul);
+
+    /* setup_rb: all eight RBs on, so one broadcast write of
+     * gfx_v6_0_raster_config's TAHITI value, after the golden 2A00126Ah. */
+    entry = find_last(count, 0x28350ul);
+    CHECK(entry != 0 && entry->set == 0x2a001260ul &&
+          entry->clear == 0xfffffffful);
+    CHECK(find_all(count, 0x28350ul, found, 8ul) == 2ul);
+
+    /* setup_spi: each of the four arrays selected in turn, CU 0's bit
+     * cleared in each, then broadcast. */
+    at = find_write(count, 0ul, 0x28350ul, 0x2a001260ul);
+    for (se = 0ul; se < 2ul; ++se) {
+        for (sh = 0ul; sh < 2ul; ++sh) {
+            at = find_write(count, at, 0x0802cul,
+                            v9x_si_grbm_select(se, sh));
+            CHECK(at + 1ul < count);
+            if (at + 1ul < count) {
+                CHECK(ops[at + 1ul].offset == 0x090e8ul &&
+                      ops[at + 1ul].clear == 1ul && ops[at + 1ul].set == 0ul);
+            }
+        }
+    }
+    CHECK(find_all(count, 0x090e8ul, found, 8ul) == 4ul);
+    entry = find_last(count, 0x0802cul);
+    CHECK(entry != 0 && entry->set == 0xe0000000ul);
+
+    /* Its own scan converter FIFO: backend 100h. */
+    entry = find_last(count, 0x08bccul);
+    CHECK(entry != 0 && entry->set ==
+          (0x20ul | (0x100ul << 6) | (0x30ul << 15) | (0x130ul << 23)));
+    /* No TCC off: setup_tcc writes nothing; the golden steer stands. */
+    CHECK(find_all(count, 0x0ac14ul, found, 8ul) == 1ul);
+    entry = find_last(count, 0x0ac0cul);
+    CHECK(entry != 0 && entry->set == 0xa9210876ul);
+
+    /* Pitcairn: Tahiti's address config and tile table, its own golden
+     * steer and the same two-engine raster. */
+    full_config(&config, V9X_SI_CHIP_PITCAIRN, 2ul);
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(count != 0ul && count <= V9X_VI_GPU_INIT_OPS_MAX);
+    entry = find_last(count, 0x098f8ul);
+    CHECK(entry != 0 && entry->set == 0x22011003ul);
+    entry = find_last(count, 0x09910ul);
+    CHECK(entry != 0 && entry->set == 0x00360292ul);
+    entry = find_last(count, 0x28350ul);
+    CHECK(entry != 0 && entry->set == 0x2a001260ul);
+    entry = find_last(count, 0x0ac0cul);
+    CHECK(entry != 0 && entry->set == 0x32761054ul);
+    CHECK(find_all(count, 0x090e8ul, found, 8ul) == 4ul);
+}
+
+/* Tahiti with SE 1's second array's two RBs off: six of eight, so
+ * write_harvested_raster_configs writes each engine its own. SE 0 keeps
+ * the whole map; SE 1's packer 1 has no RB, so PKR_MAP goes to 0 (9:8)
+ * and RB_MAP_PKR1 to 3 (3:2): 2A00106Ch. */
+static void test_tahiti_harvested_rbs(void)
+{
+    struct v9x_si_gpu_config config;
+    const struct v9x_vi_reg_seq *found[8];
+    v9x_u32 count;
+    v9x_u32 at;
+
+    full_config(&config, V9X_SI_CHIP_TAHITI, 2ul);
+    config.rb_disable[1][1] = 0x00030000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(count != 0ul);
+    CHECK(find_all(count, 0x28350ul, found, 8ul) == 3ul);
+    at = find_write(count, 0ul, 0x0802cul, 0x60000000ul);
+    CHECK(at + 1ul < count && ops[at + 1ul].offset == 0x28350ul &&
+          ops[at + 1ul].set == 0x2a001260ul &&
+          ops[at + 1ul].clear == 0xfffffffful);
+    at = find_write(count, at, 0x0802cul, 0x60010000ul);
+    CHECK(at + 2ul < count && ops[at + 1ul].offset == 0x28350ul &&
+          ops[at + 1ul].set == 0x2a00106cul);
+    CHECK(at + 2ul < count && ops[at + 2ul].offset == 0x0802cul &&
+          ops[at + 2ul].set == 0xe0000000ul);
+
+    /* All of SE 1 off: SE_MAP to 0 in both engines' values (25:24). */
+    full_config(&config, V9X_SI_CHIP_TAHITI, 2ul);
+    config.rb_disable[1][0] = 0x00030000ul;
+    config.rb_disable[1][1] = 0x00030000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    at = find_write(count, 0ul, 0x0802cul, 0x60000000ul);
+    CHECK(at + 1ul < count && ops[at + 1ul].set == 0x28001260ul);
+
+    /* No RB readable at all: Linux writes the plain value, broadcast. */
+    full_config(&config, V9X_SI_CHIP_TAHITI, 2ul);
+    config.rb_disable[0][0] = 0x00ff0000ul;
+    config.rb_disable[0][1] = 0x00ff0000ul;
+    config.rb_disable[1][0] = 0x00ff0000ul;
+    config.rb_disable[1][1] = 0x00ff0000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(find_all(count, 0x28350ul, found, 8ul) == 2ul);
+    CHECK(found[1]->set == 0x2a001260ul);
+}
+
+/* Cape Verde, one engine of two arrays and four RBs; a 2 KiB row; the W4100
+ * is a harvested die (eight of ten CUs), so setup_spi's choice of CU is
+ * exercised as Linux makes it, its shift-by-k walk included. */
+static void test_verde(void)
+{
+    struct v9x_si_gpu_config config;
+    const struct v9x_vi_reg_seq *entry;
+    const struct v9x_vi_reg_seq *found[8];
+    v9x_u32 count;
+    v9x_u32 at;
+
+    full_config(&config, V9X_SI_CHIP_VERDE, 1ul);
+    /* SH 0: CU 0 off, so CU 1's bit. SH 1: CUs 0 and 1 off; Linux's mask
+     * goes 1, 2, 8, so CU 3's bit, not CU 2's. Bits past five CUs are
+     * Linux's mask's to drop. */
+    config.cu_disable[0][0] = 0xffe10000ul;
+    config.cu_disable[0][1] = 0x00030000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(count != 0ul && count <= V9X_VI_GPU_INIT_OPS_MAX);
+
+    /* VERDE_GB_ADDR_CONFIG_GOLDEN 12010002h with ROW_SIZE 1, one engine. */
+    entry = find_last(count, 0x098f8ul);
+    CHECK(entry != 0 && entry->set == 0x12010002ul);
+    /* Mode 3 and 17 take the 2 KiB split (5). */
+    entry = find_last(count, 0x09910ul + 3ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 11) & 7ul) == 5ul);
+    entry = find_last(count, 0x09910ul + 17ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 11) & 7ul) == 5ul);
+    /* Mode 2, a fixed 256 B split, is not the row's. */
+    entry = find_last(count, 0x09910ul + 2ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 11) & 7ul) == 2ul);
+    /* Mode 8 is plain linear aligned on Cape Verde, as on Tahiti. */
+    entry = find_last(count, 0x09910ul + 8ul * 4ul);
+    CHECK(entry != 0 && entry->set == (1ul << 2));
+
+    /* Four RBs on: VERDE's raster config, broadcast. */
+    entry = find_last(count, 0x28350ul);
+    CHECK(entry != 0 && entry->set == 0x00001240ul);
+    CHECK(find_all(count, 0x28350ul, found, 8ul) == 2ul);
+
+    at = find_write(count, 0ul, 0x0802cul, 0x40000000ul);
+    CHECK(at + 1ul < count && ops[at + 1ul].offset == 0x090e8ul &&
+          ops[at + 1ul].clear == 2ul);
+    at = find_write(count, at, 0x0802cul, 0x40000100ul);
+    CHECK(at + 1ul < count && ops[at + 1ul].offset == 0x090e8ul &&
+          ops[at + 1ul].clear == 8ul);
+
+    entry = find_last(count, 0x08bccul);
+    CHECK(entry != 0 && ((entry->set >> 6) & 0x1fful) == 0x40ul);
+
+    /* An array with no CU found by the walk: selected, nothing cleared. */
+    full_config(&config, V9X_SI_CHIP_VERDE, 2ul);
+    config.cu_disable[0][1] = 0x001f0000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    CHECK(find_all(count, 0x090e8ul, found, 8ul) == 1ul);
+    at = find_write(count, 0ul, 0x0802cul, 0x40000100ul);
+    CHECK(at + 1ul < count && ops[at + 1ul].offset == 0x0802cul);
+}
+
+/* The DRAM row from MC_ARB_RAMCFG's NOOFCOLS (7:6): 4 * 2^(8 + n) bytes,
+ * at most 4 KiB (gfx_v6_0_constants_init). */
+static void test_row_size(void)
+{
+    struct v9x_si_gpu_config config;
+    const struct v9x_vi_reg_seq *entry;
+    v9x_u32 count;
+
+    full_config(&config, V9X_SI_CHIP_TAHITI, 0ul);
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    entry = find_last(count, 0x098f8ul);
+    CHECK(entry != 0 && entry->set == 0x02011003ul);
+    entry = find_last(count, 0x09910ul + 3ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 11) & 7ul) == 4ul);
+
+    full_config(&config, V9X_SI_CHIP_TAHITI, 3ul);
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    entry = find_last(count, 0x098f8ul);
+    CHECK(entry != 0 && entry->set == 0x22011003ul);
+    entry = find_last(count, 0x09910ul + 3ul * 4ul);
+    CHECK(entry != 0 && ((entry->set >> 11) & 7ul) == 6ul);
+
+    /* Only NOOFCOLS counts. */
+    full_config(&config, V9X_SI_CHIP_VERDE, 2ul);
+    config.mc_arb_ramcfg |= 0xffffff3ful;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    entry = find_last(count, 0x098f8ul);
+    CHECK(entry != 0 && entry->set == 0x22010002ul);
+}
+
+/* setup_tcc on Tahiti with TCC 0 off: the golden steer A9210876h,
+ * 543Bh less TCC 0, eleven banks. */
+static void test_tahiti_tcc(void)
+{
+    struct v9x_si_gpu_config config;
+    const struct v9x_vi_reg_seq *entry;
+    v9x_u32 count;
+
+    full_config(&config, V9X_SI_CHIP_TAHITI, 2ul);
+    config.tcc_disable = 0x00010000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    entry = find_last(count, 0x0ac14ul);
+    CHECK(entry != 0 && entry->clear == 0x0000000ful && entry->set == 10ul);
+    entry = find_last(count, 0x0ac10ul);
+    CHECK(entry != 0 && entry->set == 0x00000543ul &&
+          entry->clear == 0xfffffffful);
+    entry = find_last(count, 0x0ac0cul);
+    CHECK(entry != 0 && entry->set == 0xba921876ul);
+
+    /* Bits past Tahiti's twelve TCCs are not TCCs. */
+    full_config(&config, V9X_SI_CHIP_TAHITI, 2ul);
+    config.tcc_disable = 0xf0000000ul;
+    count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+    entry = find_last(count, 0x0ac0cul);
+    CHECK(entry != 0 && entry->set == 0xa9210876ul);
+}
+
+/* Every chip's list stays inside the probe's windows and the HAL's
+ * capacity, never resets, never touches the RLC's microcode port, and
+ * writes none of the registers the HAL reads before building it: the
+ * reads stand for Linux's, which come after the golden lists. Every
+ * GRBM_GFX_INDEX value is broadcast or a select. */
+static void test_all_chips_safe(void)
+{
+    struct v9x_si_gpu_config config;
+    v9x_u32 chip;
+    v9x_u32 count;
+    v9x_u32 index;
+    v9x_u32 value;
+
+    for (chip = 0ul; chip < V9X_SI_CHIP_COUNT; ++chip) {
+        full_config(&config, chip, 2ul);
+        config.rb_disable[1][1] = 0x00010000ul;
+        config.tcc_disable = 0x00020000ul;
+        count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+        CHECK(count != 0ul && count <= V9X_VI_GPU_INIT_OPS_MAX);
+        CHECK(v9x_si_gpu_init_ops_for(&config, ops, count - 1ul) == 0ul);
+        count = v9x_si_gpu_init_ops_for(&config, ops, SI_OPS_MAX);
+        for (index = 0ul; index < count; ++index) {
+            CHECK((ops[index].offset & 3ul) == 0ul);
+            CHECK(in_windows(ops[index].offset));
+            CHECK(ops[index].offset != 0x08020ul);
+            CHECK(ops[index].offset != 0x0c32cul &&
+                  ops[index].offset != 0x0c330ul);
+            CHECK(ops[index].offset != V9X_SI_MC_ARB_RAMCFG &&
+                  ops[index].offset != V9X_SI_CC_RB_BACKEND_DISABLE &&
+                  ops[index].offset != V9X_SI_GC_USER_RB_BACKEND_DISABLE &&
+                  ops[index].offset != V9X_SI_CC_GC_SHADER_ARRAY_CONFIG &&
+                  ops[index].offset != V9X_SI_GC_USER_SHADER_ARRAY_CONFIG &&
+                  ops[index].offset != V9X_SI_CGTS_TCC_DISABLE &&
+                  ops[index].offset != V9X_SI_CGTS_USER_TCC_DISABLE);
+            if (ops[index].offset == V9X_SI_GRBM_GFX_INDEX) {
+                value = ops[index].set;
+                CHECK(ops[index].clear == 0xfffffffful);
+                CHECK(value == 0xe0000000ul ||
+                      (value & 0xff00fefful) == 0x40000000ul ||
+                      (value & 0xff00fffful) == 0x60000000ul);
+            }
+        }
+        /* It ends broadcast. */
+        CHECK(find_last(count, V9X_SI_GRBM_GFX_INDEX) != 0 &&
+              find_last(count, V9X_SI_GRBM_GFX_INDEX)->set == 0xe0000000ul);
+    }
+}
+
+/* The microcode images that differ per chip are their own; those that do
+ * not are the Oland's (si_gfx_microcode.h). */
+static void test_si_microcode(void)
+{
+    CHECK(v9x_si_verde_rlc_microcode[0] != 0ul ||
+          v9x_si_verde_rlc_microcode[1] != 0ul);
+    CHECK(memcmp(v9x_si_rlc_microcode, v9x_si_verde_rlc_microcode,
+                 sizeof(v9x_si_rlc_microcode)) != 0);
+    CHECK(memcmp(v9x_si_rlc_microcode, v9x_si_pitcairn_rlc_microcode,
+                 sizeof(v9x_si_rlc_microcode)) != 0);
+    CHECK(memcmp(v9x_si_rlc_microcode, v9x_si_tahiti_rlc_microcode,
+                 sizeof(v9x_si_rlc_microcode)) != 0);
+    CHECK(memcmp(v9x_si_pitcairn_rlc_microcode, v9x_si_tahiti_rlc_microcode,
+                 sizeof(v9x_si_rlc_microcode)) != 0);
+    CHECK(memcmp(v9x_si_pfp_microcode, v9x_si_verde_pfp_microcode,
+                 sizeof(v9x_si_pfp_microcode)) != 0);
+    CHECK(memcmp(v9x_si_pfp_microcode, v9x_si_pitcairn_pfp_microcode,
+                 sizeof(v9x_si_pfp_microcode)) != 0);
+    CHECK(memcmp(v9x_si_me_microcode, v9x_si_verde_me_microcode,
+                 sizeof(v9x_si_me_microcode)) != 0);
 }
 
 static v9x_u32 stream_dwords[2048];
@@ -522,6 +969,15 @@ unsigned int v9x_run_si_gpu_tests(void)
 {
     failures = 0u;
     test_gpu_init();
+    test_si_chips();
+    test_oland_unchanged();
+    test_tahiti_full();
+    test_tahiti_harvested_rbs();
+    test_verde();
+    test_row_size();
+    test_tahiti_tcc();
+    test_all_chips_safe();
+    test_si_microcode();
     test_start();
     test_gfx6_rect();
     test_gfx6_shaders();

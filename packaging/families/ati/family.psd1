@@ -691,10 +691,27 @@
             # Oland 6611 (HD 8570 / R7 240): the full six-CU die, both RBs
             # and the 6610's 4 KiB row, read by V9XSIMM from M-BXMFA8's
             # Dell board (docs\decisions\2026-11-20-oland-6611-survey.md).
+            #
+            # FirePro W4100 (Cape Verde), W7000 (Pitcairn) and W9000
+            # (Tahiti): GCN 1 on this row's hook and identity, claimed
+            # unrun from DOS surveys (GitHub issue 15). The HAL tells them
+            # apart by device id, with each chip's microcode and a
+            # gpu_init list for two shader engines where the chip has them
+            # (docs\decisions\
+            # 2026-11-28-si-cape-verde-pitcairn-tahiti-from-surveys.md).
             Aliases = @(
                 @{ DeviceId = '6611'
                    Name = 'AMD Radeon Oland 6611'
                    DeviceDesc = 'Velocity9x AMD Radeon Oland 6611' }
+                @{ DeviceId = '682C'
+                   Name = 'AMD FirePro W4100 (Cape Verde)'
+                   DeviceDesc = 'Velocity9x AMD FirePro W4100 (Cape Verde)' }
+                @{ DeviceId = '6808'
+                   Name = 'AMD FirePro W7000 (Pitcairn)'
+                   DeviceDesc = 'Velocity9x AMD FirePro W7000 (Pitcairn)' }
+                @{ DeviceId = '6780'
+                   Name = 'AMD FirePro W9000 (Tahiti)'
+                   DeviceDesc = 'Velocity9x AMD FirePro W9000 (Tahiti)' }
             )
         }
         @{
@@ -1112,7 +1129,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro (2026-11-27), Rage XL and Rage IIC (2026-11-26) in A8U4I5 and HD 5450 (2026-11-26), release probes run on the 0.61.0 tree; Radeon 9250 (2026-11-16), HD 7470 (2026-11-23) and Rage Mobility-M on their last run, not run for 1.0; HD 2600 XT and HD 2400 Pro on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, Radeon 9200 5961 and 5962'
+        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro (2026-11-27), Rage XL and Rage IIC (2026-11-26) in A8U4I5 and HD 5450 (2026-11-26), release probes run on the 0.61.0 tree; Radeon 9250 (2026-11-16), HD 7470 (2026-11-23) and Rage Mobility-M on their last run, not run for 1.0; HD 2600 XT and HD 2400 Pro on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, Radeon 9200 5961 and 5962, FirePro W4100, W7000 and W9000'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'
@@ -1125,7 +1142,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, 1002:7146, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, 1002:682C, 1002:6808, 1002:6780, 1002:7146, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is

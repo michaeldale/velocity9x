@@ -11,6 +11,14 @@ build identifier so exact guest-tested binaries remain traceable.
   issue 34), whose BARs and BIOS match the G45's. Before, the package
   did not bind it. Not run on one
   ([record](docs/decisions/2026-11-28-g41-gma-x4500-from-a-survey.md)).
+- **FirePro W4100 (Cape Verde, `1002:682C`), W7000 (Pitcairn,
+  `1002:6808`) and W9000 (Tahiti, `1002:6780`), `ati` package:**
+  claimed on the Oland XT's path from one owner's DOS surveys (GitHub
+  issue 15), each with its own AMD microcode and the engine setup
+  Linux gives it. Pitcairn and Tahiti have two shader engines where
+  the Oland has one; the setup for that is Linux's and has not run.
+  Before, the package did not bind them. Not run on any of the three
+  ([record](docs/decisions/2026-11-28-si-cape-verde-pitcairn-tahiti-from-surveys.md)).
 
 ## 1.0.0 - 2026-11-27
 

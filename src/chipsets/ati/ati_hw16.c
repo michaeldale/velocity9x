@@ -49,6 +49,9 @@ extern const V9X_HW16_DEVICE v9x_cik_mullins_device;
 void v9x_mullins_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_si_oland_device;
 extern const V9X_HW16_DEVICE v9x_si_oland_6611_device;
+extern const V9X_HW16_DEVICE v9x_si_verde_w4100_device;
+extern const V9X_HW16_DEVICE v9x_si_pitcairn_w7000_device;
+extern const V9X_HW16_DEVICE v9x_si_tahiti_w9000_device;
 /* oland_hw16.c: the same, for the Oland row. */
 void v9x_oland_publish_diagnostics(v9x_hw16_write_fn write);
 extern const V9X_HW16_DEVICE v9x_mach64_vt3_device;
@@ -119,6 +122,17 @@ static unsigned short v9x_ati_gamma_device(const V9X_HW16_DEVICE *device)
                v9x_rage_mobility_device.fill_engine_descriptor ||
            device->fill_engine_descriptor ==
                v9x_rage_iic_device.fill_engine_descriptor;
+}
+
+/* The GCN 1 rows - the Oland, its 6611 alias and the FirePro W4100, W7000
+ * and W9000 - share the Oland's hook (oland_hw16.c), so the descriptor
+ * identifies them, as above: one comparison where a pointer per row would
+ * cost _TEXT a few bytes each. */
+static int v9x_ati_si_row(const V9X_HW16_DEVICE *device)
+{
+    return device != 0 &&
+           device->fill_engine_descriptor ==
+               v9x_si_oland_device.fill_engine_descriptor;
 }
 
 /*
@@ -192,7 +206,10 @@ static const V9X_HW16_DEVICE * const v9x_ati_devices[] = {
     &v9x_rv280_9200se_device,
     &v9x_rv280_9200_5961_device,
     &v9x_rv280_9200_5962_device,
-    &v9x_si_oland_6611_device
+    &v9x_si_oland_6611_device,
+    &v9x_si_verde_w4100_device,
+    &v9x_si_pitcairn_w7000_device,
+    &v9x_si_tahiti_w9000_device
 };
 
 /*
@@ -302,14 +319,13 @@ static void v9x_ati_publish_diagnostics(const V9X_HW16_DEVICE *device,
     if (device == &v9x_cik_mullins_device) {
         v9x_mullins_publish_diagnostics(write);
     }
-    if (device == &v9x_si_oland_device ||
-        device == &v9x_si_oland_6611_device) {
+    if (v9x_ati_si_row(device)) {
         v9x_oland_publish_diagnostics(write);
     }
 }
 
-/* Only the Evergreen chips, the R6xx ones and the Oland answer, each with
- * the 128 MiB its row maps: every other chip of the family keeps the
+/* Only the Evergreen chips, the R6xx ones and the GCN 1 rows answer, each
+ * with the 128 MiB its row maps: every other chip of the family keeps the
  * VBE's figure, which a zero leaves in place (enable16.c). */
 static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
                                                   unsigned long reported_bytes)
@@ -323,8 +339,7 @@ static unsigned long v9x_ati_measure_video_memory(unsigned long mapped_bytes,
         device == &v9x_evergreen_trinity_device ||
         device == &v9x_r600_rv630_device ||
         device == &v9x_r600_rv610_device ||
-        device == &v9x_si_oland_device ||
-        device == &v9x_si_oland_6611_device) {
+        v9x_ati_si_row(device)) {
         return v9x_cedar_measure_video_memory(mapped_bytes, reported_bytes);
     }
     return 0ul;

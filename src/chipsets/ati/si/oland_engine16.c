@@ -1,5 +1,6 @@
 /*
- * The Oland row's engine hook and diagnostics, in LEAFCODE (leaf16.h).
+ * The Oland row's engine hook and diagnostics, and the FirePro rows that
+ * share them (at the end), in LEAFCODE (leaf16.h).
  *
  * The ati family's _TEXT reached its 57,344-byte budget with the Oland
  * row in it (58,355 bytes, 2026-11-12), so the row's code lives here and
@@ -133,3 +134,73 @@ const char * V9X_LEAF_FAR v9x_oland_diagnostic(unsigned short index,
     v9x_oland_text[V9X_OLAND_HEX_DIGITS] = '\0';
     return v9x_oland_text;
 }
+
+/*
+ * Three more GCN 1 chips on the Oland's path, claimed unrun from DOS
+ * surveys of their owner's cards (GitHub issue 15): FirePro W4100 (Cape
+ * Verde, 1002:682C, 2 GiB), W7000 (Pitcairn, 1002:6808, 4 GiB) and W9000
+ * (Tahiti, 1002:6780, 6 GiB). Each reads as the Oland's BAR layout: BAR0
+ * a 64-bit prefetchable window at D0000000h or E0000000h, 256 MiB
+ * aligned, BAR2 the 64-bit register window. The hook is the Oland's, so
+ * they carry its engine identity bit; the HAL tells them apart by the PCI
+ * device id and brings each up with its own microcode and a gpu_init list
+ * built from what the card reads, two shader engines on Pitcairn and
+ * Tahiti (si_gpu_init.c). Their BAR0 sizes, VRAM placement and fused-off
+ * units were not read: docs\decisions\
+ * 2026-11-28-si-cape-verde-pitcairn-tahiti-from-surveys.md.
+ *
+ * Here, not in oland_hw16.c, because rows are data and the family's _TEXT
+ * had no room for three more (121 bytes over with them there): the PCI
+ * scan reaches a row through a far pointer, so it may live in LEAFCODE.
+ * The hook a row names is a near pointer to oland_hw16.c's thunk in
+ * _TEXT, which enable16.c, also in _TEXT, calls near; nothing here calls
+ * it.
+ */
+extern void v9x_oland_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes);
+
+/* The Oland row's 128 MiB of BAR0 (oland_hw16.c says why), which assumes
+ * the same 256 MiB BAR0 these surveys did not size. */
+#define V9X_SI_FIREPRO_MAP_BYTES 0x08000000ul
+
+#define V9X_SI_FIREPRO_TAIL \
+    "ati-si-unavailable-v1", \
+    "vbe-lfb", \
+    "directdraw-fill-copy", \
+    "not-advertised", \
+    0, \
+    v9x_oland_fill_engine, \
+    0u, \
+    0u, \
+    V9X_SI_FIREPRO_MAP_BYTES, \
+    0, \
+    V9X_HW16_WC_BAR256, \
+    0, \
+    V9X_HW16_SCREEN_SHADOW
+
+const V9X_HW16_DEVICE v9x_si_verde_w4100_device = {
+    0x1002u, 0x682cu,
+    "AMD FirePro W4100 (Cape Verde)",
+    "1002", "682C",
+    V9X_SI_FIREPRO_TAIL
+};
+
+const V9X_HW16_DEVICE v9x_si_pitcairn_w7000_device = {
+    0x1002u, 0x6808u,
+    "AMD FirePro W7000 (Pitcairn)",
+    "1002", "6808",
+    V9X_SI_FIREPRO_TAIL
+};
+
+const V9X_HW16_DEVICE v9x_si_tahiti_w9000_device = {
+    0x1002u, 0x6780u,
+    "AMD FirePro W9000 (Tahiti)",
+    "1002", "6780",
+    V9X_SI_FIREPRO_TAIL
+};

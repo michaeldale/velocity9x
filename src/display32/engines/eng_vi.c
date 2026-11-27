@@ -68,9 +68,10 @@
 /* The one Oland the ati package claims (oland_hw16.c). */
 #define V9X_VI_OLAND_DEVICE 0x6610ul
 
-/* CONFIG_MEMSIZE in MiB: the 16-bit side refused anything outside this. */
+/* CONFIG_MEMSIZE in MiB: the mini-VDD's VI_MAP refused anything outside
+ * this. 16384 since the FirePro W9000's 6 GiB (loader.asm says why). */
 #define V9X_VI_MEMSIZE_MIN_MIB 256ul
-#define V9X_VI_MEMSIZE_MAX_MIB 4096ul
+#define V9X_VI_MEMSIZE_MAX_MIB 16384ul
 
 /* Packets staged before they go into the ring at once, with room for the
  * closing fence. */

@@ -57,14 +57,19 @@ extern void V9X_LEAF_FAR v9x_oland_fill_engine_leaf(
 extern const char * V9X_LEAF_FAR v9x_oland_diagnostic(unsigned short index,
                                                       const char **key);
 
-static void v9x_oland_fill_engine(unsigned long framebuffer_linear_base,
-                                  unsigned long *control_linear_base,
-                                  unsigned long *mapped_aperture_bytes,
-                                  unsigned long *engine_type,
-                                  unsigned long *engine_caps,
-                                  unsigned long *gtt_linear_base,
-                                  unsigned long *ring_linear_base,
-                                  unsigned long *ring_bytes)
+/*
+ * External, a family-internal symbol: the FirePro rows in oland_engine16.c
+ * (LEAFCODE) point at it. It stays a near function in _TEXT, which
+ * enable16.c calls near through whichever row matched.
+ */
+void v9x_oland_fill_engine(unsigned long framebuffer_linear_base,
+                           unsigned long *control_linear_base,
+                           unsigned long *mapped_aperture_bytes,
+                           unsigned long *engine_type,
+                           unsigned long *engine_caps,
+                           unsigned long *gtt_linear_base,
+                           unsigned long *ring_linear_base,
+                           unsigned long *ring_bytes)
 {
     (void)framebuffer_linear_base;
     v9x_oland_fill_engine_leaf(control_linear_base, mapped_aperture_bytes,
@@ -149,3 +154,5 @@ const V9X_HW16_DEVICE v9x_si_oland_6611_device = {
     0,
     V9X_HW16_SCREEN_SHADOW
 };
+
+/* The FirePro W4100, W7000 and W9000 rows are in oland_engine16.c. */
