@@ -11,6 +11,14 @@ build identifier so exact guest-tested binaries remain traceable.
   issue 34), whose BARs and BIOS match the G45's. Before, the package
   did not bind it. Not run on one
   ([record](docs/decisions/2026-11-28-g41-gma-x4500-from-a-survey.md)).
+- **AMD Radeon HD 7570 (Turks, `1002:675D`), `ati` package:** claimed
+  on the Evergreen path from one owner's DOS survey of a Dell OEM card
+  (GitHub issue 36). It takes the HD 5570's path: DirectDraw on the DMA
+  engine, page flips, and Direct3D and OpenGL on the 3D engine, with
+  Turks's PFP microcode (its ME is the HD 7470's, byte for byte) and
+  Linux's configuration for the chip. Before, the package did not bind
+  it. Not run on one
+  ([record](docs/decisions/2026-11-28-turks-hd7570-from-a-survey.md)).
 
 ## 1.0.0 - 2026-11-27
 

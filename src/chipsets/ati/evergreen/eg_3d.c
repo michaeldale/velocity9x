@@ -347,6 +347,67 @@ const struct v9x_eg_reg_update
     { EG_PA_CL_ENHANCE, 0ul, EG_PA_CL_ENHANCE_VALUE }
 };
 
+/*
+ * Turks's: Redwood's table, entry for entry, without SMX_SAR_CTL0.
+ * evergreen_gpu_init's CHIP_TURKS case is CHIP_REDWOOD's (1 SE, 4 pipes, 4
+ * tile pipes, 2 backends, 256 GPRs, 248 threads, 256 stack entries, export
+ * sizes 256/64/192, FIFOs 100h/30h/130h, 2 CF instructions, 8 contexts,
+ * golden GB_ADDR_CONFIG 02010002) but for 6 SIMDs, which nothing here
+ * writes. Turks is not in the no-vertex-cache list, so VC_ENABLE and
+ * VC_AND_TC; not in the 96-PS-thread list, so Juniper's 128 / 16 split.
+ * The backend map is Redwood's arithmetic: 4 pipes, 2 of 8 backends. On
+ * BTC Linux takes the disabled backends from CC_RB_BACKEND_DISABLE rather
+ * than the RCU fuse straps; neither is read here, as for every Evergreen
+ * row. Not yet run on a card.
+ */
+const struct v9x_eg_reg_update
+    v9x_eg_turks_gpu_init[V9X_EG_TURKS_GPU_INIT_COUNT] = {
+    { V9X_EG_GRBM_CNTL, 0ul, EG_GRBM_CNTL_VALUE },
+    { EG_GB_ADDR_CONFIG, 0ul, EG_JUNIPER_GB_ADDR_CONFIG },
+    { EG_GB_BACKEND_MAP, 0ul, EG_REDWOOD_BACKEND_MAP },
+    { EG_CGTS_SYS_TCC_DISABLE, 0ul, 0ul },
+    { EG_CGTS_TCC_DISABLE, 0ul, 0ul },
+    { EG_CGTS_USER_SYS_TCC, 0ul, 0ul },
+    { EG_CGTS_USER_TCC, 0ul, 0ul },
+    { EG_CP_QUEUE_THRESHOLDS, 0ul, EG_CP_QUEUE_VALUE },
+    { EG_CP_MEQ_THRESHOLDS, 0ul, EG_CP_MEQ_VALUE },
+    { EG_TA_CNTL_AUX, 0ul, EG_TA_CNTL_AUX_VALUE },
+    { EG_SX_DEBUG_1, 0xfffffffful, EG_ENABLE_NEW_SMX },
+    { EG_SMX_DC_CTL0, EG_SMX_SETS_KEEP, EG_SMX_SETS_CEDAR },
+    { EG_SX_EXPORT_SIZES, 0ul, EG_SX_EXPORT_JUNIPER },
+    { EG_PA_SC_FIFO_SIZE, 0ul, EG_PA_SC_FIFO_JUNIPER },
+    { EG_VGT_NUM_INSTANCES, 0ul, 1ul },
+    { EG_SPI_CONFIG_CNTL, 0ul, 0ul },
+    { EG_SPI_CONFIG_CNTL_1, 0ul, EG_SPI_CNTL_1_VALUE },
+    { EG_CP_PERFMON_CNTL, 0ul, 0ul },
+    { EG_SQ_MS_FIFO_SIZES, 0ul, EG_SQ_MS_FIFO_JUNIPER },
+    { V9X_EG_SQ_CONFIG, EG_SQ_CONFIG_KEEP, EG_SQ_CONFIG_SET_JUNIPER },
+    { EG_SQ_GPR_MGMT_1, 0ul, EG_SQ_GPR_1_VALUE },
+    { EG_SQ_GPR_MGMT_2, 0ul, EG_SQ_GPR_2_VALUE },
+    { EG_SQ_GPR_MGMT_3, 0ul, EG_SQ_GPR_3_VALUE },
+    { EG_SQ_THREAD_MGMT, 0ul, EG_SQ_THREAD_JUNIPER_INIT },
+    { EG_SQ_THREAD_MGMT_2, 0ul, EG_SQ_THREAD_2_JUNIPER_INIT },
+    { EG_SQ_STACK_MGMT_1, 0ul, EG_SQ_STACK_VALUE },
+    { EG_SQ_STACK_MGMT_2, 0ul, EG_SQ_STACK_VALUE },
+    { EG_SQ_STACK_MGMT_3, 0ul, EG_SQ_STACK_VALUE },
+    { V9X_EG_SQ_DYN_GPR_FLUSH, 0ul, 0ul },
+    { EG_PA_SC_FORCE_EOV, 0ul, EG_PA_SC_EOV_VALUE },
+    { EG_VGT_CACHE_INVALIDATE, 0ul, EG_VGT_CACHE_JUNIPER },
+    { EG_VGT_GS_VERTEX_REUSE, 0ul, 16ul },
+    { EG_PA_SU_LINE_STIPPLE, 0ul, 0ul },
+    { EG_PA_SC_LINE_STIPPLE, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x00ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x04ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x08ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x0cul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x10ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x14ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x18ul, 0ul, 0ul },
+    { EG_CB_PERF_CTR0_SEL_0 + 0x1cul, 0ul, 0ul },
+    { EG_HDP_MISC_CNTL, 0xfffffffful, EG_HDP_FLUSH_INVALIDATE },
+    { EG_PA_CL_ENHANCE, 0ul, EG_PA_CL_ENHANCE_VALUE }
+};
+
 /* A 256-byte-aligned GPU address field: the 40-bit address shifted right by
  * 8, bits 39:32 landing in 31:24 (evergreen_cs.c reads every such base as
  * value << 8). */
@@ -608,13 +669,14 @@ void v9x_eg_pm4_pad(struct v9x_eg_pm4 *stream)
 
 void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip)
 {
-    /* evergreen_cp_start: MAX_HW_CONTEXTS - 1 (3; Juniper's and Redwood's
-     * 8 give 7), DEVICE_ID(1). */
+    /* evergreen_cp_start: MAX_HW_CONTEXTS - 1 (3; Juniper's, Redwood's and
+     * Turks's 8 give 7), DEVICE_ID(1). */
     v9x_eg_pm4_put(stream, v9x_eg_packet3(V9X_EG_P3_ME_INITIALIZE, 6ul));
     v9x_eg_pm4_put(stream, 0x1ul);
     v9x_eg_pm4_put(stream, 0x0ul);
     v9x_eg_pm4_put(stream, chip == V9X_EG_CHIP_JUNIPER ||
-                           chip == V9X_EG_CHIP_REDWOOD ? 7ul : 3ul);
+                           chip == V9X_EG_CHIP_REDWOOD ||
+                           chip == V9X_EG_CHIP_TURKS ? 7ul : 3ul);
     v9x_eg_pm4_put(stream, 1ul << 16);
     v9x_eg_pm4_put(stream, 0ul);
     v9x_eg_pm4_put(stream, 0ul);
@@ -711,8 +773,9 @@ void v9x_eg_3d_default_state(struct v9x_eg_pm4 *stream, v9x_u32 chip)
         sq[8] = EG_SQ_STACK_JUNIPER;
         sq[9] = EG_SQ_STACK_JUNIPER;
         sq[10] = EG_SQ_STACK_JUNIPER;
-    } else if (chip == V9X_EG_CHIP_REDWOOD) {
-        /* Juniper's vertex cache and threads, Cedar's 42 stack entries. */
+    } else if (chip == V9X_EG_CHIP_REDWOOD || chip == V9X_EG_CHIP_TURKS) {
+        /* Juniper's vertex cache and threads, Cedar's 42 stack entries:
+         * Linux 3.9's CHIP_TURKS case is CHIP_REDWOOD's value for value. */
         sq[0] = EG_SQ_CONFIG_SET_JUNIPER;
         sq[6] = EG_SQ_THREAD_JUNIPER_DEFAULT;
         sq[7] = EG_SQ_THREAD_2_JUNIPER_DEFAULT;

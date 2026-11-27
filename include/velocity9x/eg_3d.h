@@ -226,15 +226,26 @@ extern const struct v9x_eg_reg_update
 extern const struct v9x_eg_reg_update
     v9x_eg_redwood_gpu_init[V9X_EG_REDWOOD_GPU_INIT_COUNT];
 
+/* Turks's (BTC): Redwood's table less SMX_SAR_CTL0, which Linux writes
+ * only up to CHIP_SUMO2, as Caicos's omits it. Linux's CHIP_TURKS numbers
+ * are otherwise Redwood's but for 6 SIMDs, written nowhere here. Not yet
+ * run on a card. */
+#define V9X_EG_TURKS_GPU_INIT_COUNT 44u
+extern const struct v9x_eg_reg_update
+    v9x_eg_turks_gpu_init[V9X_EG_TURKS_GPU_INIT_COUNT];
+
 /* The Evergreen chips whose state differs: the HAL picks by the engine's
- * V9X_DD_ENGINE_CAP_EG_CAICOS, _EG_JUNIPER and _EG_REDWOOD. */
+ * V9X_DD_ENGINE_CAP_EG_CAICOS, _EG_JUNIPER and _EG_REDWOOD, and Turks by
+ * its PCI id (V9X_DD_ENGINE.pci_device, 1002:675D), every cap bit being
+ * taken. */
 #define V9X_EG_CHIP_CEDAR   0ul
 #define V9X_EG_CHIP_CAICOS  1ul
 #define V9X_EG_CHIP_JUNIPER 2ul
 #define V9X_EG_CHIP_REDWOOD 3ul
+#define V9X_EG_CHIP_TURKS   4ul
 
-/* ME_INITIALIZE for the chip's hardware contexts (4, Juniper and Redwood
- * 8): 7 dwords. */
+/* ME_INITIALIZE for the chip's hardware contexts (4, Juniper, Redwood and
+ * Turks 8): 7 dwords. */
 #define V9X_EG_ME_INITIALIZE_DWORDS 7ul
 void v9x_eg_3d_me_initialize(struct v9x_eg_pm4 *stream, v9x_u32 chip);
 /* evergreen_cp_start after ME_INITIALIZE: the clear-state preamble. */

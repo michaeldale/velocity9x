@@ -20,7 +20,7 @@
     SchemaVersion = 1
     Id = 'ati'
     DisplayName = 'ATI Mach64 / Rage'
-    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770, Radeon HD 5570, Radeon HD 7660D, Radeon R7E (Carrizo) and Radeon R3E (Mullins), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
+    Description = 'ATI Mach64 VT2, Rage Mobility-M, 3D Rage IIC, Rage 128 Pro, Radeon HD 5450, Radeon HD 7470, Radeon HD 5770, Radeon HD 5570, Radeon HD 7570, Radeon HD 7660D, Radeon R7E (Carrizo) and Radeon R3E (Mullins), dispatched at run time by PCI id, plus bound-but-unvalidated aliases of each: Mach64 VT3/VT4, the Rage II class and the Rage Pro class.'
 
     Chips = @(
         @{
@@ -501,6 +501,49 @@
                 Forbidden = @()
             }
             MapSymbols = @('v9x_evergreen_redwood_device')
+        }
+        @{
+            Id = 'turks'
+            Name = 'AMD Radeon HD 7570 (Turks)'
+            VendorId = '1002'
+            DeviceId = '675D'
+            # No SubsystemId: the one known board, GitHub issue 36's Dell
+            # OEM card, reads 1028:2B20, and the bare id binds every board
+            # built on the chip.
+            DeviceDesc = 'Velocity9x AMD Radeon HD 7570 (Turks)'
+            Adapter = 'AMD Radeon HD 7570 (Turks)'
+            ClockDetector = 'ati-evergreen-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # A row in Cedar's module with Cedar's hook and claims; the HAL
+            # tells Turks by its PCI id for its PFP microcode (its ME is
+            # Caicos's) and Redwood's configuration less SMX_SAR_CTL0. Not
+            # yet run on a card
+            # (docs\decisions\2026-11-28-turks-hd7570-from-a-survey.md).
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'hardware-evergreen-cp'
+            EngineType = 'ATI_EVERGREEN'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
+            # What issue 36's VBE 4F00h reports.
+            VideoMemoryBytes = 16777216
+
+            # Baseline modes issue 36's survey lists (V9XSURV.INI
+            # [VBEModes]); the rest come from the runtime VBE scan.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('cedar_hw16')
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_evergreen_turks_device')
         }
         @{
             Id = 'trinity'
@@ -1090,6 +1133,7 @@
                            'v9x_evergreen_cedar_device', 'v9x_evergreen_caicos_device',
                            'v9x_evergreen_juniper_device',
                            'v9x_evergreen_redwood_device',
+                           'v9x_evergreen_turks_device',
                            'v9x_evergreen_trinity_device',
                            'v9x_vi_carrizo_device',
                            'v9x_cik_mullins_device',
@@ -1112,7 +1156,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro (2026-11-27), Rage XL and Rage IIC (2026-11-26) in A8U4I5 and HD 5450 (2026-11-26), release probes run on the 0.61.0 tree; Radeon 9250 (2026-11-16), HD 7470 (2026-11-23) and Rage Mobility-M on their last run, not run for 1.0; HD 2600 XT and HD 2400 Pro on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, Radeon 9200 5961 and 5962'
+        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro (2026-11-27), Rage XL and Rage IIC (2026-11-26) in A8U4I5 and HD 5450 (2026-11-26), release probes run on the 0.61.0 tree; Radeon 9250 (2026-11-16), HD 7470 (2026-11-23) and Rage Mobility-M on their last run, not run for 1.0; HD 2600 XT and HD 2400 Pro on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, HD 7570, Radeon 9200 5961 and 5962'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'
@@ -1125,7 +1169,7 @@
         Include = $true
         Folder = 'ATI'
         Order = 3
-        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, 1002:7146, and the Rage II, Rage Pro and VT3/VT4 aliases'
+        HardwareIdHint = 'PCI 1002:5654, 1002:4C4D, 1002:4757, 1002:5046, 1002:68F9, 1002:6778, 1002:68B8, 1002:68D9, 1002:675D, 1002:9901, 1002:9874, 1002:9854, 1002:6610, 1002:6611, 1002:7146, and the Rage II, Rage Pro and VT3/VT4 aliases'
         # Installed files that ride a third disk, which the floppy INF names
         # as a second source disk: disk 1 went 408 bytes over with the
         # Rage 128's indexed primitives (Michael, 2026-10-24: "third disk is
@@ -1193,6 +1237,10 @@
             }
             @{
                 ChipId = 'redwood'
+                Emulator = 'none'
+            }
+            @{
+                ChipId = 'turks'
                 Emulator = 'none'
             }
             @{

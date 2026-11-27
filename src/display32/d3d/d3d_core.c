@@ -31,6 +31,8 @@
 #include "r3d/r3d_records.h"
 #include "r3d/r3d_validate.h"
 #include "velocity9x/r3d_abi.h"
+/* V9X_PCI_DEVICE_TURKS_675D, for the Evergreen renderer name. */
+#include "velocity9x/ati_mach64.h"
 #include "d3d_state.h"
 #include "d3d_select.h"
 #include "d3d_dp2.h"
@@ -10567,6 +10569,10 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         } else if ((v9x_hal->engine.engine_caps &
                     V9X_DD_ENGINE_CAP_EG_TRINITY) != 0ul) {
             name = "Velocity9x Radeon HD 7660D";
+        } else if (v9x_hal->engine.pci_device ==
+                   (DWORD)V9X_PCI_DEVICE_TURKS_675D) {
+            /* Turks carries no identity bit; its PCI id names it. */
+            name = "Velocity9x Radeon HD 7570";
         } else {
             name = "Velocity9x Radeon HD 5450";
         }

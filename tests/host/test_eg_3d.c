@@ -162,6 +162,10 @@ static void test_cp_streams(void)
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
     v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_REDWOOD);
     CHECK(stream.count == V9X_EG_ME_INITIALIZE_DWORDS && buffer[3] == 7ul);
+    /* Turks has 8 too (evergreen_gpu_init, CHIP_TURKS). */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_me_initialize(&stream, V9X_EG_CHIP_TURKS);
+    CHECK(stream.count == V9X_EG_ME_INITIALIZE_DWORDS && buffer[3] == 7ul);
 
     /* The preamble as V9XEG3D sent it: the default context (227 dwords)
      * between BEGIN and END_CLEAR_STATE, then 18 more. */
@@ -219,6 +223,17 @@ static void test_cp_streams(void)
      * stage (Linux 3.9's set_default_state, CHIP_REDWOOD). */
     v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
     v9x_eg_3d_default_state(&stream, V9X_EG_CHIP_REDWOOD);
+    CHECK(stream.overflow == 0ul && stream.count == 35ul + 227ul);
+    CHECK(buffer[10] == 0xe4000003ul && buffer[11] == 0x402e005dul);
+    CHECK(buffer[16] == 0x14141480ul && buffer[17] == 0x00001414ul);
+    CHECK(buffer[18] == 0x002a002aul && buffer[19] == 0x002a002aul &&
+          buffer[20] == 0x002a002aul);
+
+    /* Turks: Linux 3.9's set_default_state for CHIP_TURKS is Redwood's
+     * case value for value (vertex cache on, 128 PS threads, 20 for the
+     * others, 42 stack entries a stage). */
+    v9x_eg_pm4_begin(&stream, buffer, BUFFER_DWORDS);
+    v9x_eg_3d_default_state(&stream, V9X_EG_CHIP_TURKS);
     CHECK(stream.overflow == 0ul && stream.count == 35ul + 227ul);
     CHECK(buffer[10] == 0xe4000003ul && buffer[11] == 0x402e005dul);
     CHECK(buffer[16] == 0x14141480ul && buffer[17] == 0x00001414ul);
@@ -343,6 +358,39 @@ static void test_gpu_init_redwood(void)
         }
         CHECK(redwood[index].set == expected);
     }
+}
+
+/* Turks's evergreen_gpu_init: Linux's CHIP_TURKS numbers are Redwood's
+ * (1 SE, 4 pipes, 2 backends, 248 threads, 256 stack entries, golden
+ * GB_ADDR_CONFIG 02010002) apart from 6 SIMDs, which no write here uses.
+ * As a BTC part it is past CHIP_SUMO2, so no SMX_SAR_CTL0, as on Caicos:
+ * Redwood's writes in Redwood's order, that one left out, every value
+ * Redwood's. */
+typedef char v9x_eg_turks_init_one_shorter[
+    V9X_EG_TURKS_GPU_INIT_COUNT + 1u == V9X_EG_REDWOOD_GPU_INIT_COUNT ?
+        1 : -1];
+static void test_gpu_init_turks(void)
+{
+    const struct v9x_eg_reg_update *redwood = v9x_eg_redwood_gpu_init;
+    const struct v9x_eg_reg_update *turks = v9x_eg_turks_gpu_init;
+    v9x_u32 index;
+    v9x_u32 at;
+
+    at = 0ul;
+    for (index = 0ul; index < V9X_EG_REDWOOD_GPU_INIT_COUNT; ++index) {
+        if (redwood[index].offset == 0xa008ul) {
+            continue;
+        }
+        CHECK(at < V9X_EG_TURKS_GPU_INIT_COUNT);
+        if (at >= V9X_EG_TURKS_GPU_INIT_COUNT) {
+            return;
+        }
+        CHECK(turks[at].offset == redwood[index].offset &&
+              turks[at].keep == redwood[index].keep &&
+              turks[at].set == redwood[index].set);
+        ++at;
+    }
+    CHECK(at == V9X_EG_TURKS_GPU_INIT_COUNT);
 }
 
 /* Bits 39:32 of every address in a batch (M-D7TFW4's VRAM is at GPU
@@ -818,6 +866,7 @@ unsigned int v9x_run_eg_3d_tests(void)
     test_gpu_init_caicos();
     test_gpu_init_juniper();
     test_gpu_init_redwood();
+    test_gpu_init_turks();
     test_words();
     test_state();
     test_state_high();

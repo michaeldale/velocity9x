@@ -1,6 +1,7 @@
 /*
- * AMD Evergreen (Cedar, Caicos, Juniper and Redwood) command processor
- * microcode, generated into src\chipsets\ati\evergreen\eg_cp_microcode.c by
+ * AMD Evergreen (Cedar, Caicos, Juniper, Redwood and Turks) command
+ * processor microcode, generated into
+ * src\chipsets\ati\evergreen\eg_cp_microcode.c by
  * scripts\gen-evergreen-microcode.ps1 from linux-firmware, under AMD's
  * LICENSE.radeon (reproduced in that file).
  */
@@ -24,6 +25,9 @@ extern const v9x_u32 v9x_eg_juniper_me_microcode[V9X_EG_ME_MICROCODE_DWORDS];
 /* Redwood's ME. REDWOOD_pfp.bin is CEDAR_pfp.bin byte for byte, so Redwood
  * loads v9x_eg_pfp_microcode. */
 extern const v9x_u32 v9x_eg_redwood_me_microcode[V9X_EG_ME_MICROCODE_DWORDS];
+/* Turks's PFP. TURKS_me.bin is CAICOS_me.bin byte for byte, so Turks
+ * loads v9x_eg_caicos_me_microcode. */
+extern const v9x_u32 v9x_eg_turks_pfp_microcode[V9X_EG_PFP_MICROCODE_DWORDS];
 /* Trinity's (ARUBA_pfp/me.bin): radeon_ucode.h CAYMAN_PFP_UCODE_SIZE and
  * CAYMAN_PM4_UCODE_SIZE, twice Evergreen's. */
 #define V9X_CM_PFP_MICROCODE_DWORDS 2176u

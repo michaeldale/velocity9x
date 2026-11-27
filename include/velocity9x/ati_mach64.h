@@ -48,6 +48,9 @@
 #define V9X_PCI_DEVICE_JUNIPER_68B8     ((v9x_u16)0x68B8u)
 /* A Radeon HD 5570 (Redwood PRO): another row in cedar_hw16.c. */
 #define V9X_PCI_DEVICE_REDWOOD_68D9     ((v9x_u16)0x68D9u)
+/* A Radeon HD 7570 (Turks PRO, BTC): another row in cedar_hw16.c, which
+ * the HAL tells apart by this id (V9X_DD_ENGINE.pci_device). */
+#define V9X_PCI_DEVICE_TURKS_675D       ((v9x_u16)0x675Du)
 /* The A10-5700's Radeon HD 7660D (Trinity, Linux's CHIP_ARUBA): Evergreen's
  * DMA engine and display controller, a row in cedar_hw16.c. */
 #define V9X_PCI_DEVICE_TRINITY_9901     ((v9x_u16)0x9901u)

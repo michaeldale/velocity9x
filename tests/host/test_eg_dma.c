@@ -530,6 +530,8 @@ typedef char v9x_eg_caicos_pfp_size_matches[
     sizeof(v9x_eg_caicos_pfp_microcode) == 1120u * sizeof(v9x_u32) ? 1 : -1];
 typedef char v9x_eg_caicos_me_size_matches[
     sizeof(v9x_eg_caicos_me_microcode) == 1376u * sizeof(v9x_u32) ? 1 : -1];
+typedef char v9x_eg_turks_pfp_size_matches[
+    sizeof(v9x_eg_turks_pfp_microcode) == 1120u * sizeof(v9x_u32) ? 1 : -1];
 typedef char v9x_cm_aruba_pfp_size_matches[
     sizeof(v9x_cm_aruba_pfp_microcode) == 2176u * sizeof(v9x_u32) ? 1 : -1];
 typedef char v9x_cm_aruba_me_size_matches[
@@ -554,6 +556,12 @@ static void test_cp_microcode(void)
     /* Redwood's ME (its PFP is Cedar's array), not yet run on a card. */
     CHECK(v9x_eg_redwood_me_microcode[0] == 0x7c408000ul);
     CHECK(v9x_eg_redwood_me_microcode[1375] == 0x000f04baul);
+    /* Turks's PFP (its ME is Caicos's array), not yet run on a card. Dword
+     * 513 is where TURKS_pfp.bin first differs from CAICOS_pfp.bin (Caicos
+     * 041C0004, Cedar 55580020, Juniper CC800040). */
+    CHECK(v9x_eg_turks_pfp_microcode[0] == 0x7c408000ul);
+    CHECK(v9x_eg_turks_pfp_microcode[513] == 0x041c0008ul);
+    CHECK(v9x_eg_turks_pfp_microcode[1119] == 0x00000005ul);
     /* Trinity's Aruba pair, which V9XEGCP and V9XCM3D ran on M-D7TFW4's
      * HD 7660D (PfpFirst 7C408001, MeFirst C4080031). */
     CHECK(v9x_cm_aruba_pfp_microcode[0] == 0x7c408001ul);

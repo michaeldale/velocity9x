@@ -253,6 +253,9 @@ const V9X_HW16_DEVICE v9x_evergreen_juniper_device = {
 const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
+const V9X_HW16_DEVICE v9x_evergreen_turks_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
+};
 const V9X_HW16_DEVICE v9x_evergreen_trinity_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
@@ -763,6 +766,7 @@ static void test_gamma_only_where_the_hook_writes_the_dac(void)
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rage128_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_evergreen_cedar_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_evergreen_trinity_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_evergreen_turks_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_oland_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_oland_6611_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_vi_carrizo_device) == 0u);

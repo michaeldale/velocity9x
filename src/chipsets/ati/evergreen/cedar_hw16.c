@@ -50,6 +50,16 @@
  * stamped V9X_DD_ENGINE_CAP_EG_REDWOOD for its ME microcode, contexts, GPU
  * configuration and vertex cache.
  *
+ * The HD 7570, PCI 1002:675D (Turks PRO, BTC like Caicos), is another row.
+ * It has not run here: GitHub issue 36's DOS survey (a Dell OEM board,
+ * subsystem 1028:2B20, BAR0 at D0000000 and BAR2 FEAE0000, both 64-bit,
+ * VBE 3.0 "TURKS", GDDR5) is all that is known of it
+ * (docs\decisions\2026-11-28-turks-hd7570-from-a-survey.md). Its DMA engine
+ * and display controller are Evergreen's, so it claims what Caicos and
+ * Redwood do. Every engine cap bit is taken, so it is not stamped: it takes
+ * Cedar's hook and claims, and the HAL tells it by its PCI id (pci_device)
+ * for its PFP microcode, contexts, GPU configuration and vertex cache.
+ *
  * The A10-5700's Radeon HD 7660D, PCI 1002:9901 (Trinity, Linux's
  * CHIP_ARUBA, Cayman's VLIW4 generation), is the fourth row (Michael,
  * 2026-11-03). Its target is M-D7TFW4 since the HD 7470 left it:
@@ -434,6 +444,27 @@ const V9X_HW16_DEVICE v9x_evergreen_redwood_device = {
     "hardware-evergreen-cp",
     0,
     v9x_redwood_fill_engine,
+    0u,                     /* framebuffer_bar: BAR0 */
+    0u,                     /* packed_pitch */
+    V9X_CEDAR_MAP_BYTES,
+    0,                      /* engine_reserve_offset */
+    V9X_HW16_WC_BAR256,     /* as Cedar's */
+    0,                      /* write_combine_fallback */
+    V9X_HW16_SCREEN_SHADOW  /* as Cedar's */
+};
+
+/* Not static, for the same audit. Cedar's hook: Turks claims Cedar's caps
+ * and carries no identity bit, the HAL reading its PCI id instead. */
+const V9X_HW16_DEVICE v9x_evergreen_turks_device = {
+    0x1002u, 0x675Du,
+    "AMD Radeon HD 7570 (Turks)",
+    "1002", "675D",
+    "ati-evergreen-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "hardware-evergreen-cp",
+    0,
+    v9x_cedar_fill_engine,
     0u,                     /* framebuffer_bar: BAR0 */
     0u,                     /* packed_pitch */
     V9X_CEDAR_MAP_BYTES,

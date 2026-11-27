@@ -1,10 +1,11 @@
 /*
- * The AMD Evergreen (Cedar, Caicos, Juniper, Redwood) command processor
- * for V9XHAL.DLL: started for the first Direct3D batch, left running, and
- * drained by whatever needs what it drew.
+ * The AMD Evergreen (Cedar, Caicos, Juniper, Redwood, Turks) command
+ * processor for V9XHAL.DLL: started for the first Direct3D batch, left
+ * running, and drained by whatever needs what it drew.
  *
  * Caicos, Juniper and Redwood (the engines stamped
- * V9X_DD_ENGINE_CAP_EG_CAICOS, _EG_JUNIPER and _EG_REDWOOD) take their own
+ * V9X_DD_ENGINE_CAP_EG_CAICOS, _EG_JUNIPER and _EG_REDWOOD) and Turks (PCI
+ * 1002:675D, by pci_device) take their own
  * microcode, evergreen_gpu_init table and context count (eg_3d.c). Caicos's VRAM sits at GPU F_00000000 on
  * M-D7TFW4, so every address here carries bits 39:32
  * (docs\decisions\2026-10-31-caicos-cp-microcode.md).
@@ -45,6 +46,7 @@
  */
 #include "ddhal_internal.h"
 #include "velocity9x/diagpaths.h"
+#include "velocity9x/ati_mach64.h"
 #include "velocity9x/eg_dma.h"
 #include "velocity9x/eg_3d.h"
 #include "velocity9x/eg_cp_microcode.h"
@@ -376,9 +378,14 @@ static int v9x_eg_cp_poll_idle(DWORD reads)
 }
 
 /* Which Evergreen chip: the 16-bit side stamps Caicos's, Juniper's and
- * Redwood's engines; Cedar's carries none of the bits. */
+ * Redwood's engines; Cedar's carries none of the bits, and neither does
+ * Turks's, every cap bit being taken, so Turks is told by its PCI id
+ * (ABI 2026112001's pci_device). */
 static v9x_u32 v9x_eg_cp_chip(void)
 {
+    if (v9x_hal->engine.pci_device == (DWORD)V9X_PCI_DEVICE_TURKS_675D) {
+        return V9X_EG_CHIP_TURKS;
+    }
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul) {
         return V9X_EG_CHIP_CAICOS;
     }
@@ -428,6 +435,9 @@ static void v9x_eg_cp_gpu_init(void)
     } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_REDWOOD) {
         table = v9x_eg_redwood_gpu_init;
         count = V9X_EG_REDWOOD_GPU_INIT_COUNT;
+    } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_TURKS) {
+        table = v9x_eg_turks_gpu_init;
+        count = V9X_EG_TURKS_GPU_INIT_COUNT;
     } else {
         table = v9x_eg_cedar_gpu_init;
         count = V9X_EG_CEDAR_GPU_INIT_COUNT;
@@ -560,6 +570,10 @@ static void v9x_eg_cp_load(DWORD ring_gpu)
         /* REDWOOD_pfp.bin is CEDAR_pfp.bin byte for byte. */
         pfp = v9x_eg_pfp_microcode;
         me = v9x_eg_redwood_me_microcode;
+    } else if (v9x_eg_cp_chip() == V9X_EG_CHIP_TURKS) {
+        /* TURKS_me.bin is CAICOS_me.bin byte for byte. */
+        pfp = v9x_eg_turks_pfp_microcode;
+        me = v9x_eg_caicos_me_microcode;
     } else {
         pfp = v9x_eg_pfp_microcode;
         me = v9x_eg_me_microcode;

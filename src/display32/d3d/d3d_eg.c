@@ -26,6 +26,7 @@
  */
 #include "d3d_internal.h"
 #include "d3d_eg_map.h"
+#include "velocity9x/ati_mach64.h"
 #include "velocity9x/eg_3d.h"
 #include "velocity9x/eg_shader.h"
 #include "velocity9x/cm_3d.h"
@@ -447,9 +448,13 @@ static void v9x_d3d_eg_count_refusal(const V9X_R3D_DRAW *draw, v9x_u32 reason)
 }
 
 /* Which Evergreen chip, from the identity bits the 16-bit side stamps;
- * Cedar's engine carries neither. */
+ * Cedar's engine carries neither, nor does Turks's, which is told by its
+ * PCI id as eg_cp.c tells it. */
 static v9x_u32 v9x_d3d_eg_chip(void)
 {
+    if (v9x_hal->engine.pci_device == (DWORD)V9X_PCI_DEVICE_TURKS_675D) {
+        return V9X_EG_CHIP_TURKS;
+    }
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_EG_CAICOS) != 0ul) {
         return V9X_EG_CHIP_CAICOS;
     }
@@ -574,9 +579,11 @@ static int v9x_d3d_eg_draw(const V9X_R3D_DRAW *draw,
         state.ps_gpu = v9x_eg_cp_shader_gpu(ps_slot);
     }
     state.vertex_stride = V9X_EG_D3D_STRIDE;
-    /* Juniper and Redwood have a vertex cache; Cedar and Caicos do not. */
+    /* Juniper, Redwood and Turks have a vertex cache; Cedar and Caicos do
+     * not (evergreen_gpu_init's no-vertex-cache list). */
     state.vertex_cache = v9x_d3d_eg_chip() == V9X_EG_CHIP_JUNIPER ||
-                         v9x_d3d_eg_chip() == V9X_EG_CHIP_REDWOOD ? 1ul : 0ul;
+                         v9x_d3d_eg_chip() == V9X_EG_CHIP_REDWOOD ||
+                         v9x_d3d_eg_chip() == V9X_EG_CHIP_TURKS ? 1ul : 0ul;
 
     while (triangle_count != 0ul) {
         if (ps_dwords != 0ul) {
