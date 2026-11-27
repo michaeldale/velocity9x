@@ -22,7 +22,7 @@ Nothing here is measured until the Progress section says so.
 
 ## Shape
 
-1. **Freeze.** From the first release candidate: no new PCI ids, no new
+1. **Freeze.** From the 1.0.0 build: no new PCI ids, no new
    interfaces, no new default behaviour. Unmerged branches
    (`rv280-geomscan`, `ati-cayman`, `wip-caicos-6779`, `hsw-panel-fit`,
    the Doom 3 worktree) merge before the freeze or wait for 1.1.
@@ -40,15 +40,16 @@ Nothing here is measured until the Progress section says so.
      ids, Ironlake desktop and mobile, G45/Q45, HD 5450, Rage Mobility-M,
      HD 4400, Voodoo5).
    The INFs keep binding all three; only the claim changes.
-3. **Release candidates** as GitHub prereleases, which the update server
-   puts on the beta channel. A soak with the remote-help owners and the
-   GitHub reporters, then 1.0.0.
+3. **No release candidate and no soak** (decision 4, Michael,
+   2026-11-27): when the gate below is met, 1.0.0 is released directly,
+   as the ordinary releases are. Problems the field finds go into 1.0.x.
 4. **After 1.0:** 1.0.x carries fixes only. New chips and interfaces go
    to 1.1 betas.
 
 ## Blockers
 
-Fix, or measure and document, before the first release candidate.
+Fix, or measure and document, before 1.0.0 (there is no release
+candidate; decision 4).
 
 | # | Item | State on 2026-11-21 | Done when |
 |---|---|---|---|
@@ -71,7 +72,7 @@ Not blockers, but re-run for the record before 1.0: the RV630/RV610
 constant-Z after the first CP start, the R3E's first-clear timeout, the
 Rage 128's 3DMark 2000 hang (0.32.0, one run in two), the three
 unreproduced hard locks on A8U4I5 and the Gateway. Each either gets a
-measurement on the release candidate or stays a named known issue.
+measurement on the 1.0.0 build or stays a named known issue.
 
 From the issue re-read of 2026-11-26 (gate item 4), fixes in source or
 on one machine whose run is owed, by machine:
@@ -104,7 +105,7 @@ on one machine whose run is owed, by machine:
 4. The issue index re-read record by record: closed where a re-run
    exists, moved to the README's known issues where it stays, moved to
    the post-1.0 list below where it is a gap.
-5. `docs/STATUS.md` rewritten against the release candidate.
+5. `docs/STATUS.md` rewritten against the 1.0.0 build.
 6. The README's tables carry the tiers; every "from 0.x" claim older
    than the last run on that card says when it was last run.
 
@@ -222,9 +223,10 @@ on one machine whose run is owed, by machine:
    - *Supported, on a 1.0 run still owed:* the A8U4I5 card-swap round
      (Rage 128 Pro, Rage XL, Rage IIC, Trio64, ViRGE/DX, Trio3D,
      Millennium, Millennium II, Mystique, SiS 6326, Voodoo4), which
-     Michael will do on the release candidate; and the remote-help cards
+     Michael will do on the release candidate (done on the 0.61.0 tree
+     from 2026-11-26, as there is no candidate); and the remote-help cards
      outside the fleet (GMA 900, GMA 3150, HD 4000 mobile, Radeon 9250,
-     HD 7470, Rage Mobility-M), Supported if they pass on the candidate,
+     HD 7470, Rage Mobility-M), Supported if they pass on the 1.0.0 build,
      Experimental if not, so they join the release-check list.
    - *Supported on their last run, the card no longer fitted:* Ironlake
      `0042`, HD 4000 `0162`, HD 2600 XT, HD 2400 Pro, HD 5450, GeForce
@@ -248,7 +250,9 @@ on one machine whose run is owed, by machine:
    beside each card. B11 and gate item 6 can now be written from this
    list.
 4. **Length of the soak**, and whether 0.61.0 is the first candidate or
-   one more ordinary release.
+   one more ordinary release. **Decided 2026-11-27 (Michael): no release
+   candidate and no soak; 1.0.0 is released directly** once the gate is
+   met.
 
 ## Progress
 
@@ -710,3 +714,8 @@ Windows 98 SE only**. **Every unmerged branch** is parked for 1.0.
 standing "no DOS box on A8U4I5" rule, which was not put to Michael; he
 wants the round trip run on the Trio64 and the Trio3D when they are
 fitted.
+
+**Decision 4 (Michael, 2026-11-27): no release candidate and no soak.**
+1.0.0 is released directly once the gate is met; field problems go
+into 1.0.x. The plan's "on the release candidate" re-runs now mean the
+1.0.0 build.

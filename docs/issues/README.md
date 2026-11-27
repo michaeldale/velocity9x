@@ -9,7 +9,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 - [2026-09-12 Returning from a full-screen DOS box freezes the GMA 950 and the HD 4600 (reproduced 2026-10-23); windowed boxes fixed by the INT 10h guard; on 2026-11-10 the 86Box ViRGE/DX returns repainted with an INT 2Fh screen-switch hook, the HD 4600 the same evening, and the GMA 950 once the reset path stopped writing profile files; 1.0 re-read 2026-11-26: blocker B5](2026-09-12-netbook-dos-box-return-hardlock.md)
 - [2026-08-28 A full-screen DOS box comes back with a corrupt band across the top; 1.0 re-read 2026-11-26: the HP Mini 110 case; with blocker B5](2026-08-28-fullscreen-dos-scanout.md)
 
-### Re-run owed on the release candidate
+### Re-run owed on the 1.0.0 build (no release candidate; decision 4, 2026-11-27)
 
 - [2026-11-08 Gen4: colour-keyed draws with depth writes are refused (the GM965 alpha-test+Z hang guard) and the Direct3D path has no fallback, so they are dropped; Forsaken's world geometry vanishes on the GM45 (M-6B21TJ, 0.40.0; reason 7, 140k-166k refusals per title run); fixed in source by a depth pre-pass and an EQUAL keyed colour pass, measured on the GM45 menu with 0 refusals; gameplay and the GM965 not run; 1.0 re-read 2026-11-26: gameplay on the GM45 and a keyed title on the GM965 owed](2026-11-08-gen4-keyed-depth-write-draws-dropped-forsaken.md)
 - [2026-09-19 The Final Reality flicker: everything known, and what is not; 1.0 re-read 2026-11-26: Final Reality Robots watched on the netbook's panel owed](2026-09-19-the-flicker-state-of-play.md)
