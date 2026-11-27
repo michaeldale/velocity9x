@@ -738,3 +738,13 @@ textures refused for placement in 4 MiB
 ([issue](../issues/2026-11-27-mystique-3dmark2000-adventure-areas-missing.md)).
 **Decided (Michael, 2026-11-27): the Mystique's black Adventure areas
 go to a later release**; they stay a README known issue in 1.0.
+
+### 2026-11-27: RIVA 128ZX and HD 3000 over the relay
+
+([record](../decisions/2026-11-27-1.0-remote-riva128-hd3000.md)) The
+0.61.0 tree's `nvidia` and `intel-gma` sets on the two remote-help
+machines online: both as on 21 November. The RIVA 128ZX (`nvidia`,
+gate item 2) fails V9XD32 T21 and T22 and the Glide BlendHalf, value
+for value as before, and stays Experimental; the HD 3000 passes every
+probe, and its 3DMark 2000 draws correctly on screen (run with
+`VSync=2`, so the score is diagnostic only).
