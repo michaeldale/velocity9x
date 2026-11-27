@@ -272,6 +272,11 @@ New in 0.60.0:
 - **Rage 128 Pro:** V9XD32's X8R8G8B8 texture draws black, as on the
   SiS 6326, left for a later release
   ([issue](docs/issues/2026-11-27-rage128pro-v9xd32-x8r8g8b8-texture-draws-black.md)).
+- **Radeon R7E (Carrizo):** not run on 1.0.0. In the release checks the
+  one test machine took the 1.0.0 files and restarted, then did not come
+  back online; nobody saw its screen, so a hang at startup is not ruled
+  out. It passed on the code of 23 November
+  ([record](docs/decisions/2026-11-28-1.0.0-release-checks.md)).
 - **Seen once, not reproduced:** a hard lock on a Rage XL at UT99's
   first OpenGL frame
   ([issue](docs/issues/2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md));
@@ -464,7 +469,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | AMD Radeon Oland XT (GCN 1, `1002:6610`), from 0.54.0 | `ati` | Supported (last run 2026-11-23) | GCN 1 (SI), through AMD's CP microcode | Direct3D at 16 and 32 bpp with 16-bit Z, two texture stages, specular, fog and colour keys, and through the DirectX 8 interface pixel shader 1.1, cube maps, Q8W8V8U8 and V8U8, and DXT1-3; OpenGL and the Glide probes on the engine; DirectDraw fills, copies and page flips on the DMA engine. 3DMark 2000 and 2001 SE (with compressed textures; 2001 SE 4234 with vsync from 0.55.0, 4797 from 0.56.0, which sets the clocks its VBIOS allows: 400 MHz engine and 1000 MHz memory), Quake 2 and Quake 3. One Dell 2 GiB card; the driver maps 128 MiB of it (the VESA BIOS reports 16 MiB); modes from the VBE. 3DCIF not run |
 | AMD Radeon Oland 6611 (HD 8570 / R7 240, `1002:6611`), from 0.60.0 | `ati` | Supported, on our probes (no game; last run 2026-11-23) | GCN 1 (SI), through AMD's CP microcode | The Oland XT path. One tester's Dell 2 GiB GDDR5 card, surveyed read-only: the same six compute units, two render backends, row size and BARs as the Oland XT. On this build its DirectDraw and Direct3D probes match the Oland XT's, the known specular-with-fog check included; no game run ([record](docs/decisions/2026-11-20-oland-6611-survey.md)). A card with fewer compute units under the same id is not covered |
 | AMD Radeon R3E (Mullins, GCN 2, `1002:9854`), from 0.41.0 | `ati` | Supported (last run 2026-11-25) | GCN 2, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp, one texture stage, on the R7E's path with its shaders rewritten for GCN 2; DirectDraw on the SDMA engine and page flips; GDI by the CPU, from 0.47.0 into a copy of the desktop, with the screen write-combined (scrolling 30 to 1,170 MB/s). OpenGL and the Glide 2 probe on the engine. 3DMark 2000 (0.42.0); no game yet. One tester's machine (AMD GX-412HC) through remote help; modes from the VBE. |
-| AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | Supported (last run 2026-11-23) | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips; from 0.47.0 the screen write-combined and GDI drawn into a copy of the desktop (scrolling 8 to 630 MB/s). 3DMark 2000 and Quake 3 (windowed too, 18.7 fps). The Glide 2 probe passes (0.47.0). One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only |
+| AMD Radeon R7E (Carrizo, GCN 3, `1002:9874`) | `ati` | Supported (last run 2026-11-23); 1.0.0 not run, see known issues | GCN 3, through AMD's CP and SDMA microcode | Direct3D at 16 and 32 bpp with 16-bit Z, one texture stage, specular, fog and colour keys; OpenGL; DirectDraw on the SDMA engine and page flips; from 0.47.0 the screen write-combined and GDI drawn into a copy of the desktop (scrolling 8 to 630 MB/s). 3DMark 2000 and Quake 3 (windowed too, 18.7 fps). The Glide 2 probe passes (0.47.0). One tester's HP machine (AMD GX-420GI) through remote help; modes from the VBE, 16 and 32 bpp only |
 
 #### S3
 

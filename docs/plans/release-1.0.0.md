@@ -817,3 +817,13 @@ Millennium II (2026-10-22), GMA 3150 (2026-10-20), and the S3D row
 "1.0 run owed" and says a Supported card last run before 2026-11-21 was
 not run again for 1.0. The packages' status strings (the zip READMEs)
 for `3dfx`, `sis`, `matrox`, `s3`, `ati` and `intel-gma` say the same.
+
+### 2026-11-28: 1.0.0 release checks; ship with the Carrizo noted
+
+([record](../decisions/2026-11-28-1.0.0-release-checks.md)) The
+packages from `82112c9c` (gate green, clean tree) ran on the HD 4600,
+GMA 950, HD 3000, HD 5770 and RIVA 128ZX with no verdict changed or
+only known failures. The R7E Carrizo took the files and its reset and
+never answered again. **Decided (Michael, 2026-11-28): ship 1.0.0 and
+note the Carrizo** as not run on 1.0.0, a README known issue, without
+waiting on its owner.
