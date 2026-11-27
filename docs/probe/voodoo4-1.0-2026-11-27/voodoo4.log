@@ -1,0 +1,36 @@
+[+0:00] agent 0.19.0, boot 720, desktop True
+[+0:02] display card present: 121A:0009
+[+0:14] staged 6 files; resetting
+[+1:23] reset: boot 720 -> 721
+[+1:35] installed: 6 of 6
+[+1:36] probes in place: sent 0 of 7
+[+2:05] 3DMark started after 1 start input(s)
+[+2:27] 3DMark +0.4 min: FlipHandled 0, draw calls 17811
+[+2:49] 3DMark +0.7 min: FlipHandled 0, draw calls 34629
+[+3:11] 3DMark +1.1 min: FlipHandled 0, draw calls 48123
+[+3:34] 3DMark +1.5 min: FlipHandled 0, draw calls 54468
+[+3:55] 3DMark +1.8 min: FlipHandled 0, draw calls 62842
+[+4:17] 3DMark +2.2 min: FlipHandled 0, draw calls 75722
+[+4:39] 3DMark +2.6 min: FlipHandled 0, draw calls 87565
+[+5:00] 3DMark +2.9 min: FlipHandled 0, draw calls 99348
+[+5:23] 3DMark +3.3 min: FlipHandled 0, draw calls 114324
+[+5:45] 3DMark +3.7 min: FlipHandled 0, draw calls 120457
+[+6:08] 3DMark +4.0 min: FlipHandled 0, draw calls 129850
+[+6:29] 3DMark +4.4 min: FlipHandled 0, draw calls 137022
+[+6:52] 3DMark +4.8 min: FlipHandled 0, draw calls 145093
+[+7:14] 3DMark +5.1 min: FlipHandled 0, draw calls 158833
+[+7:36] 3DMark +5.5 min: FlipHandled 0, draw calls 168918
+[+7:58] 3DMark +5.9 min: FlipHandled 0, draw calls 169111
+[+8:21] 3DMark +6.3 min: FlipHandled 0, draw calls 169159
+[+8:43] 3DMark +6.6 min: FlipHandled 0, draw calls 171125
+[+9:04] 3DMark +7.0 min: FlipHandled 0, draw calls 184180
+[+9:26] 3DMark +7.3 min: FlipHandled 0, draw calls 190210
+[+9:48] 3DMark +7.7 min: FlipHandled 0, draw calls 190836
+[+9:53] 3DMark finished in 7.8 min, last FlipHandled 0
+[+10:06] 3DMark counters: draws +190954, into presented +219965, refused batches +13777, engine stalls +0, FilterMagSeen 0x6; LOOK: drew into the page on screen 219965 times (flicker)
+[+10:41] V9XD32 bpp16 exit=1
+[+11:09] V9XGLP.EXE exit=0
+[+11:12] V9XGLIDP.EXE exit=1
+[+11:13] V9XR3DP.EXE exit=0
+[+11:21] V9XWPRS.EXE exit=0
+[+11:22] V9XFBCMP.EXE exit=0

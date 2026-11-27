@@ -610,3 +610,22 @@ server: with it stopped Half-Life runs on both 0.10.0 and the 0.61.0
 tree (5.2 fps); with it running both lock. **Decided (Michael,
 2026-11-26): the Rage IIC's faults go to a later release**, as the
 Rage XL's did; they stay README known issues in 1.0.
+
+### 2026-11-27: Voodoo4, the first `3dfx` boot of the 1.0 work
+
+The fourth card of the A8U4I5 round
+([record](../decisions/2026-11-27-1.0-voodoo4-a8u4i5.md)). The card
+came back in another PCI slot; Windows installed 3dfx's own INF over
+Velocity9x's key, and a Have Disk install put Velocity9x back (on a
+machine that had the driver before, so it is not B10's fresh-card
+case). Every release probe passes but V9XD32's T22, 32-bit textures
+drawing black, which 0.17.0 does too
+([issue](../issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
+3DMark 2000 runs to its score and draws correctly on screen, on this
+build and on 0.17.0. Its grabbed frames are corrupt because the
+VSA-100 accepts no flips, so V9XTRACE's grabs and its "drew into the
+page on screen" count do not show the screen on this family. Two
+runner faults fixed on the way: Glide files staged from a package that
+ships none, and a 3DMark freeze watch that counted only accepted flips.
+The `3dfx` package is now booted (gate item 2); whether T22 holds the
+Voodoo4's 1.0 tier is Michael's call.

@@ -1,0 +1,19 @@
+{
+    "Name":  "voodoo4-0170",
+    "Family":  "3dfx",
+    "Baseline":  false,
+    "BootBefore":  721,
+    "BootAfter":  722,
+    "Installed":  5,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  721,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  "finished in 7.9 min, last FlipHandled ",
+    "Counters":  "draws +, into presented +, refused batches +, engine stalls +0, FilterMagSeen 0x",
+    "CounterFlags":  "",
+    "Adapter":  "121A:0009",
+    "AdapterMismatch":  false
+}

@@ -217,6 +217,15 @@ if ($Worker) {
     # A released package unpacked somewhere else, to run today's probes
     # against an earlier driver (an A/B, never a release check).
     if ($entry.PackageDir) { $package = [string]$entry.PackageDir }
+
+    # A family whose card has its own Glide (3dfx) ships neither Glide DLL;
+    # staging what the package does not hold would copy nothing and then
+    # fail the hash check against the card's own driver.
+    foreach ($name in @($installFiles.Keys)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $package $name))) {
+            $installFiles.Remove($name)
+        }
+    }
     $machineDir = Join-Path $OutDir $(if ($Baseline) { "$Worker-before" } else { $Worker })
     New-Item -ItemType Directory -Force -Path $machineDir | Out-Null
     $connection = if ($entry.Relay) { @{ Relay = $entry.Relay } } else { @{ Host = $entry.Host } }
@@ -603,6 +612,7 @@ if ($Worker) {
             # logged and never taken for a frozen screen.
             $beatFile = Join-Path $machineDir '3dmark-beat.ini'
             $lastFlips = $null
+            $lastDraws = $null
             $lastTick = $null
             $flipsMoved = Get-Date
             $began = Get-Date
@@ -640,13 +650,19 @@ if ($Worker) {
                 $minute = ((Get-Date) - $began).TotalMinutes
                 if ($beat['Ok'] -eq 1 -and $beat['Tick'] -ne $lastTick) {
                     $lastTick = $beat['Tick']
-                    if ($beat['FlipHandled'] -ne $lastFlips) {
+                    # Drawing counts as progress too: a family that claims no
+                    # flip (the VSA-100) has every flip declined to
+                    # DirectDraw's copy, and FlipHandled stays 0 on a run that
+                    # is drawing (A8U4I5, 2026-11-27: 116,416 primitive calls).
+                    $draws = [uint64]$beat['D3dRenderPrimitiveCalls'] + [uint64]$beat['D3dExecuteCalls']
+                    if ($beat['FlipHandled'] -ne $lastFlips -or $draws -ne $lastDraws) {
                         $lastFlips = $beat['FlipHandled']
+                        $lastDraws = $draws
                         $flipsMoved = Get-Date
                     }
-                    Note ("3DMark +{0:N1} min: FlipHandled {1}" -f $minute, $lastFlips)
+                    Note ("3DMark +{0:N1} min: FlipHandled {1}, draw calls {2}" -f $minute, $lastFlips, $lastDraws)
                     if (((Get-Date) - $flipsMoved).TotalSeconds -gt 120) {
-                        Save-Stuck "frozen: FlipHandled stayed at $lastFlips for 2 minutes"
+                        Save-Stuck "frozen: FlipHandled stayed at $lastFlips and draw calls at $lastDraws for 2 minutes"
                     }
                 } else {
                     Note ("3DMark +{0:N1} min: no beat" -f $minute)

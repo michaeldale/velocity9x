@@ -1,0 +1,36 @@
+[+0:00] agent 0.19.0, boot 721, desktop True
+[+0:02] display card present: 121A:0009
+[+0:06] staged 5 files; resetting
+[+1:16] reset: boot 721 -> 722
+[+1:19] installed: 5 of 5
+[+1:21] probes in place: sent 0 of 7
+[+1:49] 3DMark started after 1 start input(s)
+[+2:10] 3DMark +0.4 min: no beat
+[+2:32] 3DMark +0.7 min: no beat
+[+2:55] 3DMark +1.1 min: no beat
+[+3:16] 3DMark +1.4 min: no beat
+[+3:38] 3DMark +1.8 min: no beat
+[+4:00] 3DMark +2.2 min: no beat
+[+4:22] 3DMark +2.6 min: no beat
+[+4:44] 3DMark +2.9 min: no beat
+[+5:06] 3DMark +3.3 min: no beat
+[+5:28] 3DMark +3.6 min: no beat
+[+5:51] 3DMark +4.0 min: no beat
+[+6:13] 3DMark +4.4 min: no beat
+[+6:34] 3DMark +4.8 min: no beat
+[+6:57] 3DMark +5.1 min: no beat
+[+7:18] 3DMark +5.5 min: no beat
+[+7:41] 3DMark +5.9 min: no beat
+[+8:04] 3DMark +6.2 min: no beat
+[+8:26] 3DMark +6.6 min: no beat
+[+8:48] 3DMark +7.0 min: no beat
+[+9:10] 3DMark +7.3 min: no beat
+[+9:32] 3DMark +7.7 min: no beat
+[+9:41] 3DMark finished in 7.9 min, last FlipHandled 
+[+9:52] 3DMark counters: draws +, into presented +, refused batches +, engine stalls +0, FilterMagSeen 0x
+[+10:35] V9XD32 bpp16 exit=1
+[+11:29] V9XGLP.EXE exit=0
+[+11:32] V9XGLIDP.EXE exit=1
+[+11:33] V9XR3DP.EXE exit=1
+[+11:55] V9XWPRS.EXE exit=0
+[+11:57] V9XFBCMP.EXE exit=2

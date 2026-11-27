@@ -243,6 +243,9 @@ New in 0.59.0:
   corrupt ([issue](docs/issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)),
   and the Velocity9x settings page shows 4 MB of its 8
   ([issue](docs/issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)).
+- **3dfx Voodoo4:** V9XD32's 32-bit textures draw black, as they did in
+  0.17.0
+  ([issue](docs/issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
 - **Seen once, not reproduced:** a hard lock on a Rage XL at UT99's
   first OpenGL frame
   ([issue](docs/issues/2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md));
@@ -460,7 +463,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | Experimental (last run 2026-11-23) | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
 | NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Supported (last run 2026-11-26) | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only), GDI copies on the engine from logon from 0.53.0; page flips from 0.53.1 (before, frames were presented by DirectDraw's fallback). 3DMark 2000. From 0.53.0, pixel shader 1.1 through the DirectX 8 interface and two texture stages in one pass (3DMark 2001 SE completes with parts of its frames not drawn), and OpenGL games (Quake 3). One tester's card through remote help; modes from the VBE. The Glide 2 probe's texture checks fail; 3DCIF not run |
 | SiS 6326 | `sis` | Supported; 1.0 run owed | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine |
-| 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | Supported; 1.0 run owed | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine |
+| 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | Supported (run 2026-11-27) | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine; on the 0.61.0 tree (2026-11-27) every release probe passes but V9XD32's 32-bit texture test, and 3DMark 2000 runs ([record](docs/decisions/2026-11-27-1.0-voodoo4-a8u4i5.md)) |
 
 #### Any VESA card
 
