@@ -790,3 +790,10 @@ skipped. Only B13's last step is open. Left before 1.0.0: gate item 1
 (`run-checks.ps1` green from a clean tree), item 5 (`docs/STATUS.md`
 against the 1.0.0 build), the release itself, and B13's step to 1.0.0
 through Check for updates once it is published.
+
+### 2026-11-27: gate item 1 green
+
+`run-checks.ps1` passed on `389c37a6` from a clean tree (a fresh
+detached worktree, `git status` empty before and after): every step
+from check-tree to the family packages, all eight families built.
+Code changes after this commit need the gate again before 1.0.0.
