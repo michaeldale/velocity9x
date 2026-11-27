@@ -280,6 +280,80 @@ static const struct v9x_vi_cp_chip v9x_vi_cp_oland = {
     1
 };
 
+/* Cape Verde, Pitcairn and Tahiti (FirePro W4100, W7000, W9000), which
+ * carry the Oland's identity bit and are told apart by the PCI device id:
+ * the Oland's bring-up with each chip's own microcode where it differs
+ * (si_gfx_microcode.h: every CE, and Pitcairn's and Tahiti's ME, are the
+ * Oland's), and a gpu_init list built from what the card reads
+ * (v9x_vi_cp_si_read_ops). Linux's gfx_v6_0 brings all four up with the
+ * same steps. None has run (docs\decisions\
+ * 2026-11-28-si-cape-verde-pitcairn-tahiti-from-surveys.md). */
+static v9x_u32 v9x_vi_cp_si_read_ops(struct v9x_vi_reg_seq *ops,
+                                     v9x_u32 capacity);
+
+static const struct v9x_vi_cp_chip v9x_vi_cp_verde = {
+    0x0c300ul, 0x0c35cul, 0x0c404ul, 0x0c464ul, 0x0c468ul,
+    0x0c150ul, 0x0c154ul,
+    0x0c15cul, 0x0c160ul,
+    0x0c168ul, 0x0c16cul,
+    0x0c32cul, 0x0c330ul,
+    0x00180000ul, 0xfffffffful, V9X_VI_CP_RING_LOG2_QWORDS | (9ul << 8),
+    0, 0,
+    v9x_si_verde_rlc_microcode, V9X_SI_RLC_MICROCODE_DWORDS,
+    &v9x_si_verde_rlc_microcode_version,
+    v9x_si_verde_pfp_microcode, V9X_SI_PFP_MICROCODE_DWORDS,
+    &v9x_si_verde_pfp_microcode_version,
+    v9x_si_ce_microcode, V9X_SI_CE_MICROCODE_DWORDS,
+    &v9x_si_ce_microcode_version,
+    v9x_si_verde_me_microcode, V9X_SI_ME_MICROCODE_DWORDS,
+    &v9x_si_verde_me_microcode_version,
+    v9x_vi_cp_si_read_ops,
+    v9x_si_3d_start,
+    1
+};
+
+static const struct v9x_vi_cp_chip v9x_vi_cp_pitcairn = {
+    0x0c300ul, 0x0c35cul, 0x0c404ul, 0x0c464ul, 0x0c468ul,
+    0x0c150ul, 0x0c154ul,
+    0x0c15cul, 0x0c160ul,
+    0x0c168ul, 0x0c16cul,
+    0x0c32cul, 0x0c330ul,
+    0x00180000ul, 0xfffffffful, V9X_VI_CP_RING_LOG2_QWORDS | (9ul << 8),
+    0, 0,
+    v9x_si_pitcairn_rlc_microcode, V9X_SI_RLC_MICROCODE_DWORDS,
+    &v9x_si_pitcairn_rlc_microcode_version,
+    v9x_si_pitcairn_pfp_microcode, V9X_SI_PFP_MICROCODE_DWORDS,
+    &v9x_si_pitcairn_pfp_microcode_version,
+    v9x_si_ce_microcode, V9X_SI_CE_MICROCODE_DWORDS,
+    &v9x_si_ce_microcode_version,
+    v9x_si_me_microcode, V9X_SI_ME_MICROCODE_DWORDS,
+    &v9x_si_me_microcode_version,
+    v9x_vi_cp_si_read_ops,
+    v9x_si_3d_start,
+    1
+};
+
+static const struct v9x_vi_cp_chip v9x_vi_cp_tahiti = {
+    0x0c300ul, 0x0c35cul, 0x0c404ul, 0x0c464ul, 0x0c468ul,
+    0x0c150ul, 0x0c154ul,
+    0x0c15cul, 0x0c160ul,
+    0x0c168ul, 0x0c16cul,
+    0x0c32cul, 0x0c330ul,
+    0x00180000ul, 0xfffffffful, V9X_VI_CP_RING_LOG2_QWORDS | (9ul << 8),
+    0, 0,
+    v9x_si_tahiti_rlc_microcode, V9X_SI_RLC_MICROCODE_DWORDS,
+    &v9x_si_tahiti_rlc_microcode_version,
+    v9x_si_pitcairn_pfp_microcode, V9X_SI_PFP_MICROCODE_DWORDS,
+    &v9x_si_pitcairn_pfp_microcode_version,
+    v9x_si_ce_microcode, V9X_SI_CE_MICROCODE_DWORDS,
+    &v9x_si_ce_microcode_version,
+    v9x_si_me_microcode, V9X_SI_ME_MICROCODE_DWORDS,
+    &v9x_si_me_microcode_version,
+    v9x_vi_cp_si_read_ops,
+    v9x_si_3d_start,
+    1
+};
+
 /* GFX6 registers and values (radeon sid.h, gfx_v6_0.c). */
 #define V9X_VI_CP_SI_SCRATCH_REG0      0x08500ul
 #define V9X_VI_CP_SI_SCRATCH_UMSK      0x08540ul
@@ -863,13 +937,69 @@ static int v9x_vi_cp_run_scratch(struct v9x_vi_pm4 *stream, DWORD value)
  * starts. */
 static struct v9x_vi_reg_seq v9x_vi_cp_init_ops[V9X_VI_GPU_INIT_OPS_MAX];
 
-static void v9x_vi_cp_gpu_init(void)
+/*
+ * Cape Verde's, Pitcairn's and Tahiti's list: what gfx_v6_0_constants_init
+ * reads, read here, and si_gpu_init.c's list from it. For each shader
+ * engine and array, selected through GRBM_GFX_INDEX as select_se_sh does,
+ * the RB and CU disable registers (fuse | user), then broadcast again; and
+ * MC_ARB_RAMCFG and the TCC disables, which are not per engine. Linux
+ * reads them after the golden lists, which write none of them
+ * (test_si_gpu.c holds every chip's list to that), so reading them first
+ * reads the same. The Oland's list stays the measured constant one
+ * (v9x_si_gpu_init_ops). 0 for a device id that is none of the three.
+ */
+static v9x_u32 v9x_vi_cp_si_read_ops(struct v9x_vi_reg_seq *ops,
+                                     v9x_u32 capacity)
+{
+    struct v9x_si_gpu_config config;
+    v9x_u32 engines;
+    v9x_u32 arrays;
+    v9x_u32 se;
+    v9x_u32 sh;
+
+    config.chip = v9x_si_chip_for_device(v9x_hal->engine.pci_device);
+    if (config.chip == V9X_SI_CHIP_OLAND ||
+        v9x_si_chip_shape(config.chip, &engines, &arrays) != V9X_STATUS_OK ||
+        engines > V9X_SI_MAX_SE || arrays > V9X_SI_MAX_SH) {
+        return 0ul;
+    }
+    for (se = 0ul; se < V9X_SI_MAX_SE; ++se) {
+        for (sh = 0ul; sh < V9X_SI_MAX_SH; ++sh) {
+            config.rb_disable[se][sh] = 0ul;
+            config.cu_disable[se][sh] = 0ul;
+        }
+    }
+    for (se = 0ul; se < engines; ++se) {
+        for (sh = 0ul; sh < arrays; ++sh) {
+            v9x_vi_cp_write32(V9X_SI_GRBM_GFX_INDEX,
+                              v9x_si_grbm_select(se, sh));
+            config.rb_disable[se][sh] =
+                v9x_vi_cp_read32(V9X_SI_CC_RB_BACKEND_DISABLE) |
+                v9x_vi_cp_read32(V9X_SI_GC_USER_RB_BACKEND_DISABLE);
+            config.cu_disable[se][sh] =
+                v9x_vi_cp_read32(V9X_SI_CC_GC_SHADER_ARRAY_CONFIG) |
+                v9x_vi_cp_read32(V9X_SI_GC_USER_SHADER_ARRAY_CONFIG);
+        }
+    }
+    v9x_vi_cp_write32(V9X_SI_GRBM_GFX_INDEX, V9X_SI_GRBM_BROADCAST);
+    config.mc_arb_ramcfg = v9x_vi_cp_read32(V9X_SI_MC_ARB_RAMCFG);
+    config.tcc_disable = v9x_vi_cp_read32(V9X_SI_CGTS_TCC_DISABLE) |
+                         v9x_vi_cp_read32(V9X_SI_CGTS_USER_TCC_DISABLE);
+    return v9x_si_gpu_init_ops_for(&config, ops, capacity);
+}
+
+/* The chip's list, applied. 0 if it built none: the bring-up stops there
+ * rather than start a CP on an engine left unconfigured. */
+static int v9x_vi_cp_gpu_init(void)
 {
     struct v9x_vi_reg_seq *ops = v9x_vi_cp_init_ops;
     DWORD count;
     DWORD index;
 
     count = v9x_vi_cp_chip->gpu_init_ops(ops, V9X_VI_GPU_INIT_OPS_MAX);
+    if (count == 0ul) {
+        return 0;
+    }
     for (index = 0ul; index < count; ++index) {
         if (ops[index].clear == 0xfffffffful) {
             v9x_vi_cp_write32(ops[index].offset, ops[index].set);
@@ -879,6 +1009,7 @@ static void v9x_vi_cp_gpu_init(void)
         }
         (void)v9x_vi_cp_read32(V9X_VI_CP_SRBM_STATUS);
     }
+    return 1;
 }
 
 /* An image through its port: address 0, the data, then the version in the
@@ -1143,6 +1274,26 @@ static int v9x_vi_cp_upload_shaders(void)
     return 1;
 }
 
+/* The bring-up table of a chip with the Oland's identity bit, by the PCI
+ * device id the 16-bit side matched (V9X_DD_ENGINE.pci_device): every cap
+ * bit is taken, so the id is what tells Cape Verde, Pitcairn and Tahiti
+ * from the Oland. The Oland's ids, and a zero id, keep the Oland's. */
+static const struct v9x_vi_cp_chip *v9x_vi_cp_si_chip(void)
+{
+    DWORD chip = v9x_si_chip_for_device(v9x_hal->engine.pci_device);
+
+    if (chip == V9X_SI_CHIP_VERDE) {
+        return &v9x_vi_cp_verde;
+    }
+    if (chip == V9X_SI_CHIP_PITCAIRN) {
+        return &v9x_vi_cp_pitcairn;
+    }
+    if (chip == V9X_SI_CHIP_TAHITI) {
+        return &v9x_vi_cp_tahiti;
+    }
+    return &v9x_vi_cp_oland;
+}
+
 /* The bring-up, once. */
 static int v9x_vi_cp_start(void)
 {
@@ -1158,7 +1309,7 @@ static int v9x_vi_cp_start(void)
     }
     v9x_vi_cp_state = V9X_VI_CP_FAILED;
     if ((v9x_hal->engine.engine_caps & V9X_DD_ENGINE_CAP_VI_OLAND) != 0ul) {
-        v9x_vi_cp_chip = &v9x_vi_cp_oland;
+        v9x_vi_cp_chip = v9x_vi_cp_si_chip();
     } else if ((v9x_hal->engine.engine_caps &
                 V9X_DD_ENGINE_CAP_VI_MULLINS) != 0ul) {
         v9x_vi_cp_chip = &v9x_vi_cp_mullins;
@@ -1175,7 +1326,10 @@ static int v9x_vi_cp_start(void)
     }
     v9x_vi_cp_write32(v9x_vi_cp_scratch_reg(), V9X_VI_CP_SCRATCH_SEED);
 
-    v9x_vi_cp_gpu_init();
+    if (!v9x_vi_cp_gpu_init()) {
+        v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);
+        return 0;
+    }
     if (v9x_vi_cp_chip->gfx6) {
         if (!v9x_vi_cp_rlc_resume_gfx6()) {
             v9x_vi_cp_quarantine(V9X_VI_CP_FAULT_START);

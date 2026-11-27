@@ -113,7 +113,13 @@ payload of amdgpu/mullins_sdma.bin, mullins_rlc.bin, mullins_pfp.bin,
 mullins_ce.bin and mullins_me.bin, the same way. For AMD Oland cards
 (Radeon R7 240 class) it is the payload of amdgpu/oland_rlc.bin,
 oland_pfp.bin, oland_ce.bin and oland_me.bin, the same way; Oland's DMA
-engine takes no microcode. linux-firmware's WHENCE: "Licence:
+engine takes no microcode. For the AMD FirePro W4100 (Cape Verde), W7000
+(Pitcairn) and W9000 (Tahiti) it is the payload of amdgpu/verde_rlc.bin,
+verde_pfp.bin, verde_me.bin, pitcairn_rlc.bin, pitcairn_pfp.bin and
+tahiti_rlc.bin, the same way; their other images (verde_ce.bin,
+pitcairn_ce.bin, pitcairn_me.bin, tahiti_pfp.bin, tahiti_ce.bin and
+tahiti_me.bin) are byte for byte ones named above and are carried once.
+linux-firmware's WHENCE: "Licence:
 Redistributable. See LICENSE.amdgpu for details." LICENSE.amdgpu follows.
 
 Copyright (C) 2024  Advanced Micro Devices, Inc. All rights reserved.

@@ -295,6 +295,15 @@ const V9X_HW16_DEVICE v9x_rv515_x1300_device = {
 const V9X_HW16_DEVICE v9x_si_oland_6611_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
 };
+const V9X_HW16_DEVICE v9x_si_verde_w4100_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
+};
+const V9X_HW16_DEVICE v9x_si_pitcairn_w7000_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
+};
+const V9X_HW16_DEVICE v9x_si_tahiti_w9000_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, v9x_stub_other_engine
+};
 void v9x_carrizo_publish_diagnostics(v9x_hw16_write_fn write)
 {
     (void)write;
@@ -769,6 +778,7 @@ static void test_gamma_only_where_the_hook_writes_the_dac(void)
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_evergreen_turks_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_oland_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_oland_6611_device) == 0u);
+    HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_si_tahiti_w9000_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_vi_carrizo_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rs690_device) == 0u);
     HCHECK("ati", v9x_hw16_ati.gamma_device(&v9x_rv280_9250_device) == 0u);

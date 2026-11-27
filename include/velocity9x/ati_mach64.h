@@ -67,6 +67,14 @@
  * and the 6610's 4 KiB row, read from M-BXMFA8's Dell board by V9XSIMM
  * (docs\decisions\2026-11-20-oland-6611-survey.md). */
 #define V9X_PCI_DEVICE_OLAND_6611       ((v9x_u16)0x6611u)
+/* Three more GCN 1 chips on the Oland's row and identity, claimed unrun
+ * from DOS surveys (GitHub issue 15): FirePro W4100 (Cape Verde), W7000
+ * (Pitcairn) and W9000 (Tahiti). The HAL tells them apart by device id
+ * (docs\decisions\
+ * 2026-11-28-si-cape-verde-pitcairn-tahiti-from-surveys.md). */
+#define V9X_PCI_DEVICE_VERDE_682C       ((v9x_u16)0x682Cu)
+#define V9X_PCI_DEVICE_PITCAIRN_6808    ((v9x_u16)0x6808u)
+#define V9X_PCI_DEVICE_TAHITI_6780      ((v9x_u16)0x6780u)
 /* The Radeon X1200 IGP (RS690): the Radeon 2D engine behind DirectDraw;
  * see rs690_hw16.c. */
 #define V9X_PCI_DEVICE_RS690_791F       ((v9x_u16)0x791Fu)

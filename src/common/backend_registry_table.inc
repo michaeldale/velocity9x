@@ -61,6 +61,9 @@ static const struct v9x_backend_registry_row v9x_backend_registry_rows[] = {
     { 0x1002u, 0x9854u, v9x_ati_mach64_backend }, /* ati / mullins */
     { 0x1002u, 0x6610u, v9x_ati_mach64_backend }, /* ati / oland */
     { 0x1002u, 0x6611u, v9x_ati_mach64_backend }, /* ati / oland alias */
+    { 0x1002u, 0x682Cu, v9x_ati_mach64_backend }, /* ati / oland alias */
+    { 0x1002u, 0x6808u, v9x_ati_mach64_backend }, /* ati / oland alias */
+    { 0x1002u, 0x6780u, v9x_ati_mach64_backend }, /* ati / oland alias */
     { 0x1002u, 0x791Fu, v9x_ati_mach64_backend }, /* ati / rs690 */
     { 0x1002u, 0x9588u, v9x_ati_mach64_backend }, /* ati / rv630 */
     { 0x1002u, 0x94C3u, v9x_ati_mach64_backend }, /* ati / rv610 */

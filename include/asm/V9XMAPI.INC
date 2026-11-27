@@ -658,7 +658,7 @@ V9XMINI_FN_EG_MAP           EQU 0026h
 ; address of the register window, ECX = linear address of the ring window,
 ; EDX = its bytes; AX=0 leaves EBX zero, EDX the reason (1 BAR5's range or
 ; alignment, 2 BAR0's, 3 a BAR moved since the first map, 4 the register
-; map failed, 5 CONFIG_MEMSIZE out of 256..4096, 6 the window map failed)
+; map failed, 5 CONFIG_MEMSIZE out of 256..16384, 6 the window map failed)
 ; and ECX the value refused. Only the ati family image implements it.
 V9XMINI_FN_VI_MAP           EQU 0029h
 

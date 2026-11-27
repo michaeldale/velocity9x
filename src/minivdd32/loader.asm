@@ -253,10 +253,16 @@ V9xEgRingLinear dd 0
 ; AMD Carrizo: the 256 KiB register BAR (BAR5) and the driver's window into
 ; the carve-out, BAR0 + 240 MiB, 4 MiB (V9XMINI_FN_VI_MAP in V9XMAPI.INC):
 ; the SDMA ring (vi_sdma.h, V9X_VI_RING_WINDOW_*). CONFIG_MEMSIZE is in MiB
-; there too; 512 on M-XP7053.
+; there too; 512 on M-XP7053. Its ceiling is 16384, not Evergreen's 4096:
+; the FirePro W9000 (Tahiti) has 6 GiB and the W7000 (Pitcairn) 4 GiB
+; (their VBIOS strings, GitHub issue 15). The check is there to refuse a
+; window that decodes nothing, which reads FFFFFFFFh, and still does; the
+; count is not used for anything else, as the heap and ring windows lie in
+; BAR0's first 256 MiB whatever the size.
 V9X_VI_MMIO_BYTES       equ 00040000h
 V9X_VI_RING_OFFSET      equ 0f000000h
 V9X_VI_RING_BYTES       equ 00400000h
+V9X_VI_MEMSIZE_MAX_MIB  equ 16384
 V9xViMmioBase   dd 0
 V9xViMmioLinear dd 0
 V9xViBar0       dd 0
@@ -4783,7 +4789,7 @@ V9xMini_Api_ViMap_Map:
     mov     edx, 5
     cmp     ecx, V9X_EG_MEMSIZE_MIN_MIB
     jb      V9xMini_Api_ViMap_Failed
-    cmp     ecx, V9X_EG_MEMSIZE_MAX_MIB
+    cmp     ecx, V9X_VI_MEMSIZE_MAX_MIB
     ja      V9xMini_Api_ViMap_Failed
     push    eax
     mov     edx, V9xViBar0

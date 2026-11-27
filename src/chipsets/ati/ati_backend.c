@@ -86,7 +86,9 @@ static const v9x_u16 v9x_ati_device_ids[] = {
     0x474eu, 0x474fu, 0x4752u, 0x4753u, 0x4c42u, 0x4c44u, 0x4c49u, 0x4c50u,
     0x4c51u, 0x4c4eu, 0x4c52u, 0x4c53u,
     0x5964u, 0x5961u, 0x5962u,
-    0x6611u
+    0x6611u,
+    V9X_PCI_DEVICE_VERDE_682C, V9X_PCI_DEVICE_PITCAIRN_6808,
+    V9X_PCI_DEVICE_TAHITI_6780
 };
 
 v9x_status v9x_ati_mach64_probe(

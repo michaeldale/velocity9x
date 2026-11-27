@@ -5,9 +5,9 @@
  *
  * Caicos, Juniper and Redwood (the engines stamped
  * V9X_DD_ENGINE_CAP_EG_CAICOS, _EG_JUNIPER and _EG_REDWOOD) and Turks (PCI
- * 1002:675D, by pci_device) take their own
- * microcode, evergreen_gpu_init table and context count (eg_3d.c). Caicos's VRAM sits at GPU F_00000000 on
- * M-D7TFW4, so every address here carries bits 39:32
+ * 1002:675D, by pci_device) take their own microcode, evergreen_gpu_init
+ * table and context count (eg_3d.c). Caicos's VRAM sits at GPU
+ * F_00000000 on M-D7TFW4, so every address here carries bits 39:32
  * (docs\decisions\2026-10-31-caicos-cp-microcode.md).
  *
  * Trinity (V9X_DD_ENGINE_CAP_EG_TRINITY, the HD 7660D) runs Cayman's
