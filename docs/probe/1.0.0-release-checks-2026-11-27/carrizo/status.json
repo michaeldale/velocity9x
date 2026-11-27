@@ -1,0 +1,19 @@
+{
+    "Name":  "carrizo",
+    "Family":  "ati",
+    "Baseline":  false,
+    "BootBefore":  null,
+    "BootAfter":  null,
+    "Installed":  null,
+    "Error":  "Desktop not ready after 240 s and no dialog to say why; look at the machine.",
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  105,
+    "Desktop":  true,
+    "AnswerSeconds":  3,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "1002:9874",
+    "AdapterMismatch":  false
+}

@@ -1,0 +1,5 @@
+[+0:03] agent 0.19.0, boot 105, desktop True
+[+0:19] display card present: 1002:9874
+[+1:46] staged 8 files; resetting
+[+8:50] reset: boot  -> 
+[+16:55] ERROR: Desktop not ready after 240 s and no dialog to say why; look at the machine.
