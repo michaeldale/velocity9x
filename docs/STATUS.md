@@ -27,16 +27,12 @@ Where the 1.0 gate stands:
 | 3. B10's Have Disk installs and B13's update | B10 closed. B13: an update and a rollback on a GeForce 210 (0.59.0 to 0.60.0); the step to 1.0.0 through Check for updates is owed once it is published |
 | 4. The issue index re-read | Done 2026-11-26 |
 | 5. This page | This rewrite |
-| 6. The README's tables carry the tiers | Written 2026-11-26; see below for the "1.0 run owed" cells |
+| 6. The README's tables carry the tiers | Written 2026-11-26; the "1.0 run owed" cells replaced by last-run dates on 2026-11-27 |
 
 Blockers B1 to B14 are closed or decided for 1.0; only B13's last step
 remains. B5 (a full-screen DOS box round trip on a physical S3 card),
 the Trio64 and Millennium II runs, and the re-runs the issue re-read
 listed were left for a later release on 2026-11-27 (Michael).
-
-The README marks several cards "1.0 run owed": Supported on the last
-run, to be run again before 1.0. With the re-runs skipped, those runs
-will not happen; the cells still say owed.
 
 ## Target coverage
 

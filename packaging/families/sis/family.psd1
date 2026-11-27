@@ -137,7 +137,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported, its candidate run owed: SiS 6326. Not booted by a release check from 0.42.0 to the 0.61.0 tree'
+        TestedStatus = 'Supported: SiS 6326 in A8U4I5 (2026-11-27, 0.61.0 tree), every release probe passing but one V9XD32 texture check (X8R8G8B8); 3DMark 2000 runs at 640x480'
         CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 

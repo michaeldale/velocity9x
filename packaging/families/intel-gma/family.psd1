@@ -553,7 +553,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: GMA 950, HD 4600, HD 3000 0112, GMA X3100 and GMA 4500MHD, release probes passing (2026-11-21 to 23, 0.61.0 tree); GMA 900 too (2026-11-26, a second 915GM), its candidate run owed with the GMA 3150 and HD 4000 mobile; Ironlake 0042 and HD 4000 0162 on their last run, the cards gone; G45, Q45 and HD 2500 from field reports. Recognised, not run: GMA 3100, Ironlake mobile 0046, HD 3000 0122'
+        TestedStatus = 'Supported: GMA 950, HD 4600, HD 3000 0112, GMA X3100 and GMA 4500MHD, release probes passing (2026-11-21 to 23, 0.61.0 tree); GMA 900 too (2026-11-26, a second 915GM); GMA 3150 (2026-10-20) and HD 4000 mobile (2026-11-05) on their last run, not run for 1.0; Ironlake 0042 and HD 4000 0162 on their last run, the cards gone; G45, Q45 and HD 2500 from field reports. Recognised, not run: GMA 3100, Ironlake mobile 0046, HD 3000 0122'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'

@@ -255,7 +255,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported, the candidate run owed: Millennium, Millennium II and Mystique. Recognised, not run: Mystique AGP and Millennium II AGP. On 86Box only (2026-11-21, 0.61.0 tree): the Millennium boots; V9XFBCMP, V9XWPRS and V9XGLP pass; Glide and the render interface do not open; no physical Matrox card run'
+        TestedStatus = 'Supported: Mystique (every release probe passing but V9XD32 T22 and the Glide half blend) and Millennium (the 2D-side probes pass; no 3D engine), in A8U4I5 (2026-11-27, 0.61.0 tree); Millennium II on its last run (2026-10-22), not run for 1.0. Recognised, not run: Mystique AGP and Millennium II AGP'
         CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 

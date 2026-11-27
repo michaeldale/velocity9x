@@ -160,7 +160,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported, its candidate run owed: Voodoo4. Not booted by a release check from 0.42.0 to the 0.61.0 tree'
+        TestedStatus = 'Supported: Voodoo4 4500 in A8U4I5 (2026-11-27, 0.61.0 tree), every release probe passing but the V9XD32 32-bit texture test; 3DMark 2000 runs'
         CheckRecord = 'docs/decisions/2026-11-21-1.0-baseline-checks.md'
     }
 

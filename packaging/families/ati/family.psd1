@@ -1112,7 +1112,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro, Rage XL, Rage IIC, Radeon 9250, HD 7470 and Rage Mobility-M with their candidate run owed; HD 2600 XT, HD 2400 Pro and HD 5450 on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, Radeon 9200 5961 and 5962'
+        TestedStatus = 'Supported: Oland XT 6610 (V9XD32 passes, 2026-11-25), R3E, R7E, HD 7660D, X1200 and X1300, release probes passing (2026-11-21 to 25, 0.61.0 tree); Rage 128 Pro (2026-11-27), Rage XL and Rage IIC (2026-11-26) in A8U4I5 and HD 5450 (2026-11-26), release probes run on the 0.61.0 tree; Radeon 9250 (2026-11-16), HD 7470 (2026-11-23) and Rage Mobility-M on their last run, not run for 1.0; HD 2600 XT and HD 2400 Pro on their last run, the cards gone; HD 5770 from a reporter (GitHub issue 21 open), Oland 6611 on our probes, Mach64 VT2 on 86Box only. Recognised, not run: HD 5570, Radeon 9200 5961 and 5962'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-23-1.0-b1-b3-b12-checks.md'

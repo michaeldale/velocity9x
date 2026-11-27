@@ -805,3 +805,15 @@ Code changes after this commit need the gate again before 1.0.0.
 interfaces, and what is left for after 1.0. Desk review; no machine
 run. The README's "1.0 run owed" cells still say owed although those
 runs were skipped.
+
+### 2026-11-27: the README's "1.0 run owed" cells
+
+With the re-runs skipped, the ten cells that read "1.0 run owed" now
+read Supported with the card's last run: GMA 900, Rage IIC and Rage XL
+(2026-11-26), HD 7470 (2026-11-23), Radeon 9250 (2026-11-16), HD 4000
+mobile (2026-11-05), Trio64 (card 2026-11-04, 86Box 2026-11-24),
+Millennium II (2026-10-22), GMA 3150 (2026-10-20), and the S3D row
+(Trio3D/2X 2026-11-26, ViRGE/DX 2026-11-27). The tier legend drops
+"1.0 run owed" and says a Supported card last run before 2026-11-21 was
+not run again for 1.0. The packages' status strings (the zip READMEs)
+for `3dfx`, `sis`, `matrox`, `s3`, `ati` and `intel-gma` say the same.
