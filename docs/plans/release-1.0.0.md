@@ -126,6 +126,9 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **ViRGE/DX:** 3DMark 2000's engine idle timeouts at 640x480 (none at
+  800x600); left for a later release, decided 2026-11-27 (Michael)
+  ([issue](../issues/2026-11-27-virgedx-3dmark2000-640x480-engine-timeouts.md)).
 - **Rage 128 Pro:** V9XD32's X8R8G8B8 texture drawing black, as on the
   SiS 6326; left for a later release, decided 2026-11-27 (Michael)
   ([issue](../issues/2026-11-27-rage128pro-v9xd32-x8r8g8b8-texture-draws-black.md)).
@@ -681,5 +684,6 @@ with none
 the Trio3D/2X's 51 were also at 640x480. The two owed re-runs: Final
 Reality runs clean on the silicon (the September speckle was 86Box's),
 and 1024x768x32 displays correctly on a monitor through OBS, against
-XFree86's ViRGE limit; both issues closed. Whether the 640x480
-timeouts hold the ViRGE/DX's 1.0 tier is Michael's call.
+XFree86's ViRGE limit; both issues closed. **Decided (Michael,
+2026-11-27): the 640x480 timeouts go to a later release**; they stay a
+README known issue in 1.0.

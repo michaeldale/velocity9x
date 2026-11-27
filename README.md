@@ -235,7 +235,8 @@ New in 0.59.0:
   On the Trio3D/2X, 3DMark 99 shows black sprite boxes and magenta
   panels and partial alpha saturates, and 3DMark 2000 runs with engine
   timeouts ([issue](docs/issues/2026-11-26-trio3d2x-3dmark2000-engine-timeouts.md));
-  the ViRGE/DX's 3DMark 2000 has them at 640x480 and not at 800x600
+  the ViRGE/DX's 3DMark 2000 has them at 640x480 and not at 800x600,
+  left for a later release
   ([issue](docs/issues/2026-11-27-virgedx-3dmark2000-640x480-engine-timeouts.md))
   ([issue](docs/issues/2026-09-03-3dmark99-on-the-trio3d-after-the-stride-fix.md),
   [issue](docs/issues/2026-09-03-trio3d-alpha-and-mip-differ-from-virge-dx.md)).

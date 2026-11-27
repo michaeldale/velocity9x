@@ -1,7 +1,8 @@
 # ViRGE/DX: 3DMark 2000 at 640x480 runs with 45 engine idle timeouts, none at 800x600
 
 Date: 2026-11-27. Machine: A8U4I5, S3 ViRGE/DX (`5333:8A01`, 4 MiB),
-the 0.61.0 tree's `s3` set. Status: open, cause not looked at.
+the 0.61.0 tree's `s3` set. Status: open, cause not looked at. Left
+for a later release (Michael, 2026-11-27); a README known issue in 1.0.
 
 ## What is seen
 
