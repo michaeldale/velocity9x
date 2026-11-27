@@ -90,10 +90,12 @@ New in 0.59.0:
   On one reporter's HD 3000 laptop `vbe` could not map the 16 MB frame
   buffer; a smaller retry is in but untested
   ([issue](docs/issues/2026-10-22-github-13-hd3000-vbe-dpmi-map.md)).
-- **Full-screen DOS on cards other than the GMA 950, HD 4600 and S3
-  ViRGE/DX:** the 0.45.0 fix is in every package but has not been run
-  on them. If the desktop does not come back, keep DOS windowed. On the
-  GMA 950 it has not been run since the 0.49.0 texture memory either.
+- **Full-screen DOS on cards other than the GMA 950, HD 4600, Radeon
+  R7 250 and the 86Box guests:** the 0.45.0 fix is in every package but
+  has not been run on them, including any physical S3 card (left for a
+  later release). If the desktop does not come back, keep DOS windowed.
+  On the GMA 950 it has not been run since the 0.49.0 texture memory
+  either.
 - **Stand By and resume:** measured only on 86Box (`vbe`, `matrox`,
   `s3`, Mach64 VT2) and one desktop Radeon (Oland R7 250, APM), which
   come back to the desktop with the mode kept; the Oland slowly, as

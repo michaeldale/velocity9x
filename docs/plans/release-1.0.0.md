@@ -57,7 +57,7 @@ candidate; decision 4).
 | B2 | The `ati` gamma hook writes Mach64 DAC offsets into other chips' register windows ([issue](../issues/2026-11-09-ati-gamma-hook-writes-mach64-dac-on-evergreen.md)) | Closed 2026-11-23: only the Mach64-class rows claim gamma; refused on the Rage 128 (host test) and the Oland (measured) | The hook is per engine; a ramp measured on the Rage 128 and one Evergreen-or-later part, or refused there |
 | B3 | Engine-placed render targets are never freed ([issue](../issues/2026-11-15-placed-render-targets-never-freed.md)) | Closed 2026-11-23: freed; V9XRTLK leaks 0 on the Oland and the HD 7660D | A create/destroy loop in a probe leaves the heap where it started on two engines |
 | B4 | DirectX 8 MIPFILTER read with DirectX 7's numbering ([issue](../issues/2026-11-19-ddi8-mip-filter-read-as-dx7.md)) | Closed 2026-11-23: fixed in 0.57.0 (`4b0aa6ba`); 3DMark 2001 SE on the HD 4600 reaches MIPNEAREST and MIPLINEAR | The record says which |
-| B5 | Full-screen DOS box and return ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)) | Run on the GMA 950, the HD 4600 and the 86Box ViRGE/DX; issue 16's reporter fails on `vbe` too; 2026-11-24: passes on 86Box with `vbe` (Millennium), `matrox` and `ati` (Mach64 VT2, not a Radeon); 2026-11-25: passes on the Oland R7 250, the `ati` Radeon ([record](../decisions/2026-11-25-1.0-b5-oland-dos-box.md)); the S3 card and the reporter's case remain; 2026-11-27: the ViRGE/DX round skipped it under the standing "no DOS box on A8U4I5" rule (2026-10-02) without asking; Michael wants it run there, on the Trio64 and the Trio3D, the S3 cards left in the round | A round trip on one physical S3 card, one `ati` Radeon and `vbe`; the reporter's case explained |
+| B5 | Full-screen DOS box and return ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)) | Run on the GMA 950, the HD 4600 and the 86Box ViRGE/DX; issue 16's reporter fails on `vbe` too; 2026-11-24: passes on 86Box with `vbe` (Millennium), `matrox` and `ati` (Mach64 VT2, not a Radeon); 2026-11-25: passes on the Oland R7 250, the `ati` Radeon ([record](../decisions/2026-11-25-1.0-b5-oland-dos-box.md)); the S3 card and the reporter's case remain; 2026-11-27: the ViRGE/DX round skipped it under the standing "no DOS box on A8U4I5" rule (2026-10-02) without asking; Michael wants it run there, on the Trio64 and the Trio3D, the S3 cards left in the round. **Closed for 1.0 (Michael, 2026-11-27): left for a later release**, with the Trio64 and Millennium II skipped; the physical S3 round trip and the reporter's case move after 1.0, and the README's full-screen DOS known issue stays | A round trip on one physical S3 card, one `ati` Radeon and `vbe`; the reporter's case explained |
 | B6 | A square follows the cursor over a full-screen game with the desktop copy ([issue](../issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)) | The reporter confirms `NOSHADOW.TXT` removes it; 2026-11-25: reproduced on the Oland R7 250 with a new probe (V9XCURSQ), gone with `NOSHADOW.TXT`; cause: the shadow copies the cursor rectangle out during exclusive mode ([record](../decisions/2026-11-25-1.0-b6-oland-cursor-square.md)); fixed the same day (`shadow_hold`), V9XCURSQ passes on the Oland and on the R3E (fix only; the square not reproduced there); the reporter's confirmation still owed; 2026-11-26: on an HD 5450 the square is still there at 320x240, the reporter's mode, while 640x480 is fixed ([record](../decisions/2026-11-26-1.0-hd5450-evergreen-check.md)) | **Closed for 1.0 (Michael, 2026-11-26):** 640x480 fixed; the square at 320x240 is a README known issue, its fix left for 1.1 |
 | B7 | HD 5770 offers 16 MB where 128 is expected (GitHub issue 21) | Waiting on the reporter's `V9XBOOT.INI` and `V9XHW.INI`; 2026-11-26: on our HD 5770 (M-BXMFA8) the `ati` driver gives DirectDraw 128 MiB and the VBE BIOS reports 16 MiB, so the reporter's 16 is the VBE figure; which path their Windows Me machine took is unknown ([record](../decisions/2026-11-26-1.0-trio3d2x-hd5770.md)) | **Closed (Michael, 2026-11-26)** on that measurement; the HD 5770 stays Supported |
 | B8 | Two Direct3D processes at once on the HAL's shared statics ([issue](../issues/2026-10-06-hal-statics-shared-across-processes.md)) | Closed 2026-11-23: DDHELP faulted on another process's draw ([issue](../issues/2026-11-23-ddhelp-destroysurface-runs-another-process-draw.md)); fixed, and UT2004 with the probes beside it passes on the Oland and the HD 4600 | Two probes run together on one Intel and one `ati` machine, recorded |
@@ -90,6 +90,12 @@ on one machine whose run is owed, by machine:
   ([issue](../issues/2026-08-15-doom95-low-resolution-modes.md)), the
   QEMU `vbe` guest's 1024x768x16 scanout
   ([issue](../issues/2026-08-27-vbe-1024x768x16-scanout-stripes.md)).
+
+**Decided (Michael, 2026-11-27): none of these re-runs is owed for
+1.0**, neither the list above nor the record re-runs before it. Each
+issue stays as filed and each README known issue stays as written; the
+Trio64's mode switch repaint and black level move to a later release
+with the Trio64 itself.
 
 ## The gate for the 1.0 build
 
@@ -135,6 +141,19 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **B5, the full-screen DOS box round trip on a physical S3 card:** left
+  for a later release, decided 2026-11-27 (Michael)
+  ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)).
+- **Trio64 and Millennium II on A8U4I5:** the last two cards of the
+  round are skipped, and with the Trio64 its live mode switch repaint
+  ([issue](../issues/2026-08-20-live-mode-switch-no-repaint-barry.md))
+  and black level
+  ([issue](../issues/2026-08-23-s3-pedestal-black-level.md)); decided
+  2026-11-27 (Michael). Gate item 2 is met without them: `s3` booted on
+  the ViRGE/DX and Trio3D/2X, `matrox` on the Mystique and Millennium.
+- **The owed re-runs** (Forsaken on GM45/GM965, Final Reality on the
+  GMA 950 netbook, the guests' Doom95 and 1024x768x16, and the record
+  re-runs): skipped for 1.0, decided 2026-11-27 (Michael).
 - **Mystique:** 3DMark 2000 at 640x480 leaving large areas of Adventure
   black (911 texture placements refused in 4 MiB); left for a later
   release, decided 2026-11-27 (Michael)
@@ -760,3 +779,14 @@ gate item 2) fails V9XD32 T21 and T22 and the Glide BlendHalf, value
 for value as before, and stays Experimental; the HD 3000 passes every
 probe, and its 3DMark 2000 draws correctly on screen (run with
 `VSync=2`, so the score is diagnostic only).
+
+### 2026-11-27: the round ends; B5 and the re-runs left for later
+
+The Trio64 and Millennium II are not fitted: the A8U4I5 round ends at
+nine cards, which meets gate item 2. **Decided (Michael, 2026-11-27):**
+B5 is closed for 1.0 and left for a later release, the Trio64's mode
+switch repaint and black level go with it, and the owed re-runs are
+skipped. Only B13's last step is open. Left before 1.0.0: gate item 1
+(`run-checks.ps1` green from a clean tree), item 5 (`docs/STATUS.md`
+against the 1.0.0 build), the release itself, and B13's step to 1.0.0
+through Check for updates once it is published.
