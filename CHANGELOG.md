@@ -10,10 +10,13 @@ build identifier so exact guest-tested binaries remain traceable.
   DirectDraw and GDI fills and copies on the 2D engine, the GeForce
   210's channel brought up on a G9x chip. Run on one owner's card
   through remote help (GitHub issue 30): DirectDraw's pixel checks and
-  the GDI and mode-switch tests pass at 640x480x8. No Direct3D yet,
-  because this chip's 3D class differs, and page flips are drawn by
-  DirectDraw's fallback
-  ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md)).
+  the GDI and mode-switch tests pass at 640x480x8. Page flips go
+  through the GeForce 210's VGA start-address path, which this card's
+  video BIOS uses instruction for instruction; they wait for the
+  retrace on the card, but the picture has not been seen. No Direct3D
+  yet, because this chip's 3D class differs
+  ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md),
+  [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md)).
 
 - **Ironlake (HD Graphics, `8086:0042` and `0046`): DirectDraw and
   Direct3D get the BIOS's 128 MiB, not 16.** The driver mapped 16 MiB

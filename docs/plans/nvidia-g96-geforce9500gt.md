@@ -2,9 +2,10 @@
 
 Date: 2026-11-20
 
-Status: **Phases 0 to 2 done; Phase 3's 2D engine runs on the card
-(`docs\decisions\2026-11-28-g96-2d-engine-first-run.md`); its flips are
-not done.** GitHub issues 29
+Status: **Phases 0 to 3 done: the 2D engine
+(`docs\decisions\2026-11-28-g96-2d-engine-first-run.md`) and flips
+(`docs\decisions\2026-11-28-g96-flips-from-the-vbios.md`, paced at the
+retrace, picture not seen). Phases 4 and 5 (Direct3D) remain.** GitHub issues 29
 and 30: the owner whose HD 2500 runs 0.59.0
 (`docs\decisions\2026-11-20-hd2500-field-report.md`) also has this card,
 256 MiB, in the same ASRock B75M R2.0 board. Since 2026-11-28 the machine
