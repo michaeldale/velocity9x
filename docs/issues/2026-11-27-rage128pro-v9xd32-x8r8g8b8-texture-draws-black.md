@@ -3,7 +3,8 @@
 Date: 2026-11-27. Machine: A8U4I5, Rage 128 Pro (Rage Fury Pro/Xpert
 2000 Pro, `1002:5046`, subsystem `1002:0018`), the 0.61.0 tree's `ati`
 set. Status: open, cause not looked at. The first V9XD32 run with T22
-on this card, so there is no earlier result to compare.
+on this card, so there is no earlier result to compare. Left for a
+later release (Michael, 2026-11-27); a README known issue in 1.0.
 
 ## What is seen
 

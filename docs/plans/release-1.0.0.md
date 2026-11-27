@@ -127,6 +127,9 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **Rage 128 Pro:** V9XD32's X8R8G8B8 texture drawing black, as on the
+  SiS 6326; left for a later release, decided 2026-11-27 (Michael)
+  ([issue](../issues/2026-11-27-rage128pro-v9xd32-x8r8g8b8-texture-draws-black.md)).
 - **SiS 6326:** V9XD32's X8R8G8B8 texture drawing black; left for a
   later release, decided 2026-11-27 (Michael)
   ([issue](../issues/2026-11-27-sis6326-v9xd32-x8r8g8b8-texture-draws-black.md)).
@@ -662,5 +665,6 @@ texture, black at every DDI level while A8R8G8B8 passes, the same
 fault as the SiS 6326's
 ([issue](../issues/2026-11-27-rage128pro-v9xd32-x8r8g8b8-texture-draws-black.md)).
 3DMark 2000 at its defaults runs to its score with no refusal, stall
-or engine reset, its grabbed frames whole. Whether T22X holds the
-Rage 128 Pro's 1.0 tier is Michael's call.
+or engine reset, its grabbed frames whole. **Decided (Michael,
+2026-11-27): the Rage 128 Pro's T22X goes to a later release**, as the
+SiS 6326's did; it stays a README known issue in 1.0.
