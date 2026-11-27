@@ -358,6 +358,9 @@ const V9X_HW16_DEVICE v9x_riva128_device = {
 const V9X_HW16_DEVICE v9x_gt218_device = {
     0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+const V9X_HW16_DEVICE v9x_g96_device = {
+    0u, 0u, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 unsigned long v9x_gt218_measure_video_memory(unsigned long mapped_bytes,
                                              unsigned long reported_bytes)
 {

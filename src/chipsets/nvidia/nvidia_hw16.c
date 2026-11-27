@@ -29,6 +29,7 @@ extern unsigned short v9x_modes16_highcolor(void);
 
 extern const V9X_HW16_DEVICE v9x_riva128_device;
 extern const V9X_HW16_DEVICE v9x_gt218_device;
+extern const V9X_HW16_DEVICE v9x_g96_device;
 /* gt218_hw16.c: the GT218's heap, the whole of its BAR1 mapping. */
 extern unsigned long v9x_gt218_measure_video_memory(
     unsigned long mapped_bytes, unsigned long reported_bytes);
@@ -59,7 +60,8 @@ static unsigned long v9x_nvidia_general_after = 0ul;
 
 static const V9X_HW16_DEVICE * const v9x_nvidia_devices[] = {
     &v9x_riva128_device,
-    &v9x_gt218_device
+    &v9x_gt218_device,
+    &v9x_g96_device
 };
 
 /*
@@ -152,10 +154,17 @@ static void v9x_nvidia_publish_diagnostics(const V9X_HW16_DEVICE *device,
  */
 #define V9X_NVIDIA_RAMIN_BYTES 0x00008000ul
 
+/* The Tesla rows, which share gt218_hw16.c's heap and reserve. */
+static int v9x_nvidia_is_tesla(void)
+{
+    return v9x_hw16_active_device() == &v9x_gt218_device ||
+           v9x_hw16_active_device() == &v9x_g96_device;
+}
+
 static unsigned long v9x_nvidia_reserve_video_memory(
     unsigned long usable_bytes, unsigned long visible_bytes)
 {
-    if (v9x_hw16_active_device() == &v9x_gt218_device) {
+    if (v9x_nvidia_is_tesla()) {
         return v9x_gt218_reserve_video_memory(usable_bytes, visible_bytes);
     }
     if (v9x_hw16_active_device() != &v9x_riva128_device) {
@@ -232,7 +241,7 @@ static unsigned long v9x_nvidia_place_desktop(unsigned short pitch_bytes)
 static unsigned long v9x_nvidia_measure_video_memory(
     unsigned long mapped_bytes, unsigned long reported_bytes)
 {
-    if (v9x_hw16_active_device() != &v9x_gt218_device) {
+    if (!v9x_nvidia_is_tesla()) {
         return 0ul;
     }
     return v9x_gt218_measure_video_memory(mapped_bytes, reported_bytes);

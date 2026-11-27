@@ -304,6 +304,9 @@ V9X_NV3_BOOT_CHIP_NV3   equ 00030000h
 ; 19:16 are 2, so it cannot pass as chip 3.
 V9X_NV50_BOOT_CHIPSET_MASK  equ 1ff00000h
 V9X_NV50_BOOT_CHIPSET_GT218 equ 0a800000h
+; The G96 (GeForce 9500 GT), 096000C1h on M-Z2T02D
+; (docs\decisions\2026-11-28-g96-register-probe.md); bits 19:16 are 0.
+V9X_NV50_BOOT_CHIPSET_G96   equ 09600000h
 V9xNv3MmioBase   dd 0
 V9xNv3MmioLinear dd 0
 ENDIF
@@ -4374,7 +4377,7 @@ V9xMini_Api_Nv3MmioMap:
 IFDEF V9X_NV3_MMIO
     mov     eax, [ebp.Client_EBX]
     cmp     eax, 01000000h
-    jb      short V9xMini_Api_Nv3MmioMap_Refused
+    jb      V9xMini_Api_Nv3MmioMap_Refused
     cmp     eax, 0ff000000h
     jae     short V9xMini_Api_Nv3MmioMap_Refused
     test    eax, V9X_NV3_MMIO_BYTES - 1
@@ -4393,8 +4396,8 @@ V9xMini_Api_Nv3MmioMap_Map:
     je      short V9xMini_Api_Nv3MmioMap_Failed
     mov     V9xNv3MmioLinear, eax
 
-    ; PMC_BOOT_0 must name chip 3 or chipset A8h (the GT218); a BAR whose
-    ; decode is off reads all ones and fails both.
+    ; PMC_BOOT_0 must name chip 3, chipset A8h (the GT218) or 96h (the
+    ; G96); a BAR whose decode is off reads all ones and fails all three.
 V9xMini_Api_Nv3MmioMap_Check:
     mov     edx, V9xNv3MmioLinear
     mov     eax, [edx+V9X_NV3_PMC_BOOT_0]
@@ -4404,6 +4407,8 @@ V9xMini_Api_Nv3MmioMap_Check:
     je      short V9xMini_Api_Nv3MmioMap_Known
     and     ecx, V9X_NV50_BOOT_CHIPSET_MASK
     cmp     ecx, V9X_NV50_BOOT_CHIPSET_GT218
+    je      short V9xMini_Api_Nv3MmioMap_Known
+    cmp     ecx, V9X_NV50_BOOT_CHIPSET_G96
     jne     short V9xMini_Api_Nv3MmioMap_Refused
 V9xMini_Api_Nv3MmioMap_Known:
     mov     [ebp.Client_EBX], edx

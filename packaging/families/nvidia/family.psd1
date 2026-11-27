@@ -12,8 +12,8 @@
 @{
     SchemaVersion = 1
     Id = 'nvidia'
-    DisplayName = 'NVIDIA RIVA 128 and GeForce 210'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8, 16 and 32 bpp, Direct3D on the 3D engine at 16 and 32 bpp with Z16, CPU drawing otherwise.'
+    DisplayName = 'NVIDIA RIVA 128, GeForce 210 and GeForce 9500 GT'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8, 16 and 32 bpp, Direct3D on the 3D engine at 16 and 32 bpp with Z16, CPU drawing otherwise. GeForce 9500 GT (PCI 10DE:0640): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy, no Direct3D, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -118,6 +118,48 @@
             }
             MapSymbols = @('v9x_gt218_device')
         }
+        @{
+            Id = 'g96'
+            Name = 'NVIDIA GeForce 9500 GT'
+            VendorId = '10DE'
+            DeviceId = '0640'
+            # No SubsystemId: the seen card reports 0000:0000.
+            DeviceDesc = 'Velocity9x NVIDIA GeForce 9500 GT'
+            Adapter = 'NVIDIA GeForce 9500 GT'
+            ClockDetector = 'nvidia-g96-unavailable-v1'
+            ModeSwitching = 'vbe-lfb'
+            # The GT218's channel and 2D engine, on the G96's chipset
+            # (docs\plans\nvidia-g96-geforce9500gt.md, Phase 3; probe in
+            # docs\decisions\2026-11-28-g96-register-probe.md). No
+            # Direct3D: the 3D class differs (8297h), Phase 5.
+            Acceleration = 'directdraw-fill-copy'
+            Direct3D = 'not-advertised'
+            EngineType = 'NV50'
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY')
+            # What the seen card's VBE reports through 4F00h, as on the
+            # GT218 (issue 30's vbe V9XBOOT.TXT).
+            VideoMemoryBytes = 14680064
+
+            # The family's rows; every mode number is in this BIOS's list
+            # (issue 30's vbe V9XBOOT.TXT), 16 bpp 5:6:5.
+            Modes = @(
+                @{ BitsPerPixel = 8; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0101' }
+                @{ BitsPerPixel = 8; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0103' }
+                @{ BitsPerPixel = 8; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0105' }
+                @{ BitsPerPixel = 8; Width = 640; Height = 400; RefreshRate = 60; VbeMode = '0100' }
+                @{ BitsPerPixel = 16; Width = 640; Height = 480; RefreshRate = 60; VbeMode = '0111' }
+                @{ BitsPerPixel = 16; Width = 800; Height = 600; RefreshRate = 60; VbeMode = '0114' }
+                @{ BitsPerPixel = 16; Width = 1024; Height = 768; RefreshRate = 60; VbeMode = '0117' }
+            )
+
+            Objects = @('gt218_hw16', 'gt218_reserve')
+
+            Audit = @{
+                Required = @()
+                Forbidden = @()
+            }
+            MapSymbols = @('v9x_g96_device')
+        }
     )
 
     # The host-testable policy backend; see the s3 manifest for the shape.
@@ -186,7 +228,8 @@
         ForbiddenInstructions = @()
         RequiredMapSymbols = @()
         DispatchSymbol = 'v9x_hw16'
-        BackendSymbols = @('v9x_riva128_device', 'v9x_gt218_device')
+        BackendSymbols = @('v9x_riva128_device', 'v9x_gt218_device',
+                           'v9x_g96_device')
     }
 
     Inf = @{
@@ -209,10 +252,11 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: GeForce 210 (GT218), release probes passing (2026-11-25, 0.61.0 tree). Experimental: RIVA 128ZX, with its known V9XD32 and Glide BlendHalf failures (2026-11-21)'
+        TestedStatus = 'Supported: GeForce 210 (GT218), release probes passing (2026-11-25, 0.61.0 tree). Experimental: RIVA 128ZX, with its known V9XD32 and Glide BlendHalf failures (2026-11-21); GeForce 9500 GT (G96), DirectDraw and GDI on the 2D engine only, no Direct3D (2026-11-28)'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-25-gt218-cube-levels-dxt-pool-counters.md'
+            'docs/decisions/2026-11-28-g96-2d-engine-first-run.md'
         )
     }
 
@@ -220,7 +264,7 @@
         Include = $true
         Folder = 'NVIDIA'
         Order = 8
-        HardwareIdHint = 'PCI 12D2:0018, 10DE:0A65'
+        HardwareIdHint = 'PCI 12D2:0018, 10DE:0A65, 10DE:0640'
         # Installed files that ride a third disk, as every other family's do.
         ThirdDisk = @('V9XUPD.EXE', 'V9XTRACE.EXE', 'GLIDE3X.DLL',
                       'ATI3DCIF.DLL')

@@ -94,20 +94,19 @@ static unsigned long v9x_gt218_reserve_offset(void)
 }
 
 /* BAR0 mapped by the mini-VDD, which hands the window over only if
- * PMC_BOOT_0 names chipset A8h. No register is touched from here. */
-static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
-                                  unsigned long *control_linear_base,
-                                  unsigned long *mapped_aperture_bytes,
-                                  unsigned long *engine_type,
-                                  unsigned long *engine_caps,
-                                  unsigned long *gtt_linear_base,
-                                  unsigned long *ring_linear_base,
-                                  unsigned long *ring_bytes)
+ * PMC_BOOT_0 names chipset A8h or 96h; 0 when it did not. No register is
+ * touched from here. */
+static unsigned long v9x_tesla_map_bar0(unsigned long *control_linear_base,
+                                        unsigned long *mapped_aperture_bytes,
+                                        unsigned long *engine_type,
+                                        unsigned long *engine_caps,
+                                        unsigned long *gtt_linear_base,
+                                        unsigned long *ring_linear_base,
+                                        unsigned long *ring_bytes)
 {
     unsigned long bar0 = 0ul;
     unsigned long linear = 0ul;
 
-    (void)framebuffer_linear_base;
     *control_linear_base = 0ul;
     *mapped_aperture_bytes = 0ul;
     *engine_type = V9X_DD_ENGINE_TYPE_NONE;
@@ -117,14 +116,32 @@ static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
     *ring_bytes = 0ul;
 
     if (V9xPciReadNv3MmioBar(&bar0) == 0u) {
-        return;
+        return 0ul;
     }
     if (V9xMiniNv3MmioMap(bar0, &linear) == 0u || linear == 0ul) {
-        return;
+        return 0ul;
     }
     *control_linear_base = linear;
     *mapped_aperture_bytes = V9X_GT218_MMIO_BYTES;
     *engine_type = V9X_DD_ENGINE_TYPE_NV50;
+    return linear;
+}
+
+static void v9x_gt218_fill_engine(unsigned long framebuffer_linear_base,
+                                  unsigned long *control_linear_base,
+                                  unsigned long *mapped_aperture_bytes,
+                                  unsigned long *engine_type,
+                                  unsigned long *engine_caps,
+                                  unsigned long *gtt_linear_base,
+                                  unsigned long *ring_linear_base,
+                                  unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    if (v9x_tesla_map_bar0(control_linear_base, mapped_aperture_bytes,
+                           engine_type, engine_caps, gtt_linear_base,
+                           ring_linear_base, ring_bytes) == 0ul) {
+        return;
+    }
     /* D3D: the Tesla 3D engine on the same channel (d3d_nv50.c), whose
      * builders the channel probe drew right on M-BXMFA8. DDI 8 over DDI
      * 6: pixel shaders on the translator V9XN5CH /3d:ps11 drew right, two
@@ -167,4 +184,59 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
     0,                      /* engine_pool */
     /* aperture_from_bar: map BAR1, not the VBE's BAR3 window. */
     1u
+};
+
+/*
+ * NVIDIA GeForce 9500 GT, PCI 10DE:0640: a G96 (nouveau's NV96, Tesla),
+ * on M-Z2T02D (docs\plans\nvidia-g96-geforce9500gt.md, Phase 3). Its VBE
+ * has the GT218's layout, 14 MiB at BAR3 + 16 MiB; PMC_BOOT_0 096000C1h,
+ * 256 MiB GDDR3, no BAR VM, and BAR1 held distinct writes at 16, 32, 64
+ * and 128 MiB with no alias (docs\decisions\2026-11-28-g96-register-
+ * probe.md), so the GT218's BAR1 map, heap and reserve apply unchanged:
+ * every byte of the 128 MiB mapped is memory. The engine is the GT218's
+ * channel and 2D object; the bring-up takes the chipset from PMC_BOOT_0
+ * (nv50_init.c, nv50_grctx.c's pre-A0h branches). Fill and copy only:
+ * the 3D class here is NV84_3D (8297h), not the 8597h d3d_nv50.c binds,
+ * and this VBIOS's start-address sequence is not read, so Direct3D and
+ * engine flips wait for Phases 3b and 5.
+ */
+static void v9x_g96_fill_engine(unsigned long framebuffer_linear_base,
+                                unsigned long *control_linear_base,
+                                unsigned long *mapped_aperture_bytes,
+                                unsigned long *engine_type,
+                                unsigned long *engine_caps,
+                                unsigned long *gtt_linear_base,
+                                unsigned long *ring_linear_base,
+                                unsigned long *ring_bytes)
+{
+    (void)framebuffer_linear_base;
+    if (v9x_tesla_map_bar0(control_linear_base, mapped_aperture_bytes,
+                           engine_type, engine_caps, gtt_linear_base,
+                           ring_linear_base, ring_bytes) == 0ul) {
+        return;
+    }
+    *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
+                   V9X_DD_ENGINE_CAP_SCREEN_COPY;
+}
+
+/* Not static: resolved by name in the link map by the per-object audit. */
+const V9X_HW16_DEVICE v9x_g96_device = {
+    0x10deu, 0x0640u,
+    "NVIDIA GeForce 9500 GT",
+    "10DE", "0640",
+    "nvidia-g96-unavailable-v1",
+    "vbe-lfb",
+    "directdraw-fill-copy",
+    "not-advertised",
+    0,
+    v9x_g96_fill_engine,
+    V9X_GT218_FRAMEBUFFER_BAR,
+    0u,                     /* packed_pitch */
+    V9X_GT218_MAP_BYTES,
+    v9x_gt218_reserve_offset,
+    V9X_HW16_WC_VRAM,
+    0,
+    0u,                     /* screen_shadow: GDI has the engine */
+    0,                      /* engine_pool */
+    1u                      /* aperture_from_bar */
 };

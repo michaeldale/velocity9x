@@ -174,6 +174,16 @@ static void test_variants(void)
     CHECK(at != list.count && ops[at].value == 0x00000800ul);
     CHECK(find_write(0ul, 0x402cc0ul) == list.count);
 
+    /* The G96 (96h, M-Z2T02D): g84_fb's VM trap value, 001D07FFh, not
+     * gt215_fb's, acknowledged then enabled; the pre-A0h TP addresses. */
+    CHECK(build_for(0x96ul, 0xf3010001ul, V9X_NV50_INIT_OPS_MAX) ==
+          V9X_STATUS_OK);
+    at = find_write(0ul, 0x100c90ul);
+    CHECK(at != list.count && ops[at].value == 0x801d07fful);
+    CHECK(at + 1ul < list.count && is_write(at + 1ul, 0x100c90ul,
+                                            0x001d07fful));
+    CHECK(find_write(0ul, 0x408900ul) != list.count);
+
     /* A0h itself: zcull 802h. */
     CHECK(build_for(0xa0ul, 0xf3010001ul, V9X_NV50_INIT_OPS_MAX) ==
           V9X_STATUS_OK);

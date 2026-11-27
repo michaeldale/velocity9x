@@ -2,7 +2,9 @@
 
 Date: 2026-11-20
 
-Status: **Phases 0 to 2 done; Phase 3 not started.** GitHub issues 29
+Status: **Phases 0 to 2 done; Phase 3's 2D engine runs on the card
+(`docs\decisions\2026-11-28-g96-2d-engine-first-run.md`); its flips are
+not done.** GitHub issues 29
 and 30: the owner whose HD 2500 runs 0.59.0
 (`docs\decisions\2026-11-20-hd2500-field-report.md`) also has this card,
 256 MiB, in the same ASRock B75M R2.0 board. Since 2026-11-28 the machine

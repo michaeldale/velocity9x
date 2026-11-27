@@ -186,9 +186,52 @@ static void test_units(void)
     CHECK(two > one);
 }
 
+/* The G96 (chipset 96h, 1540h F3010001h as M-Z2T02D reads it): nouveau's
+ * pre-A0h branches give a program that ends, has every branch resolved
+ * and inside it, and an image that fits the channel's context slot
+ * (V9X_NV50_GRCTX_MAX_BYTES, 512 KiB). */
+static void test_g96_program(void)
+{
+    struct v9x_nv50_grctx_input input;
+    v9x_u32 words = 0ul;
+    v9x_u32 image_words = 0ul;
+    v9x_u32 index;
+    v9x_u32 word;
+    v9x_u32 target;
+    v9x_u32 bad = 0ul;
+
+    input.chipset = 0x96ul;
+    input.units = GT218_UNITS;
+    input.gddr5 = 0ul;
+    CHECK(v9x_nv50_grctx_build(&input, program_a, &words, image_a,
+                               IMAGE_MAX, &image_words) == V9X_STATUS_OK);
+    CHECK(words > 0ul && words <= V9X_NV50_GRCTX_PROGRAM_MAX);
+    CHECK(words > 0ul && program_a[words - 1ul] == GRCTX_END);
+    CHECK(image_words > 0x500ul && image_words * 4ul <= 0x80000ul);
+    for (index = 0ul; index < words; ++index) {
+        word = program_a[index];
+        if ((word & 0xfff00000ul) == GRCTX_UNRESOLVED) {
+            ++bad;
+            continue;
+        }
+        if ((word & GRCTX_OP_MASK) != GRCTX_OP_BRA ||
+            (word & GRCTX_BRA_MOD_MASK) == GRCTX_BRA_MOD_RET) {
+            continue;
+        }
+        target = (word & GRCTX_BRA_IP_MASK) >> GRCTX_BRA_IP_SHIFT;
+        if (target >= words) {
+            ++bad;
+        }
+    }
+    CHECK(bad == 0ul);
+    printf("INFO nv50_grctx 96 program: %lu words, image %lu words\n",
+           (unsigned long)words, (unsigned long)image_words);
+}
+
 unsigned int v9x_run_nv50_grctx_tests(void)
 {
     failures = 0u;
+    test_g96_program();
     test_gt218_program();
     test_passes_agree();
     test_refusals();

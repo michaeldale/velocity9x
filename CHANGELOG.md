@@ -6,6 +6,15 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 1.1.0 - not yet released
 
+- **NVIDIA GeForce 9500 GT (G96, `10DE:0640`), `nvidia` package:**
+  DirectDraw and GDI fills and copies on the 2D engine, the GeForce
+  210's channel brought up on a G9x chip. Run on one owner's card
+  through remote help (GitHub issue 30): DirectDraw's pixel checks and
+  the GDI and mode-switch tests pass at 640x480x8. No Direct3D yet,
+  because this chip's 3D class differs, and page flips are drawn by
+  DirectDraw's fallback
+  ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md)).
+
 - **Ironlake (HD Graphics, `8086:0042` and `0046`): DirectDraw and
   Direct3D get the BIOS's 128 MiB, not 16.** The driver mapped 16 MiB
   of the aperture, so the heap stopped there; at 1366x768x32 the

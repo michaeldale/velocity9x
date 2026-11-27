@@ -1864,7 +1864,7 @@ void v9x_gdi_accel_configure(void)
                aperture_bytes >= V9X_NV50_PGRAPH_STATUS + 4ul &&
                device->engine_reserve_offset != 0) {
         /* All of BAR0, which the mini-VDD mapped after checking PMC_BOOT_0
-         * names chipset A8h. Live here means the arm can draw when the
+         * names chipset A8h or 96h. Live here means the arm can draw when the
          * HAL's channel exists; v9x_gdi_nv50_live asks that, and reads
          * the reserve then, because it is not known yet at Enable.
          * Nothing is read here: at boot PFIFO is as the BIOS left it,

@@ -2,7 +2,8 @@
  * The GT218 register bring-up as an ordered list: see
  * include\velocity9x\nv50_init.h. The values and their order are
  * nouveau's (MIT; fifo\nv50.c nv50_fifo_init, fb\nv50.c nv50_fb_init
- * with fb\gt215.c's trap value, gr\nv50.c nv50_gr_init, fifo\g84.c's
+ * with fb\gt215.c's or fb\g84.c's trap value, gr\nv50.c nv50_gr_init,
+ * fifo\g84.c's
  * bind), as the step 3 probe ran them on M-BXMFA8 in runs 27 to 39.
  *
  * Left out, because the probe ran them and the record does not show they
@@ -28,6 +29,8 @@
  * bit 31 acknowledges one left latched (nv50_fb_intr). */
 #define V9X_NV50_VM_TRAP             0x100c90ul
 #define V9X_NV50_VM_TRAP_GT215       0x000d0ffful
+/* fb\g84.c's value: G84 to G98 and GT200 (A0h), the G96 among them. */
+#define V9X_NV50_VM_TRAP_G84         0x001d07fful
 #define V9X_NV50_VM_TRAP_ACK         0x80000000ul
 
 /* nv50_gr_init. */
@@ -89,6 +92,18 @@ static void v9x_nv50_init_runlist(struct v9x_nv50_init_out *out,
                       V9X_NV50_PFIFO_RUNLIST_BUSY);
 }
 
+/* The FB subdev's trap enable by chipset, as nouveau's device table
+ * assigns gt215_fb (A3h, A5h, A8h, AFh) or g84_fb (84h to A0h). The
+ * MCP77/79 IGPs (AAh, ACh) have their own and are not claimed here. */
+static v9x_u32 v9x_nv50_vm_trap(v9x_u32 chipset)
+{
+    if ((chipset > V9X_NV50_CHIPSET_A0 && chipset < 0xaaul) ||
+        chipset == 0xaful) {
+        return V9X_NV50_VM_TRAP_GT215;
+    }
+    return V9X_NV50_VM_TRAP_G84;
+}
+
 static void v9x_nv50_init_fifo(struct v9x_nv50_init_out *out,
                                const struct v9x_nv50_init_input *input,
                                const struct v9x_nv50_chan_layout *layout)
@@ -120,8 +135,10 @@ static void v9x_nv50_init_fifo(struct v9x_nv50_init_out *out,
     v9x_nv50_init_write(out, V9X_NV50_PFIFO_CACHES, 1ul);
 
     v9x_nv50_init_write(out, V9X_NV50_VM_TRAP,
-                        V9X_NV50_VM_TRAP_GT215 | V9X_NV50_VM_TRAP_ACK);
-    v9x_nv50_init_write(out, V9X_NV50_VM_TRAP, V9X_NV50_VM_TRAP_GT215);
+                        v9x_nv50_vm_trap(input->chipset) |
+                        V9X_NV50_VM_TRAP_ACK);
+    v9x_nv50_init_write(out, V9X_NV50_VM_TRAP,
+                        v9x_nv50_vm_trap(input->chipset));
 }
 
 static void v9x_nv50_init_gr(struct v9x_nv50_init_out *out,
