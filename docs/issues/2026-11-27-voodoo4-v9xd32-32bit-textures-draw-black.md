@@ -3,7 +3,8 @@
 Date: 2026-11-27. Machine: A8U4I5, Voodoo4 4500 PCI (`121A:0009`,
 subsystem `121A:0005`), the 0.61.0 tree's `3dfx` set, 800x600x16.
 Status: open, cause not looked at. Not a regression: released 0.17.0
-(13 October) fails the same way.
+(13 October) fails the same way. Left for a later release (Michael,
+2026-11-27); a README known issue in 1.0.
 
 ## What is seen
 

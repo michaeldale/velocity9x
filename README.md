@@ -244,7 +244,7 @@ New in 0.59.0:
   and the Velocity9x settings page shows 4 MB of its 8
   ([issue](docs/issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)).
 - **3dfx Voodoo4:** V9XD32's 32-bit textures draw black, as they did in
-  0.17.0
+  0.17.0, left for a later release
   ([issue](docs/issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
 - **Seen once, not reproduced:** a hard lock on a Rage XL at UT99's
   first OpenGL frame

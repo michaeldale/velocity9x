@@ -127,6 +127,9 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **Voodoo4:** V9XD32's 32-bit textures drawing black (as in 0.17.0);
+  left for a later release, decided 2026-11-27 (Michael)
+  ([issue](../issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
 - **Rage IIC:** the engine wedge in 3DMark 99 and 2000, the depth fill
   answering "still drawing" forever on a quarantined core, and the
   empty off-screen render targets; left for a later release, decided
@@ -627,5 +630,6 @@ VSA-100 accepts no flips, so V9XTRACE's grabs and its "drew into the
 page on screen" count do not show the screen on this family. Two
 runner faults fixed on the way: Glide files staged from a package that
 ships none, and a 3DMark freeze watch that counted only accepted flips.
-The `3dfx` package is now booted (gate item 2); whether T22 holds the
-Voodoo4's 1.0 tier is Michael's call.
+The `3dfx` package is now booted (gate item 2). **Decided (Michael,
+2026-11-27): the Voodoo4's T22 goes to a later release**; it stays a
+README known issue in 1.0.
