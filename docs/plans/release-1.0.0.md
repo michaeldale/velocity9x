@@ -748,7 +748,8 @@ put its inbox `mgapdx64` on it; the devnode was pointed back at
 the render interface find no 3D engine, as on the 86Box guest, and
 3DMark 2000 refuses the card. Video memory is correct; the OBS frame is
 shifted with marks beside text, from the analogue side (not separated
-from the capture device).
+from the capture device). **Decided (Michael, 2026-11-27): later
+release**; nothing on the Millennium is changed for 1.0.
 
 ### 2026-11-27: RIVA 128ZX and HD 3000 over the relay
 
