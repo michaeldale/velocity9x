@@ -127,6 +127,9 @@ on one machine whose run is owed, by machine:
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
   branches are not merged before the freeze.
+- **SiS 6326:** V9XD32's X8R8G8B8 texture drawing black; left for a
+  later release, decided 2026-11-27 (Michael)
+  ([issue](../issues/2026-11-27-sis6326-v9xd32-x8r8g8b8-texture-draws-black.md)).
 - **Voodoo4:** V9XD32's 32-bit textures drawing black (as in 0.17.0);
   left for a later release, decided 2026-11-27 (Michael)
   ([issue](../issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
@@ -644,5 +647,6 @@ V9XD32's T22 X8R8G8B8 texture, which draws black while A8R8G8B8 passes
 ([issue](../issues/2026-11-27-sis6326-v9xd32-x8r8g8b8-texture-draws-black.md));
 the first T22 run on the card. Its first 3DMark 2000 run, by hand at
 640x480, completes (1,633 flips, no engine reset) and draws correctly.
-The `sis` package is now booted (gate item 2); whether T22X holds the
-SiS 6326's 1.0 tier is Michael's call.
+The `sis` package is now booted (gate item 2). **Decided (Michael,
+2026-11-27): the SiS 6326's T22X goes to a later release**; it stays a
+README known issue in 1.0.

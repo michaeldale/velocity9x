@@ -247,7 +247,7 @@ New in 0.59.0:
   0.17.0, left for a later release
   ([issue](docs/issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
 - **SiS 6326:** V9XD32's X8R8G8B8 texture draws black (A8R8G8B8 is
-  correct)
+  correct), left for a later release
   ([issue](docs/issues/2026-11-27-sis6326-v9xd32-x8r8g8b8-texture-draws-black.md)).
 - **Seen once, not reproduced:** a hard lock on a Rage XL at UT99's
   first OpenGL frame

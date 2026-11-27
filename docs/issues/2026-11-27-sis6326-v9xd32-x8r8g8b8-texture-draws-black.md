@@ -3,7 +3,8 @@
 Date: 2026-11-27. Machine: A8U4I5, SiS 6326 rev 0B (`1039:6326`,
 subsystem `1569:6326`, 4 MiB), the 0.61.0 tree's `sis` set,
 800x600x16. Status: open, cause not looked at. The first V9XD32 run
-with T22 on this card, so there is no earlier result to compare.
+with T22 on this card, so there is no earlier result to compare. Left
+for a later release (Michael, 2026-11-27); a README known issue in 1.0.
 
 ## What is seen
 
