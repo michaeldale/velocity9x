@@ -253,7 +253,7 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: GeForce 210 (GT218), release probes passing (2026-11-25, 0.61.0 tree). Experimental: RIVA 128ZX, with its known V9XD32 and Glide BlendHalf failures (2026-11-21); GeForce 9500 GT (G96), DirectDraw, GDI, flips and Direct3D, V9XD32 failing only its 16-bit depth-precision check (the Z is 24-bit) (2026-11-28)'
+        TestedStatus = 'Supported: GeForce 210 (GT218), release probes passing (2026-11-25, 0.61.0 tree). Experimental: RIVA 128ZX, with its known V9XD32 and Glide BlendHalf failures (2026-11-21); GeForce 9500 GT (G96), DirectDraw, GDI, flips, Direct3D and OpenGL (V9XGLP, Quake 3 demo), V9XD32 failing only its 16-bit depth-precision check (the Z is 24-bit) (2026-11-28)'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-25-gt218-cube-levels-dxt-pool-counters.md'
