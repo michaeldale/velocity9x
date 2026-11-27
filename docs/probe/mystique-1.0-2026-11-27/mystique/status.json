@@ -1,0 +1,19 @@
+{
+    "Name":  "mystique",
+    "Family":  "matrox",
+    "Baseline":  false,
+    "BootBefore":  731,
+    "BootAfter":  732,
+    "Installed":  8,
+    "Error":  null,
+    "Offline":  false,
+    "Agent":  "0.19.0",
+    "Boot":  731,
+    "Desktop":  true,
+    "AnswerSeconds":  0,
+    "ThreeDMark":  null,
+    "Counters":  null,
+    "CounterFlags":  null,
+    "Adapter":  "102B:051A",
+    "AdapterMismatch":  false
+}

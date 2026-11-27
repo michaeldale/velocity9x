@@ -719,3 +719,17 @@ fitted.
 1.0.0 is released directly once the gate is met; field problems go
 into 1.0.x. The plan's "on the release candidate" re-runs now mean the
 1.0.0 build.
+
+### 2026-11-27: Mystique
+
+The eighth card of the A8U4I5 round
+([record](../decisions/2026-11-27-1.0-mystique-a8u4i5.md)), bound
+through the Millennium II key and in VGA on the S3 files until the
+`matrox` set went in. Every release probe passes but V9XD32's T22
+(32-bit textures black, as on the Voodoo4) and the Glide BlendHalf the
+card has failed since October (no blender). Its first 3DMark 2000 run,
+by hand at 640x480, scores; smoke draws as white boxes (the known
+Matrox limit), and large areas of Adventure are black, with 911
+textures refused for placement in 4 MiB
+([issue](../issues/2026-11-27-mystique-3dmark2000-adventure-areas-missing.md)).
+Whether the black areas hold the Mystique's 1.0 tier is Michael's call.

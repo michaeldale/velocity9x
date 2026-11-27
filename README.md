@@ -251,6 +251,12 @@ New in 0.59.0:
   corrupt ([issue](docs/issues/2026-10-19-mga2164w-hl-gl-multiplayer-menu-corrupt.md)),
   and the Velocity9x settings page shows 4 MB of its 8
   ([issue](docs/issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)).
+- **Matrox Millennium II and Mystique:** the engine has no blending, so
+  particles and sprites (3DMark 2000's smoke and explosions) draw as
+  white boxes, and V9XD32's 32-bit textures draw black. On the 4 MB
+  Mystique, 3DMark 2000 at 640x480 leaves large areas of the Adventure
+  test black
+  ([issue](docs/issues/2026-11-27-mystique-3dmark2000-adventure-areas-missing.md)).
 - **3dfx Voodoo4:** V9XD32's 32-bit textures draw black, as they did in
   0.17.0, left for a later release
   ([issue](docs/issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
@@ -466,7 +472,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 1.0 tier | 3D engine | Tested on hardware |
 |---|---|---|---|---|
 | Matrox Millennium (MGA-2064W) | `matrox` | Supported; 1.0 run owed | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
-| Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | Supported; 1.0 run owed | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it |
+| Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | Supported (run 2026-11-27) | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it. On the 0.61.0 tree (2026-11-27) every release probe passes but V9XD32's 32-bit textures and the known Glide blend, and 3DMark 2000 runs at 640x480 ([record](docs/decisions/2026-11-27-1.0-mystique-a8u4i5.md)) |
 | Matrox Millennium II (MGA-2164W) | `matrox` | Supported; 1.0 run owed | MGA | Direct3D, OpenGL and Glide (the engine where exact, the CPU otherwise); GDI and DirectDraw on the engine |
 | Matrox Mystique AGP (MGA-1064SG, `102B:051E`) and Millennium II AGP (MGA-2164W, `102B:051F`), from 0.60.0 | `matrox` | Recognised | MGA | The PCI cards' paths unchanged. Claimed from the Linux tables without a survey; not run on either ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)) |
 
