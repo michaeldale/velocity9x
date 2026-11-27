@@ -11,9 +11,11 @@ backlog.
 
 ## Release and checkout
 
-The latest release is [0.60.0](../releases/0.60.0/README.md), built from
-`b3996f07`. The checkout is 0.61.0, unreleased; its next release is
-1.0.0, with no release candidate and no soak (plan, decision 4).
+The latest release is [1.0.0](../releases/1.0.0/README.md), built from
+`82112c9c`, tagged `v1.0.0` and published on 2026-11-28 with no release
+candidate (plan, decision 4); its checks are in
+[the 1.0.0 record](decisions/2026-11-28-1.0.0-release-checks.md). The
+checkout is 1.1.0, unreleased. 1.0.x takes fixes only.
 
 1.0 supports **Windows 98 SE only** (plan, B14). Windows 95, 98 first
 edition and Me install by design and are not supported.
@@ -24,7 +26,7 @@ Where the 1.0 gate stands:
 |---|---|
 | 1. `run-checks.ps1` green from a clean tree | Passed on `389c37a6` (2026-11-27). Any later code change needs it again |
 | 2. Every package booted and probed | Done: `intel-gma`, `ati` and `nvidia` on the release-check fleet and remote-help machines; `s3` on the ViRGE/DX and Trio3D/2X, `matrox` on the Mystique and Millennium, `sis` and `3dfx` in A8U4I5; `vbe`, `s3` and the Mach64 VT2 on the 86Box and QEMU guests |
-| 3. B10's Have Disk installs and B13's update | B10 closed. B13: an update and a rollback on a GeForce 210 (0.59.0 to 0.60.0); the step to 1.0.0 through Check for updates is owed once it is published |
+| 3. B10's Have Disk installs and B13's update | B10 closed. B13: an update and a rollback on a GeForce 210 (0.59.0 to 0.60.0); 1.0.0 is published and served (2026-11-28), and the step to it through Check for updates on an installed machine is owed |
 | 4. The issue index re-read | Done 2026-11-26 |
 | 5. This page | This rewrite |
 | 6. The README's tables carry the tiers | Written 2026-11-26; the "1.0 run owed" cells replaced by last-run dates on 2026-11-27 |
