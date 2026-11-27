@@ -4,8 +4,46 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 0.61.0 - not yet released
+## 1.0.0 - 2026-11-27
 
+1.0 supports Windows 98 SE only. Each card in the README carries a 1.0
+tier (Supported, Experimental or Recognised) and the date it was last
+run; a nine-card round in one Pentium III machine and the remote-help
+fleet ran this build's code between 21 and 27 November. What was left
+for a later release is listed in the
+[1.0 plan](docs/plans/release-1.0.0.md#not-in-10).
+
+- **GMA 900: the texture pool, as on the GMA 950.** With 8 MiB of video
+  memory and no pool, 3DMark 2000 stopped at its first test for lack of
+  video memory. The 915GM now gets the 945's 32 MiB of textures in system
+  memory. Its page table was also being read as the GM965's, because
+  this BIOS places it where the GM965's sits; it is now told apart by
+  the chip's own register. On a Lenovo 3000 C100 through remote help:
+  the pool maps, every release probe passes, 3DMark 2000 completes
+  ([record](docs/decisions/2026-11-26-gma900-m8z30st-release-probes.md)).
+- **GeForce 210: mipmaps, cube maps, signed and DXT textures.** Every
+  texture had been read at its top level only, and cube maps and the
+  signed formats were advertised but drawn wrong. Textures with mipmaps,
+  cubes and DXT now go through a 32 MiB pool in the card's tiled layout.
+  On the GeForce 210 V9XD32 passes whole for the first time, and
+  3DMark 2001 SE runs on DXTC with nothing refused. 3DMark 2001 SE's Car
+  Chase draws a patch of ground near-white; the cause is open
+  ([plan](docs/plans/nvidia-gt218-ps11.md)).
+- **GCN Radeons and the GeForce 210: specular before fog is clamped.**
+  Texture times diffuse plus specular was fogged without being clamped
+  to 1 first, so fogged highlights came out too bright. V9XD32 now passes
+  whole on the Oland XT; Carrizo and Mullins take the same code and were
+  not run
+  ([issue](docs/issues/2026-11-17-t19-ffspecfog-mismatch-oland-gt218.md)).
+- **Radeons and `vbe` with the desktop copy: no square around the mouse
+  over a full-screen game.** The copy of the desktop put back stale
+  desktop under the cursor while a DirectDraw program owned the screen.
+  Fixed at 640x480, measured on the Oland R7 250 with a new probe
+  (V9XCURSQ); on an HD 5450 at 320x240 the square remains, a known issue
+  ([issue](docs/issues/2026-11-13-evergreen-cursor-square-over-fullscreen-game.md)).
+- **Every package: RECOVER.TXT puts back every file an update replaced.**
+  Its rollback copied only `V9X*.*` from the backup, leaving the Glide
+  and 3DCIF DLLs at the new version. Not run by hand in Safe Mode.
 - **S3 and ATI Mach64: the screen comes back after Stand By, and the
   monitor can sleep again.** Before, the screen stayed off after a
   resume. The S3 driver now tells Windows it supports the monitor's
@@ -20,8 +58,8 @@ build identifier so exact guest-tested binaries remain traceable.
   bring-up text ("not a release driver", cold-copy the VM disk, capture
   COM1). It now covers what to have ready, the Have Disk steps, the
   Velocity9x tabs and how to send a report; the serial checkpoints and
-  test programs moved to a section for testers. FIRSTBOOT.TXT and
-  RECOVER.TXT are unchanged.
+  test programs moved to a section for testers. FIRSTBOOT.TXT is
+  unchanged.
 - **Radeon HD 7470 (and by the same code the HD 5450, HD 5570 and
   HD 5770): the first Direct3D program no longer hangs the machine.**
   0.56.1 began flushing the Evergreen engine's caches once per group of

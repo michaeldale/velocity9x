@@ -35,12 +35,32 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 0.60.0
+## Current version: 1.0.0
 
-[Download](releases/0.60.0/README.md) ·
+[Download](releases/1.0.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 1.0.0:
+- **Windows 98 SE only.** 1.0 supports Windows 98 SE; other Windows 9x
+  versions install by design and are not supported. Every card below
+  carries a 1.0 tier and the date it was last run; a nine-card round on
+  one Pentium III machine and the remote-help fleet ran this release's
+  code between 21 and 27 November
+  ([plan](docs/plans/release-1.0.0.md)).
+- **Fixes for the 1.0 blockers, in every package:** a Lock of the back
+  buffer waits for a pending flip; two Direct3D programs at once no
+  longer crash DirectDraw's helper; offscreen render targets give their
+  memory back; the diagnostic logs are bounded; the Velocity9x tabs
+  appear after a Have Disk install; S3 and Mach64 screens come back
+  after Stand By (86Box only); the HD 7470 no longer hangs in Direct3D.
+- **GMA 900: the texture pool**, so 3DMark 2000 completes in 8 MiB
+  ([record](docs/decisions/2026-11-26-gma900-m8z30st-release-probes.md)).
+- **GeForce 210: mipmaps, cube maps, signed and DXT textures**; V9XD32
+  passes whole on it ([plan](docs/plans/nvidia-gt218-ps11.md)).
+- **INSTALL.TXT rewritten for users**, and each package's README names
+  the cards it was checked on.
 
 New in 0.60.0:
 - **ATI Radeon X1300 (RV515, `1002:7146`), `ati` package**, on the
@@ -63,22 +83,6 @@ New in 0.60.0:
 - **Oland 6611 (`1002:6611`)** claimed from a survey, and five ids from
   the Linux tables without one
   ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)).
-
-New in 0.59.0:
-- **Intel HD Graphics 2500 (Ivy Bridge GT1, `8086:0152`), `intel-gma`
-  package**, on the HD 4000's path with GT1's smaller thread limits, from
-  one owner's DOS survey. That owner reports 3DMark 2001 SE completing on
-  it (2696)
-  ([record](docs/decisions/2026-11-20-ivybridge-gt1-hd2500.md),
-  [field report](docs/decisions/2026-11-20-hd2500-field-report.md)).
-- **GMA 900 to Ironlake: write-combining where the BIOS leaves no MTRR
-  free**, through the page attribute table as on the HD 4600; for an
-  Ironlake laptop whose BIOS uses all eight. Not yet run on a machine that
-  needs it
-  ([record](docs/decisions/2026-11-20-intel-gen3-5-pat-write-combining.md)).
-- **GCN Radeons: 24-bit depth.** The Unreal Tournament 2004 demo, which
-  found no depth format for 32-bit colour and quit, runs on the Oland XT
-  at 32 bpp ([record](docs/decisions/2026-11-20-gcn-z24-depth.md)).
 
 ### Known issues
 
