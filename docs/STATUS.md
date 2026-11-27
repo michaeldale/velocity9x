@@ -47,6 +47,8 @@ GMA 950, GMA X3100, HD 3000 (`0112`), HD 4600; Mach64 VT2 (86Box only),
 Rage IIC, Rage XL, Rage 128 Pro, Radeon X1300, HD 5450, HD 5770,
 HD 7660D, Oland XT, Oland 6611 (probes only), R3E, R7E; ViRGE/DX,
 Trio3D/2X; Millennium, Mystique; GeForce 210; SiS 6326; Voodoo4; `vbe`.
+The R7E did not come back from its 1.0.0 release-check reset
+(2026-11-28) and has not run 1.0.0 itself (README known issues).
 
 **Supported on an older run, not repeated for 1.0:** GMA 3150, GMA
 4500MHD (0.57.0, offline), Ironlake (0.32.0, card gone), HD 4000
