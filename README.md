@@ -471,7 +471,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 
 | Card | Package | 1.0 tier | 3D engine | Tested on hardware |
 |---|---|---|---|---|
-| Matrox Millennium (MGA-2064W) | `matrox` | Supported; 1.0 run owed | none | GDI (fills, copies, text), DirectDraw and page flips on the engine |
+| Matrox Millennium (MGA-2064W) | `matrox` | Supported (run 2026-11-27) | none | GDI (fills, copies, text), DirectDraw and page flips on the engine. On the 0.61.0 tree (2026-11-27) the 2D-side release probes pass on one card ([record](docs/decisions/2026-11-27-1.0-mill2064-a8u4i5.md)) |
 | Matrox Mystique (MGA-1064SG, `102B:051A`) | `matrox` | Supported (run 2026-11-27) | MGA, 16-bit depth only | Direct3D, OpenGL and Glide as on the Millennium II; GDI, DirectDraw and page flips on the engine. One revision 02 card, 4 MiB. The Mystique 220 shares the id and has not run it. On the 0.61.0 tree (2026-11-27) every release probe passes but V9XD32's 32-bit textures and the known Glide blend, and 3DMark 2000 runs at 640x480 ([record](docs/decisions/2026-11-27-1.0-mystique-a8u4i5.md)) |
 | Matrox Millennium II (MGA-2164W) | `matrox` | Supported; 1.0 run owed | MGA | Direct3D, OpenGL and Glide (the engine where exact, the CPU otherwise); GDI and DirectDraw on the engine |
 | Matrox Mystique AGP (MGA-1064SG, `102B:051E`) and Millennium II AGP (MGA-2164W, `102B:051F`), from 0.60.0 | `matrox` | Recognised | MGA | The PCI cards' paths unchanged. Claimed from the Linux tables without a survey; not run on either ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)) |

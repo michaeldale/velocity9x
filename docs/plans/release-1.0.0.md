@@ -739,6 +739,17 @@ textures refused for placement in 4 MiB
 **Decided (Michael, 2026-11-27): the Mystique's black Adventure areas
 go to a later release**; they stay a README known issue in 1.0.
 
+### 2026-11-27: Millennium (MGA-2064W)
+
+The ninth card of the A8U4I5 round
+([record](../decisions/2026-11-27-1.0-mill2064-a8u4i5.md)). Windows had
+put its inbox `mgapdx64` on it; the devnode was pointed back at
+`Display\0011`. V9XGLP, V9XWPRS and V9XFBCMP pass; V9XD32, Glide and
+the render interface find no 3D engine, as on the 86Box guest, and
+3DMark 2000 refuses the card. Video memory is correct; the OBS frame is
+shifted with marks beside text, from the analogue side (not separated
+from the capture device).
+
 ### 2026-11-27: RIVA 128ZX and HD 3000 over the relay
 
 ([record](../decisions/2026-11-27-1.0-remote-riva128-hd3000.md)) The

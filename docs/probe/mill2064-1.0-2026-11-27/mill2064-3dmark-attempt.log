@@ -1,0 +1,7 @@
+[+0:00] agent 0.19.0, boot 735, desktop True
+[+0:02] display card present: 102B:0519
+[+0:17] staged 8 files; resetting
+[+1:26] reset: boot 735 -> 736
+[+1:38] installed: 8 of 8
+[+1:39] probes in place: sent 0 of 7
+[+3:49] ERROR: 3DMark 2000 did not open its window.
