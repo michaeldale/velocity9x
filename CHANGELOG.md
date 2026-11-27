@@ -19,11 +19,13 @@ build identifier so exact guest-tested binaries remain traceable.
   and 32 bpp, pixel shader 1.1 included, except its 16-bit precision
   check. Its DXT colours differ from the GeForce 210's by up to 4
   levels: the card decodes DXT1 by NVIDIA's own rule, which it matches
-  pixel for pixel. No game run yet
+  pixel for pixel. 3DMark 2001 SE runs every test to its score, with
+  its frames presented by engine flips; no game run yet
   ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md),
   [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md),
   [Direct3D](docs/decisions/2026-11-28-g96-direct3d.md),
-  [DXT](docs/decisions/2026-11-28-g96-dxt-decode.md)).
+  [DXT](docs/decisions/2026-11-28-g96-dxt-decode.md),
+  [3DMark 2001 SE](docs/decisions/2026-11-28-g96-3dmark2001se.md)).
 - **V9XD32: a DXT mismatch is judged again by NVIDIA's DXT1 colour
   decode** (as rgbcx models it), and passes as `pass-nv-decode` when the
   whole image matches it; the first judging is unchanged

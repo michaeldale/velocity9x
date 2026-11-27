@@ -8,8 +8,9 @@ Status: **Phases 0 to 3 done: the 2D engine
 retrace, picture not seen). Phases 4 and 5: Direct3D on NV84_3D with
 Z24S8 (`docs\decisions\2026-11-28-g96-direct3d.md`); V9XD32 passes but
 for T5 (by design); DXT is NVIDIA's own decode
-(`docs\decisions\2026-11-28-g96-dxt-decode.md`); games and 3DMark not
-run.** GitHub issues 29
+(`docs\decisions\2026-11-28-g96-dxt-decode.md`); 3DMark 2001 SE runs
+to its score (`docs\decisions\2026-11-28-g96-3dmark2001se.md`), frames
+not inspected; no game run.** GitHub issues 29
 and 30: the owner whose HD 2500 runs 0.59.0
 (`docs\decisions\2026-11-20-hd2500-field-report.md`) also has this card,
 256 MiB, in the same ASRock B75M R2.0 board. Since 2026-11-28 the machine
