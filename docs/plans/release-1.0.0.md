@@ -827,3 +827,12 @@ only known failures. The R7E Carrizo took the files and its reset and
 never answered again. **Decided (Michael, 2026-11-28): ship 1.0.0 and
 note the Carrizo** as not run on 1.0.0, a README known issue, without
 waiting on its owner.
+
+### 2026-11-28: 1.0.0 released
+
+1.0.0 is tagged `v1.0.0` on `75e4a17d` (packages from `82112c9c`, checks
+in `ea3e6024`), on GitHub and the update server (release 64, sequence
+57). A 0.60.0 `s3` check reply offers 1.0.0; the served `SIGNED.TXT` and
+s3 zip match `releases/1.0.0` byte for byte. Owed: B13's last step, one
+installed machine taking 1.0.0 through Check for updates. Main is now
+1.1.0, unreleased.

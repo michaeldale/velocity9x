@@ -4,6 +4,8 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
+## 1.1.0 - not yet released
+
 ## 1.0.0 - 2026-11-27
 
 1.0 supports Windows 98 SE only. Each card in the README carries a 1.0
