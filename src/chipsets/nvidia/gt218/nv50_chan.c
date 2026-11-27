@@ -149,7 +149,29 @@ static void v9x_nv50_build_vm(v9x_u32 *region, v9x_u32 base)
     }
 }
 
-static void v9x_nv50_build_objects(v9x_u32 *region)
+/*
+ * The Tesla 3D class by chipset, as xf86-video-nouveau's
+ * NVAccelInitNV50TCL and Mesa's nv50_screen_create pick it: NV84_3D for
+ * the 80h and 90h families (the G96), NVA0_3D for A0h, NVAF_3D for AFh,
+ * NVA3_3D for the other A-family chips (the GT218). The methods the
+ * Direct3D path sends are all NV50_3D's, present in every one of them
+ * (docs\decisions\2026-11-28-g96-direct3d.md).
+ */
+static v9x_u32 v9x_nv50_class_3d(v9x_u32 chipset)
+{
+    if (chipset < V9X_NV50_CHIPSET_A0) {
+        return V9X_NV50_CLASS_3D_NV84;
+    }
+    if (chipset == V9X_NV50_CHIPSET_A0) {
+        return V9X_NV50_CLASS_3D_NVA0;
+    }
+    if (chipset == V9X_NV50_CHIPSET_AF) {
+        return V9X_NV50_CLASS_3D_NVAF;
+    }
+    return V9X_NV50_CLASS_3D;
+}
+
+static void v9x_nv50_build_objects(v9x_u32 *region, v9x_u32 chipset)
 {
     v9x_u32 dma = V9X_NV50_INST + V9X_NV50_INST_DMA_VM;
     v9x_u32 obj = V9X_NV50_INST + V9X_NV50_INST_OBJ_2D;
@@ -170,7 +192,7 @@ static void v9x_nv50_build_objects(v9x_u32 *region)
     /* The 3D object the same way. Nothing binds it until a 3D push does,
      * so a channel that draws 2D only is unchanged in what it runs. */
     v9x_nv50_put(region, V9X_NV50_INST + V9X_NV50_INST_OBJ_3D,
-                 V9X_NV50_CLASS_3D);
+                 v9x_nv50_class_3d(chipset));
 }
 
 static void v9x_nv50_build_engine(v9x_u32 *region, v9x_u32 grctx_addr,
@@ -270,7 +292,7 @@ v9x_status v9x_nv50_chan_build(v9x_u32 base, v9x_u32 chid,
     layout->runlist_count = 1ul;
 
     v9x_nv50_build_vm(region, base);
-    v9x_nv50_build_objects(region);
+    v9x_nv50_build_objects(region, grctx->chipset);
     v9x_nv50_build_engine(region, layout->grctx_addr, layout->grctx_bytes);
     v9x_nv50_build_ramfc(region, base);
     v9x_nv50_put(region, V9X_NV50_RUNLIST, chid);

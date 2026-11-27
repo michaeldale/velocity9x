@@ -143,6 +143,14 @@
 #define V9X_NV50_ENGINE_GR           1ul
 #define V9X_NV50_CLASS_2D            0x502dul
 #define V9X_NV50_CLASS_3D            0x8597ul
+/* The other Tesla 3D classes, by chipset (nv50_chan.c): NV84_3D for the
+ * 80h and 90h families, the G96 (GeForce 9500 GT) among them; NVA0_3D
+ * for GT200 (A0h); NVAF_3D for MCP89 (AFh). */
+#define V9X_NV50_CLASS_3D_NV84       0x8297ul
+#define V9X_NV50_CLASS_3D_NVA0       0x8397ul
+#define V9X_NV50_CLASS_3D_NVAF       0x8697ul
+#define V9X_NV50_CHIPSET_A0          0xa0ul
+#define V9X_NV50_CHIPSET_AF          0xaful
 
 /* ---- Registers (BAR0) the caller writes or polls. ---- */
 

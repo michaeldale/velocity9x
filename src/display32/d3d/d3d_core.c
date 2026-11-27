@@ -33,6 +33,7 @@
 #include "velocity9x/r3d_abi.h"
 /* V9X_PCI_DEVICE_TURKS_675D, for the Evergreen renderer name. */
 #include "velocity9x/ati_mach64.h"
+#include "velocity9x/nvidia.h"
 #include "d3d_state.h"
 #include "d3d_select.h"
 #include "d3d_dp2.h"
@@ -10618,7 +10619,14 @@ static DWORD v9x_r3d_describe_body(V9X_R3D_ABI_DESCRIBE *out)
         }
     } else if (ops == &v9x_d3d_engine_nv50) {
         out->engine = V9X_R3D_ABI_ENGINE_NV50;
-        name = "Velocity9x GeForce 210";
+        /* The G96 shares the engine and carries no identity bit; its PCI
+         * id names it. */
+        if (v9x_hal->engine.pci_device ==
+            (DWORD)V9X_PCI_DEVICE_G96_GEFORCE9500GT) {
+            name = "Velocity9x GeForce 9500 GT";
+        } else {
+            name = "Velocity9x GeForce 210";
+        }
     }
     /* The desktop's layout, when an engine can write it: the S3D writes
      * 1555 into any 16-bit target, so on a 565 desktop the ViRGE offers

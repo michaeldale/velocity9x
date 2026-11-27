@@ -13,10 +13,15 @@ build identifier so exact guest-tested binaries remain traceable.
   the GDI and mode-switch tests pass at 640x480x8. Page flips go
   through the GeForce 210's VGA start-address path, which this card's
   video BIOS uses instruction for instruction; they wait for the
-  retrace on the card, but the picture has not been seen. No Direct3D
-  yet, because this chip's 3D class differs
+  retrace on the card, but the picture has not been seen. Direct3D on
+  the chip's own 3D class (NV84_3D), with the Z buffer kept at 24 bits
+  because that class has no 16-bit Z: the Direct3D probe passes at 16
+  and 32 bpp, pixel shader 1.1 included, except its 16-bit precision
+  check and the DXT textures, whose colours come back up to 4 levels
+  off. No game run yet
   ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md),
-  [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md)).
+  [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md),
+  [Direct3D](docs/decisions/2026-11-28-g96-direct3d.md)).
 
 - **Ironlake (HD Graphics, `8086:0042` and `0046`): DirectDraw and
   Direct3D get the BIOS's 128 MiB, not 16.** The driver mapped 16 MiB

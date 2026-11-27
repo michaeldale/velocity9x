@@ -27,6 +27,7 @@
 #include "velocity9x/nv50_ps11.h"
 #include "velocity9x/nv50_rblock.h"
 #include "velocity9x/gt218_reserve.h"
+#include "velocity9x/nvidia.h"
 
 /* Triangles one batch takes: at the widest vertex (18 words) 2,048 fill
  * 110,592 of the push area's 196,608 words, with room for the setup and
@@ -533,8 +534,23 @@ static V9X_D3D_NV50_SHADOW *v9x_d3d_nv50_shadow_owning(DWORD owner)
     return 0;
 }
 
+/*
+ * Z16 needs the NVA0 3D class or later: Mesa's nv50_screen.c refuses
+ * PIPE_FORMAT_Z16_UNORM below it, and the G96's NV84_3D raised a PGRAPH
+ * ERROR on its first Z16 depth setup (ZETA_HORIZ, M-Z2T02D boot 12). On
+ * that chip the Z is kept as Z24S8, four bytes a pixel, through the
+ * kind-28h window the channel already maps. The application still sees
+ * a 16-bit Z buffer; it is tiled, so not readable as one either way.
+ */
+static int v9x_d3d_nv50_z24(void)
+{
+    return v9x_hal->engine.pci_device ==
+           (DWORD)V9X_PCI_DEVICE_G96_GEFORCE9500GT;
+}
+
 /* The shadow as the map and the depth fill take it: the colour through
- * the kind-70h window, the Z through the Z16 one, both tiled. */
+ * the kind-70h window, the Z through the Z16 one (Z24S8 on the G96),
+ * both tiled. */
 static void v9x_d3d_nv50_view_of(const V9X_D3D_NV50_SHADOW *shadow,
                                  DWORD with_zeta,
                                  V9X_D3D_NV50_SHADOW_VIEW *view)
@@ -545,13 +561,16 @@ static void v9x_d3d_nv50_view_of(const V9X_D3D_NV50_SHADOW *shadow,
     view->colour.height = shadow->height;
     view->colour.tile_mode = V9X_D3D_NV50_TILE_MODE;
     view->colour.tiled = 1ul;
-    view->zeta.address = V9X_NV50_VM_Z16 + shadow->z_offset;
+    view->zeta.address = (v9x_d3d_nv50_z24() ? V9X_NV50_VM_Z24S8 :
+                                               V9X_NV50_VM_Z16) +
+                         shadow->z_offset;
     view->zeta.pitch = 0ul;
     view->zeta.width = shadow->width;
     view->zeta.height = shadow->height;
     view->zeta.tile_mode = V9X_D3D_NV50_TILE_MODE;
     view->zeta.tiled = 1ul;
-    view->zeta_format = V9X_NV50_3D_ZETA_Z16;
+    view->zeta_format = v9x_d3d_nv50_z24() ? V9X_NV50_3D_ZETA_Z24S8 :
+                                             V9X_NV50_3D_ZETA_Z16;
     view->with_zeta = with_zeta;
 }
 
@@ -1966,7 +1985,8 @@ static DWORD v9x_d3d_nv50_create_depth(V9X_DDHAL_CREATESURFACEDATA *data,
     if (shadow == 0) {
         return V9X_DDHAL_DRIVER_NOTHANDLED;
     }
-    v9x_d3d_nv50_tiled_layout(width, height, 2ul, &z_pitch, &rows);
+    v9x_d3d_nv50_tiled_layout(width, height, v9x_d3d_nv50_z24() ? 4ul : 2ul,
+                              &z_pitch, &rows);
     v9x_d3d_nv50_tiled_layout(width, height, 4ul, &colour_pitch, &rows);
     z_bytes = z_pitch * rows;
     colour_bytes = colour_pitch * rows;

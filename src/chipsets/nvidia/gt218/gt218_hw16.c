@@ -195,9 +195,11 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
  * probe.md), so the GT218's BAR1 map, heap and reserve apply unchanged:
  * every byte of the 128 MiB mapped is memory. The engine is the GT218's
  * channel and 2D object; the bring-up takes the chipset from PMC_BOOT_0
- * (nv50_init.c, nv50_grctx.c's pre-A0h branches). No Direct3D: the 3D
- * class here is NV84_3D (8297h), not the 8597h d3d_nv50.c binds (Phase
- * 5). FLIP: this VBIOS (62.94.2C.00.91) sets the start address with the
+ * (nv50_init.c, nv50_grctx.c's pre-A0h branches). D3D and DDI 8: the
+ * channel's 3D object is NV84_3D (8297h) here (nv50_chan.c picks the
+ * class by chipset), and every method d3d_nv50.c and nv50_d3d.c send is
+ * an NV50_3D one that class has (docs\decisions\2026-11-28-g96-
+ * direct3d.md). FLIP: this VBIOS (62.94.2C.00.91) sets the start address with the
  * GT218's code instruction for instruction - its 4F07 handler at
  * C000:94B2 calls a writer at C000:6D8B that splits the dword address
  * into CR0C/CR0D/CR35/CR34, and its int 10h entry opens CR3F with 57h -
@@ -221,7 +223,9 @@ static void v9x_g96_fill_engine(unsigned long framebuffer_linear_base,
     }
     *engine_caps = V9X_DD_ENGINE_CAP_SOLID_FILL |
                    V9X_DD_ENGINE_CAP_SCREEN_COPY |
-                   V9X_DD_ENGINE_CAP_FLIP;
+                   V9X_DD_ENGINE_CAP_FLIP |
+                   V9X_DD_ENGINE_CAP_D3D |
+                   V9X_DD_ENGINE_CAP_D3D_DDI8;
 }
 
 /* Not static: resolved by name in the link map by the per-object audit. */
@@ -232,7 +236,7 @@ const V9X_HW16_DEVICE v9x_g96_device = {
     "nvidia-g96-unavailable-v1",
     "vbe-lfb",
     "directdraw-fill-copy",
-    "not-advertised",
+    "hardware-nv50",
     0,
     v9x_g96_fill_engine,
     V9X_GT218_FRAMEBUFFER_BAR,

@@ -452,9 +452,37 @@ static void test_push(void)
     CHECK(v9x_nv50_2d_format(0ul) == 0ul);
 }
 
+/* The 3D object's class by chipset, as xf86-video-nouveau's
+ * NVAccelInitNV50TCL and Mesa's nv50_screen_create choose it: NV84_3D
+ * (8297h) for the 80h and 90h families, the G96 among them; NVA0_3D
+ * (8397h) for A0h; NVA3_3D (8597h) for A3h, A5h and A8h; NVAF_3D
+ * (8697h) for AFh. The 2D object is 502Dh on all of them. */
+static void test_class_by_chipset(void)
+{
+    static const v9x_u32 chipsets[] = { 0x84ul, 0x96ul, 0x98ul, 0xa0ul,
+                                        0xa3ul, 0xa8ul, 0xaful };
+    static const v9x_u32 classes[] = { 0x8297ul, 0x8297ul, 0x8297ul,
+                                       0x8397ul, 0x8597ul, 0x8597ul,
+                                       0x8697ul };
+    struct v9x_nv50_grctx_input input;
+    v9x_u32 index;
+
+    for (index = 0ul; index < 7ul; ++index) {
+        input.chipset = chipsets[index];
+        input.units = 0xf3010001ul;
+        input.gddr5 = 0ul;
+        CHECK(v9x_nv50_chan_build(BASE, CHID, &input, region,
+                                  V9X_NV50_REGION_WORDS, &layout) ==
+              V9X_STATUS_OK);
+        CHECK(word_at(V9X_NV50_INST_OBJ_3D) == classes[index]);
+        CHECK(word_at(V9X_NV50_INST_OBJ_2D) == 0x502dul);
+    }
+}
+
 unsigned int v9x_run_nv50_chan_tests(void)
 {
     failures = 0u;
+    test_class_by_chipset();
     test_layout();
     test_vm();
     test_alias_windows();

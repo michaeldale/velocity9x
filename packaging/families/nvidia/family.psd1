@@ -13,7 +13,7 @@
     SchemaVersion = 1
     Id = 'nvidia'
     DisplayName = 'NVIDIA RIVA 128, GeForce 210 and GeForce 9500 GT'
-    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8, 16 and 32 bpp, Direct3D on the 3D engine at 16 and 32 bpp with Z16, CPU drawing otherwise. GeForce 9500 GT (PCI 10DE:0640): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy, no Direct3D, CPU drawing otherwise.'
+    Description = 'NVIDIA RIVA 128 and 128ZX (PCI 12D2:0018): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8 and 32 bpp, Direct3D on the 3D engine at 16 bpp, CPU drawing otherwise. GeForce 210 (PCI 10DE:0A65): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy at 8, 16 and 32 bpp, Direct3D on the 3D engine at 16 and 32 bpp with Z16, CPU drawing otherwise. GeForce 9500 GT (PCI 10DE:0640): VBE mode set, the 2D engine for DirectDraw and GDI fill and copy, page flips, Direct3D on the 3D engine at 16 and 32 bpp with the Z kept at 24 bits, CPU drawing otherwise.'
 
     Chips = @(
         @{
@@ -130,12 +130,13 @@
             ModeSwitching = 'vbe-lfb'
             # The GT218's channel and 2D engine, on the G96's chipset
             # (docs\plans\nvidia-g96-geforce9500gt.md, Phase 3; probe in
-            # docs\decisions\2026-11-28-g96-register-probe.md). No
-            # Direct3D: the 3D class differs (8297h), Phase 5.
+            # docs\decisions\2026-11-28-g96-register-probe.md). Direct3D
+            # on NV84_3D (8297h) with the Z as Z24S8, since that class has
+            # no Z16 (docs\decisions\2026-11-28-g96-direct3d.md).
             Acceleration = 'directdraw-fill-copy'
-            Direct3D = 'not-advertised'
+            Direct3D = 'hardware-nv50'
             EngineType = 'NV50'
-            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP')
+            EngineCaps = @('SOLID_FILL', 'SCREEN_COPY', 'FLIP', 'D3D')
             # What the seen card's VBE reports through 4F00h, as on the
             # GT218 (issue 30's vbe V9XBOOT.TXT).
             VideoMemoryBytes = 14680064
@@ -252,12 +253,13 @@
         # The package's Status line (MANIFEST.TXT, the release README's
         # Tested column): what the latest release check measured, and its
         # record. Changed only together with a new record.
-        TestedStatus = 'Supported: GeForce 210 (GT218), release probes passing (2026-11-25, 0.61.0 tree). Experimental: RIVA 128ZX, with its known V9XD32 and Glide BlendHalf failures (2026-11-21); GeForce 9500 GT (G96), DirectDraw, GDI and flips on the 2D engine, no Direct3D (2026-11-28)'
+        TestedStatus = 'Supported: GeForce 210 (GT218), release probes passing (2026-11-25, 0.61.0 tree). Experimental: RIVA 128ZX, with its known V9XD32 and Glide BlendHalf failures (2026-11-21); GeForce 9500 GT (G96), DirectDraw, GDI, flips and Direct3D, V9XD32 failing only its 16-bit depth-precision check (the Z is 24-bit) and the DXT checks (2026-11-28)'
         CheckRecord = @(
             'docs/decisions/2026-11-21-1.0-baseline-checks.md'
             'docs/decisions/2026-11-25-gt218-cube-levels-dxt-pool-counters.md'
             'docs/decisions/2026-11-28-g96-2d-engine-first-run.md'
             'docs/decisions/2026-11-28-g96-flips-from-the-vbios.md'
+            'docs/decisions/2026-11-28-g96-direct3d.md'
         )
     }
 
