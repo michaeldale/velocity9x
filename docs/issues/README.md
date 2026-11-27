@@ -6,8 +6,6 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ### Blockers of the 1.0 plan
 
-- [2026-11-07 A first install of `intel-gma` on a reporter's two Eee PCs (GMA 950 and GMA 900) stayed at 16 colours; installing `vbe` first worked (VOGONS post, no version or files given); a direct install works on our GMA 950 (0.39.0, and released 0.60.0 on 2026-11-25); the reporter's files are owed; 1.0 re-read 2026-11-26: the reporter's files owed; not reproduced on our GMA 950](2026-11-07-first-install-stays-at-16-colours.md)
-- [2026-11-06 Feature gap: nothing restores the mode or engine state after an APM/ACPI resume; untested on any machine; 1.0 re-read 2026-11-26: measured on 86Box and the Oland; a laptop owed](2026-11-06-no-mode-restore-after-resume.md)
 - [2026-09-12 Returning from a full-screen DOS box freezes the GMA 950 and the HD 4600 (reproduced 2026-10-23); windowed boxes fixed by the INT 10h guard; on 2026-11-10 the 86Box ViRGE/DX returns repainted with an INT 2Fh screen-switch hook, the HD 4600 the same evening, and the GMA 950 once the reset path stopped writing profile files; 1.0 re-read 2026-11-26: blocker B5](2026-09-12-netbook-dos-box-return-hardlock.md)
 - [2026-08-28 A full-screen DOS box comes back with a corrupt band across the top; 1.0 re-read 2026-11-26: the HP Mini 110 case; with blocker B5](2026-08-28-fullscreen-dos-scanout.md)
 
@@ -24,6 +22,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ### Known issues in 1.0 (named in the README)
 
+- [2026-11-06 Feature gap: nothing restores the mode or engine state after an APM/ACPI resume; untested on any machine; 1.0 re-read 2026-11-26: measured on 86Box and the Oland; a laptop owed; B9 closed for 1.0 (Michael, 2026-11-27): README known issue (Stand By and resume), the laptop moves to the next release](2026-11-06-no-mode-restore-after-resume.md)
 - [2026-11-26 Rage IIC (A8U4I5), 0.61.0 tree: 3DMark 2000 at 640x480 stops after 1,340 flips while 3DMark re-issues depth fills without end (each returns handled); V9XD32 T4 and T16 find off-screen render targets get no clear (E_NOTIMPL) or draw; first runs of both; 3DMark 99 stops at Image Quality in the same fill loop; the loop is a wedged engine (wait-for-idle timeout, failed reset, quarantined core) answered with WASSTILLDRAWING forever, present in 0.10.0 too; the Half-Life lock goes with the agent's VNC server (runs with it stopped); left for a later release (Michael, 2026-11-26); README known issue (Rage IIC)](2026-11-26-rage-iic-3dmark2000-depth-fill-loop-and-offscreen-targets.md)
 - [2026-11-26 Trio3D/2X (A8U4I5), 0.61.0 tree: 3DMark 2000 at 640x480 runs to its score with 51 engine idle timeouts and 51 resets; first 3DMark 2000 run on the card (3DMark 99 had none in September); where they fell not recorded; README known issue (S3 ViRGE and Trio3D)](2026-11-26-trio3d2x-3dmark2000-engine-timeouts.md)
 - [2026-11-27 ViRGE/DX (A8U4I5), 0.61.0 tree: 3DMark 2000 at 640x480 runs to its score with 45 engine idle timeouts and resets, at 800x600 with none (November's 800x600 run had none either); the Trio3D/2X's 51 were also at 640x480; where they fall not recorded; left for a later release (Michael, 2026-11-27); README known issue (S3 ViRGE and Trio3D)](2026-11-27-virgedx-3dmark2000-640x480-engine-timeouts.md)
@@ -80,6 +79,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ### After 1.0 (the plan's "Not in 1.0")
 
+- [2026-11-07 A first install of `intel-gma` on a reporter's two Eee PCs (GMA 950 and GMA 900) stayed at 16 colours; installing `vbe` first worked (VOGONS post, no version or files given); a direct install works on our GMA 950 (0.39.0, and released 0.60.0 on 2026-11-25); the reporter's files are owed; 1.0 re-read 2026-11-26: the reporter's files owed; not reproduced on our GMA 950; B10 closed (Michael, 2026-11-27): left after 1.0 with the reporter's files](2026-11-07-first-install-stays-at-16-colours.md)
 - [2026-11-23 Oland (W9QI0DAD, 1002:6610), UT2004 demo: Michael reports graphical issues; symptoms not yet described, nothing measured; the 2026-11-20 Z24 run saw none; deferred to 1.1; 1.0 re-read 2026-11-26: already in the plan's "To test for 1.1"](2026-11-23-oland-ut2004-graphical-issues.md)
 - [2026-11-18 GCN (SI/VI): the CPU waits for the GPU to go idle at every flip, lock and DMA fill, so the two never overlap; the fence spin is 7.1 % of a 3DMark 2001 SE run on the R7E; 1.0 re-read 2026-11-26: performance, in the plan's "Not in 1.0"](2026-11-18-vi-cp-full-drain-serialises-cpu-and-gpu.md)
 - [2026-11-18 GCN (SI/VI): the ring and vertex copies are dword loops into the GPU window, about 7 % of a 3DMark 2001 SE run each on the R7E; 1.0 re-read 2026-11-26: performance, in the plan's "Not in 1.0"](2026-11-18-vi-dword-copies-into-gpu-window.md)

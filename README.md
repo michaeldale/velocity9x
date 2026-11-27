@@ -94,6 +94,11 @@ New in 0.59.0:
   ViRGE/DX:** the 0.45.0 fix is in every package but has not been run
   on them. If the desktop does not come back, keep DOS windowed. On the
   GMA 950 it has not been run since the 0.49.0 texture memory either.
+- **Stand By and resume:** measured only on 86Box (`vbe`, `matrox`,
+  `s3`, Mach64 VT2) and one desktop Radeon (Oland R7 250, APM), which
+  come back to the desktop with the mode kept; the Oland slowly, as
+  Windows' own driver does. Untested on any laptop
+  ([issue](docs/issues/2026-11-06-no-mode-restore-after-resume.md)).
 - **Glide and 3DCIF DLLs from 0.23.0 or earlier** do not work with this
   driver. Replace any copy in a game's folder with this release's.
 - **GMA 950:** 3DMark 2001 SE's Advanced Pixel Shader test reports
@@ -930,10 +935,11 @@ See [Glide](#glide) and [ATI 3DCIF](#ati-3dcif) for what has run. Remove or
 rename a game's own copy of the DLL from its folder so ours is used.
 
 **Will it run on Windows 95 or Windows Me?**
-Windows 98 SE is the main target. The manual VLB install is verified on one
-physical Trio64 under Windows 95, without the mini-VDD; that does not
-establish general Win95 compatibility. Windows Me has no validated
-configuration.
+Velocity9x 1.0 supports Windows 98 SE only. Windows 95, the first
+edition of Windows 98 and Windows Me are not supported in 1.0; they are
+planned for a later release. A manual VLB install has run on one
+physical Trio64 under Windows 95, without the mini-VDD, and one
+reporter runs Windows Me; neither is a tested configuration.
 
 **Can I get 32-bit colour, or a resolution above 1024x768?**
 On the S3 cards, yes: True Color at 640x480, 800x600 and 1024x768, and
