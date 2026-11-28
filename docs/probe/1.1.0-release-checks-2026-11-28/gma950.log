@@ -1,0 +1,13 @@
+[+0:00] agent 0.19.0, boot 375, desktop True
+[+0:03] display card present: 8086:27AE, 8086:27A6
+[+0:19] staged 8 files; resetting
+[+2:20] reset: boot 375 -> 376
+[+2:25] installed: 8 of 8
+[+2:31] probes in place: sent 7 of 7
+[+2:44] V9XD32 ddi6 exit=0
+[+2:54] V9XD32 ddi5 exit=0
+[+3:08] V9XGLP.EXE exit=0
+[+3:11] V9XGLIDP.EXE exit=0
+[+3:11] V9XR3DP.EXE exit=0
+[+3:14] V9XWPRS.EXE exit=0
+[+3:15] V9XFBCMP.EXE exit=0

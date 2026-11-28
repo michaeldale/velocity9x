@@ -272,11 +272,17 @@ New in 1.0.0:
   does not list; measured on the RIVA 128ZX and the ViRGE, not yet run on
   the others
   ([record](docs/decisions/2026-11-28-unpublished-32bit-textures-refused.md)).
-- **Radeon R7E (Carrizo):** not run on 1.0.0. In the release checks the
-  one test machine took the 1.0.0 files and restarted, then did not come
-  back online; nobody saw its screen, so a hang at startup is not ruled
-  out. It passed on the code of 23 November
-  ([record](docs/decisions/2026-11-28-1.0.0-release-checks.md)).
+- **Radeon R7E (Carrizo):** not run on 1.0.0 or 1.1.0. Twice the one
+  test machine took the new files and restarted, then did not come back
+  online; nobody saw its screen, so a hang at startup is not ruled out.
+  It passed on the code of 23 November
+  ([record](docs/decisions/2026-11-28-1.1.0-release-checks.md)).
+- **GMA 900:** not run on 1.1.0. The test laptop took the 1.1.0 files
+  and restarted, then did not come back online; its owner has been
+  asked what the screen shows. 1.1.0's new Gen3 code (blitter copies for
+  GDI, the hardware cursor) runs on the GMA 950 after the same kind of
+  restart; `GdiAccel=0` and `HwCursor=0` in SYSTEM.INI turn it off
+  ([record](docs/decisions/2026-11-28-1.1-tree-checks.md)).
 - **Seen once, not reproduced:** a hard lock on a Rage XL at UT99's
   first OpenGL frame
   ([issue](docs/issues/2026-10-07-ragexl-hardlock-first-gl-frame-after-boot.md));
