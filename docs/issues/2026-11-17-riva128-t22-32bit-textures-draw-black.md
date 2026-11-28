@@ -4,7 +4,7 @@ Date: 2026-11-17
 
 Machine: M-7V636C (Mac's Riva 128, `12D2:0018`), boot 68, 800x600 at
 16 bpp (5:5:5). Its installed nvidia set was not identified beyond its
-V9XHW.INI. Status: open, cause not established.
+V9XHW.INI. Status: closed 2026-11-28 (see the end).
 
 Evidence: [`../probe/nv3-modulate-alpha-m-7v636c-2026-11-17/d32-bpp16/V9XD32.TXT`](../probe/nv3-modulate-alpha-m-7v636c-2026-11-17/d32-bpp16/V9XD32.TXT),
 run with `V9XD32 /bpp16` (the default 32 bpp ends at `NO-HAL-AT-DEPTH`:
@@ -55,3 +55,14 @@ refuses an unpublished 32-bit RGB video-memory texture with
 here. Measured on the 86Box ViRGE only, where T22 went from failing to
 skipped: [decision](../decisions/2026-11-28-unpublished-32bit-textures-refused.md).
 Close this issue on a V9XD32 run on this card.
+
+## Closed 2026-11-28
+
+M-7V636C, boot 77, main's nvidia set (7644e535's tree, c1ba7e5a for the
+records; DRV, VxD, HAL hash-checked after the WININIT rename), V9XD32
+`/bpp16`: `T22ACreateHr=88760091h`, `T22XCreateHr=88760091h` (DDERR_
+INVALIDPIXELFORMAT), so T22 is skipped, as it is on every engine that
+does not publish 32-bit layouts. `Failures` 3 -> 1; the one left is T21
+(the mipmap levels; the chip has no level blend). The owner's
+GLIDE2X.DLL was not touched. Report:
+[`../probe/riva128-t22-refused-m-7v636c-2026-11-28/V9XD32-bpp16.TXT`](../probe/riva128-t22-refused-m-7v636c-2026-11-28/V9XD32-bpp16.TXT).
