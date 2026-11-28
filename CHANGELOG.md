@@ -6,6 +6,17 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 1.1.0 - not yet released
 
+- **`nvidia` package, GeForce 9500 GT: core and shader at the card's
+  rated clocks.** The video BIOS leaves the G96 at core 400 and shader
+  800 MHz; its own performance table says 550 and 1400, and the NVIDIA
+  driver raises them when it loads. The driver now does the same once a
+  boot, before the 2D/3D engine starts, with nouveau's sequence. Memory
+  was already at its 500 MHz and the voltage at the top level's 1.00 V.
+  Only a 9500 GT found exactly as measured is changed; any other card or
+  clock state is left alone. Measured on M-Z2T02D (GitHub issue 30)
+  ([plan](docs/plans/nvidia-g96-reclock.md),
+  [record](docs/decisions/2026-11-28-g96-clocks-measured.md)).
+
 - **`intel-gma` package, Gen3: GDI screen-to-screen copies on the
   blitter** (GitHub PR 32, by arturaslt). A window dragged or scrolled is
   a `SRCCOPY` the DIB Engine did by reading uncached video memory; the

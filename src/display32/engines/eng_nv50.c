@@ -39,6 +39,7 @@
 #include "ddhal_internal.h"
 #include "velocity9x/nv50_chan.h"
 #include "velocity9x/nv50_init.h"
+#include "velocity9x/nv50_clk.h"
 #include "velocity9x/gt218_reserve.h"
 #include "velocity9x/nv50_rblock.h"
 #include "velocity9x/nv50_crtc.h"
@@ -259,6 +260,39 @@ static int v9x_nv50_replay(const struct v9x_nv50_init_list *list)
 }
 
 /*
+ * The G96's core and shader clocks from POST's 400/800 MHz to the VBIOS's
+ * level 3, 550/1400 (nv50_clk.h, docs\decisions\
+ * 2026-11-28-g96-clocks-measured.md). Run before the channel exists, so
+ * nothing is on PFIFO while the script blocks it. Any other chip or clock
+ * state gets an empty list. Returns 0 only when the sequencer never
+ * finished, which gives the bring-up up.
+ */
+static int v9x_nv50_reclock(DWORD chipset)
+{
+    struct v9x_nv50_clk_input input;
+    struct v9x_nv50_init_list list;
+    v9x_u32 count = 0ul;
+
+    input.chipset = chipset;
+    input.hwsq_ctrl = v9x_nv50_read32(V9X_NV50_CLK_BUS_HWSQ_CTRL);
+    input.source = v9x_nv50_read32(V9X_NV50_CLK_SOURCE);
+    input.ref_select = v9x_nv50_read32(V9X_NV50_CLK_REF_SELECT);
+    input.spll_ctrl = v9x_nv50_read32(V9X_NV50_CLK_SPLL_CTRL);
+    input.spll_coef = v9x_nv50_read32(V9X_NV50_CLK_SPLL_COEF);
+    input.nvpll_ctrl = v9x_nv50_read32(V9X_NV50_CLK_NVPLL_CTRL);
+    input.nvpll_coef = v9x_nv50_read32(V9X_NV50_CLK_NVPLL_COEF);
+    input.gpio_0_7 = v9x_nv50_read32(V9X_NV50_CLK_GPIO_0_7);
+    if (v9x_nv50_clk_build(&input, v9x_nv50_ops, V9X_NV50_INIT_OPS_MAX,
+                           &count) != V9X_STATUS_OK || count == 0ul) {
+        return 1;
+    }
+    list.count = count;
+    list.fifo_end = count;
+    list.gr_end = count;
+    return v9x_nv50_replay(&list);
+}
+
+/*
  * The channel's structures into the reserve, the register bring-up, then
  * the 502D object bound to its subchannel, which is also PGRAPH's first
  * context load. The DirectDraw heap ends below the reserve
@@ -280,6 +314,10 @@ static int v9x_nv50_bring_up(void)
     /* DDR2 or DDR3 on the measured card (PFB 100714h type 1); the one
      * default GDDR5 changes is not known to matter to 2D. */
     grctx.gddr5 = 0ul;
+
+    if (!v9x_nv50_reclock(grctx.chipset)) {
+        return 0;
+    }
 
     /* Built straight into video memory: the region is 704 KiB, too much
      * to hold twice. The builder zeroes it first. */

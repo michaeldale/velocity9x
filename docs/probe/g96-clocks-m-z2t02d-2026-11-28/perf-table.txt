@@ -1,0 +1,7 @@
+BIT at 0208
+BIT tokens: {'2': 'v1 len 4 @0290', 'B': 'v2 len 28 @0294', 'C': 'v1 len 14 @02b0', 'D': 'v1 len 4 @02be', 'A': 'v1 len 3 @02c2', 'I': 'v1 len 18 @02c5', 'L': 'v1 len 2 @02d7', 'M': 'v1 len 13 @02d9', 'N': 'v0 len 0 @0000', 'P': 'v1 len 25 @02e6', 'S': 'v2 len 21 @02ff', 'T': 'v1 len 2 @0314', 'U': 'v1 len 3 @0316', 'V': 'v1 len 6 @0319', 'c': 'v0 len 0 @0000', 'x': 'v1 len 3 @031f', 'd': 'v1 len 2 @0322', 'i': 'v2 len 38 @0324'}
+perf table @cdd2 ver 35 hdr 12 count 4 len 29 sub 8x11
+level 0 pstate ff fan 100 volt 5f core 200 shader 400 memory 100 vdec 200 MHz  raw ffff00000000645fc800900164006800c8000000d00020120000000010
+level 1 pstate ff fan 100 volt 00 core 0 shader 0 memory 0 vdec 0 MHz  raw ffff000000006400000000000000000000000000000000000000000010
+level 2 pstate ff fan 100 volt 00 core 0 shader 0 memory 0 vdec 0 MHz  raw ffff000000006400000000000000000000000000000000000000000010
+level 3 pstate 0f fan 100 volt 64 core 550 shader 1400 memory 500 vdec 450 MHz  raw 0fff00000000646426027805f401c201c2010000a00140100000000010

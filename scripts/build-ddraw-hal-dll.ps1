@@ -142,6 +142,8 @@ $sources = @(
     "src\chipsets\nvidia\gt218\nv50_2d.c",
     "src\chipsets\nvidia\gt218\nv50_grctx.c",
     "src\chipsets\nvidia\gt218\nv50_init.c",
+    # The G96's core and shader reclock, run before the bring-up.
+    "src\chipsets\nvidia\gt218\nv50_clk.c",
     # The GT218 3D engine on the same channel: the setup, the encoder,
     # the Direct3D programs and state, the neutral draw to them, and the
     # engine that places surfaces and submits.

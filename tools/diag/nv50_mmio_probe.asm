@@ -5,7 +5,8 @@
 ; probe (nv3_mmio_probe.asm) is the model, without its BAR1 windows and
 ; alias test.
 ;
-; Writes: nothing, ever. 0CF8h is saved and restored around each
+; Writes: nothing, except in N5_DIOC_FBWRITE and N5_DIOC_HWSQ below.
+; 0CF8h is saved and restored around each
 ; configuration read. Mapping a physical range with _MapPhysToLinear
 ; changes no device state.
 ;
@@ -29,6 +30,11 @@
 ;   681000h-681FFFh  PRMDIO, the palette ports, whose reads advance;
 ;   the falcon data ports (base + 180h-1CFh), whose reads auto-increment;
 ;   every engine's method and channel areas.
+; The clock windows (4000h-403Fh, 4700h, 4800h, C040h, C050h, E18Ch,
+; E81Ch-E84Fh) are plain PLL and source-select registers that nouveau's
+; nv50_clk_read only reads, and the GPIO windows (E104h-E10Bh,
+; E280h-E287h) its gpio sense reads; V9XN5MM.EXE asks for them on the
+; G96 only. 300000h-31FFFFh is the PROM, for /prom.
 ; PFIFO, PGRAPH and the copy engine are in the list but V9XN5MM.EXE asks
 ; for each only when PMC_ENABLE shows it on, as the NV3 probe does. PDISP
 ; has no enable or reset bit in nouveau's GT215 map (subdev\mc\gt215.c),
@@ -44,7 +50,11 @@
 ; VM (PBUS 1704h-170Ch zero), so what BAR1 decodes is unknown; the
 ; publisher asks for BAR1 last. Reads only.
 ;
-; N5_DIOC_FBWRITE is the one request that writes, and only video memory
+; N5_DIOC_HWSQ writes registers: it runs a caller's script on the PBUS
+; sequencer (docs\plans\nvidia-g96-reclock.md), on the G96 only. The
+; script is built by V9XN5MM.EXE /reclock from nouveau's nv50_clk_calc.
+;
+; N5_DIOC_FBWRITE writes only video memory
 ; through BAR1, never a register: is BAR1 linear with no BAR VM
 ; (docs\decisions\2026-11-11-gt218-bar-windows.md, "Next")? One 4 KiB page
 ; is mapped at BAR1 + 0 (the desktop's first row) and at each of
@@ -71,6 +81,12 @@ N5_MAGIC                equ 4d4d354eh ; "N5MM"
 N5_DIOC_CAPTURE         equ 1
 N5_DIOC_FB              equ 2
 N5_DIOC_FBWRITE         equ 3
+N5_DIOC_HWSQ            equ 4
+N5_HWSQ_WORDS_MAX       equ 128         ; g94_bus hwsq_size
+N5_HWSQ_SPINS           equ 4000000     ; ~2 s of 1308h reads, nouveau's wait
+N5_HWSQ_READBACK        equ 8
+N5_ST_HWSQ_DONE         equ 00000800h
+N5_ST_HWSQ_TIMEOUT      equ 00001000h
 N5_WR_WINDOWS           equ 6         ; BAR1 + 0, then the five targets
 N5_WR_DWORDS            equ 16
 N5_WR_PAGE              equ 1000h
@@ -142,12 +158,26 @@ N5Windows label dword
     dd 003200h, 003204h ; PFIFO cache1 push
     dd 003250h, 003254h ; PFIFO cache1 pull
     dd 0032ech, 003300h ; PFIFO playlist and runlist state
+    dd 004000h, 004040h ; G96 PLLs: mem 4008h, shader 4020h, core 4028h,
+                        ; vdec 4030h, control and coefficient pairs
+                        ; (nouveau subdev\clk\nv50.c read_pll)
+    dd 004700h, 004704h ; clock dividers, G84/G86/G98 (nv50.c read_div)
+    dd 004800h, 004804h ; clock dividers, G92/G94/G96 (nv50.c read_div)
     dd 009400h, 009408h ; PTIMER time
+    dd 00c040h, 00c044h ; clock source select (nv50.c, "mast")
+    dd 00c050h, 00c054h ; PLL reference select, G94-G98 (nv50.c read_pll_src)
+    dd 00e18ch, 00e190h ; PLL reference select, G80/GT200 (nv50.c)
+    dd 00e81ch, 00e850h ; reference PLLs 0 and 1, G94-G98 (nv50.c)
+    dd 00e104h, 00e10ch ; GPIO lines 0-15, 4 bits each (nouveau
+                        ; subdev\gpio\nv50.c nv50_gpio_location)
+    dd 00e280h, 00e288h ; GPIO lines 16-31
     dd 100200h, 100210h ; PFB config 0, 1, 208, memory size
     dd 100714h, 100718h ; PFB memory type
     dd 101000h, 101004h ; PSTRAPS
     dd 104040h, 104044h ; copy engine falcon status
     dd 104100h, 104110h ; copy engine falcon CPUCTL, BOOTVEC, HWCFG, 10C
+    dd 300000h, 320000h ; PROM, the ROM chip's first 128 KiB while PBUS
+                        ; 1850h bit 0 is clear (nouveau bios\shadowrom.c)
     dd 400100h, 400104h ; PGRAPH_INTR
     dd 400108h, 40010ch ; PGRAPH trap status
     dd 40032ch, 400330h ; PGRAPH context instance
@@ -160,7 +190,7 @@ N5Windows label dword
     dd 619e00h, 61a000h ; PDISPLAY.VGA block (envytools g80 vga-stack,
                         ; vga-mutex; workspace base guessed at 619F04h)
     dd 700000h, 800000h ; PRAMIN window
-N5_WINDOW_COUNT         equ 32
+N5_WINDOW_COUNT         equ 42
 
 N5Result label dword
     dd N5_MAGIC                 ; 00 magic
@@ -192,6 +222,11 @@ N5FbLinear   dd 4 dup (0)
 N5WriteTargets label dword
     dd 00000000h, 01000000h, 02000000h, 04000000h, 08000000h, 0fffff000h
 N5WriteLinear dd N5_WR_WINDOWS dup (0)
+; N5_DIOC_HWSQ: registers read twice after the script, into N5First and
+; N5Second: the sequencer's status, the shader and core PLLs, the clock
+; source select, PFIFO's block word and the sequencer's enable.
+N5HwsqReadback label dword
+    dd 001308h, 004020h, 004024h, 004028h, 00402ch, 00c040h, 002504h, 001098h
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -524,6 +559,81 @@ N5_Write_Test_Done:
     ret
 EndProc N5_Write_Test
 
+; EBP = DIOC input buffer, ECX = its byte count. N5_DIOC_HWSQ: the input
+; list is script words, not offsets; copies up to N5_HWSQ_WORDS_MAX.
+BeginProc N5_Accept_Script
+    pushad
+    mov     N5Result[16], 0
+    sub     ecx, N5_IN_OFFSETS
+    shr     ecx, 2
+    mov     eax, [ebp+N5_IN_COUNT]
+    test    eax, eax
+    jz      short N5_Script_Refused
+    cmp     eax, N5_HWSQ_WORDS_MAX
+    ja      short N5_Script_Refused
+    cmp     eax, ecx
+    ja      short N5_Script_Refused
+    mov     ecx, eax
+    lea     esi, [ebp+N5_IN_OFFSETS]
+    mov     edi, OFFSET32 N5Offsets
+    cld
+    rep     movsd
+    mov     N5Result[16], eax
+    popad
+    ret
+N5_Script_Refused:
+    or      N5Result[4], N5_ST_OFFSETS_REFUSED
+    popad
+    ret
+EndProc N5_Accept_Script
+
+; Runs the script in N5Offsets on the PBUS sequencer, as nouveau's
+; g94_bus_hwsq_exec does (subdev\bus\g94.c): 1098h bit 3 off, 1304h and
+; 1318h zero, the words at 80000h, 1098h bits 4:3 on, 130Ch = 1, then
+; wait up to ~2 s for 1308h bit 8 to clear. Then the readback list is put
+; in N5Offsets and read twice. Header dword 12 = spins left.
+BeginProc N5_Hwsq_Run
+    pushad
+    mov     esi, N5Mmio
+    and     dword ptr [esi+1098h], NOT 00000008h
+    mov     dword ptr [esi+1304h], 0
+    mov     dword ptr [esi+1318h], 0
+    mov     ecx, N5Result[16]
+    xor     ebx, ebx
+N5_Hwsq_Copy:
+    mov     eax, N5Offsets[ebx*4]
+    mov     [esi+80000h+ebx*4], eax
+    inc     ebx
+    dec     ecx
+    jnz     short N5_Hwsq_Copy
+    or      dword ptr [esi+1098h], 00000018h
+    mov     dword ptr [esi+130ch], 1
+    mov     ecx, N5_HWSQ_SPINS
+N5_Hwsq_Poll:
+    test    dword ptr [esi+1308h], 00000100h
+    jz      short N5_Hwsq_Finished
+    dec     ecx
+    jnz     short N5_Hwsq_Poll
+    or      N5Result[4], N5_ST_HWSQ_TIMEOUT
+    jmp     short N5_Hwsq_Read_Back
+N5_Hwsq_Finished:
+    or      N5Result[4], N5_ST_HWSQ_DONE
+N5_Hwsq_Read_Back:
+    mov     N5Result[48], ecx
+    mov     esi, OFFSET32 N5HwsqReadback
+    mov     edi, OFFSET32 N5Offsets
+    mov     ecx, N5_HWSQ_READBACK
+    cld
+    rep     movsd
+    mov     N5Result[16], N5_HWSQ_READBACK
+    mov     edi, OFFSET32 N5First
+    call    N5_Read_Snapshot
+    mov     edi, OFFSET32 N5Second
+    call    N5_Read_Snapshot
+    popad
+    ret
+EndProc N5_Hwsq_Run
+
 BeginProc N5_Capture
     pushad
 
@@ -577,6 +687,18 @@ N5_Capture_Check_Base:
 N5_Capture_Identity:
     or      N5Result[4], N5_ST_IDENTITY_MATCH
 
+    ; The sequencer runs on the G96 only: the script is built for
+    ; g84_clk's registers and g94_bus's sequencer.
+    cmp     N5Request, N5_DIOC_HWSQ
+    jne     short N5_Capture_Not_Hwsq
+    mov     edx, N5Result[20]
+    and     edx, N5_BOOT_CHIPSET_MASK
+    cmp     edx, N5_BOOT_CHIPSET_G96
+    jne     N5_Capture_Done
+    call    N5_Hwsq_Run
+    or      N5Result[4], N5_ST_SNAPSHOT_TAKEN
+    jmp     N5_Capture_Done
+N5_Capture_Not_Hwsq:
     cmp     N5Request, N5_DIOC_FBWRITE
     jne     short N5_Capture_Not_Write
     call    N5_Write_Test
@@ -633,6 +755,8 @@ BeginProc N5_W32_DeviceIoControl
     cmp     ecx, N5_DIOC_FB
     je      short N5_Dioc_Known
     cmp     ecx, N5_DIOC_FBWRITE
+    je      short N5_Dioc_Known
+    cmp     ecx, N5_DIOC_HWSQ
     jne     N5_Dioc_Fail
 N5_Dioc_Known:
     mov     N5Request, ecx
@@ -654,7 +778,13 @@ N5_Dioc_Known:
     call    N5_Reset_Result
     mov     eax, [ebp+N5_IN_CONFIG]
     mov     N5Config, eax
+    cmp     N5Request, N5_DIOC_HWSQ
+    jne     short N5_Dioc_Offsets
+    call    N5_Accept_Script
+    jmp     short N5_Dioc_Accepted
+N5_Dioc_Offsets:
     call    N5_Accept_Offsets
+N5_Dioc_Accepted:
     test    N5Result[4], N5_ST_OFFSETS_REFUSED
     jnz     short N5_Dioc_Copy_Out
     call    N5_Capture

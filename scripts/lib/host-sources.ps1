@@ -136,6 +136,8 @@ function Get-V9xHostSourceNames {
         'src\chipsets\nvidia\gt218\nv50_2d.c',
         # GT218 register bring-up as an ordered list, no I/O.
         'src\chipsets\nvidia\gt218\nv50_init.c',
+        # G96 core and shader reclock as a register list, no I/O.
+        'src\chipsets\nvidia\gt218\nv50_clk.c',
         # GT218 Tesla 3D setup push and EXA's programs, no I/O.
         'src\chipsets\nvidia\gt218\nv50_3d.c',
         # GT218 Tesla shader instruction encoder, no I/O.
@@ -474,6 +476,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_nv50_grctx.c',
         'tests\host\test_nv50_chan.c',
         'tests\host\test_nv50_init.c',
+        'tests\host\test_nv50_clk.c',
         'tests\host\test_nv50_3d.c',
         'tests\host\test_nv50_shader.c',
         'tests\host\nv50_sh_sim.c',

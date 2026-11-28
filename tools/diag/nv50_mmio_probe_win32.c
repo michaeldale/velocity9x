@@ -62,6 +62,10 @@
 #define V9X_N5MM_CAPTURE     1u
 #define V9X_N5MM_FB          2u
 #define V9X_N5MM_FBWRITE     3u
+#define V9X_N5MM_HWSQ        4u
+#define V9X_ST_HWSQ_DONE     0x00000800ul
+#define V9X_ST_HWSQ_TIMEOUT  0x00001000ul
+#define V9X_N5CK_PATH        V9X_DIAG_PATH("V9XN5CK.INI")
 #define V9X_N5FW_PATH        V9X_DIAG_PATH("V9XN5FW.INI")
 #define V9X_ST_WRITE_DONE    0x00000400ul
 
@@ -85,6 +89,7 @@
  * GT218's and unchecked on a G96. */
 #define V9X_G96_ID           0x064010deul
 #define V9X_NV50_CHIPSET_GT218 0xa8ul
+#define V9X_NV50_CHIPSET_G96   0x96ul
 
 #define V9X_ST_GT218           0x00000001ul
 #define V9X_ST_BASE_INVALID    0x00000002ul
@@ -124,6 +129,14 @@
 #define V9X_NV50_PSTRAPS          0x101000ul
 #define V9X_NV50_PRAMIN_START     0x700000ul
 #define V9X_NV50_PRAMIN_BYTES     0x100000ul
+/* PBUS ROM access (1850h, nouveau's PCI mirror 0x50): bit 0 set shadows
+ * the ROM; clear, the PROM window at BAR0 + 300000h reads the ROM chip
+ * (subdev\pci\base.c nvkm_pci_rom_shadow, subdev\bios\shadowrom.c). 128 KiB
+ * covers a G9x board's image and its PCIR chain. */
+#define V9X_NV50_ROM_ACCESS       0x001850ul
+#define V9X_NV50_ROM_SHADOW       0x00000001ul
+#define V9X_NV50_PROM             0x300000ul
+#define V9X_NV50_PROM_BYTES       0x020000ul
 
 /*
  * Field layouts, all nouveau's. PMC_BOOT_0 chipset 28:20, stepping 7:0.
@@ -269,6 +282,266 @@ static const struct v9x_n5mm_register v9x_pgraph[] = {
     { 0x400108ul, "PGRAPH_TRAP" },
     { 0x40032cul, "PGRAPH_CTX_INSTANCE" }
 };
+
+/* The G96's clock registers, every one nouveau's nv50_clk_read reads for
+ * chipset 96h (subdev\clk\nv50.c): the source select, the PLL control and
+ * coefficient pairs, the reference PLLs behind them, the divider word.
+ * The GT218 clocks through a different unit (clk\gt215.c), so this list is
+ * read on the G96 only. The core, shader and memory clocks are decoded on
+ * the host from these words. */
+static const struct v9x_n5mm_register v9x_clock[] = {
+    { 0x004000ul, "PCLOCK_4000" },
+    { 0x004004ul, "PCLOCK_4004" },
+    { 0x004008ul, "PCLOCK_MPLL_CTRL" },
+    { 0x00400cul, "PCLOCK_MPLL_COEF" },
+    { 0x004010ul, "PCLOCK_4010" },
+    { 0x004014ul, "PCLOCK_4014" },
+    { 0x004018ul, "PCLOCK_4018" },
+    { 0x00401cul, "PCLOCK_401C" },
+    { 0x004020ul, "PCLOCK_SPLL_CTRL" },
+    { 0x004024ul, "PCLOCK_SPLL_COEF" },
+    { 0x004028ul, "PCLOCK_NVPLL_CTRL" },
+    { 0x00402cul, "PCLOCK_NVPLL_COEF" },
+    { 0x004030ul, "PCLOCK_VDEC_CTRL" },
+    { 0x004034ul, "PCLOCK_VDEC_COEF" },
+    { 0x004038ul, "PCLOCK_4038" },
+    { 0x00403cul, "PCLOCK_403C" },
+    { 0x004800ul, "PCLOCK_DIV_G9X" },
+    { 0x00c040ul, "PCLOCK_SOURCE" },
+    { 0x00c050ul, "PCLOCK_REF_SELECT" },
+    { 0x00e81cul, "PCLOCK_REF0_COEF" },
+    { 0x00e820ul, "PCLOCK_REF0_820" },
+    { 0x00e824ul, "PCLOCK_REF0_POST" },
+    { 0x00e844ul, "PCLOCK_REF1_COEF" },
+    { 0x00e848ul, "PCLOCK_REF1_848" },
+    { 0x00e84cul, "PCLOCK_REF1_POST" },
+    /* The GPIO lines, input sense in bit 2 of each line's nibble: the
+     * VBIOS voltage table's VID lines are among them (gpio\nv50.c). */
+    { 0x00e104ul, "PGPIO_LINES_0_7" },
+    { 0x00e108ul, "PGPIO_LINES_8_15" },
+    { 0x00e280ul, "PGPIO_LINES_16_23" },
+    { 0x00e284ul, "PGPIO_LINES_24_31" }
+};
+
+/*
+ * /reclock (docs\plans\nvidia-g96-reclock.md). The script is nouveau's
+ * nv50_clk_calc for a core and shader change on chipset 96h, encoded by
+ * nouveau's hwsq rules (subdev\bus\hwsq.c), and run by N5MM.VXD's
+ * N5_DIOC_HWSQ. The shader always goes through SPLL (nv50_clk_calc's
+ * second branch), so the POST state can be put back exactly.
+ *
+ * Registers and fields (subdev\clk\nv50.c): PFIFO block 2504h; source
+ * select C040h, bits 1:0 core source (3 = NVPLL), 5:4 shader source (3 =
+ * SPLL), 7 shader on hclk while unhooked, 20 the GT200 core bypass; PLL
+ * control 4028h/4020h, bit 31 enable, 18:16 P (and 21:19 its copy); PLL
+ * coefficients 402Ch/4024h, 15:8 N, 7:0 M.
+ */
+#define V9X_NV50_PFIFO_BLOCK      0x002504ul
+#define V9X_NV50_CLK_SOURCE       0x00c040ul
+#define V9X_NV50_CLK_REF_SELECT   0x00c050ul
+#define V9X_NV50_SPLL_CTRL        0x004020ul
+#define V9X_NV50_SPLL_COEF        0x004024ul
+#define V9X_NV50_NVPLL_CTRL       0x004028ul
+#define V9X_NV50_NVPLL_COEF       0x00402cul
+#define V9X_NV50_GPIO_0_7         0x00e104ul
+#define V9X_NV50_PLL_ENABLE       0x80000000ul
+#define V9X_NV50_PLL_CTRL_MASK    0xc03f0100ul
+#define V9X_NV50_PLL_P_SHIFT      16u
+#define V9X_NV50_PLL_P_COPY_SHIFT 19u
+#define V9X_NV50_PLL_P_MASK       0x7ul
+#define V9X_NV50_PLL_COEF_MASK    0x0000fffful
+#define V9X_NV50_SRC_UNHOOK_MASK  0x000000b3ul
+#define V9X_NV50_SRC_UNHOOK       0x00000081ul
+#define V9X_NV50_SRC_HOOK_MASK    0x00100033ul
+#define V9X_NV50_SRC_HOOK         0x00000033ul
+/* C050h fields saying both PLLs take the 100 MHz PCIe reference (nv50.c
+ * read_pll_src, chipset 94h-98h): bits 1:0 SPLL, 12:11 NVPLL, 2 = href. */
+#define V9X_NV50_REF_MASK         0x00001803ul
+#define V9X_NV50_REF_BOTH_HREF    0x00001002ul
+/* hwsq flag 10h is the FB enable; wait flag 0 its state (nv50_clk_calc);
+ * 2504h = 1 blocks PFIFO, then 8 us. */
+#define V9X_HWSQ_FLAG_FB          0x10u
+#define V9X_HWSQ_WAIT_FB          0x00u
+#define V9X_HWSQ_FIFO_SETTLE_NS   8000ul
+#define V9X_HWSQ_BYTES            512u
+#define V9X_HWSQ_FILL             0x7fu
+
+/* This board's VBIOS (62.94.2C.00.91, docs\decisions\
+ * 2026-11-28-g96-clocks-measured.md): the voltage table's one VID bit is
+ * DCB GPIO function 04h on line 5, entry 200004E5h (nouveau dcb gpio v4:
+ * log[1] = bits 30:29 = 1, so the VID bit is the line's sense as read);
+ * VID 0 is 1.00 V, level 3's voltage. Sense: bit 2 of the line's nibble
+ * (gpio\nv50.c). */
+#define V9X_G96_VID_LINE_SHIFT    20u
+#define V9X_G96_VID_SENSE         0x4ul
+#define V9X_G96_VID_LEVEL3        0ul
+
+/* The clocks: VBIOS perf level 3 (core 550, shader 1400) and POST (400,
+ * 800), from the 100 MHz reference, inside the PLL limits table's ranges
+ * (NVPLL VCO 500-1000, input 14-75; SPLL VCO 1000-2000, input to 100). */
+struct v9x_g96_clocks {
+    DWORD core_n;
+    DWORD core_m;
+    DWORD core_p;
+    DWORD shader_n;
+    DWORD shader_m;
+    DWORD shader_p;
+};
+
+static const struct v9x_g96_clocks v9x_g96_level3 = { 11ul, 2ul, 0ul,
+                                                      14ul, 1ul, 0ul };
+static const struct v9x_g96_clocks v9x_g96_post = { 16ul, 2ul, 1ul,
+                                                    16ul, 1ul, 1ul };
+
+struct v9x_hwsq {
+    BYTE code[V9X_HWSQ_BYTES];
+    DWORD size;
+    DWORD addr;
+    DWORD data;
+};
+
+static struct v9x_hwsq v9x_sq;
+
+static void v9x_sq_bytes(const BYTE *bytes, DWORD count)
+{
+    DWORD index;
+
+    for (index = 0ul; index < count; ++index) {
+        if (v9x_sq.size < V9X_HWSQ_BYTES) {
+            v9x_sq.code[v9x_sq.size] = bytes[index];
+            ++v9x_sq.size;
+        }
+    }
+}
+
+/* nvkm_hwsq_wr32: a data opcode when the value changes (E2h whole, 42h
+ * low half), then an address opcode (E0h whole, 40h low half). */
+static void v9x_sq_wr32(DWORD addr, DWORD data)
+{
+    BYTE op[5];
+
+    if (data != v9x_sq.data) {
+        if ((data & 0xffff0000ul) != (v9x_sq.data & 0xffff0000ul)) {
+            op[0] = 0xe2u;
+            op[1] = (BYTE)data;
+            op[2] = (BYTE)(data >> 8);
+            op[3] = (BYTE)(data >> 16);
+            op[4] = (BYTE)(data >> 24);
+            v9x_sq_bytes(op, 5ul);
+        } else {
+            op[0] = 0x42u;
+            op[1] = (BYTE)data;
+            op[2] = (BYTE)(data >> 8);
+            v9x_sq_bytes(op, 3ul);
+        }
+    }
+    if ((addr & 0xffff0000ul) != (v9x_sq.addr & 0xffff0000ul)) {
+        op[0] = 0xe0u;
+        op[1] = (BYTE)addr;
+        op[2] = (BYTE)(addr >> 8);
+        op[3] = (BYTE)(addr >> 16);
+        op[4] = (BYTE)(addr >> 24);
+        v9x_sq_bytes(op, 5ul);
+    } else {
+        op[0] = 0x40u;
+        op[1] = (BYTE)addr;
+        op[2] = (BYTE)(addr >> 8);
+        v9x_sq_bytes(op, 3ul);
+    }
+    v9x_sq.addr = addr;
+    v9x_sq.data = data;
+}
+
+/* hwsq_mask: written only when the value changes. */
+static void v9x_sq_mask(DWORD addr, DWORD *cache, DWORD mask, DWORD data)
+{
+    DWORD value;
+
+    value = (*cache & ~mask) | data;
+    if (value != *cache) {
+        v9x_sq_wr32(addr, value);
+        *cache = value;
+    }
+}
+
+/* nvkm_hwsq_setf: 80h + flag, + 20h for 0, + 40h for 1. */
+static void v9x_sq_setf(BYTE flag, DWORD on)
+{
+    BYTE op;
+
+    op = (BYTE)(0x80u + flag + 0x20u + (on != 0ul ? 0x20u : 0u));
+    v9x_sq_bytes(&op, 1ul);
+}
+
+static void v9x_sq_wait(BYTE flag, BYTE data)
+{
+    BYTE op[3];
+
+    op[0] = 0x5fu;
+    op[1] = flag;
+    op[2] = data;
+    v9x_sq_bytes(op, 3ul);
+}
+
+/* nvkm_hwsq_nsec: microseconds as a 2-bit count shifted by 2 bits a step. */
+static void v9x_sq_nsec(DWORD nsec)
+{
+    DWORD usec;
+    DWORD shift;
+    BYTE op;
+
+    usec = nsec / 1000ul;
+    shift = 0ul;
+    while ((usec & ~3ul) != 0ul) {
+        usec >>= 2;
+        ++shift;
+    }
+    op = (BYTE)((shift << 2) | usec);
+    v9x_sq_bytes(&op, 1ul);
+}
+
+/* nv50_clk_calc's core and shader part, the shader on SPLL, from the
+ * registers' current values. */
+static void v9x_sq_build(const struct v9x_g96_clocks *to, DWORD mast,
+                         DWORD nvpll_ctrl, DWORD nvpll_coef,
+                         DWORD spll_ctrl, DWORD spll_coef)
+{
+    DWORD index;
+
+    /* No C runtime here: FillMemory is memset. */
+    for (index = 0ul; index < V9X_HWSQ_BYTES; ++index) {
+        v9x_sq.code[index] = V9X_HWSQ_FILL;
+    }
+    v9x_sq.size = 0ul;
+    v9x_sq.addr = 0xfffffffful;
+    v9x_sq.data = 0xfffffffful;
+
+    v9x_sq_wr32(V9X_NV50_PFIFO_BLOCK, 1ul);
+    v9x_sq_nsec(V9X_HWSQ_FIFO_SETTLE_NS);
+    v9x_sq_setf(V9X_HWSQ_FLAG_FB, 0ul);
+    v9x_sq_wait(V9X_HWSQ_WAIT_FB, 1u);
+
+    v9x_sq_mask(V9X_NV50_CLK_SOURCE, &mast, V9X_NV50_SRC_UNHOOK_MASK,
+                V9X_NV50_SRC_UNHOOK);
+    v9x_sq_mask(V9X_NV50_NVPLL_CTRL, &nvpll_ctrl, V9X_NV50_PLL_CTRL_MASK,
+                V9X_NV50_PLL_ENABLE |
+                (to->core_p << V9X_NV50_PLL_P_COPY_SHIFT) |
+                (to->core_p << V9X_NV50_PLL_P_SHIFT));
+    v9x_sq_mask(V9X_NV50_NVPLL_COEF, &nvpll_coef, V9X_NV50_PLL_COEF_MASK,
+                (to->core_n << 8) | to->core_m);
+    v9x_sq_mask(V9X_NV50_SPLL_CTRL, &spll_ctrl, V9X_NV50_PLL_CTRL_MASK,
+                V9X_NV50_PLL_ENABLE |
+                (to->shader_p << V9X_NV50_PLL_P_COPY_SHIFT) |
+                (to->shader_p << V9X_NV50_PLL_P_SHIFT));
+    v9x_sq_mask(V9X_NV50_SPLL_COEF, &spll_coef, V9X_NV50_PLL_COEF_MASK,
+                (to->shader_n << 8) | to->shader_m);
+    v9x_sq_mask(V9X_NV50_CLK_SOURCE, &mast, V9X_NV50_SRC_HOOK_MASK,
+                V9X_NV50_SRC_HOOK);
+
+    v9x_sq_setf(V9X_HWSQ_FLAG_FB, 1ul);
+    v9x_sq_wait(V9X_HWSQ_WAIT_FB, 0u);
+    v9x_sq_wr32(V9X_NV50_PFIFO_BLOCK, 0ul);
+}
 
 static const struct v9x_n5mm_register v9x_copy[] = {
     { 0x104040ul, "PCOPY_FALCON_SSTA" },
@@ -1024,6 +1297,102 @@ static void v9x_start_high(void)
     v9x_text("Start", "Result", "restored");
 }
 
+/* The PLL a control and coefficient pair name, P from the control. */
+static DWORD v9x_pll_matches(DWORD ctrl, DWORD coef, DWORD n, DWORD m,
+                             DWORD p)
+{
+    return (ctrl & V9X_NV50_PLL_ENABLE) != 0ul &&
+           ((ctrl >> V9X_NV50_PLL_P_SHIFT) & V9X_NV50_PLL_P_MASK) == p &&
+           (coef & V9X_NV50_PLL_COEF_MASK) == ((n << 8) | m);
+}
+
+static DWORD v9x_clocks_are(const struct v9x_g96_clocks *clocks)
+{
+    return v9x_pll_matches(v9x_value(V9X_NV50_NVPLL_CTRL),
+                           v9x_value(V9X_NV50_NVPLL_COEF), clocks->core_n,
+                           clocks->core_m, clocks->core_p) &&
+           v9x_pll_matches(v9x_value(V9X_NV50_SPLL_CTRL),
+                           v9x_value(V9X_NV50_SPLL_COEF), clocks->shader_n,
+                           clocks->shader_m, clocks->shader_p);
+}
+
+/* /reclock and /reclock:post. Refuses unless the clocks are in a state
+ * this tool has decoded and the VID line gives level 3's voltage; then
+ * runs the script and reads the PLLs back. */
+static void v9x_reclock(DWORD config, const struct v9x_g96_clocks *to)
+{
+    DWORD words;
+    DWORD vid;
+    DWORD done;
+    char key[24];
+    DWORD index;
+
+    v9x_request.config = config;
+    v9x_request_list(v9x_clock, sizeof(v9x_clock) / sizeof(v9x_clock[0]));
+    if (!v9x_capture()) {
+        v9x_finish("CLOCK-CAPTURE-FAILED", 2u);
+    }
+    v9x_publish_mmio();
+    if (((v9x_result.boot0 >> V9X_NV50_CHIPSET_SHIFT) &
+         V9X_NV50_CHIPSET_MASK) != V9X_NV50_CHIPSET_G96) {
+        v9x_finish("NOT-G96", 2u);
+    }
+
+    /* Only from a state this tool has decoded: both PLLs on the PCIe
+     * reference, core and shader on their PLLs, the PLLs at POST's or
+     * level 3's values. */
+    if ((v9x_value(V9X_NV50_CLK_REF_SELECT) & V9X_NV50_REF_MASK) !=
+            V9X_NV50_REF_BOTH_HREF ||
+        (v9x_value(V9X_NV50_CLK_SOURCE) & V9X_NV50_SRC_HOOK_MASK) !=
+            V9X_NV50_SRC_HOOK ||
+        (!v9x_clocks_are(&v9x_g96_post) &&
+         !v9x_clocks_are(&v9x_g96_level3))) {
+        v9x_finish("UNEXPECTED-CLOCK-STATE", 2u);
+    }
+    if (v9x_clocks_are(to)) {
+        v9x_finish("ALREADY", 0u);
+    }
+    vid = ((v9x_value(V9X_NV50_GPIO_0_7) >> V9X_G96_VID_LINE_SHIFT) &
+           V9X_G96_VID_SENSE) != 0ul ? 1ul : 0ul;
+    v9x_number("Report", "Vid", vid);
+    if (vid != V9X_G96_VID_LEVEL3) {
+        v9x_finish("VOLTAGE-NOT-LEVEL3", 2u);
+    }
+
+    v9x_sq_build(to, v9x_value(V9X_NV50_CLK_SOURCE),
+                 v9x_value(V9X_NV50_NVPLL_CTRL),
+                 v9x_value(V9X_NV50_NVPLL_COEF),
+                 v9x_value(V9X_NV50_SPLL_CTRL),
+                 v9x_value(V9X_NV50_SPLL_COEF));
+    words = (v9x_sq.size + 4ul) / 4ul;
+    v9x_number("Report", "ScriptWords", words);
+    v9x_request.count = words;
+    for (index = 0ul; index < words; ++index) {
+        v9x_request.offsets[index] =
+            (DWORD)v9x_sq.code[index * 4ul] |
+            ((DWORD)v9x_sq.code[index * 4ul + 1ul] << 8) |
+            ((DWORD)v9x_sq.code[index * 4ul + 2ul] << 16) |
+            ((DWORD)v9x_sq.code[index * 4ul + 3ul] << 24);
+        v9x_offset_key(key, "Script", index, 2);
+        v9x_key("Hwsq", key, v9x_request.offsets[index]);
+    }
+    if (!v9x_call(V9X_N5MM_HWSQ)) {
+        v9x_key("Report", "Status", v9x_result.status);
+        v9x_finish("HWSQ-FAILED", 3u);
+    }
+    v9x_key("Report", "Status", v9x_result.status);
+    v9x_key("Report", "SpinsLeft", v9x_result.reserved[0]);
+
+    /* The readback replaces the values the checks above used. */
+    v9x_value_count = 0ul;
+    v9x_publish_mmio();
+    if ((v9x_result.status & V9X_ST_HWSQ_TIMEOUT) != 0ul) {
+        v9x_finish("HWSQ-TIMEOUT", 3u);
+    }
+    done = v9x_clocks_are(to);
+    v9x_finish(done ? "COMPLETE" : "READBACK-DIFFERS", done ? 0u : 3u);
+}
+
 void __stdcall V9xNv50MmioEntry(void)
 {
     DWORD config;
@@ -1070,6 +1439,87 @@ void __stdcall V9xNv50MmioEntry(void)
                 (DWORD)rom[0] | ((DWORD)rom[1] << 8) | ((DWORD)rom[2] << 16));
         v9x_number("Report", "Written", written);
         v9x_finish("COMPLETE", 0u);
+    }
+    /* /prom: the whole video BIOS through BAR0's PROM window (300000h),
+     * 128 KiB, to C:\V9XDIAG\V9XN5PRM.BIN. The shadow at C0000h is the
+     * image the BIOS trimmed after POST (6Fh x 512 bytes on the G96), and
+     * its BIT 'P' perf table pointer lands in font data there. nouveau
+     * reads the PROM this way when PBUS 1850h bit 0 (the ROM shadow) is
+     * clear (subdev\bios\shadowrom.c, subdev\pci\base.c); the probe only
+     * reads 1850h, and refuses if the bit is set. Reads only. */
+    if (v9x_switch_given("/prom")) {
+        HANDLE file;
+        DWORD written = 0ul;
+        DWORD base;
+        DWORD index;
+
+        v9x_path = V9X_N5VG_PATH;
+        CreateDirectoryA(V9X_DIAG_DIR, 0);
+        DeleteFileA(v9x_path);
+        v9x_text("Report", "Tool", "V9XN5MM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_text("Report", "Access", "prom-read-only");
+        config = v9x_find_gt218();
+        if (config == 0ul) {
+            v9x_finish("NO-GT218", 1u);
+        }
+        v9x_request.config = config;
+        v9x_request.count = 0ul;
+        v9x_request_add(V9X_NV50_ROM_ACCESS);
+        if (!v9x_capture()) {
+            v9x_finish("ROM-ACCESS-CAPTURE-FAILED", 2u);
+        }
+        v9x_key("Report", "RomAccess", v9x_result.first[0]);
+        if ((v9x_result.first[0] & V9X_NV50_ROM_SHADOW) != 0ul) {
+            v9x_finish("PROM-SHADOWED", 2u);
+        }
+        file = CreateFileA(V9X_DIAG_PATH("V9XN5PRM.BIN"), GENERIC_WRITE, 0,
+                           0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+        if (file == INVALID_HANDLE_VALUE) {
+            v9x_finish("PROM-FILE-FAILED", 2u);
+        }
+        for (base = 0ul; base < V9X_NV50_PROM_BYTES;
+             base += V9X_N5MM_OFFSET_MAX * 4ul) {
+            v9x_request.count = 0ul;
+            for (index = 0ul; index < V9X_N5MM_OFFSET_MAX; ++index) {
+                v9x_request_add(V9X_NV50_PROM + base + index * 4ul);
+            }
+            if (!v9x_capture()) {
+                CloseHandle(file);
+                v9x_key("Report", "FailedAt", base);
+                v9x_finish("PROM-CAPTURE-FAILED", 3u);
+            }
+            for (index = 0ul; index < V9X_N5MM_OFFSET_MAX; ++index) {
+                if (v9x_result.first[index] != v9x_result.second[index]) {
+                    v9x_key("Report", "Unstable", base + index * 4ul);
+                }
+            }
+            WriteFile(file, v9x_result.first, V9X_N5MM_OFFSET_MAX * 4ul,
+                      &written, 0);
+        }
+        CloseHandle(file);
+        v9x_number("Report", "Written", V9X_NV50_PROM_BYTES);
+        v9x_finish("COMPLETE", 0u);
+    }
+    /* /reclock: core and shader to the VBIOS's perf level 3; /reclock:post
+     * back to the POST clocks. Report C:\V9XDIAG\V9XN5CK.INI. "/reclock"
+     * is a prefix of "/reclock:post", so the longer one is asked first. */
+    if (v9x_switch_given("/reclock")) {
+        int post;
+
+        post = v9x_switch_given("/reclock:post");
+        v9x_path = V9X_N5CK_PATH;
+        CreateDirectoryA(V9X_DIAG_DIR, 0);
+        DeleteFileA(v9x_path);
+        v9x_text("Report", "Tool", "V9XN5MM");
+        v9x_text("Report", "Build", V9X_BUILD_ID);
+        v9x_text("Report", "Access", "hwsq-clock-write");
+        v9x_text("Report", "Target", post ? "post" : "level3");
+        config = v9x_find_gt218();
+        if (config == 0ul) {
+            v9x_finish("NO-GT218", 1u);
+        }
+        v9x_reclock(config, post ? &v9x_g96_post : &v9x_g96_level3);
     }
     if (v9x_switch_given("/vga")) {
         DWORD offset;
@@ -1195,6 +1645,17 @@ void __stdcall V9xNv50MmioEntry(void)
                      "COPY-CAPTURE-FAILED");
     } else {
         v9x_text("Report", "CopyCapture", "skipped-no-copy-engine");
+    }
+    if (((v9x_result.boot0 >> V9X_NV50_CHIPSET_SHIFT) &
+         V9X_NV50_CHIPSET_MASK) == V9X_NV50_CHIPSET_G96) {
+        v9x_request_list(v9x_clock, sizeof(v9x_clock) / sizeof(v9x_clock[0]));
+        if (!v9x_capture()) {
+            v9x_finish("CLOCK-CAPTURE-FAILED", 3u);
+        }
+        v9x_publish_mmio();
+        v9x_text("Report", "ClockCapture", "taken");
+    } else {
+        v9x_text("Report", "ClockCapture", "skipped-not-g96");
     }
 
     /* The window's first KiB. */

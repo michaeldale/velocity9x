@@ -357,6 +357,10 @@ unsigned int v9x_run_nv50_chan_tests(void);
  * the sequence the step 3 probe ran. */
 unsigned int v9x_run_nv50_init_tests(void);
 
+/* tests\host\test_nv50_clk.c: the G96 reclock list against the script
+ * V9XN5MM /reclock ran on M-Z2T02D. */
+unsigned int v9x_run_nv50_clk_tests(void);
+
 /* tests\host\test_nv50_3d.c: the GT218 Tesla 3D setup push and EXA's
  * programs against xf86-video-nouveau. */
 unsigned int v9x_run_nv50_3d_tests(void);
@@ -1668,6 +1672,7 @@ int main(int argc, char **argv)
     failures += v9x_run_nv50_grctx_tests();
     failures += v9x_run_nv50_chan_tests();
     failures += v9x_run_nv50_init_tests();
+    failures += v9x_run_nv50_clk_tests();
     failures += v9x_run_nv50_3d_tests();
     failures += v9x_run_nv50_shader_tests();
     failures += v9x_run_nv50_ps11_tests();
