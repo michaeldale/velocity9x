@@ -6,6 +6,24 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 1.1.0 - not yet released
 
+- **`intel-gma` package, Gen3: GDI screen-to-screen copies on the
+  blitter** (GitHub PR 32, by arturaslt). A window dragged or scrolled is
+  a `SRCCOPY` the DIB Engine did by reading uncached video memory; the
+  blitter now does it, waiting for each copy before BitBlt returns. An
+  overlapping copy goes in bands, a long scroll as several streams. On
+  the GMA 950 netbook the copies match the DIB Engine's own drawing
+  pixel for pixel (V9XGDI `/accel`); the PR measured them 13 to 47 times
+  faster there. Fills and text stay on the CPU. `GdiAccel=0` in
+  SYSTEM.INI turns the copies off
+  ([plan](docs/plans/gen3-gdi-blitter.md),
+  [record](docs/decisions/2026-11-28-pr32-gen3-gdi-cursor-on-main.md)).
+- **`intel-gma` package, Gen3: the hardware cursor** (PR 32). A
+  monochrome pointer is shown by the display engine's 64x64 cursor
+  instead of being drawn into the screen; the I-beam and colour cursors
+  stay in software. On on the netbook (`HwCursor=on`); seen right by the
+  PR's author, not by us. `HwCursor=0` in SYSTEM.INI turns it off
+  ([plan](docs/plans/gen3-hardware-cursor.md)). Both run on the GMA 950
+  only; the GMA 900, 3150 and 3100 take the same code unmeasured.
 - **OpenGL display lists and texture coordinate generation**, in the
   driver's shared OpenGL code: `glNewList`, `glCallList(s)`, the list
   names and queries, and `glTexGen` in its three modes. Before, they did
