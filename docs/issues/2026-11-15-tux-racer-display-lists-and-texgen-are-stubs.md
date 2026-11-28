@@ -3,8 +3,8 @@
 Date: 2026-11-15. Seen in report V9X-VK1M80 on 0.51.0 (`3d5a67b1`), an
 HD 4600 (8086:0412) belonging to the tester of V9X-WM1C1K and
 V9X-YP59WN, Windows 98 SE. The report has no description, so what the
-tester saw on screen is not known. Status: open. Not reproduced here;
-nothing is implemented.
+tester saw on screen is not known. Status: fixed for Tux Racer on the
+i5-4570, 2026-11-28 (below); Minecraft not run.
 
 ## What the log shows
 
@@ -103,3 +103,14 @@ first OpenGL item for 1.1.
 
 Moved after 1.0: listed in the 1.0 plan's "Not in 1.0". Already listed
 in the 1.0 plan as the first OpenGL work for 1.1.
+
+## Fixed, 2026-11-28
+
+Display lists and texgen are implemented in the ICD
+([record](../decisions/2026-11-28-opengl-display-lists-and-texgen.md)).
+The same Tux Racer race on the i5-4570, on 1.0.0's ICD and on the new
+one: on 1.0.0's the terrain is untextured and the speed dial missing,
+with the six stubs of this report in the log; on the new one both are
+drawn and no stub is reached. The penguin is drawn on both. Minecraft
+has not been run here; its lists of vertex-array draws are covered by
+the host tests and V9XGLP's `ListArrays`.

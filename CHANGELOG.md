@@ -6,6 +6,16 @@ build identifier so exact guest-tested binaries remain traceable.
 
 ## 1.1.0 - not yet released
 
+- **OpenGL display lists and texture coordinate generation**, in the
+  driver's shared OpenGL code: `glNewList`, `glCallList(s)`, the list
+  names and queries, and `glTexGen` in its three modes. Before, they did
+  nothing, so Tux Racer drew its terrain untextured and lost its speed
+  dial (report V9X-VK1M80), and Minecraft drew no world (V9X-JVGQM2).
+  Tux Racer now draws both on an HD 4600, and a probe of lists and
+  texgen passes on a GeForce 9500 GT. Image commands inside a list
+  (`glTexImage2D` and the like) still run when called, not when the list
+  runs. Minecraft has not been run
+  ([record](docs/decisions/2026-11-28-opengl-display-lists-and-texgen.md)).
 - **NVIDIA GeForce 9500 GT (G96, `10DE:0640`), `nvidia` package:**
   DirectDraw and GDI fills and copies on the 2D engine, the GeForce
   210's channel brought up on a G9x chip. Run on one owner's card

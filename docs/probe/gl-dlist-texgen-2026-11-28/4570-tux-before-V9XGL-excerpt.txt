@@ -1,0 +1,104 @@
+1 pid=FFFCBBAB attach instance=01870000 tls=14 version=1.0.0 V9XGL build=82112c9c time=2026-11-28 10:29:20 uptime-ms=41533777 exe=C:\TUXRACER\TUXRACER-WIN32-0.61A\TUXRACER.EXE
+2 pid=FFFCBBAB DrvValidateVersion version=1
+3 pid=FFFCBBAB DrvSetCallbackProcs count=3 procs=78B23978
+4 pid=FFFCBBAB describe result=0 engine=9 formats=00000002
+5 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+6 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=40 -> count=2
+7 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+8 pid=FFFCBBAB DrvDescribePixelFormat index=2 bytes=40 -> count=2
+9 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+10 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+11 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+12 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+13 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+14 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+15 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+16 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+17 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+18 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+19 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+20 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+21 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+22 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+23 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+24 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+25 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+26 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+27 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+28 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+29 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+30 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+31 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+32 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+33 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+34 pid=FFFCBBAB DrvSetPixelFormat hdc=00000EDE index=1 recorded=1
+35 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+36 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=40 -> count=2
+37 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=0 -> count=2
+38 pid=FFFCBBAB DrvDescribePixelFormat index=1 bytes=40 -> count=2
+39 pid=FFFCBBAB DrvCreateLayerContext hdc=00000EDE layer=0 -> 1
+40 pid=FFFCBBAB drawable window=0000039C 640x480
+41 pid=FFFCBBAB   depth cell=16 bits=16
+42 pid=FFFCBBAB DrvSetContext hdc=00000EDE context=1 -> 1
+43 pid=FFFCBBAB tnl allowed=1 batches=0 triangles=0
+44 pid=FFFCBBAB DrvGetProcAddress name=glLockArraysEXT -> entry
+45 pid=FFFCBBAB DrvGetProcAddress name=glUnlockArraysEXT -> entry
+46 pid=FFFCBBAB time interval-ms=41533984 swaps=0 present-ms=0 draw-ms=0 upload-ms=0
+47 pid=FFFCBBAB tsc frames=0 wall-ms=41533984 vertex-ms=27239509 flush-in-vertex-ms=0 flush-other-ms=200149545 bind-ms=0 iface-ms=0 beginend-ms=82827854 swap-ms=0 vertices=68 flushes=1 draws=1 sink-ms=0 sink-prep-ms=0 sinks=0
+48 pid=FFFCBBAB sink begin-ms=16728752 flush-ms=0 copy-ms=0 prep-texture-ms=0 prep-state-ms=0 prep-same-ms=0
+49 pid=FFFCBBAB hwno hwtex-ms=0 iface-cpu-ms=0 not-cpu=0 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+50 pid=FFFCBBAB prim transform-ms=0 inside-ms=0 window-ms=0 assemble-ms=10204371 history-ms=1171277 fast=0 clipped=0 culled=0
+51 pid=FFFCBBAB entry texsub-ms=0/0 teximage-ms=2147483648/339 bind-ms=63902537/44 param-ms=13379160/172 env-ms=279493/1 other-ms=61057185/516 tex-flush-ms=10077591/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1333114/12
+52 pid=FFFCBBAB paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+53 pid=FFFCBBAB counters hwtex lost=0
+54 pid=FFFCBBAB counters tnl batches=1 triangles=32 refused=0 failed=0
+55 pid=FFFCBBAB counters tnl-capture culled=0 abandoned=0 cached=0 declined=0
+56 pid=FFFCBBAB counters tnl-hold flush-for-screen=0 new-segment=15 flush-for-frame=0 joined=0 flush-segments-full=1
+57 pid=FFFCBBAB counters hwtex live=1 creates=1 create-failed=0 evictions=0 uploads=1 partial=0 upload-kb=10 squared=0 alpha-dropped=0 fog-dropped=0 stubs=0 failed r4=0 r7=0 r8=0 other=0
+58 pid=FFFCBBAB counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+59 pid=FFFCBBAB stub first-call slot=192 glTexGeni
+60 pid=FFFCBBAB stub first-call slot=191 glTexGenfv
+61 pid=FFFCBBAB cva first glLockArraysEXT first=454 count=6787
+62 pid=FFFCBBAB stub first-call slot=5 glGenLists
+63 pid=FFFCBBAB stub first-call slot=0 glNewList
+64 pid=FFFCBBAB stub first-call slot=1 glEndList
+65 pid=FFFCBBAB stub first-call slot=2 glCallList
+66 pid=FFFCBBAB time interval-ms=10053 swaps=178 present-ms=19 draw-ms=0 upload-ms=5
+67 pid=FFFCBBAB tsc frames=178 wall-ms=10053 vertex-ms=39 flush-in-vertex-ms=0 flush-other-ms=137 bind-ms=0 iface-ms=0 beginend-ms=216 swap-ms=19 vertices=384743 flushes=3354 draws=3354 sink-ms=0 sink-prep-ms=0 sinks=0
+68 pid=FFFCBBAB sink begin-ms=14 flush-ms=0 copy-ms=0 prep-texture-ms=0 prep-state-ms=0 prep-same-ms=0
+69 pid=FFFCBBAB hwno hwtex-ms=0 iface-cpu-ms=0 not-cpu=3794 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+70 pid=FFFCBBAB prim transform-ms=0 inside-ms=0 window-ms=0 assemble-ms=442602584 history-ms=12 fast=0 clipped=0 culled=0
+71 pid=FFFCBBAB entry texsub-ms=0/0 teximage-ms=69/151 bind-ms=0/3192 param-ms=0/68 env-ms=0/1054 other-ms=0/209 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/16713
+72 pid=FFFCBBAB paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+73 pid=FFFCBBAB counters hwtex lost=0
+74 pid=FFFCBBAB counters tnl batches=3355 triangles=350117 refused=0 failed=0
+75 pid=FFFCBBAB counters tnl-capture culled=205954 abandoned=0 cached=666818 declined=0
+76 pid=FFFCBBAB counters tnl-hold flush-for-screen=0 new-segment=37909 flush-for-frame=1033 joined=9484 flush-segments-full=2144
+77 pid=FFFCBBAB counters hwtex live=33 creates=37 create-failed=0 evictions=0 uploads=37 partial=0 upload-kb=4349 squared=0 alpha-dropped=0 fog-dropped=0 stubs=15392 failed r4=0 r7=0 r8=0 other=0
+78 pid=FFFCBBAB counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+79 pid=FFFCBBAB time interval-ms=10005 swaps=166 present-ms=18 draw-ms=0 upload-ms=0
+80 pid=FFFCBBAB tsc frames=166 wall-ms=10005 vertex-ms=52 flush-in-vertex-ms=0 flush-other-ms=225 bind-ms=0 iface-ms=0 beginend-ms=280 swap-ms=18 vertices=463681 flushes=2135 draws=2135 sink-ms=0 sink-prep-ms=0 sinks=0
+81 pid=FFFCBBAB sink begin-ms=12 flush-ms=0 copy-ms=0 prep-texture-ms=0 prep-state-ms=0 prep-same-ms=0
+82 pid=FFFCBBAB hwno hwtex-ms=0 iface-cpu-ms=0 not-cpu=5977 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+83 pid=FFFCBBAB prim transform-ms=0 inside-ms=0 window-ms=0 assemble-ms=599304289 history-ms=15 fast=0 clipped=0 culled=0
+84 pid=FFFCBBAB entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=0/4359 param-ms=0/0 env-ms=0/1660 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/26062
+85 pid=FFFCBBAB paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+86 pid=FFFCBBAB counters hwtex lost=0
+87 pid=FFFCBBAB counters tnl batches=5490 triangles=724595 refused=0 failed=0
+88 pid=FFFCBBAB counters tnl-capture culled=573380 abandoned=0 cached=1524658 declined=0
+89 pid=FFFCBBAB counters tnl-hold flush-for-screen=0 new-segment=53695 flush-for-frame=2492 joined=24071 flush-segments-full=2654
+90 pid=FFFCBBAB counters hwtex live=34 creates=38 create-failed=0 evictions=0 uploads=38 partial=0 upload-kb=4359 squared=0 alpha-dropped=0 fog-dropped=0 stubs=39960 failed r4=0 r7=0 r8=0 other=0
+91 pid=FFFCBBAB counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0
+92 pid=FFFCBBAB time interval-ms=10000 swaps=181 present-ms=19 draw-ms=0 upload-ms=0
+93 pid=FFFCBBAB tsc frames=181 wall-ms=10000 vertex-ms=56 flush-in-vertex-ms=0 flush-other-ms=108 bind-ms=0 iface-ms=0 beginend-ms=152 swap-ms=20 vertices=549539 flushes=2543 draws=2543 sink-ms=0 sink-prep-ms=0 sinks=0
+94 pid=FFFCBBAB sink begin-ms=11 flush-ms=0 copy-ms=0 prep-texture-ms=0 prep-state-ms=0 prep-same-ms=0
+95 pid=FFFCBBAB hwno hwtex-ms=0 iface-cpu-ms=0 not-cpu=6513 square-side=0 too-big=0 format=0 no-object=0 no-record=0 table-full=0 unusable=0 backoff=0 make-failed=0 square-alloc=0 upload=0
+96 pid=FFFCBBAB prim transform-ms=0 inside-ms=0 window-ms=0 assemble-ms=769136871 history-ms=19 fast=0 clipped=0 culled=0
+97 pid=FFFCBBAB entry texsub-ms=0/0 teximage-ms=0/0 bind-ms=0/5037 param-ms=0/0 env-ms=0/1814 other-ms=0/0 tex-flush-ms=0/0 select-ms=0/0 mtexcoord-ms=0/0 enable-ms=1/28496
+98 pid=FFFCBBAB paths batches/triangles untextured=0/0 hw=0/0 cpu=0/0 cpu-nonsquare=0/0 hw-refused=0/0 two-units=0/0 split=0/0 split-declined=0
+99 pid=FFFCBBAB counters hwtex lost=0
+100 pid=FFFCBBAB counters tnl batches=8033 triangles=1249933 refused=0 failed=0
+101 pid=FFFCBBAB counters tnl-capture culled=998500 abandoned=0 cached=2693420 declined=0
+102 pid=FFFCBBAB counters tnl-hold flush-for-screen=0 new-segment=70947 flush-for-frame=4313 joined=40840 flush-segments-full=3195
+103 pid=FFFCBBAB counters hwtex live=34 creates=38 create-failed=0 evictions=0 uploads=38 partial=0 upload-kb=4359 squared=0 alpha-dropped=0 fog-dropped=0 stubs=66866 failed r4=0 r7=0 r8=0 other=0
+104 pid=FFFCBBAB counters refused draw-invalid=0 clear-invalid=0 clear-other=0 targets-refused=0 targets-padded=0

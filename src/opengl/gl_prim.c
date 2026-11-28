@@ -91,6 +91,9 @@ void v9x_gl_pipeline_init(V9X_GL_PIPELINE *pipeline)
     pipeline->normal[0] = 0.0f;
     pipeline->normal[1] = 0.0f;
     pipeline->normal[2] = 1.0f;
+    v9x_gl_texgen_init(&pipeline->texgen);
+    pipeline->texgen_mask = 0ul;
+    pipeline->texgen_normalize = 0;
     pipeline->shade_model = V9X_GL_SMOOTH;
     pipeline->cull_face = V9X_GL_BACK;
     pipeline->front_face = V9X_GL_CCW;
@@ -680,6 +683,9 @@ void v9x_gl_prim_begin(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     pipeline->offset_step = state->depth_bits >= 24ul ? V9X_GL_PRIM_STEP_24
                                                       : V9X_GL_PRIM_STEP_16;
     pipeline->fog_on = v9x_gl_state_cap(state, V9X_GL_FOG) ? 1 : 0;
+    pipeline->texgen_mask = v9x_gl_texgen_enabled(state);
+    pipeline->texgen_normalize =
+        v9x_gl_state_cap(state, V9X_GL_NORMALIZE) ? 1 : 0;
     /* Hardware T&L: filled primitives whose every effect the generated
      * kernel reproduces (gl_prim.h, tnl_capture). Step 4 added fog and
      * lighting the key can express, lit ones only with somewhere to keep
@@ -1518,10 +1524,32 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
 {
     V9X_GL_VERTEX *vp;
     GLfloat object[4];
+    GLfloat current_tex[4];
     v9x_u32 mark = 0ul;
+    unsigned int i;
 
     if (!state->in_begin) {
         return;
+    }
+    /*
+     * Texgen: the generated coordinates stand in pipeline->tex for this
+     * vertex alone, so both paths below - the CPU one and the T&L capture,
+     * which each read tex - take them, and the current texture coordinate
+     * (2.7) is put back after.
+     */
+    if (pipeline->texgen_mask != 0ul) {
+        for (i = 0u; i < 4u; ++i) {
+            current_tex[i] = pipeline->tex[i];
+        }
+        object[0] = x;
+        object[1] = y;
+        object[2] = z;
+        object[3] = w;
+        v9x_gl_texgen_apply(&pipeline->texgen, pipeline->texgen_mask,
+                            v9x_gl_matrix_top(&state->matrices,
+                                              V9X_GL_MODELVIEW),
+                            object, pipeline->normal,
+                            pipeline->texgen_normalize, pipeline->tex);
     }
     /*
      * The last three vertices and this one live in a four-slot ring
@@ -1570,6 +1598,11 @@ void v9x_gl_prim_vertex(V9X_GL_STATE *state, V9X_GL_PIPELINE *pipeline,
     }
     pipeline->tnl_element_next = 0ul;
     v9x_gl_prim_assemble(state, pipeline, &mark);
+    if (pipeline->texgen_mask != 0ul) {
+        for (i = 0u; i < 4u; ++i) {
+            pipeline->tex[i] = current_tex[i];
+        }
+    }
 }
 
 void v9x_gl_prim_tnl_call(V9X_GL_PIPELINE *pipeline)

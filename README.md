@@ -755,8 +755,12 @@ HD 4000. `GL_EXT_compiled_vertex_array` on every card (0.38.0): the lock
 is accepted and queried, and a locked draw is drawn as an unlocked one,
 with nothing cached yet. Lighting (`glLight`, `glMaterial`, `glColorMaterial`) on the HD
 4600 only, where transform and lighting run on the card; every other card
-draws OpenGL unlit. Not yet: display lists, evaluators, and feedback and
-selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
+draws OpenGL unlit. Display lists and texture coordinate generation
+from 1.1.0, in the driver's shared OpenGL code, run on the GeForce
+9500 GT and the HD 4600 ([record](docs/decisions/2026-11-28-opengl-display-lists-and-texgen.md));
+image commands inside a list (`glTexImage2D` and the like) run when
+called rather than when the list does. Not yet: evaluators, and feedback
+and selection. The [requirements inventory](docs/plans/opengl-1.1-requirements.md)
 tracks every entry point. The driver writes `C:\V9XDIAG\V9XGL.LOG`.
 
 ## Glide
@@ -951,8 +955,9 @@ Quake 2 and Half-Life run on most cards with a 3D engine, and Serious Sam
 on the GMA 950. On the ViRGE only draws its S3D can express exactly are
 drawn, so games that rely on non-square textures or additive and
 multiplicative blends, the Quake 3 demo among them, are missing much of
-their picture. Lighting runs on the HD 4600 only; display lists and the
-rest of OpenGL 1.1 are not implemented yet.
+their picture. Lighting runs on the HD 4600 only. Display lists and
+texgen arrive in 1.1.0 (Tux Racer's terrain and speed dial); evaluators,
+feedback and selection are not implemented yet.
 
 **Will my Glide or ATI games work?**
 See [Glide](#glide) and [ATI 3DCIF](#ati-3dcif) for what has run. Remove or

@@ -75,7 +75,7 @@ rest of the Rage II and Rage Pro lines, the Voodoo5, the HD 4400).
 |---|---|---|
 | Direct3D HAL (DirectX 5 to 7) | Every card with a 3D engine; the CPU rasterizer elsewhere (default in `vbe` at 16 bpp, opt-in otherwise) | Only what each engine draws exactly. A refused draw goes to the CPU on the GMA 950; elsewhere it is not drawn (README, Direct3D) |
 | DirectX 8 (DDI 6) | Offered to the programs that need it; DxDiag and 3DMark 2001 SE to a score on the Rage XL, GMA 950 and GMA 900. DDI 8 with pixel shader 1.1 on the HD 4600, HD 3000 and Oland | No stencil. No Direct3D 9 device |
-| OpenGL 1.1 ICD | Every 3D engine and the CPU rasterizer; `GL_ARB_multitexture` and `GL_SGIS_multitexture` where the engine has two units; `GL_EXT_compiled_vertex_array`; lighting on the HD 4600 only | Display lists, evaluators, feedback, selection and texgen not implemented ([inventory](plans/opengl-1.1-requirements.md)); first for 1.1 |
+| OpenGL 1.1 ICD | Every 3D engine and the CPU rasterizer; `GL_ARB_multitexture` and `GL_SGIS_multitexture` where the engine has two units; `GL_EXT_compiled_vertex_array`; lighting on the HD 4600 only | Evaluators, feedback and selection not implemented ([inventory](plans/opengl-1.1-requirements.md)). Display lists and texgen from 1.1.0 ([record](decisions/2026-11-28-opengl-display-lists-and-texgen.md)); image commands inside a list run when called, not when the list is |
 | Glide 2 and 3 | Every package but `3dfx`, which runs 3dfx's own | Wrappers from 0.23.0 or earlier do not work. The half blend fails on the engines that cannot blend (Trio3D/2X, RIVA 128ZX, the Matrox cards) |
 | ATI 3DCIF | Every package; ATI's eight SDK demos on the Rage IIC, Rage XL and GMA 950 | No mipmaps, tiled textures, meshes or TLVERTEX ([issue](issues/2026-10-14-3dcif-unimplemented-features.md)) |
 | Updates and reports | Check for updates and Send report on the settings page | One physical update and rollback (B13, [record](decisions/2026-11-25-1.0-b13-update-rollback-gt218.md)); RECOVER.TXT's Safe Mode steps not run by hand |
@@ -88,7 +88,8 @@ The plan's [Not in 1.0](plans/release-1.0.0.md#not-in-10) list is the
 full record, with who decided what. In short:
 
 - **1.1 first:** OpenGL display lists and texgen (Tux Racer and
-  Minecraft need them in the field); GitHub PR 32 (Gen3 blitter copies
+  Minecraft need them in the field; done 2026-11-28, Tux Racer run,
+  Minecraft not); GitHub PR 32 (Gen3 blitter copies
   and a hardware cursor); branches `rv280-geomscan` and `hsw-panel-fit`.
 - **Parked branches:** `ati-cayman`, `wip-caicos-6779`, the Doom 3
   worktree.

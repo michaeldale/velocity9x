@@ -385,6 +385,192 @@ static int v9x_glp_near(DWORD rgb, DWORD red, DWORD green, DWORD blue)
            db <= 8l && db >= -8l;
 }
 
+static void v9x_glp_rect(GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1)
+{
+    glBegin(GL_QUADS);
+    glVertex2f(x0, y0);
+    glVertex2f(x1, y0);
+    glVertex2f(x1, y1);
+    glVertex2f(x0, y1);
+    glEnd();
+}
+
+/* A pixel's key and its *Ok beside it. */
+static void v9x_glp_expect(const char *key, const char *ok, GLint x, GLint y,
+                           DWORD red, DWORD green, DWORD blue)
+{
+    DWORD rgb = v9x_glp_read(x, y);
+
+    v9x_glp_hex(key, rgb);
+    v9x_glp_uint(ok, v9x_glp_near(rgb, red, green, blue) ? 1ul : 0ul);
+}
+
+/*
+ * Display lists and texgen (docs\plans\opengl-display-lists-and-texgen.md),
+ * on a 400x300 window with window coordinates as object x and y.
+ *
+ * Lists: a red 32x32 quad compiled with GL_COMPILE, read before glCallList
+ * (ListCompileOnly, expect the black clear: nothing ran) and after
+ * (ListQuad, red); a second list translating 50 right and calling the
+ * first (ListNested); a green quad drawn by glDrawArrays inside a list,
+ * the array then turned blue and disabled before the call (ListArrays,
+ * expect green: the arrays are read at compile time); glCallLists with a
+ * base, 50 up (ListCallLists); glIsList before and after glDeleteLists.
+ *
+ * Texgen: a 4x1 texture red, green, blue, white, NEAREST, REPLACE, on two
+ * 128x16 quads with no glTexCoord: S OBJECT_LINEAR x / 128 and T fixed at
+ * 0.5 (TexGenObj0-3, the columns' centres), then S EYE_LINEAR with the
+ * plane (x - 128) / 128 given under the identity and the quad drawn
+ * translated 128 right (TexGenEye0-3).
+ */
+static void v9x_glp_lists_texgen(HWND window)
+{
+    static const GLubyte strip[4 * 3] = {
+        255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255
+    };
+    static const GLfloat obj_s[4] = { 1.0f / 128.0f, 0.0f, 0.0f, 0.0f };
+    static const GLfloat obj_t[4] = { 0.0f, 0.0f, 0.0f, 0.5f };
+    static const GLfloat eye_s[4] = { 1.0f / 128.0f, 0.0f, 0.0f, -1.0f };
+    static const char *const obj_key[4] = {
+        "TexGenObj0", "TexGenObj1", "TexGenObj2", "TexGenObj3"
+    };
+    static const char *const obj_ok[4] = {
+        "TexGenObj0Ok", "TexGenObj1Ok", "TexGenObj2Ok", "TexGenObj3Ok"
+    };
+    static const char *const eye_key[4] = {
+        "TexGenEye0", "TexGenEye1", "TexGenEye2", "TexGenEye3"
+    };
+    static const char *const eye_ok[4] = {
+        "TexGenEye0Ok", "TexGenEye1Ok", "TexGenEye2Ok", "TexGenEye3Ok"
+    };
+    static const DWORD column[4][3] = {
+        { 255ul, 0ul, 0ul }, { 0ul, 255ul, 0ul }, { 0ul, 0ul, 255ul },
+        { 255ul, 255ul, 255ul }
+    };
+    GLfloat vertices[4 * 2];
+    GLubyte colours[4 * 3];
+    GLubyte offset = 0u;
+    RECT client;
+    GLuint list;
+    GLuint texture = 0u;
+    int i;
+
+    GetClientRect(window, &client);
+    glViewport(0, 0, client.right - client.left, client.bottom - client.top);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (GLdouble)(client.right - client.left), 0.0,
+            (GLdouble)(client.bottom - client.top), -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_TEXTURE_2D);
+    glDrawBuffer(GL_BACK);
+    glReadBuffer(GL_BACK);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    list = glGenLists(3);
+    v9x_glp_uint("ListGen", (DWORD)list);
+    glNewList(list, GL_COMPILE);
+    glColor3f(1.0f, 0.0f, 0.0f);
+    v9x_glp_rect(10.0f, 10.0f, 42.0f, 42.0f);
+    glEndList();
+    glFinish();
+    v9x_glp_expect("ListCompileOnly", "ListCompileOnlyOk", 26, 26,
+                   0ul, 0ul, 0ul);
+    glColor3f(0.0f, 0.0f, 1.0f);
+    glCallList(list);
+    glFinish();
+    v9x_glp_expect("ListQuad", "ListQuadOk", 26, 26, 255ul, 0ul, 0ul);
+
+    glNewList(list + 1u, GL_COMPILE);
+    glTranslatef(50.0f, 0.0f, 0.0f);
+    glCallList(list);
+    glEndList();
+    glPushMatrix();
+    glCallList(list + 1u);
+    glPopMatrix();
+    glFinish();
+    v9x_glp_expect("ListNested", "ListNestedOk", 76, 26, 255ul, 0ul, 0ul);
+
+    for (i = 0; i < 4; ++i) {
+        vertices[i * 2] = (i == 1 || i == 2) ? 142.0f : 110.0f;
+        vertices[i * 2 + 1] = i >= 2 ? 42.0f : 10.0f;
+        colours[i * 3] = 0u;
+        colours[i * 3 + 1] = 255u;
+        colours[i * 3 + 2] = 0u;
+    }
+    glVertexPointer(2, GL_FLOAT, 0, vertices);
+    glColorPointer(3, GL_UNSIGNED_BYTE, 0, colours);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_COLOR_ARRAY);
+    glNewList(list + 2u, GL_COMPILE);
+    glDrawArrays(GL_QUADS, 0, 4);
+    glEndList();
+    for (i = 0; i < 4; ++i) {
+        colours[i * 3 + 1] = 0u;
+        colours[i * 3 + 2] = 255u;
+    }
+    glDisableClientState(GL_COLOR_ARRAY);
+    glDisableClientState(GL_VERTEX_ARRAY);
+    glCallList(list + 2u);
+    glFinish();
+    v9x_glp_expect("ListArrays", "ListArraysOk", 126, 26, 0ul, 255ul, 0ul);
+
+    glListBase(list);
+    glPushMatrix();
+    glTranslatef(0.0f, 50.0f, 0.0f);
+    glCallLists(1, GL_UNSIGNED_BYTE, &offset);
+    glPopMatrix();
+    glListBase(0u);
+    glFinish();
+    v9x_glp_expect("ListCallLists", "ListCallListsOk", 26, 76,
+                   255ul, 0ul, 0ul);
+    v9x_glp_uint("ListIsList", glIsList(list) ? 1ul : 0ul);
+    glDeleteLists(list, 3);
+    v9x_glp_uint("ListDeleted", glIsList(list) ? 0ul : 1ul);
+    v9x_glp_hex("ErrorAfterLists", (DWORD)glGetError());
+
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, 4, 1, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                 strip);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glEnable(GL_TEXTURE_2D);
+    glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
+    glTexGenfv(GL_S, GL_OBJECT_PLANE, obj_s);
+    glTexGeni(GL_T, GL_TEXTURE_GEN_MODE, GL_OBJECT_LINEAR);
+    glTexGenfv(GL_T, GL_OBJECT_PLANE, obj_t);
+    glEnable(GL_TEXTURE_GEN_S);
+    glEnable(GL_TEXTURE_GEN_T);
+    glTexCoord2f(0.9f, 0.9f);
+    v9x_glp_rect(0.0f, 100.0f, 128.0f, 116.0f);
+    glTexGeni(GL_S, GL_TEXTURE_GEN_MODE, GL_EYE_LINEAR);
+    glTexGenfv(GL_S, GL_EYE_PLANE, eye_s);
+    glPushMatrix();
+    glTranslatef(128.0f, 0.0f, 0.0f);
+    v9x_glp_rect(0.0f, 140.0f, 128.0f, 156.0f);
+    glPopMatrix();
+    glFinish();
+    for (i = 0; i < 4; ++i) {
+        v9x_glp_expect(obj_key[i], obj_ok[i], 16 + 32 * i, 108,
+                       column[i][0], column[i][1], column[i][2]);
+        v9x_glp_expect(eye_key[i], eye_ok[i], 128 + 16 + 32 * i, 148,
+                       column[i][0], column[i][1], column[i][2]);
+    }
+    glDisable(GL_TEXTURE_GEN_S);
+    glDisable(GL_TEXTURE_GEN_T);
+    glDisable(GL_TEXTURE_2D);
+    glDeleteTextures(1, &texture);
+    v9x_glp_hex("ErrorAfterTexGen", (DWORD)glGetError());
+}
+
 static void v9x_glp_mtex_quad(V9X_GLP_MTEX_FN mtex, GLfloat width,
                               GLfloat height, GLfloat s1)
 {
@@ -3686,6 +3872,8 @@ void __stdcall V9xGlProbeEntry(void)
             v9x_glp_hex("ErrorAfterNonSquare", (DWORD)glGetError());
             glDisable(GL_TEXTURE_2D);
             glDeleteTextures(1, &texture);
+
+            v9x_glp_lists_texgen(window);
 
             /*
              * An alpha-tested texture with a lightmap pass over it, as

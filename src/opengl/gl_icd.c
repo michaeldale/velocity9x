@@ -43,6 +43,7 @@
 #include "gl_pixels.h"
 #include "gl_varray.h"
 #include "gl_attrib.h"
+#include "gl_dlist.h"
 
 #define V9X_GL_API __stdcall
 static void v9x_gl_stub_called(unsigned int slot);
@@ -57,6 +58,36 @@ static void (V9X_GL_API *v9x_gl_census_targets[V9X_GL_CENSUS_SLOTS])(void);
 #define V9X_GL_CENSUS_HOOK(slot) (++v9x_gl_census_calls[slot])
 #define V9X_GL_CENSUS_TARGET(slot) v9x_gl_census_targets[slot]
 #define V9X_GL_DEFINE_CENSUS
+/*
+ * Display lists (docs\plans\opengl-display-lists-and-texgen.md): each
+ * census forwarder of a compiled slot first offers the call to the
+ * generated v9x_gl_save_<name>, which copies it into the list being
+ * compiled (gl_dlist.c), and under GL_COMPILE returns without executing.
+ * Outside glNewList/glEndList the cost is the one test of
+ * V9X_GL_SAVING(). Replay calls the slot's implementation directly, so a
+ * replayed call is neither counted again nor compiled again.
+ */
+static V9X_GL_DLISTS v9x_gl_dlists;
+static void v9x_gl_dlist_copy(void *to, const void *from, v9x_u32 bytes);
+static void v9x_gl_dlist_uncompiled(unsigned int slot);
+/* What replay calls for each slot: its implementation, or its stub; set
+ * with the census (v9x_gl_install_census). */
+static void (V9X_GL_API *v9x_gl_replay_targets[V9X_GL_CENSUS_SLOTS])(void);
+static void v9x_gl_replay_special(v9x_u32 slot, const v9x_u32 *args,
+                                  v9x_u32 words);
+static void v9x_gl_dlist_log(void);
+static void v9x_gl_dlist_extension(unsigned int which, const char *name);
+#define V9X_GL_DEFINE_SAVE
+#define V9X_GL_SAVING() (v9x_gl_dlists.compiling_name != 0u)
+#define V9X_GL_DLIST_NODE(slot, words) \
+    v9x_gl_dlists_node(&v9x_gl_dlists, (slot), (words))
+#define V9X_GL_DLIST_COPY(to, from, n) v9x_gl_dlist_copy((to), (from), (n))
+#define V9X_GL_DLIST_COMPILE_ONLY() \
+    (v9x_gl_dlists.compiling_mode == V9X_GL_COMPILE)
+#define V9X_GL_DLIST_UNCOMPILED(slot) v9x_gl_dlist_uncompiled(slot)
+#define V9X_GL_REPLAY_TARGET(slot) v9x_gl_replay_targets[slot]
+#define V9X_GL_REPLAY_SPECIAL(slot, args, words) \
+    v9x_gl_replay_special((slot), (args), (words))
 #include "gl_dispatch_gen.h"
 
 typedef char v9x_gl_assert_census_slots[
@@ -2093,6 +2124,7 @@ static void v9x_gl_counters_log(void)
     V9X_GL_CONTEXT *context;
 
     v9x_gl_path_log();
+    v9x_gl_dlist_log();
     wsprintfA(text, "counters hwtex lost=%lu", v9x_gl_hw_lost);
     v9x_gl_log(text);
     /* Hardware T&L (step 3): batches and triangles the engine drew, ones
@@ -3635,6 +3667,9 @@ static void V9X_GL_API v9x_gl_select_texture_sgis(GLenum target)
     DWORD started = v9x_gl_tsc_begin();
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
+    if (V9X_GL_SAVING()) {
+        v9x_gl_dlist_extension(0u, "glSelectTextureSGIS");
+    }
     if (!v9x_gl_mtex_select_seen) {
         v9x_gl_mtex_select_seen = 1;
         v9x_gl_log3("sgis first glSelectTextureSGIS target=%04lX",
@@ -3662,6 +3697,9 @@ static void v9x_gl_mtexcoord_body(GLenum target, GLfloat s, GLfloat t)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
+    if (V9X_GL_SAVING()) {
+        v9x_gl_dlist_extension(1u, "glMTexCoord2fSGIS");
+    }
     if (!v9x_gl_mtex_coord_seen) {
         v9x_gl_mtex_coord_seen = 1;
         v9x_gl_log3("sgis first glMTexCoord2fSGIS target=%04lX",
@@ -3702,6 +3740,9 @@ static void V9X_GL_API v9x_gl_active_texture_arb(GLenum target)
 {
     DWORD started = v9x_gl_tsc_begin();
 
+    if (V9X_GL_SAVING()) {
+        v9x_gl_dlist_extension(2u, "glActiveTextureARB");
+    }
     if (!v9x_gl_arb_active_seen) {
         v9x_gl_arb_active_seen = 1;
         v9x_gl_log3("arb first glActiveTextureARB target=%04lX",
@@ -3757,6 +3798,9 @@ static void v9x_gl_multitexcoord_body(GLenum target, const void *v,
     V9X_GL_CONTEXT *context = v9x_gl_current();
     GLfloat c[4];
 
+    if (V9X_GL_SAVING()) {
+        v9x_gl_dlist_extension(3u, "glMultiTexCoordARB");
+    }
     if (!v9x_gl_arb_coord_seen) {
         v9x_gl_arb_coord_seen = 1;
         v9x_gl_log3("arb first glMultiTexCoordARB target=%04lX count=%lu",
@@ -4073,13 +4117,494 @@ static void V9X_GL_API v9x_gl_interleaved_arrays(GLenum format,
                                                    stride, pointer));
 }
 
+/* ---- Display lists (5.4), gl_dlist.c ----------------------------------- */
+
+#define V9X_GL_SLOT_ARRAY_ELEMENT 306u
+#define V9X_GL_SLOT_DRAW_ARRAYS   310u
+#define V9X_GL_SLOT_DRAW_ELEMENTS 311u
+/* The arrays an array draw's node copies: vertex, normal, colour, and
+ * units 0 and 1's texture coordinates. The index and edge-flag arrays are
+ * never read (gl_varray.h). */
+#define V9X_GL_DLIST_ARRAYS       5u
+/* A node's words before its arrays: mode, elements, index count. */
+#define V9X_GL_DLIST_DRAW_HEAD    3u
+
+static DWORD v9x_gl_dlist_compiles;
+static DWORD v9x_gl_dlist_calls;
+static DWORD v9x_gl_dlist_array_draws;
+static DWORD v9x_gl_dlist_uncompiled_calls;
+static DWORD v9x_gl_dlist_uncompiled_seen[(V9X_GL_SLOT_COUNT + 31u) / 32u];
+static DWORD v9x_gl_dlist_extension_calls;
+static DWORD v9x_gl_dlist_extension_seen;
+
+/* No C runtime: dwords while both ends are aligned, then bytes. */
+static void v9x_gl_dlist_copy(void *to, const void *from, v9x_u32 bytes)
+{
+    unsigned char *t = (unsigned char *)to;
+    const unsigned char *f = (const unsigned char *)from;
+
+    if ((((DWORD)t | (DWORD)f) & 3ul) == 0ul) {
+        while (bytes >= 4ul) {
+            *(DWORD *)t = *(const DWORD *)f;
+            t += 4;
+            f += 4;
+            bytes -= 4ul;
+        }
+    }
+    while (bytes != 0ul) {
+        *t++ = *f++;
+        --bytes;
+    }
+}
+
+/* A Deferred slot (gl_dlist_rules.psd1) reached while compiling: it runs
+ * now instead of going in the list. Logged once a slot, so a field log
+ * says which of them a program needs compiled. */
+static void v9x_gl_dlist_uncompiled(unsigned int slot)
+{
+    char text[160];
+    DWORD bit;
+
+    ++v9x_gl_dlist_uncompiled_calls;
+    if (slot >= V9X_GL_SLOT_COUNT) {
+        return;
+    }
+    bit = 1ul << (slot & 31u);
+    if ((v9x_gl_dlist_uncompiled_seen[slot >> 5] & bit) != 0ul) {
+        return;
+    }
+    v9x_gl_dlist_uncompiled_seen[slot >> 5] |= bit;
+    wsprintfA(text, "dlist executed-not-compiled slot=%u %s list=%lu",
+              slot, v9x_gl_slot_names[slot],
+              (DWORD)v9x_gl_dlists.compiling_name);
+    v9x_gl_log(text);
+}
+
+/* The same for the extension entry points, which OPENGL32 hands out by
+ * DrvGetProcAddress and which no census forwarder stands in front of. */
+static void v9x_gl_dlist_extension(unsigned int which, const char *name)
+{
+    char text[160];
+
+    ++v9x_gl_dlist_extension_calls;
+    if ((v9x_gl_dlist_extension_seen & (1ul << which)) != 0ul) {
+        return;
+    }
+    v9x_gl_dlist_extension_seen |= 1ul << which;
+    wsprintfA(text, "dlist executed-not-compiled extension %s list=%lu",
+              name, (DWORD)v9x_gl_dlists.compiling_name);
+    v9x_gl_log(text);
+}
+
+/* With the other counters: lists begun, glCallList calls (nested ones
+ * too), array draws copied into lists, and calls that ran instead of
+ * being compiled - Deferred slots and extensions. */
+static void v9x_gl_dlist_log(void)
+{
+    char text[200];
+
+    wsprintfA(text, "counters dlist compiles=%lu calls=%lu array-draws=%lu "
+              "not-compiled=%lu extensions-not-compiled=%lu",
+              v9x_gl_dlist_compiles, v9x_gl_dlist_calls,
+              v9x_gl_dlist_array_draws, v9x_gl_dlist_uncompiled_calls,
+              v9x_gl_dlist_extension_calls);
+    v9x_gl_log(text);
+}
+
+static void v9x_gl_dlist_node(void *user, v9x_u32 slot, const v9x_u32 *args,
+                              v9x_u32 words)
+{
+    (void)user;
+    v9x_gl_dlist_replay_node(slot, args, words);
+}
+
+static V9X_GL_ARRAY *v9x_gl_dlist_array(V9X_GL_ARRAYS *arrays,
+                                        unsigned int k)
+{
+    switch (k) {
+    case 0u:
+        return &arrays->array[V9X_GL_ARRAY_VERTEX];
+    case 1u:
+        return &arrays->array[V9X_GL_ARRAY_NORMAL];
+    case 2u:
+        return &arrays->array[V9X_GL_ARRAY_COLOR];
+    case 3u:
+        return &arrays->array[V9X_GL_ARRAY_TEXCOORD];
+    default:
+        return &arrays->texcoord1;
+    }
+}
+
+static v9x_u32 v9x_gl_dlist_type_bytes(GLenum type)
+{
+    switch (type) {
+    case V9X_GL_BYTE:
+    case V9X_GL_UNSIGNED_BYTE:
+        return 1ul;
+    case V9X_GL_SHORT:
+    case V9X_GL_UNSIGNED_SHORT:
+        return 2ul;
+    case V9X_GL_INT:
+    case V9X_GL_UNSIGNED_INT:
+    case V9X_GL_FLOAT:
+        return 4ul;
+    case V9X_GL_DOUBLE:
+        return 8ul;
+    default:
+        return 0ul;
+    }
+}
+
+/* Index i of glDrawElements' indices of `type`. */
+static v9x_u32 v9x_gl_dlist_index(const GLvoid *indices, GLenum type,
+                                  v9x_u32 i)
+{
+    if (type == V9X_GL_UNSIGNED_BYTE) {
+        return ((const GLubyte *)indices)[i];
+    }
+    if (type == V9X_GL_UNSIGNED_SHORT) {
+        return ((const GLushort *)indices)[i];
+    }
+    return ((const v9x_u32 *)indices)[i];
+}
+
+/*
+ * An array draw compiled (5.4: the arrays are dereferenced when the
+ * command is compiled): the enabled arrays' elements lo to lo + n - 1,
+ * each packed tight, and for glDrawElements its indices less lo. Replay
+ * (v9x_gl_replay_special) points the arrays at the copy and makes the
+ * same draw, so a list's arrays still reach the pipeline as one draw.
+ * Zero, so the call is executed (and makes its error), when an array has
+ * a type the copy does not know.
+ */
+static int v9x_gl_dlist_save_draw(v9x_u32 slot, GLenum mode, v9x_u32 lo,
+                                  v9x_u32 n, v9x_u32 index_count,
+                                  GLenum index_type, const GLvoid *indices)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    v9x_u32 element_bytes[V9X_GL_DLIST_ARRAYS];
+    v9x_u32 words = V9X_GL_DLIST_DRAW_HEAD + index_count;
+    v9x_u32 *node;
+    v9x_u32 at;
+    v9x_u32 i;
+    unsigned int k;
+
+    if (context == 0) {
+        return 0;
+    }
+    for (k = 0u; k < V9X_GL_DLIST_ARRAYS; ++k) {
+        const V9X_GL_ARRAY *a = v9x_gl_dlist_array(&context->arrays, k);
+
+        element_bytes[k] = 0ul;
+        if (a->enabled) {
+            v9x_u32 type_bytes = v9x_gl_dlist_type_bytes(a->type);
+
+            if (type_bytes == 0ul || a->size < 1 || a->pointer == 0) {
+                return 0;
+            }
+            element_bytes[k] = (v9x_u32)a->size * type_bytes;
+        }
+        words += 4ul + ((element_bytes[k] * n + 3ul) >> 2);
+    }
+    node = V9X_GL_DLIST_NODE(slot, words);
+    if (node == 0) {
+        return V9X_GL_DLIST_COMPILE_ONLY();
+    }
+    node[0] = (v9x_u32)mode;
+    node[1] = n;
+    node[2] = index_count;
+    at = V9X_GL_DLIST_DRAW_HEAD;
+    for (k = 0u; k < V9X_GL_DLIST_ARRAYS; ++k) {
+        const V9X_GL_ARRAY *a = v9x_gl_dlist_array(&context->arrays, k);
+        v9x_u32 stride;
+
+        node[at] = element_bytes[k] != 0ul ? 1ul : 0ul;
+        node[at + 1ul] = (v9x_u32)a->size;
+        node[at + 2ul] = (v9x_u32)a->type;
+        node[at + 3ul] = element_bytes[k] * n;
+        at += 4ul;
+        if (element_bytes[k] == 0ul) {
+            continue;
+        }
+        stride = a->stride != 0 ? (v9x_u32)a->stride : element_bytes[k];
+        for (i = 0ul; i < n; ++i) {
+            v9x_gl_dlist_copy((unsigned char *)&node[at] +
+                                  i * element_bytes[k],
+                              (const unsigned char *)a->pointer +
+                                  (lo + i) * stride,
+                              element_bytes[k]);
+        }
+        at += (element_bytes[k] * n + 3ul) >> 2;
+    }
+    for (i = 0ul; i < index_count; ++i) {
+        node[at + i] = v9x_gl_dlist_index(indices, index_type, i) - lo;
+    }
+    ++v9x_gl_dlist_array_draws;
+    return V9X_GL_DLIST_COMPILE_ONLY();
+}
+
+static int v9x_gl_save_glArrayElement(GLint i)
+{
+    if (i < 0) {
+        return 0;
+    }
+    return v9x_gl_dlist_save_draw(V9X_GL_SLOT_ARRAY_ELEMENT, 0u, (v9x_u32)i,
+                                  1ul, 0ul, 0u, 0);
+}
+
+static int v9x_gl_save_glDrawArrays(GLenum mode, GLint first, GLsizei count)
+{
+    if (first < 0 || count < 0) {
+        return 0;
+    }
+    return v9x_gl_dlist_save_draw(V9X_GL_SLOT_DRAW_ARRAYS, mode,
+                                  (v9x_u32)first, (v9x_u32)count, 0ul, 0u,
+                                  0);
+}
+
+static int v9x_gl_save_glDrawElements(GLenum mode, GLsizei count,
+                                      GLenum type, const GLvoid *indices)
+{
+    v9x_u32 lo = 0xFFFFFFFFul;
+    v9x_u32 hi = 0ul;
+    v9x_u32 i;
+
+    if (count <= 0 || indices == 0 ||
+        (type != V9X_GL_UNSIGNED_BYTE && type != V9X_GL_UNSIGNED_SHORT &&
+         type != V9X_GL_UNSIGNED_INT)) {
+        return 0;
+    }
+    for (i = 0ul; i < (v9x_u32)count; ++i) {
+        v9x_u32 index = v9x_gl_dlist_index(indices, type, i);
+
+        if (index < lo) {
+            lo = index;
+        }
+        if (index > hi) {
+            hi = index;
+        }
+    }
+    return v9x_gl_dlist_save_draw(V9X_GL_SLOT_DRAW_ELEMENTS, mode, lo,
+                                  hi - lo + 1ul, (v9x_u32)count, type,
+                                  indices);
+}
+
+/* An array draw's node replayed: the context's arrays pointed at the copy
+ * (tight, unlocked) for the one draw, then put back as they were. */
+static void v9x_gl_replay_special(v9x_u32 slot, const v9x_u32 *args,
+                                  v9x_u32 words)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    V9X_GL_ARRAYS saved;
+    V9X_GL_ARRAYS *arrays;
+    v9x_u32 at = V9X_GL_DLIST_DRAW_HEAD;
+    unsigned int k;
+
+    if (context == 0 || words < V9X_GL_DLIST_DRAW_HEAD) {
+        return;
+    }
+    arrays = &context->arrays;
+    saved = *arrays;
+    for (k = 0u; k < V9X_GL_DLIST_ARRAYS; ++k) {
+        V9X_GL_ARRAY *a = v9x_gl_dlist_array(arrays, k);
+        v9x_u32 bytes;
+
+        if (at + 4ul > words) {
+            *arrays = saved;
+            return;
+        }
+        bytes = args[at + 3ul];
+        a->enabled = args[at] != 0ul;
+        a->size = (GLint)args[at + 1ul];
+        a->type = (GLenum)args[at + 2ul];
+        a->stride = 0;
+        a->pointer = &args[at + 4ul];
+        at += 4ul + ((bytes + 3ul) >> 2);
+    }
+    if (at + args[2] > words) {
+        *arrays = saved;
+        return;
+    }
+    arrays->array[V9X_GL_ARRAY_INDEX].enabled = 0;
+    arrays->array[V9X_GL_ARRAY_EDGE_FLAG].enabled = 0;
+    arrays->lock_first = 0;
+    arrays->lock_count = 0;
+    switch (slot) {
+    case V9X_GL_SLOT_ARRAY_ELEMENT:
+        v9x_gl_array_element(0);
+        break;
+    case V9X_GL_SLOT_DRAW_ARRAYS:
+        v9x_gl_draw_arrays((GLenum)args[0], 0, (GLsizei)args[1]);
+        break;
+    case V9X_GL_SLOT_DRAW_ELEMENTS:
+        v9x_gl_draw_elements((GLenum)args[0], (GLsizei)args[2],
+                             V9X_GL_UNSIGNED_INT, &args[at]);
+        break;
+    default:
+        break;
+    }
+    *arrays = saved;
+}
+
+static void V9X_GL_API v9x_gl_new_list(GLuint list, GLenum mode)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context == 0) {
+        return;
+    }
+    v9x_gl_dlists_new(&context->state, &v9x_gl_dlists, list, mode);
+    if (v9x_gl_dlists.compiling_name == list && list != 0u) {
+        ++v9x_gl_dlist_compiles;
+    }
+}
+
+static void V9X_GL_API v9x_gl_end_list(void)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    v9x_gl_dlists_end(&context->state, &v9x_gl_dlists);
+}
+
+/* Allowed between Begin and End (5.4): what the list holds is. */
+static void V9X_GL_API v9x_gl_call_list(GLuint list)
+{
+    ++v9x_gl_dlist_calls;
+    (void)v9x_gl_dlists_call(&v9x_gl_dlists, list, v9x_gl_dlist_node, 0);
+}
+
+static void V9X_GL_API v9x_gl_call_lists(GLsizei n, GLenum type,
+                                         const GLvoid *lists)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+    GLuint name;
+    GLsizei i;
+
+    if (context == 0) {
+        return;
+    }
+    if (n < 0) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_VALUE);
+        return;
+    }
+    if (n == 0 || lists == 0) {
+        return;
+    }
+    for (i = 0; i < n; ++i) {
+        if (!v9x_gl_dlists_name_at(&v9x_gl_dlists, lists, type, (v9x_u32)i,
+                                   &name)) {
+            v9x_gl_state_error(&context->state, V9X_GL_INVALID_ENUM);
+            return;
+        }
+        v9x_gl_call_list(name);
+    }
+}
+
+static void V9X_GL_API v9x_gl_delete_lists(GLuint list, GLsizei range)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context == 0) {
+        return;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    v9x_gl_dlists_delete(&context->state, &v9x_gl_dlists, list, range);
+}
+
+static GLuint V9X_GL_API v9x_gl_gen_lists(GLsizei range)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context == 0) {
+        return 0u;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return 0u;
+    }
+    return v9x_gl_dlists_gen(&context->state, &v9x_gl_dlists, range);
+}
+
+static GLboolean V9X_GL_API v9x_gl_is_list(GLuint list)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context != 0 && context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return 0;
+    }
+    return v9x_gl_dlists_is_list(&v9x_gl_dlists, list);
+}
+
+static void V9X_GL_API v9x_gl_list_base(GLuint base)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context != 0 && context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return;
+    }
+    v9x_gl_dlists.base = base;
+}
+
+/* GL_LIST_BASE, GL_LIST_INDEX and GL_LIST_MODE (table 6.24): the list
+ * state is the ICD's, not gl_get.c's. Non-zero when pname was one. */
+static int v9x_gl_get_list(V9X_GL_CONTEXT *context, GLenum pname, int kind,
+                           void *out)
+{
+    v9x_u32 value;
+
+    switch (pname) {
+    case V9X_GL_LIST_BASE:
+        value = v9x_gl_dlists.base;
+        break;
+    case V9X_GL_LIST_INDEX:
+        value = v9x_gl_dlists.compiling_name;
+        break;
+    case V9X_GL_LIST_MODE:
+        value = v9x_gl_dlists.compiling_mode;
+        break;
+    default:
+        return 0;
+    }
+    if (context->state.in_begin) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_OPERATION);
+        return 1;
+    }
+    switch (kind) {
+    case V9X_GL_GET_BOOLEAN:
+        *(GLboolean *)out = value != 0ul ? 1 : 0;
+        break;
+    case V9X_GL_GET_INTEGER:
+        *(GLint *)out = (GLint)value;
+        break;
+    case V9X_GL_GET_FLOAT:
+        *(GLfloat *)out = (GLfloat)(GLint)value;
+        break;
+    default:
+        *(GLdouble *)out = (GLdouble)(GLint)value;
+        break;
+    }
+    return 1;
+}
+
 /* ---- Queries and held state (6.1, 5.6, 3.5.4, 4.2.1), gl_get.c ------- */
 
 static void v9x_gl_get_any(GLenum pname, int kind, void *out)
 {
     V9X_GL_CONTEXT *context = v9x_gl_current();
 
-    if (context != 0) {
+    if (context != 0 && !v9x_gl_get_list(context, pname, kind, out)) {
         v9x_gl_get(&context->state, &context->pipeline, &context->textures,
                    &context->arrays, v9x_gl_two_units() ? 2ul : 1ul, pname,
                    kind, out);
@@ -4559,6 +5084,141 @@ static void V9X_GL_API v9x_gl_get_materialiv(GLenum face, GLenum pname,
     v9x_gl_query_ints(values, count, v9x_gl_lighting_colour(pname), params);
 }
 
+/* ---- Texture coordinate generation (2.10.4), gl_texgen.c ------------- */
+
+/* Every glTexGen form as floats. The scalar forms name the mode only: a
+ * plane given through one is INVALID_ENUM (2.10.4), and is not read past
+ * the one value. */
+static void v9x_gl_texgen_call(GLenum coord, GLenum pname,
+                               const GLfloat *params, int vector)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context == 0) {
+        return;
+    }
+    if (!vector && pname != V9X_GL_TEXTURE_GEN_MODE) {
+        v9x_gl_state_error(&context->state, V9X_GL_INVALID_ENUM);
+        return;
+    }
+    v9x_gl_texgen_set(&context->state, &context->pipeline.texgen, coord,
+                      pname, params,
+                      v9x_gl_matrix_top(&context->state.matrices,
+                                        V9X_GL_MODELVIEW));
+}
+
+/* The values a vector form passes: one for the mode, four for a plane. */
+static unsigned int v9x_gl_texgen_count(GLenum pname)
+{
+    return pname == V9X_GL_TEXTURE_GEN_MODE ? 1u : 4u;
+}
+
+static void V9X_GL_API v9x_gl_tex_geni(GLenum coord, GLenum pname,
+                                       GLint param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_texgen_call(coord, pname, &value, 0);
+}
+
+static void V9X_GL_API v9x_gl_tex_genf(GLenum coord, GLenum pname,
+                                       GLfloat param)
+{
+    v9x_gl_texgen_call(coord, pname, &param, 0);
+}
+
+static void V9X_GL_API v9x_gl_tex_gend(GLenum coord, GLenum pname,
+                                       GLdouble param)
+{
+    GLfloat value = (GLfloat)param;
+
+    v9x_gl_texgen_call(coord, pname, &value, 0);
+}
+
+static void V9X_GL_API v9x_gl_tex_geniv(GLenum coord, GLenum pname,
+                                        const GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_texgen_count(pname);
+    unsigned int i;
+
+    for (i = 0u; i < 4u; ++i) {
+        values[i] = i < count ? (GLfloat)params[i] : 0.0f;
+    }
+    v9x_gl_texgen_call(coord, pname, values, 1);
+}
+
+static void V9X_GL_API v9x_gl_tex_genfv(GLenum coord, GLenum pname,
+                                        const GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_texgen_count(pname);
+    unsigned int i;
+
+    for (i = 0u; i < 4u; ++i) {
+        values[i] = i < count ? params[i] : 0.0f;
+    }
+    v9x_gl_texgen_call(coord, pname, values, 1);
+}
+
+static void V9X_GL_API v9x_gl_tex_gendv(GLenum coord, GLenum pname,
+                                        const GLdouble *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_texgen_count(pname);
+    unsigned int i;
+
+    for (i = 0u; i < 4u; ++i) {
+        values[i] = i < count ? (GLfloat)params[i] : 0.0f;
+    }
+    v9x_gl_texgen_call(coord, pname, values, 1);
+}
+
+static unsigned int v9x_gl_get_texgen(GLenum coord, GLenum pname,
+                                      GLfloat *values)
+{
+    V9X_GL_CONTEXT *context = v9x_gl_current();
+
+    if (context == 0) {
+        return 0u;
+    }
+    return v9x_gl_texgen_get(&context->state, &context->pipeline.texgen,
+                             coord, pname, values);
+}
+
+static void V9X_GL_API v9x_gl_get_tex_genfv(GLenum coord, GLenum pname,
+                                            GLfloat *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_texgen(coord, pname, values);
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        params[i] = values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_tex_gendv(GLenum coord, GLenum pname,
+                                            GLdouble *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_texgen(coord, pname, values);
+    unsigned int i;
+
+    for (i = 0u; i < count; ++i) {
+        params[i] = (GLdouble)values[i];
+    }
+}
+
+static void V9X_GL_API v9x_gl_get_tex_geniv(GLenum coord, GLenum pname,
+                                            GLint *params)
+{
+    GLfloat values[4];
+    unsigned int count = v9x_gl_get_texgen(coord, pname, values);
+
+    v9x_gl_query_ints(values, count, 0, params);
+}
+
 static void V9X_GL_API v9x_gl_clear_stencil(GLint s)
 {
     V9X_GL_WITH_CONTEXT(v9x_gl_state_clear_stencil(&context_->state, s));
@@ -4632,6 +5292,7 @@ static void v9x_gl_install_census(void)
     unsigned int slot;
 
     for (slot = 0u; slot < V9X_GL_SLOT_COUNT; ++slot) {
+        v9x_gl_replay_targets[slot] = v9x_gl_table.entries[slot];
         if (v9x_gl_table.entries[slot] != stubs[slot]) {
             v9x_gl_census_targets[slot] = v9x_gl_table.entries[slot];
             v9x_gl_table.entries[slot] = census[slot];
@@ -4828,6 +5489,23 @@ static void v9x_gl_install_overrides(void)
     V9X_GL_OVERRIDE(glMateriali, v9x_gl_materiali);
     V9X_GL_OVERRIDE(glMaterialiv, v9x_gl_materialiv);
     V9X_GL_OVERRIDE(glColorMaterial, v9x_gl_color_material_entry);
+    V9X_GL_OVERRIDE(glNewList, v9x_gl_new_list);
+    V9X_GL_OVERRIDE(glEndList, v9x_gl_end_list);
+    V9X_GL_OVERRIDE(glCallList, v9x_gl_call_list);
+    V9X_GL_OVERRIDE(glCallLists, v9x_gl_call_lists);
+    V9X_GL_OVERRIDE(glDeleteLists, v9x_gl_delete_lists);
+    V9X_GL_OVERRIDE(glGenLists, v9x_gl_gen_lists);
+    V9X_GL_OVERRIDE(glIsList, v9x_gl_is_list);
+    V9X_GL_OVERRIDE(glListBase, v9x_gl_list_base);
+    V9X_GL_OVERRIDE(glTexGend, v9x_gl_tex_gend);
+    V9X_GL_OVERRIDE(glTexGendv, v9x_gl_tex_gendv);
+    V9X_GL_OVERRIDE(glTexGenf, v9x_gl_tex_genf);
+    V9X_GL_OVERRIDE(glTexGenfv, v9x_gl_tex_genfv);
+    V9X_GL_OVERRIDE(glTexGeni, v9x_gl_tex_geni);
+    V9X_GL_OVERRIDE(glTexGeniv, v9x_gl_tex_geniv);
+    V9X_GL_OVERRIDE(glGetTexGendv, v9x_gl_get_tex_gendv);
+    V9X_GL_OVERRIDE(glGetTexGenfv, v9x_gl_get_tex_genfv);
+    V9X_GL_OVERRIDE(glGetTexGeniv, v9x_gl_get_tex_geniv);
     V9X_GL_OVERRIDE(glGetLightfv, v9x_gl_get_lightfv);
     V9X_GL_OVERRIDE(glGetLightiv, v9x_gl_get_lightiv);
     V9X_GL_OVERRIDE(glGetMaterialfv, v9x_gl_get_materialfv);
@@ -5354,6 +6032,8 @@ BOOL __stdcall V9xGlEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
 
         CreateDirectoryA(V9X_DIAG_DIR, 0);
         InitializeCriticalSection(&v9x_gl_lock);
+        v9x_gl_dlists_init(&v9x_gl_dlists, v9x_gl_heap_alloc,
+                           v9x_gl_heap_free);
         v9x_gl_tls = TlsAlloc();
         if (GetModuleFileNameA(0, path, sizeof(path)) == 0ul) {
             path[0] = '\0';

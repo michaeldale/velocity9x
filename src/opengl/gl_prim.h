@@ -16,6 +16,7 @@
 #include "velocity9x/r3d_abi.h"
 #include "gl_state.h"
 #include "gl_light.h"
+#include "gl_texgen.h"
 
 #define V9X_GL_POINTS         0x0000u
 #define V9X_GL_LINES          0x0001u
@@ -312,6 +313,14 @@ typedef struct v9x_gl_pipeline {
      * at V9X_GL_PRIM_PROF_COUNTS. Measurement only.
      */
     v9x_u32 *profile;
+    /* Texture coordinate generation (2.10.4, gl_texgen.c), set by the
+     * front end's glTexGen. texgen_mask (S, T, R, Q as bits 0-3) and
+     * texgen_normalize are read at Begin: no enable can change before
+     * End. A vertex takes the generated coordinates; tex, the current
+     * texture coordinate, keeps its value. */
+    V9X_GL_TEXGEN texgen;
+    v9x_u32 texgen_mask;
+    int texgen_normalize;
 } V9X_GL_PIPELINE;
 
 #define V9X_GL_PRIM_PROF_TRANSFORM 0u  /* both matrices, colour, texcoord */

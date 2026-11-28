@@ -140,6 +140,11 @@ unsigned int v9x_run_gl_attrib_tests(void);
 
 /* tests\host\test_gl_light.c: OpenGL lighting state and its T&L key. */
 unsigned int v9x_run_gl_light_tests(void);
+/* tests\host\test_gl_texgen.c: texture coordinate generation. */
+unsigned int v9x_run_gl_texgen_tests(void);
+/* tests\host\test_gl_dlist.c: display lists, the store and the generated
+ * save and replay code. */
+unsigned int v9x_run_gl_dlist_tests(void);
 /* tests\host\test_glide_vertex.c: Glide vertices to the render interface's. */
 unsigned int v9x_run_glide_vertex_tests(void);
 /* tests\host\test_glide_texture.c: Glide texture memory and texel formats. */
@@ -1577,6 +1582,8 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_varray_tests();
     failures += v9x_run_gl_attrib_tests();
     failures += v9x_run_gl_light_tests();
+    failures += v9x_run_gl_texgen_tests();
+    failures += v9x_run_gl_dlist_tests();
     failures += v9x_run_glide_vertex_tests();
     failures += v9x_run_glide_texture_tests();
     failures += v9x_run_glide_state_tests();

@@ -1399,6 +1399,51 @@ static void test_rect_edge_flag_and_index(void)
     PCHECK(p.edge_flag == 0u && p.index == 7.0f);
 }
 
+/*
+ * Texgen in the pipeline (gl_texgen.c): with TEXTURE_GEN_S on and an
+ * object plane s = x / 320, each emitted vertex carries its own s, T keeps
+ * the current coordinate, and the current coordinate is unchanged after
+ * the primitive. Enabling texgen after Begin does not reach that
+ * primitive (the mask is read at Begin).
+ */
+static void test_texgen_in_pipeline(void)
+{
+    V9X_GL_STATE s;
+    V9X_GL_PIPELINE p;
+    GLfloat plane[4] = { 1.0f / 320.0f, 0.0f, 0.0f, 0.0f };
+    GLfloat mode = (GLfloat)V9X_GL_OBJECT_LINEAR;
+
+    scene(&s, &p);
+    v9x_gl_texgen_set(&s, &p.texgen, V9X_GL_S, V9X_GL_TEXTURE_GEN_MODE,
+                      &mode, v9x_gl_matrix_top(&s.matrices,
+                                               V9X_GL_MODELVIEW));
+    v9x_gl_texgen_set(&s, &p.texgen, V9X_GL_S, V9X_GL_OBJECT_PLANE, plane,
+                      v9x_gl_matrix_top(&s.matrices, V9X_GL_MODELVIEW));
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_GEN_S, 1);
+    v9x_gl_prim_texcoord(&p, 0.25f, 0.75f, 0.0f, 1.0f);
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 0.0f, 0.0f);
+    vertex(&s, &p, 320.0f, 0.0f);
+    vertex(&s, &p, 160.0f, 200.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(v9x_gl_state_get_error(&s) == V9X_GL_NO_ERROR);
+    PCHECK(sunk_triangles == 1ul);
+    PCHECK(near_value(sunk[0].tu, 0.0f) && near_value(sunk[0].tv, 0.75f));
+    PCHECK(near_value(sunk[1].tu, 1.0f) && near_value(sunk[1].tv, 0.75f));
+    PCHECK(near_value(sunk[2].tu, 0.5f) && near_value(sunk[2].tv, 0.75f));
+    PCHECK(p.tex[0] == 0.25f && p.tex[1] == 0.75f);
+
+    v9x_gl_state_enable(&s, V9X_GL_TEXTURE_GEN_S, 0);
+    sunk_triangles = 0ul;
+    v9x_gl_prim_begin(&s, &p, V9X_GL_TRIANGLES);
+    vertex(&s, &p, 0.0f, 0.0f);
+    vertex(&s, &p, 320.0f, 0.0f);
+    vertex(&s, &p, 160.0f, 200.0f);
+    v9x_gl_prim_end(&s, &p);
+    PCHECK(sunk_triangles == 1ul);
+    PCHECK(near_value(sunk[1].tu, 0.25f));
+}
+
 /* A depth-tested, depth-writing opaque draw, Quake's world. */
 static void split_state(V9X_R3D_ABI_STATE *state)
 {
@@ -2287,6 +2332,7 @@ unsigned int v9x_run_gl_prim_tests(void)
     test_polygon_offset();
     test_fog();
     test_rect_edge_flag_and_index();
+    test_texgen_in_pipeline();
     test_begin_follows_state_changes();
     if (gl_prim_failures == 0u) {
         printf("PASS: OpenGL vertex pipeline\n");
