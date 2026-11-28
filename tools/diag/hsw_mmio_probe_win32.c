@@ -4101,6 +4101,128 @@ static void v9x_rps_set_run(DWORD units)
         "NOT-GRANTED", V9X_HSWMM_PATH);
 }
 
+/*
+ * /pipesrc:XXXXXXXX: PIPE_SRCSZ_A through DIOC 7 (hsw_mmio_probe.asm's
+ * HSW_DIOC_PIPESRC has what it refuses), eight hex digits; 00000000 only
+ * reads. A test aid for the driver's HSW_PIPE_SOURCE write path
+ * (docs\issues\2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md):
+ * it puts the source where the VBIOS once left it, and the driver's next
+ * engine open should put it back. Results in [PipeSource].
+ */
+#define V9X_PIPESRC_DIOC      7u
+#define V9X_PIPESRC_MAGIC     0x50495053ul
+#define V9X_PIPESRC_OPTION    "/pipesrc:"
+#define V9X_PIPESRC_WRITTEN   0x00000008ul
+#define V9X_PIPESRC_FITTER_ON 0x00000004ul
+
+static struct v9x_pipesrc_request {
+    DWORD base;
+    DWORD value;
+} v9x_pipesrc_in;
+
+static struct v9x_pipesrc_result {
+    DWORD magic;
+    DWORD status;
+    DWORD igd_id;
+    DWORD pf_ctl;
+    DWORD htotal;
+    DWORD vtotal;
+    DWORD before;
+    DWORD after;
+    DWORD spare[8];
+} v9x_pipesrc_out;
+
+typedef char v9x_pipesrc_layout_matches[
+    sizeof(struct v9x_pipesrc_result) == 64u &&
+    sizeof(struct v9x_pipesrc_request) == 8u ? 1 : -1];
+
+/* The eight hex digits after /pipesrc: into *value; zero if absent or
+ * malformed. */
+static int v9x_pipesrc_value(DWORD *value)
+{
+    const char *line = GetCommandLineA();
+    int length = lstrlenA(V9X_PIPESRC_OPTION);
+    int at;
+    int index;
+    char digit;
+
+    for (at = 0; line[at] != '\0'; ++at) {
+        for (index = 0; index < length; ++index) {
+            digit = line[at + index];
+            if (digit >= 'A' && digit <= 'Z') {
+                digit = (char)(digit - 'A' + 'a');
+            }
+            if (digit != V9X_PIPESRC_OPTION[index]) {
+                break;
+            }
+        }
+        if (index != length) {
+            continue;
+        }
+        *value = 0ul;
+        for (index = 0; index < 8; ++index) {
+            digit = line[at + length + index];
+            *value <<= 4;
+            if (digit >= '0' && digit <= '9') {
+                *value |= (DWORD)(digit - '0');
+            } else if (digit >= 'a' && digit <= 'f') {
+                *value |= (DWORD)(digit - 'a' + 10);
+            } else if (digit >= 'A' && digit <= 'F') {
+                *value |= (DWORD)(digit - 'A' + 10);
+            } else {
+                return 0;
+            }
+        }
+        return 1;
+    }
+    return 0;
+}
+
+static void v9x_pipesrc_run(void)
+{
+    HANDLE device;
+    DWORD returned;
+    BOOL ok;
+
+    WritePrivateProfileStringA("PipeSource", 0, 0, V9X_HSWMM_PATH);
+    if (!v9x_pipesrc_value(&v9x_pipesrc_in.value)) {
+        WritePrivateProfileStringA("PipeSource", "Result", "BAD-OPTION",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_pipesrc_in.base = v9x_config_read(0x10ul) &
+                          V9X_INTEL_HSW_GTTMMADR_MASK;
+    v9x_key("PipeSource", "Request", v9x_pipesrc_in.value);
+    device = CreateFileA(V9X_HSWMM_VXD, 0, 0, 0, CREATE_NEW,
+                         FILE_FLAG_DELETE_ON_CLOSE, 0);
+    if (device == INVALID_HANDLE_VALUE) {
+        WritePrivateProfileStringA("PipeSource", "Result", "VXD-LOAD-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    ok = DeviceIoControl(device, V9X_PIPESRC_DIOC, &v9x_pipesrc_in,
+                         sizeof(v9x_pipesrc_in), &v9x_pipesrc_out,
+                         sizeof(v9x_pipesrc_out), &returned, 0);
+    CloseHandle(device);
+    if (!ok || returned != sizeof(v9x_pipesrc_out) ||
+        v9x_pipesrc_out.magic != V9X_PIPESRC_MAGIC) {
+        WritePrivateProfileStringA("PipeSource", "Result", "DIOC-FAILED",
+                                   V9X_HSWMM_PATH);
+        return;
+    }
+    v9x_key("PipeSource", "Status", v9x_pipesrc_out.status);
+    v9x_key("PipeSource", "IgdId", v9x_pipesrc_out.igd_id);
+    v9x_key("PipeSource", "PfCtlA", v9x_pipesrc_out.pf_ctl);
+    v9x_key("PipeSource", "HtotalA", v9x_pipesrc_out.htotal);
+    v9x_key("PipeSource", "VtotalA", v9x_pipesrc_out.vtotal);
+    v9x_key("PipeSource", "SrcszBefore", v9x_pipesrc_out.before);
+    v9x_key("PipeSource", "SrcszAfter", v9x_pipesrc_out.after);
+    WritePrivateProfileStringA("PipeSource", "Result",
+        (v9x_pipesrc_out.status & V9X_PIPESRC_WRITTEN) != 0ul ? "WRITTEN" :
+        (v9x_pipesrc_out.status & V9X_PIPESRC_FITTER_ON) != 0ul ? "READ" :
+        "FITTER-OFF-NOT-WRITTEN", V9X_HSWMM_PATH);
+}
+
 void __stdcall V9xHswMmioEntry(void)
 {
     HANDLE device;
@@ -4134,6 +4256,17 @@ void __stdcall V9xHswMmioEntry(void)
         WritePrivateProfileStringA("Report", "Access", "bcs-ring-phase-b1",
                                    V9X_HSWMM_PATH);
         v9x_bcs_run();
+        WritePrivateProfileStringA("Report", "Result", "COMPLETE",
+                                   V9X_HSWMM_PATH);
+        WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);
+        ExitProcess(0u);
+    }
+
+    /* /pipesrc:XXXXXXXX: pipe A's source size alone. */
+    if (v9x_has_switch(V9X_PIPESRC_OPTION)) {
+        WritePrivateProfileStringA("Report", "Access", "pipe-source-write",
+                                   V9X_HSWMM_PATH);
+        v9x_pipesrc_run();
         WritePrivateProfileStringA("Report", "Result", "COMPLETE",
                                    V9X_HSWMM_PATH);
         WritePrivateProfileStringA(0, 0, 0, V9X_HSWMM_PATH);

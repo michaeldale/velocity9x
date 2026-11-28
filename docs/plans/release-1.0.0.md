@@ -140,7 +140,10 @@ with the Trio64 itself.
 - **Branches `rv280-geomscan` and `hsw-panel-fit`:** left for 1.1,
   decided 2026-11-26 (Michael). The Radeon 9250's depth band and the
   HD 4600's VGA 1080p wrap stay README known issues in 1.0; the
-  branches are not merged before the freeze.
+  branches are not merged before the freeze. Corrected 2026-11-28:
+  `hsw-panel-fit`'s one commit (`2e189d5a`) was already on main and
+  shipped in 0.56.0 through 1.0.0
+  ([record](../decisions/2026-11-28-hd4600-pipe-source-write-measured.md)).
 - **B5, the full-screen DOS box round trip on a physical S3 card:** left
   for a later release, decided 2026-11-27 (Michael)
   ([issue](../issues/2026-09-12-netbook-dos-box-return-hardlock.md)).

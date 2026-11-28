@@ -554,6 +554,46 @@ HSW_RQ_POLLS            equ 36
 HswRpsOut     dd HSW_RPS_MAGIC
               dd (HSW_RPS_OUT_DWORDS - 1) dup (0)
 HswRpsIn      dd (HSW_RPS_IN_BYTES / 4) dup (0)
+
+; Pipe A's source size (2026-11-28, docs\issues\2026-11-18-haswell-vga-
+; 1080p-pipe-source-left-at-native.md). DIOC code 7. A test aid: it puts
+; PIPE_SRCSZ_A (6001Ch) where the VBIOS once left it, so the driver's
+; HSW_PIPE_SOURCE write path can be run on purpose; the driver sets it
+; back at its next engine open. Reads PF_CTL_A, the totals and the source
+; size; with a non-zero request, writes the request to PIPE_SRCSZ_A and
+; reads it back. Refused, with nothing written, unless GTTMMADR is 4 MB
+; aligned, the IGD is Intel, the panel fitter (PF_CTL_A bit 31) is on,
+; and the request has nothing outside the two 12-bit fields. A request of
+; zero only reads. Offsets are i915's (PIPESRC, PF_CTL, HTOTAL, VTOTAL).
+HSW_DIOC_PIPESRC        equ 7
+HSW_PS_MAGIC            equ 50495053h ; "SPIP"
+HSW_PS_IN_BASE          equ 0
+HSW_PS_IN_VALUE         equ 4
+HSW_PS_IN_BYTES         equ 8
+HSW_PS_OUT_DWORDS       equ 16
+HSW_PS_HTOTAL_A         equ 60000h
+HSW_PS_VTOTAL_A         equ 6000ch
+HSW_PS_SRCSZ_A          equ 6001ch
+HSW_PS_PF_CTL_A         equ 68080h
+HSW_PS_PF_ENABLE        equ 80000000h
+HSW_PS_FIELDS           equ 0f000f000h
+HSW_PS_ST_IGD_INTEL     equ 00000001h
+HSW_PS_ST_MAPPED        equ 00000002h
+HSW_PS_ST_FITTER_ON     equ 00000004h
+HSW_PS_ST_WRITTEN       equ 00000008h
+HSW_PS_ST_BAD_INPUT     equ 00000040h
+; Output byte offsets, matching struct v9x_pipesrc_result.
+HSW_PO_STATUS           equ 4
+HSW_PO_IGD_ID           equ 8
+HSW_PO_PF_CTL           equ 12
+HSW_PO_HTOTAL           equ 16
+HSW_PO_VTOTAL           equ 20
+HSW_PO_BEFORE           equ 24
+HSW_PO_AFTER            equ 28
+
+HswPsOut      dd HSW_PS_MAGIC
+              dd (HSW_PS_OUT_DWORDS - 1) dup (0)
+HswPsIn       dd (HSW_PS_IN_BYTES / 4) dup (0)
 VxD_LOCKED_DATA_ENDS
 
 VxD_LOCKED_CODE_SEG
@@ -2205,6 +2245,104 @@ Hsw_Rps_Dioc_Fail:
     ret
 EndProc Hsw_Rps_Dioc
 
+; See HSW_DIOC_PIPESRC for what it does and what it refuses.
+BeginProc Hsw_Pipesrc
+    pushad
+    mov     eax, HswPsIn[HSW_PS_IN_BASE]
+    test    eax, eax
+    jz      Hsw_Pipesrc_Bad_Input
+    test    eax, HSW_BASE_ALIGN
+    jnz     Hsw_Pipesrc_Bad_Input
+    test    HswPsIn[HSW_PS_IN_VALUE], HSW_PS_FIELDS
+    jnz     Hsw_Pipesrc_Bad_Input
+
+    mov     eax, HSW_IGD_ADDRESS
+    call    Hsw_Pci_Read
+    mov     HswPsOut[HSW_PO_IGD_ID], eax
+    cmp     ax, HSW_VENDOR_INTEL
+    jne     Hsw_Pipesrc_Bad_Input
+    or      HswPsOut[HSW_PO_STATUS], HSW_PS_ST_IGD_INTEL
+
+    mov     eax, HswPsIn[HSW_PS_IN_BASE]
+    VMMcall _MapPhysToLinear,<eax,HSW_MMIO_BYTES,0>
+    cmp     eax, 0ffffffffh
+    je      Hsw_Pipesrc_Exit
+    mov     ebp, eax
+    or      HswPsOut[HSW_PO_STATUS], HSW_PS_ST_MAPPED
+
+    mov     eax, [ebp+HSW_PS_PF_CTL_A]
+    mov     HswPsOut[HSW_PO_PF_CTL], eax
+    mov     eax, [ebp+HSW_PS_HTOTAL_A]
+    mov     HswPsOut[HSW_PO_HTOTAL], eax
+    mov     eax, [ebp+HSW_PS_VTOTAL_A]
+    mov     HswPsOut[HSW_PO_VTOTAL], eax
+    mov     eax, [ebp+HSW_PS_SRCSZ_A]
+    mov     HswPsOut[HSW_PO_BEFORE], eax
+    mov     HswPsOut[HSW_PO_AFTER], eax
+
+    test    HswPsOut[HSW_PO_PF_CTL], HSW_PS_PF_ENABLE
+    jz      short Hsw_Pipesrc_Exit
+    or      HswPsOut[HSW_PO_STATUS], HSW_PS_ST_FITTER_ON
+    mov     eax, HswPsIn[HSW_PS_IN_VALUE]
+    test    eax, eax
+    jz      short Hsw_Pipesrc_Exit
+    mov     [ebp+HSW_PS_SRCSZ_A], eax
+    or      HswPsOut[HSW_PO_STATUS], HSW_PS_ST_WRITTEN
+    mov     eax, [ebp+HSW_PS_SRCSZ_A]
+    mov     HswPsOut[HSW_PO_AFTER], eax
+    jmp     short Hsw_Pipesrc_Exit
+
+Hsw_Pipesrc_Bad_Input:
+    or      HswPsOut[HSW_PO_STATUS], HSW_PS_ST_BAD_INPUT
+Hsw_Pipesrc_Exit:
+    popad
+    ret
+EndProc Hsw_Pipesrc
+
+; ESI = DIOCParams. Copies the input, runs Hsw_Pipesrc, copies the result.
+BeginProc Hsw_Pipesrc_Dioc
+    pushad
+    mov     ebx, esi
+    mov     esi, [ebx.lpvInBuffer]
+    test    esi, esi
+    jz      short Hsw_Pipesrc_Dioc_Fail
+    cmp     [ebx.cbInBuffer], HSW_PS_IN_BYTES
+    jb      short Hsw_Pipesrc_Dioc_Fail
+    mov     edi, [ebx.lpvOutBuffer]
+    test    edi, edi
+    jz      short Hsw_Pipesrc_Dioc_Fail
+    cmp     [ebx.cbOutBuffer], HSW_PS_OUT_DWORDS * 4
+    jb      short Hsw_Pipesrc_Dioc_Fail
+
+    cld
+    mov     edi, OFFSET32 HswPsIn
+    mov     ecx, HSW_PS_IN_BYTES / 4
+    rep     movsd
+    mov     edi, OFFSET32 HswPsOut + 4
+    mov     ecx, HSW_PS_OUT_DWORDS - 1
+    xor     eax, eax
+    rep     stosd
+
+    call    Hsw_Pipesrc
+
+    mov     edi, [ebx.lpvOutBuffer]
+    mov     esi, OFFSET32 HswPsOut
+    mov     ecx, HSW_PS_OUT_DWORDS
+    rep     movsd
+    mov     eax, [ebx.lpcbBytesReturned]
+    test    eax, eax
+    jz      short Hsw_Pipesrc_Dioc_Done
+    mov     dword ptr [eax], HSW_PS_OUT_DWORDS * 4
+Hsw_Pipesrc_Dioc_Done:
+    popad
+    xor     eax, eax
+    ret
+Hsw_Pipesrc_Dioc_Fail:
+    popad
+    mov     eax, 1
+    ret
+EndProc Hsw_Pipesrc_Dioc
+
 BeginProc Hsw_Reset_Result
     pushad
     mov     edi, OFFSET32 HswResult + 4
@@ -2248,6 +2386,11 @@ Hsw_Dioc_Not_Stolen:
     call    Hsw_Rps_Dioc
     ret
 Hsw_Dioc_Not_Rps:
+    cmp     ecx, HSW_DIOC_PIPESRC
+    jne     short Hsw_Dioc_Not_Pipesrc
+    call    Hsw_Pipesrc_Dioc
+    ret
+Hsw_Dioc_Not_Pipesrc:
     cmp     ecx, HSW_DIOC_CAPTURE
     jne     Hsw_Dioc_Fail
 

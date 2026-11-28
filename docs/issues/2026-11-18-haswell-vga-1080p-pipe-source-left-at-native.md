@@ -2,7 +2,9 @@
 
 Date: 2026-11-18. Machine: the i5-4570 (HD 4600, 8086:0412), boot 276,
 intel-gma `park/hsw-rcs-clears` build (ade25330). Status: cause measured
-to the register; fix not written.
+to the register; fix shipped since 0.56.0 and its write path measured on
+the chip 2026-11-28 (below); the field's sequence not reproduced, the
+picture after the write not seen.
 
 ## What was seen
 
@@ -94,3 +96,15 @@ fix's write path is still unexercised on hardware.
 Stays open for 1.0 and is named in the README's known issues. The fix is
 on branch `hsw-panel-fit`, not run on hardware. It merges before the
 freeze or waits for 1.1; until then the README's HD 4600 entry names it.
+
+## Correction and write path, 2026-11-28
+
+The re-read above was wrong: the branch's one commit, `2e189d5a`, was
+committed to main itself on 2026-11-18 and has shipped since 0.56.0,
+1.0.0 included. With the fault injected (PIPE_SRCSZ_A set to 640x480
+under an 800x600 pipe with the fitter on, through V9XHSWMM's new
+`/pipesrc:`), the next DirectDraw session put it back to 800x600, and a
+60-second control with no session left it alone
+([record](../decisions/2026-11-28-hd4600-pipe-source-write-measured.md)).
+The picture was not looked at, and the field's own sequence has still
+not been reproduced.

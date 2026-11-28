@@ -90,7 +90,9 @@ full record, with who decided what. In short:
 - **1.1 first:** OpenGL display lists and texgen (Tux Racer and
   Minecraft need them in the field; done 2026-11-28, Tux Racer run,
   Minecraft not); GitHub PR 32 (Gen3 blitter copies
-  and a hardware cursor); branches `rv280-geomscan` and `hsw-panel-fit`.
+  and a hardware cursor); branch `rv280-geomscan`. (`hsw-panel-fit`
+  was listed here too, but its commit has been in main since 0.56.0;
+  its write path ran on the 4570 on 2026-11-28.)
 - **Parked branches:** `ati-cayman`, `wip-caicos-6779`, the Doom 3
   worktree.
 - **Windows 95, 98 first edition and Me**; Stand By on a laptop.

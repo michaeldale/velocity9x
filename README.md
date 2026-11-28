@@ -128,7 +128,9 @@ New in 0.60.0:
   and a diagonal cut and one Pro-test stripe remain from a tester's
   report ([issue](docs/issues/2026-10-20-haswell-3dmark2001se-artifacts-field.md)).
   On the VGA port into a 1080p screen, a boot with no display connected
-  can leave games drawn twice across
+  once left games drawn twice across. The driver has corrected that
+  state since 0.56.0, and the correction has run on the chip with the
+  state forced; nobody has yet watched the screen through it
   ([issue](docs/issues/2026-11-18-haswell-vga-1080p-pipe-source-left-at-native.md)).
 - **HD 3000:** new in 0.58.0 and run on one machine. Not yet looked at:
   3DMark 2001 SE's Nature frames, cube maps with mipmaps, a Glide game,
