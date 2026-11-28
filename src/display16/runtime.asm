@@ -143,6 +143,18 @@ V9xEngineSel dw 0
 ; the Intel panel-mode plan (include\velocity9x\vbios_panel.h). Allocated
 ; once by V9XROMSELECTOR and kept, as V9xEngineSel is.
 V9xRomSel dw 0
+IFDEF V9X_INTEL_GMA_FAMILY
+; One LDT descriptor over the mini-VDD's mapping of the Intel ring and the
+; status page after it, for the GDI copies on the blitter
+; (docs\plans\gen3-gdi-blitter.md). Allocated once by V9XI9XXRINGSELECTOR
+; and kept, as V9xEngineSel is.
+V9xRingSel dw 0
+; One LDT descriptor for the Intel hardware cursor (src\display16\cursor16.c):
+; over the GTT entries of the cursor image while its base is worked out, then
+; over the display registers at BAR0 + 70000h. Allocated once by
+; V9XI9XXDISPLAYSELECTOR and kept, as V9xEngineSel is.
+V9xDisplaySel dw 0
+ENDIF
 ; V9xEnsureDiagDir's once-latch and the directory it creates. The diagnostic
 ; INI writers all target C:\V9XDIAG (include\velocity9x\diagpaths.h), and
 ; WritePrivateProfileString fails silently into a missing directory, so the
@@ -334,6 +346,24 @@ PUBLIC V9XDIBEXTTEXTOUTEXTCALL
 V9XDIBEXTTEXTOUTEXTCALL PROC FAR
     jmp DIB_ExtTextOutExt
 V9XDIBEXTTEXTOUTEXTCALL ENDP
+
+IFDEF V9X_INTEL_GMA_FAMILY
+; The same route for the cursor entries, which cursor16.c implements in C:
+; SetCursor (ordinal 102) and MoveCursor (103) hand a shape the hardware
+; cannot show, and every position, to the DIB Engine with the screen PDEVICE
+; as the extra last argument, which dib_thunks.asm's forwards used to push.
+EXTRN DIB_SetCursorExt:FAR
+PUBLIC V9XDIBSETCURSORCALL
+V9XDIBSETCURSORCALL PROC FAR
+    jmp DIB_SetCursorExt
+V9XDIBSETCURSORCALL ENDP
+
+EXTRN DIB_MoveCursorExt:FAR
+PUBLIC V9XDIBMOVECURSORCALL
+V9XDIBMOVECURSORCALL PROC FAR
+    jmp DIB_MoveCursorExt
+V9XDIBMOVECURSORCALL ENDP
+ENDIF
 
 ; V9xTrioPixTransWords(WORD source_selector, WORD source_offset, WORD words)
 ;
@@ -669,6 +699,392 @@ V9xGmadrWriteDone:
     pop     bp
     retf    8
 V9XGMADRWRITE ENDP
+
+; From here to LEAFCODE ENDS: the Intel ring, register and cursor helpers
+; for the Gen3 GDI copies and hardware cursor, in LEAFCODE with the C that
+; calls them (gdi_gen3.c, cursor16.c), since _TEXT has no room for them.
+; Every entry is FAR and none makes a near call, as for SSWCODE below; the
+; class matches the -nc= those modules are compiled with, so the
+; contributions combine into one NE segment.
+LEAFCODE SEGMENT WORD PUBLIC 'LEAFCODE'
+    ASSUME CS:LEAFCODE
+
+; ---------------------------------------------------------------------------
+; The GDI copies on the Gen3 blitter (src\display16\gdi_gen3.c,
+; docs\plans\gen3-gdi-blitter.md).
+;
+; The ring and its status page are reached through the same mapping the HAL
+; writes them through - the mini-VDD's ring window, ring_linear_base - so the
+; two producers never alias one physical page under two memory types. HEAD
+; and TAIL are reached through V9xEngineSel, described over BAR0 by
+; V9XENGINESELECTOR. Every access is one 32-bit bus cycle (.386): this driver
+; compiles 8086 code, where a C DWORD store is two 16-bit writes, and a TAIL
+; that moved on its low half alone would start the GPU on a stale high half.
+
+; WORD FAR PASCAL V9xI9xxRingSelector(DWORD linear_base, DWORD limit)
+;
+; Describe the ring window and return its selector in AX, 0 on failure. The
+; descriptor is allocated once; base and limit are set on every call, so an
+; Enable after the window moved describes the new one. linear_base at
+; [bp+10], limit at [bp+6].
+PUBLIC V9XI9XXRINGSELECTOR
+V9XI9XXRINGSELECTOR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     dword ptr [bp+10], 0
+    je      short V9xI9xxRingSelectorFailed
+
+    mov     ax, V9xRingSel
+    cmp     ax, 0
+    jne     short V9xI9xxRingSelectorDescribe
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xI9xxRingSelectorFailed
+    mov     V9xRingSel, ax
+
+V9xI9xxRingSelectorDescribe:
+    mov     bx, V9xRingSel
+    mov     dx, word ptr [bp+10]
+    mov     cx, word ptr [bp+12]
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xI9xxRingSelectorFree
+
+    mov     bx, V9xRingSel
+    mov     dx, word ptr [bp+6]
+    mov     cx, word ptr [bp+8]
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xI9xxRingSelectorFree
+
+    mov     ax, V9xRingSel
+    jmp     short V9xI9xxRingSelectorDone
+
+V9xI9xxRingSelectorFree:
+    mov     bx, V9xRingSel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xRingSel, 0
+V9xI9xxRingSelectorFailed:
+    xor     ax, ax
+V9xI9xxRingSelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    8
+V9XI9XXRINGSELECTOR ENDP
+
+; DWORD FAR PASCAL V9xI9xxRingRead(DWORD offset)
+;
+; One dword of the ring window, for the GDI breadcrumb. 0 without a
+; selector; the caller keeps the offset inside the limit it described.
+PUBLIC V9XI9XXRINGREAD
+V9XI9XXRINGREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xRingSel
+    or      bx, bx
+    je      short V9xI9xxRingReadDone
+    mov     es, bx
+    mov     ebx, dword ptr [bp+6]
+    mov     eax, es:[ebx]
+V9xI9xxRingReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    4
+V9XI9XXRINGREAD ENDP
+
+; WORD FAR PASCAL V9xI9xxRingCopy(DWORD offset, const DWORD FAR *source,
+;                                 WORD dwords)
+;
+; Copy a built stream into the ring at offset. Returns 1 when the selector
+; existed. offset at [bp+12], source at [bp+8], dwords at [bp+6].
+PUBLIC V9XI9XXRINGCOPY
+V9XI9XXRINGCOPY PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    si
+    push    ds
+    push    es
+    push    edi
+
+    xor     ax, ax
+    mov     bx, V9xRingSel
+    or      bx, bx
+    je      short V9xI9xxRingCopyDone
+    mov     es, bx
+    mov     edi, dword ptr [bp+12]
+    mov     cx, word ptr [bp+6]
+    lds     si, dword ptr [bp+8]
+V9xI9xxRingCopyNext:
+    jcxz    short V9xI9xxRingCopyCopied
+    mov     eax, dword ptr [si]
+    mov     es:[edi], eax
+    add     si, 4
+    add     edi, 4
+    dec     cx
+    jmp     short V9xI9xxRingCopyNext
+V9xI9xxRingCopyCopied:
+    mov     ax, 1
+V9xI9xxRingCopyDone:
+    pop     edi
+    pop     es
+    pop     ds
+    pop     si
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    10
+V9XI9XXRINGCOPY ENDP
+
+; DWORD FAR PASCAL V9xI9xxMmioRead(WORD offset)
+;
+; One 32-bit register through V9xEngineSel. 0 without a selector.
+PUBLIC V9XI9XXMMIOREAD
+V9XI9XXMMIOREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xI9xxMmioReadDone
+    mov     es, bx
+    mov     bx, word ptr [bp+6]
+    mov     eax, es:[bx]
+V9xI9xxMmioReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    2
+V9XI9XXMMIOREAD ENDP
+
+; WORD FAR PASCAL V9xI9xxRingKick(WORD tail_register, DWORD tail)
+;
+; Move TAIL, after draining the write-combining buffers: the ring words just
+; copied can still sit in them, and an uncached store is not promised to
+; flush them first (the HAL's v9x_wc_drain, d3d_i9xx.c, for the same
+; reason). A locked operation drains them (Intel SDM vol. 3, 11.3.1); this
+; one ORs zero into the word this routine itself pushed. tail_register at
+; [bp+10], tail at [bp+6]. Returns 1 when the selector existed.
+PUBLIC V9XI9XXRINGKICK
+V9XI9XXRINGKICK PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     ax, ax
+    mov     bx, V9xEngineSel
+    or      bx, bx
+    je      short V9xI9xxRingKickDone
+    mov     es, bx
+    lock or word ptr [bp-2], 0
+    mov     eax, dword ptr [bp+6]
+    mov     bx, word ptr [bp+10]
+    mov     es:[bx], eax
+    mov     ax, 1
+V9xI9xxRingKickDone:
+    pop     es
+    pop     bx
+    pop     bp
+    retf    6
+V9XI9XXRINGKICK ENDP
+
+; ---------------------------------------------------------------------------
+; The hardware cursor (src\display16\cursor16.c,
+; docs\plans\gen3-hardware-cursor.md). Same .386 rule as above: every
+; register access is one 32-bit bus cycle.
+
+; WORD FAR PASCAL V9xI9xxDisplaySelector(DWORD linear_base, WORD limit)
+;
+; Describe V9xDisplaySel and return it in AX, 0 on failure. Allocated once;
+; base and limit set on every call. linear_base at [bp+8], limit at [bp+6].
+PUBLIC V9XI9XXDISPLAYSELECTOR
+V9XI9XXDISPLAYSELECTOR PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    dx
+
+    cmp     dword ptr [bp+8], 0
+    je      short V9xI9xxDisplaySelectorFailed
+
+    mov     ax, V9xDisplaySel
+    cmp     ax, 0
+    jne     short V9xI9xxDisplaySelectorDescribe
+    xor     ax, ax
+    mov     cx, 1
+    int     31h
+    jc      short V9xI9xxDisplaySelectorFailed
+    mov     V9xDisplaySel, ax
+
+V9xI9xxDisplaySelectorDescribe:
+    mov     bx, V9xDisplaySel
+    mov     dx, word ptr [bp+8]
+    mov     cx, word ptr [bp+10]
+    mov     ax, 0007h
+    int     31h
+    jc      short V9xI9xxDisplaySelectorFree
+
+    mov     bx, V9xDisplaySel
+    xor     cx, cx
+    mov     dx, word ptr [bp+6]
+    mov     ax, 0008h
+    int     31h
+    jc      short V9xI9xxDisplaySelectorFree
+
+    mov     ax, V9xDisplaySel
+    jmp     short V9xI9xxDisplaySelectorDone
+
+V9xI9xxDisplaySelectorFree:
+    mov     bx, V9xDisplaySel
+    mov     ax, 0001h
+    int     31h
+    mov     V9xDisplaySel, 0
+V9xI9xxDisplaySelectorFailed:
+    xor     ax, ax
+V9xI9xxDisplaySelectorDone:
+    pop     dx
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    6
+V9XI9XXDISPLAYSELECTOR ENDP
+
+; DWORD FAR PASCAL V9xI9xxDisplayRead(WORD offset)
+;
+; One dword through V9xDisplaySel. 0 without a selector.
+PUBLIC V9XI9XXDISPLAYREAD
+V9XI9XXDISPLAYREAD PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     eax, eax
+    mov     bx, V9xDisplaySel
+    or      bx, bx
+    je      short V9xI9xxDisplayReadDone
+    mov     es, bx
+    mov     bx, word ptr [bp+6]
+    mov     eax, es:[bx]
+V9xI9xxDisplayReadDone:
+    mov     dx, ax
+    shr     eax, 16
+    xchg    ax, dx
+
+    pop     es
+    pop     bx
+    pop     bp
+    retf    2
+V9XI9XXDISPLAYREAD ENDP
+
+; WORD FAR PASCAL V9xI9xxDisplayWrite(WORD offset, DWORD value)
+;
+; One register through V9xDisplaySel, after draining the write-combining
+; buffers, as V9XI9XXRINGKICK does: the cursor image written through the
+; aperture just before must be in memory when the BASE write arms the
+; display engine to fetch it. offset at [bp+10], value at [bp+6]. Returns 1
+; when the selector existed.
+PUBLIC V9XI9XXDISPLAYWRITE
+V9XI9XXDISPLAYWRITE PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    es
+
+    xor     ax, ax
+    mov     bx, V9xDisplaySel
+    or      bx, bx
+    je      short V9xI9xxDisplayWriteDone
+    mov     es, bx
+    lock or word ptr [bp-2], 0
+    mov     eax, dword ptr [bp+6]
+    mov     bx, word ptr [bp+10]
+    mov     es:[bx], eax
+    mov     ax, 1
+V9xI9xxDisplayWriteDone:
+    pop     es
+    pop     bx
+    pop     bp
+    retf    6
+V9XI9XXDISPLAYWRITE ENDP
+
+; WORD FAR PASCAL V9xGmadrCopy(DWORD offset, const DWORD FAR *source,
+;                              WORD dwords)
+;
+; Copy dwords into the aperture at offset through V9xScreenSelector: a row
+; of the cursor image. The same policy split as V9xGmadrWrite: the C caller
+; keeps the offset inside the reserve. offset at [bp+12], source at [bp+8],
+; dwords at [bp+6]. Returns 1 when the selector existed.
+PUBLIC V9XGMADRCOPY
+V9XGMADRCOPY PROC FAR
+    push    bp
+    mov     bp, sp
+    push    bx
+    push    cx
+    push    si
+    push    ds
+    push    es
+    push    edi
+
+    xor     ax, ax
+    mov     bx, V9xScreenSelector
+    or      bx, bx
+    je      short V9xGmadrCopyDone
+    mov     es, bx
+    mov     edi, dword ptr [bp+12]
+    mov     cx, word ptr [bp+6]
+    lds     si, dword ptr [bp+8]
+V9xGmadrCopyNext:
+    jcxz    short V9xGmadrCopyCopied
+    mov     eax, dword ptr [si]
+    mov     es:[edi], eax
+    add     si, 4
+    add     edi, 4
+    dec     cx
+    jmp     short V9xGmadrCopyNext
+V9xGmadrCopyCopied:
+    mov     ax, 1
+V9xGmadrCopyDone:
+    pop     edi
+    pop     es
+    pop     ds
+    pop     si
+    pop     cx
+    pop     bx
+    pop     bp
+    retf    10
+V9XGMADRCOPY ENDP
+
+LEAFCODE ENDS
+
+.code
 
 ; V9xGmadrFill was removed on 2026-09-15. The GPU fills its own render
 ; target with an XY_COLOR_BLT now, and the CPU does not write that memory

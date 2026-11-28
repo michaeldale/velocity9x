@@ -127,8 +127,42 @@ V9X_FORWARD SelectBitmap,              DIB_SelectBitmap
 V9X_FORWARD BitmapBits,                DIB_BitmapBits
 V9X_FORWARD Inquire,                   DIB_Inquire
 IFNDEF V9X_SCREEN_SHADOW
+IFDEF V9X_INTEL_GMA_FAMILY
+; The Gen3 hardware cursor (src\display16\cursor16.c): SetCursor (ordinal
+; 102) and MoveCursor (103) are implemented in C. A shape the overlay can
+; show goes to the hardware, and anything else, with every position, to
+; DIB_SetCursorExt and DIB_MoveCursorExt through runtime.asm's typed
+; wrappers. GDI may call them while the display is disabled, when
+; _v9x_driver_pdevice is null: the guard the forwards below have is kept
+; here too, where audit-family-binary.ps1 checks it, and cursor16.c keeps
+; its own. Both own four bytes of caller arguments, as the forwards say.
+PUBLIC SetCursor
+EXTRN V9XCURSORSET:FAR
+SetCursor PROC FAR
+    mov ax,DGROUP
+    mov es,ax
+    cmp dword ptr es:_v9x_driver_pdevice,0
+    je short V9xGen3SetCursorDone
+    jmp V9XCURSORSET
+V9xGen3SetCursorDone:
+    retf 4
+SetCursor ENDP
+
+PUBLIC MoveCursor
+EXTRN V9XCURSORMOVE:FAR
+MoveCursor PROC FAR
+    mov ax,DGROUP
+    mov es,ax
+    cmp dword ptr es:_v9x_driver_pdevice,0
+    je short V9xGen3MoveCursorDone
+    jmp V9XCURSORMOVE
+V9xGen3MoveCursorDone:
+    retf 4
+MoveCursor ENDP
+ELSE
 V9X_FORWARD_PDEVICE_GUARDED SetCursor,  DIB_SetCursorExt
 V9X_FORWARD_PDEVICE_GUARDED MoveCursor, DIB_MoveCursorExt
+ENDIF
 
 ; DIBENG may poll CheckCursor while the display is disabled. Match the sample
 ; minidriver's guarded behavior instead of injecting a null PDevice.

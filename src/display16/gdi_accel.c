@@ -64,6 +64,16 @@ extern unsigned long v9x_tdfx_desktop_offset(void);
 #endif
 /* The NV3 arm uses nv3_2d.c, the builder eng_nv3.c uses, linked into the
  * nvidia family's DRV only. */
+/* The Gen3 arm: copies on the blitter, in gdi_gen3.c (LEAFCODE), and the
+ * hardware cursor, which is configured from the same engine descriptor
+ * (cursor16.c). intel-gma family only. */
+#ifdef V9X_INTEL_GMA_FAMILY
+#include "cursor16.h"
+#include "gdi_gen3.h"
+
+/* enable16.c: the video memory the BIOS reported. */
+extern DWORD v9x_vbe_vram_bytes;
+#endif
 #ifdef V9X_NVIDIA_FAMILY
 #include "velocity9x/nv3_2d.h"
 /* The NV50 arm (the GT218) uses nv50_2d.c's pushes, the ones eng_nv50.c
@@ -1653,7 +1663,14 @@ void v9x_gdi_accel_configure(void)
     DWORD control_base = 0ul;
     DWORD aperture_bytes = 0ul;
     DWORD enabled = 0ul;
+    DWORD caps;
     WORD master;
+#ifdef V9X_INTEL_GMA_FAMILY
+    DWORD gtt_base = 0ul;
+    DWORD ring_base = 0ul;
+    DWORD ring_size = 0ul;
+    DWORD reserve = 0ul;
+#endif
 
     v9x_gdi.dwSize = sizeof(V9X_GDI_STATS);
     v9x_gdi.abi = V9X_DD_SHARED_ABI;
@@ -1672,11 +1689,14 @@ void v9x_gdi_accel_configure(void)
 #endif
 
     if (device != 0 && device->fill_engine_descriptor != 0) {
+#ifndef V9X_INTEL_GMA_FAMILY
         /* The 2D path has no use for a second aperture; it is discarded
-         * here rather than made optional, so every implementer writes it. */
+         * here rather than made optional, so every implementer writes it.
+         * The Gen3 arm uses the GTT and the ring (declared above). */
         DWORD gtt_base = 0ul;
         DWORD ring_base = 0ul;
         DWORD ring_size = 0ul;
+#endif
 
         device->fill_engine_descriptor(V9xLinearBase(), &control_base,
                                        &aperture_bytes, &v9x_gdi_engine_type,
@@ -1684,6 +1704,23 @@ void v9x_gdi_accel_configure(void)
                                        &ring_base, &ring_size);
     }
     v9x_gdi.engine_type = v9x_gdi_engine_type;
+#ifdef V9X_INTEL_GMA_FAMILY
+    /*
+     * The reserve the ring was opened at, by the same call dd16.c makes; a
+     * hook that refused hands back the size unchanged. Read here because
+     * gdi_gen3.c and cursor16.c sit in LEAFCODE and cannot call the hook,
+     * a near pointer into _TEXT. Then the hardware cursor, from the same
+     * descriptor at the same point: a new mode may move the pipes and
+     * clear its image. It does not depend on GdiAccel.
+     */
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3 &&
+        v9x_hw16.reserve_video_memory != 0 && v9x_vbe_vram_bytes != 0ul) {
+        reserve = v9x_hw16.reserve_video_memory(v9x_vbe_vram_bytes, 0ul);
+    }
+    v9x_cursor_configure(v9x_gdi_engine_type, control_base, aperture_bytes,
+                         gtt_base, reserve, v9x_vbe_vram_bytes,
+                         device != 0 ? device->device_id : 0u);
+#endif
 
     master = (WORD)GetPrivateProfileInt(V9X_INI_SECTION, "GdiAccel",
                                         V9X_GDI_DEFAULT_MASTER,
@@ -1732,10 +1769,24 @@ void v9x_gdi_accel_configure(void)
      * still a copy: overlap without copy would enable nothing. Text is a fill
      * variant on the one chip that has it, so it follows the fill capability
      * and is then narrowed to that chip below. */
-    if ((v9x_gdi_engine_caps & V9X_DD_ENGINE_CAP_SOLID_FILL) == 0ul) {
+    caps = v9x_gdi_engine_caps;
+#ifdef V9X_INTEL_GMA_FAMILY
+    /*
+     * Gen3's descriptor claims no 2D bit: the HAL routes DirectDraw's blits
+     * by engine type (gma950_hw16.c). GDI takes the screen copy, which makes
+     * the CPU read uncached memory, and leaves fills on the CPU, which writes
+     * write-combined memory nearly as fast as the blitter and pays no
+     * submission and wait; text measured 3 to 5 times slower on the blitter
+     * (docs\decisions\2026-11-24-gen3-gdi-copies-and-text-on-the-netbook.md).
+     */
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        caps = V9X_DD_ENGINE_CAP_SCREEN_COPY;
+    }
+#endif
+    if ((caps & V9X_DD_ENGINE_CAP_SOLID_FILL) == 0ul) {
         enabled &= ~(V9X_GDI_PRIM_FILL | V9X_GDI_PRIM_TEXT);
     }
-    if ((v9x_gdi_engine_caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) == 0ul) {
+    if ((caps & V9X_DD_ENGINE_CAP_SCREEN_COPY) == 0ul) {
         enabled &= ~(V9X_GDI_PRIM_COPY | V9X_GDI_PRIM_OVERLAP |
                      V9X_GDI_PRIM_UPLOAD);
     }
@@ -1838,6 +1889,12 @@ void v9x_gdi_accel_configure(void)
             v9x_gdi_read(V9X_TDFX_2D_STATUS) != 0xfffffffful) {
             v9x_gdi_engine_live = 1u;
         }
+#endif
+#ifdef V9X_INTEL_GMA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        /* The register and ring windows; nothing is read or written. */
+        v9x_gdi_engine_live = v9x_gdi_gen3_configure(
+            control_base, ring_base, ring_size, reserve, v9x_vbe_vram_bytes);
 #endif
 #ifdef V9X_NVIDIA_FAMILY
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV3 &&
@@ -2086,6 +2143,15 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
                v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_MGA) {
         /* The MGA's fill and copy were measured at 32 bpp on silicon by the
          * write probe (docs\decisions\2026-10-09-mga2064w-drawing-engine.md). */
+        op.bytes_per_pixel = 4u;
+        all_ones = 0xfffffffful;
+#endif
+#ifdef V9X_INTEL_GMA_FAMILY
+    } else if (destination_device->deBitsPixel == 32u &&
+               v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        /* Gen3 copies at 32 bpp were checked on the GMA 950 netbook
+         * (V9XGDIB, docs\decisions\2026-11-24-gen3-gdi-copies-and-text-
+         * on-the-netbook.md). */
         op.bytes_per_pixel = 4u;
         all_ones = 0xfffffffful;
 #endif
@@ -2597,6 +2663,21 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
         }
         op.nv50_count = push.count;
 #endif
+#ifdef V9X_INTEL_GMA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        /*
+         * Copies only (configure). The band plan and the decoder are the
+         * authority, as the builders are for the MGA: a copy they refuse
+         * declines here, before the cursor is excluded.
+         */
+        if (upload != 0u || rop256 != V9X_ROP256_SRCCOPY ||
+            v9x_gdi_gen3_prepare(destination_device, destination_x,
+                                 destination_y, source_x, source_y,
+                                 op.width, op.height) == 0u) {
+            ++v9x_gdi.decline_engine;
+            goto decline;
+        }
+#endif
     } else {
         ++v9x_gdi.decline_engine;
         goto decline;
@@ -2657,6 +2738,17 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
     } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_NV50) {
         issued = v9x_gdi_nv50_draw(&op);
 #endif
+#ifdef V9X_INTEL_GMA_FAMILY
+    } else if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        /* An engine that failed is not fed again. A copy that failed after
+         * its first stream ran is reported done: its source may be half
+         * moved, so the DIB Engine cannot start it again (gdi_gen3.c). */
+        issued = v9x_gdi_gen3_run(&v9x_gdi);
+        if (issued != V9X_GDI_GEN3_DONE) {
+            v9x_gdi_poison();
+            issued = issued == V9X_GDI_GEN3_DONE_FAILED ? 1u : 0u;
+        }
+#endif
     } else {
         issued = rop256 == V9X_ROP256_SRCCOPY ? v9x_gdi_trio_copy(&op)
                                               : v9x_gdi_trio_fill(&op);
@@ -2680,7 +2772,15 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
      * evidence describes. Synchronous costs one bounded port poll per
      * operation and an operation's own duration; a GDI-sized fill is
      * microseconds.
+     *
+     * A Gen3 copy has already waited for its breadcrumb, and
+     * v9x_gdi_wait_idle has no Gen3 arm, so neither applies to it.
      */
+#ifdef V9X_INTEL_GMA_FAMILY
+    if (v9x_gdi_engine_type == V9X_DD_ENGINE_TYPE_INTEL_GEN3) {
+        /* Complete. */
+    } else
+#endif
     if (v9x_gdi_sync != 0u) {
         if (v9x_gdi_wait_idle() == 0u) {
             /* Poisoned; the pixels are already on screen, so no decline. */

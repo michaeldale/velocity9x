@@ -28,6 +28,9 @@
  * guard here. */
 #include "dd16.h"
 #include "gdi_accel.h"
+#ifdef V9X_INTEL_GMA_FAMILY
+#include "cursor16.h"
+#endif
 #include "palette16.h"
 #ifdef V9X_SCREEN_SHADOW
 #include "shadow16.h"
@@ -739,6 +742,10 @@ static void v9x_publish_hardware_diagnostics(void)
      */
     v9x_write_hardware_info("GdiAcceleration", v9x_gdi_accel_state_text());
     v9x_write_hardware_info("EngineCaps", v9x_gdi_accel_engine_caps_text());
+#ifdef V9X_INTEL_GMA_FAMILY
+    /* The Gen3 hardware cursor, configured with GDI acceleration. */
+    v9x_write_hardware_info("HwCursor", v9x_cursor_state_text());
+#endif
     /*
      * The same split, for the same reason. Direct3D= is the chip module's
      * manifest word for what the silicon has ("hardware-s3d" on the ViRGE,
@@ -1823,6 +1830,22 @@ static WORD v9x_build_pdevice(LPVOID device_info,
         (v9x_enable_count == 1u ? V9X_HW16_EVENT_BOOT_ENABLE :
                                   V9X_HW16_EVENT_ENABLE),
         v9x_active_mode);
+#ifdef V9X_INTEL_GMA_FAMILY
+    /*
+     * GDI acceleration and the hardware cursor again, now that the publish
+     * above has had the mini-VDD map the engine. On Gen3 the descriptor
+     * refuses until then (dd16.c re-resolves Direct3D for the same reason),
+     * so the call before it found no engine, and copies and the cursor
+     * stayed off on every boot that did not change mode afterwards - on the
+     * GMA 950 netbook, 2026-11-24: GdiAcceleration=none, HwCursor=no-engine
+     * (docs\issues\2026-11-24-gen3-gdi-and-cursor-off-until-a-mode-change.md).
+     * The keys are written again so V9XHW.INI says what this boot runs.
+     */
+    v9x_gdi_accel_configure();
+    v9x_write_hardware_info("GdiAcceleration", v9x_gdi_accel_state_text());
+    v9x_write_hardware_info("EngineCaps", v9x_gdi_accel_engine_caps_text());
+    v9x_write_hardware_info("HwCursor", v9x_cursor_state_text());
+#endif
     /* A live ReEnable owns a DIBENGINE BeginAccessRect exclusion until the
      * rebuilt PDEVICE has been finalized below. Calling DIBENGINE's SetInfo
      * from inside that exclusion re-enters DIBENG and can fault. The
@@ -1869,6 +1892,10 @@ WORD __loadds FAR PASCAL Disable(LPVOID destination_device)
     v9x_enabled = 0u;
     ++v9x_disable_count;
     v9x_active_mode = 0;
+#ifdef V9X_INTEL_GMA_FAMILY
+    /* The overlay is not the DIB Engine's to take down. */
+    V9xCursorHide();
+#endif
     v9x_driver_pdevice = 0;
     v9x_color_table = 0;
     V9xUnhookScreenSwitch();
@@ -2012,6 +2039,9 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         v9x_shadow16_flush_all();
 #endif
         device->deFlags &= (WORD)~V9X_DE_BUSY;
+#ifdef V9X_INTEL_GMA_FAMILY
+        V9xCursorRestore();
+#endif
         if (v9x_palettized != 0u) {
             v9x_program_palette(0u, V9X_PALETTE_ENTRIES);
         } else if (v9x_gamma_loaded != 0u && v9x_gamma_available()) {
@@ -2063,6 +2093,9 @@ WORD __loadds FAR PASCAL ReEnable(LPVOID destination_device,
         return 0u;
     }
     device->deFlags &= (WORD)~V9X_DE_BUSY;
+#ifdef V9X_INTEL_GMA_FAMILY
+    V9xCursorRestore();
+#endif
     /* PDEVICE reconstruction is complete; it is now safe to call the
      * runtime's SetInfo reset callback. */
     (void)V9xDdCreateDriverObject(1u);
@@ -2173,6 +2206,10 @@ void __loadds FAR PASCAL ResetHiResMode(void)
     if (v9x_driver_pdevice != 0) {
         v9x_driver_pdevice->deFlags &= (WORD)~V9X_DE_BUSY;
     }
+#ifdef V9X_INTEL_GMA_FAMILY
+    /* The mode set may have cleared the cursor image. */
+    V9xCursorRestore();
+#endif
     V9xVddSaveState();
     v9x_dosbox_trace("reset-exit");
 }

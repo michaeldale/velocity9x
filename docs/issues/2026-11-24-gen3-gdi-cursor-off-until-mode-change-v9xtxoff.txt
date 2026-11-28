@@ -1,0 +1,38 @@
+Velocity9x V9XTXOFF: GDI text on the blitter off
+build ee6fb144, run 2009-01-02 14:48:36
+file: C:\WINDOWS\SYSTEM.INI
+backup: C:\V9XDIAG\SYSTEM.V9X (kept from an earlier run)
+
+before [Velocity9x]:
+    GdiAccelText=0
+
+change: GdiAccelText=0 -> GdiAccelText=0 (read back: 0)
+
+after [Velocity9x]:
+    GdiAccelText=0
+
+result: OK, restart Windows for it to take effect
+
+The driver's report from this boot (before the restart):
+---- C:\V9XDIAG\V9XHW.INI ----
+[Velocity9xHardware]
+SchemaVersion=1
+Adapter=Intel GMA 950 (945GSE)
+VendorId=8086
+DeviceId=27AE
+ClockDetector=intel-gen3-mmio-fingerprint-v1
+ClockStatus=unavailable
+ModeSwitching=vbe-lfb
+Acceleration=directdraw-fill-blt
+Direct3D=hardware-gen3
+EngineStatusEnable=map-refused
+VbeVramBytes=8060928
+GdiAcceleration=none
+EngineCaps=00000000
+HwCursor=no-engine
+Direct3DMode=none
+Direct3DDefault=0
+D3DSoftSysMem=not-applicable
+ColourLayout=565-auto
+
+---- end ----

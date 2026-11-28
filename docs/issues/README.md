@@ -123,6 +123,7 @@ An issue record is a dated defect report or investigation. Its body is appended 
 
 ## Closed/explained
 
+- [2026-11-24 Gen3 (GMA 950 netbook): GDI copies and the hardware cursor stayed off on every boot until a mode change, because Enable configured them before the mini-VDD mapped the engine; fixed before either was offered upstream (configure again after the publish), confirmed on the netbook](2026-11-24-gen3-gdi-and-cursor-off-until-a-mode-change.md)
 - [2026-09-20 Final Reality renders green speckle on the ViRGE (parked); 1.0 re-read 2026-11-26: re-run on the ViRGE/DX in the A8U4I5 round; closed 2026-11-27: the physical ViRGE/DX runs Final Reality to its results with no speckle in OBS captures and nothing refused or declined; the speckle was the 86Box guest's](2026-09-20-final-reality-renders-green-speckle-on-the-virge.md)
 - [2026-08-30 XFree86 says the ViRGE cannot do 32 bpp at 1024 wide, and this driver ships that mode; closed 2026-11-27: the physical ViRGE/DX sets 1024x768x32 through VBE and its output, captured by OBS, is correct; the mode stays](2026-08-30-virge-1024x768x32-xfree86-limit.md)
 

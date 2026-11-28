@@ -13,6 +13,7 @@
  * contract.
  */
 #include "velocity9x/intel_gma.h"
+#include "velocity9x/leaf16.h"
 
 static v9x_u32 v9x_i9xx_blt_depth(v9x_u32 bytes_per_pixel)
 {
@@ -84,21 +85,24 @@ static v9x_u16 v9x_i9xx_blt_extent(v9x_u32 bytes_per_pixel,
         bottom >= V9X_I9XX_BLT_FIELD_LIMIT) {
         return V9X_FALSE;
     }
-    right_bytes = right * bytes_per_pixel;
+    /* V9X_LEAF_MUL16: the 16-bit driver links this file into LEAFCODE for
+     * its GDI copies (gdi_gen3.c), where a 32-bit multiply cannot be
+     * compiled. Every operand here is under 2^15 by the test above. */
+    right_bytes = V9X_LEAF_MUL16(right, bytes_per_pixel);
     if (right_bytes > pitch) {
         return V9X_FALSE;
     }
 
     /* Both products are below 2^30: pitch and rows are each under 2^15, and
      * right_bytes is at most the pitch. */
-    first_row = top * pitch;
-    last_row = (bottom - 1ul) * pitch;
+    first_row = V9X_LEAF_MUL16(top, pitch);
+    last_row = V9X_LEAF_MUL16(bottom - 1ul, pitch);
     if (base >= vram_bytes ||
         last_row + right_bytes > vram_bytes - base) {
         *inside = V9X_FALSE;
         return V9X_FALSE;
     }
-    *first_out = base + first_row + left * bytes_per_pixel;
+    *first_out = base + first_row + V9X_LEAF_MUL16(left, bytes_per_pixel);
     *end_out = base + last_row + right_bytes;
     return V9X_TRUE;
 }

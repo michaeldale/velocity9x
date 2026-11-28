@@ -79,6 +79,8 @@ shipped state is from the changelog; the plan file was not rewritten.
 - [A manual-select INF model, then the first driver run on the 486](vlb-manual-select-inf.md) - Shipped in 0.4.4.
 - [Survey tool v2: a 486 with an S3 Trio VLB](vlb-survey-tool.md) - Historical.
 - [Hardware Direct3D on the Intel GMA 950](hardware-d3d-on-intel-gma950.md) - Done: the parent plan of the Gen3 engine, which has shipped since 0.8.0 and runs Direct3D, OpenGL, Glide and 3DCIF on the netbook. Its phases continue in the plans below; the plan carries no status line.
+- [GDI screen-to-screen copies on the Gen3 blitter](gen3-gdi-blitter.md) - Built 2026-11-24 and measured on the GMA 950 netbook: copies 13 to 47 times faster, overlaps in bands, long scrolls as several streams; text measured slower on the blitter and left out.
+- [The Gen3 hardware cursor](gen3-hardware-cursor.md) - Built 2026-11-24; on and right by eye on the GMA 950 netbook. FIFO watermarks with the cursor on, and the DOS-box round trip, not measured.
 - [Finding the erratum 12 workaround in Intel's XP miniport](intel-xp-miniport-disassembly.md) - Historical; desk work written 2026-09-13 to decide the Phase 4 write gate. Phase 4 ran on 2026-09-14; whether the gate opened on this work or on a risk decision was not re-read.
 - [Intel Phase 4: the first write, designed to make one boot answer everything](intel-phase4-first-write-design.md) - Done 2026-09-14: the GPU consumed a ring in stolen memory and executed an `XY_COLOR_BLT` on the netbook.
 - [Intel GMA Phase 5: split the code segment, then the first triangle](intel-gma950-phase5.md) - Historical; the triangle was drawn 2026-09-15.

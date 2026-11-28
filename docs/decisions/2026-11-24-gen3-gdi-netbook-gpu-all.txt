@@ -1,0 +1,30 @@
+Velocity9x GDI copy and text test, build 3aaaa593
+screen 800x600, 32 bpp, timer 1193180 Hz
+stats before: enabled=26 poisoned=0 calls=58708 copies=3905 declines=54803 (disabled 1863, rop 37831, screen 1851, busy 0, geometry 0, threshold 13233, bands 25, engine 0) timeouts ring=0 crumb=0
+stats before: text calls=16728 accepted=8300 bitmaps=6433 rectangles=9665 fallbacks=0 declines=8428 reasons=1f last=c000d
+check apart 200x150          ok
+check scroll up 16           ok
+check scroll down 16         ok
+check left 8                 ok
+check right 8                ok
+check drag +5,+4 400x300     ok
+check drag -3,-2 400x300     ok
+check small 12x12            ok
+check text system              ok
+check text Arial 16            ok
+check text Courier New 20 bold ok
+time  apart 256x256          1616 copies in 400047 us: 247.6 us each, 264.73 Mpixel/s
+time  apart 512x200          1168 copies in 402923 us: 345.0 us each, 296.84 Mpixel/s
+time  scroll up 16 512x384   432 copies in 401034 us: 928.3 us each, 211.79 Mpixel/s
+time  drag +5,+4 400x300     288 copies in 416685 us: 1446.8 us each, 82.94 Mpixel/s
+time  right 8 504x384        176 copies in 431485 us: 2451.6 us each, 78.94 Mpixel/s
+time  small 12x12            13232 copies in 400138 us: 30.2 us each, 4.76 Mpixel/s
+time  text system              opaque      800 strings in 404344 us: 505.4 us each
+time  text system              transparent 960 strings in 403996 us: 420.8 us each
+time  text Arial 16            opaque      704 strings in 405677 us: 576.2 us each
+time  text Arial 16            transparent 816 strings in 406453 us: 498.1 us each
+time  text Courier New 20 bold opaque      400 strings in 409167 us: 1022.9 us each
+time  text Courier New 20 bold transparent 416 strings in 404054 us: 971.3 us each
+stats after: enabled=26 poisoned=0 calls=75725 copies=7591 declines=68134 (disabled 1863, rop 37897, screen 1882, busy 0, geometry 0, threshold 26466, bands 26, engine 0) timeouts ring=0 crumb=0
+stats after: text calls=20886 accepted=12414 bitmaps=10547 rectangles=16906 fallbacks=0 declines=8472 reasons=1f last=680017
+result: PASS, 0 check(s) failed

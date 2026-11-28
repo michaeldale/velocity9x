@@ -262,6 +262,10 @@ $required = @(
     "src\display16\dd16.h",
     "src\display16\gdi_accel.c",
     "src\display16\gdi_accel.h",
+    "src\display16\gdi_gen3.c",
+    "src\display16\gdi_gen3.h",
+    "src\display16\cursor16.c",
+    "src\display16\cursor16.h",
     "src\common\d3dmode.c",
     "include\velocity9x\d3dmode.h",
     "tests\host\test_d3dmode.c",
@@ -300,6 +304,12 @@ $required = @(
     "tests\host\test_i9xx_ring.c",
     "src\chipsets\intel\i9xx_blt.c",
     "tests\host\test_i9xx_blt.c",
+    "src\chipsets\intel\i9xx_gdi.c",
+    "include\velocity9x\i9xx_gdi.h",
+    "tests\host\test_i9xx_gdi.c",
+    "src\chipsets\intel\i9xx_cursor.c",
+    "include\velocity9x\i9xx_cursor.h",
+    "tests\host\test_i9xx_cursor.c",
     "src\chipsets\intel\i9xx_arm.c",
     "tests\host\test_i9xx_arm.c",
     "tests\host\test_mach64_engine.c",
@@ -360,6 +370,10 @@ $allowedOsBoundaries = @(
     # is a genuine OS boundary and is listed as one rather than reaching
     # <windows.h> through a header that already is.
     (Join-Path $repoRoot "src\display16\gdi_accel.c"),
+    # cursor16.c reads its SYSTEM.INI key (HwCursor) with
+    # GetPrivateProfileInt, as gdi_accel.c does; the cursor's policy stays
+    # OS-free in src\chipsets\intel\i9xx_cursor.c.
+    (Join-Path $repoRoot "src\display16\cursor16.c"),
     # palette16.c writes Palette= into V9XBOOT.INI with
     # WritePrivateProfileString.
     (Join-Path $repoRoot "src\display16\palette16.c"),
@@ -1187,6 +1201,7 @@ if ($queryClamp -le 0 -or $queryClamp -gt $asmValues['V9X_VBE_MODE_QUERY_MAX']) 
 # either.
 $settingsReaders = @{
     "src\display16\gdi_accel.c"     = @('V9X_SYSTEM_INI', 'V9X_INI_SECTION')
+    "src\display16\cursor16.c"      = @('V9X_CURSOR_INI_FILE', 'V9X_CURSOR_INI_SECTION')
     "src\display16\dd16.c"          = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
     "src\display16\modes16.c"       = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
     "tools\diag\settings_status.c"  = @('V9X_SETTINGS_INI', 'V9X_SETTINGS_SECTION')
@@ -1326,6 +1341,8 @@ $boundarySymbols = @([regex]::Matches($boundaryHeaderText,
 # v9x_i9xx_sandbox_calculate is declared in intel_gma.h, which the other i9xx_
 # entry points share; it carries the qualifier there for the same reason.
 $boundarySymbols += 'v9x_i9xx_sandbox_calculate'
+# And v9x_i9xx_ring_plan, which the GDI copies in LEAFCODE call (gdi_gen3.c).
+$boundarySymbols += 'v9x_i9xx_ring_plan'
 # hsw_config.c is the family's third code segment, HSWCODE. Its eleven calls
 # are declared far in intel_hsw.h, beside the structures they take, and are
 # held to the same two rules. The eleventh, v9x_intel_hsw_pool_layout, is

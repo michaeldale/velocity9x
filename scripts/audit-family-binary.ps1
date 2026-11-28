@@ -377,9 +377,11 @@ if ($thunkDisassembly -notmatch
     '(?s)CheckCursor:.*?cmp\s+dword ptr es:_v9x_driver_pdevice,0.*?(?:jmp|call)\s+far ptr DIB_CheckCursorExt.*?retf') {
     throw "The DIB CheckCursor thunk is missing its disabled-state guard."
 }
+# intel-gma's thunks jump to the Gen3 hardware cursor's C entries
+# (cursor16.c) instead of the DIB Engine, behind the same guard.
 foreach ($cursorThunk in @(
-    @("SetCursor", "DIB_SetCursorExt"),
-    @("MoveCursor", "DIB_MoveCursorExt")
+    @("SetCursor", "(?:DIB_SetCursorExt|V9XCURSORSET)"),
+    @("MoveCursor", "(?:DIB_MoveCursorExt|V9XCURSORMOVE)")
 )) {
     if ($thunkDisassembly -notmatch
         ("(?s)$($cursorThunk[0]):.*?cmp\s+dword ptr " +

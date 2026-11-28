@@ -1,0 +1,30 @@
+Velocity9x GDI copy and text test, build 3aaaa593
+screen 800x600, 32 bpp, timer 1193180 Hz
+stats before: enabled=0 poisoned=0 calls=6699 copies=0 declines=6699 (disabled 6699, rop 0, screen 0, busy 0, geometry 0, threshold 0, bands 0, engine 0) timeouts ring=0 crumb=0
+stats before: text calls=3858 accepted=0 bitmaps=0 rectangles=0 fallbacks=0 declines=3858 reasons=2 last=0
+check apart 200x150          ok
+check scroll up 16           ok
+check scroll down 16         ok
+check left 8                 ok
+check right 8                ok
+check drag +5,+4 400x300     ok
+check drag -3,-2 400x300     ok
+check small 12x12            ok
+check text system              ok
+check text Arial 16            ok
+check text Courier New 20 bold ok
+time  apart 256x256          48 copies in 519828 us: 10829.8 us each, 6.05 Mpixel/s
+time  apart 512x200          32 copies in 525326 us: 16416.4 us each, 6.24 Mpixel/s
+time  scroll up 16 512x384   16 copies in 500634 us: 31289.6 us each, 6.28 Mpixel/s
+time  drag +5,+4 400x300     32 copies in 622200 us: 19443.8 us each, 6.17 Mpixel/s
+time  right 8 504x384        16 copies in 714965 us: 44685.3 us each, 4.33 Mpixel/s
+time  small 12x12            13072 copies in 400121 us: 30.6 us each, 4.70 Mpixel/s
+time  text system              opaque      2768 strings in 401864 us: 145.2 us each
+time  text system              transparent 4128 strings in 400282 us: 97.0 us each
+time  text Arial 16            opaque      2304 strings in 401426 us: 174.2 us each
+time  text Arial 16            transparent 3600 strings in 401110 us: 111.4 us each
+time  text Courier New 20 bold opaque      1232 strings in 404045 us: 328.0 us each
+time  text Courier New 20 bold transparent 1952 strings in 401743 us: 205.8 us each
+stats after: enabled=0 poisoned=0 calls=20032 copies=0 declines=20032 (disabled 20032, rop 0, screen 0, busy 0, geometry 0, threshold 0, bands 0, engine 0) timeouts ring=0 crumb=0
+stats after: text calls=21155 accepted=0 bitmaps=0 rectangles=0 fallbacks=0 declines=21155 reasons=2 last=0
+result: PASS, 0 check(s) failed

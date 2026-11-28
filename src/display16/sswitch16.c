@@ -13,7 +13,8 @@
  *
  * Compiled into its own code segment, SSWCODE, with the hook's assembly, to
  * keep _TEXT under budget. Every call out of this unit is to a FAR PASCAL
- * entry in ddi.c, so nothing here makes a near call across the boundary.
+ * entry in ddi.c or, in the intel-gma family, cursor16.c, so nothing here
+ * makes a near call across the boundary.
  */
 /* The display ABI header is this unit's one OS boundary; it brings in
  * <windows.h>. */
@@ -24,6 +25,10 @@
 extern V9X_DIB_ENGINE FAR *v9x_driver_pdevice;
 extern void __loadds FAR PASCAL ResetHiResMode(void);
 extern void FAR PASCAL V9xRequestRepaint(void);
+#ifdef V9X_INTEL_GMA_FAMILY
+extern void FAR PASCAL V9xCursorHide(void);
+extern void FAR PASCAL V9xCursorRestore(void);
+#endif
 void __loadds FAR PASCAL V9xScreenSwitch(WORD function);
 
 void __loadds FAR PASCAL V9xScreenSwitch(WORD function)
@@ -33,10 +38,18 @@ void __loadds FAR PASCAL V9xScreenSwitch(WORD function)
     }
     if (function == V9X_SCREEN_SWITCH_OUT) {
         v9x_driver_pdevice->deFlags |= V9X_DE_BUSY;
+#ifdef V9X_INTEL_GMA_FAMILY
+        /* The hardware cursor would overlay the DOS screen. */
+        V9xCursorHide();
+#endif
         return;
     }
     if ((v9x_driver_pdevice->deFlags & V9X_DE_BUSY) != 0u) {
         ResetHiResMode();
     }
+#ifdef V9X_INTEL_GMA_FAMILY
+    /* Again if the VDD's ResetHiResMode already ran: harmless twice. */
+    V9xCursorRestore();
+#endif
     V9xRequestRepaint();
 }
