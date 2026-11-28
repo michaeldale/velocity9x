@@ -35,12 +35,36 @@ first map's start](docs/images/quake2-gma950-opengl-2026-09-26.png)
 *Quake 2 through Velocity9x's OpenGL driver on an Intel GMA 950 (HP Mini
 110 netbook, Atom N280), 28 fps at the first map's start.*
 
-## Current version: 1.0.0
+## Current version: 1.1.0
 
-[Download](releases/1.0.0/README.md) ·
+[Download](releases/1.1.0/README.md) ·
 [Changelog](CHANGELOG.md) ·
 [What is verified and what is open](docs/STATUS.md). Installed copies from
 0.15.0 on update through **Check for updates** on the Velocity9x tab.
+
+New in 1.1.0:
+- **NVIDIA GeForce 9500 GT (G96), `nvidia` package:** DirectDraw, GDI,
+  page flips, Direct3D with pixel shader 1.1, and OpenGL, on one owner's
+  card through remote help (GitHub issue 30). The driver raises its core
+  and shader clocks from the BIOS's 400/800 MHz to the card's rated
+  550/1400, and write-combines its memory where the BIOS leaves no MTRR
+  free: a profiled 3DMark 2001 SE run went from 1106 to 2077 and the
+  Quake 3 demo from about 45 to 62.9 fps
+  ([clocks](docs/decisions/2026-11-28-g96-clocks-measured.md),
+  [write-combining](docs/decisions/2026-11-28-g96-pushbuffer-write-combined.md)).
+- **Intel GMA 950 class: window drags and scrolls on the blitter, and a
+  hardware cursor** (GitHub PR 32), measured on the GMA 950
+  ([record](docs/decisions/2026-11-28-pr32-gen3-gdi-cursor-on-main.md)).
+- **OpenGL display lists and texture coordinate generation**, in every
+  package's OpenGL driver: Tux Racer draws its terrain and speed dial
+  ([record](docs/decisions/2026-11-28-opengl-display-lists-and-texgen.md)).
+- **32-bit textures an engine cannot sample are refused** instead of
+  drawn black
+  ([record](docs/decisions/2026-11-28-unpublished-32bit-textures-refused.md)).
+- **Ironlake: 128 MiB for DirectDraw and Direct3D** instead of 16, not
+  yet run on one.
+- **Recognised from owners' surveys, not run:** the G41's GMA X4500, the
+  Radeon HD 7570, and the FirePro W4100, W7000 and W9000.
 
 New in 1.0.0:
 - **Windows 98 SE only.** 1.0 supports Windows 98 SE; other Windows 9x
@@ -61,28 +85,6 @@ New in 1.0.0:
   passes whole on it ([plan](docs/plans/nvidia-gt218-ps11.md)).
 - **INSTALL.TXT rewritten for users**, and each package's README names
   the cards it was checked on.
-
-New in 0.60.0:
-- **ATI Radeon X1300 (RV515, `1002:7146`), `ati` package**, on the
-  X1200's engine with the R500's own shader state: DirectDraw and page
-  flips on the chip, and hardware Direct3D at 16 and 32 bpp. Every
-  Direct3D probe check passes; 3DMark 2000 completes, and its owner
-  reports Forsaken, GTA2, Half-Life, Quake 3 and Incoming running. One
-  card through remote help
-  ([Direct3D](docs/decisions/2026-11-21-rv515-d3d-hal.md),
-  [flips](docs/decisions/2026-11-21-rv515-flip-address-alignment.md),
-  [colour keys](docs/decisions/2026-11-21-rv515-incoming-colour-key-alpha-formats.md)).
-- **Glide 3: 3dfx's own 60/30/15 Hz demo runs**, menu included, with
-  state save and restore, partial texture downloads and ALPHA_8 textures
-  added to the wrapper, in every package
-  ([record](docs/decisions/2026-11-21-demo6030-glide3.md)).
-- **Display Properties:** hardware Direct3D offered where it is granted
-  at run time (Cedar, Carrizo, Mullins, Oland), and Advanced-tab controls
-  for 2D acceleration, write combining and per-program interface
-  exceptions.
-- **Oland 6611 (`1002:6611`)** claimed from a survey, and five ids from
-  the Linux tables without one
-  ([record](docs/decisions/2026-11-20-bus-siblings-claimed-unrun.md)).
 
 ### Known issues
 
@@ -197,9 +199,8 @@ New in 0.60.0:
 - **Radeon R3E:** the first OpenGL or Glide clear after a program starts
   sometimes times out and is skipped; later frames draw.
 - **RIVA 128ZX:** not finished. Most of 3DMark 2000 is refused and not
-  drawn, and one Glide 2 probe check fails. 32-bit textures draw black
-  ([issue](docs/issues/2026-11-17-riva128-t22-32bit-textures-draw-black.md)),
-  write masks other than RGB are refused
+  drawn, and one Glide 2 probe check fails. Write masks other than RGB
+  are refused
   ([issue](docs/issues/2026-11-07-riva128-render-interface-has-no-engine.md)),
   and its owner lists wrong lightmaps, seams and low frame rates in
   several games ([issue](docs/issues/2026-11-21-riva128-owner-game-notes-0.59.0.md)).
@@ -215,8 +216,7 @@ New in 0.60.0:
 - **Rage XL and Rage IIC:** on the Rage XL, Thief II shows a floor
   through a floor
   ([issue](docs/issues/2026-10-14-thief2-floor-visible-through-floor-rage-xl.md)),
-  V9XD32's additive blend draws nothing and its 32-bit textures draw
-  black, left for a later release
+  V9XD32's additive blend draws nothing, left for a later release
   ([issue](docs/issues/2026-11-26-rage-xl-v9xd32-add-blend-and-32bit-textures.md)),
   GLQuake with `-nomtex +gl_texsort 0` shows only lightmaps, as on the
   GMA 950,
@@ -261,19 +261,17 @@ New in 0.60.0:
   ([issue](docs/issues/2026-10-11-settings-page-shows-4mb-on-8mb-millennium-ii.md)).
 - **Matrox Millennium II and Mystique:** the engine has no blending, so
   particles and sprites (3DMark 2000's smoke and explosions) draw as
-  white boxes, and V9XD32's 32-bit textures draw black. On the 4 MB
+  white boxes. On the 4 MB
   Mystique, 3DMark 2000 at 640x480 leaves large areas of the Adventure
   test black, left for a later release
   ([issue](docs/issues/2026-11-27-mystique-3dmark2000-adventure-areas-missing.md)).
-- **3dfx Voodoo4:** V9XD32's 32-bit textures draw black, as they did in
-  0.17.0, left for a later release
-  ([issue](docs/issues/2026-11-27-voodoo4-v9xd32-32bit-textures-draw-black.md)).
-- **SiS 6326:** V9XD32's X8R8G8B8 texture draws black (A8R8G8B8 is
-  correct), left for a later release
-  ([issue](docs/issues/2026-11-27-sis6326-v9xd32-x8r8g8b8-texture-draws-black.md)).
-- **Rage 128 Pro:** V9XD32's X8R8G8B8 texture draws black, as on the
-  SiS 6326, left for a later release
-  ([issue](docs/issues/2026-11-27-rage128pro-v9xd32-x8r8g8b8-texture-draws-black.md)).
+- **32-bit textures on engines that cannot sample them:** before 1.1.0 the
+  Voodoo4, SiS 6326, Rage 128 Pro (X8R8G8B8 only), Rage XL, Matrox cards,
+  RIVA 128ZX and ViRGE accepted a 32-bit texture they do not list and drew
+  it black. From 1.1.0 creating one fails, as for any format the driver
+  does not list; measured on the RIVA 128ZX and the ViRGE, not yet run on
+  the others
+  ([record](docs/decisions/2026-11-28-unpublished-32bit-textures-refused.md)).
 - **Radeon R7E (Carrizo):** not run on 1.0.0. In the release checks the
   one test machine took the 1.0.0 files and restarted, then did not come
   back online; nobody saw its screen, so a hang at startup is not ruled
@@ -296,6 +294,10 @@ New in 0.60.0:
 
 ### Recent releases
 
+- **0.60.0:** the ATI Radeon X1300 (RV515) with Direct3D and page flips;
+  3dfx's Glide 3 demo running; Display Properties controls for 2D
+  acceleration, write combining and per-program exceptions; the Oland
+  6611 claimed from a survey.
 - **0.59.0:** the Intel HD Graphics 2500 (Ivy Bridge GT1); write
   combining through the page attribute table on the GMA 900 to Ironlake;
   24-bit depth on GCN Radeons.
@@ -434,7 +436,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 | Card | Package | 1.0 tier | 3D engine | Tested on hardware |
 |---|---|---|---|---|
 | Intel GMA 900 (915GM, `8086:2592`) | `intel-gma` | Supported (last run 2026-11-26) | Gen3 | Direct3D (including DirectX 8) at 16 and 32 bpp, on a tester's Acer laptop through remote help; a reporter runs Direct3D on a Lenovo. On the 0.61.0 tree (2026-11-26, a second tester's Lenovo 3000 C100 through remote help): every release probe passes, pixel shader 1.1 included, and with 32 MiB of texture memory in system RAM 3DMark 2000 completes ([record](docs/decisions/2026-11-26-gma900-m8z30st-release-probes.md)) |
-| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Supported (last run 2026-11-26) | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. From 0.49.0, 32 MiB of texture memory in system RAM (this chip; the GMA 900 too from the 0.61.0 tree), and two Direct3D texture stages (the GMA 900, 3100 and 3150 too, not run): Dragothic's sky and dragon draw. From 0.51.0, specular highlights and environment and DOT3 bump mapping: both 3DMark 2001 SE bump tests run. One HP Mini 110 netbook; a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
+| Intel GMA 950 (945GSE, `8086:27AE`) | `intel-gma` | Supported (last run 2026-11-26) | Gen3 | Direct3D, OpenGL, Glide 2 and 3, 3DCIF; DirectDraw on the blitter. From 0.40.0, 3DMark 2001 SE with no batch refused and no flicker with vsync on or off. From 0.47.0, pixel shader 1.1 through the DirectX 8 interface, 32-bit and 2048-pixel textures: 3DMark 2001 SE completes with its pixel shader tests (528), Advanced Pixel Shader reporting itself unsupported; the GMA 900, 3100 and 3150 get the same path, not run. From 0.49.0, 32 MiB of texture memory in system RAM (this chip; the GMA 900 too from the 0.61.0 tree), and two Direct3D texture stages (the GMA 900, 3100 and 3150 too, not run): Dragothic's sky and dragon draw. From 0.51.0, specular highlights and environment and DOT3 bump mapping: both 3DMark 2001 SE bump tests run. From 1.1.0 (GitHub PR 32), GDI's screen-to-screen copies (window drags, scrolling) on the blitter and a hardware cursor for the monochrome pointer; `GdiAccel=0` and `HwCursor=0` in SYSTEM.INI turn them off; the GMA 900, 3100 and 3150 take the same code, not run ([record](docs/decisions/2026-11-28-pr32-gen3-gdi-cursor-on-main.md)). One HP Mini 110 netbook (last run 2026-11-28 on the 1.1.0 tree); a reporter runs 3D on a Nexcom NISE 3270 with an external VGA monitor |
 | Intel GMA 3100 (G33/G31, `8086:29C2`) | `intel-gma` | Recognised | Gen3 | Recognised, untested: the GMA 950's path unchanged, built from one survey of a G31 board. Nothing has run on one |
 | Intel GMA 3150 (Pineview, `8086:A011`) | `intel-gma` | Supported; last run 2026-10-20 | Gen3 | Direct3D at 16 and 32 bpp, the OpenGL and Glide 2 probes; DirectDraw on the blitter. 3DMark 2000 at 1024x600x16. One tester's Lenovo netbook (Atom N455) through remote help |
 | Intel GMA X3100 (GM965, `8086:2A02`) | `intel-gma` | Supported (last run 2026-11-26) | Gen4 | Direct3D at 16 and 32 bpp with 16 and 24-bit Z, OpenGL with two texture units, the Glide 2 probe; DirectDraw on the blitter. 3DMark 2000 and Quake 2. One tester's HP laptop (Core 2 Duo T7250) through remote help. The alpha test with depth writes once hung this chip; from 0.48.0 it is drawn in two passes, as colour keys with depth writes have been since 0.44.0, and runs without a hang. From 0.48.0 the panel's own 1280x800, set unscaled by writing its timing into the BIOS's mode table ([record](docs/decisions/2026-11-12-gm965-panel-native-1280x800.md)). From 0.51.0, 32 MiB of texture memory in system RAM on machines with at least 512 MiB |
@@ -500,7 +502,7 @@ a card by its PCI id, search the page for it (for example `8086:2592`).
 |---|---|---|---|---|
 | NVIDIA RIVA 128ZX (NV3, `12D2:0018`), from 0.35.0 | `nvidia` | Experimental (last run 2026-11-27) | NV3, 16 bpp (5:5:5) only | Direct3D with 16-bit Z, one texture stage, mipmaps, colour keys, specular and fog; DirectDraw and GDI on the 2D engine at 8 and 32 bpp, page flips. Half-Life, Unreal Tournament, Thief. **Not finished:** 3DMark 2000 runs to the end, but almost all of its draws are refused and not drawn (unplaced textures, refused render targets; from 0.39.0 a texture with no room is refused at creation instead, which completed 3DMark 99 with every draw drawn, and 3DMark 2000 has not been rerun). One tester's STB card on Windows 98 first edition through remote help; modes from the VBE. OpenGL, Glide and 3DCIF draw on the 3D engine from 0.39.0: the OpenGL probe passes, the Glide 2 probe has one failure; no OpenGL or Glide game, and no 3DCIF program, run |
 | NVIDIA GeForce 210 (GT218, `10DE:0A65`), from 0.52.0 | `nvidia` | Supported (last run 2026-11-26) | Tesla (NV50 class) | Direct3D at 16 and 32 bpp with 16-bit Z, drawn into tiled copies of the render targets and copied back; DirectDraw and GDI fills and copies on the 2D engine (GDI's pixels compared at 16 bpp only), GDI copies on the engine from logon from 0.53.0; page flips from 0.53.1 (before, frames were presented by DirectDraw's fallback). 3DMark 2000. From 0.53.0, pixel shader 1.1 through the DirectX 8 interface and two texture stages in one pass (3DMark 2001 SE completes with parts of its frames not drawn), and OpenGL games (Quake 3). One tester's card through remote help; modes from the VBE. The Glide 2 probe's texture checks fail; 3DCIF not run |
-| NVIDIA GeForce 9500 GT (G96, `10DE:0640`), from 1.1.0 | `nvidia` | Experimental (last run 2026-11-28) | Tesla (NV50 class) | The GeForce 210's channel and 2D engine on a G9x chip: DirectDraw and GDI fills and copies, measured on the owner's card through remote help ([GitHub issue 30](https://github.com/michaeldale/velocity9x/issues/30)). Page flips through the same VGA start-address path as the GeForce 210, read from this card's video BIOS; paced at the retrace, the picture not yet seen. Direct3D on its own 3D class with the Z buffer kept at 24 bits (the chip has no 16-bit Z): V9XD32 passes at 16 and 32 bpp, pixel shader 1.1 included, but for its 16-bit precision check; DXT colours follow NVIDIA's own decode, up to 4 levels from the GeForce 210's. 3DMark 2001 SE runs every test to its score (frames not inspected). OpenGL on the GeForce 210's path: V9XGLP passes, and the Quake 3 demo draws correctly on the card (44.1 fps windowed); no Direct3D game run; modes from the VBE ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md), [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md), [Direct3D](docs/decisions/2026-11-28-g96-direct3d.md), [DXT](docs/decisions/2026-11-28-g96-dxt-decode.md), [3DMark 2001 SE](docs/decisions/2026-11-28-g96-3dmark2001se.md), [OpenGL](docs/decisions/2026-11-28-g96-opengl.md)) |
+| NVIDIA GeForce 9500 GT (G96, `10DE:0640`), from 1.1.0 | `nvidia` | Experimental (last run 2026-11-28) | Tesla (NV50 class) | The GeForce 210's channel and 2D engine on a G9x chip: DirectDraw and GDI fills and copies, measured on the owner's card through remote help ([GitHub issue 30](https://github.com/michaeldale/velocity9x/issues/30)). Page flips through the same VGA start-address path as the GeForce 210, read from this card's video BIOS; paced at the retrace, the picture not yet seen. Direct3D on its own 3D class with the Z buffer kept at 24 bits (the chip has no 16-bit Z): V9XD32 passes at 16 and 32 bpp, pixel shader 1.1 included, but for its 16-bit precision check; DXT colours follow NVIDIA's own decode, up to 4 levels from the GeForce 210's. 3DMark 2001 SE runs every test to its score (frames not inspected). OpenGL on the GeForce 210's path: V9XGLP passes, and the Quake 3 demo draws correctly on the card; no Direct3D game run; modes from the VBE. The driver raises core and shader from the BIOS's 400/800 MHz to the card's 550/1400 at start-up, and write-combines the card's memory through the page attribute table: the Quake 3 demo then ran at 62.9 fps windowed, 44.1 before ([clocks](docs/decisions/2026-11-28-g96-clocks-measured.md), [write-combining](docs/decisions/2026-11-28-g96-pushbuffer-write-combined.md)) ([record](docs/decisions/2026-11-28-g96-2d-engine-first-run.md), [flips](docs/decisions/2026-11-28-g96-flips-from-the-vbios.md), [Direct3D](docs/decisions/2026-11-28-g96-direct3d.md), [DXT](docs/decisions/2026-11-28-g96-dxt-decode.md), [3DMark 2001 SE](docs/decisions/2026-11-28-g96-3dmark2001se.md), [OpenGL](docs/decisions/2026-11-28-g96-opengl.md)) |
 | SiS 6326 | `sis` | Supported (run 2026-11-27) | SiS 3D | Direct3D, OpenGL; DirectDraw on the engine; on the 0.61.0 tree (2026-11-27) every release probe passes but one V9XD32 texture check, and 3DMark 2000 runs at 640x480 ([record](docs/decisions/2026-11-27-1.0-sis6326-a8u4i5.md)) |
 | 3dfx Voodoo4 4500 (VSA-100) | `3dfx` | Supported (run 2026-11-27) | VSA-100 | Direct3D, OpenGL, and 3dfx's own Glide; GDI on the engine; on the 0.61.0 tree (2026-11-27) every release probe passes but V9XD32's 32-bit texture test, and 3DMark 2000 runs ([record](docs/decisions/2026-11-27-1.0-voodoo4-a8u4i5.md)) |
 
@@ -531,8 +533,10 @@ Each package's `INSTALL.TXT` lists them. GDI is drawn by the CPU except
 where the table says otherwise. On the `vbe` package (0.46.0) and the
 `ati` package's Radeon HD 5000-7000, R3E and R7E (0.47.0), HD 2600 XT (0.49.0) and Radeon 9250 (0.53.0) it draws into a
 copy of the desktop in system memory, so reading the screen does not
-cross the bus; `C:\V9XDIAG\NOSHADOW.TXT` turns that off. No card has a
-hardware cursor.
+cross the bus; `C:\V9XDIAG\NOSHADOW.TXT` turns that off. From 1.1.0 the
+GMA 950 class copies GDI's screen-to-screen blits on the blitter and shows
+the monochrome pointer with a hardware cursor (GitHub PR 32); no other card
+has a hardware cursor.
 
 ### What each card runs
 
@@ -630,6 +634,7 @@ like-for-like comparison: the machines differ, and so do the versions.
 | AMD Radeon HD 7660D (A10-5700) | not run | not run; Quake 3 `demo001` 33.4 fps at 1280x1024x32 | 0.35.0 build |
 | AMD Radeon HD 2600 XT (i5-3570K) | not run | not run; Quake 3 `demo001` 65.9 fps at 640x480x16 | 0.49.0 build |
 | ATI Radeon 9250 | not run | 54.7 fps (demo, windowed, 16 bpp) | 0.53.0 build |
+| NVIDIA GeForce 9500 GT (i3-3250) | not run | not run; Quake 3 `demo001` 62.9 fps (windowed, 32 bpp) | 1.1.0 build |
 | AMD Radeon Oland XT (FX-6300) | not run | 246 fps (`demo1` `timerefresh`, windowed, 16 bpp); Quake 3 `demo001` 72.9 fps (windowed) | 0.54.0 build |
 | Intel GMA 950 (Atom N280) | 42.4 fps | 19.6 fps (demo2) | 0.9.2 |
 | ATI Rage 128 Pro (P3) | 34.4 fps (ATI's driver 59.2) | not run; Half-Life OpenGL 14.1 fps (ATI's 70.1) | 0.28.0 |

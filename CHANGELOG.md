@@ -4,7 +4,7 @@ All notable Velocity9x changes are recorded here. The project uses semantic
 version numbers for product milestones; diagnostic builds retain a separate
 build identifier so exact guest-tested binaries remain traceable.
 
-## 1.1.0 - not yet released
+## 1.1.0 - 2026-11-28
 
 - **`nvidia` package, GeForce 9500 GT: core and shader at the card's
   rated clocks.** The video BIOS leaves the G96 at core 400 and shader
