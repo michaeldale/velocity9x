@@ -24,3 +24,14 @@ The Voodoo4 draws both 32-bit forms black
 What texel format the HAL programs for X8R8G8B8 on the SiS 6326, and
 whether the unused top byte is taken as alpha 0 and blended or tested
 away. Record: [decision](../decisions/2026-11-27-1.0-sis6326-a8u4i5.md).
+
+## Update 2026-11-28: cause found, fix not yet run on this card
+
+The 32-bit layout that draws black here is one this engine does not
+publish, and CanCreateSurface accepted it, so the texture was created
+and sampled as nothing. Since the 2026-11-28 tree, CanCreateSurface
+refuses an unpublished 32-bit RGB video-memory texture with
+`DDERR_INVALIDPIXELFORMAT`, and T22 should be skipped for that layout
+here. Measured on the 86Box ViRGE only, where T22 went from failing to
+skipped: [decision](../decisions/2026-11-28-unpublished-32bit-textures-refused.md).
+Close this issue on a V9XD32 run on this card.

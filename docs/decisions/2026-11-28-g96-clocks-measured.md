@@ -154,10 +154,29 @@ Whether the CF9h reset re-runs POST was not measured separately; the
 boot-20 reading does not depend on it, since the card went into the
 reset at 400/800.
 
+## The clock record (boot 21)
+
+The 16-bit driver writes `V9XHW.INI` at enable, before the HAL's
+bring-up raises the clocks, so the HAL reports them: on chipset 96h it
+writes `C:\V9XDIAG\V9XN5CLK.INI` (`[Nv50Clock]`: `Result` raised, kept
+or sequencer-timeout; core and shader kHz before and after, decoded by
+`v9x_nv50_clk_pll_khz` on the PCIe reference; the raw words), and
+V9XTRACE copies it into its report as `[EngineClock]`. Installed by
+WININIT rename after boot 20 (hash-checked), reset into boot 21:
+
+    Result=raised
+    CoreKHzBefore=400000  ShaderKHzBefore=800000
+    CoreKHz=550000        ShaderKHz=1400000
+    NvpllCtrlBefore=A0010000 ... Source=2E801B33
+
+(`V9XN5CLK-boot21.INI`, `V9XSNA4-boot21.INI`.) The words before are
+POST's exactly, after a boot that had ended at 550/1400, so the CF9h
+reset does re-run the VBIOS's POST.
+
 ## Not done
 
-- `V9XHW.INI` still says `ClockStatus=unavailable`; the 16-bit side does
-  not report the clocks.
+- `V9XHW.INI` keeps `ClockStatus=unavailable`; the clocks are in the
+  HAL's record instead, for the reason above.
 - The GeForce 210 (GT218) clocks were not read (`clk/gt215.c`'s unit).
 - Pictures at the new clocks were not inspected beyond V9XD32's pixel
   checks.

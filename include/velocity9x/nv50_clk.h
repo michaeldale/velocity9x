@@ -63,6 +63,11 @@ v9x_status v9x_nv50_clk_build(const struct v9x_nv50_clk_input *input,
                               struct v9x_nv50_init_op *ops, v9x_u32 max,
                               v9x_u32 *count);
 
+/* A one-stage PLL's output in kHz from its control and coefficient words,
+ * on the 100 MHz PCIe reference (the only one the list is built for):
+ * 100000 x N / M >> P; 0 when the PLL is off or M is 0. */
+v9x_u32 v9x_nv50_clk_pll_khz(v9x_u32 ctrl, v9x_u32 coef);
+
 /* Non-zero when the four PLL words decode to level 3's 550/1400. */
 v9x_u32 v9x_nv50_clk_at_level3(v9x_u32 nvpll_ctrl, v9x_u32 nvpll_coef,
                                v9x_u32 spll_ctrl, v9x_u32 spll_coef);

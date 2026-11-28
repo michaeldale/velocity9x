@@ -1,8 +1,10 @@
 # GeForce 9500 GT (G96): run core and shader at the VBIOS's top level
 
 Status: steps 1-4 done 2026-11-28 (the driver raises core and shader at
-bring-up; boot 20 on M-Z2T02D); the clock keys in `V9XHW.INI` and step 5
-remain. Measurement in
+bring-up; boot 20 on M-Z2T02D); the clocks are reported by the HAL in
+`V9XN5CLK.INI` and V9XTRACE's `[EngineClock]` (boot 21), not in
+`V9XHW.INI`, which is written before the raise. Step 5 remains.
+Measurement in
 [2026-11-28-g96-clocks-measured.md](../decisions/2026-11-28-g96-clocks-measured.md).
 
 ## Why

@@ -48,6 +48,8 @@ function Get-V9xHostSourceNames {
         'src\common\update_inf.c',
         'src\common\d3dmode.c',
         'src\common\vsync.c',
+        # Unpublished 32-bit texture layouts, for CanCreateSurface.
+        'src\common\texfmt.c',
         'src\common\vbe_crtc.c',
         'src\common\donewait.c',
         'src\common\drawnote.c',
@@ -389,6 +391,7 @@ function Get-V9xHostSourceNames {
         'tests\host\test_update_inf.c',
         'tests\host\test_d3dmode.c',
         'tests\host\test_vsync.c',
+        'tests\host\test_texfmt.c',
         'tests\host\test_vbe_crtc.c',
         'tests\host\test_d3d_raster.c',
         'tests\host\test_r3d_clip.c',

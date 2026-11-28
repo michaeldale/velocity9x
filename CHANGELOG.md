@@ -15,7 +15,16 @@ build identifier so exact guest-tested binaries remain traceable.
   Only a 9500 GT found exactly as measured is changed; any other card or
   clock state is left alone. Measured on M-Z2T02D (GitHub issue 30)
   ([plan](docs/plans/nvidia-g96-reclock.md),
-  [record](docs/decisions/2026-11-28-g96-clocks-measured.md)).
+  [record](docs/decisions/2026-11-28-g96-clocks-measured.md)). The
+  clocks before and after are written to `C:\V9XDIAG\V9XN5CLK.INI`, and
+  a V9XTRACE report carries them as `[EngineClock]`.
+- **All packages: a 32-bit texture the 3D engine cannot sample is
+  refused instead of drawn black.** The Rage 128 Pro, SiS 6326,
+  Voodoo4, Rage XL, RIVA 128 and ViRGE accepted A8R8G8B8 or X8R8G8B8
+  textures they never listed and drew them black (or white). Creating
+  one now fails with `DDERR_INVALIDPIXELFORMAT`, as for any format the
+  driver does not list. Measured on the ViRGE; not yet run on the
+  others ([record](docs/decisions/2026-11-28-unpublished-32bit-textures-refused.md)).
 
 - **`intel-gma` package, Gen3: GDI screen-to-screen copies on the
   blitter** (GitHub PR 32, by arturaslt). A window dragged or scrolled is

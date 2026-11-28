@@ -29,3 +29,14 @@ What texel format the HAL programs for X8R8G8B8 on the Rage 128 (it
 has an xRGB8888 texel format distinct from ARGB8888), and whether the
 SiS 6326 and the Rage 128 take the same path to it. Record:
 [decision](../decisions/2026-11-27-1.0-rage128pro-a8u4i5.md).
+
+## Update 2026-11-28: cause found, fix not yet run on this card
+
+The 32-bit layout that draws black here is one this engine does not
+publish, and CanCreateSurface accepted it, so the texture was created
+and sampled as nothing. Since the 2026-11-28 tree, CanCreateSurface
+refuses an unpublished 32-bit RGB video-memory texture with
+`DDERR_INVALIDPIXELFORMAT`, and T22 should be skipped for that layout
+here. Measured on the 86Box ViRGE only, where T22 went from failing to
+skipped: [decision](../decisions/2026-11-28-unpublished-32bit-textures-refused.md).
+Close this issue on a V9XD32 run on this card.

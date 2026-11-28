@@ -1059,10 +1059,15 @@ static void v9x_dd_release(void *object)
 #define V9X_SECTION_HARDWARE  "Hardware"
 #define V9X_SECTION_SETTINGS  "Settings"
 #define V9X_SECTION_FILES     "DiagFiles"
+/* The HAL's clock record, from the engines that change clocks (the G96's,
+ * eng_nv50.c); Present=0 elsewhere. */
+#define V9X_SECTION_CLOCK     "EngineClock"
+#define V9X_DIAG_CLOCK_INI    V9X_DIAG_PATH("V9XN5CLK.INI")
 
 static const char *const v9x_identity_sections[] = {
     V9X_SECTION_SYSTEM, V9X_SECTION_INSTALLED, V9X_SECTION_CARD,
-    V9X_SECTION_HARDWARE, V9X_SECTION_SETTINGS, V9X_SECTION_FILES
+    V9X_SECTION_HARDWARE, V9X_SECTION_SETTINGS, V9X_SECTION_FILES,
+    V9X_SECTION_CLOCK
 };
 
 static void v9x_write_in(const char *section, const char *key,
@@ -1605,6 +1610,7 @@ static void v9x_write_machine_identity(void)
     v9x_copy_section(V9X_SECTION_HARDWARE, "Velocity9xHardware",
                      V9X_DIAG_HW_INI);
     v9x_copy_section(V9X_SECTION_SETTINGS, "Velocity9x", "SYSTEM.INI");
+    v9x_copy_section(V9X_SECTION_CLOCK, "Nv50Clock", V9X_DIAG_CLOCK_INI);
     /* The other files a report should carry, so the reader knows which
      * exist without asking. */
     v9x_write_file_list(V9X_SECTION_FILES, V9X_DIAG_DIR, "*.*", 0);

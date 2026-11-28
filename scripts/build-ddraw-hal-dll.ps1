@@ -86,6 +86,9 @@ $sources = @(
     # The [Velocity9x] VSync rule the flip path asks per flip: pure, and
     # host-tested in tests\host\test_vsync.c.
     "src\common\vsync.c",
+    # Which 32-bit texture layouts CanCreateSurface refuses: pure, and
+    # host-tested in tests\host\test_texfmt.c.
+    "src\common\texfmt.c",
     # The screen shadow's rectangle arithmetic: the HAL marks what an engine
     # copy left stale (tests\host\test_shadow.c).
     "src\common\shadow.c",

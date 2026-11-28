@@ -85,6 +85,10 @@ unsigned int v9x_run_d3dmode_tests(void);
  * decision the HAL asks of it, same convention. */
 unsigned int v9x_run_vsync_tests(void);
 
+/* tests\host\test_texfmt.c: which 32-bit texture layouts CanCreateSurface
+ * refuses, against the published lists T22 measured. */
+unsigned int v9x_run_texfmt_tests(void);
+
 /* tests\host\test_shadow.c: the vbe screen shadow's rectangle arithmetic,
  * same convention. */
 unsigned int v9x_run_shadow_tests(void);
@@ -1567,6 +1571,7 @@ int main(int argc, char **argv)
     failures += v9x_run_gl_dispatch_tests();
     failures += v9x_run_d3dmode_tests();
     failures += v9x_run_vsync_tests();
+    failures += v9x_run_texfmt_tests();
     failures += v9x_run_shadow_tests();
     failures += v9x_run_vbe_crtc_tests();
 #ifdef __WATCOMC__

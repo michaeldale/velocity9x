@@ -182,6 +182,24 @@ static v9x_u32 v9x_nv50_clk_pll_is(v9x_u32 ctrl, v9x_u32 coef,
                ((pll->n << V9X_NV50_CLK_PLL_N_SHIFT) | pll->m);
 }
 
+/* nv50.c read_pll for a one-stage PLL: ref x N1 / M1, then the post-divider
+ * P from the control word (nv50_clk_read). */
+#define V9X_NV50_CLK_HREF_KHZ      100000ul
+#define V9X_NV50_CLK_PLL_M_MASK    0xfful
+#define V9X_NV50_CLK_PLL_N_MASK    0xfful
+
+v9x_u32 v9x_nv50_clk_pll_khz(v9x_u32 ctrl, v9x_u32 coef)
+{
+    v9x_u32 n = (coef >> V9X_NV50_CLK_PLL_N_SHIFT) & V9X_NV50_CLK_PLL_N_MASK;
+    v9x_u32 m = coef & V9X_NV50_CLK_PLL_M_MASK;
+    v9x_u32 p = (ctrl >> V9X_NV50_CLK_PLL_P_SHIFT) & V9X_NV50_CLK_PLL_P_MASK;
+
+    if ((ctrl & V9X_NV50_CLK_PLL_ENABLE) == 0ul || m == 0ul) {
+        return 0ul;
+    }
+    return (V9X_NV50_CLK_HREF_KHZ * n / m) >> p;
+}
+
 v9x_u32 v9x_nv50_clk_at_level3(v9x_u32 nvpll_ctrl, v9x_u32 nvpll_coef,
                                v9x_u32 spll_ctrl, v9x_u32 spll_coef)
 {

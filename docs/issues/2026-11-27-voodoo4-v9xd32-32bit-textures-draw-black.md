@@ -40,3 +40,14 @@ what texel format it programs for them (the VSA-100 has ARGB8888);
 whether a 32-bit texture uploads with the 16-bit desktop's pitch or
 format; whether one cause in the shared texture path covers every
 engine that fails T22. Record: [decision](../decisions/2026-11-27-1.0-voodoo4-a8u4i5.md).
+
+## Update 2026-11-28: cause found, fix not yet run on this card
+
+The 32-bit layout that draws black here is one this engine does not
+publish, and CanCreateSurface accepted it, so the texture was created
+and sampled as nothing. Since the 2026-11-28 tree, CanCreateSurface
+refuses an unpublished 32-bit RGB video-memory texture with
+`DDERR_INVALIDPIXELFORMAT`, and T22 should be skipped for that layout
+here. Measured on the 86Box ViRGE only, where T22 went from failing to
+skipped: [decision](../decisions/2026-11-28-unpublished-32bit-textures-refused.md).
+Close this issue on a V9XD32 run on this card.

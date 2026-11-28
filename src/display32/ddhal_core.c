@@ -17,6 +17,7 @@
 #include "velocity9x/drawnote.h"
 #include "velocity9x/trace_fold.h"
 #include "velocity9x/vsync.h"
+#include "velocity9x/texfmt.h"
 
 #ifndef V9X_BUILD_ID
 #define V9X_BUILD_ID "local"
@@ -1411,18 +1412,67 @@ static DWORD v9x_flip_body(V9X_DDHAL_FLIPDATA *data)
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 
+/* DDERR_INVALIDPIXELFORMAT, MAKE_DDHRESULT(145) (ddraw.h). */
+#define V9X_DDERR_INVALIDPIXELFORMAT 0x88760091ul
+
+static void v9x_texfmt_of(const V9X_DDPIXELFORMAT *format,
+                          struct v9x_texfmt *out)
+{
+    out->flags = format->dwFlags;
+    out->bits = format->dwRGBBitCount;
+    out->red = format->dwRBitMask;
+    out->green = format->dwGBitMask;
+    out->blue = format->dwBBitMask;
+    out->alpha = format->dwRGBAlphaBitMask;
+}
+
+/*
+ * A video-memory texture in a 32-bit RGB layout the 3D engine did not
+ * publish (texfmt.h). Such a texture was created, given a handle and
+ * drawn black on five engines (V9XD32 T22); refused here, the creation
+ * fails as it would for any format the driver did not list.
+ */
+static int v9x_texture_layout_unpublished(const V9X_DDSURFACEDESC *desc)
+{
+    struct v9x_texfmt want;
+    struct v9x_texfmt published[5];
+    DWORD count;
+    DWORD index;
+
+    if (v9x_hal == 0 || desc == 0 ||
+        (desc->ddsCaps.dwCaps & V9X_DDSCAPS_TEXTURE) == 0ul ||
+        (desc->ddsCaps.dwCaps & V9X_DDSCAPS_SYSTEMMEMORY) != 0ul ||
+        (desc->dwFlags & V9X_DDSD_PIXELFORMAT) == 0ul) {
+        return 0;
+    }
+    count = v9x_hal->d3d_global.dwNumTextureFormats;
+    if (count > sizeof(published) / sizeof(published[0])) {
+        count = sizeof(published) / sizeof(published[0]);
+    }
+    for (index = 0ul; index < count; ++index) {
+        v9x_texfmt_of(&v9x_hal->texture_formats[index].ddpfPixelFormat,
+                      &published[index]);
+    }
+    v9x_texfmt_of(&desc->ddpfPixelFormat, &want);
+    return v9x_texfmt_unpublished_32(&want, published, count) != 0ul;
+}
+
 DWORD __stdcall V9xHalCanCreateSurface(
     V9X_DDHAL_CANCREATESURFACEDATA *data)
 {
     const V9X_DDSURFACEDESC *desc = data != 0
         ? (const V9X_DDSURFACEDESC *)data->lpDDSurfaceDesc : 0;
     DWORD caps = desc != 0 ? desc->ddsCaps.dwCaps : 0ul;
+    DWORD result = V9X_DD_OK;
 
     v9x_trace_enter(V9X_TRACE_CANCREATESURFACE, caps);
-    if (data != 0) {
-        data->ddRVal = V9X_DD_OK;
+    if (v9x_texture_layout_unpublished(desc)) {
+        result = V9X_DDERR_INVALIDPIXELFORMAT;
     }
-    v9x_trace_exit(V9X_TRACE_CANCREATESURFACE, V9X_DD_OK);
+    if (data != 0) {
+        data->ddRVal = result;
+    }
+    v9x_trace_exit(V9X_TRACE_CANCREATESURFACE, result);
     return V9X_DDHAL_DRIVER_HANDLED;
 }
 

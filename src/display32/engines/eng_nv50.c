@@ -267,11 +267,18 @@ static int v9x_nv50_replay(const struct v9x_nv50_init_list *list)
  * state gets an empty list. Returns 0 only when the sequencer never
  * finished, which gives the bring-up up.
  */
+static void v9x_nv50_write_clock(const struct v9x_nv50_clk_input *before,
+                                 const char *result);
+
+/* The G96's chipset, the one the clock record is written for. */
+#define V9X_NV50_CHIPSET_G96 0x96ul
+
 static int v9x_nv50_reclock(DWORD chipset)
 {
     struct v9x_nv50_clk_input input;
     struct v9x_nv50_init_list list;
     v9x_u32 count = 0ul;
+    int ran;
 
     input.chipset = chipset;
     input.hwsq_ctrl = v9x_nv50_read32(V9X_NV50_CLK_BUS_HWSQ_CTRL);
@@ -284,12 +291,17 @@ static int v9x_nv50_reclock(DWORD chipset)
     input.gpio_0_7 = v9x_nv50_read32(V9X_NV50_CLK_GPIO_0_7);
     if (v9x_nv50_clk_build(&input, v9x_nv50_ops, V9X_NV50_INIT_OPS_MAX,
                            &count) != V9X_STATUS_OK || count == 0ul) {
+        if (chipset == V9X_NV50_CHIPSET_G96) {
+            v9x_nv50_write_clock(&input, "kept");
+        }
         return 1;
     }
     list.count = count;
     list.fifo_end = count;
     list.gr_end = count;
-    return v9x_nv50_replay(&list);
+    ran = v9x_nv50_replay(&list);
+    v9x_nv50_write_clock(&input, ran ? "raised" : "sequencer-timeout");
+    return ran;
 }
 
 /*
@@ -402,6 +414,87 @@ static void v9x_nv50_fault_hex(HANDLE file, const char *key, DWORD value)
     text[9] = '\n';
     text[10] = '\0';
     v9x_nv50_fault_text(file, text);
+}
+
+/*
+ * The G96's clocks at bring-up, in C:\V9XDIAG\V9XN5CLK.INI, which V9XTRACE
+ * copies into its report: what the PLLs held before, what they hold now,
+ * both decoded on the PCIe reference (nv50_clk.h), and whether the HAL
+ * raised them (raised), left them (kept: not the state the script is
+ * built for) or saw the sequencer never finish (sequencer-timeout). The
+ * 16-bit driver writes V9XHW.INI before this runs, so the clocks are the
+ * HAL's to report (docs\plans\nvidia-g96-reclock.md).
+ */
+#define V9X_NV50_CLOCK_PATH V9X_DIAG_PATH("V9XN5CLK.INI")
+
+static void v9x_nv50_clock_khz(HANDLE file, const char *key, DWORD value)
+{
+    char digits[12];
+    char text[14];
+    DWORD count = 0ul;
+    DWORD at = 0ul;
+
+    v9x_nv50_fault_text(file, key);
+    do {
+        digits[count++] = (char)('0' + (value % 10ul));
+        value /= 10ul;
+    } while (value != 0ul && count < sizeof(digits));
+    while (count != 0ul) {
+        text[at++] = digits[--count];
+    }
+    text[at++] = '\r';
+    text[at++] = '\n';
+    text[at] = '\0';
+    v9x_nv50_fault_text(file, text);
+}
+
+static void v9x_nv50_write_clock(const struct v9x_nv50_clk_input *before,
+                                 const char *result)
+{
+    HANDLE file;
+    DWORD spll_ctrl;
+    DWORD spll_coef;
+    DWORD nvpll_ctrl;
+    DWORD nvpll_coef;
+
+    spll_ctrl = v9x_nv50_read32(V9X_NV50_CLK_SPLL_CTRL);
+    spll_coef = v9x_nv50_read32(V9X_NV50_CLK_SPLL_COEF);
+    nvpll_ctrl = v9x_nv50_read32(V9X_NV50_CLK_NVPLL_CTRL);
+    nvpll_coef = v9x_nv50_read32(V9X_NV50_CLK_NVPLL_COEF);
+
+    CreateDirectoryA(V9X_DIAG_DIR, 0);
+    file = CreateFileA(V9X_NV50_CLOCK_PATH, GENERIC_WRITE, 0, 0,
+                       CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+    if (file == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    v9x_nv50_fault_text(file, "[Nv50Clock]\r\nResult=");
+    v9x_nv50_fault_text(file, result);
+    v9x_nv50_fault_text(file, "\r\n");
+    v9x_nv50_clock_khz(file, "CoreKHzBefore=",
+                       v9x_nv50_clk_pll_khz(before->nvpll_ctrl,
+                                            before->nvpll_coef));
+    v9x_nv50_clock_khz(file, "ShaderKHzBefore=",
+                       v9x_nv50_clk_pll_khz(before->spll_ctrl,
+                                            before->spll_coef));
+    v9x_nv50_clock_khz(file, "CoreKHz=",
+                       v9x_nv50_clk_pll_khz(nvpll_ctrl, nvpll_coef));
+    v9x_nv50_clock_khz(file, "ShaderKHz=",
+                       v9x_nv50_clk_pll_khz(spll_ctrl, spll_coef));
+    v9x_nv50_fault_hex(file, "Source=", before->source);
+    v9x_nv50_fault_hex(file, "RefSelect=", before->ref_select);
+    v9x_nv50_fault_hex(file, "Gpio0to7=", before->gpio_0_7);
+    v9x_nv50_fault_hex(file, "NvpllCtrlBefore=", before->nvpll_ctrl);
+    v9x_nv50_fault_hex(file, "NvpllCoefBefore=", before->nvpll_coef);
+    v9x_nv50_fault_hex(file, "SpllCtrlBefore=", before->spll_ctrl);
+    v9x_nv50_fault_hex(file, "SpllCoefBefore=", before->spll_coef);
+    v9x_nv50_fault_hex(file, "NvpllCtrl=", nvpll_ctrl);
+    v9x_nv50_fault_hex(file, "NvpllCoef=", nvpll_coef);
+    v9x_nv50_fault_hex(file, "SpllCtrl=", spll_ctrl);
+    v9x_nv50_fault_hex(file, "SpllCoef=", spll_coef);
+    v9x_nv50_fault_hex(file, "SourceAfter=",
+                       v9x_nv50_read32(V9X_NV50_CLK_SOURCE));
+    CloseHandle(file);
 }
 
 static void v9x_nv50_write_fault(DWORD code, DWORD address)

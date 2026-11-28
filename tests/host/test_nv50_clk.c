@@ -115,6 +115,20 @@ static void test_other_states_untouched(void)
                                  0x00001001ul) == 0ul);
 }
 
+/* The words boot 18 and boot 20 read, decoded as nouveau's read_pll does on
+ * the PCIe reference. */
+static void test_pll_khz(void)
+{
+    CHECK(v9x_nv50_clk_pll_khz(0xa0010000ul, 0x00001002ul) == 400000ul);
+    CHECK(v9x_nv50_clk_pll_khz(0x80010000ul, 0x00001001ul) == 800000ul);
+    CHECK(v9x_nv50_clk_pll_khz(0xa0000000ul, 0x00000b02ul) == 550000ul);
+    CHECK(v9x_nv50_clk_pll_khz(0x80000000ul, 0x00000e01ul) == 1400000ul);
+    /* /reclock:post's control word keeps P's copy in 21:19. */
+    CHECK(v9x_nv50_clk_pll_khz(0xa0090000ul, 0x00001002ul) == 400000ul);
+    CHECK(v9x_nv50_clk_pll_khz(0x20010000ul, 0x00001002ul) == 0ul);
+    CHECK(v9x_nv50_clk_pll_khz(0xa0010000ul, 0x00001000ul) == 0ul);
+}
+
 static void test_arguments(void)
 {
     struct v9x_nv50_clk_input input;
@@ -132,6 +146,7 @@ unsigned int v9x_run_nv50_clk_tests(void)
     failures = 0u;
     test_measured_script();
     test_other_states_untouched();
+    test_pll_khz();
     test_arguments();
     return failures;
 }
