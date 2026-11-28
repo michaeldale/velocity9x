@@ -1,0 +1,97 @@
+Samples 476149 of 476149 in [0, 2147483647) ms
+
+By module:
+  69.6%    331259  V9XHAL.DLL
+  21.7%    103178  KERNEL32.DLL
+   2.5%     12056  D3D8.DLL
+   1.8%      8673  3DMARK2001SE.EXE
+   1.8%      8433  WINMM.DLL
+   0.8%      3702  16-bit cs=0397 base=8039B000
+   0.5%      2438  MSVCRT.DLL
+   0.5%      2144  RLMFC.DLL
+   0.3%      1312  E2MFC.DLL
+   0.2%      1172  GRPHMFC.DLL
+   0.2%      1120  unknown
+   0.0%       151  DDRAW.DLL
+   0.0%       122  16-bit cs=0377 base=80392000
+   0.0%       102  16-bit cs=003B base=FFFFFFFF
+   0.0%        50  MSSIP32.DLL
+   0.0%        42  MFC42.DLL
+   0.0%        39  16-bit cs=0427 base=803B15C0
+   0.0%        29  16-bit cs=0157 base=000097A0
+   0.0%        28  DINPUT8.DLL
+   0.0%        18  16-bit cs=032F base=8037E000
+   0.0%        12  16-bit cs=0447 base=803B7000
+   0.0%         9  16-bit cs=015F base=0008E200
+   0.0%         8  GDI32.DLL
+   0.0%         5  OLE32.DLL
+   0.0%         4  MSVCP60.DLL
+   0.0%         4  16-bit cs=16F7 base=803707E0
+   0.0%         4  16-bit cs=1787 base=803D5000
+   0.0%         4  ADVAPI32.DLL
+   0.0%         3  16-bit cs=03CF base=80543DA0
+   0.0%         3  DMUSIC.DLL
+
+V9XHAL.DLL by object (share of all samples):
+  24.0%    114456  nv50_2d
+  19.7%     93855  nv3_2d
+   9.1%     43247  vga_scanout
+   8.2%     38960  nv50_d3d
+   2.1%      9852  nv50_shader
+   1.7%      8163  d3d_nv50
+   1.6%      7736  d3d_dp2
+   1.0%      4867  d3d_core
+   0.9%      4357  r3d_records
+   0.4%      1759  d3d_ps
+   0.2%       971  d3d_nv50_map
+   0.1%       703  r3d_clip
+   0.1%       665  nv50_3d
+   0.1%       660  r3d_cull
+   0.0%       227  eng_nv50
+   0.0%       218  d3d_handles
+   0.0%       163  d3d_ps11
+   0.0%       129  g4_eu
+   0.0%       108  nv50_crtc
+   0.0%        43  nv50_ps11
+   0.0%        41  d3d_state
+   0.0%        26  ddhal_core
+   0.0%        12  d3d_select
+   0.0%        11  d3d_fog
+   0.0%         7  trace_fold
+   0.0%         4  hsw_scanout
+   0.0%         3  win16lock
+   0.0%         3  m64_scanout
+   0.0%         2  rv280_scanout
+   0.0%         2  rs690_scanout
+
+V9XHAL.DLL by nearest public symbol:
+  20.7%     98777  nv50_2d!v9x_nv50_push_init_
+  19.7%     93855  nv3_2d!v9x_nv3_build_copy_
+   9.1%     43100  vga_scanout!v9x_vga_in_vblank_
+   7.1%     33767  nv50_d3d!v9x_nv50_push_d3d_vertex_
+   3.3%     15676  nv50_2d!v9x_nv50_push_method_
+   2.1%      9852  nv50_shader!v9x_nv50_sh_exit_
+   1.6%      7742  d3d_nv50!v9x_d3d_nv50_resolve_
+   0.8%      3753  d3d_dp2!v9x_dp2_point_quad_
+   0.6%      2669  r3d_records!v9x_r3d_records_flush_
+   0.5%      2540  d3d_core!_V9xD3dDrawOneIndexedPrimitive@4
+   0.5%      2192  nv50_d3d!v9x_nv50_push_d3d_wide_
+   0.3%      1650  r3d_records!v9x_r3d_records_append_list_uv1_
+   0.3%      1550  d3d_dp2!v9x_dp2_fvf_convert_set_
+   0.3%      1257  d3d_ps!v9x_d3d_ps_env_
+   0.3%      1230  nv50_d3d!v9x_nv50_push_d3d_uv1_
+   0.2%       970  nv50_d3d!v9x_nv50_d3d_tic_cube_
+   0.2%       950  d3d_dp2!v9x_dp2_fvf_texcoords_
+   0.2%       938  d3d_core!_V9xD3dTextureGetSurf@4
+   0.1%       686  d3d_core!_V9xD3dDrawOnePrimitive@4
+   0.1%       658  r3d_cull!v9x_r3d_cull_triangle_
+   0.1%       581  d3d_nv50_map!v9x_d3d_nv50_depth_fill_draw_
+   0.1%       576  d3d_dp2!v9x_dp2_draw_
+   0.1%       481  d3d_ps!v9x_d3d_ps_wide_vertex_
+   0.1%       466  d3d_dp2!v9x_dp2_fvf_project_
+   0.1%       421  d3d_nv50!v9x_d3d_nv50_depth_fill_
+   0.1%       389  d3d_nv50_map!v9x_d3d_nv50_map_draw_
+   0.1%       359  r3d_clip!v9x_r3d_triangle_on_target_
+   0.1%       344  r3d_clip!v9x_r3d_draw_list_
+   0.1%       322  nv50_3d!v9x_nv50_3d_solid_tables_
+   0.1%       314  nv50_d3d!v9x_nv50_push_d3d_state_
