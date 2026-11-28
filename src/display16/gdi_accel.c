@@ -2743,7 +2743,16 @@ WORD __loadds FAR PASCAL BitBlt(V9X_DIB_ENGINE FAR *destination_device,
         /* An engine that failed is not fed again. A copy that failed after
          * its first stream ran is reported done: its source may be half
          * moved, so the DIB Engine cannot start it again (gdi_gen3.c). */
-        issued = v9x_gdi_gen3_run(&v9x_gdi);
+        /* An armed fault injection is spent here as the ring-space wait's
+         * timeout (gdi_gen3.c): before anything is queued, so the DIB
+         * Engine draws the copy and the session is poisoned, as a real
+         * timeout there leaves it. */
+        if (v9x_gdi_fault_injected() != 0u) {
+            ++v9x_gdi.fifo_timeouts;
+            issued = V9X_GDI_GEN3_FAILED;
+        } else {
+            issued = v9x_gdi_gen3_run(&v9x_gdi);
+        }
         if (issued != V9X_GDI_GEN3_DONE) {
             v9x_gdi_poison();
             issued = issued == V9X_GDI_GEN3_DONE_FAILED ? 1u : 0u;
