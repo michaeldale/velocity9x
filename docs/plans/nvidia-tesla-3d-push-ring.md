@@ -1,6 +1,10 @@
 # GeForce 210 / 9500 GT: let the CPU write the next 3D batch while the GPU draws this one
 
-Status: planned 2026-11-28. Evidence:
+Status: steps 1-2 built and measured 2026-11-28 on branch
+`nvidia-push-ring`; not shipped: profiled 3DMark 2001 SE scored lower
+with the ring and single tests moved by factors of two
+([record](../decisions/2026-11-28-nvidia-push-ring-not-shipped.md)).
+Evidence for the plan:
 [2026-11-28-g96-pushbuffer-write-combined.md](../decisions/2026-11-28-g96-pushbuffer-write-combined.md).
 
 ## Why
