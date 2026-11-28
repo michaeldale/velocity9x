@@ -28,6 +28,7 @@
 #include "velocity9x/hw16.h"
 #include "velocity9x/engine_abi.h"
 #include "velocity9x/gt218_reserve.h"
+#include "velocity9x/pat.h"
 
 /* runtime.asm, nvidia family only. The BAR0 read is generic (a 32-bit
  * memory BAR, 16 MiB aligned); the mini-VDD's map accepts chipset A8h
@@ -36,6 +37,16 @@ extern unsigned short __far __pascal V9xPciReadNv3MmioBar(
     unsigned long __far *base);
 extern unsigned short __far __pascal V9xMiniNv3MmioMap(
     unsigned long bar0, unsigned long __far *linear);
+
+/* runtime.asm, the mini-VDD's PAT verbs (V9X_PAT_ROUTE). PASCAL, so the
+ * first argument is the farthest on the stack. */
+extern unsigned short __far __pascal V9xMiniPatInfo(
+    unsigned long __far *low, unsigned long __far *high,
+    unsigned short __far *flags);
+extern unsigned short __far __pascal V9xMiniPatCover(
+    unsigned long linear, unsigned long bytes, unsigned long old_high,
+    unsigned long new_high, unsigned long __far *pages,
+    unsigned long __far *back, unsigned short __far *why);
 
 /* All of BAR0, as the mini-VDD maps it. */
 #define V9X_GT218_MMIO_BYTES 0x01000000ul
@@ -91,6 +102,66 @@ unsigned long v9x_gt218_reserve_video_memory(unsigned long usable_bytes,
 static unsigned long v9x_gt218_reserve_offset(void)
 {
     return v9x_gt218_reserve_at;
+}
+
+/* PatWrite=<head><eight hex digits>. */
+static void v9x_tesla_pat_record(void (*write)(const char *key,
+                                               const char *value),
+                                 const char *head, unsigned long value)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char text[24];
+    unsigned short at = 0u;
+    unsigned short shift;
+
+    while (*head != '\0') {
+        text[at++] = *head++;
+    }
+    for (shift = 32u; shift != 0u; shift -= 4u) {
+        text[at++] = digits[(value >> (shift - 4u)) & 0x0ful];
+    }
+    text[at] = '\0';
+    write("PatWrite", text);
+}
+
+/*
+ * V9X_HW16_DEVICE.write_combine_fallback for the Tesla rows: when the MTRR
+ * plan refused for a reason the BIOS's ranges caused, write-combine the
+ * whole BAR1 mapping through PAT entry 4 (include\velocity9x\pat.h), as
+ * the vbe family and the HD 4600 do. The whole mapping, not the 14 MiB
+ * the VBE reports: every byte of it is the card's memory (the measure
+ * hook above), and the engine's reserve, which holds the pushbuffers the
+ * CPU writes, is at its top. M-Z2T02D's BIOS takes all eight MTRRs
+ * (MtrrWrite=refused), and the 9500 GT's profile spent 19% of a 3DMark
+ * 2001 SE run on single stores into that reserve
+ * (docs\decisions\2026-11-28-g96-3dmark2001se-profile.md).
+ */
+static void v9x_tesla_write_combine(unsigned long linear, unsigned long bytes,
+                                    unsigned short mtrr_reason,
+                                    void (*write)(const char *key,
+                                                  const char *value))
+{
+    struct v9x_pat_plan plan;
+    unsigned long low = 0ul;
+    unsigned long high = 0ul;
+    unsigned long pages = 0ul;
+    unsigned long back = 0ul;
+    unsigned short flags = 0u;
+    unsigned short why = 0u;
+
+    bytes &= ~(V9X_PAT_PAGE_BYTES - 1ul);
+    (void)V9xMiniPatInfo(&low, &high, &flags);
+    if (v9x_pat_plan_wc(mtrr_reason, flags, high, linear, bytes,
+                        &plan) == V9X_FALSE) {
+        v9x_tesla_pat_record(write, "plan=", (unsigned long)plan.reason);
+        return;
+    }
+    if (V9xMiniPatCover(linear, bytes, plan.old_high, plan.new_high,
+                        &pages, &back, &why) == 0u) {
+        v9x_tesla_pat_record(write, "why=", (unsigned long)why);
+        return;
+    }
+    v9x_tesla_pat_record(write, "ok pages=", pages);
 }
 
 /* BAR0 mapped by the mini-VDD, which hands the window over only if
@@ -179,7 +250,7 @@ const V9X_HW16_DEVICE v9x_gt218_device = {
      * (docs\decisions\2026-11-15-gt218-write-combining.md).
      */
     V9X_HW16_WC_VRAM,
-    0,
+    v9x_tesla_write_combine,
     0u,                     /* screen_shadow: GDI has the engine */
     0,                      /* engine_pool */
     /* aperture_from_bar: map BAR1, not the VBE's BAR3 window. */
@@ -244,7 +315,7 @@ const V9X_HW16_DEVICE v9x_g96_device = {
     V9X_GT218_MAP_BYTES,
     v9x_gt218_reserve_offset,
     V9X_HW16_WC_VRAM,
-    0,
+    v9x_tesla_write_combine,
     0u,                     /* screen_shadow: GDI has the engine */
     0,                      /* engine_pool */
     1u                      /* aperture_from_bar */

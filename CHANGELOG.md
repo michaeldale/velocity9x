@@ -18,6 +18,14 @@ build identifier so exact guest-tested binaries remain traceable.
   [record](docs/decisions/2026-11-28-g96-clocks-measured.md)). The
   clocks before and after are written to `C:\V9XDIAG\V9XN5CLK.INI`, and
   a V9XTRACE report carries them as `[EngineClock]`.
+- **`nvidia` package, GeForce 210 and 9500 GT: video memory
+  write-combined when the BIOS leaves no MTRR free.** On the 9500 GT's
+  machine nothing the CPU wrote to the card was write-combined, the
+  engine's command buffers included. The driver now uses the CPU's page
+  attributes instead, as the `vbe` package does. There, 3DMark 2001 SE
+  under a profiler went from 1106 to 2077 and the Quake 3 demo from about
+  45 to 62.9 fps
+  ([record](docs/decisions/2026-11-28-g96-pushbuffer-write-combined.md)).
 - **All packages: a 32-bit texture the 3D engine cannot sample is
   refused instead of drawn black.** The Rage 128 Pro, SiS 6326,
   Voodoo4, Rage XL, RIVA 128 and ViRGE accepted A8R8G8B8 or X8R8G8B8

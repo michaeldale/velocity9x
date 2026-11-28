@@ -189,8 +189,12 @@
             @{ Name = 'vbe_modes'; Path = 'src\common\vbe_modes.c' }
             @{ Name = 'edid'; Path = 'src\common\edid.c' }
             @{ Name = 'mtrr'; Path = 'src\common\mtrr.c' }
-            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c' }
-            @{ Name = 'vsync'; Path = 'src\common\vsync.c' }
+            # The PAT plan, for gt218_hw16.c's write-combining fallback.
+            @{ Name = 'pat'; Path = 'src\common\pat.c' }
+            # In LEAFCODE, as on intel-gma, since pat.c took _TEXT 287 bytes
+            # past its budget.
+            @{ Name = 'd3dmode'; Path = 'src\common\d3dmode.c'; CodeSegment = 'LEAFCODE' }
+            @{ Name = 'vsync'; Path = 'src\common\vsync.c'; CodeSegment = 'LEAFCODE' }
             @{ Name = 'modes16'; Path = 'src\display16\modes16.c' }
             @{ Name = 'riva128_hw16'; Path = 'src\chipsets\nvidia\riva128\riva128_hw16.c' }
             @{ Name = 'gt218_hw16'; Path = 'src\chipsets\nvidia\gt218\gt218_hw16.c' }
@@ -217,8 +221,10 @@
         # enable16.c's BAR aperture, which the GT218 row asks for
         # (hw16.h aperture_from_bar).
         Defines = @('V9X_NVIDIA_FAMILY', 'V9X_HW16_APERTURE_FROM_BAR')
-        # runtime.asm's BAR0 read and mini-VDD map for the 2D engine.
-        RuntimeDefines = @('V9X_NVIDIA_FAMILY')
+        # runtime.asm's BAR0 read and mini-VDD map for the 2D engine;
+        # V9X_PAT_ROUTE, its PAT verbs, for gt218_hw16.c's write-combining
+        # fallback (the 9500 GT's BIOS leaves no MTRR free).
+        RuntimeDefines = @('V9X_NVIDIA_FAMILY', 'V9X_PAT_ROUTE')
         SkeletonOutput = 'build\win16-ddi-nvidia'
         PackageOutput = 'build\win98se-nvidia'
         VmStageDirectory = 'build\vm-probe\NVIDIA'
